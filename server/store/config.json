@@ -1,0 +1,15 @@
+{
+  "database": {
+    "uri": "bolt://localhost:7687",
+    "username": "neo4j",
+    "password": "neo4j",
+    "connection": {
+      "maxConnectionPoolSize": 10,
+      "connectionTimeout": 5000
+    }
+  },
+  "retry": {
+    "maxAttempts": 10,
+    "intervalMs": 2000
+  }
+}

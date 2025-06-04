@@ -1,0 +1,24 @@
+{
+  "name": "@odp/server",
+  "version": "1.0.0",
+  "description": "ODP REST API server",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacques-lauzeral/odp"
+  },
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "neo4j-driver": "^5.15.0",
+    "@odp/shared": "*"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}

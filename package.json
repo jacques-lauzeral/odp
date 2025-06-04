@@ -1,0 +1,37 @@
+{
+  "name": "odp",
+  "version": "1.0.0",
+  "description": "Operational Deployment Plan management system",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web-client",
+    "cli"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "install:all": "npm install",
+    "shared:build": "npm run build -w shared",
+    "server:dev": "npm run dev -w server",
+    "client:dev": "npm run dev -w web-client",
+    "cli:dev": "npm run dev -w cli"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacques-lauzeral/odp"
+  }
+}

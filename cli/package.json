@@ -1,0 +1,23 @@
+{
+  "name": "@odp/cli",
+  "version": "1.0.0",
+  "description": "ODP command line interface",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "odp": "./index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jacques-lauzeral/odp"
+  },
+  "scripts": {
+    "dev": "node index.js",
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "@odp/shared": "*",
+    "commander": "^11.1.0"
+  }
+}
