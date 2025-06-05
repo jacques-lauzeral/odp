@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 
+# Generated sources
+workspace/cli/generated-src/
+workspace/server/generated-src/
+workspace/shared/generated-src/
+workspace/web-client/generated-src/
+
 # Logs
 *.log
 npm-debug.log*

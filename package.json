@@ -5,10 +5,10 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "shared",
-    "server",
-    "web-client",
-    "cli"
+    "workspaces/shared",
+    "workspaces/server",
+    "workspaces/web-client",
+    "workspaces/cli"
   ],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
@@ -16,15 +16,16 @@
     "test": "npm run test --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
     "install:all": "npm install",
-    "shared:build": "npm run build -w shared",
-    "server:dev": "npm run dev -w server",
-    "client:dev": "npm run dev -w web-client",
-    "cli:dev": "npm run dev -w cli"
+    "workspaces/shared:build": "npm run build -w workspace/shared",
+    "workspaces/server:dev": "npm run dev -w workspace/server",
+    "workspaces/client:dev": "npm run dev -w workspace/web-client",
+    "workspaces/cli:dev": "npm run dev -w workspace/cli"
   },
   "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.20.2",
     "eslint": "^8.57.0",
-    "prettier": "^3.2.5",
-    "nodemon": "^3.0.3"
+    "nodemon": "^3.0.3",
+    "prettier": "^3.2.5"
   },
   "engines": {
     "node": ">=18.0.0",

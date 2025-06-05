@@ -4,16 +4,16 @@
   "description": "ODP command line interface",
   "private": true,
   "type": "module",
-  "main": "index.js",
+  "main": "src/index.js",
   "bin": {
-    "odp": "./index.js"
+    "odp": "src/index.js"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/jacques-lauzeral/odp"
   },
   "scripts": {
-    "dev": "node index.js",
+    "dev": "node src/index.js",
     "test": "echo \"No tests yet\""
   },
   "dependencies": {

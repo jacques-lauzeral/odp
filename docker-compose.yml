@@ -1,0 +1,29 @@
+services:
+  neo4j:
+    image: neo4j:5.15
+    ports:
+      - "7474:7474"  # Web interface
+      - "7687:7687"  # Bolt protocol
+    environment:
+      NEO4J_AUTH: neo4j/password123
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+
+  odp-server:
+    image: node:20
+    working_dir: /app
+    ports:
+      - "80:80"
+    depends_on:
+      - neo4j
+    volumes:
+      - .:/app  # Mount entire odp root (includes package.json)
+      - /app/node_modules  # Prevent overwriting root node_modules
+      - /app/workspace/server/node_modules  # Prevent overwriting server node_modules
+    command: ["sh", "-c", "cd workspace/server && npm install && npm run dev"]
+    environment:
+      NODE_ENV: development
+
+volumes:
+  neo4j_data:

@@ -1,0 +1,232 @@
+openapi: 3.1.0
+info:
+  title: ODP
+  description: Operational Deployment Plan Management API
+  version: 1.0.0
+servers:
+  - url: 'http://localhost/api'
+    description: Development server
+paths:
+  /stakeholder-categories:
+    get:
+      tags:
+        - StakeholderCategory
+      summary: List all stakeholder categories
+      operationId: listStakeholderCategories
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StakeholderCategory'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - StakeholderCategory
+      summary: Create a new stakeholder category
+      operationId: createStakeholderCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StakeholderCategoryCreate'
+      responses:
+        '201':
+          description: Category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StakeholderCategory'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /stakeholder-categories/{id}:
+    get:
+      tags:
+        - StakeholderCategory
+      summary: Get a stakeholder category by ID
+      operationId: getStakeholderCategory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The stakeholder category ID
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StakeholderCategory'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - StakeholderCategory
+      summary: Update a stakeholder category
+      operationId: updateStakeholderCategory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The stakeholder category ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StakeholderCategoryUpdate'
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StakeholderCategory'
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - StakeholderCategory
+      summary: Delete a stakeholder category
+      operationId: deleteStakeholderCategory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The stakeholder category ID
+      responses:
+        '204':
+          description: Category deleted successfully
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot delete category with dependencies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    StakeholderCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - id
+        - name
+        - description
+
+    StakeholderCategoryCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+      required:
+        - name
+        - description
+
+    StakeholderCategoryUpdate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+      required:
+        - id
+        - name
+        - description
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+          required:
+            - code
+            - message
