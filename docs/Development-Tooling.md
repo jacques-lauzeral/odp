@@ -46,12 +46,6 @@ docker-compose up
 - **Dependency resolution:** Centralized with workspace hoisting
 - **Local dependencies:** File references between workspaces
 
-### Code Generation
-- **OpenAPI Generator:** @openapitools/openapi-generator-cli
-- **Installation:** Workspace-specific devDependencies
-- **Templates:** Custom templates for integration patterns
-- **Generated code location:** `workspace/server/generated-src/`
-
 ### Development Scripts
 ```bash
 # Root workspace operations
@@ -62,10 +56,17 @@ npm run build                  # Build all workspaces
 npm run server:dev             # Development server
 npm run client:dev             # Web client development
 npm run cli:dev                # CLI development
+```
 
-# Code generation
-cd workspace/server
-npm run generate               # Generate from OpenAPI spec
+### Code Organization
+```
+workspace/
+├── server/src/               # Manual server implementation
+│   ├── routes/              # Entity route files
+│   ├── services/            # Business logic layer
+│   └── store/               # Data access layer
+├── shared/src/               # Shared models and types
+└── [other-workspaces]/src/   # Additional manual code
 ```
 
 ## Development Workflow
@@ -73,25 +74,38 @@ npm run generate               # Generate from OpenAPI spec
 ### Container-Based Development
 1. **Environment startup:** `docker-compose up`
 2. **Code editing:** Direct file editing on host
-3. **Live reload:** Automatic container restart on changes
+3. **Live reload:** Automatic container restart on changes via nodemon
 4. **Service logs:** Visible in docker-compose output
 5. **Debugging:** Container exec for inspection
 
-### Code Organization
-```
-workspace/
-├── server/src/               # Manual server implementation
-├── server/generated-src/     # Generated API artifacts
-├── shared/src/               # Shared models and types
-└── [other-workspaces]/src/   # Additional manual code
-```
+### Manual API Development Process
+1. **Entity modeling:** Define data structures in `@odp/shared`
+2. **Store layer:** Create entity store extending BaseStore
+3. **Service layer:** Implement business logic with transaction management
+4. **Route layer:** Create Express routes for CRUD operations
+5. **CLI integration:** Add commands using direct HTTP calls
+6. **Testing:** Use CLI and curl for endpoint verification
 
-### API Development Process
-1. **Specification first:** Update `openapi.yaml`
-2. **Code generation:** Run `npm run generate` in server workspace
-3. **Implementation:** Create/update store layer and routes
-4. **Testing:** Use curl or API client for endpoint testing
-5. **Integration:** Verify end-to-end functionality
+### Entity Development Pattern
+```bash
+# 1. Add to shared models
+echo 'export const NewEntity = { id: "", name: "", description: "" };' >> workspace/shared/src/index.js
+
+# 2. Create store
+cp workspace/server/src/store/stakeholder-category.js workspace/server/src/store/new-entity.js
+
+# 3. Create service
+cp workspace/server/src/services/StakeholderCategoryService.js workspace/server/src/services/NewEntityService.js
+
+# 4. Create routes
+cp workspace/server/src/routes/stakeholder-category.js workspace/server/src/routes/new-entity.js
+
+# 5. Add to server
+# Edit src/index.js to add new routes
+
+# 6. Add CLI commands
+cp workspace/cli/src/commands/stakeholder-category.js workspace/cli/src/commands/new-entity.js
+```
 
 ## Quality Assurance Tools
 
@@ -100,10 +114,20 @@ workspace/
 - **Formatting:** Prettier for consistent code style
 - **Type checking:** JSDoc annotations with IDE support
 
-### Testing Strategy (Planned)
-- **Unit tests:** Store layer and business logic
-- **Integration tests:** API endpoint testing
-- **Database tests:** Neo4j transaction and query testing
+### Testing Strategy (Current)
+- **Manual testing:** CLI commands for all operations
+- **API testing:** Direct curl commands for endpoint verification
+- **Integration testing:** End-to-end workflow validation via CLI
+
+### Testing Workflow
+```bash
+# Test all CRUD operations for an entity
+npm run dev entity-name list
+npm run dev entity-name create "Test" "Description"
+npm run dev entity-name show <id>
+npm run dev entity-name update <id> "Updated" "Updated description"
+npm run dev entity-name delete <id>
+```
 
 ## Database Development Tools
 
@@ -119,22 +143,43 @@ workspace/
 2. **Query development:** Neo4j Browser for Cypher testing
 3. **Connection testing:** Store layer connection verification
 4. **Data inspection:** Browser interface for data exploration
+5. **Relationship testing:** Store layer hierarchy operations
+
+### Query Testing
+```cypher
+// Test queries in Neo4j Browser
+MATCH (n:StakeholderCategory) RETURN n;
+MATCH (n:StakeholderCategory)-[:REFINES]->(p:StakeholderCategory) RETURN n, p;
+MATCH (n) WHERE id(n) = 0 RETURN n;
+```
 
 ## API Development Tools
 
-### OpenAPI Tooling
-- **Specification editing:** Direct YAML editing in IDE
-- **Validation:** OpenAPI Generator CLI validation
-- **Documentation:** Auto-generated from specification
-- **Code generation:** Template-based artifact generation
+### Manual Route Development
+- **Route organization:** One file per entity in src/routes/
+- **Service integration:** Clean separation between HTTP and business logic
+- **Error handling:** Consistent JSON error responses
+- **Testing:** CLI provides comprehensive API validation
 
-### API Testing
-- **Manual testing:** curl commands for endpoint verification
-- **Health monitoring:** Built-in health check endpoint
-- **Request/response inspection:** Docker logs for debugging
+### API Testing Workflow
+```bash
+# Direct API testing
+curl http://localhost/entity-name
+curl -X POST http://localhost/entity-name -H "Content-Type: application/json" -d '{"name":"Test","description":"Test"}'
+curl http://localhost/entity-name/1
+curl -X PUT http://localhost/entity-name/1 -H "Content-Type: application/json" -d '{"id":"1","name":"Updated","description":"Updated"}'
+curl -X DELETE http://localhost/entity-name/1
+
+# CLI testing (preferred)
+npm run dev entity-name list
+npm run dev entity-name create "Name" "Description"
+npm run dev entity-name show 1
+npm run dev entity-name update 1 "New Name" "New Description"
+npm run dev entity-name delete 1
+```
 
 ### Development Server Features
-- **Live reload:** Nodemon for automatic restarts
+- **Live reload:** Nodemon for automatic restarts on code changes
 - **Error handling:** Detailed error logging and stack traces
 - **Transaction management:** Automatic rollback on errors
 - **Connection pooling:** Efficient database resource usage
@@ -143,12 +188,12 @@ workspace/
 
 ### WebStorm Configuration
 - **Project structure:** Workspace-aware navigation
-- **Node.js integration:** Proper module resolution
+- **Node.js integration:** Proper module resolution for ES modules
 - **Docker integration:** Container management from IDE
 - **Git integration:** Standard version control workflow
 
 ### Development Productivity
-- **File watching:** Automatic change detection
+- **File watching:** Automatic change detection via nodemon
 - **Import resolution:** Proper ES module support
 - **Debugging support:** Node.js debugging capabilities
 - **Code completion:** Enhanced with JSDoc annotations
@@ -170,6 +215,7 @@ services:
 
 ### Configuration Management
 - **Database config:** `workspace/server/src/store/config.json`
+- **CLI config:** `workspace/cli/config.json`
 - **Environment variables:** Docker Compose environment section
 - **Service discovery:** Internal Docker network resolution
 - **Port management:** Host-to-container port mapping
@@ -177,21 +223,36 @@ services:
 ## Extension and Customization
 
 ### Adding New Entities
-1. **Update OpenAPI spec:** Add new endpoints and schemas
-2. **Generate code:** Run generation for new artifacts
-3. **Implement store:** Create entity-specific store layer
-4. **Add routes:** Implement Express endpoint handlers
-5. **Test integration:** Verify end-to-end functionality
+1. **Add to shared models:** Define entity structure in `@odp/shared`
+2. **Create store:** Extend BaseStore for data access
+3. **Create service:** Implement business logic with transactions
+4. **Create routes:** Add Express routes for CRUD operations
+5. **Update server:** Register routes in main application
+6. **Add CLI commands:** Create command handlers using HTTP calls
+7. **Test integration:** Verify end-to-end functionality
 
-### Custom Templates
-- **Location:** `workspace/server/templates/`
-- **Customization:** Modify generator templates for specific patterns
-- **Integration:** Template changes reflected in generated code
+### Store Layer Patterns
+- **CRUD operations:** Inherit from BaseStore for consistency
+- **Relationships:** Add entity-specific relationship methods
+- **Validation:** Business rules enforcement at service layer
+- **Transactions:** Explicit transaction boundaries for data integrity
+
+### Route Layer Patterns
+- **HTTP methods:** GET, POST, PUT, DELETE for standard operations
+- **Error handling:** Consistent JSON error responses with proper status codes
+- **Parameter handling:** URL parameters and request body validation
+- **Response format:** JSON responses with standardized structure
+
+### CLI Patterns
+- **Command structure:** Subcommands per entity (entity-name action)
+- **HTTP integration:** Direct fetch calls to API endpoints
+- **Output formatting:** ASCII tables for lists, plain text for single items
+- **Error handling:** Proper exit codes and error messages
 
 ### Development Environment Customization
-- **Service modification:** Update docker-compose.yml
-- **Port changes:** Modify port mappings as needed
-- **Volume mounting:** Adjust file system mounting for workflows
+- **Service modification:** Update docker-compose.yml as needed
+- **Port changes:** Modify port mappings for different services
+- **Volume mounting:** Adjust file system mounting for specific workflows
 - **Environment variables:** Configure service-specific settings
 
-This tooling setup provides a comprehensive development environment that supports rapid prototyping while maintaining production-quality practices.
+This tooling setup provides a comprehensive development environment that supports rapid prototyping while maintaining production-quality practices and clear patterns for entity expansion.

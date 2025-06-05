@@ -1,26 +1,40 @@
 /**
- * The {{{classname}}}Controller file is a very simple one, which does not need to be changed manually,
- * unless there's a case where business logic routes the request to an entity which is not
- * the service.
- * The heavy lifting of the Controller item is done in Request.js - that is where request
- * parameters are extracted and sent to the service, and where response is handled.
- */
+* The {{{classname}}}Controller file is a very simple one, which does not need to be changed manually,
+* unless there's a case where business logic routes the request to an entity which is not
+* the service.
+* The heavy lifting of the Controller item is done in Request.js - that is where request
+* parameters are extracted and sent to the service, and where response is handled.
+*/
 
 const Controller = require('./Controller');
 const service = require('../../src/services/{{{classname}}}Service');
-{{#operations}}
-{{#operation}}
-const {{operationId}} = async (request, response) => {
-  await Controller.handleRequest(request, response, service.{{operationId}});
-};
 
-{{/operation}}
+console.log('Loading {{{classname}}}Controller');
+console.log('Service methods available:', Object.keys(service));
+
+{{#operations}}
+    {{#operation}}
+        const {{operationId}} = async (request, response) => {
+        console.log('Controller: {{operationId}} called');
+        console.log('Request params:', request.params);
+        console.log('Request body:', request.body);
+
+        if (typeof service.{{operationId}} !== 'function') {
+        console.error('Service method {{operationId}} is not a function or does not exist');
+        console.error('Available service methods:', Object.keys(service));
+        return response.status(500).json({ error: 'Service method not found' });
+        }
+
+        await Controller.handleRequest(request, response, service.{{operationId}});
+        };
+
+    {{/operation}}
 {{/operations}}
 
 module.exports = {
-  {{#operations}}
-  {{#operation}}
-  {{operationId}},
-  {{/operation}}
-  {{/operations}}
+{{#operations}}
+    {{#operation}}
+        {{operationId}},
+    {{/operation}}
+{{/operations}}
 };

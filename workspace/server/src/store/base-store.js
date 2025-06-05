@@ -76,6 +76,7 @@ export class BaseStore {
      * @returns {Promise<object|null>} Node as plain object or null if not found
      */
     async findById(id, transaction) {
+        console.log('BaseStore.findById() id:', id)
         try {
             const query = `
         MATCH (n:${this.nodeLabel})
@@ -83,7 +84,8 @@ export class BaseStore {
         RETURN n
       `;
 
-            const result = await transaction.run(query, { id });
+            const numericId = parseInt(id, 10);
+            const result = await transaction.run(query, { id: numericId });
 
             if (result.records.length === 0) {
                 return null;
@@ -131,7 +133,8 @@ export class BaseStore {
         RETURN n
       `;
 
-            const result = await transaction.run(query, { id, data });
+            const numericId = parseInt(id, 10);
+            const result = await transaction.run(query, { id: numericId, data });
 
             if (result.records.length === 0) {
                 return null;
@@ -158,7 +161,8 @@ export class BaseStore {
         RETURN count(n) as deletedCount
       `;
 
-            const result = await transaction.run(query, { id });
+            const numericId = parseInt(id, 10);
+            const result = await transaction.run(query, { id: numericId });
             const deletedCount = result.records[0].get('deletedCount').toNumber();
 
             return deletedCount > 0;
@@ -181,7 +185,8 @@ export class BaseStore {
         RETURN count(n) > 0 as exists
       `;
 
-            const result = await transaction.run(query, { id });
+            const numericId = parseInt(id, 10);
+            const result = await transaction.run(query, { id: numericId });
             return result.records[0].get('exists');
         } catch (error) {
             throw new StoreError(`Failed to check existence of ${this.nodeLabel} with ID ${id}: ${error.message}`, error);

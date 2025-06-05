@@ -10,24 +10,15 @@
     "url": "https://github.com/jacques-lauzeral/odp"
   },
   "scripts": {
-    "generate": "openapi-generator-cli generate -i ../../openapi.yaml -g nodejs-express-server -t ./templates -o generated-src",
-    "dev": "nodemon src/index.js",
+    "dev": "nodemon src/index.js --watch src",
     "start": "node src/index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "neo4j-driver": "^5.15.0",
-    "@odp/shared": "file:../shared",
-    "swagger-ui-express": "^4.6.3",
-    "js-yaml": "^4.1.0",
-    "cors": "^2.8.5",
-    "cookie-parser": "^1.4.6",
-    "body-parser": "^1.20.2",
-    "express-openapi-validator": "^5.0.4",
-    "winston": "^3.11.0"
+    "@odp/shared": "file:../shared"
   },
   "devDependencies": {
-    "@openapitools/openapi-generator-cli": "^2.7.0",
     "nodemon": "^3.0.3"
   }
 }

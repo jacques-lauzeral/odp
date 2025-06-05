@@ -1,0 +1,10 @@
+{
+  "server": {
+    "baseUrl": "http://localhost",
+    "timeout": 30000
+  },
+  "output": {
+    "format": "table",
+    "maxColumnWidth": 50
+  }
+}

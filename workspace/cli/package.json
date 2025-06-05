@@ -1,23 +1,19 @@
 {
   "name": "@odp/cli",
   "version": "1.0.0",
-  "description": "ODP command line interface",
-  "private": true,
   "type": "module",
+  "description": "Command line interface for ODP operations",
   "main": "src/index.js",
   "bin": {
     "odp": "src/index.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/jacques-lauzeral/odp"
-  },
   "scripts": {
-    "dev": "node src/index.js",
-    "test": "echo \"No tests yet\""
+    "dev": "node src/index.js"
   },
   "dependencies": {
-    "@odp/shared": "*",
-    "commander": "^11.1.0"
+    "@odp/shared": "file:../shared",
+    "cli-table3": "^0.6.3",
+    "commander": "^8.3.0",
+    "node-fetch": "^3.3.2"
   }
 }

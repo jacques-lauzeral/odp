@@ -6,15 +6,21 @@ odp/
 ├── workspace/
 │   ├── cli/
 │   │   ├── src/
-│   │   │   └── index.js
+│   │   │   ├── commands/        # CLI command handlers
+│   │   │   │   └── stakeholder-category.js
+│   │   │   └── index.js         # CLI entry point
+│   │   ├── config.json          # Server endpoint configuration
 │   │   └── package.json
 │   ├── server/
 │   │   ├── src/
-│   │   │   ├── store/           # Store layer with Neo4j integration
+│   │   │   ├── routes/          # Express route files
+│   │   │   │   └── stakeholder-category.js
+│   │   │   ├── services/        # Business logic layer
+│   │   │   │   └── StakeholderCategoryService.js
+│   │   │   ├── store/           # Data access layer
 │   │   │   │   ├── config.json  # Database configuration
 │   │   │   │   └── ...
 │   │   │   └── index.js         # Express server
-│   │   ├── generated-src/       # OpenAPI generated code
 │   │   └── package.json
 │   ├── shared/
 │   │   ├── src/
@@ -24,7 +30,6 @@ odp/
 │       ├── src/
 │       │   └── index.js
 │       └── package.json
-├── openapi.yaml                 # API specification
 ├── docker-compose.yml          # Development environment
 ├── package.json                # Root workspace configuration
 ├── package-lock.json
@@ -44,19 +49,20 @@ odp/
 - **Package manager**: npm with workspaces
 - **Module system**: ES modules
 - **Development environment**: Docker Compose
-- **API specification**: OpenAPI 3.1.0
+- **API approach**: Manual Express routes (simple, maintainable, reproducible)
 
 ### Shared Workspace (@odp/shared)
 - **Purpose**: API exchange models between client and server
 - **Dependencies**: None (pure JavaScript)
 - **Current models**: StakeholderCategory with request structures
+- **Pattern**: Base entity models with request/response extensions
 
 ### Server Workspace (@odp/server)
-- **Framework**: Express.js for REST API
+- **Framework**: Express.js with manual routes
 - **Database**: Neo4j with official driver
 - **Development**: Nodemon for auto-reload in Docker container
-- **Architecture**: Direct Express routes → Store layer (simplified from original service layer approach)
-- **API Generation**: OpenAPI Generator CLI for generating code artifacts
+- **Architecture**: Routes → Services → Store Layer → Neo4j
+- **Route organization**: One file per entity type (routes/stakeholder-category.js)
 
 ### Web Client Workspace (@odp/web-client)
 - **Approach**: Vanilla JavaScript with specialized libraries (planned)
@@ -65,9 +71,11 @@ odp/
 - **Timeline**: Vis.js Timeline (planned)
 
 ### CLI Workspace (@odp/cli)
-- **Framework**: Commander.js (planned)
-- **Binary name**: `odp` command (planned)
-- **Purpose**: Command-line interface for ODP operations
+- **Framework**: Commander.js for subcommand structure
+- **HTTP client**: node-fetch for direct API calls
+- **Output**: cli-table3 for ASCII table formatting
+- **Binary name**: `odp` command
+- **Purpose**: Command-line interface for all ODP operations
 
 ## Development Environment
 
@@ -76,14 +84,15 @@ odp/
 - **Node.js Application**: Version 20 with live code reloading
 - **Network**: Internal Docker network for service communication
 - **Ports**:
-    - 80 → ODP API Server
-    - 7474 → Neo4j Browser
-    - 7687 → Neo4j Bolt Protocol
+  - 80 → ODP API Server
+  - 7474 → Neo4j Browser
+  - 7687 → Neo4j Bolt Protocol
 
 ### Configuration
 - **Neo4j Authentication**: neo4j/password123
 - **Database Connection**: bolt://neo4j:7687 (internal Docker network)
 - **Server Configuration**: `workspace/server/src/store/config.json`
+- **CLI Configuration**: `workspace/cli/config.json`
 
 ## Development Workflow
 
@@ -98,67 +107,116 @@ docker-compose up
 - **Health Check**: http://localhost/hello
 - **Neo4j Browser**: http://localhost:7474
 
-### Code Generation
-```bash
-# From workspace/server/
-npm run generate    # Generate OpenAPI artifacts
-```
-
 ### Individual Workspace Development
 - **Root commands**: `npm run dev` (starts all), `npm run build` (builds all)
 - **Individual workspace commands**: `npm run server:dev`, `npm run client:dev`, etc.
 - **Dependency management**: Centralized through root workspace
 - **Code sharing**: Via @odp/shared workspace dependency with `file:../shared` references
 
-## OpenAPI Integration
+## Manual Routes Architecture
 
-### API Specification
-- **Location**: `odp/openapi.yaml`
-- **Version**: OpenAPI 3.1.0
-- **Current Endpoints**: StakeholderCategory CRUD operations
-- **Generator**: @openapitools/openapi-generator-cli
+### API Implementation Pattern
+```
+Routes (HTTP) → Services (Business Logic) → Store (Data Access) → Neo4j
+```
 
-### Generated Artifacts
-- **Server**: Express route templates and controllers in `generated-src/`
-- **Shared**: API schemas and validation (when needed)
-- **Templates**: Custom templates in `workspace/server/templates/`
+### Entity Development Pattern
+1. **Shared Models**: Define entity structure in `@odp/shared`
+2. **Store Layer**: Create entity store extending BaseStore
+3. **Service Layer**: Implement business logic with transaction management
+4. **Route Layer**: Create Express routes file with CRUD operations
+5. **CLI Commands**: Add command handlers using direct HTTP calls
 
-## Current Implementation Status
+### Current Implementation Status
 
 ### Implemented Features
 ✅ Repository structure with workspace organization  
 ✅ Docker Compose development environment  
 ✅ Neo4j database with connection management  
 ✅ Express server with live reload  
+✅ Manual routes architecture (Routes → Services → Store → Neo4j)  
 ✅ Store layer with transaction management  
-✅ StakeholderCategory CRUD API endpoints  
-✅ OpenAPI specification and code generation setup  
-✅ Workspace dependency resolution
+✅ StakeholderCategory complete CRUD API endpoints  
+✅ CLI with all StakeholderCategory operations  
+✅ Workspace dependency resolution  
+✅ Clean separation of concerns across layers
 
-### Working Endpoints
-- `GET /stakeholder-categories` - List all categories
-- `POST /stakeholder-categories` - Create new category
-- `GET /hello` - Health check
+### Working Features
+- **Manual Express Routes**:
+  - `GET /stakeholder-categories` - List all categories
+  - `GET /stakeholder-categories/:id` - Get category by ID
+  - `POST /stakeholder-categories` - Create new category
+  - `PUT /stakeholder-categories/:id` - Update category
+  - `DELETE /stakeholder-categories/:id` - Delete category
+- **CLI Commands**:
+  - `odp stakeholder-category list` - Table view of all categories
+  - `odp stakeholder-category show <id>` - Single category details
+  - `odp stakeholder-category create <name> <description>` - Create new
+  - `odp stakeholder-category update <id> <name> <description>` - Update existing
+  - `odp stakeholder-category delete <id>` - Delete category
+- **Health Endpoint**: `GET /hello` - Server health check
 
-### Next Implementation Steps
-- Complete StakeholderCategory CRUD (GET by ID, PUT, DELETE)
-- Add hierarchy operations (parent/child relationships)
-- Implement remaining entities (Data, Service, RegulatoryAspect, Wave)
+### Next Implementation Steps (Phase 2)
+- Add RegulatoryAspect entity (Store → Service → Routes → CLI)
+- Add Service entity following the same pattern
+- Add Data entity following the same pattern
+- Add Wave entity for timeline management
+- Implement hierarchy operations for all entities
 - Develop web client UI components
-- Build CLI commands for ODP management
-- Add baseline management system
 
 ## Key Design Decisions
 
-### Architecture Changes from Original Plan
-1. **Docker-first development**: Simplified service coordination and environment setup
-2. **OpenAPI specification**: Contract-first API design with code generation
-3. **Simplified server architecture**: Direct Express routes to store layer (bypassed complex generated service layer)
-4. **Workspace organization**: Clean separation between infrastructure and source code
+### Architecture Simplifications
+1. **Manual Express routes**: Direct, readable route definitions instead of generated code
+2. **HTTP client integration**: CLI uses direct fetch calls instead of generated clients
+3. **Clean layer separation**: Routes → Services → Store → Database with clear responsibilities
+4. **Entity organization**: One file per layer per entity for maintainability
 5. **ES modules throughout**: Consistent module system across all components
 
 ### Development Philosophy
 - **Container-based development**: All dependencies managed through Docker
-- **API-first**: OpenAPI specification drives both documentation and implementation
-- **Minimal complexity**: Prefer simple, direct patterns over complex abstractions
+- **Manual implementation**: Direct code control over generated complexity
+- **Pattern consistency**: Repeatable patterns for rapid entity expansion
 - **Live development**: File changes reflected immediately in running containers
+
+### Quality Practices
+- **Transaction management**: Explicit boundaries with proper error handling
+- **Error consistency**: Standardized JSON error responses across all endpoints
+- **Code organization**: Clear separation between HTTP, business logic, and data access
+- **Testing approach**: CLI provides comprehensive API validation
+- **Documentation**: Self-documenting code structure with clear patterns
+
+## Testing and Validation
+
+### Current Testing Approach
+```bash
+# CLI provides comprehensive testing
+npm run dev stakeholder-category list
+npm run dev stakeholder-category create "Test" "Description"
+npm run dev stakeholder-category show <id>
+npm run dev stakeholder-category update <id> "Updated" "New description"
+npm run dev stakeholder-category delete <id>
+
+# Direct API testing
+curl http://localhost/stakeholder-categories
+curl -X POST http://localhost/stakeholder-categories -H "Content-Type: application/json" -d '{"name":"Test","description":"Test description"}'
+```
+
+### Validation Status
+- ✅ All CRUD operations working correctly
+- ✅ Error handling with proper HTTP status codes
+- ✅ Transaction management with automatic rollback
+- ✅ CLI integration with table formatting
+- ✅ Docker environment with live reload
+
+## Phase 1 Completion
+
+**✅ Phase 1 - CLI for StakeholderCategory - COMPLETE**
+- CLI technical solution implemented
+- All CLI commands working (list, create, show, update, delete)
+- API client integration via direct HTTP calls
+- Shared model usage validated
+- Manual routes architecture established
+- Clean patterns ready for Phase 2 entity expansion
+
+The current setup provides a solid, simple foundation for rapid Phase 2-4 development with proven patterns that are easy to understand, maintain, and extend.

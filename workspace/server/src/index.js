@@ -1,5 +1,6 @@
 import express from 'express';
-import { initializeStores, closeStores, stakeholderCategoryStore, createTransaction, commitTransaction, rollbackTransaction } from './store/index.js';
+import { initializeStores, closeStores } from './store/index.js';
+import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -13,45 +14,13 @@ app.get('/hello', (req, res) => {
     res.json({ status: 'ok', message: 'ODP Server running', timestamp: new Date().toISOString() });
 });
 
-// StakeholderCategory endpoints
-app.get('/stakeholder-categories', async (req, res) => {
-    const tx = createTransaction();
-    try {
-        const store = stakeholderCategoryStore();
-        const categories = await store.findAll(tx);
-        await commitTransaction(tx);
-        res.json(categories);
-    } catch (error) {
-        await rollbackTransaction(tx);
-        console.error('Error fetching categories:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-app.post('/stakeholder-categories', async (req, res) => {
-    const tx = createTransaction();
-    try {
-        const store = stakeholderCategoryStore();
-        const category = await store.create(req.body, tx);
-
-        // Handle parentId if provided
-        if (req.body.parentId) {
-            await store.createRefinesRelation(category.id, req.body.parentId, tx);
-        }
-
-        await commitTransaction(tx);
-        res.status(201).json(category);
-    } catch (error) {
-        await rollbackTransaction(tx);
-        console.error('Error creating category:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+// API Routes
+app.use('/stakeholder-categories', stakeholderCategoryRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
 });
 
 // Graceful shutdown
