@@ -1,6 +1,9 @@
 import express from 'express';
 import { initializeStores, closeStores } from './store/index.js';
 import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
+import regulatoryAspectRoutes from './routes/regulatory-aspect.js';
+import dataCategoryRoutes from './routes/data-category.js';
+import serviceRoutes from './routes/service.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -16,6 +19,9 @@ app.get('/hello', (req, res) => {
 
 // API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
+app.use('/regulatory-aspects', regulatoryAspectRoutes);
+app.use('/data-categories', dataCategoryRoutes);
+app.use('/services', serviceRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
@@ -46,7 +52,11 @@ async function startServer() {
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`ODP Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/hello`);
-            console.log(`API: http://localhost:${PORT}/stakeholder-categories`);
+            console.log(`API endpoints:`);
+            console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
+            console.log(`  - http://localhost:${PORT}/regulatory-aspects`);
+            console.log(`  - http://localhost:${PORT}/data-categories`);
+            console.log(`  - http://localhost:${PORT}/services`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

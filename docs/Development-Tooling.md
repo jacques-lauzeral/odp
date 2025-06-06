@@ -92,19 +92,19 @@ workspace/
 echo 'export const NewEntity = { id: "", name: "", description: "" };' >> workspace/shared/src/index.js
 
 # 2. Create store
-cp workspace/server/src/store/stakeholder-category.js workspace/server/src/store/new-entity.js
+cp workspace/server/src/store/stakeholder-category-store.js workspace/server/src/store/new-entity.js
 
 # 3. Create service
 cp workspace/server/src/services/StakeholderCategoryService.js workspace/server/src/services/NewEntityService.js
 
 # 4. Create routes
-cp workspace/server/src/routes/stakeholder-category.js workspace/server/src/routes/new-entity.js
+cp workspace/server/src/routes/stakeholder-category-store.js workspace/server/src/routes/new-entity.js
 
 # 5. Add to server
 # Edit src/index.js to add new routes
 
 # 6. Add CLI commands
-cp workspace/cli/src/commands/stakeholder-category.js workspace/cli/src/commands/new-entity.js
+cp workspace/cli/src/commands/stakeholder-category-store.js workspace/cli/src/commands/new-entity.js
 ```
 
 ## Quality Assurance Tools

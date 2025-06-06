@@ -60,7 +60,7 @@ Responses return base model objects directly - no wrapper structures needed:
 ### File Structure Pattern
 ```
 src/routes/
-├── stakeholder-category.js    # StakeholderCategory CRUD operations
+├── stakeholder-category-store.js    # StakeholderCategory CRUD operations
 ├── regulatory-aspect.js       # RegulatoryAspect CRUD operations
 ├── service.js                 # Service CRUD operations
 └── data.js                    # Data CRUD operations
@@ -490,7 +490,7 @@ X-Page-Count: 25
 
 ### Route Template for New Entities
 ```javascript
-// Copy stakeholder-category.js as template
+// Copy stakeholder-category-store.js as template
 // Replace entity names and service imports
 // Follow identical error handling patterns
 // Maintain consistent HTTP status codes

@@ -1,9 +1,9 @@
 import { RefinableEntityService } from './RefinableEntityService.js';
-import { stakeholderCategoryStore } from '../store/index.js';
+import { serviceStore } from '../store/index.js';
 
-export class StakeholderCategoryService extends RefinableEntityService {
+export class ServiceService extends RefinableEntityService {
     constructor() {
-        super(stakeholderCategoryStore);
+        super(serviceStore);
     }
 
     // Inherits from RefinableEntityService:
@@ -21,28 +21,28 @@ export class StakeholderCategoryService extends RefinableEntityService {
     // - getEntity(id)
 
     // Legacy method names for backward compatibility
-    async listStakeholderCategories() {
+    async listDataCategories() {
         return this.listEntities();
     }
 
-    async getStakeholderCategory(id) {
+    async getService(id) {
         return this.getEntity(id);
     }
 
-    async createStakeholderCategory(data) {
+    async createService(data) {
         return this.createEntity(data);
     }
 
-    async updateStakeholderCategory(id, data) {
+    async updateService(id, data) {
         return this.updateEntity(id, data);
     }
 
-    async deleteStakeholderCategory(id) {
+    async deleteService(id) {
         return this.deleteEntity(id);
     }
 
-    // Add any StakeholderCategory-specific methods here if needed in the future
+    // Add any Service-specific methods here if needed in the future
 }
 
 // Export instance for generated controllers
-export default new StakeholderCategoryService();
+export default new ServiceService();

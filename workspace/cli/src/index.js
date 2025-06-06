@@ -5,6 +5,9 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { stakeholderCategoryCommands } from './commands/stakeholder-category.js';
+import { regulatoryAspectCommands } from './commands/regulatory-aspect.js';
+import { dataCategoryCommands } from './commands/data-category.js';
+import { serviceCommands } from './commands/service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,8 +30,11 @@ program
     .description('Operational Deployment Plan Management CLI')
     .version('1.0.0');
 
-// Add stakeholder-category subcommands
+// Add entity subcommands
 stakeholderCategoryCommands(program, config);
+regulatoryAspectCommands(program, config);
+dataCategoryCommands(program, config);
+serviceCommands(program, config);
 
 // Parse and execute
 program.parse(process.argv);

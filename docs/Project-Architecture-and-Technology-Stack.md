@@ -40,7 +40,7 @@ The purpose of this project is to elaborate a high quality prototype with modern
 - **Programming language:** JavaScript (ES modules)
 - **Framework:** Express.js with manual routing
 - **Node.js application layers:**
-  - **Express routes**: Entity-specific route files (routes/stakeholder-category.js)
+  - **Express routes**: Entity-specific route files (routes/stakeholder-category-store.js)
   - **Service layer**: Business logic and transaction management (services/StakeholderCategoryService.js)
   - **Store layer**: Encapsulated data access with JavaScript API, manages transactions, supports node and edge operations
   - **Database layer**: Neo4j with official driver
