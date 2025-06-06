@@ -46,6 +46,7 @@ export class BaseRouter {
         // Create new entity
         this.router.post('/', async (req, res) => {
             try {
+                console.log(`${this.service.constructor.name}.createEntity() id:`, req.params.id, ', parentId:', req.body.parentId);
                 const entity = await this.service.createEntity(req.body);
                 res.status(201).json(entity);
             } catch (error) {
@@ -57,6 +58,7 @@ export class BaseRouter {
         // Update entity
         this.router.put('/:id', async (req, res) => {
             try {
+                console.log(`${this.service.constructor.name}.updateEntity() id:`, req.params.id, ', parentId:', req.body.parentId);
                 const entity = await this.service.updateEntity(req.params.id, req.body);
                 if (!entity) {
                     return res.status(404).json({
@@ -73,6 +75,7 @@ export class BaseRouter {
         // Delete entity
         this.router.delete('/:id', async (req, res) => {
             try {
+                console.log(`${this.service.constructor.name}.deleteEntity() id:`, req.params.id);
                 const deleted = await this.service.deleteEntity(req.params.id);
                 if (!deleted) {
                     return res.status(404).json({

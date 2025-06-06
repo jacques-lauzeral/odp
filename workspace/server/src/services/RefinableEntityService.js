@@ -20,6 +20,7 @@ export class RefinableEntityService extends BaseService {
     async createEntity(data) {
         const tx = createTransaction();
         try {
+            console.log('RefinableEntityService.createEntity() parentId:', data.parentId);
             const store = this.getStore();
             const entity = await store.create(data, tx);
 
@@ -42,6 +43,7 @@ export class RefinableEntityService extends BaseService {
     async updateEntity(id, data) {
         const tx = createTransaction();
         try {
+            console.log('RefinableEntityService.createEntity() id:', id, ', parentId:', data.parentId);
             const store = this.getStore();
 
             // Update the basic properties

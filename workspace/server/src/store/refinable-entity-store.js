@@ -22,9 +22,13 @@ export class RefinableEntityStore extends BaseStore {
      */
     async createRefinesRelation(childId, parentId, transaction) {
         try {
+            const numericChildId = parseInt(childId, 10);
+            const numericParentId = parseInt(parentId, 10);
+            console.log('RefinableEntityStore.createRefinesRelation() childId:', childId, ', parentId:', parentId);
             // Validate both nodes exist
             const childExists = await this.exists(childId, transaction);
             const parentExists = await this.exists(parentId, transaction);
+            console.log('RefinableEntityStore.createRefinesRelation() childExist:', childExists, ', parentExists:', parentExists);
 
             if (!childExists || !parentExists) {
                 throw new StoreError('Referenced nodes do not exist');
@@ -40,7 +44,7 @@ export class RefinableEntityStore extends BaseStore {
         MATCH (child:${this.nodeLabel})-[r:REFINES]->(:${this.nodeLabel})
         WHERE id(child) = $childId
         DELETE r
-      `, { childId });
+      `, { childId: numericChildId });
 
             // Create new REFINES relationship
             const result = await transaction.run(`
@@ -48,9 +52,11 @@ export class RefinableEntityStore extends BaseStore {
         WHERE id(child) = $childId AND id(parent) = $parentId
         CREATE (child)-[:REFINES]->(parent)
         RETURN count(*) as created
-      `, { childId, parentId });
+      `, { childId: numericChildId, parentId: numericParentId });
 
-            return result.records[0].get('created').toNumber() > 0;
+            const created = result.records[0].get('created').toNumber();
+            console.log('RefinableEntityStore.createRefinesRelation() - Relationship creation result:', created);
+            return created > 0
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to create REFINES relationship: ${error.message}`, error);
@@ -68,12 +74,14 @@ export class RefinableEntityStore extends BaseStore {
      */
     async deleteRefinesRelation(childId, parentId, transaction) {
         try {
+            const numericChildId = parseInt(childId, 10);
+            const numericParentId = parseInt(parentId, 10);
             const result = await transaction.run(`
         MATCH (child:${this.nodeLabel})-[r:REFINES]->(parent:${this.nodeLabel})
         WHERE id(child) = $childId AND id(parent) = $parentId
         DELETE r
         RETURN count(r) as deleted
-      `, { childId, parentId });
+      `, { childId: numericChildId, parentId: numericParentId });
 
             return result.records[0].get('deleted').toNumber() > 0;
         } catch (error) {
@@ -91,12 +99,13 @@ export class RefinableEntityStore extends BaseStore {
      */
     async findChildren(parentId, transaction) {
         try {
+            const numericParentId = parseInt(parentId, 10);
             const result = await transaction.run(`
         MATCH (parent:${this.nodeLabel})<-[:REFINES]-(child:${this.nodeLabel})
         WHERE id(parent) = $parentId
         RETURN child
         ORDER BY child.name
-      `, { parentId });
+      `, { parentId: numericParentId });
 
             return this.transformRecords(result.records, 'child');
         } catch (error) {
@@ -114,11 +123,12 @@ export class RefinableEntityStore extends BaseStore {
      */
     async findParent(childId, transaction) {
         try {
+            const numericChildId = parseInt(childId, 10);
             const result = await transaction.run(`
         MATCH (child:${this.nodeLabel})-[:REFINES]->(parent:${this.nodeLabel})
         WHERE id(child) = $childId
         RETURN parent
-      `, { childId });
+      `, { childId: numericChildId });
 
             if (result.records.length === 0) {
                 return null;
