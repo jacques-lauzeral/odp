@@ -91,30 +91,14 @@ The node types related to the organisation of the operational needs and requirem
 
 ## 4. Operational Deployment Plan Items
 
-The node types required to the management of operational needs and operational requirements.
+The node types required to the management of operational needs, requirements, and changes.
 
-### 4.1 OperationalNeed(Version): Item(Version)
+### 4.1 OperationalRequirement(Version): Item(Version)
 **Version properties:**
+- `type`: ON (Operational Need) or OR (Operational Requirement)
 - `statement`: a rich text
 - `rationale`: a rich text
-- `risksAndOpportunities`: a rich text
-- `flows`: a rich text
-- `flow examples`: a rich text
-
-**Item relationships:**
-- `IS_LOCATED_IN -> Folder`
-
-**Item version relationships:**
-- `REFINES -> OperationalNeed`
-- `IMPACTS -> RegulatoryAspect`
-- `IMPACTS -> StakeholderCategory`
-- `IMPACTS -> Data`
-- `IMPACTS -> Service`
-
-### 4.2 OperationalRequirement(Version): Item(Version)
-**Version properties:**
-- `statement`: a rich text
-- `rationale`: a rich text
+- `references`: a rich text
 - `risksAndOpportunities`: a rich text
 - `flows`: a rich text
 - `flow examples`: a rich text
@@ -124,13 +108,12 @@ The node types required to the management of operational needs and operational r
 
 **Item version relationships:**
 - `REFINES -> OperationalRequirement`
-- `IMPLEMENTS -> OperationalNeed`
 - `IMPACTS -> RegulatoryAspect`
 - `IMPACTS -> StakeholderCategory`
 - `IMPACTS -> Data`
 - `IMPACTS -> Service`
 
-### 4.3 OperationalChange(Version): Item(Version)
+### 4.2 OperationalChange(Version): Item(Version)
 **Version properties:**
 - `description`: a rich text
 - `visibility`: NM or NETWORK
@@ -141,15 +124,15 @@ The node types required to the management of operational needs and operational r
 **Item version relationships:**
 - `SATISFIES -> OperationalRequirement`
 - `SUPERSEDS -> OperationalRequirement`
-- `HAS_MILESTONES -> OperationalChangeMilestone`
 
-### 4.4 OperationalChangeMilestone
+### 4.3 OperationalChangeMilestone
 **Properties:**
 - `title`: a short humanly readable unique identifier
 - `description`: a rich text
 - `eventTypes`: one or more of API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, etc. (to be completed)
 
 **Relationships:**
+- `BELONGS_TO -> OperationalChange`
 - `TARGETS -> Wave`
 - `HAS_ATTACHMENT -> Document`
 
@@ -168,7 +151,7 @@ The node types and relationships required to the management of operational plan 
 
 ### 5.2 ODPBaselineItem
 **Properties:**
-- `itemType`: the type of the baseline item (OperationalNeed, OperationalRequirement, OperationalChange)
+- `type`: ON (Operational Need), OR (Operational Requirement), or OC (Operational Change)
 - `itemTitle`: the title of the baseline item (at baseline creation time)
 - `itemVersion`: the version of the item (latest version at baseline creation time)
 
