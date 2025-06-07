@@ -1,7 +1,7 @@
 # Storage Model
 
 ## Overview
-This document defines the complete storage model for the Operational Deployment Plan management system. The model uses Neo4j graph database with a versioning pattern that supports both live relationship evolution and historical consistency.
+This document defines the complete storage model for the Operational Deployment Plan management system. The model uses Neo4j graph database with a versioning pattern that supports both live relationship evolution and historical consistency through relationship audit trails.
 
 ## 1. Versioning Pattern
 
@@ -107,7 +107,7 @@ The node types required to the management of operational needs, requirements, an
 - `IS_LOCATED_IN -> Folder`
 
 **Item version relationships:**
-- `REFINES -> OperationalRequirement`
+- `REFINES -> OperationalRequirement` (to Item, not ItemVersion)
 - `IMPACTS -> RegulatoryAspect`
 - `IMPACTS -> StakeholderCategory`
 - `IMPACTS -> Data`
@@ -122,8 +122,8 @@ The node types required to the management of operational needs, requirements, an
 - `IS_LOCATED_IN -> Folder`
 
 **Item version relationships:**
-- `SATISFIES -> OperationalRequirement`
-- `SUPERSEDS -> OperationalRequirement`
+- `SATISFIES -> OperationalRequirement` (to Item, not ItemVersion)
+- `SUPERSEDS -> OperationalRequirement` (to Item, not ItemVersion)
 
 ### 4.3 OperationalChangeMilestone
 **Properties:**
@@ -132,15 +132,39 @@ The node types required to the management of operational needs, requirements, an
 - `eventTypes`: one or more of API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, etc. (to be completed)
 
 **Relationships:**
-- `BELONGS_TO -> OperationalChange`
+- `BELONGS_TO -> OperationalChange` (to Item, not ItemVersion)
 - `TARGETS -> Wave`
 - `HAS_ATTACHMENT -> Document`
 
-## 5. Operational Deployment Plan Management
+## 5. Relationship Audit Trail System
+
+The node types and relationships required for tracking relationship changes over time.
+
+### 5.1 RelationshipAuditLog
+**Properties:**
+- `timestamp`: when the relationship change occurred (ISO 8601)
+- `userId`: who made the change
+- `action`: ADD or REMOVE
+- `relationshipType`: REFINES, IMPACTS, SATISFIES, SUPERSEDS
+- `sourceType`: the source node type (e.g., "OperationalRequirementVersion")
+- `sourceId`: the source node Neo4j ID
+- `targetType`: the target node type (e.g., "OperationalRequirement", "StakeholderCategory")
+- `targetId`: the target node Neo4j ID
+
+**Relationships:**
+- `LOGGED_FOR -> ItemVersion` (the version that initiated the change)
+- `AFFECTS -> Item` (the target item affected by the change)
+
+**Usage Pattern:**
+- Field updates create new ItemVersion (content versioning)
+- Relationship changes create RelationshipAuditLog entries (relationship versioning)
+- Historical reconstruction combines ItemVersion content + relationship audit trail
+
+## 6. Operational Deployment Plan Management
 
 The node types and relationships required to the management of operational plan baselines management.
 
-### 5.1 ODPBaseline
+### 6.1 ODPBaseline
 **Properties:**
 - `createdAt`: the baseline creation datetime
 - `createdBy`: the baseline creator
@@ -149,16 +173,34 @@ The node types and relationships required to the management of operational plan 
 **Relationships:**
 - `STARTS_FROM -> Wave`
 
-### 5.2 ODPBaselineItem
+### 6.2 ODPBaselineItem
 **Properties:**
 - `type`: ON (Operational Need), OR (Operational Requirement), or OC (Operational Change)
 - `itemTitle`: the title of the baseline item (at baseline creation time)
 - `itemVersion`: the version of the item (latest version at baseline creation time)
+- `itemId`: the Item node ID for reference
+- `versionId`: the ItemVersion node ID for exact reference
 
 **Relationships:**
 - `BELONGS_TO -> ODPBaseline`
 
-### 5.3 ODPEdition
+### 6.3 BaselineRelationship
+**Properties:**
+- `type`: REFINES, IMPACTS, SATISFIES, SUPERSEDS
+- `sourceItemId`: source Item node ID
+- `sourceVersionId`: source ItemVersion node ID (the version active at baseline time)
+- `targetType`: target node type
+- `targetId`: target node ID
+
+**Relationships:**
+- `BELONGS_TO -> ODPBaseline`
+
+**Usage Pattern:**
+- Baseline creation captures snapshot of all LATEST_VERSION relationships
+- BaselineRelationship nodes preserve exact relationship state at baseline time
+- Historical navigation uses BaselineRelationship for accurate reconstruction
+
+### 6.4 ODPEdition
 **Properties:**
 - `createdAt`: the ODP Edition creation datetime
 - `createdBy`: the ODP Edition creator
@@ -169,11 +211,11 @@ The node types and relationships required to the management of operational plan 
 - `EXPOSES -> ODPBaseline`
 - `HAS_ATTACHMENT -> Document`
 
-## 6. Digital Asset Management
+## 7. Digital Asset Management
 
 The node types and relationships required to the management of digital assets.
 
-### 6.1 Document
+### 7.1 Document
 **Properties:**
 - `name`: filename
 - `description`: optional description
@@ -186,11 +228,11 @@ The node types and relationships required to the management of digital assets.
 **Relationships:**
 None - Documents are referenced by other entities via `HAS_ATTACHMENT` relationships.
 
-## 7. Review Management
+## 8. Review Management
 
 The node types required to the management of user reviews.
 
-### 7.1 Comment
+### 8.1 Comment
 **Properties:**
 - `postedAt`: the time stamp of the comment post
 - `postedBy`: the author of the comment
@@ -204,17 +246,30 @@ The node types required to the management of user reviews.
 ## Design Notes
 
 ### Versioning Strategy
-The system implements a sequential versioning pattern using root nodes (Item) + version nodes (ItemVersion). This approach provides:
-- Live relationship evolution through ItemVersion relationships
+The system implements a sequential versioning pattern using root nodes (Item) + version nodes (ItemVersion) for content, combined with relationship audit trails for relationship history. This approach provides:
+- Content versioning through ItemVersion creation (field changes)
+- Relationship versioning through RelationshipAuditLog entries (relationship changes)
 - Historical consistency through baseline snapshots
 - Concurrency control via optimistic locking (first commit wins)
 
 ### Relationship Patterns
-- **Hierarchical relationships**: Use `REFINES` for same-type hierarchies, `HAS_PARENT` for organizational structure
-- **Cross-domain relationships**: Point from dependent to dependency (e.g., requirement implements need)
+- **Cross-domain relationships**: Point from ItemVersion to Item (e.g., requirement REFINES requirement Item)
+- **Hierarchical relationships**: Use `REFINES` for same-type hierarchies within setup entities
 - **Attachment relationships**: Centralized through `HAS_ATTACHMENT -> Document`
+- **Audit trail**: All relationship changes logged with timestamp and user context
+
+### Transaction Boundaries
+- **Field updates**: Create new ItemVersion in single transaction (content versioning)
+- **Relationship changes**: Create/delete relationships + audit log in single transaction (relationship audit)
+- **Baseline creation**: Capture all current state in single transaction (snapshot consistency)
+
+### Historical Reconstruction
+- **Content at time T**: Use specific ItemVersion created before or at time T
+- **Relationships at time T**: Apply audit trail chronologically up to time T
+- **Baseline state**: Use captured BaselineRelationship nodes for exact historical state
 
 ### Prototype Considerations
 - Presence constraints are not specified for this prototype phase
 - Setup Management entities are not versioned for simplicity
 - Folder Management entities are not versioned for simplicity
+- Relationship audit trail provides complete change history without version number inflation

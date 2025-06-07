@@ -79,7 +79,7 @@
 ## 5 Phase 3: Business Extension - Operational Entities (🔄 IN PROGRESS)
 
 ### 5.1 Server Implementation
-**Pattern**: Implement versioning pattern (Item/ItemVersion) for operational entities
+**Pattern**: Implement versioning pattern (Item/ItemVersion) for operational entities with relationship audit trail
 
 #### 5.1.1 Versioning Pattern Implementation (✅ COMPLETED)
 - ✅ **VersionedItemStore base class**:
@@ -96,42 +96,54 @@
 - ✅ **IMPACTS relationships**: Direct from OperationalRequirement to setup entities
 - ✅ **OperationalChange**: Separate versioned entity with SATISFIES/SUPERSEDS relationships
 
-#### 5.1.3 Store Layer Implementation (✅ COMPLETED)
-- ✅ **OperationalRequirementStore** (versioned + REFINES + IMPACTS):
-  - ✅ Extends VersionedItemStore with Item/ItemVersion pattern
-  - ✅ REFINES relationship methods with multiple parent support (oriented graph)
-  - ✅ IMPACTS relationship methods to setup entities (Data, StakeholderCategory, Service, RegulatoryAspect)
-  - ✅ Version-aware query methods (latest context + specific version context)
-  - ✅ Delete all/recreate all pattern for relationship management
-- ✅ **OperationalChangeStore** (versioned + SATISFIES + SUPERSEDS):
-  - ✅ Extends VersionedItemStore with versioning support
-  - ✅ SATISFIES/SUPERSEDS relationships to OperationalRequirement Items
-  - ✅ Inverse query methods for requirement impact analysis
-  - ✅ Consistent patterns with OperationalRequirementStore
-- ✅ **OperationalChangeMilestoneStore** (simple + BELONGS_TO + TARGETS):
-  - ✅ Extends BaseStore (non-versioned entity)
-  - ✅ BELONGS_TO relationship to OperationalChange Items
-  - ✅ TARGETS relationship to Wave entities
-  - ✅ Context queries for milestone timeline management
+#### 5.1.3 Relationship Audit Trail System (✅ COMPLETED)
+- ✅ **RelationshipAuditLog entity**: Complete audit trail for relationship changes
+- ✅ **Transaction boundary design**: Field updates create versions, relationship changes create audit entries
+- ✅ **Historical reconstruction**: Ability to rebuild relationship state at any point in time
+- ✅ **Baseline integration**: Support for capturing relationship snapshots for baseline management
 
-#### 5.1.4 Store Layer Integration (✅ COMPLETED)
-- ✅ **Updated store/index.js**: Added all Phase 3 stores to initialization and exports
-- ✅ **Store hierarchy**: Clean separation between BaseStore, VersionedItemStore, and concrete implementations
-- ✅ **Transaction management**: Enhanced with user context for audit trails
-- ✅ **Error handling**: Consistent StoreError hierarchy with version conflict detection
+#### 5.1.4 Store Layer Implementation (✅ COMPLETED - NEEDS REWORK)
+- ✅ **RelationshipAuditLogStore**: Add audit trail entity store to system
+- ✅ **OperationalRequirementStore** (versioned + REFINES + IMPACTS + audit):
+  - ✅ Update relationship methods to include automatic audit logging
+  - ✅ Add/remove pattern instead of delete-all/recreate-all for individual operations
+  - ✅ Version-aware queries with historical context support
+- ✅ **OperationalChangeStore** (versioned + SATISFIES + SUPERSEDS + audit):
+  - ✅ Update relationship methods with audit trail integration
+  - ✅ Milestone coordination with audit tracking
+
+#### 5.1.5 Store Layer Integration (✅ COMPLETED)
+- ✅ **Update store/index.js**: Add RelationshipAuditLogStore to initialization and exports
+- ✅ **Inject audit store**: Configure versioned stores to use audit logging
+- ✅ **Transaction management**: Ensure audit entries are created in same transaction as relationship changes
+- ✅ **Error handling**: Enhanced error handling for audit trail failures
 
 ### 5.2 Documentation Updates (✅ COMPLETED)
-- ✅ **Versioning Pattern Implementation**: Updated with concrete implementation details
-- ✅ **Store Layer Core API**: Added versioned entity API documentation
-- ✅ **Store Layer Internal Design**: Updated architecture with versioning patterns
-- ✅ **Guidelines for Extending Store Layer**: Added versioned entity extension patterns
+- ✅ **Storage Model**: Updated with RelationshipAuditLog and BaselineRelationship entities
+- ✅ **Store Layer Core API**: Added relationship audit trail API documentation
+- ✅ **Store Layer Internal Design**: Updated architecture with audit trail patterns
+- ✅ **Work Plan**: Updated to reflect relationship audit trail approach
 
-### 5.3 Service Layer Implementation (🎯 NEXT)
+### 5.3 Store Layer Rework (✅ COMPLETED)
+- ✅ **Add RelationshipAuditLog entity implementation**:
+  - ✅ Create RelationshipAuditLogStore extending BaseStore
+  - ✅ Implement audit logging methods (logRelationshipChange, findAuditTrailForItem)
+  - ✅ Add historical reconstruction methods (reconstructRelationshipsAtTime)
+- ✅ **Update existing relationship methods**:
+  - ✅ Modify OperationalRequirementStore relationship methods to include audit logging
+  - ✅ Update OperationalChangeStore relationship methods with audit integration
+  - ✅ Ensure transaction coordination between relationship ops and audit entries
+- ✅ **Update store initialization**:
+  - ✅ Add RelationshipAuditLogStore to store/index.js
+  - ✅ Inject audit store into versioned entity stores
+  - ✅ Test complete store layer integration
+
+### 5.4 Service Layer Implementation (🎯 NEXT)
 - [ ] **OperationalRequirementService**:
   - [ ] Business logic with version management and optimistic locking
+  - [ ] Separate transaction boundaries for field vs relationship updates
   - [ ] Type validation (ON/OR) and REFINES business rules (ON→ON, OR→OR, OR→ON)
   - [ ] IMPACTS relationship validation and management
-  - [ ] Transaction management for complex multi-entity operations
 - [ ] **OperationalChangeService**:
   - [ ] Version lifecycle management with SATISFIES/SUPERSEDS relationships
   - [ ] Milestone coordination and timeline management
@@ -140,12 +152,13 @@
   - [ ] Milestone lifecycle with change and wave coordination
   - [ ] Event type validation and wave targeting logic
 
-### 5.4 Route Layer Implementation (🎯 NEXT)
+### 5.5 Route Layer Implementation (🎯 AFTER SERVICE LAYER)
 - [ ] **routes/operational-requirement.js**:
   - [ ] RESTful CRUD operations with version handling
   - [ ] Optimistic locking via expectedVersionId in requests
-  - [ ] Relationship management endpoints (REFINES, IMPACTS)
+  - [ ] Separate endpoints for field updates vs relationship management
   - [ ] Version history and navigation endpoints
+  - [ ] Historical relationship queries
 - [ ] **routes/operational-change.js**:
   - [ ] Versioned CRUD operations with SATISFIES/SUPERSEDS management
   - [ ] Milestone coordination endpoints
@@ -154,11 +167,11 @@
   - [ ] Standard CRUD operations with relationship management
   - [ ] Timeline and wave targeting endpoints
 
-### 5.5 Shared Models Implementation (🎯 NEXT)
+### 5.6 Shared Models Implementation (🎯 AFTER ROUTE LAYER)
 - [ ] **OperationalRequirement and OperationalRequirementVersion models**:
   - [ ] Base entity with type field ('ON' | 'OR')
   - [ ] Version-aware request structures with expectedVersionId
-  - [ ] Relationship management request structures (REFINES, IMPACTS)
+  - [ ] Separate relationship management request structures (add/remove pattern)
 - [ ] **OperationalChange and OperationalChangeVersion models**:
   - [ ] Versioned entity with description and visibility fields
   - [ ] SATISFIES/SUPERSEDS relationship structures
@@ -166,16 +179,19 @@
 - [ ] **OperationalChangeMilestone model**:
   - [ ] Standard entity with eventTypes array
   - [ ] BELONGS_TO and TARGETS relationship structures
+- [ ] **RelationshipAuditLog model**:
+  - [ ] Audit trail structure for API exposure
 
-### 5.6 CLI Implementation (🎯 NEXT)
+### 5.7 CLI Implementation (🎯 AFTER SHARED MODELS)
 - [ ] **CLI commands for OperationalRequirement**:
   - [ ] `odp operational-requirement list/create/show/update/delete`
   - [ ] Version management commands (history, specific version access)
-  - [ ] Relationship management commands (refines, impacts)
+  - [ ] Relationship management commands (add-refines, remove-refines, add-impacts, remove-impacts)
+  - [ ] Audit trail commands (show-history, show-relationships-at-time)
 - [ ] **CLI commands for OperationalChange**:
   - [ ] `odp operational-change list/create/show/update/delete`
   - [ ] Version management with milestone coordination
-  - [ ] Relationship management (satisfies, superseds)
+  - [ ] Relationship management (add/remove satisfies, superseds)
 - [ ] **CLI commands for OperationalChangeMilestone**:
   - [ ] `odp milestone list/create/show/update/delete`
   - [ ] Change and wave targeting commands

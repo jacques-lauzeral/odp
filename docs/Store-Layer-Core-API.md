@@ -1,318 +1,216 @@
-# Store Layer Core API
+# Store Layer API Documentation
 
-## Overview
-This document defines the public API for the ODP store layer, providing the interface between the server layer and the data persistence components. The store layer abstracts Neo4j database operations and provides consistent transaction management, error handling, CRUD operations, and versioning support for operational entities.
-
-## Initialization API
+## Initialization & Connection Management
 
 ### initializeStores()
-Initializes the store layer with Neo4j connection and store instances.
-
 ```javascript
-import { initializeStores } from './store/index.js';
-
-await initializeStores();
+await initializeStores()
 ```
-
-**Behavior:**
-- Establishes Neo4j connection with retry logic (max 10 attempts, 2s intervals)
-- Blocks until connection is established or fails
-- Creates store instances with shared driver
-- Must be called before any store operations
-
-**Throws:**
-- `Error` if connection fails after maximum retry attempts
-- `Error` if configuration cannot be loaded
+- **Returns**: `Promise<void>`
+- **Throws**: `Error` - Connection failure or configuration issues
+- **Description**: Initializes Neo4j connection and all store instances with audit injection
 
 ### closeStores()
-Gracefully shuts down the store layer.
-
 ```javascript
-import { closeStores } from './store/index.js';
-
-await closeStores();
+await closeStores()
 ```
+- **Returns**: `Promise<void>`
+- **Throws**: `Error` - Connection closure issues
+- **Description**: Closes connections and resets store instances
 
-**Behavior:**
-- Closes Neo4j driver and connection pool
-- Resets store instances to prevent further use
-- Should be called during application shutdown
-
-## Transaction Management API
+## Transaction Management
 
 ### createTransaction(userId)
-Creates a new database transaction with user context.
-
 ```javascript
-import { createTransaction } from './store/index.js';
-
-const transaction = createTransaction('user123');
+const tx = createTransaction(userId)
 ```
-
-**Parameters:**
-- `userId` (string) - User identifier for audit trails
-
-**Returns:** `Transaction` - Transaction wrapper instance with user context
-
-**Throws:**
-- `TransactionError` if transaction creation fails
+- **Parameters**: `userId: string` - User identifier for audit trails
+- **Returns**: `Transaction` - Transaction wrapper with user context
+- **Throws**: `TransactionError` - Transaction creation failure
 
 ### commitTransaction(transaction)
-Commits a transaction and cleans up resources.
-
 ```javascript
-import { commitTransaction } from './store/index.js';
-
-await commitTransaction(transaction);
+await commitTransaction(transaction)
 ```
-
-**Parameters:**
-- `transaction` (Transaction) - Transaction to commit
-
-**Throws:**
-- `TransactionError` if commit fails or transaction is invalid
+- **Parameters**: `transaction: Transaction`
+- **Returns**: `Promise<void>`
+- **Throws**: `TransactionError` - Commit failure
 
 ### rollbackTransaction(transaction)
-Rolls back a transaction and cleans up resources.
-
 ```javascript
-import { rollbackTransaction } from './store/index.js';
-
-await rollbackTransaction(transaction);
+await rollbackTransaction(transaction)
 ```
+- **Parameters**: `transaction: Transaction`
+- **Returns**: `Promise<void>`
+- **Throws**: `TransactionError` - Rollback failure
 
-**Parameters:**
-- `transaction` (Transaction) - Transaction to rollback
+## Store Access Functions
 
-**Throws:**
-- `TransactionError` if rollback fails or transaction is invalid
-
-## Store Access API
-
-### Non-Versioned Entity Stores
-
-#### stakeholderCategoryStore()
-Gets the StakeholderCategory store instance.
-
+### stakeholderCategoryStore()
 ```javascript
-import { stakeholderCategoryStore } from './store/index.js';
-
-const store = stakeholderCategoryStore();
+const store = stakeholderCategoryStore()
 ```
+- **Returns**: `StakeholderCategoryStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `StakeholderCategoryStore` - Store instance
-
-**Throws:**
-- `Error` if store layer not initialized
-
-#### regulatoryAspectStore()
-Gets the RegulatoryAspect store instance.
-
+### regulatoryAspectStore()
 ```javascript
-import { regulatoryAspectStore } from './store/index.js';
-
-const store = regulatoryAspectStore();
+const store = regulatoryAspectStore()
 ```
+- **Returns**: `RegulatoryAspectStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `RegulatoryAspectStore` - Store instance
-
-#### dataCategoryStore()
-Gets the DataCategory store instance.
-
+### dataCategoryStore()
 ```javascript
-import { dataCategoryStore } from './store/index.js';
-
-const store = dataCategoryStore();
+const store = dataCategoryStore()
 ```
+- **Returns**: `DataCategoryStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `DataCategoryStore` - Store instance
-
-#### serviceStore()
-Gets the Service store instance.
-
+### serviceStore()
 ```javascript
-import { serviceStore } from './store/index.js';
-
-const store = serviceStore();
+const store = serviceStore()
 ```
+- **Returns**: `ServiceStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `ServiceStore` - Store instance
-
-### Versioned Entity Stores
-
-#### operationalRequirementStore()
-Gets the OperationalRequirement store instance.
-
+### operationalRequirementStore()
 ```javascript
-import { operationalRequirementStore } from './store/index.js';
-
-const store = operationalRequirementStore();
+const store = operationalRequirementStore()
 ```
+- **Returns**: `OperationalRequirementStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `OperationalRequirementStore` - Versioned store instance
-
-#### operationalChangeStore()
-Gets the OperationalChange store instance.
-
+### operationalChangeStore()
 ```javascript
-import { operationalChangeStore } from './store/index.js';
-
-const store = operationalChangeStore();
+const store = operationalChangeStore()
 ```
+- **Returns**: `OperationalChangeStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `OperationalChangeStore` - Versioned store instance
-
-#### operationalChangeMilestoneStore()
-Gets the OperationalChangeMilestone store instance.
-
+### relationshipAuditLogStore()
 ```javascript
-import { operationalChangeMilestoneStore } from './store/index.js';
-
-const store = operationalChangeMilestoneStore();
+const store = relationshipAuditLogStore()
 ```
+- **Returns**: `RelationshipAuditLogStore`
+- **Throws**: `Error` - Store not initialized
 
-**Returns:** `OperationalChangeMilestoneStore` - Store instance
+---
 
-## Non-Versioned Entity API
+# Non-Versioned Entity Stores
 
-### StakeholderCategory Store API
+## Common BaseStore API
+*Applies to: StakeholderCategoryStore, RegulatoryAspectStore, DataCategoryStore, ServiceStore*
 
-#### Data Model
+### create(data, transaction)
+```javascript
+const entity = await store.create(data, transaction)
+```
+- **Parameters**:
+    - `data: object` - Entity properties `{name: string, description: string}`
+    - `transaction: Transaction`
+- **Returns**: `Promise<object>` - Created entity with Neo4j ID
+- **Throws**: `StoreError` - Creation failure
+
+### findById(id, transaction)
+```javascript
+const entity = await store.findById(id, transaction)
+```
+- **Parameters**:
+    - `id: number` - Neo4j internal node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<object|null>` - Entity or null if not found
+- **Throws**: `StoreError` - Query failure
+
+### findAll(transaction)
+```javascript
+const entities = await store.findAll(transaction)
+```
+- **Parameters**: `transaction: Transaction`
+- **Returns**: `Promise<Array<object>>` - Array of entities
+- **Throws**: `StoreError` - Query failure
+
+### update(id, data, transaction)
+```javascript
+const entity = await store.update(id, data, transaction)
+```
+- **Parameters**:
+    - `id: number` - Neo4j internal node ID
+    - `data: object` - Properties to update
+    - `transaction: Transaction`
+- **Returns**: `Promise<object|null>` - Updated entity or null if not found
+- **Throws**: `StoreError` - Update failure
+
+### delete(id, transaction)
+```javascript
+const deleted = await store.delete(id, transaction)
+```
+- **Parameters**:
+    - `id: number` - Neo4j internal node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<boolean>` - True if deleted
+- **Throws**: `StoreError` - Delete failure or dependencies exist
+
+### exists(id, transaction)
+```javascript
+const exists = await store.exists(id, transaction)
+```
+- **Parameters**:
+    - `id: number` - Neo4j internal node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<boolean>` - True if exists
+- **Throws**: `StoreError` - Query failure
+
+## Hierarchy Operations (REFINES relationships)
+*Applies to: StakeholderCategoryStore, RegulatoryAspectStore, DataCategoryStore, ServiceStore*
+
+### createRefinesRelation(childId, parentId, transaction)
+```javascript
+const created = await store.createRefinesRelation(childId, parentId, transaction)
+```
+- **Parameters**:
+    - `childId: number` - Child entity ID
+    - `parentId: number` - Parent entity ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<boolean>` - True if created
+- **Throws**: `StoreError` - Validation failure, self-reference, or creation failure
+
+### deleteRefinesRelation(childId, parentId, transaction)
+```javascript
+const deleted = await store.deleteRefinesRelation(childId, parentId, transaction)
+```
+- **Parameters**:
+    - `childId: number` - Child entity ID
+    - `parentId: number` - Parent entity ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<boolean>` - True if deleted
+- **Throws**: `StoreError` - Delete failure
+
+### findChildren(parentId, transaction)
+```javascript
+const children = await store.findChildren(parentId, transaction)
+```
+- **Parameters**:
+    - `parentId: number` - Parent entity ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, name: string}>>` - Child entities
+- **Throws**: `StoreError` - Query failure
+
+---
+
+# Versioned Entity Stores
+
+## OperationalRequirementStore
+
+### Data Model
 ```javascript
 {
-  id: number,        // Neo4j internal ID
-  name: string,      // Category name
-  description: string // Category description
-}
-```
-
-#### CRUD Operations
-
-##### create(data, transaction)
-Creates a new StakeholderCategory.
-
-```javascript
-const data = { name: "Government", description: "Government stakeholders" };
-const category = await store.create(data, transaction);
-```
-
-**Parameters:**
-- `data` (object) - Category data (`{ name, description }`)
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<object>` - Created category with ID
-
-**Throws:**
-- `StoreError` if creation fails
-
-##### findById(id, transaction)
-Finds a StakeholderCategory by ID.
-
-```javascript
-const category = await store.findById(123, transaction);
-```
-
-**Parameters:**
-- `id` (number) - Neo4j internal node ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<object|null>` - Category object or null if not found
-
-**Throws:**
-- `StoreError` if query fails
-
-##### findAll(transaction)
-Finds all StakeholderCategory nodes.
-
-```javascript
-const categories = await store.findAll(transaction);
-```
-
-**Parameters:**
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<Array<object>>` - Array of category objects
-
-**Throws:**
-- `StoreError` if query fails
-
-##### update(id, data, transaction)
-Updates a StakeholderCategory by ID.
-
-```javascript
-const updated = await store.update(123, { name: "New Name" }, transaction);
-```
-
-**Parameters:**
-- `id` (number) - Neo4j internal node ID
-- `data` (object) - Properties to update
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<object|null>` - Updated category or null if not found
-
-**Throws:**
-- `StoreError` if update fails
-
-##### exists(id, transaction)
-Checks if a StakeholderCategory exists by ID.
-
-```javascript
-const exists = await store.exists(123, transaction);
-```
-
-**Parameters:**
-- `id` (number) - Neo4j internal node ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<boolean>` - True if exists
-
-**Throws:**
-- `StoreError` if query fails
-
-#### Hierarchy Operations
-
-##### createRefinesRelation(childId, parentId, transaction)
-Creates a REFINES relationship between categories.
-
-```javascript
-const success = await store.createRefinesRelation(childId, parentId, transaction);
-```
-
-**Parameters:**
-- `childId` (number) - Child category ID
-- `parentId` (number) - Parent category ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<boolean>` - True if relationship created
-
-**Behavior:**
-- Validates both nodes exist
-- Prevents self-references
-- Enforces tree structure (replaces existing parent)
-
-**Throws:**
-- `StoreError` if nodes don't exist or operation fails
-
-*Note: Other setup entities (RegulatoryAspect, DataCategory, Service) follow identical API patterns.*
-
-## Versioned Entity API
-
-### OperationalRequirement Store API
-
-#### Data Model
-```javascript
-{
-  // Item properties
   itemId: number,           // Item node ID
   title: string,            // Item title
-  
-  // Version properties  
   versionId: number,        // ItemVersion node ID (for optimistic locking)
   version: number,          // Sequential version number
   createdAt: string,        // ISO timestamp
   createdBy: string,        // User identifier
-  
-  // Entity-specific content
   type: string,             // 'ON' | 'OR'
   statement: string,        // Rich text
   rationale: string,        // Rich text
@@ -323,289 +221,288 @@ const success = await store.createRefinesRelation(childId, parentId, transaction
 }
 ```
 
-#### Versioned CRUD Operations
+### Versioned CRUD Operations
 
-##### create(data, transaction)
-Creates a new OperationalRequirement with first version.
-
+#### create(data, transaction)
 ```javascript
-const data = { 
-  title: "New Requirement",
-  type: "OR", 
-  statement: "Requirement description" 
-};
-const requirement = await store.create(data, transaction);
+const requirement = await store.create(data, transaction)
 ```
+- **Parameters**:
+    - `data: object` - Requirement data (title + version fields)
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<object>` - Complete requirement with version info
+- **Throws**: `StoreError` - Creation failure
 
-**Parameters:**
-- `data` (object) - Requirement data (title goes to Item, other fields to ItemVersion)
-- `transaction` (Transaction) - Transaction with user context
-
-**Returns:** `Promise<object>` - Created requirement with complete version info
-
-**Behavior:**
-- Creates Item node with title, createdAt, createdBy, latest_version=1
-- Creates ItemVersion node with version=1 and content fields
-- Establishes VERSION_OF and LATEST_VERSION relationships
-- Returns combined Item + ItemVersion data
-
-**Throws:**
-- `StoreError` if creation fails
-
-##### update(itemId, data, expectedVersionId, transaction)
-Creates a new version of an existing OperationalRequirement.
-
+#### update(itemId, data, expectedVersionId, transaction)
 ```javascript
-const updated = await store.update(itemId, {
-  title: "Updated Title",
-  statement: "Updated statement"
-}, expectedVersionId, transaction);
+const requirement = await store.update(itemId, data, expectedVersionId, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `data: object` - Fields to update
+    - `expectedVersionId: number` - Current version ID for optimistic locking
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<object>` - New version with complete info
+- **Throws**:
+    - `StoreError('Outdated item version')` - Version conflict
+    - `StoreError` - Update failure
 
-**Parameters:**
-- `itemId` (number) - Item node ID
-- `data` (object) - Fields to update (title updates Item, others create new ItemVersion)
-- `expectedVersionId` (number) - Current version ID for optimistic locking
-- `transaction` (Transaction) - Transaction with user context
-
-**Returns:** `Promise<object>` - New version with complete info
-
-**Behavior:**
-- Validates expectedVersionId matches current latest version
-- Creates new ItemVersion with incremented version number
-- Updates Item.latest_version and LATEST_VERSION relationship
-- Returns combined data from updated Item + new ItemVersion
-
-**Throws:**
-- `StoreError` with 'Outdated item version' if version conflict
-- `StoreError` if update fails
-
-##### findById(itemId, transaction)
-Finds an OperationalRequirement by Item ID, returns latest version.
-
+#### findById(itemId, transaction)
 ```javascript
-const requirement = await store.findById(123, transaction);
+const requirement = await store.findById(itemId, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<object|null>` - Latest version or null
+- **Throws**: `StoreError` - Query failure
 
-**Parameters:**
-- `itemId` (number) - Item node ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<object|null>` - Latest version data or null if not found
-
-**Throws:**
-- `StoreError` if query fails
-
-##### findByIdAndVersion(itemId, versionNumber, transaction)
-Finds a specific version of an OperationalRequirement.
-
+#### findByIdAndVersion(itemId, versionNumber, transaction)
 ```javascript
-const requirement = await store.findByIdAndVersion(123, 2, transaction);
+const requirement = await store.findByIdAndVersion(itemId, versionNumber, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `versionNumber: number` - Specific version to retrieve
+    - `transaction: Transaction`
+- **Returns**: `Promise<object|null>` - Specific version or null
+- **Throws**: `StoreError` - Query failure
 
-**Parameters:**
-- `itemId` (number) - Item node ID
-- `versionNumber` (number) - Specific version to retrieve
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<object|null>` - Specific version data or null if not found
-
-**Throws:**
-- `StoreError` if query fails
-
-##### findVersionHistory(itemId, transaction)
-Gets version history for an OperationalRequirement.
-
+#### findVersionHistory(itemId, transaction)
 ```javascript
-const history = await store.findVersionHistory(123, transaction);
+const history = await store.findVersionHistory(itemId, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{versionId: number, version: number, createdAt: string, createdBy: string}>>` - Version metadata (newest first)
+- **Throws**:
+    - `StoreError('Item not found')` - Item doesn't exist
+    - `StoreError('Data integrity error')` - No versions found
 
-**Parameters:**
-- `itemId` (number) - Item node ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<Array<object>>` - Version metadata (newest first)
-
-**Format:**
+#### findAll(transaction)
 ```javascript
-[
-  { versionId: 456, version: 3, createdAt: "...", createdBy: "user123" },
-  { versionId: 455, version: 2, createdAt: "...", createdBy: "user456" },
-  { versionId: 454, version: 1, createdAt: "...", createdBy: "user123" }
-]
+const requirements = await store.findAll(transaction)
 ```
+- **Parameters**: `transaction: Transaction`
+- **Returns**: `Promise<Array<object>>` - Latest versions of all requirements
+- **Throws**: `StoreError` - Query failure
 
-**Throws:**
-- `StoreError` with 'Item not found' if itemId doesn't exist
-- `StoreError` with 'Data integrity error' if no versions found
+### REFINES Relationship Operations (with Audit Trail)
 
-##### findAll(transaction)
-Finds all OperationalRequirements, returns latest versions.
-
+#### addRefinesRelation(versionId, parentItemId, transaction)
 ```javascript
-const requirements = await store.findAll(transaction);
+const added = await store.addRefinesRelation(versionId, parentItemId, transaction)
 ```
+- **Parameters**:
+    - `versionId: number` - Source ItemVersion ID
+    - `parentItemId: number` - Target Item ID
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<boolean>` - True if relationship created
+- **Throws**: `StoreError` - Validation failure, self-reference, or audit failure
 
-**Parameters:**
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<Array<object>>` - Array of requirements (latest versions)
-
-**Throws:**
-- `StoreError` if query fails
-
-#### Relationship Operations
-
-##### REFINES Relationships
-
-###### createRefinesRelation(childVersionId, parentItemId, transaction)
-Creates a REFINES relationship from a specific version to parent Item.
-
+#### removeRefinesRelation(versionId, parentItemId, transaction)
 ```javascript
-const success = await store.createRefinesRelation(versionId, parentItemId, transaction);
+const removed = await store.removeRefinesRelation(versionId, parentItemId, transaction)
 ```
+- **Parameters**:
+    - `versionId: number` - Source ItemVersion ID
+    - `parentItemId: number` - Target Item ID
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<boolean>` - True if relationship removed
+- **Throws**: `StoreError` - Remove failure or audit failure
 
-**Parameters:**
-- `childVersionId` (number) - Source ItemVersion ID
-- `parentItemId` (number) - Target Item ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<boolean>` - True if relationship created
-
-**Validation:**
-- Both nodes must exist
-- Prevents self-references (childItem ≠ parentItem)
-- Cycle detection (TODO: implementation pending)
-
-**Throws:**
-- `StoreError` if validation fails
-
-###### replaceRefinesRelations(childVersionId, parentItemIds, transaction)
-Replaces all REFINES relationships for a version (delete all/recreate pattern).
-
+#### findRefinesParents(itemId, transaction)
 ```javascript
-await store.replaceRefinesRelations(versionId, [parentId1, parentId2], transaction);
+const parents = await store.findRefinesParents(itemId, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Parent Items from latest version
+- **Throws**: `StoreError` - Query failure
 
-**Parameters:**
-- `childVersionId` (number) - Source ItemVersion ID
-- `parentItemIds` (Array<number>) - Target Item IDs
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<boolean>` - True if successful
-
-###### findRefinesParents(itemId, transaction)
-Finds parent requirements in latest version context.
-
+#### findRefinesParentsByVersion(itemId, versionNumber, transaction)
 ```javascript
-const parents = await store.findRefinesParents(itemId, transaction);
+const parents = await store.findRefinesParentsByVersion(itemId, versionNumber, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `versionNumber: number` - Specific version number
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Parent Items from specified version
+- **Throws**: `StoreError` - Query failure
 
-**Returns:** `Promise<Array<{id, title}>>` - Parent Items
+### IMPACTS Relationship Operations (with Audit Trail)
 
-###### findRefinesParentsByVersion(itemId, versionNumber, transaction)
-Finds parent requirements from specific version context.
-
+#### addImpactsRelation(versionId, targetType, targetId, transaction)
 ```javascript
-const parents = await store.findRefinesParentsByVersion(itemId, 2, transaction);
+const added = await store.addImpactsRelation(versionId, targetType, targetId, transaction)
 ```
+- **Parameters**:
+    - `versionId: number` - Source ItemVersion ID
+    - `targetType: string` - 'Data'|'StakeholderCategory'|'Service'|'RegulatoryAspect'
+    - `targetId: number` - Target entity ID
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<boolean>` - True if relationship created
+- **Throws**: `StoreError` - Validation failure or audit failure
 
-**Returns:** `Promise<Array<{id, title}>>` - Parent Items
-
-##### IMPACTS Relationships
-
-###### createImpactsRelation(versionId, targetType, targetId, transaction)
-Creates an IMPACTS relationship to setup entities.
-
+#### removeImpactsRelation(versionId, targetType, targetId, transaction)
 ```javascript
-await store.createImpactsRelation(versionId, 'StakeholderCategory', targetId, transaction);
+const removed = await store.removeImpactsRelation(versionId, targetType, targetId, transaction)
 ```
+- **Parameters**:
+    - `versionId: number` - Source ItemVersion ID
+    - `targetType: string` - Target entity type
+    - `targetId: number` - Target entity ID
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<boolean>` - True if relationship removed
+- **Throws**: `StoreError` - Remove failure or audit failure
 
-**Parameters:**
-- `versionId` (number) - Source ItemVersion ID
-- `targetType` (string) - Target entity type ('Data'|'StakeholderCategory'|'Service'|'RegulatoryAspect')
-- `targetId` (number) - Target entity ID
-- `transaction` (Transaction) - Transaction instance
-
-**Returns:** `Promise<boolean>` - True if relationship created
-
-###### replaceImpactsRelations(versionId, targetType, targetIds, transaction)
-Replaces all IMPACTS relationships for a version and target type.
-
+#### findImpacts(itemId, targetType, transaction)
 ```javascript
-await store.replaceImpactsRelations(versionId, 'Data', [dataId1, dataId2], transaction);
+const impacts = await store.findImpacts(itemId, targetType, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `targetType: string` - Target entity type filter
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{type: string, id: number, name: string}>>` - Impacted entities from latest version
+- **Throws**: `StoreError` - Query failure
 
-###### findImpacts(itemId, targetType, transaction)
-Finds impacted entities in latest version context.
-
+#### findImpactsByVersion(itemId, targetType, versionNumber, transaction)
 ```javascript
-const impacts = await store.findImpacts(itemId, 'StakeholderCategory', transaction);
+const impacts = await store.findImpactsByVersion(itemId, targetType, versionNumber, transaction)
 ```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `targetType: string` - Target entity type filter
+    - `versionNumber: number` - Specific version number
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{type: string, id: number, name: string}>>` - Impacted entities from specified version
+- **Throws**: `StoreError` - Query failure
 
-**Returns:** `Promise<Array<{type, id, name}>>` - Impacted entities
+---
 
-### OperationalChange Store API
+## OperationalChangeStore
 
-#### Data Model
+### Data Model
 ```javascript
 {
-  // Item properties
   itemId: number,           // Item node ID
   title: string,            // Item title
-  
-  // Version properties
   versionId: number,        // ItemVersion node ID
   version: number,          // Sequential version number
   createdAt: string,        // ISO timestamp
   createdBy: string,        // User identifier
-  
-  // Entity-specific content
   description: string,      // Rich text
   visibility: string        // 'NM' | 'NETWORK'
 }
 ```
 
-#### Versioned CRUD Operations
-*Same pattern as OperationalRequirement: create, update, findById, findByIdAndVersion, findVersionHistory, findAll*
+### Versioned CRUD Operations
+*Same signatures as OperationalRequirementStore: create, update, findById, findByIdAndVersion, findVersionHistory, findAll*
 
-#### Relationship Operations
+### SATISFIES/SUPERSEDS Relationship Operations (with Audit Trail)
 
-##### SATISFIES Relationships
-
-###### createSatisfiesRelation(versionId, requirementItemId, transaction)
-Creates a SATISFIES relationship to OperationalRequirement.
-
+#### addSatisfiesRelation(versionId, requirementItemId, transaction)
 ```javascript
-await store.createSatisfiesRelation(versionId, requirementItemId, transaction);
+const added = await store.addSatisfiesRelation(versionId, requirementItemId, transaction)
 ```
+- **Parameters**:
+    - `versionId: number` - Source OperationalChangeVersion ID
+    - `requirementItemId: number` - Target OperationalRequirement Item ID
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<boolean>` - True if relationship created
+- **Throws**: `StoreError` - Validation failure or audit failure
 
-###### findSatisfies(itemId, transaction)
-Finds satisfied requirements in latest version context.
-
+#### removeSatisfiesRelation(versionId, requirementItemId, transaction)
 ```javascript
-const satisfied = await store.findSatisfies(itemId, transaction);
+const removed = await store.removeSatisfiesRelation(versionId, requirementItemId, transaction)
 ```
+- **Parameters**:
+    - `versionId: number` - Source OperationalChangeVersion ID
+    - `requirementItemId: number` - Target OperationalRequirement Item ID
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<boolean>` - True if relationship removed
+- **Throws**: `StoreError` - Remove failure or audit failure
 
-**Returns:** `Promise<Array<{id, title}>>` - Satisfied requirements
-
-##### SUPERSEDS Relationships
-*Same API pattern as SATISFIES relationships*
-
-##### Inverse Queries
-
-###### findChangesThatSatisfyRequirement(requirementItemId, transaction)
-Finds changes that satisfy a specific requirement.
-
+#### addSupersedsRelation(versionId, requirementItemId, transaction)
 ```javascript
-const changes = await store.findChangesThatSatisfyRequirement(reqId, transaction);
+const added = await store.addSupersedsRelation(versionId, requirementItemId, transaction)
 ```
+- **Parameters**: Same as addSatisfiesRelation
+- **Returns**: `Promise<boolean>` - True if relationship created
+- **Throws**: `StoreError` - Validation failure or audit failure
 
-**Returns:** `Promise<Array<{id, title}>>` - Changes satisfying the requirement
+#### removeSupersedsRelation(versionId, requirementItemId, transaction)
+```javascript
+const removed = await store.removeSupersedsRelation(versionId, requirementItemId, transaction)
+```
+- **Parameters**: Same as removeSatisfiesRelation
+- **Returns**: `Promise<boolean>` - True if relationship removed
+- **Throws**: `StoreError` - Remove failure or audit failure
 
-### OperationalChangeMilestone Store API
+#### findSatisfies(itemId, transaction)
+```javascript
+const satisfied = await store.findSatisfies(itemId, transaction)
+```
+- **Parameters**:
+    - `itemId: number` - OperationalChange Item ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Satisfied requirements from latest version
+- **Throws**: `StoreError` - Query failure
 
-#### Data Model
+#### findSatisfiesByVersion(itemId, versionNumber, transaction)
+```javascript
+const satisfied = await store.findSatisfiesByVersion(itemId, versionNumber, transaction)
+```
+- **Parameters**:
+    - `itemId: number` - OperationalChange Item ID
+    - `versionNumber: number` - Specific version number
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Satisfied requirements from specified version
+- **Throws**: `StoreError` - Query failure
+
+#### findSuperseds(itemId, transaction)
+```javascript
+const superseded = await store.findSuperseds(itemId, transaction)
+```
+- **Parameters**: Same as findSatisfies
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Superseded requirements from latest version
+- **Throws**: `StoreError` - Query failure
+
+#### findSupersedsByVersion(itemId, versionNumber, transaction)
+```javascript
+const superseded = await store.findSupersedsByVersion(itemId, versionNumber, transaction)
+```
+- **Parameters**: Same as findSatisfiesByVersion
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Superseded requirements from specified version
+- **Throws**: `StoreError` - Query failure
+
+### Inverse Relationship Queries
+
+#### findChangesThatSatisfyRequirement(requirementItemId, transaction)
+```javascript
+const changes = await store.findChangesThatSatisfyRequirement(requirementItemId, transaction)
+```
+- **Parameters**:
+    - `requirementItemId: number` - OperationalRequirement Item ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Changes satisfying the requirement
+- **Throws**: `StoreError` - Query failure
+
+#### findChangesThatSupersedeRequirement(requirementItemId, transaction)
+```javascript
+const changes = await store.findChangesThatSupersedeRequirement(requirementItemId, transaction)
+```
+- **Parameters**: Same as findChangesThatSatisfyRequirement
+- **Returns**: `Promise<Array<{id: number, title: string}>>` - Changes superseding the requirement
+- **Throws**: `StoreError` - Query failure
+
+### Milestone Management (with OC Versioning)
+
+#### Milestone Data Model
 ```javascript
 {
   id: number,               // Neo4j internal ID
@@ -615,179 +512,292 @@ const changes = await store.findChangesThatSatisfyRequirement(reqId, transaction
 }
 ```
 
-#### Standard CRUD Operations
-*Same pattern as non-versioned entities: create, findById, findAll, update, exists*
-
-#### Relationship Operations
-
-##### BELONGS_TO Relationships
-
-###### createBelongsToRelation(milestoneId, changeItemId, transaction)
-Associates milestone with an OperationalChange.
-
+#### addMilestone(changeItemId, milestoneData, expectedVersionId, transaction)
 ```javascript
-await store.createBelongsToRelation(milestoneId, changeItemId, transaction);
+const result = await store.addMilestone(changeItemId, milestoneData, expectedVersionId, transaction)
 ```
+- **Parameters**:
+    - `changeItemId: number` - OperationalChange Item ID
+    - `milestoneData: object` - Milestone properties `{title: string, description: string, eventTypes: Array<string>}`
+    - `expectedVersionId: number` - Current version ID for optimistic locking
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<{operationalChange: object, milestone: object}>` - New OC version + created milestone
+- **Throws**: `StoreError` - Version conflict, creation failure, or relationship failure
 
-###### findMilestonesByChange(changeItemId, transaction)
-Finds milestones belonging to a change.
-
+#### updateMilestone(changeItemId, milestoneId, milestoneData, expectedVersionId, transaction)
 ```javascript
-const milestones = await store.findMilestonesByChange(changeId, transaction);
+const result = await store.updateMilestone(changeItemId, milestoneId, milestoneData, expectedVersionId, transaction)
 ```
+- **Parameters**:
+    - `changeItemId: number` - OperationalChange Item ID
+    - `milestoneId: number` - Milestone node ID
+    - `milestoneData: object` - Properties to update
+    - `expectedVersionId: number` - Current version ID for optimistic locking
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<{operationalChange: object, milestone: object}>` - New OC version + updated milestone
+- **Throws**:
+    - `StoreError('Milestone does not belong to this OperationalChange')` - Ownership validation failure
+    - `StoreError` - Version conflict or update failure
 
-##### TARGETS Relationships
-
-###### createTargetsRelation(milestoneId, waveId, transaction)
-Associates milestone with a Wave.
-
+#### deleteMilestone(changeItemId, milestoneId, expectedVersionId, transaction)
 ```javascript
-await store.createTargetsRelation(milestoneId, waveId, transaction);
+const result = await store.deleteMilestone(changeItemId, milestoneId, expectedVersionId, transaction)
 ```
+- **Parameters**:
+    - `changeItemId: number` - OperationalChange Item ID
+    - `milestoneId: number` - Milestone node ID
+    - `expectedVersionId: number` - Current version ID for optimistic locking
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<{operationalChange: object, deleted: boolean}>` - New OC version + deletion confirmation
+- **Throws**:
+    - `StoreError('Milestone does not belong to this OperationalChange')` - Ownership validation failure
+    - `StoreError` - Version conflict or delete failure
 
-###### findMilestonesByWave(waveId, transaction)
-Finds milestones targeting a wave.
-
+#### updateMilestoneTargetsWave(changeItemId, milestoneId, waveId, expectedVersionId, transaction)
 ```javascript
-const milestones = await store.findMilestonesByWave(waveId, transaction);
+const result = await store.updateMilestoneTargetsWave(changeItemId, milestoneId, waveId, expectedVersionId, transaction)
 ```
+- **Parameters**:
+    - `changeItemId: number` - OperationalChange Item ID
+    - `milestoneId: number` - Milestone node ID
+    - `waveId: number` - Wave node ID
+    - `expectedVersionId: number` - Current version ID for optimistic locking
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<{operationalChange: object, milestone: object}>` - New OC version + milestone with updated context
+- **Throws**:
+    - `StoreError('Milestone does not belong to this OperationalChange')` - Ownership validation failure
+    - `StoreError('Wave does not exist')` - Wave validation failure
+    - `StoreError` - Version conflict or update failure
 
-##### Combined Queries
+### Milestone Querying (No Versioning)
 
-###### findMilestoneWithContext(milestoneId, transaction)
-Gets milestone with its change and wave context.
-
+#### findMilestonesByChange(changeItemId, transaction)
 ```javascript
-const milestone = await store.findMilestoneWithContext(milestoneId, transaction);
+const milestones = await store.findMilestonesByChange(changeItemId, transaction)
 ```
+- **Parameters**:
+    - `changeItemId: number` - OperationalChange Item ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<{id: number, title: string, description: string, eventTypes: Array<string>}>>` - Milestones belonging to the change
+- **Throws**: `StoreError` - Query failure
 
-**Returns:** Milestone object with embedded change and wave objects
+#### findMilestoneById(milestoneId, transaction)
+```javascript
+const milestone = await store.findMilestoneById(milestoneId, transaction)
+```
+- **Parameters**:
+    - `milestoneId: number` - Milestone node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<object|null>` - Milestone or null if not found
+- **Throws**: `StoreError` - Query failure
 
-## Error Handling
-
-### Error Types
-- **StoreError** - Base error for all store operations
-- **TransactionError** - Transaction-specific errors
-
-### Error Properties
+#### findMilestoneWithContext(milestoneId, transaction)
+```javascript
+const milestone = await store.findMilestoneWithContext(milestoneId, transaction)
+```
+- **Parameters**:
+    - `milestoneId: number` - Milestone node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<object|null>` - Milestone with embedded change and wave objects
+- **Format**:
 ```javascript
 {
-  name: string,      // Error class name
-  message: string,   // Error description
-  cause?: Error      // Original error (if wrapped)
+  id: number,
+  title: string,
+  description: string,
+  eventTypes: Array<string>,
+  change: {id: number, title: string} | null,
+  wave: {id: number, year: number, quarter: number, date: string, name: string} | null
+}
+```
+- **Throws**: `StoreError` - Query failure
+
+#### findMilestonesByWave(waveId, transaction)
+```javascript
+const milestones = await store.findMilestonesByWave(waveId, transaction)
+```
+- **Parameters**:
+    - `waveId: number` - Wave node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<object>>` - Milestones targeting the wave
+- **Throws**: `StoreError` - Query failure
+
+#### findMilestonesByChangeAndWave(changeItemId, waveId, transaction)
+```javascript
+const milestones = await store.findMilestonesByChangeAndWave(changeItemId, waveId, transaction)
+```
+- **Parameters**:
+    - `changeItemId: number` - OperationalChange Item ID
+    - `waveId: number` - Wave node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<object>>` - Milestones belonging to specific change and targeting specific wave
+- **Throws**: `StoreError` - Query failure
+
+---
+
+# RelationshipAuditLogStore
+
+### Data Model
+```javascript
+{
+  id: number,               // Neo4j internal ID
+  timestamp: string,        // ISO timestamp when change occurred
+  userId: string,           // User who made the change
+  action: string,           // 'ADD' | 'REMOVE'
+  relationshipType: string, // 'REFINES' | 'IMPACTS' | 'SATISFIES' | 'SUPERSEDS'
+  sourceType: string,       // Source node type (e.g., 'OperationalRequirementVersion')
+  sourceId: number,         // Source node Neo4j ID
+  targetType: string,       // Target node type (e.g., 'OperationalRequirement')
+  targetId: number          // Target node Neo4j ID
 }
 ```
 
-### Version Conflict Handling
+### Audit Trail Operations
+
+#### logRelationshipChange(relationshipData, transaction)
+```javascript
+const auditEntry = await store.logRelationshipChange(relationshipData, transaction)
+```
+- **Parameters**:
+    - `relationshipData: object` - Relationship change details (see data model above)
+    - `transaction: Transaction` - Must have user context
+- **Returns**: `Promise<object>` - Created audit log entry
+- **Throws**: `StoreError('Failed to create audit log entry - source or target node not found')` - Validation failure
+
+#### findAuditTrailForItem(itemId, transaction)
+```javascript
+const auditTrail = await store.findAuditTrailForItem(itemId, transaction)
+```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<object>>` - Audit entries chronologically ordered
+- **Throws**: `StoreError` - Query failure
+
+#### findAuditTrailForRelationship(sourceId, targetId, relationshipType, transaction)
+```javascript
+const trail = await store.findAuditTrailForRelationship(sourceId, targetId, relationshipType, transaction)
+```
+- **Parameters**:
+    - `sourceId: number` - Source node ID
+    - `targetId: number` - Target node ID
+    - `relationshipType: string` - Relationship type
+    - `transaction: Transaction`
+- **Returns**: `Promise<Array<object>>` - Audit entries for specific relationship
+- **Throws**: `StoreError` - Query failure
+
+#### reconstructRelationshipsAtTime(itemId, timestamp, transaction)
+```javascript
+const relationships = await store.reconstructRelationshipsAtTime(itemId, timestamp, transaction)
+```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `timestamp: string` - ISO timestamp for reconstruction
+    - `transaction: Transaction`
+- **Returns**: `Promise<object>` - Relationship state at specified time
+- **Format**:
+```javascript
+{
+  REFINES: {
+    OperationalRequirement: [{id: number, name: string, properties: object}]
+  },
+  IMPACTS: {
+    StakeholderCategory: [{id: number, name: string, properties: object}],
+    Data: [{id: number, name: string, properties: object}]
+  }
+}
+```
+- **Throws**: `StoreError` - Query failure
+
+#### getAuditStatistics(itemId, transaction)
+```javascript
+const stats = await store.getAuditStatistics(itemId, transaction)
+```
+- **Parameters**:
+    - `itemId: number` - Item node ID
+    - `transaction: Transaction`
+- **Returns**: `Promise<object>` - Audit statistics
+- **Format**:
+```javascript
+{
+  totalChanges: number,
+  relationshipTypes: number,
+  contributors: Array<string>,
+  firstChange: string | null,
+  lastChange: string | null
+}
+```
+- **Throws**: `StoreError` - Query failure
+
+---
+
+# Error Handling
+
+## Error Types
+
+### StoreError
+- **Base error** for all store operations
+- **Properties**: `{name: 'StoreError', message: string, cause?: Error}`
+
+### TransactionError
+- **Transaction-specific** errors
+- **Properties**: `{name: 'TransactionError', message: string, cause?: Error}`
+
+## Common Error Messages
+
+### Version Conflicts
+- `'Outdated item version'` - Optimistic locking failure, client must refresh and retry
+
+### Validation Errors
+- `'Referenced nodes do not exist'` - Relationship creation with invalid targets
+- `'Node cannot refine itself'` - Self-reference prevention
+- `'Milestone does not belong to this OperationalChange'` - Ownership validation
+- `'Wave does not exist'` - Wave reference validation
+
+### Data Integrity Errors
+- `'Item not found'` - Item doesn't exist for version operations
+- `'Data integrity error'` - Structural consistency violation
+
+### Audit Errors
+- `'Failed to create audit log entry - source or target node not found'` - Audit validation failure
+
+---
+
+# Usage Patterns
+
+## Transaction Management Pattern
+```javascript
+const tx = createTransaction(userId);
+try {
+  // Store operations
+  const result = await store.someOperation(data, tx);
+  await commitTransaction(tx);
+  return result;
+} catch (error) {
+  await rollbackTransaction(tx);
+  throw error;
+}
+```
+
+## Version Conflict Handling Pattern
 ```javascript
 try {
-  await store.update(itemId, data, expectedVersionId, transaction);
+  await store.update(itemId, data, expectedVersionId, tx);
 } catch (error) {
   if (error.message === 'Outdated item version') {
-    // Refresh current state and retry
-    const current = await store.findById(itemId, transaction);
+    // Client must refresh current state and retry
+    const current = await store.findById(itemId, tx);
     // Retry with current.versionId
   }
-}
-```
-
-## Usage Patterns
-
-### Basic Versioned Entity Example
-```javascript
-import { 
-  initializeStores, 
-  operationalRequirementStore, 
-  createTransaction, 
-  commitTransaction, 
-  rollbackTransaction 
-} from './store/index.js';
-
-// Initialize stores
-await initializeStores();
-
-// Get store instance
-const store = operationalRequirementStore();
-
-// Create new requirement
-const tx = createTransaction('user123');
-try {
-  const requirement = await store.create({ 
-    title: "New Requirement",
-    type: "OR",
-    statement: "Requirement description" 
-  }, tx);
-  
-  // Create relationships
-  await store.createRefinesRelation(
-    requirement.versionId, 
-    parentRequirementId, 
-    tx
-  );
-  
-  await commitTransaction(tx);
-  console.log('Created:', requirement);
-} catch (error) {
-  await rollbackTransaction(tx);
   throw error;
 }
 ```
 
-### Version Update Example
+## Milestone Operations Pattern
 ```javascript
-const tx = createTransaction('user456');
-try {
-  // Get current state
-  const current = await store.findById(itemId, tx);
-  
-  // Update with optimistic locking
-  const updated = await store.update(itemId, {
-    title: "Updated Title",
-    statement: "Updated statement"
-  }, current.versionId, tx);
-  
-  // Update relationships for new version
-  await store.replaceRefinesRelations(
-    updated.versionId, 
-    [newParentId1, newParentId2], 
-    tx
-  );
-  
-  await commitTransaction(tx);
-} catch (error) {
-  await rollbackTransaction(tx);
-  throw error;
-}
+// All milestone operations require expectedVersionId for OC versioning
+const current = await store.findById(changeItemId, tx);
+const result = await store.addMilestone(changeItemId, milestoneData, current.versionId, tx);
+// result.operationalChange contains new version
+// result.milestone contains created milestone
 ```
-
-## Configuration
-
-The store layer uses `server/config.json` for database configuration:
-
-```json
-{
-  "database": {
-    "uri": "bolt://localhost:7687",
-    "username": "neo4j",
-    "password": "password",
-    "connection": {
-      "maxConnectionPoolSize": 10,
-      "connectionTimeout": 5000
-    }
-  },
-  "retry": {
-    "maxAttempts": 10,
-    "intervalMs": 2000
-  }
-}
-```
-
-## Integration Notes
-
-- All store operations require an active transaction with user context
-- Transaction management is explicit - always commit or rollback
-- Store instances are created once during initialization
-- Error handling follows consistent StoreError hierarchy
-- All operations return plain JavaScript objects (no Neo4j internals)
-- Versioned entity models align with `@odp/shared` API structure
-- Relationship queries support both latest and historical contexts

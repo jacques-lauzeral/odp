@@ -4,11 +4,16 @@ import { StoreError } from './transaction.js';
 export class OperationalRequirementStore extends VersionedItemStore {
     constructor(driver) {
         super(driver, 'OperationalRequirement', 'OperationalRequirementVersion');
+        this.auditStore = null; // Injected during initialization
+    }
+
+    setAuditStore(auditStore) {
+        this.auditStore = auditStore;
     }
 
     // REFINES Relationship Methods
 
-    async createRefinesRelation(childVersionId, parentItemId, transaction) {
+    async addRefinesRelation(childVersionId, parentItemId, transaction) {
         try {
             // Validate both nodes exist
             const childExists = await transaction.run(`
@@ -52,18 +57,32 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const result = await transaction.run(`
         MATCH (childVersion:${this.versionLabel}), (parent:${this.nodeLabel})
         WHERE id(childVersion) = $childVersionId AND id(parent) = $parentItemId
-        CREATE (childVersion)-[:REFINES]->(parent)
+        MERGE (childVersion)-[:REFINES]->(parent)
         RETURN count(*) as created
       `, { childVersionId, parentItemId });
 
-            return result.records[0].get('created').toNumber() > 0;
+            const created = result.records[0].get('created').toNumber() > 0;
+
+            // Log the change in audit trail
+            if (created && this.auditStore) {
+                await this.auditStore.logRelationshipChange({
+                    action: 'ADD',
+                    relationshipType: 'REFINES',
+                    sourceType: this.versionLabel,
+                    sourceId: childVersionId,
+                    targetType: this.nodeLabel,
+                    targetId: parentItemId
+                }, transaction);
+            }
+
+            return created;
         } catch (error) {
             if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to create REFINES relationship: ${error.message}`, error);
+            throw new StoreError(`Failed to add REFINES relationship: ${error.message}`, error);
         }
     }
 
-    async deleteRefinesRelation(childVersionId, parentItemId, transaction) {
+    async removeRefinesRelation(childVersionId, parentItemId, transaction) {
         try {
             const result = await transaction.run(`
         MATCH (childVersion:${this.versionLabel})-[r:REFINES]->(parent:${this.nodeLabel})
@@ -72,24 +91,52 @@ export class OperationalRequirementStore extends VersionedItemStore {
         RETURN count(*) as deleted
       `, { childVersionId, parentItemId });
 
-            return result.records[0].get('deleted').toNumber() > 0;
+            const deleted = result.records[0].get('deleted').toNumber() > 0;
+
+            // Log the change in audit trail
+            if (deleted && this.auditStore) {
+                await this.auditStore.logRelationshipChange({
+                    action: 'REMOVE',
+                    relationshipType: 'REFINES',
+                    sourceType: this.versionLabel,
+                    sourceId: childVersionId,
+                    targetType: this.nodeLabel,
+                    targetId: parentItemId
+                }, transaction);
+            }
+
+            return deleted;
         } catch (error) {
-            throw new StoreError(`Failed to delete REFINES relationship: ${error.message}`, error);
+            throw new StoreError(`Failed to remove REFINES relationship: ${error.message}`, error);
         }
     }
 
+    // DEPRECATED: Use individual add/remove methods instead
     async replaceRefinesRelations(childVersionId, parentItemIds, transaction) {
         try {
-            // Delete all existing REFINES relationships for this version
-            await transaction.run(`
-        MATCH (childVersion:${this.versionLabel})-[r:REFINES]->(:${this.nodeLabel})
+            // Get current relationships for comparison
+            const currentResult = await transaction.run(`
+        MATCH (childVersion:${this.versionLabel})-[:REFINES]->(parent:${this.nodeLabel})
         WHERE id(childVersion) = $childVersionId
-        DELETE r
+        RETURN id(parent) as parentId
       `, { childVersionId });
 
-            // Create new relationships
+            const currentParentIds = currentResult.records.map(record =>
+                record.get('parentId').toNumber()
+            );
+
+            // Remove relationships that are no longer needed
+            for (const currentParentId of currentParentIds) {
+                if (!parentItemIds.includes(currentParentId)) {
+                    await this.removeRefinesRelation(childVersionId, currentParentId, transaction);
+                }
+            }
+
+            // Add new relationships
             for (const parentItemId of parentItemIds) {
-                await this.createRefinesRelation(childVersionId, parentItemId, transaction);
+                if (!currentParentIds.includes(parentItemId)) {
+                    await this.addRefinesRelation(childVersionId, parentItemId, transaction);
+                }
             }
 
             return true;
@@ -177,7 +224,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     // IMPACTS Relationship Methods
 
-    async createImpactsRelation(versionId, targetType, targetId, transaction) {
+    async addImpactsRelation(versionId, targetType, targetId, transaction) {
         try {
             // Validate version exists
             const versionExists = await transaction.run(`
@@ -205,18 +252,32 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const result = await transaction.run(`
         MATCH (version:${this.versionLabel}), (target:${targetType})
         WHERE id(version) = $versionId AND id(target) = $targetId
-        CREATE (version)-[:IMPACTS]->(target)
+        MERGE (version)-[:IMPACTS]->(target)
         RETURN count(*) as created
       `, { versionId, targetId });
 
-            return result.records[0].get('created').toNumber() > 0;
+            const created = result.records[0].get('created').toNumber() > 0;
+
+            // Log the change in audit trail
+            if (created && this.auditStore) {
+                await this.auditStore.logRelationshipChange({
+                    action: 'ADD',
+                    relationshipType: 'IMPACTS',
+                    sourceType: this.versionLabel,
+                    sourceId: versionId,
+                    targetType: targetType,
+                    targetId: targetId
+                }, transaction);
+            }
+
+            return created;
         } catch (error) {
             if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to create IMPACTS relationship: ${error.message}`, error);
+            throw new StoreError(`Failed to add IMPACTS relationship: ${error.message}`, error);
         }
     }
 
-    async deleteImpactsRelation(versionId, targetType, targetId, transaction) {
+    async removeImpactsRelation(versionId, targetType, targetId, transaction) {
         try {
             const result = await transaction.run(`
         MATCH (version:${this.versionLabel})-[r:IMPACTS]->(target:${targetType})
@@ -225,24 +286,52 @@ export class OperationalRequirementStore extends VersionedItemStore {
         RETURN count(*) as deleted
       `, { versionId, targetId });
 
-            return result.records[0].get('deleted').toNumber() > 0;
+            const deleted = result.records[0].get('deleted').toNumber() > 0;
+
+            // Log the change in audit trail
+            if (deleted && this.auditStore) {
+                await this.auditStore.logRelationshipChange({
+                    action: 'REMOVE',
+                    relationshipType: 'IMPACTS',
+                    sourceType: this.versionLabel,
+                    sourceId: versionId,
+                    targetType: targetType,
+                    targetId: targetId
+                }, transaction);
+            }
+
+            return deleted;
         } catch (error) {
-            throw new StoreError(`Failed to delete IMPACTS relationship: ${error.message}`, error);
+            throw new StoreError(`Failed to remove IMPACTS relationship: ${error.message}`, error);
         }
     }
 
+    // DEPRECATED: Use individual add/remove methods instead
     async replaceImpactsRelations(versionId, targetType, targetIds, transaction) {
         try {
-            // Delete all existing IMPACTS relationships of this type for this version
-            await transaction.run(`
-        MATCH (version:${this.versionLabel})-[r:IMPACTS]->(target:${targetType})
+            // Get current relationships for comparison
+            const currentResult = await transaction.run(`
+        MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:${targetType})
         WHERE id(version) = $versionId
-        DELETE r
+        RETURN id(target) as targetId
       `, { versionId });
 
-            // Create new relationships
+            const currentTargetIds = currentResult.records.map(record =>
+                record.get('targetId').toNumber()
+            );
+
+            // Remove relationships that are no longer needed
+            for (const currentTargetId of currentTargetIds) {
+                if (!targetIds.includes(currentTargetId)) {
+                    await this.removeImpactsRelation(versionId, targetType, currentTargetId, transaction);
+                }
+            }
+
+            // Add new relationships
             for (const targetId of targetIds) {
-                await this.createImpactsRelation(versionId, targetType, targetId, transaction);
+                if (!currentTargetIds.includes(targetId)) {
+                    await this.addImpactsRelation(versionId, targetType, targetId, transaction);
+                }
             }
 
             return true;

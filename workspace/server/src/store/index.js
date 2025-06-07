@@ -6,7 +6,7 @@ import { DataCategoryStore } from './data-category-store.js';
 import { ServiceStore } from './service-store.js';
 import { OperationalRequirementStore } from './operational-requirement-store.js';
 import { OperationalChangeStore } from './operational-change-store.js';
-import { OperationalChangeMilestoneStore } from './operational-change-milestone-store.js';
+import { RelationshipAuditLogStore } from './relationship-audit-log-store.js';
 
 // Store instances - initialized after connection is established
 let stakeholderCategoryStore = null;
@@ -15,12 +15,13 @@ let dataCategoryStore = null;
 let serviceStore = null;
 let operationalRequirementStore = null;
 let operationalChangeStore = null;
-let operationalChangeMilestoneStore = null;
+let relationshipAuditLogStore = null;
 
 /**
  * Initialize the store layer
  * - Establishes Neo4j connection with retry logic
  * - Creates store instances with shared driver
+ * - Injects audit store into versioned stores
  * - Must be called before using any store operations
  */
 export async function initializeStores() {
@@ -38,7 +39,11 @@ export async function initializeStores() {
         serviceStore = new ServiceStore(driver);
         operationalRequirementStore = new OperationalRequirementStore(driver);
         operationalChangeStore = new OperationalChangeStore(driver);
-        operationalChangeMilestoneStore = new OperationalChangeMilestoneStore(driver);
+        relationshipAuditLogStore = new RelationshipAuditLogStore(driver);
+
+        // Inject audit store into versioned stores for relationship audit trail
+        operationalRequirementStore.setAuditStore(relationshipAuditLogStore);
+        operationalChangeStore.setAuditStore(relationshipAuditLogStore);
 
         console.log('Store layer initialized successfully');
     } catch (error) {
@@ -62,7 +67,7 @@ export async function closeStores() {
         serviceStore = null;
         operationalRequirementStore = null;
         operationalChangeStore = null;
-        operationalChangeMilestoneStore = null;
+        relationshipAuditLogStore = null;
 
         console.log('Store layer closed successfully');
     } catch (error) {
@@ -132,7 +137,7 @@ function getOperationalRequirementStore() {
 }
 
 /**
- * Get OperationalChange store instance
+ * Get OperationalChange store instance (includes milestone management)
  * @returns {OperationalChangeStore} Store instance
  * @throws {Error} If store layer not initialized
  */
@@ -144,15 +149,15 @@ function getOperationalChangeStore() {
 }
 
 /**
- * Get OperationalChangeMilestone store instance
- * @returns {OperationalChangeMilestoneStore} Store instance
+ * Get RelationshipAuditLog store instance
+ * @returns {RelationshipAuditLogStore} Store instance
  * @throws {Error} If store layer not initialized
  */
-function getOperationalChangeMilestoneStore() {
-    if (!operationalChangeMilestoneStore) {
+function getRelationshipAuditLogStore() {
+    if (!relationshipAuditLogStore) {
         throw new Error('Store layer not initialized. Call initializeStores() first.');
     }
-    return operationalChangeMilestoneStore;
+    return relationshipAuditLogStore;
 }
 
 // Export transaction management functions
@@ -169,4 +174,4 @@ export { getDataCategoryStore as dataCategoryStore };
 export { getServiceStore as serviceStore };
 export { getOperationalRequirementStore as operationalRequirementStore };
 export { getOperationalChangeStore as operationalChangeStore };
-export { getOperationalChangeMilestoneStore as operationalChangeMilestoneStore };
+export { getRelationshipAuditLogStore as relationshipAuditLogStore };
