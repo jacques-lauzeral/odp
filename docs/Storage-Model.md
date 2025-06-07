@@ -136,30 +136,6 @@ The node types required to the management of operational needs, requirements, an
 - `TARGETS -> Wave`
 - `HAS_ATTACHMENT -> Document`
 
-## 5. Relationship Audit Trail System
-
-The node types and relationships required for tracking relationship changes over time.
-
-### 5.1 RelationshipAuditLog
-**Properties:**
-- `timestamp`: when the relationship change occurred (ISO 8601)
-- `userId`: who made the change
-- `action`: ADD or REMOVE
-- `relationshipType`: REFINES, IMPACTS, SATISFIES, SUPERSEDS
-- `sourceType`: the source node type (e.g., "OperationalRequirementVersion")
-- `sourceId`: the source node Neo4j ID
-- `targetType`: the target node type (e.g., "OperationalRequirement", "StakeholderCategory")
-- `targetId`: the target node Neo4j ID
-
-**Relationships:**
-- `LOGGED_FOR -> ItemVersion` (the version that initiated the change)
-- `AFFECTS -> Item` (the target item affected by the change)
-
-**Usage Pattern:**
-- Field updates create new ItemVersion (content versioning)
-- Relationship changes create RelationshipAuditLog entries (relationship versioning)
-- Historical reconstruction combines ItemVersion content + relationship audit trail
-
 ## 6. Operational Deployment Plan Management
 
 The node types and relationships required to the management of operational plan baselines management.
@@ -248,7 +224,7 @@ The node types required to the management of user reviews.
 ### Versioning Strategy
 The system implements a sequential versioning pattern using root nodes (Item) + version nodes (ItemVersion) for content, combined with relationship audit trails for relationship history. This approach provides:
 - Content versioning through ItemVersion creation (field changes)
-- Relationship versioning through RelationshipAuditLog entries (relationship changes)
+- Version increment when item data or item relations are updated
 - Historical consistency through baseline snapshots
 - Concurrency control via optimistic locking (first commit wins)
 
@@ -272,4 +248,3 @@ The system implements a sequential versioning pattern using root nodes (Item) + 
 - Presence constraints are not specified for this prototype phase
 - Setup Management entities are not versioned for simplicity
 - Folder Management entities are not versioned for simplicity
-- Relationship audit trail provides complete change history without version number inflation

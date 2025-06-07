@@ -96,49 +96,20 @@
 - ✅ **IMPACTS relationships**: Direct from OperationalRequirement to setup entities
 - ✅ **OperationalChange**: Separate versioned entity with SATISFIES/SUPERSEDS relationships
 
-#### 5.1.3 Relationship Audit Trail System (✅ COMPLETED)
-- ✅ **RelationshipAuditLog entity**: Complete audit trail for relationship changes
-- ✅ **Transaction boundary design**: Field updates create versions, relationship changes create audit entries
-- ✅ **Historical reconstruction**: Ability to rebuild relationship state at any point in time
-- ✅ **Baseline integration**: Support for capturing relationship snapshots for baseline management
-
-#### 5.1.4 Store Layer Implementation (✅ COMPLETED - NEEDS REWORK)
-- ✅ **RelationshipAuditLogStore**: Add audit trail entity store to system
-- ✅ **OperationalRequirementStore** (versioned + REFINES + IMPACTS + audit):
-  - ✅ Update relationship methods to include automatic audit logging
-  - ✅ Add/remove pattern instead of delete-all/recreate-all for individual operations
-  - ✅ Version-aware queries with historical context support
-- ✅ **OperationalChangeStore** (versioned + SATISFIES + SUPERSEDS + audit):
-  - ✅ Update relationship methods with audit trail integration
-  - ✅ Milestone coordination with audit tracking
+#### 5.1.3 Store Layer Implementation (✅ COMPLETED - NEEDS REWORK)
+- ✅ **OperationalRequirementStore** (versioned + REFINES + IMPACTS)
+- ✅ **OperationalChangeStore** (versioned + SATISFIES + SUPERSEDS + Milestones)
 
 #### 5.1.5 Store Layer Integration (✅ COMPLETED)
-- ✅ **Update store/index.js**: Add RelationshipAuditLogStore to initialization and exports
-- ✅ **Inject audit store**: Configure versioned stores to use audit logging
-- ✅ **Transaction management**: Ensure audit entries are created in same transaction as relationship changes
-- ✅ **Error handling**: Enhanced error handling for audit trail failures
+- ✅ **Update store/index.js**: Add OperationalRequirementStore and OperationalChangeStore to initialization and exports
 
 ### 5.2 Documentation Updates (✅ COMPLETED)
-- ✅ **Storage Model**: Updated with RelationshipAuditLog and BaselineRelationship entities
-- ✅ **Store Layer Core API**: Added relationship audit trail API documentation
-- ✅ **Store Layer Internal Design**: Updated architecture with audit trail patterns
-- ✅ **Work Plan**: Updated to reflect relationship audit trail approach
+- ✅ **Storage Model**
+- ✅ **Store Layer API**
+- ✅ **Store Layer Design**
+- ✅ **Work Plan**
 
-### 5.3 Store Layer Rework (✅ COMPLETED)
-- ✅ **Add RelationshipAuditLog entity implementation**:
-  - ✅ Create RelationshipAuditLogStore extending BaseStore
-  - ✅ Implement audit logging methods (logRelationshipChange, findAuditTrailForItem)
-  - ✅ Add historical reconstruction methods (reconstructRelationshipsAtTime)
-- ✅ **Update existing relationship methods**:
-  - ✅ Modify OperationalRequirementStore relationship methods to include audit logging
-  - ✅ Update OperationalChangeStore relationship methods with audit integration
-  - ✅ Ensure transaction coordination between relationship ops and audit entries
-- ✅ **Update store initialization**:
-  - ✅ Add RelationshipAuditLogStore to store/index.js
-  - ✅ Inject audit store into versioned entity stores
-  - ✅ Test complete store layer integration
-
-### 5.4 Service Layer Implementation (🎯 NEXT)
+### 5.3 Service Layer Implementation (🎯 NEXT)
 - [ ] **OperationalRequirementService**:
   - [ ] Business logic with version management and optimistic locking
   - [ ] Separate transaction boundaries for field vs relationship updates
