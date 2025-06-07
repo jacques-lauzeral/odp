@@ -132,7 +132,7 @@ The node types required to the management of operational needs, requirements, an
 - `eventTypes`: one or more of API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, etc. (to be completed)
 
 **Relationships:**
-- `BELONGS_TO -> OperationalChange` (to Item, not ItemVersion)
+- `BELONGS_TO -> OperationalChangeVersion` (to ItemVersion)
 - `TARGETS -> Wave`
 - `HAS_ATTACHMENT -> Document`
 

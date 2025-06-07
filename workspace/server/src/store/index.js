@@ -1,64 +1,70 @@
 import { initializeConnection, getDriver, closeConnection } from './connection.js';
 import { createTransaction, commitTransaction, rollbackTransaction } from './transaction.js';
+
+// Import store classes
 import { StakeholderCategoryStore } from './stakeholder-category-store.js';
 import { RegulatoryAspectStore } from './regulatory-aspect-store.js';
 import { DataCategoryStore } from './data-category-store.js';
 import { ServiceStore } from './service-store.js';
 import { OperationalRequirementStore } from './operational-requirement-store.js';
 import { OperationalChangeStore } from './operational-change-store.js';
-import { RelationshipAuditLogStore } from './relationship-audit-log-store.js';
 
-// Store instances - initialized after connection is established
+// Store instances (initialized once)
 let stakeholderCategoryStore = null;
 let regulatoryAspectStore = null;
 let dataCategoryStore = null;
 let serviceStore = null;
 let operationalRequirementStore = null;
 let operationalChangeStore = null;
-let relationshipAuditLogStore = null;
 
 /**
- * Initialize the store layer
- * - Establishes Neo4j connection with retry logic
- * - Creates store instances with shared driver
- * - Injects audit store into versioned stores
- * - Must be called before using any store operations
+ * Initialize the store layer with Neo4j connection and store instances
+ * Must be called before using any store operations
+ * @returns {Promise<void>}
+ * @throws {Error} If connection or initialization fails
  */
 export async function initializeStores() {
     try {
-        // Initialize Neo4j connection
+        console.log('Initializing store layer...');
+
+        // Initialize Neo4j connection with retry logic
         await initializeConnection();
 
         // Get driver instance
         const driver = getDriver();
 
-        // Create store instances
+        // Create store instances with shared driver
         stakeholderCategoryStore = new StakeholderCategoryStore(driver);
         regulatoryAspectStore = new RegulatoryAspectStore(driver);
         dataCategoryStore = new DataCategoryStore(driver);
         serviceStore = new ServiceStore(driver);
         operationalRequirementStore = new OperationalRequirementStore(driver);
         operationalChangeStore = new OperationalChangeStore(driver);
-        relationshipAuditLogStore = new RelationshipAuditLogStore(driver);
-
-        // Inject audit store into versioned stores for relationship audit trail
-        operationalRequirementStore.setAuditStore(relationshipAuditLogStore);
-        operationalChangeStore.setAuditStore(relationshipAuditLogStore);
 
         console.log('Store layer initialized successfully');
+        console.log('Available stores:', {
+            stakeholderCategory: '✓',
+            regulatoryAspect: '✓',
+            dataCategory: '✓',
+            service: '✓',
+            operationalRequirement: '✓',
+            operationalChange: '✓'
+        });
+
     } catch (error) {
         console.error('Failed to initialize store layer:', error.message);
-        throw error;
+        throw new Error(`Store layer initialization failed: ${error.message}`);
     }
 }
 
 /**
- * Close store layer connections
+ * Close all store connections and cleanup resources
  * Should be called during application shutdown
+ * @returns {Promise<void>}
  */
 export async function closeStores() {
     try {
-        await closeConnection();
+        console.log('Closing store layer...');
 
         // Reset store instances
         stakeholderCategoryStore = null;
@@ -67,14 +73,21 @@ export async function closeStores() {
         serviceStore = null;
         operationalRequirementStore = null;
         operationalChangeStore = null;
-        relationshipAuditLogStore = null;
+
+        // Close database connection
+        await closeConnection();
 
         console.log('Store layer closed successfully');
     } catch (error) {
-        console.error('Failed to close store layer:', error.message);
-        throw error;
+        console.error('Error closing store layer:', error.message);
+        throw new Error(`Store layer cleanup failed: ${error.message}`);
     }
 }
+
+// Transaction management exports
+export { createTransaction, commitTransaction, rollbackTransaction };
+
+// Store access functions
 
 /**
  * Get StakeholderCategory store instance
@@ -137,7 +150,7 @@ function getOperationalRequirementStore() {
 }
 
 /**
- * Get OperationalChange store instance (includes milestone management)
+ * Get OperationalChange store instance
  * @returns {OperationalChangeStore} Store instance
  * @throws {Error} If store layer not initialized
  */
@@ -148,30 +161,67 @@ function getOperationalChangeStore() {
     return operationalChangeStore;
 }
 
-/**
- * Get RelationshipAuditLog store instance
- * @returns {RelationshipAuditLogStore} Store instance
- * @throws {Error} If store layer not initialized
- */
-function getRelationshipAuditLogStore() {
-    if (!relationshipAuditLogStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
-    return relationshipAuditLogStore;
-}
-
-// Export transaction management functions
+// Export store access functions with consistent naming
 export {
-    createTransaction,
-    commitTransaction,
-    rollbackTransaction
+    getStakeholderCategoryStore as stakeholderCategoryStore,
+    getRegulatoryAspectStore as regulatoryAspectStore,
+    getDataCategoryStore as dataCategoryStore,
+    getServiceStore as serviceStore,
+    getOperationalRequirementStore as operationalRequirementStore,
+    getOperationalChangeStore as operationalChangeStore
 };
 
-// Export store instances via getters to ensure initialization
-export { getStakeholderCategoryStore as stakeholderCategoryStore };
-export { getRegulatoryAspectStore as regulatoryAspectStore };
-export { getDataCategoryStore as dataCategoryStore };
-export { getServiceStore as serviceStore };
-export { getOperationalRequirementStore as operationalRequirementStore };
-export { getOperationalChangeStore as operationalChangeStore };
-export { getRelationshipAuditLogStore as relationshipAuditLogStore };
+/**
+ * Get all store instances (for debugging/testing)
+ * @returns {object} Object containing all store instances
+ * @throws {Error} If store layer not initialized
+ */
+export function getAllStores() {
+    return {
+        stakeholderCategory: getStakeholderCategoryStore(),
+        regulatoryAspect: getRegulatoryAspectStore(),
+        dataCategory: getDataCategoryStore(),
+        service: getServiceStore(),
+        operationalRequirement: getOperationalRequirementStore(),
+        operationalChange: getOperationalChangeStore()
+    };
+}
+
+/**
+ * Check if store layer is initialized
+ * @returns {boolean} True if all stores are initialized
+ */
+export function isStoreLayerInitialized() {
+    return !!(
+        stakeholderCategoryStore &&
+        regulatoryAspectStore &&
+        dataCategoryStore &&
+        serviceStore &&
+        operationalRequirementStore &&
+        operationalChangeStore
+    );
+}
+
+/**
+ * Get store layer status information
+ * @returns {object} Status information
+ */
+export function getStoreLayerStatus() {
+    const stores = {
+        stakeholderCategory: !!stakeholderCategoryStore,
+        regulatoryAspect: !!regulatoryAspectStore,
+        dataCategory: !!dataCategoryStore,
+        service: !!serviceStore,
+        operationalRequirement: !!operationalRequirementStore,
+        operationalChange: !!operationalChangeStore
+    };
+
+    const initializedCount = Object.values(stores).filter(Boolean).length;
+    const totalCount = Object.keys(stores).length;
+
+    return {
+        initialized: initializedCount === totalCount,
+        stores,
+        summary: `${initializedCount}/${totalCount} stores initialized`
+    };
+}
