@@ -259,7 +259,7 @@ const roots = await store.findRoots(transaction)
 # Versioned Entity APIs
 
 ## VersionedItemStore API
-*Base class for versioned entities with optimistic locking*
+*Base class for versioned items with optimistic locking*
 
 ### Data Model
 ```javascript
@@ -270,25 +270,25 @@ const roots = await store.findRoots(transaction)
   version: number,          // Sequential version number
   createdAt: string,        // ISO timestamp
   createdBy: string,        // User identifier
-  // ... entity-specific fields
+  // ... item-specific fields
 }
 ```
 
 ### create(data, transaction)
 ```javascript
-const entity = await store.create(data, transaction)
+const item = await store.create(data, transaction)
 ```
 **Parameters**:
-- `data: object` - Entity data (title + version fields)
+- `data: object` - Item data (title + version fields)
 - `transaction: Transaction` - Must have user context
 
-**Returns**: `Promise<object>` - Complete entity with version info  
+**Returns**: `Promise<object>` - Complete item with version info  
 **Behavior**: Creates Item + ItemVersion(v1) + relationships  
 **Throws**: `StoreError` - Creation failure
 
 ### update(itemId, data, expectedVersionId, transaction)
 ```javascript
-const entity = await store.update(itemId, data, expectedVersionId, transaction)
+const item = await store.update(itemId, data, expectedVersionId, transaction)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
@@ -304,7 +304,7 @@ const entity = await store.update(itemId, data, expectedVersionId, transaction)
 
 ### findById(itemId, transaction)
 ```javascript
-const entity = await store.findById(itemId, transaction)
+const item = await store.findById(itemId, transaction)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
@@ -315,7 +315,7 @@ const entity = await store.findById(itemId, transaction)
 
 ### findByIdAndVersion(itemId, versionNumber, transaction)
 ```javascript
-const entity = await store.findByIdAndVersion(itemId, versionNumber, transaction)
+const item = await store.findByIdAndVersion(itemId, versionNumber, transaction)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
@@ -340,7 +340,7 @@ const history = await store.findVersionHistory(itemId, transaction)
 
 ### findAll(transaction)
 ```javascript
-const entities = await store.findAll(transaction)
+const items = await store.findAll(transaction)
 ```
 **Parameters**: `transaction: Transaction`  
 **Returns**: `Promise<Array<object>>` - Latest versions with relationships  
