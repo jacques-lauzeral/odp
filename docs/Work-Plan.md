@@ -76,10 +76,10 @@
 - ✅ **CLI commands for Data**:
   - ✅ `odp data list/create/show/update/delete`
 
-## 5 Phase 3: Business Extension - Operational Entities (🔄 IN PROGRESS)
+## 5 Phase 3: Business Extension - Operational Entities (✅ COMPLETED)
 
-### 5.1 Server Implementation
-**Pattern**: Implement versioning pattern (Item/ItemVersion) for operational entities with relationship audit trail
+### 5.1 Server Implementation (✅ COMPLETED)
+**Pattern**: Implement versioning pattern (Item/ItemVersion) for operational entities with complete service and route layer
 
 #### 5.1.1 Versioning Pattern Implementation (✅ COMPLETED)
 - ✅ **VersionedItemStore base class**:
@@ -96,76 +96,81 @@
 - ✅ **IMPACTS relationships**: Direct from OperationalRequirement to setup entities
 - ✅ **OperationalChange**: Separate versioned entity with SATISFIES/SUPERSEDS relationships
 
-#### 5.1.3 Store Layer Implementation (✅ COMPLETED - NEEDS REWORK)
+#### 5.1.3 Store Layer Implementation (✅ COMPLETED)
 - ✅ **OperationalRequirementStore** (versioned + REFINES + IMPACTS)
 - ✅ **OperationalChangeStore** (versioned + SATISFIES + SUPERSEDS + Milestones)
 
-#### 5.1.5 Store Layer Integration (✅ COMPLETED)
+#### 5.1.4 Store Layer Integration (✅ COMPLETED)
 - ✅ **Update store/index.js**: Add OperationalRequirementStore and OperationalChangeStore to initialization and exports
 
-### 5.2 Documentation Updates (✅ COMPLETED)
-- ✅ **Storage Model**
-- ✅ **Store Layer API**
-- ✅ **Store Layer Design**
-- ✅ **Work Plan**
+### 5.2 Service Layer Hierarchy Redesign (✅ COMPLETED)
+- ✅ **Service hierarchy restructure**: Eliminated BaseService, created two parallel hierarchies
+- ✅ **SimpleItemService**: Root for setup entities with userId context and transaction management
+- ✅ **RefinableItemService**: Extends SimpleItemService with hierarchy operations
+- ✅ **VersionedItemService**: Root for operational entities with versioning and validation hooks
+- ✅ **Updated all existing services**: DataCategoryService, StakeholderCategoryService, ServiceService, RegulatoryAspectService to extend RefinableItemService with userId parameters
 
-### 5.3 Service Layer Implementation (🎯 NEXT)
-- [ ] **OperationalRequirementService**:
-  - [ ] Business logic with version management and optimistic locking
-  - [ ] Separate transaction boundaries for field vs relationship updates
-  - [ ] Type validation (ON/OR) and REFINES business rules (ON→ON, OR→OR, OR→ON)
-  - [ ] IMPACTS relationship validation and management
-- [ ] **OperationalChangeService**:
-  - [ ] Version lifecycle management with SATISFIES/SUPERSEDS relationships
-  - [ ] Milestone coordination and timeline management
-  - [ ] Business logic for change impact analysis
-- [ ] **OperationalChangeMilestoneService**:
-  - [ ] Milestone lifecycle with change and wave coordination
-  - [ ] Event type validation and wave targeting logic
+### 5.3 Service Layer Implementation (✅ COMPLETED)
+- ✅ **OperationalRequirementService**:
+  - ✅ Business logic with version management and optimistic locking
+  - ✅ Complete payload validation with business rules
+  - ✅ Type validation (ON/OR) and REFINES business rules (OR cannot refine ON)
+  - ✅ IMPACTS relationship validation and referenced entity existence validation
+  - ✅ Extends VersionedItemService with abstract validation method implementation
+- ✅ **OperationalChangeService**:
+  - ✅ Version lifecycle management with SATISFIES/SUPERSEDS relationships
+  - ✅ Milestone coordination with eventTypes validation using shared constants
+  - ✅ Visibility validation (NM/NETWORK) and wave reference validation
+  - ✅ Complete payload validation for milestones and operational requirements
 
-### 5.5 Route Layer Implementation (🎯 AFTER SERVICE LAYER)
-- [ ] **routes/operational-requirement.js**:
-  - [ ] RESTful CRUD operations with version handling
-  - [ ] Optimistic locking via expectedVersionId in requests
-  - [ ] Separate endpoints for field updates vs relationship management
-  - [ ] Version history and navigation endpoints
-  - [ ] Historical relationship queries
-- [ ] **routes/operational-change.js**:
-  - [ ] Versioned CRUD operations with SATISFIES/SUPERSEDS management
-  - [ ] Milestone coordination endpoints
-  - [ ] Change impact and requirement analysis endpoints
-- [ ] **routes/operational-change-milestone.js**:
-  - [ ] Standard CRUD operations with relationship management
-  - [ ] Timeline and wave targeting endpoints
+### 5.4 Route Layer Hierarchy Redesign (✅ COMPLETED)
+- ✅ **Route hierarchy restructure**: Created two parallel router base classes
+- ✅ **SimpleItemRouter**: userId extraction, standard CRUD with hierarchy support
+- ✅ **VersionedItemRouter**: userId extraction, versioned CRUD with optimistic locking
+- ✅ **Updated all existing routes**: data-category, stakeholder-category, service, regulatory-aspect to use SimpleItemRouter
+- ✅ **Version-specific endpoints**: GET /:id/versions, GET /:id/versions/:versionNumber
 
-### 5.6 Shared Models Implementation (🎯 AFTER ROUTE LAYER)
-- [ ] **OperationalRequirement and OperationalRequirementVersion models**:
-  - [ ] Base entity with type field ('ON' | 'OR')
-  - [ ] Version-aware request structures with expectedVersionId
-  - [ ] Separate relationship management request structures (add/remove pattern)
-- [ ] **OperationalChange and OperationalChangeVersion models**:
-  - [ ] Versioned entity with description and visibility fields
-  - [ ] SATISFIES/SUPERSEDS relationship structures
-  - [ ] Milestone coordination structures
-- [ ] **OperationalChangeMilestone model**:
-  - [ ] Standard entity with eventTypes array
-  - [ ] BELONGS_TO and TARGETS relationship structures
-- [ ] **RelationshipAuditLog model**:
-  - [ ] Audit trail structure for API exposure
+### 5.5 Route Layer Implementation (✅ COMPLETED)
+- ✅ **routes/operational-requirement.js**:
+  - ✅ RESTful CRUD operations with version handling
+  - ✅ Optimistic locking via expectedVersionId in requests
+  - ✅ Version history and navigation endpoints
+  - ✅ Consistent error handling with VERSION_CONFLICT responses
+- ✅ **routes/operational-change.js**:
+  - ✅ Versioned CRUD operations with SATISFIES/SUPERSEDS management
+  - ✅ Milestone coordination endpoints
+  - ✅ Complete versioned entity route pattern
 
-### 5.7 CLI Implementation (🎯 AFTER SHARED MODELS)
+### 5.6 Shared Models Implementation (✅ COMPLETED)
+- ✅ **OperationalRequirement and OperationalRequirementRequest models**:
+  - ✅ Complete entity model with version metadata and resolved relationships
+  - ✅ Request structures with ID arrays for relationships, complete payload required
+  - ✅ Business rule support for type field ('ON' | 'OR') and REFINES validation
+- ✅ **OperationalChange and OperationalChangeRequest models**:
+  - ✅ Versioned entity with description, visibility, and milestone structures
+  - ✅ SATISFIES/SUPERSEDS relationship structures
+  - ✅ Milestone coordination with eventTypes validation
+- ✅ **MilestoneEventTypes constants**:
+  - ✅ Shared validation constants for API_PUBLICATION, SERVICE_ACTIVATION, etc.
+  - ✅ Used by both service validation and UI components
+
+### 5.7 API Documentation (✅ COMPLETED)
+- ✅ **Complete OpenAPI 3.0.3 specification**:
+  - ✅ All setup and operational entity endpoints documented
+  - ✅ Version management endpoints and optimistic locking patterns
+  - ✅ User context security with x-user-id header requirement
+  - ✅ Complete request/response schemas matching shared models
+  - ✅ Error handling patterns and validation responses
+
+### 5.8 CLI Implementation (🎯 NEXT PRIORITY)
 - [ ] **CLI commands for OperationalRequirement**:
   - [ ] `odp operational-requirement list/create/show/update/delete`
   - [ ] Version management commands (history, specific version access)
-  - [ ] Relationship management commands (add-refines, remove-refines, add-impacts, remove-impacts)
-  - [ ] Audit trail commands (show-history, show-relationships-at-time)
+  - [ ] Relationship management through complete payload updates
 - [ ] **CLI commands for OperationalChange**:
   - [ ] `odp operational-change list/create/show/update/delete`
   - [ ] Version management with milestone coordination
-  - [ ] Relationship management (add/remove satisfies, superseds)
-- [ ] **CLI commands for OperationalChangeMilestone**:
-  - [ ] `odp milestone list/create/show/update/delete`
-  - [ ] Change and wave targeting commands
+  - [ ] Complete payload management for relationships and milestones
 
 ## 6 Phase 4: Business Extension - Management Entities
 

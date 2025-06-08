@@ -7,42 +7,33 @@ odp/
 │   ├── cli/
 │   │   ├── src/
 │   │   │   ├── commands/        # CLI command handlers
-│   │   │   │   ├── base-commands.js        # Factorized CLI patterns
-│   │   │   │   ├── stakeholder-category.js # StakeholderCategory commands
-│   │   │   │   ├── regulatory-aspect.js    # RegulatoryAspect commands
-│   │   │   │   ├── data-category.js        # DataCategory commands
-│   │   │   │   └── service.js              # Service commands
+│   │   │   │   └── stakeholder-category.js  # Setup entity commands (+ data-category, service, regulatory-aspect)
 │   │   │   └── index.js         # CLI entry point
 │   │   ├── config.json          # Server endpoint configuration
 │   │   └── package.json
 │   ├── server/
 │   │   ├── src/
 │   │   │   ├── routes/          # Express route files
-│   │   │   │   ├── base-router.js          # Factorized route patterns
-│   │   │   │   ├── stakeholder-category.js # StakeholderCategory routes
-│   │   │   │   ├── regulatory-aspect.js    # RegulatoryAspect routes
-│   │   │   │   ├── data-category.js        # DataCategory routes
-│   │   │   │   └── service.js              # Service routes
+│   │   │   │   ├── simple-item-router.js     # Base router for setup entities
+│   │   │   │   ├── versioned-item-router.js  # Base router for operational entities
+│   │   │   │   ├── stakeholder-category.js   # Setup entity routes (+ data-category, service, regulatory-aspect)
+│   │   │   │   ├── operational-requirement.js # Operational entity routes
+│   │   │   │   └── operational-change.js     # Operational entity routes
 │   │   │   ├── services/        # Business logic layer
-│   │   │   │   ├── BaseService.js              # Core CRUD operations
-│   │   │   │   ├── RefinableEntityService.js   # Hierarchy operations
-│   │   │   │   ├── StakeholderCategoryService.js
-│   │   │   │   ├── RegulatoryAspectService.js
-│   │   │   │   ├── DataCategoryService.js
-│   │   │   │   └── ServiceService.js
+│   │   │   │   ├── SimpleItemService.js      # Base service for setup entities
+│   │   │   │   ├── RefinableItemService.js   # Hierarchy support for setup entities
+│   │   │   │   ├── VersionedItemService.js   # Base service for operational entities
+│   │   │   │   ├── StakeholderCategoryService.js  # Setup entity services (+ DataCategory, Service, RegulatoryAspect)
+│   │   │   │   ├── OperationalRequirementService.js # Operational entity services
+│   │   │   │   └── OperationalChangeService.js     # Operational entity services
 │   │   │   ├── store/           # Data access layer
-│   │   │   │   ├── base-store.js               # Core CRUD operations
-│   │   │   │   ├── refinable-entity-store.js   # Hierarchy operations
-│   │   │   │   ├── stakeholder-category.js     # StakeholderCategory store
-│   │   │   │   ├── regulatory-aspect.js        # RegulatoryAspect store
-│   │   │   │   ├── data-category-store.js      # DataCategory store
-│   │   │   │   ├── service-store.js            # Service store
-│   │   │   │   └── ...
+│   │   │   │   ├── config.json  # Database configuration
+│   │   │   │   └── ...          # Store implementations for all entities
 │   │   │   └── index.js         # Express server
 │   │   └── package.json
 │   ├── shared/
 │   │   ├── src/
-│   │   │   └── index.js        # API models for all entities
+│   │   │   └── index.js        # API models and request structures (setup + operational entities)
 │   │   └── package.json
 │   └── web-client/
 │       ├── src/
@@ -67,7 +58,7 @@ odp/
 - **Package manager**: npm with workspaces
 - **Module system**: ES modules
 - **Development environment**: Docker Compose
-- **API approach**: Manual Express routes with factorized patterns (BaseRouter)
+- **API approach**: Manual Express routes with factorized patterns (SimpleItemRouter)
 
 ### Shared Workspace (@odp/shared)
 - **Purpose**: API exchange models between client and server
@@ -76,11 +67,11 @@ odp/
 - **Pattern**: Base entity models with request/response extensions
 
 ### Server Workspace (@odp/server)
-- **Framework**: Express.js with manual routes using BaseRouter factorization
+- **Framework**: Express.js with manual routes using SimpleItemRouter factorization
 - **Database**: Neo4j with official driver
 - **Development**: Nodemon for auto-reload in Docker container
 - **Architecture**: Routes → Services → Store Layer → Neo4j with factorized base classes
-- **Route organization**: BaseRouter with entity-specific implementations (4 lines per entity)
+- **Route organization**: SimpleItemRouter with entity-specific implementations (4 lines per entity)
 
 ### Web Client Workspace (@odp/web-client)
 - **Approach**: Vanilla JavaScript with specialized libraries (planned)
@@ -145,7 +136,7 @@ StakeholderCategoryStore, RegulatoryAspectStore, DataCategoryStore, ServiceStore
 
 ### Service Layer Architecture
 ```
-BaseService (core CRUD with transactions)
+SimpleItemService (core CRUD with transactions)
     ↓
 RefinableEntityService (hierarchy operations with transactions)
     ↓
@@ -153,8 +144,8 @@ StakeholderCategoryService, RegulatoryAspectService, DataCategoryService, Servic
 ```
 
 ### Route Layer Architecture
-- **BaseRouter**: Factorized all CRUD route patterns
-- **Entity routes**: 4-line implementations using BaseRouter
+- **SimpleItemRouter**: Factorized all CRUD route patterns
+- **Entity routes**: 4-line implementations using SimpleItemRouter
 - **95% code reduction** compared to duplicated routes
 
 ### CLI Layer Architecture
@@ -168,14 +159,14 @@ StakeholderCategoryService, RegulatoryAspectService, DataCategoryService, Servic
 ```
 Routes (HTTP) → Services (Business Logic) → Store (Data Access) → Neo4j
      ↓               ↓                        ↓
-BaseRouter → RefinableEntityService → RefinableEntityStore
+SimpleItemRouter → RefinableEntityService → RefinableEntityStore
 ```
 
 ### Entity Development Pattern (Phase 2 Optimized)
 1. **Shared Models**: Define entity structure in `@odp/shared` (4 lines)
 2. **Store Layer**: Create entity store extending RefinableEntityStore (4 lines)
 3. **Service Layer**: Create service extending RefinableEntityService (4 lines)
-4. **Route Layer**: Create route using BaseRouter (4 lines)
+4. **Route Layer**: Create route using SimpleItemRouter (4 lines)
 5. **CLI Commands**: Create commands using BaseCommands (8 lines)
 6. **Integration**: Update index files (3 lines total)
 
@@ -188,11 +179,11 @@ BaseRouter → RefinableEntityService → RefinableEntityStore
 ✅ Docker Compose development environment  
 ✅ Neo4j database with connection management  
 ✅ Express server with live reload  
-✅ **Factorized architecture**: BaseRouter, BaseCommands, RefinableEntityStore patterns  
+✅ **Factorized architecture**: SimpleItemRouter, BaseCommands, RefinableEntityStore patterns  
 ✅ **Four complete entity implementations**: StakeholderCategory, RegulatoryAspect, DataCategory, Service  
 ✅ **Store layer**: BaseStore → RefinableEntityStore → Entity stores with REFINES hierarchy support  
-✅ **Service layer**: BaseService → RefinableEntityService → Entity services with transaction management  
-✅ **Route layer**: BaseRouter factorization with 95% code reduction  
+✅ **Service layer**: SimpleItemService → RefinableEntityService → Entity services with transaction management  
+✅ **Route layer**: SimpleItemRouter factorization with 95% code reduction  
 ✅ **CLI layer**: BaseCommands factorization with 95% code reduction  
 ✅ **API endpoints**: All CRUD operations for all four setup entities  
 ✅ **CLI commands**: All operations for all four setup entities  
@@ -261,14 +252,14 @@ npm run dev service delete <id>
 ## Key Design Decisions
 
 ### Architecture Simplifications & Improvements
-1. **Manual Express routes**: Direct, readable route definitions with BaseRouter factorization
+1. **Manual Express routes**: Direct, readable route definitions with SimpleItemRouter factorization
 2. **HTTP client integration**: CLI uses direct fetch calls with BaseCommands factorization
 3. **Clean layer separation**: Routes → Services → Store → Database with inheritance hierarchies
 4. **Entity organization**: Factorized base classes enabling rapid entity expansion
 5. **ES modules throughout**: Consistent module system across all components
 
 ### Factorization Achievements (Phase 2)
-1. **95% code reduction**: BaseRouter and BaseCommands eliminate duplication
+1. **95% code reduction**: SimpleItemRouter and BaseCommands eliminate duplication
 2. **Inheritance patterns**: Clean base class hierarchies across all layers
 3. **Rapid entity expansion**: New entities require ~31 lines vs 200+ previously
 4. **Consistent behavior**: All entities follow identical patterns

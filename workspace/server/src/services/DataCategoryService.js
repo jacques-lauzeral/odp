@@ -1,44 +1,44 @@
-import { RefinableEntityService } from './RefinableEntityService.js';
+import { RefinableItemService } from './RefinableItemService.js';
 import { dataCategoryStore } from '../store/index.js';
 
-export class DataCategoryService extends RefinableEntityService {
+export class DataCategoryService extends RefinableItemService {
     constructor() {
         super(dataCategoryStore);
     }
 
-    // Inherits from RefinableEntityService:
-    // - createEntity(data) - with parentId support
-    // - updateEntity(id, data) - with parentId changes
-    // - deleteEntity(id) - with hierarchy validation
-    // - getChildren(parentId)
-    // - getParent(childId)
-    // - getRoots()
-    // - createRefinesRelation(childId, parentId)
-    // - deleteRefinesRelation(childId, parentId)
+    // Inherits from RefinableItemService:
+    // - createEntity(data, userId) - with parentId support
+    // - updateEntity(id, data, userId) - with parentId changes
+    // - deleteEntity(id, userId) - with hierarchy validation
+    // - getChildren(parentId, userId)
+    // - getParent(childId, userId)
+    // - getRoots(userId)
+    // - createRefinesRelation(childId, parentId, userId)
+    // - deleteRefinesRelation(childId, parentId, userId)
     //
-    // Inherits from BaseService:
-    // - listEntities()
-    // - getEntity(id)
+    // Inherits from SimpleItemService:
+    // - listEntities(userId)
+    // - getEntity(id, userId)
 
     // Legacy method names for backward compatibility
-    async listDataCategories() {
-        return this.listEntities();
+    async listDataCategories(userId) {
+        return this.listEntities(userId);
     }
 
-    async getDataCategory(id) {
-        return this.getEntity(id);
+    async getDataCategory(id, userId) {
+        return this.getEntity(id, userId);
     }
 
-    async createDataCategory(data) {
-        return this.createEntity(data);
+    async createDataCategory(data, userId) {
+        return this.createEntity(data, userId);
     }
 
-    async updateDataCategory(id, data) {
-        return this.updateEntity(id, data);
+    async updateDataCategory(id, data, userId) {
+        return this.updateEntity(id, data, userId);
     }
 
-    async deleteDataCategory(id) {
-        return this.deleteEntity(id);
+    async deleteDataCategory(id, userId) {
+        return this.deleteEntity(id, userId);
     }
 
     // Add any DataCategory-specific methods here if needed in the future

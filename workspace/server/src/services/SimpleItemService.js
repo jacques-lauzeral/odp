@@ -5,10 +5,10 @@ import {
 } from '../store/index.js';
 
 /**
- * BaseService provides common CRUD operations with transaction management.
+ * SimpleItemService provides common CRUD operations with transaction management and user context.
  * Abstract base class for all entity services.
  */
-export class BaseService {
+export class SimpleItemService {
     constructor(storeGetter) {
         this.storeGetter = storeGetter;
     }
@@ -23,8 +23,8 @@ export class BaseService {
     /**
      * List all entities
      */
-    async listEntities() {
-        const tx = createTransaction();
+    async listEntities(userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const entities = await store.findAll(tx);
@@ -39,8 +39,8 @@ export class BaseService {
     /**
      * Get entity by ID
      */
-    async getEntity(id) {
-        const tx = createTransaction();
+    async getEntity(id, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const entity = await store.findById(id, tx);
@@ -55,8 +55,8 @@ export class BaseService {
     /**
      * Create new entity
      */
-    async createEntity(data) {
-        const tx = createTransaction();
+    async createEntity(data, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const entity = await store.create(data, tx);
@@ -71,8 +71,8 @@ export class BaseService {
     /**
      * Update entity by ID
      */
-    async updateEntity(id, data) {
-        const tx = createTransaction();
+    async updateEntity(id, data, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const updatedEntity = await store.update(id, {
@@ -96,8 +96,8 @@ export class BaseService {
     /**
      * Delete entity by ID
      */
-    async deleteEntity(id) {
-        const tx = createTransaction();
+    async deleteEntity(id, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const deleted = await store.delete(id, tx);

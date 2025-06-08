@@ -1,8 +1,8 @@
-import { BaseRouter } from './base-router.js';
+import { SimpleItemRouter } from './simple-item-router.js';
 import StakeholderCategoryService from '../services/StakeholderCategoryService.js';
 
-// Create router using BaseRouter with backward-compatible service methods
-const baseRouter = new BaseRouter(StakeholderCategoryService, 'stakeholder-category', 'Category');
-const router = baseRouter.getRouter();
+// Create router using SimpleItemRouter
+const simpleRouter = new SimpleItemRouter(StakeholderCategoryService, 'stakeholder-category', 'Stakeholder Category');
+const router = simpleRouter.getRouter();
 
 export default router;

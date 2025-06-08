@@ -1,8 +1,8 @@
-import { BaseRouter } from './base-router.js';
+import { SimpleItemRouter } from './simple-item-router.js';
 import ServiceService from '../services/ServiceService.js';
 
-// Create router using BaseRouter
-const baseRouter = new BaseRouter(ServiceService, 'service', 'Service');
-const router = baseRouter.getRouter();
+// Create router using SimpleItemRouter
+const simpleRouter = new SimpleItemRouter(ServiceService, 'service', 'Service');
+const router = simpleRouter.getRouter();
 
 export default router;

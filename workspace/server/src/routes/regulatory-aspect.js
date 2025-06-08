@@ -1,8 +1,8 @@
-import { BaseRouter } from './base-router.js';
+import { SimpleItemRouter } from './simple-item-router.js';
 import RegulatoryAspectService from '../services/RegulatoryAspectService.js';
 
-// Create router using BaseRouter
-const baseRouter = new BaseRouter(RegulatoryAspectService, 'regulatory-aspect', 'Regulatory Aspect');
-const router = baseRouter.getRouter();
+// Create router using SimpleItemRouter
+const simpleRouter = new SimpleItemRouter(RegulatoryAspectService, 'regulatory-aspect', 'Regulatory Aspect');
+const router = simpleRouter.getRouter();
 
 export default router;

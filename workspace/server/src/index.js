@@ -4,6 +4,8 @@ import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
 import regulatoryAspectRoutes from './routes/regulatory-aspect.js';
 import dataCategoryRoutes from './routes/data-category.js';
 import serviceRoutes from './routes/service.js';
+import operationalRequirementRoutes from './routes/operational-requirement.js';
+import operationalChangeRoutes from './routes/operational-change.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -17,11 +19,15 @@ app.get('/hello', (req, res) => {
     res.json({ status: 'ok', message: 'ODP Server running', timestamp: new Date().toISOString() });
 });
 
-// API Routes
+// Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
 app.use('/regulatory-aspects', regulatoryAspectRoutes);
 app.use('/data-categories', dataCategoryRoutes);
 app.use('/services', serviceRoutes);
+
+// Operational Entity API Routes
+app.use('/operational-requirements', operationalRequirementRoutes);
+app.use('/operational-changes', operationalChangeRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
@@ -53,10 +59,14 @@ async function startServer() {
             console.log(`ODP Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/hello`);
             console.log(`API endpoints:`);
+            console.log(`Setup Entities:`);
             console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
             console.log(`  - http://localhost:${PORT}/regulatory-aspects`);
             console.log(`  - http://localhost:${PORT}/data-categories`);
             console.log(`  - http://localhost:${PORT}/services`);
+            console.log(`Operational Entities:`);
+            console.log(`  - http://localhost:${PORT}/operational-requirements`);
+            console.log(`  - http://localhost:${PORT}/operational-changes`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

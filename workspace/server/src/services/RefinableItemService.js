@@ -1,4 +1,4 @@
-import { BaseService } from './BaseService.js';
+import { SimpleItemService } from './SimpleItemService.js';
 import {
     createTransaction,
     commitTransaction,
@@ -6,10 +6,10 @@ import {
 } from '../store/index.js';
 
 /**
- * RefinableEntityService extends BaseService with REFINES hierarchy management.
+ * RefinableItemService extends SimpleItemService with REFINES hierarchy management.
  * Provides hierarchy operations for entities that support tree structures.
  */
-export class RefinableEntityService extends BaseService {
+export class RefinableItemService extends SimpleItemService {
     constructor(storeGetter) {
         super(storeGetter);
     }
@@ -17,10 +17,10 @@ export class RefinableEntityService extends BaseService {
     /**
      * Create new entity with optional parent relationship
      */
-    async createEntity(data) {
-        const tx = createTransaction();
+    async createEntity(data, userId) {
+        const tx = createTransaction(userId);
         try {
-            console.log('RefinableEntityService.createEntity() parentId:', data.parentId);
+            console.log('RefinableItemService.createEntity() parentId:', data.parentId);
             const store = this.getStore();
             const entity = await store.create(data, tx);
 
@@ -40,10 +40,10 @@ export class RefinableEntityService extends BaseService {
     /**
      * Update entity with optional parent relationship changes
      */
-    async updateEntity(id, data) {
-        const tx = createTransaction();
+    async updateEntity(id, data, userId) {
+        const tx = createTransaction(userId);
         try {
-            console.log('RefinableEntityService.createEntity() id:', id, ', parentId:', data.parentId);
+            console.log('RefinableItemService.updateEntity() id:', id, ', parentId:', data.parentId);
             const store = this.getStore();
 
             // Update the basic properties
@@ -82,8 +82,8 @@ export class RefinableEntityService extends BaseService {
     /**
      * Delete entity with hierarchy validation
      */
-    async deleteEntity(id) {
-        const tx = createTransaction();
+    async deleteEntity(id, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
 
@@ -113,8 +113,8 @@ export class RefinableEntityService extends BaseService {
     /**
      * Get direct children of an entity
      */
-    async getChildren(parentId) {
-        const tx = createTransaction();
+    async getChildren(parentId, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const children = await store.findChildren(parentId, tx);
@@ -129,8 +129,8 @@ export class RefinableEntityService extends BaseService {
     /**
      * Get parent of an entity
      */
-    async getParent(childId) {
-        const tx = createTransaction();
+    async getParent(childId, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const parent = await store.findParent(childId, tx);
@@ -145,8 +145,8 @@ export class RefinableEntityService extends BaseService {
     /**
      * Get all root entities (no parent)
      */
-    async getRoots() {
-        const tx = createTransaction();
+    async getRoots(userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const roots = await store.findRoots(tx);
@@ -161,8 +161,8 @@ export class RefinableEntityService extends BaseService {
     /**
      * Create REFINES relationship between entities
      */
-    async createRefinesRelation(childId, parentId) {
-        const tx = createTransaction();
+    async createRefinesRelation(childId, parentId, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const success = await store.createRefinesRelation(childId, parentId, tx);
@@ -177,8 +177,8 @@ export class RefinableEntityService extends BaseService {
     /**
      * Delete REFINES relationship between entities
      */
-    async deleteRefinesRelation(childId, parentId) {
-        const tx = createTransaction();
+    async deleteRefinesRelation(childId, parentId, userId) {
+        const tx = createTransaction(userId);
         try {
             const store = this.getStore();
             const success = await store.deleteRefinesRelation(childId, parentId, tx);
