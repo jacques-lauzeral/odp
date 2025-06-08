@@ -7,11 +7,32 @@ export class VersionedItemStore extends BaseStore {
         this.versionLabel = versionLabel;
     }
 
+    // Abstract methods that concrete stores must implement
+
+    async _extractRelationshipIdsFromInput(data) {
+        throw new Error('_extractRelationshipIdsFromInput must be implemented by concrete store');
+    }
+
+    async _buildRelationshipReferences(versionId, transaction) {
+        throw new Error('_buildRelationshipReferences must be implemented by concrete store');
+    }
+
+    async _extractRelationshipIdsFromVersion(versionId, transaction) {
+        throw new Error('_extractRelationshipIdsFromVersion must be implemented by concrete store');
+    }
+
+    async _createRelationshipsFromIds(versionId, relationshipIds, transaction) {
+        throw new Error('_createRelationshipsFromIds must be implemented by concrete store');
+    }
+
     async create(data, transaction) {
         try {
             const { title, ...versionData } = data;
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
+
+            // Extract relationships from version data
+            const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
 
             // Create Item node
             const itemResult = await transaction.run(`
@@ -33,13 +54,13 @@ export class VersionedItemStore extends BaseStore {
           createdAt: $createdAt,
           createdBy: $createdBy
         })
-        SET version += $versionData
+        SET version += $contentData
         RETURN id(version) as versionId
-      `, { createdAt, createdBy, versionData });
+      `, { createdAt, createdBy, contentData });
 
             const versionId = versionResult.records[0].get('versionId').toNumber();
 
-            // Create relationships
+            // Create Item-Version relationships
             await transaction.run(`
         MATCH (item:${this.nodeLabel}), (version:${this.versionLabel})
         WHERE id(item) = $itemId AND id(version) = $versionId
@@ -47,15 +68,12 @@ export class VersionedItemStore extends BaseStore {
         CREATE (item)-[:LATEST_VERSION]->(version)
       `, { itemId, versionId });
 
-            return {
-                itemId,
-                title,
-                versionId,
-                version: 1,
-                createdAt,
-                createdBy,
-                ...versionData
-            };
+            // Create item relationships from ID arrays
+            await this._createRelationshipsFromIds(versionId, relationshipIds, transaction);
+
+            // Get complete item with relationships as Reference objects
+            const completeItem = await this.findById(itemId, transaction);
+            return completeItem;
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to create ${this.nodeLabel}: ${error.message}`, error);
@@ -67,6 +85,9 @@ export class VersionedItemStore extends BaseStore {
             const { title, ...versionData } = data;
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
+
+            // Extract relationships from input data
+            const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
 
             // Get current latest version info and validate expectedVersionId
             const currentResult = await transaction.run(`
@@ -99,20 +120,20 @@ export class VersionedItemStore extends BaseStore {
         `, { itemId, title });
             }
 
-            // Create new ItemVersion
+            // Create new ItemVersion (starts with no relationships)
             const versionResult = await transaction.run(`
         CREATE (version:${this.versionLabel} {
           version: $newVersion,
           createdAt: $createdAt,
           createdBy: $createdBy
         })
-        SET version += $versionData
+        SET version += $contentData
         RETURN id(version) as versionId
-      `, { newVersion, createdAt, createdBy, versionData });
+      `, { newVersion, createdAt, createdBy, contentData });
 
             const versionId = versionResult.records[0].get('versionId').toNumber();
 
-            // Update relationships
+            // Update Item-Version relationships
             await transaction.run(`
         MATCH (item:${this.nodeLabel})
         WHERE id(item) = $itemId
@@ -131,15 +152,22 @@ export class VersionedItemStore extends BaseStore {
         SET item.latest_version = $newVersion
       `, { itemId, versionId, newVersion });
 
-            return {
-                itemId,
-                title: title || currentTitle,
-                versionId,
-                version: newVersion,
-                createdAt,
-                createdBy,
-                ...versionData
-            };
+            // Determine final relationships (inheritance + override logic)
+            let finalRelationshipIds;
+            if (this._hasAnyRelationshipIds(relationshipIds)) {
+                // Use provided relationships (override)
+                finalRelationshipIds = relationshipIds;
+            } else {
+                // Inherit relationships from previous version
+                finalRelationshipIds = await this._extractRelationshipIdsFromVersion(expectedVersionId, transaction);
+            }
+
+            // Create relationships for new version (new version starts with no relationships)
+            await this._createRelationshipsFromIds(versionId, finalRelationshipIds, transaction);
+
+            // Get complete item with relationships as Reference objects
+            const completeItem = await this.findById(itemId, transaction);
+            return completeItem;
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to update ${this.nodeLabel}: ${error.message}`, error);
@@ -169,7 +197,7 @@ export class VersionedItemStore extends BaseStore {
             delete versionData.createdAt;
             delete versionData.createdBy;
 
-            return {
+            const baseItem = {
                 itemId: record.get('itemId').toNumber(),
                 title: record.get('title'),
                 versionId: record.get('versionId').toNumber(),
@@ -178,6 +206,11 @@ export class VersionedItemStore extends BaseStore {
                 createdBy: record.get('createdBy'),
                 ...versionData
             };
+
+            // Get relationships as Reference objects
+            const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
+
+            return { ...baseItem, ...relationshipReferences };
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
         }
@@ -206,7 +239,7 @@ export class VersionedItemStore extends BaseStore {
             delete versionData.createdAt;
             delete versionData.createdBy;
 
-            return {
+            const baseItem = {
                 itemId: record.get('itemId').toNumber(),
                 title: record.get('title'),
                 versionId: record.get('versionId').toNumber(),
@@ -215,6 +248,11 @@ export class VersionedItemStore extends BaseStore {
                 createdBy: record.get('createdBy'),
                 ...versionData
             };
+
+            // Get relationships as Reference objects for this specific version
+            const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
+
+            return { ...baseItem, ...relationshipReferences };
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID and version: ${error.message}`, error);
         }
@@ -252,7 +290,7 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    // Override findAll to return latest versions
+    // Override findAll to return latest versions with relationships as Reference objects
     async findAll(transaction) {
         try {
             const result = await transaction.run(`
@@ -264,7 +302,8 @@ export class VersionedItemStore extends BaseStore {
         ORDER BY item.title
       `);
 
-            return result.records.map(record => {
+            const items = [];
+            for (const record of result.records) {
                 const versionData = record.get('versionData');
 
                 // Remove internal properties from version data
@@ -272,7 +311,7 @@ export class VersionedItemStore extends BaseStore {
                 delete versionData.createdAt;
                 delete versionData.createdBy;
 
-                return {
+                const baseItem = {
                     itemId: record.get('itemId').toNumber(),
                     title: record.get('title'),
                     versionId: record.get('versionId').toNumber(),
@@ -281,9 +320,65 @@ export class VersionedItemStore extends BaseStore {
                     createdBy: record.get('createdBy'),
                     ...versionData
                 };
-            });
+
+                // Get relationships as Reference objects
+                const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
+                items.push({ ...baseItem, ...relationshipReferences });
+            }
+
+            return items;
         } catch (error) {
             throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
+        }
+    }
+
+    // Helper methods for concrete stores to use
+
+    // Check if any relationship IDs are provided
+    _hasAnyRelationshipIds(relationshipIds) {
+        if (!relationshipIds || typeof relationshipIds !== 'object') return false;
+        return Object.keys(relationshipIds).some(key => {
+            const value = relationshipIds[key];
+            return Array.isArray(value) ? value.length > 0 : value != null;
+        });
+    }
+
+    // Helper to build Reference objects from Neo4j results
+    _buildReference(record, titleField = 'title') {
+        const ref = {
+            id: record.get('id').toNumber(),
+            title: record.get(titleField)
+        };
+
+        // Add additional fields if present
+        const additionalFields = ['type', 'name', 'year', 'quarter', 'date'];
+        additionalFields.forEach(field => {
+            try {
+                const value = record.get(field);
+                if (value !== null && value !== undefined) {
+                    ref[field] = value;
+                }
+            } catch (e) {
+                // Field not present in result - ignore
+            }
+        });
+
+        return ref;
+    }
+
+    // Helper to validate referenced items exist
+    async _validateReferences(label, ids, transaction) {
+        if (!Array.isArray(ids) || ids.length === 0) return;
+
+        const result = await transaction.run(`
+            MATCH (item:${label}) 
+            WHERE id(item) IN $ids
+            RETURN count(item) as found
+        `, { ids });
+
+        const found = result.records[0].get('found').toNumber();
+        if (found !== ids.length) {
+            throw new StoreError(`One or more ${label} items do not exist`);
         }
     }
 }

@@ -2,8 +2,8 @@ import { VersionedItemStore } from './versioned-item-store.js';
 import { StoreError } from './transaction.js';
 
 /**
- * Store for OperationalRequirement entities with versioning and relationship management
- * Handles REFINES (to other OperationalRequirements) and IMPACTS (to setup entities) relationships
+ * Store for OperationalRequirement items with versioning and relationship management
+ * Handles REFINES (to other OperationalRequirements) and IMPACTS (to setup items) relationships
  */
 export class OperationalRequirementStore extends VersionedItemStore {
     constructor(driver) {
@@ -11,199 +11,112 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Create a new OperationalRequirement with initial version and relationships
-     * @param {object} data - Complete requirement data
-     * @param {string} data.title - Requirement title (goes to Item)
-     * @param {string} data.type - 'ON' | 'OR'
-     * @param {string} data.statement - Rich text statement
-     * @param {string} data.rationale - Rich text rationale
-     * @param {string} data.references - Rich text references
-     * @param {string} data.risksAndOpportunities - Rich text risks
-     * @param {string} data.flows - Rich text flows
-     * @param {string} data.flowExamples - Rich text flow examples
-     * @param {Array<number>} [data.refinesParents=[]] - Parent requirement Item IDs
-     * @param {Array<number>} [data.impactsStakeholderCategories=[]] - StakeholderCategory IDs
-     * @param {Array<number>} [data.impactsData=[]] - Data IDs
-     * @param {Array<number>} [data.impactsServices=[]] - Service IDs
-     * @param {Array<number>} [data.impactsRegulatoryAspects=[]] - RegulatoryAspect IDs
-     * @param {Transaction} transaction - Transaction instance with user context
-     * @returns {Promise<object>} Created requirement with complete data
+     * Extract relationship ID arrays from input data
+     * @private
+     * @param {object} data - Input data
+     * @returns {object} - {relationshipIds, ...contentData}
      */
-    async create(data, transaction) {
-        try {
-            // Extract relationships from data
-            const {
-                refinesParents = [],
-                impactsStakeholderCategories = [],
-                impactsData = [],
-                impactsServices = [],
-                impactsRegulatoryAspects = [],
-                ...itemAndVersionData
-            } = data;
+    async _extractRelationshipIdsFromInput(data) {
+        const {
+            refinesParents,
+            impactsStakeholderCategories,
+            impactsData,
+            impactsServices,
+            impactsRegulatoryAspects,
+            ...contentData
+        } = data;
 
-            // Create Item and first ItemVersion using parent class
-            const requirement = await super.create(itemAndVersionData, transaction);
-
-            // Create initial relationships
-            await this._createRelationships(requirement.versionId, {
-                refinesParents,
-                impactsStakeholderCategories,
-                impactsData,
-                impactsServices,
-                impactsRegulatoryAspects
-            }, transaction);
-
-            // Return complete requirement with relationships
-            return {
-                ...requirement,
-                refinesParents,
-                impactsStakeholderCategories,
-                impactsData,
-                impactsServices,
-                impactsRegulatoryAspects
-            };
-        } catch (error) {
-            if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to create OperationalRequirement: ${error.message}`, error);
-        }
+        return {
+            relationshipIds: {
+                refinesParents: refinesParents || [],
+                impactsStakeholderCategories: impactsStakeholderCategories || [],
+                impactsData: impactsData || [],
+                impactsServices: impactsServices || [],
+                impactsRegulatoryAspects: impactsRegulatoryAspects || []
+            },
+            ...contentData
+        };
     }
 
     /**
-     * Update OperationalRequirement - creates new version with relationship inheritance
-     * @param {number} itemId - Item node ID
-     * @param {object} data - Complete requirement data (content + relationships)
-     * @param {number} expectedVersionId - Current version ID for optimistic locking
-     * @param {Transaction} transaction - Transaction instance with user context
-     * @returns {Promise<object>} Updated requirement with complete data
-     */
-    async update(itemId, data, expectedVersionId, transaction) {
-        try {
-            // Extract relationships from data
-            const {
-                refinesParents = [],
-                impactsStakeholderCategories = [],
-                impactsData = [],
-                impactsServices = [],
-                impactsRegulatoryAspects = [],
-                ...itemAndVersionData
-            } = data;
-
-            // Get current relationships before update (for inheritance)
-            const currentRelationships = await this._getCurrentRelationships(expectedVersionId, transaction);
-
-            // Create new Item version using parent class
-            const requirement = await super.update(itemId, itemAndVersionData, expectedVersionId, transaction);
-
-            // Use provided relationships or inherit from previous version
-            const newRelationships = {
-                refinesParents: refinesParents.length > 0 ? refinesParents : currentRelationships.refinesParents,
-                impactsStakeholderCategories: impactsStakeholderCategories.length > 0 ? impactsStakeholderCategories : currentRelationships.impactsStakeholderCategories,
-                impactsData: impactsData.length > 0 ? impactsData : currentRelationships.impactsData,
-                impactsServices: impactsServices.length > 0 ? impactsServices : currentRelationships.impactsServices,
-                impactsRegulatoryAspects: impactsRegulatoryAspects.length > 0 ? impactsRegulatoryAspects : currentRelationships.impactsRegulatoryAspects
-            };
-
-            // Create relationships for new version
-            await this._createRelationships(requirement.versionId, newRelationships, transaction);
-
-            // Return complete requirement with relationships
-            return {
-                ...requirement,
-                ...newRelationships
-            };
-        } catch (error) {
-            if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to update OperationalRequirement: ${error.message}`, error);
-        }
-    }
-
-    /**
-     * Find OperationalRequirement by Item ID (returns latest version with relationships)
-     * @param {number} itemId - Item node ID
-     * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<object|null>} Requirement with relationships or null if not found
-     */
-    async findById(itemId, transaction) {
-        try {
-            // Get basic requirement data using parent class
-            const requirement = await super.findById(itemId, transaction);
-            if (!requirement) {
-                return null;
-            }
-
-            // Get current relationships
-            const relationships = await this._getCurrentRelationships(requirement.versionId, transaction);
-
-            return {
-                ...requirement,
-                ...relationships
-            };
-        } catch (error) {
-            throw new StoreError(`Failed to find OperationalRequirement: ${error.message}`, error);
-        }
-    }
-
-    /**
-     * Find specific version of OperationalRequirement with its relationships
-     * @param {number} itemId - Item node ID
-     * @param {number} versionNumber - Specific version number
-     * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<object|null>} Requirement version with relationships or null if not found
-     */
-    async findByIdAndVersion(itemId, versionNumber, transaction) {
-        try {
-            // Get basic requirement data using parent class
-            const requirement = await super.findByIdAndVersion(itemId, versionNumber, transaction);
-            if (!requirement) {
-                return null;
-            }
-
-            // Get relationships for this specific version
-            const relationships = await this._getCurrentRelationships(requirement.versionId, transaction);
-
-            return {
-                ...requirement,
-                ...relationships
-            };
-        } catch (error) {
-            throw new StoreError(`Failed to find OperationalRequirement by version: ${error.message}`, error);
-        }
-    }
-
-    /**
-     * Find all OperationalRequirements (latest versions with relationships)
-     * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<Array<object>>} Array of requirements with relationships
-     */
-    async findAll(transaction) {
-        try {
-            // Get basic requirements data using parent class
-            const requirements = await super.findAll(transaction);
-
-            // Get relationships for each requirement
-            const requirementsWithRelationships = [];
-            for (const requirement of requirements) {
-                const relationships = await this._getCurrentRelationships(requirement.versionId, transaction);
-                requirementsWithRelationships.push({
-                    ...requirement,
-                    ...relationships
-                });
-            }
-
-            return requirementsWithRelationships;
-        } catch (error) {
-            throw new StoreError(`Failed to find all OperationalRequirements: ${error.message}`, error);
-        }
-    }
-
-    /**
-     * Get current relationships for a specific version
+     * Build relationship Reference objects for display from version relationships
      * @private
      * @param {number} versionId - ItemVersion node ID
      * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<object>} Current relationships
+     * @returns {Promise<object>} Relationships with Reference objects
      */
-    async _getCurrentRelationships(versionId, transaction) {
+    async _buildRelationshipReferences(versionId, transaction) {
+        try {
+            // Get REFINES relationships (to OperationalRequirement Items)
+            const refinesResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:REFINES]->(parent:OperationalRequirement)-[:LATEST_VERSION]->(parentVersion:OperationalRequirementVersion)
+                WHERE id(version) = $versionId
+                RETURN id(parent) as id, parent.title as title, parentVersion.type as type
+                ORDER BY parent.title
+            `, { versionId });
+
+            const refinesParents = refinesResult.records.map(record => this._buildReference(record));
+
+            // Get IMPACTS relationships to StakeholderCategory
+            const stakeholderResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:StakeholderCategory)
+                WHERE id(version) = $versionId
+                RETURN id(target) as id, target.name as title
+                ORDER BY target.name
+            `, { versionId });
+
+            const impactsStakeholderCategories = stakeholderResult.records.map(record => this._buildReference(record));
+
+            // Get IMPACTS relationships to Data
+            const dataResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:Data)
+                WHERE id(version) = $versionId
+                RETURN id(target) as id, target.name as title
+                ORDER BY target.name
+            `, { versionId });
+
+            const impactsData = dataResult.records.map(record => this._buildReference(record));
+
+            // Get IMPACTS relationships to Service
+            const serviceResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:Service)
+                WHERE id(version) = $versionId
+                RETURN id(target) as id, target.name as title
+                ORDER BY target.name
+            `, { versionId });
+
+            const impactsServices = serviceResult.records.map(record => this._buildReference(record));
+
+            // Get IMPACTS relationships to RegulatoryAspect
+            const regulatoryResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:RegulatoryAspect)
+                WHERE id(version) = $versionId
+                RETURN id(target) as id, target.name as title
+                ORDER BY target.name
+            `, { versionId });
+
+            const impactsRegulatoryAspects = regulatoryResult.records.map(record => this._buildReference(record));
+
+            return {
+                refinesParents,
+                impactsStakeholderCategories,
+                impactsData,
+                impactsServices,
+                impactsRegulatoryAspects
+            };
+        } catch (error) {
+            throw new StoreError(`Failed to build relationship references: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Extract relationship ID arrays from existing version for inheritance
+     * @private
+     * @param {number} versionId - ItemVersion node ID
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<object>} Current relationships as ID arrays
+     */
+    async _extractRelationshipIdsFromVersion(versionId, transaction) {
         try {
             const result = await transaction.run(`
                 MATCH (version:${this.versionLabel})
@@ -251,26 +164,26 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => id.toNumber())
             };
         } catch (error) {
-            throw new StoreError(`Failed to get current relationships: ${error.message}`, error);
+            throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
         }
     }
 
     /**
-     * Create relationships for a version
+     * Create fresh relationships for a version from ID arrays
      * @private
      * @param {number} versionId - ItemVersion node ID
-     * @param {object} relationships - Relationship data
+     * @param {object} relationshipIds - Relationship data with ID arrays
      * @param {Transaction} transaction - Transaction instance
      */
-    async _createRelationships(versionId, relationships, transaction) {
+    async _createRelationshipsFromIds(versionId, relationshipIds, transaction) {
         try {
             const {
-                refinesParents,
-                impactsStakeholderCategories,
-                impactsData,
-                impactsServices,
-                impactsRegulatoryAspects
-            } = relationships;
+                refinesParents = [],
+                impactsStakeholderCategories = [],
+                impactsData = [],
+                impactsServices = [],
+                impactsRegulatoryAspects = []
+            } = relationshipIds;
 
             // Validate that version exists and get its parent item for self-reference checks
             const versionCheck = await transaction.run(`
@@ -293,16 +206,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }
 
                 // Validate all parent items exist
-                const parentCheck = await transaction.run(`
-                    MATCH (parent:OperationalRequirement)
-                    WHERE id(parent) IN $parentIds
-                    RETURN count(parent) as foundCount
-                `, { parentIds: refinesParents });
-
-                const foundCount = parentCheck.records[0].get('foundCount').toNumber();
-                if (foundCount !== refinesParents.length) {
-                    throw new StoreError('One or more parent requirements do not exist');
-                }
+                await this._validateReferences('OperationalRequirement', refinesParents, transaction);
 
                 // Create REFINES relationships
                 await transaction.run(`
@@ -317,40 +221,31 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             // Create IMPACTS relationships
-            await this._createImpactsRelationships(versionId, 'StakeholderCategory', impactsStakeholderCategories, transaction);
-            await this._createImpactsRelationships(versionId, 'Data', impactsData, transaction);
-            await this._createImpactsRelationships(versionId, 'Service', impactsServices, transaction);
-            await this._createImpactsRelationships(versionId, 'RegulatoryAspect', impactsRegulatoryAspects, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'StakeholderCategory', impactsStakeholderCategories, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'Data', impactsData, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'Service', impactsServices, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'RegulatoryAspect', impactsRegulatoryAspects, transaction);
 
         } catch (error) {
             if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to create relationships: ${error.message}`, error);
+            throw new StoreError(`Failed to create relationships from IDs: ${error.message}`, error);
         }
     }
 
     /**
-     * Create IMPACTS relationships to a specific entity type
+     * Create IMPACTS relationships to a specific item type from ID arrays
      * @private
      * @param {number} versionId - ItemVersion node ID
-     * @param {string} targetLabel - Target entity label
-     * @param {Array<number>} targetIds - Target entity IDs
+     * @param {string} targetLabel - Target item label
+     * @param {Array<number>} targetIds - Target item IDs
      * @param {Transaction} transaction - Transaction instance
      */
-    async _createImpactsRelationships(versionId, targetLabel, targetIds, transaction) {
+    async _createImpactsRelationshipsFromIds(versionId, targetLabel, targetIds, transaction) {
         if (targetIds.length === 0) return;
 
         try {
-            // Validate all target entities exist
-            const targetCheck = await transaction.run(`
-                MATCH (target:${targetLabel})
-                WHERE id(target) IN $targetIds
-                RETURN count(target) as foundCount
-            `, { targetIds });
-
-            const foundCount = targetCheck.records[0].get('foundCount').toNumber();
-            if (foundCount !== targetIds.length) {
-                throw new StoreError(`One or more ${targetLabel} entities do not exist`);
-            }
+            // Validate all target items exist
+            await this._validateReferences(targetLabel, targetIds, transaction);
 
             // Create IMPACTS relationships
             await transaction.run(`
@@ -368,11 +263,13 @@ export class OperationalRequirementStore extends VersionedItemStore {
         }
     }
 
+    // Additional query methods
+
     /**
-     * Find requirements that are parents of the given requirement (inverse REFINES)
-     * @param {number} itemId - Child requirement Item ID
+     * Find requirements that are children of the given requirement (inverse REFINES)
+     * @param {number} itemId - Parent requirement Item ID
      * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<Array<object>>} Parent requirements
+     * @returns {Promise<Array<object>>} Child requirements with Reference structure
      */
     async findChildren(itemId, transaction) {
         try {
@@ -381,25 +278,22 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
                 MATCH (child)-[:LATEST_VERSION]->(childVersion)
                 WHERE id(parent) = $itemId
-                RETURN id(child) as itemId, child.title as title
+                RETURN id(child) as id, child.title as title, childVersion.type as type
                 ORDER BY child.title
             `, { itemId });
 
-            return result.records.map(record => ({
-                id: record.get('itemId').toNumber(),
-                title: record.get('title')
-            }));
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find children requirements: ${error.message}`, error);
         }
     }
 
     /**
-     * Find requirements that impact a specific entity
-     * @param {string} targetLabel - Target entity label ('StakeholderCategory', 'Data', 'Service', 'RegulatoryAspect')
-     * @param {number} targetId - Target entity ID
+     * Find requirements that impact a specific item
+     * @param {string} targetLabel - Target item label ('StakeholderCategory', 'Data', 'Service', 'RegulatoryAspect')
+     * @param {number} targetId - Target item ID
      * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<Array<object>>} Requirements that impact the target
+     * @returns {Promise<Array<object>>} Requirements that impact the target with Reference structure
      */
     async findRequirementsThatImpact(targetLabel, targetId, transaction) {
         try {
@@ -408,16 +302,56 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
                 MATCH (item)-[:LATEST_VERSION]->(version)
                 WHERE id(target) = $targetId
-                RETURN id(item) as itemId, item.title as title
+                RETURN id(item) as id, item.title as title, version.type as type
                 ORDER BY item.title
             `, { targetId });
 
-            return result.records.map(record => ({
-                id: record.get('itemId').toNumber(),
-                title: record.get('title')
-            }));
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find requirements that impact ${targetLabel}: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find parent requirements for a specific requirement
+     * @param {number} itemId - Child requirement Item ID
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<Array<object>>} Parent requirements with Reference structure
+     */
+    async findParents(itemId, transaction) {
+        try {
+            const result = await transaction.run(`
+                MATCH (child:OperationalRequirement)-[:LATEST_VERSION]->(childVersion:OperationalRequirementVersion)
+                MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
+                MATCH (parent)-[:LATEST_VERSION]->(parentVersion:OperationalRequirementVersion)
+                WHERE id(child) = $itemId
+                RETURN id(parent) as id, parent.title as title, parentVersion.type as type
+                ORDER BY parent.title
+            `, { itemId });
+
+            return result.records.map(record => this._buildReference(record));
+        } catch (error) {
+            throw new StoreError(`Failed to find parent requirements: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find all root requirements (no parents)
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<Array<object>>} Root requirements with Reference structure
+     */
+    async findRoots(transaction) {
+        try {
+            const result = await transaction.run(`
+                MATCH (item:OperationalRequirement)-[:LATEST_VERSION]->(version:OperationalRequirementVersion)
+                WHERE NOT EXISTS((version)-[:REFINES]->(:OperationalRequirement))
+                RETURN id(item) as id, item.title as title, version.type as type
+                ORDER BY item.title
+            `);
+
+            return result.records.map(record => this._buildReference(record));
+        } catch (error) {
+            throw new StoreError(`Failed to find root requirements: ${error.message}`, error);
         }
     }
 }
