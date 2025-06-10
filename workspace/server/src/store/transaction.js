@@ -21,9 +21,10 @@ export class TransactionError extends StoreError {
  * Transaction wrapper that encapsulates Neo4j transaction and session
  */
 class Transaction {
-    constructor(neo4jTransaction, session) {
+    constructor(neo4jTransaction, session, userId) {
         this.neo4jTransaction = neo4jTransaction;
         this.session = session;
+        this.userId = userId;
         this.isComplete = false;
     }
 
@@ -92,19 +93,23 @@ class Transaction {
             console.error('Failed to close session:', error.message);
         }
     }
+
+    getUserId() {
+        return this.userId;
+    }
 }
 
 /**
  * Create a new transaction
  * @returns {Transaction} Transaction wrapper instance
  */
-export function createTransaction() {
+export function createTransaction(userId) {
     try {
         const driver = getDriver();
         const session = driver.session();
         const neo4jTransaction = session.beginTransaction();
 
-        return new Transaction(neo4jTransaction, session);
+        return new Transaction(neo4jTransaction, session, userId);
     } catch (error) {
         throw new TransactionError(`Failed to create transaction: ${error.message}`, error);
     }

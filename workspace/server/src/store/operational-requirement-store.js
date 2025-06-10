@@ -157,11 +157,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const record = result.records[0];
             return {
-                refinesParents: record.get('refinesParents').map(id => id.toNumber()),
-                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => id.toNumber()),
-                impactsData: record.get('impactsData').map(id => id.toNumber()),
-                impactsServices: record.get('impactsServices').map(id => id.toNumber()),
-                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => id.toNumber())
+                refinesParents: record.get('refinesParents').map(id => this._normalizeId(id)),
+                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => this._normalizeId(id)),
+                impactsData: record.get('impactsData').map(id => this._normalizeId(id)),
+                impactsServices: record.get('impactsServices').map(id => this._normalizeId(id)),
+                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => this._normalizeId(id))
             };
         } catch (error) {
             throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
@@ -196,17 +196,20 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 throw new StoreError('Version not found');
             }
 
-            const itemId = versionCheck.records[0].get('itemId').toNumber();
+            const itemId = this._normalizeId(versionCheck.records[0].get('itemId'));
 
             // Create REFINES relationships
             if (refinesParents.length > 0) {
+                // Normalize parent IDs
+                const normalizedParentIds = refinesParents.map(id => this._normalizeId(id));
+
                 // Validate no self-references
-                if (refinesParents.includes(itemId)) {
+                if (normalizedParentIds.includes(itemId)) {
                     throw new StoreError('Cannot create self-referencing REFINES relationship');
                 }
 
                 // Validate all parent items exist
-                await this._validateReferences('OperationalRequirement', refinesParents, transaction);
+                await this._validateReferences('OperationalRequirement', normalizedParentIds, transaction);
 
                 // Create REFINES relationships
                 await transaction.run(`
@@ -217,10 +220,10 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     MATCH (parent:OperationalRequirement)
                     WHERE id(parent) = parentId
                     CREATE (version)-[:REFINES]->(parent)
-                `, { versionId, parentIds: refinesParents });
+                `, { versionId, parentIds: normalizedParentIds });
             }
 
-            // Create IMPACTS relationships
+            // Create IMPACTS relationships (with normalization)
             await this._createImpactsRelationshipsFromIds(versionId, 'StakeholderCategory', impactsStakeholderCategories, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'Data', impactsData, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'Service', impactsServices, transaction);
@@ -244,8 +247,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
         if (targetIds.length === 0) return;
 
         try {
+            // Normalize target IDs
+            const normalizedTargetIds = targetIds.map(id => this._normalizeId(id));
+
             // Validate all target items exist
-            await this._validateReferences(targetLabel, targetIds, transaction);
+            await this._validateReferences(targetLabel, normalizedTargetIds, transaction);
 
             // Create IMPACTS relationships
             await transaction.run(`
@@ -256,7 +262,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 MATCH (target:${targetLabel})
                 WHERE id(target) = targetId
                 CREATE (version)-[:IMPACTS]->(target)
-            `, { versionId, targetIds });
+            `, { versionId, targetIds: normalizedTargetIds });
 
         } catch (error) {
             throw new StoreError(`Failed to create IMPACTS relationships to ${targetLabel}: ${error.message}`, error);
@@ -273,6 +279,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      */
     async findChildren(itemId, transaction) {
         try {
+            const normalizedItemId = this._normalizeId(itemId);
             const result = await transaction.run(`
                 MATCH (parent:OperationalRequirement)<-[:REFINES]-(childVersion:OperationalRequirementVersion)
                 MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
@@ -280,7 +287,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 WHERE id(parent) = $itemId
                 RETURN id(child) as id, child.title as title, childVersion.type as type
                 ORDER BY child.title
-            `, { itemId });
+            `, { itemId: normalizedItemId });
 
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
@@ -297,6 +304,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      */
     async findRequirementsThatImpact(targetLabel, targetId, transaction) {
         try {
+            const normalizedTargetId = this._normalizeId(targetId);
             const result = await transaction.run(`
                 MATCH (target:${targetLabel})<-[:IMPACTS]-(version:OperationalRequirementVersion)
                 MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
@@ -304,7 +312,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 WHERE id(target) = $targetId
                 RETURN id(item) as id, item.title as title, version.type as type
                 ORDER BY item.title
-            `, { targetId });
+            `, { targetId: normalizedTargetId });
 
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
@@ -320,6 +328,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      */
     async findParents(itemId, transaction) {
         try {
+            const normalizedItemId = this._normalizeId(itemId);
             const result = await transaction.run(`
                 MATCH (child:OperationalRequirement)-[:LATEST_VERSION]->(childVersion:OperationalRequirementVersion)
                 MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
@@ -327,7 +336,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 WHERE id(child) = $itemId
                 RETURN id(parent) as id, parent.title as title, parentVersion.type as type
                 ORDER BY parent.title
-            `, { itemId });
+            `, { itemId: normalizedItemId });
 
             return result.records.map(record => this._buildReference(record));
         } catch (error) {

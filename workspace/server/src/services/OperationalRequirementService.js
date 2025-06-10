@@ -26,6 +26,8 @@ export class OperationalRequirementService extends VersionedItemService {
 
     // Implement validation methods required by VersionedItemService
     async _validateCreatePayload(payload) {
+        const jsonPayload = JSON.stringify(payload);
+        console.log(`OperationalRequirementService._validateCreatePayload() payload: ${jsonPayload}`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateRelationshipArrays(payload);
@@ -34,6 +36,8 @@ export class OperationalRequirementService extends VersionedItemService {
     }
 
     async _validateUpdatePayload(payload) {
+        const jsonPayload = JSON.stringify(payload);
+        console.log(`OperationalRequirementService._validateUpdatePayload() payload: ${jsonPayload}`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateRelationshipArrays(payload);
@@ -44,8 +48,7 @@ export class OperationalRequirementService extends VersionedItemService {
     // Validation helper methods
     _validateRequiredFields(payload) {
         const requiredFields = [
-            'title', 'type', 'statement', 'rationale', 'references',
-            'risksAndOpportunities', 'flows', 'flowExamples'
+            'title', 'type', 'statement', 'rationale'
         ];
 
         for (const field of requiredFields) {

@@ -4,6 +4,7 @@ import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
 import regulatoryAspectRoutes from './routes/regulatory-aspect.js';
 import dataCategoryRoutes from './routes/data-category.js';
 import serviceRoutes from './routes/service.js';
+import waveRoutes from './routes/wave.js';
 import operationalRequirementRoutes from './routes/operational-requirement.js';
 import operationalChangeRoutes from './routes/operational-change.js';
 
@@ -24,6 +25,7 @@ app.use('/stakeholder-categories', stakeholderCategoryRoutes);
 app.use('/regulatory-aspects', regulatoryAspectRoutes);
 app.use('/data-categories', dataCategoryRoutes);
 app.use('/services', serviceRoutes);
+app.use('/waves', waveRoutes);
 
 // Operational Entity API Routes
 app.use('/operational-requirements', operationalRequirementRoutes);

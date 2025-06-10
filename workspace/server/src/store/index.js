@@ -6,6 +6,7 @@ import { StakeholderCategoryStore } from './stakeholder-category-store.js';
 import { RegulatoryAspectStore } from './regulatory-aspect-store.js';
 import { DataCategoryStore } from './data-category-store.js';
 import { ServiceStore } from './service-store.js';
+import { WaveStore } from './wave-store.js';
 import { OperationalRequirementStore } from './operational-requirement-store.js';
 import { OperationalChangeStore } from './operational-change-store.js';
 
@@ -14,6 +15,7 @@ let stakeholderCategoryStore = null;
 let regulatoryAspectStore = null;
 let dataCategoryStore = null;
 let serviceStore = null;
+let waveStore = null;
 let operationalRequirementStore = null;
 let operationalChangeStore = null;
 
@@ -38,6 +40,7 @@ export async function initializeStores() {
         regulatoryAspectStore = new RegulatoryAspectStore(driver);
         dataCategoryStore = new DataCategoryStore(driver);
         serviceStore = new ServiceStore(driver);
+        waveStore = new WaveStore(driver);
         operationalRequirementStore = new OperationalRequirementStore(driver);
         operationalChangeStore = new OperationalChangeStore(driver);
 
@@ -47,6 +50,7 @@ export async function initializeStores() {
             regulatoryAspect: '✓',
             dataCategory: '✓',
             service: '✓',
+            wave: '✓',
             operationalRequirement: '✓',
             operationalChange: '✓'
         });
@@ -71,6 +75,7 @@ export async function closeStores() {
         regulatoryAspectStore = null;
         dataCategoryStore = null;
         serviceStore = null;
+        waveStore = null;
         operationalRequirementStore = null;
         operationalChangeStore = null;
 
@@ -138,6 +143,18 @@ function getServiceStore() {
 }
 
 /**
+ * Get Wave store instance
+ * @returns {WaveStore} Store instance
+ * @throws {Error} If store layer not initialized
+ */
+function getWaveStore() {
+    if (!waveStore) {
+        throw new Error('Store layer not initialized. Call initializeStores() first.');
+    }
+    return waveStore;
+}
+
+/**
  * Get OperationalRequirement store instance
  * @returns {OperationalRequirementStore} Store instance
  * @throws {Error} If store layer not initialized
@@ -167,6 +184,7 @@ export {
     getRegulatoryAspectStore as regulatoryAspectStore,
     getDataCategoryStore as dataCategoryStore,
     getServiceStore as serviceStore,
+    getWaveStore as waveStore,
     getOperationalRequirementStore as operationalRequirementStore,
     getOperationalChangeStore as operationalChangeStore
 };
@@ -182,6 +200,7 @@ export function getAllStores() {
         regulatoryAspect: getRegulatoryAspectStore(),
         dataCategory: getDataCategoryStore(),
         service: getServiceStore(),
+        wave: getWaveStore(),
         operationalRequirement: getOperationalRequirementStore(),
         operationalChange: getOperationalChangeStore()
     };
@@ -197,6 +216,7 @@ export function isStoreLayerInitialized() {
         regulatoryAspectStore &&
         dataCategoryStore &&
         serviceStore &&
+        waveStore &&
         operationalRequirementStore &&
         operationalChangeStore
     );
@@ -212,6 +232,7 @@ export function getStoreLayerStatus() {
         regulatoryAspect: !!regulatoryAspectStore,
         dataCategory: !!dataCategoryStore,
         service: !!serviceStore,
+        wave: !!waveStore,
         operationalRequirement: !!operationalRequirementStore,
         operationalChange: !!operationalChangeStore
     };
