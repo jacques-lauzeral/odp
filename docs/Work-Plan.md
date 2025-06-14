@@ -88,6 +88,7 @@
   - ✅ Version-aware CRUD operations (create, update, findById, findByIdAndVersion, findVersionHistory)
   - ✅ Transaction integration with user context (createTransaction(userId))
   - ✅ Automatic latest_version management and relationship handling
+  - ✅ ID normalization helper (normalizeId) for consistent comparisons
 
 #### 5.1.2 Storage Model Simplification (✅ COMPLETED)
 - ✅ **Model update**: Eliminated separate OperationalNeed entity
@@ -117,11 +118,14 @@
   - ✅ Type validation (ON/OR) and REFINES business rules (OR cannot refine ON)
   - ✅ IMPACTS relationship validation and referenced entity existence validation
   - ✅ Extends VersionedItemService with abstract validation method implementation
+  - ✅ PATCH support with field inheritance via _computePatchedPayload
 - ✅ **OperationalChangeService**:
   - ✅ Version lifecycle management with SATISFIES/SUPERSEDS relationships
   - ✅ Milestone coordination with eventTypes validation using shared constants
   - ✅ Visibility validation (NM/NETWORK) and wave reference validation
   - ✅ Complete payload validation for milestones and operational requirements
+  - ✅ PATCH support with field inheritance via _computePatchedPayload
+  - ✅ **Milestone CRUD operations**: addMilestone, updateMilestone, deleteMilestone, getMilestone, getMilestones
 
 ### 5.4 Route Layer Hierarchy Redesign (✅ COMPLETED)
 - ✅ **Route hierarchy restructure**: Created two parallel router base classes
@@ -129,6 +133,7 @@
 - ✅ **VersionedItemRouter**: userId extraction, versioned CRUD with optimistic locking
 - ✅ **Updated all existing routes**: data-category, stakeholder-category, service, regulatory-aspect to use SimpleItemRouter
 - ✅ **Version-specific endpoints**: GET /:id/versions, GET /:id/versions/:versionNumber
+- ✅ **PATCH support**: Added to VersionedItemRouter base class
 
 ### 5.5 Route Layer Implementation (✅ COMPLETED)
 - ✅ **routes/operational-requirement.js**:
@@ -136,20 +141,25 @@
   - ✅ Optimistic locking via expectedVersionId in requests
   - ✅ Version history and navigation endpoints
   - ✅ Consistent error handling with VERSION_CONFLICT responses
+  - ✅ **PATCH endpoint**: Partial updates with field inheritance
 - ✅ **routes/operational-change.js**:
   - ✅ Versioned CRUD operations with SATISFIES/SUPERSEDS management
   - ✅ Milestone coordination endpoints
   - ✅ Complete versioned entity route pattern
+  - ✅ **PATCH endpoint**: Partial updates with field inheritance
+  - ✅ **Milestone CRUD endpoints**: GET/POST/PUT/DELETE for individual milestone management
 
 ### 5.6 Shared Models Implementation (✅ COMPLETED)
 - ✅ **OperationalRequirement and OperationalRequirementRequest models**:
   - ✅ Complete entity model with version metadata and resolved relationships
   - ✅ Request structures with ID arrays for relationships, complete payload required
   - ✅ Business rule support for type field ('ON' | 'OR') and REFINES validation
+  - ✅ **PATCH request schema**: OperationalRequirementPatchRequest with optional fields
 - ✅ **OperationalChange and OperationalChangeRequest models**:
   - ✅ Versioned entity with description, visibility, and milestone structures
   - ✅ SATISFIES/SUPERSEDS relationship structures
   - ✅ Milestone coordination with eventTypes validation
+  - ✅ **PATCH request schema**: OperationalChangePatchRequest with optional fields
 - ✅ **MilestoneEventTypes constants**:
   - ✅ Shared validation constants for API_PUBLICATION, SERVICE_ACTIVATION, etc.
   - ✅ Used by both service validation and UI components
@@ -161,16 +171,27 @@
   - ✅ User context security with x-user-id header requirement
   - ✅ Complete request/response schemas matching shared models
   - ✅ Error handling patterns and validation responses
+  - ✅ **PATCH endpoints**: Documented for both operational entities
+  - ✅ **Milestone CRUD endpoints**: Complete API specification for milestone management
+  - ✅ **Modular OpenAPI structure**: Split into 5 files for maintainability
 
-### 5.8 CLI Implementation (🎯 NEXT PRIORITY)
-- [ ] **CLI commands for OperationalRequirement**:
-  - [ ] `odp operational-requirement list/create/show/update/delete`
-  - [ ] Version management commands (history, specific version access)
-  - [ ] Relationship management through complete payload updates
-- [ ] **CLI commands for OperationalChange**:
-  - [ ] `odp operational-change list/create/show/update/delete`
-  - [ ] Version management with milestone coordination
-  - [ ] Complete payload management for relationships and milestones
+### 5.8 CLI Implementation (✅ COMPLETED)
+- ✅ **CLI commands for OperationalRequirement**:
+  - ✅ `odp requirement list/create/show/update/delete`
+  - ✅ Version management commands (versions, show-version)
+  - ✅ Relationship management through complete payload updates
+  - ✅ **PATCH command**: `odp requirement patch <itemId> <expectedVersionId>` with optional fields
+- ✅ **CLI commands for OperationalChange**:
+  - ✅ `odp change list/create/show/update/delete`
+  - ✅ Version management with milestone coordination
+  - ✅ Complete payload management for relationships and milestones
+  - ✅ **PATCH command**: `odp change patch <itemId> <expectedVersionId>` with optional fields
+  - ✅ **Milestone commands**:
+    - ✅ `odp change milestone-list <itemId>` - List milestones
+    - ✅ `odp change milestone-show <itemId> <milestoneId>` - Show milestone
+    - ✅ `odp change milestone-add <itemId> <expectedVersionId> <title> <description>` - Add milestone
+    - ✅ `odp change milestone-update <itemId> <milestoneId> <expectedVersionId>` - Update milestone
+    - ✅ `odp change milestone-delete <itemId> <milestoneId> <expectedVersionId>` - Delete milestone
 
 ## 6 Phase 4: Business Extension - Management Entities
 
@@ -227,12 +248,17 @@
   - [ ] Optimistic locking handling
   - [ ] Rich text editing for statement/rationale fields
   - [ ] Type selection and validation (ON/OR)
+  - [ ] PATCH operations interface
 - [ ] OperationalChange UI components with versioning support
 - [ ] Relationship management interface:
   - [ ] Visual relationship mapping
   - [ ] Cross-entity navigation
   - [ ] Relationship creation/deletion
 - [ ] Version comparison and diff display
+- [ ] Milestone management interface:
+  - [ ] Milestone timeline visualization
+  - [ ] CRUD operations for milestones
+  - [ ] Event type management
 
 ## 10 Phase 8: Web Client - Management Entities
 - [ ] Wave management interface:
@@ -265,6 +291,8 @@
 - **Docker development**: Containerized environment for all development
 - **ES modules**: Consistent module system throughout all components
 - **Versioning pattern**: Item/ItemVersion dual-node approach for operational entities
+- **PATCH operations**: Partial updates with field inheritance for all versioned entities
+- **ID normalization**: Consistent ID comparison across all layers
 
 ### Quality Gates per Phase
 - **Working endpoints**: Full CRUD operations with proper error handling
@@ -300,15 +328,17 @@ For each new entity, follow this proven pattern:
 
 ## Current Status Summary
 
-**✅ Completed Phases**: 1-2 (Setup + Setup Entities)
-**🔄 Current Phase**: 3 (Operational Entities) - Store Layer Complete, Service Layer Next
-**📈 Overall Progress**: ~40% complete
-**🎯 Next Milestone**: Complete Phase 3 Service + Route layers to enable operational entity management
+**✅ Completed Phases**: 1-3 (Setup + Setup Entities + Operational Entities)
+**🔄 Next Phase**: 4 (Management Entities) - Wave, Baseline, and ODP Edition entities
+**📈 Overall Progress**: ~70% complete
+**🎯 Next Milestone**: Complete Phase 4 Management entities to enable full deployment planning workflow
 
 **Key Achievements in Phase 3**:
-- Robust versioning pattern with optimistic locking
-- Simplified storage model eliminating complexity
-- Complete store layer with versioned entity support
-- Comprehensive documentation for future development
+- Complete versioning system with optimistic locking and audit trails
+- PATCH operations for partial updates across all operational entities
+- Full milestone CRUD operations with versioning integration
+- Modular OpenAPI specification for maintainable API documentation
+- Comprehensive CLI with 15+ commands for operational entity management
+- Factorized architecture patterns enabling rapid future development
 
 This work plan maintains the successful manual routes approach established in Phase 1 while providing a clear roadmap for comprehensive ODP functionality across all planned phases.

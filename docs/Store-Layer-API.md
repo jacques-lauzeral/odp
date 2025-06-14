@@ -1,35 +1,7 @@
 # Store Layer API Documentation
 
 ## Overview
-Complete API reference for the ODP Store Layer with Reference structure design. Provides CRUD operations, versioning for operational items, relationship management with consistent Reference objects, and transaction handling over Neo4j.
-
-## Reference Structure
-
-### Core Reference Model
-All relationship returns use consistent Reference objects:
-
-```javascript
-// Base Reference
-{
-  id: number,           // Neo4j internal ID
-  title: string         // Human-readable identifier
-}
-
-// Extended Reference with context fields
-{
-  id: number,
-  title: string,
-  type?: string,        // For OperationalRequirements ('ON' | 'OR')
-  name?: string,        // For setup items (alternative to title)
-  year?: number,        // For Wave references
-  quarter?: number,     // For Wave references
-  date?: string         // For Wave references
-}
-```
-
-### Input vs Output Pattern
-- **Input**: ID arrays `[123, 456, 789]`
-- **Output**: Reference arrays `[{id: 123, title: "Name", type: "OR"}, ...]`
+Complete API reference for the ODP Store Layer with simplified design. Provides CRUD operations, versioning for operational entities, relationship management, and transaction handling over Neo4j.
 
 ## Initialization & Connection
 
@@ -124,48 +96,70 @@ const store = operationalChangeStore()
 # Base Store APIs
 
 ## BaseStore API
-*Common CRUD operations for all items*
+*Common CRUD operations for all entities*
+
+### normalizeId(id)
+```javascript
+const normalizedId = store.normalizeId(id)
+```
+**Parameters**: `id: any` - ID value to normalize (string, number, or Neo4j Integer object)  
+**Returns**: `number` - Normalized integer ID  
+**Description**: Ensures consistent ID comparison across all layers. Handles Neo4j Integer objects, strings, and numbers.
+
+**Usage Examples**:
+```javascript
+// String to number
+store.normalizeId("123") // → 123
+
+// Neo4j Integer object to number  
+store.normalizeId(neo4jId) // → 123 (calls id.toNumber())
+
+// Number passthrough
+store.normalizeId(123) // → 123
+```
+
+**Critical for**: ID comparisons in service layer operations, milestone lookups, relationship matching.
 
 ### create(data, transaction)
 ```javascript
-const item = await store.create(data, transaction)
+const entity = await store.create(data, transaction)
 ```
 **Parameters**:
-- `data: object` - Item properties
+- `data: object` - Entity properties
 - `transaction: Transaction`
 
-**Returns**: `Promise<object>` - Created item with Neo4j ID  
+**Returns**: `Promise<object>` - Created entity with Neo4j ID  
 **Throws**: `StoreError` - Creation failure
 
 ### findById(id, transaction)
 ```javascript
-const item = await store.findById(id, transaction)
+const entity = await store.findById(id, transaction)
 ```
 **Parameters**:
 - `id: number` - Neo4j internal node ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<object|null>` - Item or null if not found  
+**Returns**: `Promise<object|null>` - Entity or null if not found  
 **Throws**: `StoreError` - Query failure
 
 ### findAll(transaction)
 ```javascript
-const items = await store.findAll(transaction)
+const entities = await store.findAll(transaction)
 ```
 **Parameters**: `transaction: Transaction`  
-**Returns**: `Promise<Array<object>>` - Array of items  
+**Returns**: `Promise<Array<object>>` - Array of entities  
 **Throws**: `StoreError` - Query failure
 
 ### update(id, data, transaction)
 ```javascript
-const item = await store.update(id, data, transaction)
+const entity = await store.update(id, data, transaction)
 ```
 **Parameters**:
 - `id: number` - Neo4j internal node ID
 - `data: object` - Properties to update
 - `transaction: Transaction`
 
-**Returns**: `Promise<object|null>` - Updated item or null if not found  
+**Returns**: `Promise<object|null>` - Updated entity or null if not found  
 **Throws**: `StoreError` - Update failure
 
 ### delete(id, transaction)
@@ -190,7 +184,7 @@ const exists = await store.exists(id, transaction)
 **Returns**: `Promise<boolean>` - True if exists  
 **Throws**: `StoreError` - Query failure
 
-## RefinableItemStore API
+## RefinableEntityStore API
 *Extends BaseStore with REFINES hierarchy operations*
 
 ### createRefinesRelation(childId, parentId, transaction)
@@ -198,8 +192,8 @@ const exists = await store.exists(id, transaction)
 const created = await store.createRefinesRelation(childId, parentId, transaction)
 ```
 **Parameters**:
-- `childId: number` - Child item ID
-- `parentId: number` - Parent item ID
+- `childId: number` - Child entity ID
+- `parentId: number` - Parent entity ID
 - `transaction: Transaction`
 
 **Returns**: `Promise<boolean>` - True if created  
@@ -213,8 +207,8 @@ const created = await store.createRefinesRelation(childId, parentId, transaction
 const deleted = await store.deleteRefinesRelation(childId, parentId, transaction)
 ```
 **Parameters**:
-- `childId: number` - Child item ID
-- `parentId: number` - Parent item ID
+- `childId: number` - Child entity ID
+- `parentId: number` - Parent entity ID
 - `transaction: Transaction`
 
 **Returns**: `Promise<boolean>` - True if deleted  
@@ -225,10 +219,10 @@ const deleted = await store.deleteRefinesRelation(childId, parentId, transaction
 const children = await store.findChildren(parentId, transaction)
 ```
 **Parameters**:
-- `parentId: number` - Parent item ID
+- `parentId: number` - Parent entity ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<Array<Reference>>` - Child items as Reference objects `[{id, title: name}, ...]` sorted by name  
+**Returns**: `Promise<Array<{id: number, name: string, description: string}>>` - Child entities sorted by name  
 **Throws**: `StoreError` - Query failure
 
 ### findParent(childId, transaction)
@@ -236,10 +230,10 @@ const children = await store.findChildren(parentId, transaction)
 const parent = await store.findParent(childId, transaction)
 ```
 **Parameters**:
-- `childId: number` - Child item ID
+- `childId: number` - Child entity ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<Reference|null>` - Parent item as Reference object `{id, title: name}` or null if no parent  
+**Returns**: `Promise<object|null>` - Parent entity or null if no parent  
 **Throws**: `StoreError` - Query failure
 
 ### findRoots(transaction)
@@ -247,51 +241,47 @@ const parent = await store.findParent(childId, transaction)
 const roots = await store.findRoots(transaction)
 ```
 **Parameters**: `transaction: Transaction`  
-**Returns**: `Promise<Array<Reference>>` - Root items (no parent) as Reference objects `[{id, title: name}, ...]` sorted by name  
+**Returns**: `Promise<Array<object>>` - Root entities (no parent) sorted by name  
 **Throws**: `StoreError` - Query failure
 
 ---
 
-# Setup Item Stores
+# Setup Entity Stores
 
 ## StakeholderCategoryStore
-**Inheritance**: `RefinableItemStore → BaseStore`  
-**Item Model**: `{id: number, name: string, description: string}`  
+**Inheritance**: `RefinableEntityStore → BaseStore`  
+**Entity Model**: `{id: number, name: string, description: string}`  
 **Relationships**: REFINES hierarchy (tree structure)
 
-**Available Methods**: All BaseStore + RefinableItemStore methods
-**Reference Pattern**: `{id, title: name}` for hierarchy relationships
+**Available Methods**: All BaseStore + RefinableEntityStore methods + normalizeId()
 
 ## RegulatoryAspectStore
-**Inheritance**: `RefinableItemStore → BaseStore`  
-**Item Model**: `{id: number, name: string, description: string}`  
+**Inheritance**: `RefinableEntityStore → BaseStore`  
+**Entity Model**: `{id: number, name: string, description: string}`  
 **Relationships**: REFINES hierarchy (tree structure)
 
-**Available Methods**: All BaseStore + RefinableItemStore methods
-**Reference Pattern**: `{id, title: name}` for hierarchy relationships
+**Available Methods**: All BaseStore + RefinableEntityStore methods + normalizeId()
 
 ## DataCategoryStore
-**Inheritance**: `RefinableItemStore → BaseStore`  
-**Item Model**: `{id: number, name: string, description: string}`  
+**Inheritance**: `RefinableEntityStore → BaseStore`  
+**Entity Model**: `{id: number, name: string, description: string}`  
 **Relationships**: REFINES hierarchy (tree structure)
 
-**Available Methods**: All BaseStore + RefinableItemStore methods
-**Reference Pattern**: `{id, title: name}` for hierarchy relationships
+**Available Methods**: All BaseStore + RefinableEntityStore methods + normalizeId()
 
 ## ServiceStore
-**Inheritance**: `RefinableItemStore → BaseStore`  
-**Item Model**: `{id: number, name: string, description: string}`  
+**Inheritance**: `RefinableEntityStore → BaseStore`  
+**Entity Model**: `{id: number, name: string, description: string}`  
 **Relationships**: REFINES hierarchy (tree structure)
 
-**Available Methods**: All BaseStore + RefinableItemStore methods
-**Reference Pattern**: `{id, title: name}` for hierarchy relationships
+**Available Methods**: All BaseStore + RefinableEntityStore methods + normalizeId()
 
 ---
 
-# Versioned Item APIs
+# Versioned Entity APIs
 
 ## VersionedItemStore API
-*Base class for versioned items with optimistic locking and Reference structures*
+*Base class for versioned entities with optimistic locking*
 
 ### Data Model
 ```javascript
@@ -302,34 +292,33 @@ const roots = await store.findRoots(transaction)
   version: number,          // Sequential version number
   createdAt: string,        // ISO timestamp
   createdBy: string,        // User identifier
-  // ... item-specific fields
-  // ... relationship arrays with Reference objects
+  // ... entity-specific fields
 }
 ```
 
 ### create(data, transaction)
 ```javascript
-const item = await store.create(data, transaction)
+const entity = await store.create(data, transaction)
 ```
 **Parameters**:
-- `data: object` - Item data (title + version fields + relationship ID arrays)
+- `data: object` - Entity data (title + version fields)
 - `transaction: Transaction` - Must have user context
 
-**Returns**: `Promise<object>` - Complete item with version info and Reference objects  
+**Returns**: `Promise<object>` - Complete entity with version info  
 **Behavior**: Creates Item + ItemVersion(v1) + relationships  
 **Throws**: `StoreError` - Creation failure
 
 ### update(itemId, data, expectedVersionId, transaction)
 ```javascript
-const item = await store.update(itemId, data, expectedVersionId, transaction)
+const entity = await store.update(itemId, data, expectedVersionId, transaction)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
-- `data: object` - Complete payload (content + relationship ID arrays)
+- `data: object` - Complete payload (content + relationships)
 - `expectedVersionId: number` - Current version ID for optimistic locking
 - `transaction: Transaction` - Must have user context
 
-**Returns**: `Promise<object>` - New version with complete info and Reference objects  
+**Returns**: `Promise<object>` - New version with complete info  
 **Behavior**: Creates new version, inherits/updates relationships  
 **Throws**:
 - `StoreError('Outdated item version')` - Version conflict
@@ -337,25 +326,25 @@ const item = await store.update(itemId, data, expectedVersionId, transaction)
 
 ### findById(itemId, transaction)
 ```javascript
-const item = await store.findById(itemId, transaction)
+const entity = await store.findById(itemId, transaction)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<object|null>` - Latest version with Reference objects or null  
+**Returns**: `Promise<object|null>` - Latest version with relationships or null  
 **Throws**: `StoreError` - Query failure
 
 ### findByIdAndVersion(itemId, versionNumber, transaction)
 ```javascript
-const item = await store.findByIdAndVersion(itemId, versionNumber, transaction)
+const entity = await store.findByIdAndVersion(itemId, versionNumber, transaction)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
 - `versionNumber: number` - Specific version to retrieve
 - `transaction: Transaction`
 
-**Returns**: `Promise<object|null>` - Specific version with Reference objects or null  
+**Returns**: `Promise<object|null>` - Specific version with relationships or null  
 **Throws**: `StoreError` - Query failure
 
 ### findVersionHistory(itemId, transaction)
@@ -373,15 +362,15 @@ const history = await store.findVersionHistory(itemId, transaction)
 
 ### findAll(transaction)
 ```javascript
-const items = await store.findAll(transaction)
+const entities = await store.findAll(transaction)
 ```
 **Parameters**: `transaction: Transaction`  
-**Returns**: `Promise<Array<object>>` - Latest versions with Reference objects  
+**Returns**: `Promise<Array<object>>` - Latest versions with relationships  
 **Throws**: `StoreError` - Query failure
 
 ## OperationalRequirementStore
 
-### Item Model
+### Entity Model
 ```javascript
 {
   // Item + Version fields (from VersionedItemStore)
@@ -401,25 +390,13 @@ const items = await store.findAll(transaction)
   flows: string,            // Rich text
   flowExamples: string,     // Rich text
   
-  // Relationship fields with Reference objects
-  refinesParents: Array<Reference>,           // Parent requirement References
-  impactsStakeholderCategories: Array<Reference>, // StakeholderCategory References
-  impactsData: Array<Reference>,              // DataCategory References
-  impactsServices: Array<Reference>,          // Service References
-  impactsRegulatoryAspects: Array<Reference>  // RegulatoryAspect References
+  // Relationship fields
+  refinesParents: Array<number>,           // Parent requirement Item IDs
+  impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs
+  impactsData: Array<number>,              // DataCategory IDs
+  impactsServices: Array<number>,          // Service IDs
+  impactsRegulatoryAspects: Array<number>  // RegulatoryAspect IDs
 }
-```
-
-### Reference Patterns
-```javascript
-// REFINES relationships (to OperationalRequirement Items)
-refinesParents: [{id: 123, title: "Parent Requirement", type: "ON"}, ...]
-
-// IMPACTS relationships (to setup items)
-impactsStakeholderCategories: [{id: 456, title: "Government"}, ...]
-impactsData: [{id: 789, title: "Customer Data"}, ...]
-impactsServices: [{id: 101, title: "Auth Service"}, ...]
-impactsRegulatoryAspects: [{id: 202, title: "GDPR"}, ...]
 ```
 
 ### create(data, transaction)
@@ -429,66 +406,53 @@ const requirement = await store.create({
   type: "OR",
   statement: "Description",
   rationale: "Rationale",
-  refinesParents: [123, 456],        // Input: ID arrays
+  refinesParents: [123, 456],
   impactsServices: [789]
 }, transaction)
 ```
 
-**Parameters**: Item data with relationship ID arrays  
-**Returns**: Complete requirement with all relationships as Reference objects  
+**Parameters**: Same as VersionedItemStore.create + relationship arrays  
+**Returns**: Complete requirement with all relationships  
 **Behavior**: Creates Item + Version + all specified relationships  
 **Validation**:
 - Prevents self-references in REFINES
-- Validates all referenced items exist
+- Validates all referenced entities exist
 
 ### update(itemId, data, expectedVersionId, transaction)
 ```javascript
 const updated = await store.update(itemId, {
   statement: "Updated statement",
-  impactsServices: [789, 999]  // Input: ID arrays
+  impactsServices: [789, 999]  // Added service 999
 }, expectedVersionId, transaction)
 ```
 
 **Behavior**:
 - Creates new version
-- **Inheritance**: Unspecified relationship arrays inherited from previous version
+- **Inheritance**: Unspecified relationship arrays copy from previous version
 - **Override**: Specified relationship arrays replace previous version
-- **Content**: Unspecified content fields copied from previous version
-- **Returns**: All relationships as Reference objects
+- **Content**: Unspecified content fields copy from previous version
 
-### Additional Query Methods
+### Inverse Relationship Queries
 
 #### findChildren(itemId, transaction)
 ```javascript
 const children = await store.findChildren(itemId, transaction)
 ```
-**Returns**: `Promise<Array<Reference>>` - Requirements that refine this one `[{id, title, type}, ...]`
-
-#### findParents(itemId, transaction)
-```javascript
-const parents = await store.findParents(itemId, transaction)
-```
-**Returns**: `Promise<Array<Reference>>` - Requirements that this one refines `[{id, title, type}, ...]`
-
-#### findRoots(transaction)
-```javascript
-const roots = await store.findRoots(transaction)
-```
-**Returns**: `Promise<Array<Reference>>` - Requirements with no parents `[{id, title, type}, ...]`
+**Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements that refine this one
 
 #### findRequirementsThatImpact(targetLabel, targetId, transaction)
 ```javascript
 const requirements = await store.findRequirementsThatImpact('Service', serviceId, transaction)
 ```
 **Parameters**:
-- `targetLabel: string` - 'StakeholderCategory'|'Data'|'Service'|'RegulatoryAspect'
-- `targetId: number` - Target item ID
+- `targetLabel: string` - 'StakeholderCategory'|'DataCategory'|'Service'|'RegulatoryAspect'
+- `targetId: number` - Target entity ID
 
-**Returns**: `Promise<Array<Reference>>` - Requirements impacting the target `[{id, title, type}, ...]`
+**Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements impacting the target
 
 ## OperationalChangeStore
 
-### Item Model
+### Entity Model
 ```javascript
 {
   // Item + Version fields (from VersionedItemStore)
@@ -503,35 +467,25 @@ const requirements = await store.findRequirementsThatImpact('Service', serviceId
   description: string,      // Rich text
   visibility: string,       // 'NM' | 'NETWORK'
   
-  // Relationship fields with Reference objects
-  satisfiesRequirements: Array<Reference>,  // OperationalRequirement References
-  supersedsRequirements: Array<Reference>,  // OperationalRequirement References
+  // Relationship fields
+  satisfiesRequirements: Array<number>,  // OperationalRequirement Item IDs
+  supersedsRequirements: Array<number>,  // OperationalRequirement Item IDs
   
-  // Milestone fields with Reference objects
+  // Milestone fields
   milestones: Array<{
     id: number,
     title: string,
     description: string,
     eventTypes: Array<string>,
-    wave?: Reference           // Wave Reference if targeted
+    wave?: {
+      id: number,
+      year: number,
+      quarter: number,
+      date: string,
+      name: string
+    }
   }>
 }
-```
-
-### Reference Patterns
-```javascript
-// Requirement relationships (to OperationalRequirement Items)
-satisfiesRequirements: [{id: 123, title: "Requirement Title", type: "OR"}, ...]
-supersedsRequirements: [{id: 456, title: "Old Requirement", type: "ON"}, ...]
-
-// Milestone wave references (optional)
-milestones: [{
-  id: 789,
-  title: "Phase 1",
-  description: "Initial deployment",
-  eventTypes: ["API_PUBLICATION"],
-  wave: {id: 101, title: "2025.Q1", year: 2025, quarter: 1, date: "2025-03-31"}
-}]
 ```
 
 ### create(data, transaction)
@@ -548,12 +502,12 @@ const change = await store.create({
       waveId: 123 
     }
   ],
-  satisfiesRequirements: [reqId1, reqId2]  // Input: ID arrays
+  satisfiesRequirements: [reqId1, reqId2]
 }, transaction)
 ```
 
-**Parameters**: Item data with milestone data and relationship ID arrays  
-**Returns**: Complete change with milestones (including Wave References) and relationships as Reference objects  
+**Parameters**: Same as VersionedItemStore.create + milestones + relationships  
+**Returns**: Complete change with milestones and relationships  
 **Behavior**: Creates Item + Version + milestones + relationships in single transaction
 
 ### update(itemId, data, expectedVersionId, transaction)
@@ -569,54 +523,35 @@ const updated = await store.update(itemId, {
 
 **Behavior**:
 - Creates new version
-- **Milestone inheritance**: If milestones not provided, copies milestone data from previous version
-- **Relationship inheritance**: If relationships not provided, copies relationship data from previous version
+- **Milestone inheritance**: If milestones not provided, copies milestone **data** from previous version to new version
+- **Relationship inheritance**: If relationships not provided, copies relationship **data** from previous version to new version
 - **Historical preservation**: Previous version keeps its own milestones and relationships
-- **Returns**: All milestones with Wave References and relationships as Reference objects
 
-### Additional Query Methods
+### Milestone Management
+- **BELONGS_TO**: `(Milestone)-[:BELONGS_TO]->(OperationalChangeVersion)`
+- **TARGETS**: `(Milestone)-[:TARGETS]->(Wave)`
+- Milestones belong to specific versions (not shared)
+- Wave targeting is optional per milestone
+
+### Inverse Relationship Queries
 
 #### findChangesThatSatisfyRequirement(requirementItemId, transaction)
 ```javascript
 const changes = await store.findChangesThatSatisfyRequirement(reqId, transaction)
 ```
-**Returns**: `Promise<Array<Reference>>` - Changes satisfying the requirement `[{id, title}, ...]`
+**Returns**: `Promise<Array<{id: number, title: string}>>` - Changes satisfying the requirement
 
 #### findChangesThatSupersedeRequirement(requirementItemId, transaction)
 ```javascript
 const changes = await store.findChangesThatSupersedeRequirement(reqId, transaction)
 ```
-**Returns**: `Promise<Array<Reference>>` - Changes superseding the requirement `[{id, title}, ...]`
+**Returns**: `Promise<Array<{id: number, title: string}>>` - Changes superseding the requirement
 
 #### findMilestonesByWave(waveId, transaction)
 ```javascript
 const milestones = await store.findMilestonesByWave(waveId, transaction)
 ```
-**Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context:
-```javascript
-[{
-  id: number,
-  title: string,
-  description: string,
-  eventTypes: Array<string>,
-  change: Reference  // {id, title}
-}, ...]
-```
-
-#### findMilestonesByChange(itemId, transaction)
-```javascript
-const milestones = await store.findMilestonesByChange(itemId, transaction)
-```
-**Returns**: `Promise<Array<object>>` - Milestones for the change:
-```javascript
-[{
-  id: number,
-  title: string,
-  description: string,
-  eventTypes: Array<string>,
-  wave?: Reference  // {id, title} if wave targeted
-}, ...]
-```
+**Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context
 
 ---
 
@@ -652,9 +587,9 @@ const milestones = await store.findMilestonesByChange(itemId, transaction)
 - `'Data integrity error'` - Version/Item consistency violation
 
 ### Validation Errors
-- `'Referenced nodes do not exist'` - Invalid item IDs in relationships
+- `'Referenced nodes do not exist'` - Invalid entity IDs in relationships
 - `'Node cannot refine itself'` - Self-reference prevention in REFINES
-- `'One or more [ItemType] items do not exist'` - Batch validation failure
+- `'One or more [EntityType] entities do not exist'` - Batch validation failure
 
 ### Milestone Errors
 - `'Wave with ID [waveId] does not exist'` - Invalid wave reference
@@ -681,7 +616,7 @@ const tx = createTransaction('user123');
 try {
   const category = await stakeholderCategoryStore().create({
     name: "Government",
-    description: "Government items"
+    description: "Government entities"
   }, tx);
   
   await commitTransaction(tx);
@@ -691,11 +626,32 @@ try {
 }
 ```
 
-## Versioned Item with Relationships and References
+## ID Normalization Pattern
+```javascript
+// Service layer milestone operations
+const store = this.getStore();
+
+// Find milestone using normalized ID comparison
+const milestone = milestones.find(m => 
+  store.normalizeId(m.id) === store.normalizeId(milestoneId)
+);
+
+// Update milestone using normalized ID comparison
+const milestoneIndex = current.milestones.findIndex(m => 
+  store.normalizeId(m.id) === store.normalizeId(milestoneId)
+);
+
+// Delete milestone using normalized ID comparison
+const newMilestones = current.milestones.filter(m => 
+  store.normalizeId(m.id) !== store.normalizeId(milestoneId)
+);
+```
+
+## Versioned Entity with Relationships
 ```javascript
 const tx = createTransaction('user123');
 try {
-  // Create with initial relationships (input: ID arrays)
+  // Create with initial relationships
   const requirement = await operationalRequirementStore().create({
     title: "New Requirement",
     type: "OR",
@@ -703,13 +659,6 @@ try {
     refinesParents: [123],
     impactsServices: [456, 789]
   }, tx);
-  
-  // Result includes Reference objects
-  console.log(requirement.refinesParents);
-  // [{id: 123, title: "Parent Requirement", type: "ON"}]
-  
-  console.log(requirement.impactsServices);
-  // [{id: 456, title: "Auth Service"}, {id: 789, title: "Data Service"}]
   
   // Update content only (relationships inherited)
   const updated1 = await operationalRequirementStore().update(
@@ -719,16 +668,13 @@ try {
     tx
   );
   
-  // Update relationships only (content inherited, input: ID arrays, output: References)
+  // Update relationships only (content inherited)
   const updated2 = await operationalRequirementStore().update(
     requirement.itemId,
     { impactsServices: [456, 789, 999] }, // Added service 999
     updated1.versionId,
     tx
   );
-  
-  console.log(updated2.impactsServices);
-  // [{id: 456, title: "Auth Service"}, {id: 789, title: "Data Service"}, {id: 999, title: "New Service"}]
   
   await commitTransaction(tx);
 } catch (error) {
@@ -748,7 +694,7 @@ async function updateWithRetry(itemId, data, userId, maxRetries = 3) {
       const current = await store.findById(itemId, tx);
       const updated = await store.update(itemId, data, current.versionId, tx);
       await commitTransaction(tx);
-      return updated; // Contains Reference objects
+      return updated;
     } catch (error) {
       await rollbackTransaction(tx);
       
@@ -763,7 +709,7 @@ async function updateWithRetry(itemId, data, userId, maxRetries = 3) {
 }
 ```
 
-## OperationalChange with Milestones and References
+## OperationalChange with Milestones
 ```javascript
 const tx = createTransaction('user123');
 try {
@@ -779,19 +725,8 @@ try {
         waveId: 123
       }
     ],
-    satisfiesRequirements: [reqId1, reqId2]  // Input: ID arrays
+    satisfiesRequirements: [reqId1, reqId2]
   }, tx);
-  
-  // Result includes Reference objects and Wave References
-  console.log(change.satisfiesRequirements);
-  // [{id: reqId1, title: "Requirement 1", type: "OR"}, {id: reqId2, title: "Requirement 2", type: "ON"}]
-  
-  console.log(change.milestones);
-  // [{
-  //   id: 456, title: "Phase 1", description: "Initial deployment",
-  //   eventTypes: ["API_PUBLICATION", "API_TEST_DEPLOYMENT"],
-  //   wave: {id: 123, title: "2025.Q1", year: 2025, quarter: 1, date: "2025-03-31"}
-  // }]
   
   // Update milestones and keep relationships
   const updated = await operationalChangeStore().update(
@@ -815,70 +750,10 @@ try {
     tx
   );
   
-  // Updated milestones with new Wave References
-  console.log(updated.milestones[0].wave);
-  // {id: 124, title: "2025.Q2", year: 2025, quarter: 2}
-  
   await commitTransaction(tx);
 } catch (error) {
   await rollbackTransaction(tx);
   throw error;
-}
-```
-
-## Working with Reference Objects
-```javascript
-const tx = createTransaction('user123');
-try {
-  // Find requirement with all relationships as References
-  const requirement = await operationalRequirementStore().findById(itemId, tx);
-  
-  // Navigate using Reference objects
-  for (const parentRef of requirement.refinesParents) {
-    console.log(`Parent: ${parentRef.title} (${parentRef.type})`);
-    
-    // Use Reference ID for further queries
-    const parentDetail = await operationalRequirementStore().findById(parentRef.id, tx);
-  }
-  
-  // Find inverse relationships using Reference returns
-  const children = await operationalRequirementStore().findChildren(itemId, tx);
-  // Returns: [{id, title, type}, ...] as References
-  
-  const impactedBy = await operationalRequirementStore().findRequirementsThatImpact('Service', serviceId, tx);
-  // Returns: [{id, title, type}, ...] as References
-  
-  await commitTransaction(tx);
-} catch (error) {
-  await rollbackTransaction(tx);
-  throw error;
-}
-```
-
-## Hierarchy Navigation with References
-```javascript
-const tx = createTransaction('user123');
-try {
-    // Find all root categories (returns References)
-    const roots = await stakeholderCategoryStore().findRoots(tx);
-    // Returns: [{id, title: name}, ...] sorted by name
-
-    // Navigate hierarchy using References
-    for (const rootRef of roots) {
-        console.log(`Root: ${rootRef.title}`);
-
-        const children = await stakeholderCategoryStore().findChildren(rootRef.id, tx);
-        // Returns: [{id, title: name}, ...] sorted by name
-
-        for (const childRef of children) {
-            console.log(`  Child: ${childRef.title}`);
-        }
-    }
-
-    await commitTransaction(tx);
-} catch (error) {
-    await rollbackTransaction(tx);
-    throw error;
 }
 ```
 
@@ -891,7 +766,7 @@ Database configuration in `server/config.json`:
 {
   "database": {
     "uri": "bolt://localhost:7687",
-    "username": "neo4j",
+    "username": "neo4j", 
     "password": "password",
     "connection": {
       "maxConnectionPoolSize": 10,
@@ -904,3 +779,31 @@ Database configuration in `server/config.json`:
   }
 }
 ```
+
+---
+
+# Phase 3 Enhancements Summary
+
+## New Features Added
+
+**ID Normalization**:
+- `normalizeId()` method available on all store instances
+- Handles Neo4j Integer objects, strings, and numbers consistently
+- Critical for service layer operations and milestone management
+
+**Enhanced Error Handling**:
+- Clear separation between store-level and business-level errors
+- Specific error messages for common scenarios
+- Consistent error propagation across all layers
+
+**Performance Optimizations**:
+- Connection pooling optimizations
+- Efficient query patterns for versioned entities
+- Optimized ID comparison operations
+
+**Milestone Integration**:
+- Complete milestone lifecycle within OperationalChange versioning
+- Version-specific milestone ownership
+- Wave targeting support with validation
+
+The store layer now provides a robust foundation for complex operational deployment plan management with full versioning, relationship management, and consistent ID handling across all system layers.

@@ -141,7 +141,7 @@ export class OperationalChangeService extends VersionedItemService {
             await commitTransaction(tx);
 
             // Return the updated milestone
-            const updatedMilestone = updatedOC.milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+            const updatedMilestone = updatedOC.milestones.find(m => m.title === completePayload.title);
             return updatedMilestone;
         } catch (error) {
             await rollbackTransaction(tx);
