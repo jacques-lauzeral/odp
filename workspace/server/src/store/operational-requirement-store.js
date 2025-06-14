@@ -157,11 +157,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const record = result.records[0];
             return {
-                refinesParents: record.get('refinesParents').map(id => this._normalizeId(id)),
-                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => this._normalizeId(id)),
-                impactsData: record.get('impactsData').map(id => this._normalizeId(id)),
-                impactsServices: record.get('impactsServices').map(id => this._normalizeId(id)),
-                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => this._normalizeId(id))
+                refinesParents: record.get('refinesParents').map(id => this.normalizeId(id)),
+                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => this.normalizeId(id)),
+                impactsData: record.get('impactsData').map(id => this.normalizeId(id)),
+                impactsServices: record.get('impactsServices').map(id => this.normalizeId(id)),
+                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => this.normalizeId(id))
             };
         } catch (error) {
             throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
@@ -196,12 +196,12 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 throw new StoreError('Version not found');
             }
 
-            const itemId = this._normalizeId(versionCheck.records[0].get('itemId'));
+            const itemId = this.normalizeId(versionCheck.records[0].get('itemId'));
 
             // Create REFINES relationships
             if (refinesParents.length > 0) {
                 // Normalize parent IDs
-                const normalizedParentIds = refinesParents.map(id => this._normalizeId(id));
+                const normalizedParentIds = refinesParents.map(id => this.normalizeId(id));
 
                 // Validate no self-references
                 if (normalizedParentIds.includes(itemId)) {
@@ -248,7 +248,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
         try {
             // Normalize target IDs
-            const normalizedTargetIds = targetIds.map(id => this._normalizeId(id));
+            const normalizedTargetIds = targetIds.map(id => this.normalizeId(id));
 
             // Validate all target items exist
             await this._validateReferences(targetLabel, normalizedTargetIds, transaction);
@@ -279,7 +279,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      */
     async findChildren(itemId, transaction) {
         try {
-            const normalizedItemId = this._normalizeId(itemId);
+            const normalizedItemId = this.normalizeId(itemId);
             const result = await transaction.run(`
                 MATCH (parent:OperationalRequirement)<-[:REFINES]-(childVersion:OperationalRequirementVersion)
                 MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
@@ -304,7 +304,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      */
     async findRequirementsThatImpact(targetLabel, targetId, transaction) {
         try {
-            const normalizedTargetId = this._normalizeId(targetId);
+            const normalizedTargetId = this.normalizeId(targetId);
             const result = await transaction.run(`
                 MATCH (target:${targetLabel})<-[:IMPACTS]-(version:OperationalRequirementVersion)
                 MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
@@ -328,7 +328,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      */
     async findParents(itemId, transaction) {
         try {
-            const normalizedItemId = this._normalizeId(itemId);
+            const normalizedItemId = this.normalizeId(itemId);
             const result = await transaction.run(`
                 MATCH (child:OperationalRequirement)-[:LATEST_VERSION]->(childVersion:OperationalRequirementVersion)
                 MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)

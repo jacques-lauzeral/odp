@@ -108,8 +108,8 @@ export class OperationalChangeStore extends VersionedItemStore {
             if (relationshipsResult.records.length > 0) {
                 const record = relationshipsResult.records[0];
                 relationships = {
-                    satisfiesRequirements: record.get('satisfiesRequirements').map(id => this._normalizeId(id)),
-                    supersedsRequirements: record.get('supersedsRequirements').map(id => this._normalizeId(id))
+                    satisfiesRequirements: record.get('satisfiesRequirements').map(id => this.normalizeId(id)),
+                    supersedsRequirements: record.get('supersedsRequirements').map(id => this.normalizeId(id))
                 };
             }
 
@@ -164,7 +164,7 @@ export class OperationalChangeStore extends VersionedItemStore {
         // Create SATISFIES relationships
         if (satisfiesRequirements.length > 0) {
             // Normalize requirement IDs
-            const normalizedSatisfiesIds = satisfiesRequirements.map(id => this._normalizeId(id));
+            const normalizedSatisfiesIds = satisfiesRequirements.map(id => this.normalizeId(id));
 
             await this._validateReferences('OperationalRequirement', normalizedSatisfiesIds, transaction);
 
@@ -182,7 +182,7 @@ export class OperationalChangeStore extends VersionedItemStore {
         // Create SUPERSEDS relationships
         if (supersedsRequirements.length > 0) {
             // Normalize requirement IDs
-            const normalizedSupersedsIds = supersedsRequirements.map(id => this._normalizeId(id));
+            const normalizedSupersedsIds = supersedsRequirements.map(id => this.normalizeId(id));
 
             await this._validateReferences('OperationalRequirement', normalizedSupersedsIds, transaction);
 
@@ -222,7 +222,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             return result.records.map(record => {
                 const milestone = {
-                    id: this._normalizeId(record.get('milestoneId')),
+                    id: this.normalizeId(record.get('milestoneId')),
                     title: record.get('title'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
@@ -232,10 +232,10 @@ export class OperationalChangeStore extends VersionedItemStore {
                 const waveId = record.get('waveId');
                 if (waveId) {
                     milestone.wave = {
-                        id: this._normalizeId(waveId),
+                        id: this.normalizeId(waveId),
                         title: record.get('waveName'), // Use name as title for consistency
-                        year: this._normalizeId(record.get('waveYear')),
-                        quarter: this._normalizeId(record.get('waveQuarter')),
+                        year: record.get('waveYear'),
+                        quarter: record.get('waveQuarter'),
                         date: record.get('waveDate'),
                         name: record.get('waveName')
                     };
@@ -277,7 +277,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
                 const waveId = record.get('waveId');
                 if (waveId) {
-                    milestoneData.waveId = this._normalizeId(waveId);
+                    milestoneData.waveId = this.normalizeId(waveId);
                 }
 
                 return milestoneData;
@@ -305,7 +305,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
                 // Validate wave exists if specified (normalize waveId first)
                 if (waveId) {
-                    const normalizedWaveId = this._normalizeId(waveId);
+                    const normalizedWaveId = this.normalizeId(waveId);
                     await this._validateReferences('Wave', [normalizedWaveId], transaction);
                 }
 
@@ -319,7 +319,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     RETURN id(milestone) as milestoneId
                 `, { title, description, eventTypes });
 
-                const milestoneId = this._normalizeId(milestoneResult.records[0].get('milestoneId'));
+                const milestoneId = this.normalizeId(milestoneResult.records[0].get('milestoneId'));
 
                 // Create BELONGS_TO relationship to this version
                 await transaction.run(`
@@ -330,7 +330,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
                 // Create TARGETS relationship to wave if specified
                 if (waveId) {
-                    const normalizedWaveId = this._normalizeId(waveId);
+                    const normalizedWaveId = this.normalizeId(waveId);
                     await transaction.run(`
                         MATCH (milestone:OperationalChangeMilestone), (wave:Wave)
                         WHERE id(milestone) = $milestoneId AND id(wave) = $waveId
@@ -354,7 +354,7 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async findChangesThatSatisfyRequirement(requirementItemId, transaction) {
         try {
-            const normalizedRequirementId = this._normalizeId(requirementItemId);
+            const normalizedRequirementId = this.normalizeId(requirementItemId);
             const result = await transaction.run(`
                 MATCH (req:OperationalRequirement)<-[:SATISFIES]-(changeVersion:OperationalChangeVersion)
                 MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
@@ -378,7 +378,7 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async findChangesThatSupersedeRequirement(requirementItemId, transaction) {
         try {
-            const normalizedRequirementId = this._normalizeId(requirementItemId);
+            const normalizedRequirementId = this.normalizeId(requirementItemId);
             const result = await transaction.run(`
                 MATCH (req:OperationalRequirement)<-[:SUPERSEDS]-(changeVersion:OperationalChangeVersion)
                 MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
@@ -402,7 +402,7 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async findMilestonesByWave(waveId, transaction) {
         try {
-            const normalizedWaveId = this._normalizeId(waveId);
+            const normalizedWaveId = this.normalizeId(waveId);
             const result = await transaction.run(`
                 MATCH (milestone:OperationalChangeMilestone)-[:TARGETS]->(wave:Wave)
                 MATCH (milestone)-[:BELONGS_TO]->(version:OperationalChangeVersion)
@@ -416,7 +416,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             `, { waveId: normalizedWaveId });
 
             return result.records.map(record => ({
-                id: this._normalizeId(record.get('milestoneId')),
+                id: this.normalizeId(record.get('milestoneId')),
                 title: record.get('title'),
                 description: record.get('description'),
                 eventTypes: record.get('eventTypes'),
@@ -441,7 +441,7 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async findMilestonesByChange(itemId, transaction) {
         try {
-            const normalizedItemId = this._normalizeId(itemId);
+            const normalizedItemId = this.normalizeId(itemId);
             const result = await transaction.run(`
                 MATCH (change:OperationalChange)-[:LATEST_VERSION]->(version:OperationalChangeVersion)
                 MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
@@ -457,7 +457,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             return result.records.map(record => {
                 const milestone = {
-                    id: this._normalizeId(record.get('milestoneId')),
+                    id: this.normalizeId(record.get('milestoneId')),
                     title: record.get('title'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
@@ -466,7 +466,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 const waveId = record.get('waveId');
                 if (waveId) {
                     milestone.wave = {
-                        id: this._normalizeId(waveId),
+                        id: this.normalizeId(waveId),
                         title: record.get('waveName')
                     };
                 }

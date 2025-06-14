@@ -43,17 +43,18 @@ class OperationalChangeCommands extends VersionedCommands {
             console.log(`\nMilestones:`);
 
             const table = new Table({
-                head: ['Title', 'Description', 'Event Types', 'Wave'],
-                colWidths: [15, 30, 25, 15]
+                head: ['ID', 'Title', 'Description', 'Event Types', 'Wave'],
+                colWidths: [15, 20, 30, 25, 15]
             });
 
             item.milestones.forEach(milestone => {
-                const eventTypes = milestone.eventTypes.join(', ');
+                const eventTypes = milestone.eventTypes?.join(', ') || '';
                 const wave = milestone.wave ?
                     `${milestone.wave.year}.${milestone.wave.quarter}` :
                     'Not targeted';
 
                 table.push([
+                    milestone.id,
                     milestone.title,
                     milestone.description,
                     eventTypes,
@@ -63,60 +64,6 @@ class OperationalChangeCommands extends VersionedCommands {
 
             console.log(table.toString());
         }
-    }
-
-    /**
-     * Add milestones command specific to operational changes
-     */
-    createCommands(program) {
-        super.createCommands(program);
-
-        // Get the command that was just created
-        const itemCommand = program.commands.find(cmd => cmd.name() === this.itemName);
-
-        // Add milestones-specific command
-        itemCommand
-            .command('milestones <itemId>')
-            .description(`Show milestones for ${this.displayName}`)
-            .action(async (itemId) => {
-                try {
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
-                        headers: this.createHeaders()
-                    });
-
-                    if (response.status === 404) {
-                        console.error(`${this.displayName} with ID ${itemId} not found.`);
-                        process.exit(1);
-                    }
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-
-                    const item = await response.json();
-
-                    if (!item.milestones || item.milestones.length === 0) {
-                        console.log(`No milestones found for ${this.displayName} ${itemId}.`);
-                        return;
-                    }
-
-                    console.log(`Milestones for ${item.title} (Version ${item.version}):`);
-
-                    item.milestones.forEach((milestone, index) => {
-                        console.log(`\n${index + 1}. ${milestone.title}`);
-                        console.log(`   Description: ${milestone.description}`);
-                        console.log(`   Event Types: ${milestone.eventTypes.join(', ')}`);
-                        if (milestone.wave) {
-                            console.log(`   Target Wave: ${milestone.wave.year}.${milestone.wave.quarter} (${milestone.wave.date})`);
-                        } else {
-                            console.log(`   Target Wave: Not specified`);
-                        }
-                    });
-                } catch (error) {
-                    console.error(`Error fetching milestones:`, error.message);
-                    process.exit(1);
-                }
-            });
     }
 
     /**
@@ -174,7 +121,7 @@ class OperationalChangeCommands extends VersionedCommands {
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId> <title>')
-            .description(`Update a ${this.displayName} (creates new version)`)
+            .description(`Update a ${this.displayName} (creates new version with complete replacement)`)
             .option('--description <description>', 'New description')
             .option('--visibility <visibility>', 'New visibility (NM or NETWORK)')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
@@ -187,17 +134,16 @@ class OperationalChangeCommands extends VersionedCommands {
                         process.exit(1);
                     }
 
-                    // Build update payload - server handles inheritance
+                    // Build complete update payload
                     const data = {
                         expectedVersionId,
-                        title
+                        title,
+                        description: options.description || '',
+                        visibility: options.visibility || 'NETWORK',
+                        satisfiesRequirements: options.satisfies || [],
+                        supersedsRequirements: options.supersedes || [],
+                        milestones: [] // Reset milestones in full update
                     };
-
-                    // Only include optional fields that are being updated
-                    if (options.description) data.description = options.description;
-                    if (options.visibility) data.visibility = options.visibility;
-                    if (options.satisfies) data.satisfiesRequirements = options.satisfies;
-                    if (options.supersedes) data.supersedsRequirements = options.supersedes;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PUT',
@@ -233,13 +179,314 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Override createCommands to add delete command for versioned items
+     * Implement patch command with partial updates
+     */
+    _addPatchCommand(itemCommand) {
+        itemCommand
+            .command('patch <itemId> <expectedVersionId>')
+            .description(`Patch a ${this.displayName} (partial update, creates new version)`)
+            .option('--title <title>', 'New title')
+            .option('--description <description>', 'New description')
+            .option('--visibility <visibility>', 'New visibility (NM or NETWORK)')
+            .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
+            .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
+            .action(async (itemId, expectedVersionId, options) => {
+                try {
+                    // Validate visibility if provided
+                    if (options.visibility && !['NM', 'NETWORK'].includes(options.visibility)) {
+                        console.error('Visibility must be either "NM" or "NETWORK"');
+                        process.exit(1);
+                    }
+
+                    // Build patch payload with only provided fields
+                    const data = { expectedVersionId };
+
+                    if (options.title) data.title = options.title;
+                    if (options.description) data.description = options.description;
+                    if (options.visibility) data.visibility = options.visibility;
+                    if (options.satisfies) data.satisfiesRequirements = options.satisfies;
+                    if (options.supersedes) data.supersedsRequirements = options.supersedes;
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
+                        method: 'PATCH',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
+                        console.error(`Use "show ${itemId}" to get current version ID and retry`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const entity = await response.json();
+                    console.log(`Patched ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
+                    console.log(`New version: ${entity.version} (Version ID: ${entity.versionId})`);
+                } catch (error) {
+                    console.error(`Error patching ${this.displayName}:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    /**
+     * Add milestone commands specific to operational changes
+     */
+    _addMilestoneCommands(itemCommand) {
+        // Milestone list command
+        itemCommand
+            .command('milestone-list <itemId>')
+            .description(`List milestones for ${this.displayName}`)
+            .action(async (itemId) => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones`, {
+                        headers: this.createHeaders()
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const milestones = await response.json();
+
+                    if (milestones.length === 0) {
+                        console.log(`No milestones found for ${this.displayName} ${itemId}.`);
+                        return;
+                    }
+
+                    const table = new Table({
+                        head: ['ID', 'Title', 'Description', 'Event Types', 'Wave'],
+                        colWidths: [15, 20, 30, 25, 15]
+                    });
+
+                    milestones.forEach(milestone => {
+                        const eventTypes = milestone.eventTypes?.join(', ') || '';
+                        const wave = milestone.wave ?
+                            `${milestone.wave.year}.${milestone.wave.quarter}` :
+                            'Not targeted';
+
+                        table.push([
+                            milestone.id,
+                            milestone.title,
+                            milestone.description,
+                            eventTypes,
+                            wave
+                        ]);
+                    });
+
+                    console.log(`Milestones for ${this.displayName} ${itemId}:`);
+                    console.log(table.toString());
+                } catch (error) {
+                    console.error(`Error listing milestones:`, error.message);
+                    process.exit(1);
+                }
+            });
+
+        // Milestone show command
+        itemCommand
+            .command('milestone-show <itemId> <milestoneId>')
+            .description(`Show specific milestone`)
+            .action(async (itemId, milestoneId) => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                        headers: this.createHeaders()
+                    });
+
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(`Error: ${error.error?.message || 'Not found'}`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const milestone = await response.json();
+
+                    console.log(`Milestone ID: ${milestone.id}`);
+                    console.log(`Title: ${milestone.title}`);
+                    console.log(`Description: ${milestone.description}`);
+                    console.log(`Event Types: ${milestone.eventTypes?.join(', ') || 'None'}`);
+                    if (milestone.wave) {
+                        console.log(`Target Wave: ${milestone.wave.year}.${milestone.wave.quarter} (${milestone.wave.date})`);
+                    } else {
+                        console.log(`Target Wave: Not specified`);
+                    }
+                } catch (error) {
+                    console.error(`Error fetching milestone:`, error.message);
+                    process.exit(1);
+                }
+            });
+
+        // Milestone add command
+        itemCommand
+            .command('milestone-add <itemId> <expectedVersionId> <title> <description>')
+            .description(`Add milestone to ${this.displayName} (creates new version)`)
+            .option('--event-types <types...>', 'Event types (API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, API_DECOMMISSIONING, OTHER)')
+            .option('--wave <waveId>', 'Target wave ID')
+            .action(async (itemId, expectedVersionId, title, description, options) => {
+                try {
+                    const data = {
+                        expectedVersionId,
+                        title,
+                        description,
+                        eventTypes: options.eventTypes || []
+                    };
+
+                    if (options.wave) {
+                        data.waveId = options.wave;
+                    }
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones`, {
+                        method: 'POST',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
+                        console.error(`Use "show ${itemId}" to get current version ID and retry`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const milestone = await response.json();
+                    console.log(`Added milestone: ${milestone.title} (ID: ${milestone.id})`);
+                    console.log(`${this.displayName} updated to new version`);
+                } catch (error) {
+                    console.error(`Error adding milestone:`, error.message);
+                    process.exit(1);
+                }
+            });
+
+        // Milestone update command
+        itemCommand
+            .command('milestone-update <itemId> <milestoneId> <expectedVersionId>')
+            .description(`Update milestone (creates new version)`)
+            .option('--title <title>', 'New title')
+            .option('--description <description>', 'New description')
+            .option('--event-types <types...>', 'New event types')
+            .option('--wave <waveId>', 'New target wave ID')
+            .action(async (itemId, milestoneId, expectedVersionId, options) => {
+                try {
+                    const data = { expectedVersionId };
+
+                    if (options.title) data.title = options.title;
+                    if (options.description) data.description = options.description;
+                    if (options.eventTypes) data.eventTypes = options.eventTypes;
+                    if (options.wave) data.waveId = options.wave;
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                        method: 'PUT',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(`Error: ${error.error?.message || 'Not found'}`);
+                        process.exit(1);
+                    }
+
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
+                        console.error(`Use "show ${itemId}" to get current version ID and retry`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const milestone = await response.json();
+                    console.log(`Updated milestone: ${milestone.title} (ID: ${milestone.id})`);
+                    console.log(`${this.displayName} updated to new version`);
+                } catch (error) {
+                    console.error(`Error updating milestone:`, error.message);
+                    process.exit(1);
+                }
+            });
+
+        // Milestone delete command
+        itemCommand
+            .command('milestone-delete <itemId> <milestoneId> <expectedVersionId>')
+            .description(`Delete milestone (creates new version)`)
+            .action(async (itemId, milestoneId, expectedVersionId) => {
+                try {
+                    const data = { expectedVersionId };
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                        method: 'DELETE',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(`Error: ${error.error?.message || 'Not found'}`);
+                        process.exit(1);
+                    }
+
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
+                        console.error(`Use "show ${itemId}" to get current version ID and retry`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    console.log(`Deleted milestone with ID: ${milestoneId}`);
+                    console.log(`${this.displayName} updated to new version`);
+                } catch (error) {
+                    console.error(`Error deleting milestone:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    /**
+     * Override createCommands to add patch and milestone commands
      */
     createCommands(program) {
         super.createCommands(program);
 
         // Get the command that was just created
         const itemCommand = program.commands.find(cmd => cmd.name() === this.itemName);
+
+        // Add milestone commands
+        this._addMilestoneCommands(itemCommand);
 
         // Add delete command for operational changes
         itemCommand

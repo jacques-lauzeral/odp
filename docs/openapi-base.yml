@@ -1,0 +1,407 @@
+openapi: 3.0.3
+
+components:
+  securitySchemes:
+    UserContext:
+      type: apiKey
+      in: header
+      name: x-user-id
+      description: User identifier for audit context
+
+  schemas:
+    # Error Responses
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [BAD_REQUEST, VALIDATION_ERROR, NOT_FOUND, VERSION_CONFLICT, CONFLICT, INTERNAL_ERROR]
+            message:
+              type: string
+
+    # Setup Entities (Simple)
+    StakeholderCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+
+    StakeholderCategoryRequest:
+      type: object
+      required: [name, description]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+
+    DataCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+
+    DataCategoryRequest:
+      type: object
+      required: [name, description]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+
+    Service:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+
+    ServiceRequest:
+      type: object
+      required: [name, description]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+
+    RegulatoryAspect:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+
+    RegulatoryAspectRequest:
+      type: object
+      required: [name, description]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        parentId:
+          type: string
+          nullable: true
+
+    # Reference Objects (for operational entity outputs)
+    EntityReference:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+
+    OperationalRequirementReference:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [ON, OR]
+
+    # Operational Entities (Versioned)
+    OperationalRequirement:
+      type: object
+      properties:
+        itemId:
+          type: string
+        title:
+          type: string
+        versionId:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        type:
+          type: string
+          enum: [ON, OR]
+        statement:
+          type: string
+        rationale:
+          type: string
+        references:
+          type: string
+        risksAndOpportunities:
+          type: string
+        flows:
+          type: string
+        flowExamples:
+          type: string
+        refinesParents:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalRequirementReference'
+        impactsStakeholderCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityReference'
+        impactsData:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityReference'
+        impactsServices:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityReference'
+        impactsRegulatoryAspects:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityReference'
+
+    OperationalRequirementRequest:
+      type: object
+      required: [title, type, statement, rationale, references, risksAndOpportunities, flows, flowExamples, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, impactsRegulatoryAspects]
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+          enum: [ON, OR]
+        statement:
+          type: string
+        rationale:
+          type: string
+        references:
+          type: string
+        risksAndOpportunities:
+          type: string
+        flows:
+          type: string
+        flowExamples:
+          type: string
+        refinesParents:
+          type: array
+          items:
+            type: string
+        impactsStakeholderCategories:
+          type: array
+          items:
+            type: string
+        impactsData:
+          type: array
+          items:
+            type: string
+        impactsServices:
+          type: array
+          items:
+            type: string
+        impactsRegulatoryAspects:
+          type: array
+          items:
+            type: string
+
+    OperationalRequirementUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/OperationalRequirementRequest'
+        - type: object
+          required: [expectedVersionId]
+          properties:
+            expectedVersionId:
+              type: string
+
+    OperationalRequirementPatchRequest:
+      allOf:
+        - $ref: '#/components/schemas/OperationalRequirementRequest'
+        - type: object
+          required: [expectedVersionId]
+          properties:
+            expectedVersionId:
+              type: string
+
+    Milestone:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+            enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, API_DECOMMISSIONING, OTHER]
+        wave:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            year:
+              type: integer
+            quarter:
+              type: integer
+            date:
+              type: string
+
+    MilestoneRequest:
+      type: object
+      required: [title, description, eventTypes]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+            enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, API_DECOMMISSIONING, OTHER]
+        waveId:
+          type: string
+          nullable: true
+
+    MilestoneUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/MilestoneRequest'
+        - type: object
+          required: [expectedVersionId]
+          properties:
+            expectedVersionId:
+              type: string
+              description: Version ID of the OperationalChange (for optimistic locking)
+
+    OperationalChange:
+      type: object
+      properties:
+        itemId:
+          type: string
+        title:
+          type: string
+        versionId:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          enum: [NM, NETWORK]
+        satisfiesRequirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalRequirementReference'
+        supersedsRequirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalRequirementReference'
+        milestones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Milestone'
+
+    OperationalChangeRequest:
+      type: object
+      required: [title, description, visibility, satisfiesRequirements, supersedsRequirements, milestones]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          enum: [NM, NETWORK]
+        satisfiesRequirements:
+          type: array
+          items:
+            type: string
+        supersedsRequirements:
+          type: array
+          items:
+            type: string
+        milestones:
+          type: array
+          items:
+            $ref: '#/components/schemas/MilestoneRequest'
+
+    OperationalChangeUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/OperationalChangeRequest'
+        - type: object
+          required: [expectedVersionId]
+          properties:
+            expectedVersionId:
+              type: string
+
+    OperationalChangePatchRequest:
+      type: object
+      required: [expectedVersionId]
+      properties:
+        expectedVersionId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          enum: [NM, NETWORK]
+        satisfiesRequirements:
+          type: array
+          items:
+            type: string
+        supersedsRequirements:
+          type: array
+          items:
+            type: string
+        milestones:
+          type: array
+          items:
+            $ref: '#/components/schemas/MilestoneRequest'
+
+    VersionHistory:
+      type: object
+      properties:
+        versionId:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string

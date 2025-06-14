@@ -35,6 +35,24 @@ export class OperationalRequirementService extends VersionedItemService {
         await this._validateReferencedEntities(payload);
     }
 
+    async _computePatchedPayload(current, patchPayload) {
+        return {
+            title: patchPayload.title !== undefined ? patchPayload.title : current.title,
+            type: patchPayload.type !== undefined ? patchPayload.type : current.type,
+            statement: patchPayload.statement !== undefined ? patchPayload.statement : current.statement,
+            rationale: patchPayload.rationale !== undefined ? patchPayload.rationale : current.rationale,
+            references: patchPayload.references !== undefined ? patchPayload.references : current.references,
+            risksAndOpportunities: patchPayload.risksAndOpportunities !== undefined ? patchPayload.risksAndOpportunities : current.risksAndOpportunities,
+            flows: patchPayload.flows !== undefined ? patchPayload.flows : current.flows,
+            flowExamples: patchPayload.flowExamples !== undefined ? patchPayload.flowExamples : current.flowExamples,
+            refinesParents: patchPayload.refinesParents !== undefined ? patchPayload.refinesParents : current.refinesParents.map(ref => ref.id),
+            impactsStakeholderCategories: patchPayload.impactsStakeholderCategories !== undefined ? patchPayload.impactsStakeholderCategories : current.impactsStakeholderCategories.map(ref => ref.id),
+            impactsData: patchPayload.impactsData !== undefined ? patchPayload.impactsData : current.impactsData.map(ref => ref.id),
+            impactsServices: patchPayload.impactsServices !== undefined ? patchPayload.impactsServices : current.impactsServices.map(ref => ref.id),
+            impactsRegulatoryAspects: patchPayload.impactsRegulatoryAspects !== undefined ? patchPayload.impactsRegulatoryAspects : current.impactsRegulatoryAspects.map(ref => ref.id)
+        };
+    }
+
     async _validateUpdatePayload(payload) {
         const jsonPayload = JSON.stringify(payload);
         console.log(`OperationalRequirementService._validateUpdatePayload() payload: ${jsonPayload}`);

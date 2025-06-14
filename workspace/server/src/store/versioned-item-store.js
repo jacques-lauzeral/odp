@@ -1,5 +1,5 @@
-import { BaseStore } from './base-store.js';
-import { StoreError } from './transaction.js';
+import {BaseStore} from './base-store.js';
+import {StoreError} from './transaction.js';
 
 export class VersionedItemStore extends BaseStore {
     constructor(driver, itemLabel, versionLabel) {
@@ -25,12 +25,6 @@ export class VersionedItemStore extends BaseStore {
         throw new Error('_createRelationshipsFromIds must be implemented by concrete store');
     }
 
-    // Helper for consistent ID normalization
-    _normalizeId(id) {
-        if (typeof id === 'object' && id.toNumber) return id.toNumber();
-        return parseInt(id, 10);
-    }
-
     async create(data, transaction) {
         try {
             const { title, ...versionData } = data;
@@ -51,7 +45,7 @@ export class VersionedItemStore extends BaseStore {
                 RETURN id(item) as itemId
             `, { title, createdAt, createdBy });
 
-            const itemId = this._normalizeId(itemResult.records[0].get('itemId'));
+            const itemId = this.normalizeId(itemResult.records[0].get('itemId'));
 
             // Create first ItemVersion node
             const versionResult = await transaction.run(`
@@ -65,7 +59,7 @@ export class VersionedItemStore extends BaseStore {
                 RETURN id(version) as versionId
             `, { createdAt, createdBy, contentData });
 
-            const versionId = this._normalizeId(versionResult.records[0].get('versionId'));
+            const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
             // Create Item-Version relationships
             await transaction.run(`
@@ -89,8 +83,8 @@ export class VersionedItemStore extends BaseStore {
 
     async update(itemId, data, expectedVersionId, transaction) {
         try {
-            const numericItemId = this._normalizeId(itemId);
-            const numericExpectedVersionId = this._normalizeId(expectedVersionId);
+            const numericItemId = this.normalizeId(itemId);
+            const numericExpectedVersionId = this.normalizeId(expectedVersionId);
 
             const { title, expectedVersionId: _, ...versionData } = data; // Remove expectedVersionId
             const createdAt = new Date().toISOString();
@@ -111,9 +105,9 @@ export class VersionedItemStore extends BaseStore {
             }
 
             const record = currentResult.records[0];
-            const currentVersionId = this._normalizeId(record.get('currentVersionId'));
+            const currentVersionId = this.normalizeId(record.get('currentVersionId'));
             const currentVersion = record.get('currentVersion');
-            const currentVersionNumeric = this._normalizeId(currentVersion);
+            const currentVersionNumeric = this.normalizeId(currentVersion);
             const currentTitle = record.get('currentTitle');
 
             console.log(`VersionItemStore.update() current version - expected version: ${currentVersionId} - ${numericExpectedVersionId}`);
@@ -144,7 +138,7 @@ export class VersionedItemStore extends BaseStore {
                 RETURN id(version) as versionId
             `, { newVersion, createdAt, createdBy, contentData });
 
-            const versionId = this._normalizeId(versionResult.records[0].get('versionId'));
+            const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
             // Update Item-Version relationships (no property update needed)
             await transaction.run(`
@@ -188,7 +182,7 @@ export class VersionedItemStore extends BaseStore {
 
     async findById(itemId, transaction) {
         try {
-            const numericItemId = this._normalizeId(itemId);
+            const numericItemId = this.normalizeId(itemId);
             const result = await transaction.run(`
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
                 WHERE id(item) = $itemId
@@ -211,10 +205,10 @@ export class VersionedItemStore extends BaseStore {
             delete versionData.createdBy;
 
             const baseItem = {
-                itemId: this._normalizeId(record.get('itemId')),
+                itemId: this.normalizeId(record.get('itemId')),
                 title: record.get('title'),
-                versionId: this._normalizeId(record.get('versionId')),
-                version: this._normalizeId(record.get('version')),
+                versionId: this.normalizeId(record.get('versionId')),
+                version: this.normalizeId(record.get('version')),
                 createdAt: record.get('createdAt'),
                 createdBy: record.get('createdBy'),
                 ...versionData
@@ -231,8 +225,8 @@ export class VersionedItemStore extends BaseStore {
 
     async findByIdAndVersion(itemId, versionNumber, transaction) {
         try {
-            const numericItemId = this._normalizeId(itemId);
-            const numericVersionNumber = this._normalizeId(versionNumber);
+            const numericItemId = this.normalizeId(itemId);
+            const numericVersionNumber = this.normalizeId(versionNumber);
             const result = await transaction.run(`
                 MATCH (item:${this.nodeLabel})<-[:VERSION_OF]-(version:${this.versionLabel})
                 WHERE id(item) = $itemId AND version.version = $versionNumber
@@ -255,10 +249,10 @@ export class VersionedItemStore extends BaseStore {
             delete versionData.createdBy;
 
             const baseItem = {
-                itemId: this._normalizeId(record.get('itemId')),
+                itemId: this.normalizeId(record.get('itemId')),
                 title: record.get('title'),
-                versionId: this._normalizeId(record.get('versionId')),
-                version: this._normalizeId(record.get('version')),
+                versionId: this.normalizeId(record.get('versionId')),
+                version: this.normalizeId(record.get('version')),
                 createdAt: record.get('createdAt'),
                 createdBy: record.get('createdBy'),
                 ...versionData
@@ -275,7 +269,7 @@ export class VersionedItemStore extends BaseStore {
 
     async findVersionHistory(itemId, transaction) {
         try {
-            const numericItemId = this._normalizeId(itemId);
+            const numericItemId = this.normalizeId(itemId);
 
             // First check if item exists
             const itemExists = await this.exists(numericItemId, transaction);
@@ -296,8 +290,8 @@ export class VersionedItemStore extends BaseStore {
             }
 
             return result.records.map(record => ({
-                versionId: this._normalizeId(record.get('versionId')),
-                version: this._normalizeId(record.get('version')),
+                versionId: this.normalizeId(record.get('versionId')),
+                version: this.normalizeId(record.get('version')),
                 createdAt: record.get('createdAt'),
                 createdBy: record.get('createdBy')
             }));
@@ -329,10 +323,10 @@ export class VersionedItemStore extends BaseStore {
                 delete versionData.createdBy;
 
                 const baseItem = {
-                    itemId: this._normalizeId(record.get('itemId')),
+                    itemId: this.normalizeId(record.get('itemId')),
                     title: record.get('title'),
-                    versionId: this._normalizeId(record.get('versionId')),
-                    version: this._normalizeId(record.get('version')),
+                    versionId: this.normalizeId(record.get('versionId')),
+                    version: this.normalizeId(record.get('version')),
                     createdAt: record.get('createdAt'),
                     createdBy: record.get('createdBy'),
                     ...versionData
@@ -363,7 +357,7 @@ export class VersionedItemStore extends BaseStore {
     // Helper to build Reference objects from Neo4j results
     _buildReference(record, titleField = 'title') {
         const ref = {
-            id: this._normalizeId(record.get('id')),
+            id: this.normalizeId(record.get('id')),
             title: record.get(titleField)
         };
 
@@ -387,7 +381,7 @@ export class VersionedItemStore extends BaseStore {
     async _validateReferences(label, ids, transaction) {
         if (!Array.isArray(ids) || ids.length === 0) return;
 
-        const normalizedIds = ids.map(id => this._normalizeId(id));
+        const normalizedIds = ids.map(id => this.normalizeId(id));
 
         const result = await transaction.run(`
             MATCH (item:${label}) 
@@ -395,7 +389,7 @@ export class VersionedItemStore extends BaseStore {
             RETURN count(item) as found
         `, { ids: normalizedIds });
 
-        const found = this._normalizeId(result.records[0].get('found'));
+        const found = this.normalizeId(result.records[0].get('found'));
         if (found !== normalizedIds.length) {
             throw new StoreError(`One or more ${label} items do not exist`);
         }

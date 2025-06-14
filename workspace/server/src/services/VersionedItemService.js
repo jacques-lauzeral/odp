@@ -57,6 +57,41 @@ export class VersionedItemService {
     }
 
     /**
+     * Patch versioned entity (partial update with field inheritance)
+     */
+    async patch(itemId, patchPayload, expectedVersionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const store = this.getStore();
+
+            // Fetch current version within the same transaction
+            const current = await store.findById(itemId, tx);
+            if (!current) {
+                throw new Error('Entity not found');
+            }
+
+            // Verify version for optimistic locking
+            if (current.versionId !== expectedVersionId) {
+                throw new Error('Outdated item version');
+            }
+
+            // Delegate field merging to subclass
+            const completePayload = await this._computePatchedPayload(current, patchPayload);
+
+            // Validate the complete payload
+            await this._validateUpdatePayload(completePayload);
+
+            // Perform the update within the same transaction
+            const entity = await store.update(itemId, completePayload, expectedVersionId, tx);
+            await commitTransaction(tx);
+            return entity;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
      * Get entity by ID (latest version)
      */
     async getById(itemId, userId) {
@@ -143,5 +178,10 @@ export class VersionedItemService {
 
     async _validateUpdatePayload(payload) {
         throw new Error('_validateUpdatePayload must be implemented by subclass');
+    }
+
+    // Abstract patch method - must be implemented by subclasses for entity-specific field merging
+    async _computePatchedPayload(current, patchPayload) {
+        throw new Error('_computePatchedPayload must be implemented by subclass');
     }
 }

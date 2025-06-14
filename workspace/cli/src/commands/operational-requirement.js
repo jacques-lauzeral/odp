@@ -70,11 +70,15 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--type <type>', `ON | OR (default)`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
+            .option('--references <references>', `References`)
+            .option('--risks <risks>', `Risks and opportunities`)
+            .option('--flows <flows>', `Flows`)
+            .option('--flow-examples <examples>', `Flow examples`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
-            .option('--impactsData <data-category-id>', `Impacted data category ID`)
-            .option('--impactsStakeholderCategories <stakeholder-category-id>', `Impacted stakeholder category ID`)
-            .option('--impactsRegulatoryAspects <regulatory-aspect-id>', `Impacted regulatory aspect ID`)
-            .option('--impactsServices <service-id>', `Impacted service ID`)
+            .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
+            .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
+            .option('--impacts-regulatory <regulatory-aspect-ids...>', `Impacted regulatory aspect IDs`)
+            .option('--impacts-services <service-ids...>', `Impacted service IDs`)
             .action(async (title, options) => {
                 try {
                     const data = {
@@ -82,11 +86,15 @@ class OperationalRequirementCommands extends VersionedCommands {
                         type: options.type || 'OR',
                         statement: options.statement || '',
                         rationale: options.rationale || '',
-                        refinesParents: options.parent != null ? [ options.parent ] : [],
-                        impactsData: options.impactsData != null ? [ options.impactsData ] : [],
-                        impactsServices: options.impactsServices != null ? [ options.impactsServices ] : [],
-                        impactsStakeholderCategories: options.impactsStakeholderCategories != null ? [ options.impactsStakeholderCategories ] : [],
-                        impactsRegulatoryAspects: options.impactsRegulatoryAspects != null ? [ options.impactsRegulatoryAspects ] : [],
+                        references: options.references || '',
+                        risksAndOpportunities: options.risks || '',
+                        flows: options.flows || '',
+                        flowExamples: options.flowExamples || '',
+                        refinesParents: options.parent ? [options.parent] : [],
+                        impactsData: options.impactsData || [],
+                        impactsStakeholderCategories: options.impactsStakeholders || [],
+                        impactsRegulatoryAspects: options.impactsRegulatory || [],
+                        impactsServices: options.impactsServices || []
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
@@ -101,7 +109,8 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const entity = await response.json();
-                    console.log(`Created ${this.displayName}: ${entity.name} (ID: ${entity.id})`);
+                    console.log(`Created ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
+                    console.log(`Version: ${entity.version} (Version ID: ${entity.versionId})`);
                 } catch (error) {
                     console.error(`Error creating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -109,39 +118,58 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
     }
 
-
     _addUpdateCommand(itemCommand) {
         itemCommand
-            .command('update <id> <version> <title>')
-            .description(`Update a ${this.displayName}`)
-            .option('--type <type>', `ON | OR (default)`)
+            .command('update <itemId> <expectedVersionId> <title>')
+            .description(`Update a ${this.displayName} (creates new version)`)
+            .option('--type <type>', `ON | OR`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
+            .option('--references <references>', `References`)
+            .option('--risks <risks>', `Risks and opportunities`)
+            .option('--flows <flows>', `Flows`)
+            .option('--flow-examples <examples>', `Flow examples`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
-            .option('--impactsData <data-category-id>', `Impacted data category ID`)
-            .option('--impactsStakeholderCategories <stakeholder-category-id>', `Impacted stakeholder category ID`)
-            .option('--impactsRegulatoryAspects <regulatory-aspect-id>', `Impacted regulatory aspect ID`)
-            .option('--impactsServices <service-id>', `Impacted service ID`)
-            .action(async (id, version, title, options) => {
+            .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
+            .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
+            .option('--impacts-regulatory <regulatory-aspect-ids...>', `Impacted regulatory aspect IDs`)
+            .option('--impacts-services <service-ids...>', `Impacted service IDs`)
+            .action(async (itemId, expectedVersionId, title, options) => {
                 try {
                     const data = {
-                        expectedVersionId: version,
+                        expectedVersionId,
                         title,
                         type: options.type || 'OR',
                         statement: options.statement || '',
                         rationale: options.rationale || '',
-                        refinesParents: options.parent != null ? [ options.parent ] : [],
-                        impactsData: options.impactsData != null ? [ options.impactsData ] : [],
-                        impactsServices: options.impactsServices != null ? [ options.impactsServices ] : [],
-                        impactsStakeholderCategories: options.impactsStakeholderCategories != null ? [ options.impactsStakeholderCategories ] : [],
-                        impactsRegulatoryAspects: options.impactsRegulatoryAspects != null ? [ options.impactsRegulatoryAspects ] : [],
+                        references: options.references || '',
+                        risksAndOpportunities: options.risks || '',
+                        flows: options.flows || '',
+                        flowExamples: options.flowExamples || '',
+                        refinesParents: options.parent ? [options.parent] : [],
+                        impactsData: options.impactsData || [],
+                        impactsStakeholderCategories: options.impactsStakeholders || [],
+                        impactsRegulatoryAspects: options.impactsRegulatory || [],
+                        impactsServices: options.impactsServices || []
                     };
 
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${id}`, {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PUT',
                         headers: this.createHeaders(),
                         body: JSON.stringify(data)
                     });
+
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
+                        console.error(`Use "show ${itemId}" to get current version ID and retry`);
+                        process.exit(1);
+                    }
 
                     if (!response.ok) {
                         const error = await response.json();
@@ -149,9 +177,79 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const item = await response.json();
-                    console.log(`Updated ${this.displayName}: ${item.title} (ID: ${item.id})`);
+                    console.log(`Updated ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
+                    console.log(`New version: ${item.version} (Version ID: ${item.versionId})`);
                 } catch (error) {
                     console.error(`Error updating ${this.displayName}:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    _addPatchCommand(itemCommand) {
+        itemCommand
+            .command('patch <itemId> <expectedVersionId>')
+            .description(`Patch a ${this.displayName} (partial update, creates new version)`)
+            .option('--title <title>', 'New title')
+            .option('--type <type>', 'ON | OR')
+            .option('--statement <statement>', 'New statement')
+            .option('--rationale <rationale>', 'New rationale')
+            .option('--references <references>', 'New references')
+            .option('--risks <risks>', 'New risks and opportunities')
+            .option('--flows <flows>', 'New flows')
+            .option('--flow-examples <examples>', 'New flow examples')
+            .option('--parent <requirement-id>', 'Parent requirement ID')
+            .option('--impacts-data <data-category-ids...>', 'Impacted data category IDs')
+            .option('--impacts-stakeholders <stakeholder-category-ids...>', 'Impacted stakeholder category IDs')
+            .option('--impacts-regulatory <regulatory-aspect-ids...>', 'Impacted regulatory aspect IDs')
+            .option('--impacts-services <service-ids...>', 'Impacted service IDs')
+            .action(async (itemId, expectedVersionId, options) => {
+                try {
+                    // Build patch payload with only provided fields
+                    const data = { expectedVersionId };
+
+                    if (options.title) data.title = options.title;
+                    if (options.type) data.type = options.type;
+                    if (options.statement) data.statement = options.statement;
+                    if (options.rationale) data.rationale = options.rationale;
+                    if (options.references) data.references = options.references;
+                    if (options.risks) data.risksAndOpportunities = options.risks;
+                    if (options.flows) data.flows = options.flows;
+                    if (options.flowExamples) data.flowExamples = options.flowExamples;
+                    if (options.parent) data.refinesParents = [options.parent];
+                    if (options.impactsData) data.impactsData = options.impactsData;
+                    if (options.impactsStakeholders) data.impactsStakeholderCategories = options.impactsStakeholders;
+                    if (options.impactsRegulatory) data.impactsRegulatoryAspects = options.impactsRegulatory;
+                    if (options.impactsServices) data.impactsServices = options.impactsServices;
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
+                        method: 'PATCH',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
+                        console.error(`Use "show ${itemId}" to get current version ID and retry`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const item = await response.json();
+                    console.log(`Patched ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
+                    console.log(`New version: ${item.version} (Version ID: ${item.versionId})`);
+                } catch (error) {
+                    console.error(`Error patching ${this.displayName}:`, error.message);
                     process.exit(1);
                 }
             });

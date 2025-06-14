@@ -125,7 +125,7 @@ export class VersionedItemRouter {
             }
         });
 
-        // Update entity (creates new ItemVersion)
+        // Update entity (creates new ItemVersion with complete replacement)
         this.router.put('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
@@ -146,6 +146,39 @@ export class VersionedItemRouter {
                 res.json(entity);
             } catch (error) {
                 console.error(`Error updating ${this.entityName}:`, error);
+                if (error.message.includes('x-user-id')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message === 'Outdated item version') {
+                    res.status(409).json({ error: { code: 'VERSION_CONFLICT', message: 'Item has been modified by another user. Please refresh and try again.' } });
+                } else if (error.message.includes('Validation failed:')) {
+                    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+                } else {
+                    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+                }
+            }
+        });
+
+        // Patch entity (creates new ItemVersion with partial updates)
+        this.router.patch('/:id', async (req, res) => {
+            try {
+                const userId = this.getUserId(req);
+                const expectedVersionId = req.body.expectedVersionId;
+                if (!expectedVersionId) {
+                    return res.status(400).json({
+                        error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
+                    });
+                }
+
+                console.log(`${this.service.constructor.name}.patch() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
+                const entity = await this.service.patch(req.params.id, req.body, expectedVersionId, userId);
+                if (!entity) {
+                    return res.status(404).json({
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
+                    });
+                }
+                res.json(entity);
+            } catch (error) {
+                console.error(`Error patching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message === 'Outdated item version') {

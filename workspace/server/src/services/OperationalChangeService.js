@@ -23,6 +23,176 @@ export class OperationalChangeService extends VersionedItemService {
     // - getAll(userId)
     // - delete(itemId, userId)
 
+    /**
+     * Get all milestones for operational change
+     */
+    async getMilestones(itemId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const operationalChange = await this.getStore().findById(itemId, tx);
+            if (!operationalChange) {
+                throw new Error('Operational change not found');
+            }
+            await commitTransaction(tx);
+            return operationalChange.milestones || [];
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * Get specific milestone by ID
+     */
+    async getMilestone(itemId, milestoneId, userId) {
+        const milestones = await this.getMilestones(itemId, userId);
+        const store = this.getStore();
+        const milestone = milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+        if (!milestone) {
+            throw new Error('Milestone not found');
+        }
+        return milestone;
+    }
+
+    /**
+     * Add milestone to operational change (creates new OC version)
+     */
+    async addMilestone(itemId, milestoneData, expectedVersionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const store = this.getStore();
+
+            // Get current OC
+            const current = await store.findById(itemId, tx);
+            if (!current) {
+                throw new Error('Operational change not found');
+            }
+
+            // Create new milestones array with added milestone
+            const newMilestones = [...current.milestones, milestoneData];
+
+            // Validate the new milestone
+            this._validateMilestones(newMilestones);
+            await this._validateMilestoneWaves(newMilestones);
+
+            // Create complete payload for update
+            const completePayload = {
+                title: current.title,
+                description: current.description,
+                visibility: current.visibility,
+                satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
+                supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
+                milestones: newMilestones
+            };
+
+            // Update OC with new milestones
+            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
+            await commitTransaction(tx);
+
+            // Return the newly added milestone
+            const addedMilestone = updatedOC.milestones[updatedOC.milestones.length - 1];
+            return addedMilestone;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * Update milestone (creates new OC version)
+     */
+    async updateMilestone(itemId, milestoneId, milestoneData, expectedVersionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const store = this.getStore();
+
+            // Get current OC
+            const current = await store.findById(itemId, tx);
+            if (!current) {
+                throw new Error('Operational change not found');
+            }
+
+            // Find and update the milestone
+            const milestoneIndex = current.milestones.findIndex(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+            if (milestoneIndex === -1) {
+                throw new Error('Milestone not found');
+            }
+
+            // Create new milestones array with updated milestone
+            const newMilestones = [...current.milestones];
+            newMilestones[milestoneIndex] = { ...milestoneData, id: milestoneId }; // Preserve ID
+
+            // Validate the updated milestones
+            this._validateMilestones(newMilestones);
+            await this._validateMilestoneWaves(newMilestones);
+
+            // Create complete payload for update
+            const completePayload = {
+                title: current.title,
+                description: current.description,
+                visibility: current.visibility,
+                satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
+                supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
+                milestones: newMilestones
+            };
+
+            // Update OC with modified milestones
+            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
+            await commitTransaction(tx);
+
+            // Return the updated milestone
+            const updatedMilestone = updatedOC.milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+            return updatedMilestone;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * Delete milestone (creates new OC version)
+     */
+    async deleteMilestone(itemId, milestoneId, expectedVersionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const store = this.getStore();
+
+            // Get current OC
+            const current = await store.findById(itemId, tx);
+            if (!current) {
+                throw new Error('Operational change not found');
+            }
+
+            // Find milestone to delete
+            const milestoneIndex = current.milestones.findIndex(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+            if (milestoneIndex === -1) {
+                throw new Error('Milestone not found');
+            }
+
+            // Create new milestones array without the deleted milestone
+            const newMilestones = current.milestones.filter(m => store.normalizeId(m.id) !== store.normalizeId(milestoneId));
+
+            // Create complete payload for update
+            const completePayload = {
+                title: current.title,
+                description: current.description,
+                visibility: current.visibility,
+                satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
+                supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
+                milestones: newMilestones
+            };
+
+            // Update OC with milestone removed
+            await store.update(itemId, completePayload, expectedVersionId, tx);
+            await commitTransaction(tx);
+
+            return true; // Successful deletion
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
     // Implement validation methods required by VersionedItemService
     async _validateCreatePayload(payload) {
         this._validateRequiredFieldsForCreate(payload);
@@ -34,6 +204,17 @@ export class OperationalChangeService extends VersionedItemService {
         this._validateRequiredFieldsForUpdate(payload);
         this._validateOptionalFields(payload);
         await this._validateReferencedEntities(payload);
+    }
+
+    async _computePatchedPayload(current, patchPayload) {
+        return {
+            title: patchPayload.title !== undefined ? patchPayload.title : current.title,
+            description: patchPayload.description !== undefined ? patchPayload.description : current.description,
+            visibility: patchPayload.visibility !== undefined ? patchPayload.visibility : current.visibility,
+            satisfiesRequirements: patchPayload.satisfiesRequirements !== undefined ? patchPayload.satisfiesRequirements : current.satisfiesRequirements.map(ref => ref.id),
+            supersedsRequirements: patchPayload.supersedsRequirements !== undefined ? patchPayload.supersedsRequirements : current.supersedsRequirements.map(ref => ref.id),
+            milestones: patchPayload.milestones !== undefined ? patchPayload.milestones : current.milestones
+        };
     }
 
     // Validation helper methods

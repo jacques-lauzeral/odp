@@ -1,0 +1,334 @@
+paths:
+  # Operational Requirement Endpoints
+  /operational-requirements:
+    get:
+      summary: List all operational requirements (latest versions)
+      tags: [Operational Requirements]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+
+    post:
+      summary: Create new operational requirement
+      tags: [Operational Requirements]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/OperationalRequirementRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '400':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /operational-requirements/{id}:
+    get:
+      summary: Get operational requirement by ID (latest version)
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    put:
+      summary: Update operational requirement (creates new version with complete replacement)
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/OperationalRequirementUpdateRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '409':
+          description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    patch:
+      summary: Patch operational requirement (creates new version with partial updates)
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/OperationalRequirementPatchRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '409':
+          description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete operational requirement (all versions)
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+
+  /operational-requirements/{id}/versions:
+    get:
+      summary: Get version history for operational requirement
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/VersionHistory'
+
+  /operational-requirements/{id}/versions/{versionNumber}:
+    get:
+      summary: Get specific version of operational requirement
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+
+  # Operational Change Endpoints
+  /operational-changes:
+    get:
+      summary: List all operational changes (latest versions)
+      tags: [Operational Changes]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+
+    post:
+      summary: Create new operational change
+      tags: [Operational Changes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/OperationalChangeRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+
+  /operational-changes/{id}:
+    get:
+      summary: Get operational change by ID (latest version)
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+
+    put:
+      summary: Update operational change (creates new version with complete replacement)
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/OperationalChangeUpdateRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+
+    patch:
+      summary: Patch operational change (creates new version with partial updates)
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/OperationalChangePatchRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+        '409':
+          description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete operational change (all versions)
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+
+  /operational-changes/{id}/versions:
+    get:
+      summary: Get version history for operational change
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/VersionHistory'
+
+  /operational-changes/{id}/versions/{versionNumber}:
+    get:
+      summary: Get specific version of operational change
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/OperationalChange'

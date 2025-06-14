@@ -1,0 +1,395 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Setup
+  description: Setup Operations for the Operational Deployment Plan Management API
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  # Stakeholder Category Endpoints
+  /stakeholder-categories:
+    get:
+      summary: List all stakeholder categories
+      tags: [Stakeholder Categories]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/StakeholderCategory'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    post:
+      summary: Create new stakeholder category
+      tags: [Stakeholder Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/StakeholderCategoryRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/StakeholderCategory'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /stakeholder-categories/{id}:
+    get:
+      summary: Get stakeholder category by ID
+      tags: [Stakeholder Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/StakeholderCategory'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    put:
+      summary: Update stakeholder category
+      tags: [Stakeholder Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/StakeholderCategoryRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/StakeholderCategory'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete stakeholder category
+      tags: [Stakeholder Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: Conflict - has child entities
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  # Data Category Endpoints
+  /data-categories:
+    get:
+      summary: List all data categories
+      tags: [Data Categories]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/DataCategory'
+
+    post:
+      summary: Create new data category
+      tags: [Data Categories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/DataCategoryRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/DataCategory'
+
+  /data-categories/{id}:
+    get:
+      summary: Get data category by ID
+      tags: [Data Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/DataCategory'
+
+    put:
+      summary: Update data category
+      tags: [Data Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/DataCategoryRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/DataCategory'
+
+    delete:
+      summary: Delete data category
+      tags: [Data Categories]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+
+  # Service Endpoints
+  /services:
+    get:
+      summary: List all services
+      tags: [Services]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/Service'
+
+    post:
+      summary: Create new service
+      tags: [Services]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ServiceRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Service'
+
+  /services/{id}:
+    get:
+      summary: Get service by ID
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Service'
+
+    put:
+      summary: Update service
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ServiceRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Service'
+
+    delete:
+      summary: Delete service
+      tags: [Services]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+
+  # Regulatory Aspect Endpoints
+  /regulatory-aspects:
+    get:
+      summary: List all regulatory aspects
+      tags: [Regulatory Aspects]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/RegulatoryAspect'
+
+    post:
+      summary: Create new regulatory aspect
+      tags: [Regulatory Aspects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/RegulatoryAspectRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/RegulatoryAspect'
+
+  /regulatory-aspects/{id}:
+    get:
+      summary: Get regulatory aspect by ID
+      tags: [Regulatory Aspects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/RegulatoryAspect'
+
+    put:
+      summary: Update regulatory aspect
+      tags: [Regulatory Aspects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/RegulatoryAspectRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/RegulatoryAspect'
+
+    delete:
+      summary: Delete regulatory aspect
+      tags: [Regulatory Aspects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content

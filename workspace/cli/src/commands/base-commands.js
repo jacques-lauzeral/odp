@@ -259,9 +259,9 @@ export class VersionedCommands extends BaseCommands {
         this.addShowCommand(itemCommand);
         this.addVersionsCommand(itemCommand);
         this.addShowVersionCommand(itemCommand);
-        // TODO: Add create/update commands with complex payload handling
         this._addCreateCommand(itemCommand);
         this._addUpdateCommand(itemCommand);
+        this._addPatchCommand(itemCommand);
 
         program.addCommand(itemCommand);
     }
@@ -424,6 +424,10 @@ export class VersionedCommands extends BaseCommands {
         throw new Error('_addUpdateCommand must be implemented by concrete command');
     }
 
+    _addPatchCommand(itemCommand) {
+        throw new Error('_addPatchCommand must be implemented by concrete command');
+    }
+
     /**
      * Display item details - override in subclasses for item-specific formatting
      */
@@ -434,4 +438,3 @@ export class VersionedCommands extends BaseCommands {
         console.log(`Created: ${new Date(item.createdAt).toLocaleString()} by ${item.createdBy}`);
     }
 }
-

@@ -1,4 +1,4 @@
-import { StoreError } from './transaction.js';
+import {StoreError} from './transaction.js';
 
 /**
  * Base store class providing common CRUD operations for Neo4j nodes
@@ -191,5 +191,11 @@ export class BaseStore {
         } catch (error) {
             throw new StoreError(`Failed to check existence of ${this.nodeLabel} with ID ${id}: ${error.message}`, error);
         }
+    }
+
+    // Helper for consistent ID normalization
+    normalizeId(id) {
+        if (typeof id === 'object' && id.toNumber) return id.toNumber();
+        return parseInt(id, 10);
     }
 }
