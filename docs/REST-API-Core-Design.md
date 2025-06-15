@@ -60,10 +60,12 @@ Responses return base model objects directly - no wrapper structures needed:
 ### File Structure Pattern
 ```
 src/routes/
-├── stakeholder-category-store.js    # StakeholderCategory CRUD operations
+├── stakeholder-category.js    # StakeholderCategory CRUD operations
 ├── regulatory-aspect.js       # RegulatoryAspect CRUD operations
 ├── service.js                 # Service CRUD operations
-└── data.js                    # Data CRUD operations
+├── data.js                    # Data CRUD operations
+├── wave.js                    # Wave CRUD operations
+└── baseline.js                # Baseline management operations
 ```
 
 ### Route File Template
@@ -121,6 +123,8 @@ GET    /stakeholder-categories/:id      # Get category by ID
 POST   /stakeholder-categories          # Create new category
 PUT    /stakeholder-categories/:id      # Update category
 DELETE /stakeholder-categories/:id      # Delete category
+
+GET    /waves, /baselines               # Wave and baseline endpoints
 ```
 
 #### Future Hierarchical Relationships (Planned)
@@ -134,6 +138,7 @@ DELETE /stakeholder-categories/:id/parent      # Remove parent relationship
 ```
 GET /stakeholder-categories?parentId=123       # Filter by parent
 GET /stakeholder-categories?name=Government     # Search by name
+GET /operational-requirements?baseline=456     # Baseline context
 ```
 
 ## HTTP Method Usage
@@ -490,7 +495,7 @@ X-Page-Count: 25
 
 ### Route Template for New Entities
 ```javascript
-// Copy stakeholder-category-store.js as template
+// Copy stakeholder-category.js as template
 // Replace entity names and service imports
 // Follow identical error handling patterns
 // Maintain consistent HTTP status codes

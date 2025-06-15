@@ -40,6 +40,11 @@ paths:
   /regulatory-aspects/{id}:
     $ref: 'openapi-setup.yml#/paths/~1regulatory-aspects~1{id}'
 
+  /waves:
+    $ref: 'openapi-setup.yml#/paths/~1waves'
+  /waves/{id}:
+    $ref: 'openapi-setup.yml#/paths/~1waves~1{id}'
+
   # Operational entity endpoints
   /operational-requirements:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements'
@@ -65,6 +70,12 @@ paths:
   /operational-changes/{id}/milestones/{milestoneId}:
     $ref: 'openapi-operational-milestones.yml#/paths/~1operational-changes~1{id}~1milestones~1{milestoneId}'
 
+  # Baseline management endpoints
+  /baselines:
+    $ref: 'openapi-baseline.yml#/paths/~1baselines'
+  /baselines/{id}:
+    $ref: 'openapi-baseline.yml#/paths/~1baselines~1{id}'
+
 tags:
   - name: Stakeholder Categories
     description: Stakeholder category management
@@ -74,9 +85,13 @@ tags:
     description: Service management
   - name: Regulatory Aspects
     description: Regulatory aspect management
+  - name: Waves
+    description: Wave management for deployment timelines
   - name: Operational Requirements
     description: Operational requirement management with versioning
   - name: Operational Changes
     description: Operational change management with versioning
   - name: Milestones
     description: Milestone management within operational changes
+  - name: Baselines
+    description: Baseline management for deployment planning

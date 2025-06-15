@@ -30,200 +30,67 @@
 - ✅ Direct HTTP client integration (node-fetch)
 - ✅ ASCII table formatting with cli-table3
 - ✅ Configuration management via JSON config
-- ✅ CLI commands for StakeholderCategory:
-  - ✅ `odp stakeholder-category list` - Table view of all categories
-  - ✅ `odp stakeholder-category create <n> <description>` - Create new category
-  - ✅ `odp stakeholder-category show <id>` - Show specific category
-  - ✅ `odp stakeholder-category update <id> <n> <description>` - Update category
-  - ✅ `odp stakeholder-category delete <id>` - Delete category
+- ✅ CLI commands for StakeholderCategory CRUD operations
 - ✅ Complete CRUD operations working
 - ✅ Shared model usage validation
 - ✅ Manual routes architecture established
 
 ## 4 Phase 2: Business Extension - Setup Entities (✅ COMPLETED)
-
-### 4.1 Server Implementation (✅ COMPLETED)
-**Pattern**: Follow established StakeholderCategory pattern for each entity
-- ✅ **RegulatoryAspect entity**:
-  - ✅ Store Layer: RegulatoryAspectStore extending BaseStore
-  - ✅ Service Layer: RegulatoryAspectService with transaction management
-  - ✅ Route Layer: routes/regulatory-aspect.js with CRUD operations
-  - ✅ Integration: Routes added to main server index.js
-- ✅ **Service entity**:
-  - ✅ Store Layer: ServiceStore extending BaseStore
-  - ✅ Service Layer: ServiceService with transaction management
-  - ✅ Route Layer: routes/service.js with CRUD operations
-  - ✅ Integration: Routes added to main server index.js
-- ✅ **Data entity**:
-  - ✅ Store Layer: DataStore extending BaseStore
-  - ✅ Service Layer: DataService with transaction management
-  - ✅ Route Layer: routes/data.js with CRUD operations
-  - ✅ Integration: Routes added to main server index.js
-- ✅ **Hierarchy operations**: REFINES relationships for all entities
-
-### 4.2 Shared Models (✅ COMPLETED)
-- ✅ Added RegulatoryAspect model to @odp/shared
-- ✅ Added Service model to @odp/shared
-- ✅ Added Data model to @odp/shared
-- ✅ Request/response structures for each entity
-
-### 4.3 CLI Implementation (✅ COMPLETED)
-**Pattern**: Follow established stakeholder-category.js pattern for each entity
-- ✅ **CLI commands for RegulatoryAspect**:
-  - ✅ `odp regulatory-aspect list/create/show/update/delete`
-- ✅ **CLI commands for Service**:
-  - ✅ `odp service list/create/show/update/delete`
-- ✅ **CLI commands for Data**:
-  - ✅ `odp data list/create/show/update/delete`
+- ✅ **Four complete setup entities**: StakeholderCategory, RegulatoryAspect, DataCategory, Service
+- ✅ **Factorized architecture**: Router patterns, BaseCommands patterns, Store patterns
+- ✅ **95% code reduction** in route and CLI layers through base pattern extraction
+- ✅ **REFINES hierarchy support** for all entities
 
 ## 5 Phase 3: Business Extension - Operational Entities (✅ COMPLETED)
+- ✅ **Complete versioning system** with Item/ItemVersion pattern and optimistic locking
+- ✅ **Two operational entities**: OperationalRequirement, OperationalChange with full versioning
+- ✅ **PATCH operations** for partial updates across operational entities
+- ✅ **Full milestone CRUD** with versioning integration (5 operations)
+- ✅ **Advanced CLI** with 15+ commands for operational entity management
+- ✅ **ID normalization** for consistent entity comparison
+- ✅ **Modular OpenAPI** specification for maintainable documentation
 
-### 5.1 Server Implementation (✅ COMPLETED)
-**Pattern**: Implement versioning pattern (Item/ItemVersion) for operational entities with complete service and route layer
-
-#### 5.1.1 Versioning Pattern Implementation (✅ COMPLETED)
-- ✅ **VersionedItemStore base class**:
-  - ✅ Dual-node pattern (Item + ItemVersion) implementation
-  - ✅ Sequential versioning with optimistic locking (expectedVersionId)
-  - ✅ Version-aware CRUD operations (create, update, findById, findByIdAndVersion, findVersionHistory)
-  - ✅ Transaction integration with user context (createTransaction(userId))
-  - ✅ Automatic latest_version management and relationship handling
-  - ✅ ID normalization helper (normalizeId) for consistent comparisons
-
-#### 5.1.2 Storage Model Simplification (✅ COMPLETED)
-- ✅ **Model update**: Eliminated separate OperationalNeed entity
-- ✅ **OperationalRequirement with type field**: 'ON' (Operational Need) | 'OR' (Operational Requirement)
-- ✅ **Relationship simplification**: Single REFINES relationship with type-based validation
-- ✅ **IMPACTS relationships**: Direct from OperationalRequirement to setup entities
-- ✅ **OperationalChange**: Separate versioned entity with SATISFIES/SUPERSEDS relationships
-
-#### 5.1.3 Store Layer Implementation (✅ COMPLETED)
-- ✅ **OperationalRequirementStore** (versioned + REFINES + IMPACTS)
-- ✅ **OperationalChangeStore** (versioned + SATISFIES + SUPERSEDS + Milestones)
-
-#### 5.1.4 Store Layer Integration (✅ COMPLETED)
-- ✅ **Update store/index.js**: Add OperationalRequirementStore and OperationalChangeStore to initialization and exports
-
-### 5.2 Service Layer Hierarchy Redesign (✅ COMPLETED)
-- ✅ **Service hierarchy restructure**: Eliminated BaseService, created two parallel hierarchies
-- ✅ **SimpleItemService**: Root for setup entities with userId context and transaction management
-- ✅ **RefinableItemService**: Extends SimpleItemService with hierarchy operations
-- ✅ **VersionedItemService**: Root for operational entities with versioning and validation hooks
-- ✅ **Updated all existing services**: DataCategoryService, StakeholderCategoryService, ServiceService, RegulatoryAspectService to extend RefinableItemService with userId parameters
-
-### 5.3 Service Layer Implementation (✅ COMPLETED)
-- ✅ **OperationalRequirementService**:
-  - ✅ Business logic with version management and optimistic locking
-  - ✅ Complete payload validation with business rules
-  - ✅ Type validation (ON/OR) and REFINES business rules (OR cannot refine ON)
-  - ✅ IMPACTS relationship validation and referenced entity existence validation
-  - ✅ Extends VersionedItemService with abstract validation method implementation
-  - ✅ PATCH support with field inheritance via _computePatchedPayload
-- ✅ **OperationalChangeService**:
-  - ✅ Version lifecycle management with SATISFIES/SUPERSEDS relationships
-  - ✅ Milestone coordination with eventTypes validation using shared constants
-  - ✅ Visibility validation (NM/NETWORK) and wave reference validation
-  - ✅ Complete payload validation for milestones and operational requirements
-  - ✅ PATCH support with field inheritance via _computePatchedPayload
-  - ✅ **Milestone CRUD operations**: addMilestone, updateMilestone, deleteMilestone, getMilestone, getMilestones
-
-### 5.4 Route Layer Hierarchy Redesign (✅ COMPLETED)
-- ✅ **Route hierarchy restructure**: Created two parallel router base classes
-- ✅ **SimpleItemRouter**: userId extraction, standard CRUD with hierarchy support
-- ✅ **VersionedItemRouter**: userId extraction, versioned CRUD with optimistic locking
-- ✅ **Updated all existing routes**: data-category, stakeholder-category, service, regulatory-aspect to use SimpleItemRouter
-- ✅ **Version-specific endpoints**: GET /:id/versions, GET /:id/versions/:versionNumber
-- ✅ **PATCH support**: Added to VersionedItemRouter base class
-
-### 5.5 Route Layer Implementation (✅ COMPLETED)
-- ✅ **routes/operational-requirement.js**:
-  - ✅ RESTful CRUD operations with version handling
-  - ✅ Optimistic locking via expectedVersionId in requests
-  - ✅ Version history and navigation endpoints
-  - ✅ Consistent error handling with VERSION_CONFLICT responses
-  - ✅ **PATCH endpoint**: Partial updates with field inheritance
-- ✅ **routes/operational-change.js**:
-  - ✅ Versioned CRUD operations with SATISFIES/SUPERSEDS management
-  - ✅ Milestone coordination endpoints
-  - ✅ Complete versioned entity route pattern
-  - ✅ **PATCH endpoint**: Partial updates with field inheritance
-  - ✅ **Milestone CRUD endpoints**: GET/POST/PUT/DELETE for individual milestone management
-
-### 5.6 Shared Models Implementation (✅ COMPLETED)
-- ✅ **OperationalRequirement and OperationalRequirementRequest models**:
-  - ✅ Complete entity model with version metadata and resolved relationships
-  - ✅ Request structures with ID arrays for relationships, complete payload required
-  - ✅ Business rule support for type field ('ON' | 'OR') and REFINES validation
-  - ✅ **PATCH request schema**: OperationalRequirementPatchRequest with optional fields
-- ✅ **OperationalChange and OperationalChangeRequest models**:
-  - ✅ Versioned entity with description, visibility, and milestone structures
-  - ✅ SATISFIES/SUPERSEDS relationship structures
-  - ✅ Milestone coordination with eventTypes validation
-  - ✅ **PATCH request schema**: OperationalChangePatchRequest with optional fields
-- ✅ **MilestoneEventTypes constants**:
-  - ✅ Shared validation constants for API_PUBLICATION, SERVICE_ACTIVATION, etc.
-  - ✅ Used by both service validation and UI components
-
-### 5.7 API Documentation (✅ COMPLETED)
-- ✅ **Complete OpenAPI 3.0.3 specification**:
-  - ✅ All setup and operational entity endpoints documented
-  - ✅ Version management endpoints and optimistic locking patterns
-  - ✅ User context security with x-user-id header requirement
-  - ✅ Complete request/response schemas matching shared models
-  - ✅ Error handling patterns and validation responses
-  - ✅ **PATCH endpoints**: Documented for both operational entities
-  - ✅ **Milestone CRUD endpoints**: Complete API specification for milestone management
-  - ✅ **Modular OpenAPI structure**: Split into 5 files for maintainability
-
-### 5.8 CLI Implementation (✅ COMPLETED)
-- ✅ **CLI commands for OperationalRequirement**:
-  - ✅ `odp requirement list/create/show/update/delete`
-  - ✅ Version management commands (versions, show-version)
-  - ✅ Relationship management through complete payload updates
-  - ✅ **PATCH command**: `odp requirement patch <itemId> <expectedVersionId>` with optional fields
-- ✅ **CLI commands for OperationalChange**:
-  - ✅ `odp change list/create/show/update/delete`
-  - ✅ Version management with milestone coordination
-  - ✅ Complete payload management for relationships and milestones
-  - ✅ **PATCH command**: `odp change patch <itemId> <expectedVersionId>` with optional fields
-  - ✅ **Milestone commands**:
-    - ✅ `odp change milestone-list <itemId>` - List milestones
-    - ✅ `odp change milestone-show <itemId> <milestoneId>` - Show milestone
-    - ✅ `odp change milestone-add <itemId> <expectedVersionId> <title> <description>` - Add milestone
-    - ✅ `odp change milestone-update <itemId> <milestoneId> <expectedVersionId>` - Update milestone
-    - ✅ `odp change milestone-delete <itemId> <milestoneId> <expectedVersionId>` - Delete milestone
-
-## 6 Phase 4: Business Extension - Management Entities
+## 6 Phase 4: Business Extension - Management Entities (🔄 IN PROGRESS)
 
 ### 6.1 Server Implementation
-- [ ] **Wave entity implementation**:
-  - [ ] Store Layer: WaveStore for timeline management
-  - [ ] Service Layer: WaveService with quarter/year validation
-  - [ ] Route Layer: routes/wave.js with temporal operations
-- [ ] **Baseline management system**:
-  - [ ] ODPBaseline and ODPBaselineItem entities
-  - [ ] Baseline snapshot functionality (capture current versions)
-  - [ ] Historical navigation using explicit version specifications
+- 🔄 **Wave entity implementation**:
+  - ✅ Store Layer: WaveStore for timeline management
+  - ❓ Service Layer: WaveService with quarter/year validation (uncertain status)
+  - ❌ Route Layer: routes/wave.js with temporal operations
+- 🔄 **Baseline management system**:
+  - ✅ **Simplified storage model**: Direct HAS_ITEMS relationships design complete
+  - ✅ **ODPBaseline entity design**: Atomic snapshot creation without intermediate nodes
+  - ❌ **Store implementation**: ODPBaselineStore not yet implemented
+  - ❌ **Service implementation**: Baseline creation and baseline-aware operations not implemented
+  - ❌ **Route implementation**: Baseline endpoints not yet implemented
 - [ ] **ODPEdition entity**:
   - [ ] Store Layer: ODPEditionStore for publication management
   - [ ] Service Layer: ODPEditionService with draft/official lifecycle
   - [ ] Route Layer: routes/odp-edition.js
 
 ### 6.2 Shared Models
-- [ ] Add Wave model with temporal validation
-- [ ] Add ODPBaseline, ODPBaselineItem, and ODPEdition models
-- [ ] Baseline and edition request structures
+- ✅ **Wave model** with temporal validation (year, quarter, date, derived name)
+- ✅ **ODPBaseline model** with simplified structure
+- ✅ **Baseline-aware request structures** for operational entities (documented)
+- [ ] Add ODPEdition model with draft/official lifecycle
 
 ### 6.3 CLI Implementation
-- [ ] **CLI commands for Wave operations**:
-  - [ ] `odp wave list/create/show/update/delete`
-  - [ ] Timeline management commands
-- [ ] **CLI commands for Baseline management**:
-  - [ ] `odp baseline create/list/show`
-  - [ ] Historical navigation commands
+- 🔄 **CLI commands for Wave operations**:
+  - ❌ Wave CLI commands need rework and proper implementation
+  - ❌ Timeline management commands not implemented
+- ❌ **CLI commands for Baseline management**:
+  - ❌ `odp baseline create/list/show` not implemented
+  - ❌ Historical navigation commands with `--baseline` flags not implemented
 - [ ] **CLI commands for ODP Edition management**:
   - [ ] `odp edition create/list/show/publish`
   - [ ] Draft/official lifecycle commands
+
+### 6.4 API Documentation
+- ✅ **Complete OpenAPI specification update**:
+  - ✅ Wave endpoints and schemas
+  - ✅ Baseline management endpoints
+  - ✅ Baseline-aware query parameters for operational entities
+  - ✅ Updated root OpenAPI file with all Phase 4 endpoints
 
 ## 7 Phase 5: Web Client - Current Scope
 - [ ] Web Client technical solution setup
@@ -239,6 +106,7 @@
 - [ ] RegulatoryAspect UI components following StakeholderCategory patterns
 - [ ] Service UI components following StakeholderCategory patterns
 - [ ] Data UI components following StakeholderCategory patterns
+- [ ] Wave UI components for timeline management
 - [ ] Unified hierarchy management across all setup entities
 - [ ] Cross-entity navigation and relationship display
 
@@ -270,6 +138,7 @@
 - [ ] Baseline creation and management:
   - [ ] Snapshot creation interface
   - [ ] Historical navigation with baseline selection
+  - [ ] Baseline-aware entity browsing
 - [ ] ODP Edition interface:
   - [ ] Draft/official lifecycle management
   - [ ] Publication workflow
@@ -293,6 +162,7 @@
 - **Versioning pattern**: Item/ItemVersion dual-node approach for operational entities
 - **PATCH operations**: Partial updates with field inheritance for all versioned entities
 - **ID normalization**: Consistent ID comparison across all layers
+- **Baseline support**: Simplified direct relationships for historical context
 
 ### Quality Gates per Phase
 - **Working endpoints**: Full CRUD operations with proper error handling
@@ -329,16 +199,21 @@ For each new entity, follow this proven pattern:
 ## Current Status Summary
 
 **✅ Completed Phases**: 1-3 (Setup + Setup Entities + Operational Entities)
-**🔄 Next Phase**: 4 (Management Entities) - Wave, Baseline, and ODP Edition entities
-**📈 Overall Progress**: ~70% complete
-**🎯 Next Milestone**: Complete Phase 4 Management entities to enable full deployment planning workflow
+**🔄 Current Phase**: 4 (Management Entities) - Design and documentation complete, implementation in early stages
+**📈 Overall Progress**: ~60% complete (Phases 1-3 complete, Phase 4 design done but implementation needed)
+**🎯 Next Milestone**: Implement Wave entity across service/route/CLI layers, then baseline management implementation
 
-**Key Achievements in Phase 3**:
+**Key Achievements in Phases 1-3**:
 - Complete versioning system with optimistic locking and audit trails
 - PATCH operations for partial updates across all operational entities
 - Full milestone CRUD operations with versioning integration
 - Modular OpenAPI specification for maintainable API documentation
-- Comprehensive CLI with 15+ commands for operational entity management
+- Comprehensive CLI with 25+ commands for all entity management
 - Factorized architecture patterns enabling rapid future development
+
+**Phase 4 Progress**:
+- **Wave entity**: Store layer complete, service/route/CLI layers need implementation
+- **Baseline system**: Complete design and documentation, but no implementation yet
+- **API documentation**: Complete OpenAPI updates for Phase 4 features
 
 This work plan maintains the successful manual routes approach established in Phase 1 while providing a clear roadmap for comprehensive ODP functionality across all planned phases.

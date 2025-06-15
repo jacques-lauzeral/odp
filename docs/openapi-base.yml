@@ -111,6 +111,45 @@ components:
           type: string
           nullable: true
 
+    Wave:
+      type: object
+      properties:
+        id:
+          type: string
+        year:
+          type: integer
+          minimum: 2020
+          maximum: 2030
+        quarter:
+          type: integer
+          minimum: 1
+          maximum: 4
+        date:
+          type: string
+          format: date
+        name:
+          type: string
+          description: "Derived name in format 'year.quarter' (e.g., '2025.1')"
+
+    WaveRequest:
+      type: object
+      required: [year, quarter, date]
+      properties:
+        year:
+          type: integer
+          minimum: 2020
+          maximum: 2030
+          description: "4-digit year (YYYY)"
+        quarter:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: "Quarter number (1-4)"
+        date:
+          type: string
+          format: date
+          description: "Target date for the wave (YYYY-MM-DD)"
+
     # Reference Objects (for operational entity outputs)
     EntityReference:
       type: object
@@ -264,14 +303,9 @@ components:
           properties:
             id:
               type: string
-            title:
+            name:
               type: string
-            year:
-              type: integer
-            quarter:
-              type: integer
-            date:
-              type: string
+              description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
 
     MilestoneRequest:
       type: object
@@ -405,3 +439,65 @@ components:
           format: date-time
         createdBy:
           type: string
+
+    # Baseline Management
+    ODPBaseline:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        capturedItemCount:
+          type: integer
+          description: "Number of OR/OC versions captured in this baseline"
+        startsFromWave:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            year:
+              type: integer
+            quarter:
+              type: integer
+            date:
+              type: string
+
+    ODPBaselineRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          description: "Unique identifier for the baseline"
+        startsFromWaveId:
+          type: string
+          nullable: true
+          description: "Optional wave that this baseline starts from"
+
+    BaselineItem:
+      type: object
+      properties:
+        itemId:
+          type: string
+        itemTitle:
+          type: string
+        itemType:
+          type: string
+          enum: [OperationalRequirement, OperationalChange]
+        versionId:
+          type: string
+        version:
+          type: integer
+        capturedAt:
+          type: string
+          format: date-time
+          description: "When this version was captured in the baseline"

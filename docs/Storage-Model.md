@@ -136,11 +136,11 @@ The node types required to the management of operational needs, requirements, an
 - `TARGETS -> Wave`
 - `HAS_ATTACHMENT -> Document`
 
-## 6. Operational Deployment Plan Management
+## 5. Operational Deployment Plan Management
 
 The node types and relationships required to the management of operational plan baselines management.
 
-### 6.1 ODPBaseline
+### 5.1 ODPBaseline
 **Properties:**
 - `createdAt`: the baseline creation datetime
 - `createdBy`: the baseline creator
@@ -148,35 +148,30 @@ The node types and relationships required to the management of operational plan 
 
 **Relationships:**
 - `STARTS_FROM -> Wave`
-
-### 6.2 ODPBaselineItem
-**Properties:**
-- `type`: ON (Operational Need), OR (Operational Requirement), or OC (Operational Change)
-- `itemTitle`: the title of the baseline item (at baseline creation time)
-- `itemVersion`: the version of the item (latest version at baseline creation time)
-- `itemId`: the Item node ID for reference
-- `versionId`: the ItemVersion node ID for exact reference
-
-**Relationships:**
-- `BELONGS_TO -> ODPBaseline`
-
-### 6.3 BaselineRelationship
-**Properties:**
-- `type`: REFINES, IMPACTS, SATISFIES, SUPERSEDS
-- `sourceItemId`: source Item node ID
-- `sourceVersionId`: source ItemVersion node ID (the version active at baseline time)
-- `targetType`: target node type
-- `targetId`: target node ID
-
-**Relationships:**
-- `BELONGS_TO -> ODPBaseline`
+- `HAS_ITEMS -> OperationalRequirementVersion`
+- `HAS_ITEMS -> OperationalChangeVersion`
 
 **Usage Pattern:**
-- Baseline creation captures snapshot of all LATEST_VERSION relationships
-- BaselineRelationship nodes preserve exact relationship state at baseline time
-- Historical navigation uses BaselineRelationship for accurate reconstruction
+- Baseline creation captures snapshot of all LATEST_VERSION relationships at creation time
+- HAS_ITEMS relationships point directly to specific ItemVersion nodes that were latest at baseline time
+- Historical navigation uses HAS_ITEMS for accurate reconstruction of system state at baseline time
 
-### 6.4 ODPEdition
+**Baseline Creation Process:**
+```cypher
+// 1. Create baseline
+CREATE (baseline:ODPBaseline {
+  title: $title,
+  createdAt: $timestamp,
+  createdBy: $userId
+})
+
+// 2. Capture all latest versions
+MATCH (item)-[:LATEST_VERSION]->(version)
+WHERE item:OperationalRequirement OR item:OperationalChange
+CREATE (baseline)-[:HAS_ITEMS]->(version)
+```
+
+### 5.2 ODPEdition
 **Properties:**
 - `createdAt`: the ODP Edition creation datetime
 - `createdBy`: the ODP Edition creator
@@ -187,11 +182,11 @@ The node types and relationships required to the management of operational plan 
 - `EXPOSES -> ODPBaseline`
 - `HAS_ATTACHMENT -> Document`
 
-## 7. Digital Asset Management
+## 6. Digital Asset Management
 
 The node types and relationships required to the management of digital assets.
 
-### 7.1 Document
+### 6.1 Document
 **Properties:**
 - `name`: filename
 - `description`: optional description
@@ -204,11 +199,11 @@ The node types and relationships required to the management of digital assets.
 **Relationships:**
 None - Documents are referenced by other entities via `HAS_ATTACHMENT` relationships.
 
-## 8. Review Management
+## 7. Review Management
 
 The node types required to the management of user reviews.
 
-### 8.1 Comment
+### 7.1 Comment
 **Properties:**
 - `postedAt`: the time stamp of the comment post
 - `postedBy`: the author of the comment
@@ -217,7 +212,7 @@ The node types required to the management of user reviews.
 
 **Relationships:**
 - `HAS_ATTACHMENT -> Document`
-- `COMMENTS_ON -> ODPBaselineItem`
+- `COMMENTS_ON -> ODPBaseline`
 
 ## Design Notes
 
@@ -242,7 +237,14 @@ The system implements a sequential versioning pattern using root nodes (Item) + 
 ### Historical Reconstruction
 - **Content at time T**: Use specific ItemVersion created before or at time T
 - **Relationships at time T**: Apply audit trail chronologically up to time T
-- **Baseline state**: Use captured BaselineRelationship nodes for exact historical state
+- **Baseline state**: Use HAS_ITEMS relationships to retrieve exact versions captured at baseline time
+
+### Simplified Baseline Design
+The baseline system uses a simplified approach:
+- **Direct relationships**: Baseline connects directly to ItemVersion nodes via HAS_ITEMS
+- **No intermediate nodes**: Eliminates ODPBaselineItem complexity
+- **Atomic snapshots**: Single transaction captures all latest versions at creation time
+- **Simple queries**: Direct traversal from baseline to captured versions
 
 ### Prototype Considerations
 - Presence constraints are not specified for this prototype phase

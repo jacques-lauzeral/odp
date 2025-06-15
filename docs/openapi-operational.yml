@@ -2,8 +2,15 @@ paths:
   # Operational Requirement Endpoints
   /operational-requirements:
     get:
-      summary: List all operational requirements (latest versions)
+      summary: List all operational requirements (latest versions or baseline context)
       tags: [Operational Requirements]
+      parameters:
+        - name: baseline
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional baseline ID to get requirements as they existed at baseline time"
       responses:
         '200':
           description: Success
@@ -13,6 +20,12 @@ paths:
                 type: array
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
+        '400':
+          description: Bad Request - Invalid baseline ID
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
     post:
       summary: Create new operational requirement
@@ -39,7 +52,7 @@ paths:
 
   /operational-requirements/{id}:
     get:
-      summary: Get operational requirement by ID (latest version)
+      summary: Get operational requirement by ID (latest version or baseline context)
       tags: [Operational Requirements]
       parameters:
         - name: id
@@ -47,6 +60,13 @@ paths:
           required: true
           schema:
             type: string
+          description: "Operational Requirement Item ID"
+        - name: baseline
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional baseline ID to get requirement as it existed at baseline time"
       responses:
         '200':
           description: Success
@@ -55,7 +75,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '404':
-          description: Not Found
+          description: Not Found - Requirement not found or not captured in specified baseline
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Bad Request - Invalid baseline ID
           content:
             application/json:
               schema:
@@ -178,8 +204,15 @@ paths:
   # Operational Change Endpoints
   /operational-changes:
     get:
-      summary: List all operational changes (latest versions)
+      summary: List all operational changes (latest versions or baseline context)
       tags: [Operational Changes]
+      parameters:
+        - name: baseline
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional baseline ID to get changes as they existed at baseline time"
       responses:
         '200':
           description: Success
@@ -189,6 +222,12 @@ paths:
                 type: array
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+        '400':
+          description: Bad Request - Invalid baseline ID
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
     post:
       summary: Create new operational change
@@ -209,7 +248,7 @@ paths:
 
   /operational-changes/{id}:
     get:
-      summary: Get operational change by ID (latest version)
+      summary: Get operational change by ID (latest version or baseline context)
       tags: [Operational Changes]
       parameters:
         - name: id
@@ -217,6 +256,13 @@ paths:
           required: true
           schema:
             type: string
+          description: "Operational Change Item ID"
+        - name: baseline
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional baseline ID to get change as it existed at baseline time"
       responses:
         '200':
           description: Success
@@ -224,6 +270,18 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+        '404':
+          description: Not Found - Change not found or not captured in specified baseline
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Bad Request - Invalid baseline ID
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
     put:
       summary: Update operational change (creates new version with complete replacement)

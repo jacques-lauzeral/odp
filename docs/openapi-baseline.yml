@@ -1,0 +1,96 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Baseline Management
+  description: Baseline Management Operations for the Operational Deployment Plan Management API
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  # Baseline Management Endpoints
+  /baselines:
+    get:
+      summary: List all baselines
+      tags: [Baselines]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/ODPBaseline'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    post:
+      summary: Create new baseline (captures current state of all OR/OC)
+      tags: [Baselines]
+      description: |
+        Creates a new baseline by capturing all current latest versions of 
+        Operational Requirements and Operational Changes. This operation is 
+        atomic and creates a snapshot of the entire system state at creation time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ODPBaselineRequest'
+      responses:
+        '201':
+          description: Baseline created successfully
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ODPBaseline'
+        '400':
+          description: Bad Request - Invalid wave reference or validation error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /baselines/{id}:
+    get:
+      summary: Get baseline by ID
+      tags: [Baselines]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Baseline ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ODPBaseline'
+        '404':
+          description: Baseline not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+
+
+
+
+tags:
+  - name: Baselines
+    description: Baseline management for operational deployment planning

@@ -11,7 +11,7 @@ paths:
   # Milestone CRUD Endpoints
   /operational-changes/{id}/milestones:
     get:
-      summary: List all milestones for operational change
+      summary: List all milestones for operational change (latest version or baseline context)
       tags: [Milestones]
       parameters:
         - name: id
@@ -19,7 +19,13 @@ paths:
           required: true
           schema:
             type: string
-          description: Operational Change ID
+          description: Operational Change Item ID
+        - name: baseline
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional baseline ID to get milestones as they existed at baseline time"
       responses:
         '200':
           description: Success
@@ -30,7 +36,13 @@ paths:
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/Milestone'
         '404':
-          description: Operational Change not found
+          description: Operational Change not found or not captured in specified baseline
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Bad Request - Invalid baseline ID
           content:
             application/json:
               schema:
@@ -45,7 +57,7 @@ paths:
           required: true
           schema:
             type: string
-          description: Operational Change ID
+          description: Operational Change Item ID
       requestBody:
         required: true
         content:
@@ -54,13 +66,19 @@ paths:
               $ref: 'openapi-base.yml#/components/schemas/MilestoneUpdateRequest'
       responses:
         '201':
-          description: Milestone created
+          description: Milestone created and new OC version generated
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Milestone'
         '409':
-          description: Version Conflict
+          description: Version Conflict - expectedVersionId is outdated
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid milestone data or wave reference
           content:
             application/json:
               schema:
@@ -68,7 +86,7 @@ paths:
 
   /operational-changes/{id}/milestones/{milestoneId}:
     get:
-      summary: Get specific milestone
+      summary: Get specific milestone (latest version or baseline context)
       tags: [Milestones]
       parameters:
         - name: id
@@ -76,13 +94,19 @@ paths:
           required: true
           schema:
             type: string
-          description: Operational Change ID
+          description: Operational Change Item ID
         - name: milestoneId
           in: path
           required: true
           schema:
             type: string
           description: Milestone ID
+        - name: baseline
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional baseline ID to get milestone as it existed at baseline time"
       responses:
         '200':
           description: Success
@@ -91,7 +115,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Milestone'
         '404':
-          description: Milestone or Operational Change not found
+          description: Milestone, Operational Change not found, or not captured in specified baseline
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Bad Request - Invalid baseline ID
           content:
             application/json:
               schema:
@@ -106,10 +136,84 @@ paths:
           required: true
           schema:
             type: string
-          description: Operational Change ID
+          description: Operational Change Item ID
         - name: milestoneId
           in: path
           required: true
           schema:
             type: string
           description: Milestone ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/MilestoneUpdateRequest'
+      responses:
+        '200':
+          description: Milestone updated and new OC version generated
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Milestone'
+        '409':
+          description: Version Conflict - expectedVersionId is outdated
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Milestone or Operational Change not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid milestone data or wave reference
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete milestone (creates new OC version)
+      tags: [Milestones]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Operational Change Item ID
+        - name: milestoneId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Milestone ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedVersionId]
+              properties:
+                expectedVersionId:
+                  type: string
+                  description: Version ID of the OperationalChange (for optimistic locking)
+      responses:
+        '204':
+          description: Milestone deleted and new OC version generated
+        '409':
+          description: Version Conflict - expectedVersionId is outdated
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Milestone or Operational Change not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'

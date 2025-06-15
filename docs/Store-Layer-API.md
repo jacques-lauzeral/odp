@@ -1,7 +1,7 @@
 # Store Layer API Documentation
 
 ## Overview
-Complete API reference for the ODP Store Layer with simplified design. Provides CRUD operations, versioning for operational entities, relationship management, and transaction handling over Neo4j.
+Complete API reference for the ODP Store Layer with simplified design. Provides CRUD operations, versioning for operational entities, relationship management, baseline-aware operations, and transaction handling over Neo4j.
 
 ## Initialization & Connection
 
@@ -77,6 +77,13 @@ const store = serviceStore()
 **Returns**: `ServiceStore`  
 **Throws**: `Error` - Store not initialized
 
+### waveStore()
+```javascript
+const store = waveStore()
+```
+**Returns**: `WaveStore`  
+**Throws**: `Error` - Store not initialized
+
 ### operationalRequirementStore()
 ```javascript
 const store = operationalRequirementStore()
@@ -89,6 +96,13 @@ const store = operationalRequirementStore()
 const store = operationalChangeStore()
 ```
 **Returns**: `OperationalChangeStore`  
+**Throws**: `Error` - Store not initialized
+
+### odpBaselineStore()
+```javascript
+const store = odpBaselineStore()
+```
+**Returns**: `ODPBaselineStore`  
 **Throws**: `Error` - Store not initialized
 
 ---
@@ -276,12 +290,25 @@ const roots = await store.findRoots(transaction)
 
 **Available Methods**: All BaseStore + RefinableEntityStore methods + normalizeId()
 
+## WaveStore
+**Inheritance**: `BaseStore`  
+**Entity Model**: `{id: number, year: number, quarter: number, date: string, name: string}`  
+**Relationships**: None (standalone entity)
+
+**Available Methods**: All BaseStore methods + normalizeId()
+
+**Business Rules**:
+- Year: 4-digit integer (YYYY)
+- Quarter: Integer 1-4
+- Date: ISO date string (YYYY-MM-DD)
+- Name: Derived as "year.quarter" (e.g., "2025.1")
+
 ---
 
 # Versioned Entity APIs
 
 ## VersionedItemStore API
-*Base class for versioned entities with optimistic locking*
+*Base class for versioned entities with optimistic locking and baseline support*
 
 ### Data Model
 ```javascript
@@ -324,16 +351,20 @@ const entity = await store.update(itemId, data, expectedVersionId, transaction)
 - `StoreError('Outdated item version')` - Version conflict
 - `StoreError('Item not found')` - Invalid itemId
 
-### findById(itemId, transaction)
+### findById(itemId, transaction, baselineId = null)
 ```javascript
-const entity = await store.findById(itemId, transaction)
+const entity = await store.findById(itemId, transaction, baselineId)
 ```
 **Parameters**:
 - `itemId: number` - Item node ID
 - `transaction: Transaction`
+- `baselineId: number` - Optional baseline context
 
-**Returns**: `Promise<object|null>` - Latest version with relationships or null  
-**Throws**: `StoreError` - Query failure
+**Returns**: `Promise<object|null>` - Latest version (or baseline version) with relationships or null  
+**Behavior**:
+- If `baselineId` is null: Returns latest version via LATEST_VERSION
+- If `baselineId` provided: Returns version captured in that baseline via HAS_ITEMS  
+  **Throws**: `StoreError` - Query failure
 
 ### findByIdAndVersion(itemId, versionNumber, transaction)
 ```javascript
@@ -360,13 +391,19 @@ const history = await store.findVersionHistory(itemId, transaction)
 - `StoreError('Item not found')` - Item doesn't exist
 - `StoreError('Data integrity error')` - No versions found
 
-### findAll(transaction)
+### findAll(transaction, baselineId = null)
 ```javascript
-const entities = await store.findAll(transaction)
+const entities = await store.findAll(transaction, baselineId)
 ```
-**Parameters**: `transaction: Transaction`  
-**Returns**: `Promise<Array<object>>` - Latest versions with relationships  
-**Throws**: `StoreError` - Query failure
+**Parameters**:
+- `transaction: Transaction`
+- `baselineId: number` - Optional baseline context
+
+**Returns**: `Promise<Array<object>>` - Latest versions (or baseline versions) with relationships  
+**Behavior**:
+- If `baselineId` is null: Returns all latest versions
+- If `baselineId` provided: Returns all versions captured in that baseline  
+  **Throws**: `StoreError` - Query failure
 
 ## OperationalRequirementStore
 
@@ -432,23 +469,43 @@ const updated = await store.update(itemId, {
 - **Override**: Specified relationship arrays replace previous version
 - **Content**: Unspecified content fields copy from previous version
 
+### Baseline-Aware Methods
+All VersionedItemStore methods support optional `baselineId` parameter:
+
+```javascript
+// Latest version
+const latest = await store.findById(itemId, transaction)
+
+// Version in specific baseline
+const baselineVersion = await store.findById(itemId, transaction, baselineId)
+
+// All latest versions
+const allLatest = await store.findAll(transaction)
+
+// All versions in baseline
+const allInBaseline = await store.findAll(transaction, baselineId)
+```
+
 ### Inverse Relationship Queries
 
-#### findChildren(itemId, transaction)
+#### findChildren(itemId, transaction, baselineId = null)
 ```javascript
-const children = await store.findChildren(itemId, transaction)
+const children = await store.findChildren(itemId, transaction, baselineId)
 ```
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements that refine this one
+**Baseline-aware**: Returns children based on baseline context if provided
 
-#### findRequirementsThatImpact(targetLabel, targetId, transaction)
+#### findRequirementsThatImpact(targetLabel, targetId, transaction, baselineId = null)
 ```javascript
-const requirements = await store.findRequirementsThatImpact('Service', serviceId, transaction)
+const requirements = await store.findRequirementsThatImpact('Service', serviceId, transaction, baselineId)
 ```
 **Parameters**:
 - `targetLabel: string` - 'StakeholderCategory'|'DataCategory'|'Service'|'RegulatoryAspect'
 - `targetId: number` - Target entity ID
+- `baselineId: number` - Optional baseline context
 
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements impacting the target
+**Baseline-aware**: Returns relationships based on baseline context if provided
 
 ## OperationalChangeStore
 
@@ -527,6 +584,9 @@ const updated = await store.update(itemId, {
 - **Relationship inheritance**: If relationships not provided, copies relationship **data** from previous version to new version
 - **Historical preservation**: Previous version keeps its own milestones and relationships
 
+### Baseline-Aware Methods
+All VersionedItemStore methods support optional `baselineId` parameter for OperationalChange as well.
+
 ### Milestone Management
 - **BELONGS_TO**: `(Milestone)-[:BELONGS_TO]->(OperationalChangeVersion)`
 - **TARGETS**: `(Milestone)-[:TARGETS]->(Wave)`
@@ -535,23 +595,80 @@ const updated = await store.update(itemId, {
 
 ### Inverse Relationship Queries
 
-#### findChangesThatSatisfyRequirement(requirementItemId, transaction)
+#### findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null)
 ```javascript
-const changes = await store.findChangesThatSatisfyRequirement(reqId, transaction)
+const changes = await store.findChangesThatSatisfyRequirement(reqId, transaction, baselineId)
 ```
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Changes satisfying the requirement
+**Baseline-aware**: Returns relationships based on baseline context if provided
 
-#### findChangesThatSupersedeRequirement(requirementItemId, transaction)
+#### findChangesThatSupersedeRequirement(requirementItemId, transaction, baselineId = null)
 ```javascript
-const changes = await store.findChangesThatSupersedeRequirement(reqId, transaction)
+const changes = await store.findChangesThatSupersedeRequirement(reqId, transaction, baselineId)
 ```
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Changes superseding the requirement
+**Baseline-aware**: Returns relationships based on baseline context if provided
 
-#### findMilestonesByWave(waveId, transaction)
+#### findMilestonesByWave(waveId, transaction, baselineId = null)
 ```javascript
-const milestones = await store.findMilestonesByWave(waveId, transaction)
+const milestones = await store.findMilestonesByWave(waveId, transaction, baselineId)
 ```
 **Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context
+**Baseline-aware**: Returns milestones from versions captured in baseline if provided
+
+---
+
+# Baseline Management APIs
+
+## ODPBaselineStore
+**Inheritance**: `BaseStore`  
+**Entity Model**: `{id: number, title: string, createdAt: string, createdBy: string}`
+
+### create(data, transaction)
+```javascript
+const baseline = await store.create({
+  title: "Q1 2025 Baseline",
+  startsFromWaveId: 123  // Optional wave reference
+}, transaction)
+```
+
+**Parameters**:
+- `data: object` - Baseline properties including optional wave reference
+- `transaction: Transaction` - Must have user context
+
+**Returns**: `Promise<object>` - Created baseline with captured version count  
+**Behavior**:
+1. Creates baseline node
+2. Captures all current LATEST_VERSION relationships for OR/OC
+3. Creates HAS_ITEMS relationships to all latest versions
+4. Creates STARTS_FROM relationship to wave if specified  
+   **Throws**: `StoreError` - Creation failure
+
+### findById(id, transaction)
+```javascript
+const baseline = await store.findById(id, transaction)
+```
+**Returns**: `Promise<object|null>` - Baseline with metadata and item count
+
+### findAll(transaction)
+```javascript
+const baselines = await store.findAll(transaction)
+```
+**Returns**: `Promise<Array<object>>` - All baselines with metadata
+
+### getBaselineItems(baselineId, transaction)
+```javascript
+const items = await store.getBaselineItems(baselineId, transaction)
+```
+**Parameters**:
+- `baselineId: number` - Baseline ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<object>>` - All OR/OC versions captured in baseline with basic metadata  
+**Throws**: `StoreError` - Query failure
+
+### No Update/Delete Operations
+ODPBaselineStore only supports create and read operations. Baselines are immutable once created.
 
 ---
 
@@ -591,6 +708,10 @@ const milestones = await store.findMilestonesByWave(waveId, transaction)
 - `'Node cannot refine itself'` - Self-reference prevention in REFINES
 - `'One or more [EntityType] entities do not exist'` - Batch validation failure
 
+### Baseline Errors
+- `'Baseline not found'` - Invalid baselineId in baseline-aware operations
+- `'No items captured in baseline'` - Baseline created but no OR/OC existed
+
 ### Milestone Errors
 - `'Wave with ID [waveId] does not exist'` - Invalid wave reference
 
@@ -626,6 +747,45 @@ try {
 }
 ```
 
+## Baseline Creation Pattern
+```javascript
+const tx = createTransaction('user123');
+try {
+  const baseline = await odpBaselineStore().create({
+    title: "Q1 2025 Release Baseline",
+    startsFromWaveId: waveId
+  }, tx);
+  
+  // Baseline automatically captures all latest OR/OC versions
+  console.log(`Baseline created with ID: ${baseline.id}`);
+  
+  await commitTransaction(tx);
+} catch (error) {
+  await rollbackTransaction(tx);
+  throw error;
+}
+```
+
+## Baseline-Aware Query Pattern
+```javascript
+const tx = createTransaction('user123');
+try {
+  // Get current state
+  const currentRequirements = await operationalRequirementStore().findAll(tx);
+  
+  // Get state at baseline time
+  const baselineRequirements = await operationalRequirementStore().findAll(tx, baselineId);
+  
+  // Compare current vs baseline
+  console.log(`Current: ${currentRequirements.length}, Baseline: ${baselineRequirements.length}`);
+  
+  await commitTransaction(tx);
+} catch (error) {
+  await rollbackTransaction(tx);
+  throw error;
+}
+```
+
 ## ID Normalization Pattern
 ```javascript
 // Service layer milestone operations
@@ -647,34 +807,20 @@ const newMilestones = current.milestones.filter(m =>
 );
 ```
 
-## Versioned Entity with Relationships
+## Versioned Entity with Baseline Context
 ```javascript
 const tx = createTransaction('user123');
 try {
-  // Create with initial relationships
-  const requirement = await operationalRequirementStore().create({
-    title: "New Requirement",
-    type: "OR",
-    statement: "Requirement description",
-    refinesParents: [123],
-    impactsServices: [456, 789]
-  }, tx);
+  // Get requirement in current context
+  const current = await operationalRequirementStore().findById(itemId, tx);
   
-  // Update content only (relationships inherited)
-  const updated1 = await operationalRequirementStore().update(
-    requirement.itemId,
-    { statement: "Updated description" },
-    requirement.versionId,
-    tx
-  );
+  // Get same requirement in baseline context
+  const baseline = await operationalRequirementStore().findById(itemId, tx, baselineId);
   
-  // Update relationships only (content inherited)
-  const updated2 = await operationalRequirementStore().update(
-    requirement.itemId,
-    { impactsServices: [456, 789, 999] }, // Added service 999
-    updated1.versionId,
-    tx
-  );
+  // Compare versions
+  if (current.version !== baseline.version) {
+    console.log(`Requirement updated since baseline: v${baseline.version} → v${current.version}`);
+  }
   
   await commitTransaction(tx);
 } catch (error) {
@@ -782,28 +928,29 @@ Database configuration in `server/config.json`:
 
 ---
 
-# Phase 3 Enhancements Summary
+# Phase 4 Enhancements Summary
 
 ## New Features Added
 
-**ID Normalization**:
-- `normalizeId()` method available on all store instances
-- Handles Neo4j Integer objects, strings, and numbers consistently
-- Critical for service layer operations and milestone management
+**Baseline Support**:
+- `ODPBaselineStore` with atomic baseline creation capturing all latest OR/OC versions
+- Baseline-aware read operations across all versioned entity stores
+- Optional `baselineId` parameter for historical context in all `findById` and `findAll` operations
+- Direct HAS_ITEMS relationships eliminating intermediate baseline item nodes
+
+**Wave Entity**:
+- `WaveStore` following standard setup entity pattern
+- Quarter/year temporal validation and naming conventions
+- Integration with milestone targeting and baseline start references
 
 **Enhanced Error Handling**:
-- Clear separation between store-level and business-level errors
-- Specific error messages for common scenarios
-- Consistent error propagation across all layers
+- Baseline-specific error messages for invalid baseline references
+- Clear separation between current state and baseline state queries
+- Consistent error propagation across baseline-aware operations
 
 **Performance Optimizations**:
-- Connection pooling optimizations
-- Efficient query patterns for versioned entities
-- Optimized ID comparison operations
+- Direct relationship traversal from baselines to captured versions
+- Efficient baseline queries without intermediate node complexity
+- Optimized ID comparison operations for all entity types
 
-**Milestone Integration**:
-- Complete milestone lifecycle within OperationalChange versioning
-- Version-specific milestone ownership
-- Wave targeting support with validation
-
-The store layer now provides a robust foundation for complex operational deployment plan management with full versioning, relationship management, and consistent ID handling across all system layers.
+The store layer now provides complete support for deployment plan baseline management with simplified storage model and consistent baseline-aware operations across all versioned entities.
