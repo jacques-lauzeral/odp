@@ -180,17 +180,38 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    async findById(itemId, transaction) {
+    async findById(itemId, transaction, baselineId = null) {
         try {
             const numericItemId = this.normalizeId(itemId);
-            const result = await transaction.run(`
-                MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
-                WHERE id(item) = $itemId
-                RETURN id(item) as itemId, item.title as title,
-                       id(version) as versionId, version.version as version,
-                       version.createdAt as createdAt, version.createdBy as createdBy,
-                       version { .* } as versionData
-            `, { itemId: numericItemId });
+
+            let query, params;
+
+            if (baselineId === null) {
+                // Latest version query
+                query = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    WHERE id(item) = $itemId
+                    RETURN id(item) as itemId, item.title as title,
+                           id(version) as versionId, version.version as version,
+                           version.createdAt as createdAt, version.createdBy as createdBy,
+                           version { .* } as versionData
+                `;
+                params = { itemId: numericItemId };
+            } else {
+                // Baseline version query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId AND id(item) = $itemId
+                    RETURN id(item) as itemId, item.title as title,
+                           id(version) as versionId, version.version as version,
+                           version.createdAt as createdAt, version.createdBy as createdBy,
+                           version { .* } as versionData
+                `;
+                params = { baselineId: numericBaselineId, itemId: numericItemId };
+            }
+
+            const result = await transaction.run(query, params);
 
             if (result.records.length === 0) {
                 return null;
@@ -301,17 +322,38 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    // Override findAll to return latest versions with relationships as Reference objects
-    async findAll(transaction) {
+    // Override findAll to return latest versions or baseline versions with relationships as Reference objects
+    async findAll(transaction, baselineId = null) {
         try {
-            const result = await transaction.run(`
-                MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
-                RETURN id(item) as itemId, item.title as title,
-                       id(version) as versionId, version.version as version,
-                       version.createdAt as createdAt, version.createdBy as createdBy,
-                       version { .* } as versionData
-                ORDER BY item.title
-            `);
+            let query;
+            let params = {};
+
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    RETURN id(item) as itemId, item.title as title,
+                           id(version) as versionId, version.version as version,
+                           version.createdAt as createdAt, version.createdBy as createdBy,
+                           version { .* } as versionData
+                    ORDER BY item.title
+                `;
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                    RETURN id(item) as itemId, item.title as title,
+                           id(version) as versionId, version.version as version,
+                           version.createdAt as createdAt, version.createdBy as createdBy,
+                           version { .* } as versionData
+                    ORDER BY item.title
+                `;
+                params = { baselineId: numericBaselineId };
+            }
+
+            const result = await transaction.run(query, params);
 
             const items = [];
             for (const record of result.records) {

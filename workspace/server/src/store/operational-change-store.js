@@ -344,26 +344,45 @@ export class OperationalChangeStore extends VersionedItemStore {
         }
     }
 
-    // Additional query methods
+    // Additional query methods with baseline support
 
     /**
      * Find changes that satisfy a specific requirement (inverse SATISFIES)
      * @param {number} requirementItemId - Requirement Item ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Changes that satisfy the requirement with Reference structure
      */
-    async findChangesThatSatisfyRequirement(requirementItemId, transaction) {
+    async findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null) {
         try {
             const normalizedRequirementId = this.normalizeId(requirementItemId);
-            const result = await transaction.run(`
-                MATCH (req:OperationalRequirement)<-[:SATISFIES]-(changeVersion:OperationalChangeVersion)
-                MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
-                MATCH (change)-[:LATEST_VERSION]->(changeVersion)
-                WHERE id(req) = $requirementItemId
-                RETURN id(change) as id, change.title as title
-                ORDER BY change.title
-            `, { requirementItemId: normalizedRequirementId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (req:OperationalRequirement)<-[:SATISFIES]-(changeVersion:OperationalChangeVersion)
+                    MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
+                    MATCH (change)-[:LATEST_VERSION]->(changeVersion)
+                    WHERE id(req) = $requirementItemId
+                    RETURN id(change) as id, change.title as title
+                    ORDER BY change.title
+                `;
+                params = { requirementItemId: normalizedRequirementId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SATISFIES]->(req:OperationalRequirement)
+                    MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
+                    WHERE id(baseline) = $baselineId AND id(req) = $requirementItemId
+                    RETURN id(change) as id, change.title as title
+                    ORDER BY change.title
+                `;
+                params = { baselineId: numericBaselineId, requirementItemId: normalizedRequirementId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find changes that satisfy requirement: ${error.message}`, error);
@@ -374,20 +393,39 @@ export class OperationalChangeStore extends VersionedItemStore {
      * Find changes that supersede a specific requirement (inverse SUPERSEDS)
      * @param {number} requirementItemId - Requirement Item ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Changes that supersede the requirement with Reference structure
      */
-    async findChangesThatSupersedeRequirement(requirementItemId, transaction) {
+    async findChangesThatSupersedeRequirement(requirementItemId, transaction, baselineId = null) {
         try {
             const normalizedRequirementId = this.normalizeId(requirementItemId);
-            const result = await transaction.run(`
-                MATCH (req:OperationalRequirement)<-[:SUPERSEDS]-(changeVersion:OperationalChangeVersion)
-                MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
-                MATCH (change)-[:LATEST_VERSION]->(changeVersion)
-                WHERE id(req) = $requirementItemId
-                RETURN id(change) as id, change.title as title
-                ORDER BY change.title
-            `, { requirementItemId: normalizedRequirementId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (req:OperationalRequirement)<-[:SUPERSEDS]-(changeVersion:OperationalChangeVersion)
+                    MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
+                    MATCH (change)-[:LATEST_VERSION]->(changeVersion)
+                    WHERE id(req) = $requirementItemId
+                    RETURN id(change) as id, change.title as title
+                    ORDER BY change.title
+                `;
+                params = { requirementItemId: normalizedRequirementId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SUPERSEDS]->(req:OperationalRequirement)
+                    MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
+                    WHERE id(baseline) = $baselineId AND id(req) = $requirementItemId
+                    RETURN id(change) as id, change.title as title
+                    ORDER BY change.title
+                `;
+                params = { baselineId: numericBaselineId, requirementItemId: normalizedRequirementId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find changes that supersede requirement: ${error.message}`, error);
@@ -398,23 +436,46 @@ export class OperationalChangeStore extends VersionedItemStore {
      * Find milestones by wave
      * @param {number} waveId - Wave node ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Milestones targeting the wave with change context
      */
-    async findMilestonesByWave(waveId, transaction) {
+    async findMilestonesByWave(waveId, transaction, baselineId = null) {
         try {
             const normalizedWaveId = this.normalizeId(waveId);
-            const result = await transaction.run(`
-                MATCH (milestone:OperationalChangeMilestone)-[:TARGETS]->(wave:Wave)
-                MATCH (milestone)-[:BELONGS_TO]->(version:OperationalChangeVersion)
-                MATCH (version)-[:VERSION_OF]->(change:OperationalChange)
-                MATCH (change)-[:LATEST_VERSION]->(version)
-                WHERE id(wave) = $waveId
-                RETURN id(milestone) as milestoneId, milestone.title as title, 
-                       milestone.description as description, milestone.eventTypes as eventTypes,
-                       id(change) as changeId, change.title as changeTitle
-                ORDER BY change.title, milestone.title
-            `, { waveId: normalizedWaveId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (milestone:OperationalChangeMilestone)-[:TARGETS]->(wave:Wave)
+                    MATCH (milestone)-[:BELONGS_TO]->(version:OperationalChangeVersion)
+                    MATCH (version)-[:VERSION_OF]->(change:OperationalChange)
+                    MATCH (change)-[:LATEST_VERSION]->(version)
+                    WHERE id(wave) = $waveId
+                    RETURN id(milestone) as milestoneId, milestone.title as title, 
+                           milestone.description as description, milestone.eventTypes as eventTypes,
+                           id(change) as changeId, change.title as changeTitle
+                    ORDER BY change.title, milestone.title
+                `;
+                params = { waveId: normalizedWaveId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalChangeVersion)
+                    MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
+                    MATCH (milestone)-[:TARGETS]->(wave:Wave)
+                    MATCH (version)-[:VERSION_OF]->(change:OperationalChange)
+                    WHERE id(baseline) = $baselineId AND id(wave) = $waveId
+                    RETURN id(milestone) as milestoneId, milestone.title as title, 
+                           milestone.description as description, milestone.eventTypes as eventTypes,
+                           id(change) as changeId, change.title as changeTitle
+                    ORDER BY change.title, milestone.title
+                `;
+                params = { baselineId: numericBaselineId, waveId: normalizedWaveId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => ({
                 id: this.normalizeId(record.get('milestoneId')),
                 title: record.get('title'),
@@ -437,24 +498,48 @@ export class OperationalChangeStore extends VersionedItemStore {
      * Find all milestones for a specific change
      * @param {number} itemId - OperationalChange Item ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Milestones for the change
      */
-    async findMilestonesByChange(itemId, transaction) {
+    async findMilestonesByChange(itemId, transaction, baselineId = null) {
         try {
             const normalizedItemId = this.normalizeId(itemId);
-            const result = await transaction.run(`
-                MATCH (change:OperationalChange)-[:LATEST_VERSION]->(version:OperationalChangeVersion)
-                MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
-                WHERE id(change) = $itemId
-                
-                OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
-                
-                RETURN id(milestone) as milestoneId, milestone.title as title, 
-                       milestone.description as description, milestone.eventTypes as eventTypes,
-                       id(wave) as waveId, wave.name as waveName
-                ORDER BY milestone.title
-            `, { itemId: normalizedItemId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest version query
+                query = `
+                    MATCH (change:OperationalChange)-[:LATEST_VERSION]->(version:OperationalChangeVersion)
+                    MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
+                    WHERE id(change) = $itemId
+                    
+                    OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
+                    
+                    RETURN id(milestone) as milestoneId, milestone.title as title, 
+                           milestone.description as description, milestone.eventTypes as eventTypes,
+                           id(wave) as waveId, wave.name as waveName
+                    ORDER BY milestone.title
+                `;
+                params = { itemId: normalizedItemId };
+            } else {
+                // Baseline version query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalChangeVersion)-[:VERSION_OF]->(change:OperationalChange)
+                    MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
+                    WHERE id(baseline) = $baselineId AND id(change) = $itemId
+                    
+                    OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
+                    
+                    RETURN id(milestone) as milestoneId, milestone.title as title, 
+                           milestone.description as description, milestone.eventTypes as eventTypes,
+                           id(wave) as waveId, wave.name as waveName
+                    ORDER BY milestone.title
+                `;
+                params = { baselineId: numericBaselineId, itemId: normalizedItemId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => {
                 const milestone = {
                     id: this.normalizeId(record.get('milestoneId')),

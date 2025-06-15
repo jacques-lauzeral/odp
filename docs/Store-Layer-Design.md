@@ -30,7 +30,7 @@ This document describes the design and architecture of the ODP Storage Layer, wh
 - **BaseStore**: Common CRUD operations
 - **RefinableEntityStore**: Hierarchy management for setup entities
 - **VersionedItemStore**: Version lifecycle management with baseline support
-- **ODPBaselineStore**: Baseline creation and management
+- **BaselineStore**: Baseline creation and management
 - **Concrete stores**: Entity-specific logic and relationship handling
 
 ## Architecture Overview
@@ -44,7 +44,7 @@ BaseStore (CRUD operations + normalizeId)
 │   ├── DataCategoryStore
 │   └── ServiceStore
 ├── WaveStore (simple entity)
-├── ODPBaselineStore (baseline management)
+├── BaselineStore (baseline management)
 └── VersionedItemStore (+ versioning + baseline-aware)
     ├── OperationalRequirementStore (+ REFINES + IMPACTS)
     └── OperationalChangeStore (+ SATISFIES + SUPERSEDS + milestones)
@@ -114,7 +114,7 @@ const children = await store.findChildren(parentId, tx);
 3. **Query**: Latest version by default, specific version on request, baseline version when baseline context provided
 
 ### 3. Baseline Entities
-**Entities**: ODPBaseline
+**Entities**: Baseline
 
 **Characteristics**:
 - Extend `BaseStore`
@@ -125,7 +125,7 @@ const children = await store.findChildren(parentId, tx);
 
 **Storage Pattern**:
 ```cypher
-(Baseline:ODPBaseline {id, title, createdAt, createdBy})
+(Baseline:Baseline {id, title, createdAt, createdBy})
 (Baseline)-[:HAS_ITEMS]->(OperationalRequirementVersion)
 (Baseline)-[:HAS_ITEMS]->(OperationalChangeVersion)
 (Baseline)-[:STARTS_FROM]->(Wave)  // Optional
@@ -442,7 +442,7 @@ try {
   // 1. Create baseline
   // 2. Capture all latest OR/OC versions
   // 3. Create wave relationship if specified
-  const baseline = await odpBaselineStore().create(baselineData, tx);
+  const baseline = await baselineStore().create(baselineData, tx);
   await commitTransaction(tx);
   return baseline;
 } catch (error) {
@@ -522,7 +522,7 @@ RETURN item, version
 **Baseline Version Pattern**:
 ```cypher
 // Efficient baseline version access
-MATCH (baseline:ODPBaseline)-[:HAS_ITEMS]->(version:EntityTypeVersion)-[:VERSION_OF]->(item:EntityType)
+MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:EntityTypeVersion)-[:VERSION_OF]->(item:EntityType)
 WHERE id(baseline) = $baselineId AND id(item) = $itemId
 RETURN item, version
 ```
@@ -539,7 +539,7 @@ CREATE (source)-[:REL_TYPE]->(target)
 **Baseline Creation Optimization**:
 ```cypher
 // Efficient baseline capture
-MATCH (baseline:ODPBaseline), (item)-[:LATEST_VERSION]->(version)
+MATCH (baseline:Baseline), (item)-[:LATEST_VERSION]->(version)
 WHERE id(baseline) = $baselineId 
   AND (item:OperationalRequirement OR item:OperationalChange)
 CREATE (baseline)-[:HAS_ITEMS]->(version)
@@ -617,7 +617,7 @@ async findAll(transaction, baselineId = null) // → versions with baseline cont
 async findByIdAndVersion(itemId, versionNumber, transaction) // → specific version
 ```
 
-### ODPBaselineStore Pattern
+### BaselineStore Pattern
 **Additional Responsibilities**:
 - Atomic baseline creation
 - System state capture

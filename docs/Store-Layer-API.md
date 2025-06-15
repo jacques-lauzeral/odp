@@ -98,11 +98,11 @@ const store = operationalChangeStore()
 **Returns**: `OperationalChangeStore`  
 **Throws**: `Error` - Store not initialized
 
-### odpBaselineStore()
+### baselineStore()
 ```javascript
-const store = odpBaselineStore()
+const store = baselineStore()
 ```
-**Returns**: `ODPBaselineStore`  
+**Returns**: `baselineStore`  
 **Throws**: `Error` - Store not initialized
 
 ---
@@ -620,7 +620,7 @@ const milestones = await store.findMilestonesByWave(waveId, transaction, baselin
 
 # Baseline Management APIs
 
-## ODPBaselineStore
+## BaselineStore
 **Inheritance**: `BaseStore`  
 **Entity Model**: `{id: number, title: string, createdAt: string, createdBy: string}`
 
@@ -668,7 +668,7 @@ const items = await store.getBaselineItems(baselineId, transaction)
 **Throws**: `StoreError` - Query failure
 
 ### No Update/Delete Operations
-ODPBaselineStore only supports create and read operations. Baselines are immutable once created.
+BaselineStore only supports create and read operations. Baselines are immutable once created.
 
 ---
 
@@ -751,7 +751,7 @@ try {
 ```javascript
 const tx = createTransaction('user123');
 try {
-  const baseline = await odpBaselineStore().create({
+  const baseline = await baselineStore().create({
     title: "Q1 2025 Release Baseline",
     startsFromWaveId: waveId
   }, tx);
@@ -933,7 +933,7 @@ Database configuration in `server/config.json`:
 ## New Features Added
 
 **Baseline Support**:
-- `ODPBaselineStore` with atomic baseline creation capturing all latest OR/OC versions
+- `BaselineStore` with atomic baseline creation capturing all latest OR/OC versions
 - Baseline-aware read operations across all versioned entity stores
 - Optional `baselineId` parameter for historical context in all `findById` and `findAll` operations
 - Direct HAS_ITEMS relationships eliminating intermediate baseline item nodes

@@ -9,6 +9,7 @@ import { ServiceStore } from './service-store.js';
 import { WaveStore } from './wave-store.js';
 import { OperationalRequirementStore } from './operational-requirement-store.js';
 import { OperationalChangeStore } from './operational-change-store.js';
+import { BaselineStore } from './baseline-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
@@ -18,6 +19,7 @@ let serviceStore = null;
 let waveStore = null;
 let operationalRequirementStore = null;
 let operationalChangeStore = null;
+let baselineStore = null;
 
 /**
  * Initialize the store layer with Neo4j connection and store instances
@@ -43,6 +45,7 @@ export async function initializeStores() {
         waveStore = new WaveStore(driver);
         operationalRequirementStore = new OperationalRequirementStore(driver);
         operationalChangeStore = new OperationalChangeStore(driver);
+        baselineStore = new BaselineStore(driver);
 
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
@@ -52,7 +55,8 @@ export async function initializeStores() {
             service: '✓',
             wave: '✓',
             operationalRequirement: '✓',
-            operationalChange: '✓'
+            operationalChange: '✓',
+            baseline: '✓'
         });
 
     } catch (error) {
@@ -78,6 +82,7 @@ export async function closeStores() {
         waveStore = null;
         operationalRequirementStore = null;
         operationalChangeStore = null;
+        baselineStore = null;
 
         // Close database connection
         await closeConnection();
@@ -178,6 +183,18 @@ function getOperationalChangeStore() {
     return operationalChangeStore;
 }
 
+/**
+ * Get Baseline store instance
+ * @returns {BaselineStore} Store instance
+ * @throws {Error} If store layer not initialized
+ */
+function getBaselineStore() {
+    if (!baselineStore) {
+        throw new Error('Store layer not initialized. Call initializeStores() first.');
+    }
+    return baselineStore;
+}
+
 // Export store access functions with consistent naming
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
@@ -186,7 +203,8 @@ export {
     getServiceStore as serviceStore,
     getWaveStore as waveStore,
     getOperationalRequirementStore as operationalRequirementStore,
-    getOperationalChangeStore as operationalChangeStore
+    getOperationalChangeStore as operationalChangeStore,
+    getBaselineStore as baselineStore
 };
 
 /**
@@ -202,7 +220,8 @@ export function getAllStores() {
         service: getServiceStore(),
         wave: getWaveStore(),
         operationalRequirement: getOperationalRequirementStore(),
-        operationalChange: getOperationalChangeStore()
+        operationalChange: getOperationalChangeStore(),
+        baseline: getBaselineStore()
     };
 }
 
@@ -218,7 +237,8 @@ export function isStoreLayerInitialized() {
         serviceStore &&
         waveStore &&
         operationalRequirementStore &&
-        operationalChangeStore
+        operationalChangeStore &&
+        baselineStore
     );
 }
 
@@ -234,7 +254,8 @@ export function getStoreLayerStatus() {
         service: !!serviceStore,
         wave: !!waveStore,
         operationalRequirement: !!operationalRequirementStore,
-        operationalChange: !!operationalChangeStore
+        operationalChange: !!operationalChangeStore,
+        baseline: !!baselineStore
     };
 
     const initializedCount = Object.values(stores).filter(Boolean).length;

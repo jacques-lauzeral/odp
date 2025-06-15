@@ -59,8 +59,8 @@
   - ❌ Route Layer: routes/wave.js with temporal operations
 - 🔄 **Baseline management system**:
   - ✅ **Simplified storage model**: Direct HAS_ITEMS relationships design complete
-  - ✅ **ODPBaseline entity design**: Atomic snapshot creation without intermediate nodes
-  - ❌ **Store implementation**: ODPBaselineStore not yet implemented
+  - ✅ **Baseline entity design**: Atomic snapshot creation without intermediate nodes
+  - ✅ **Store implementation**: BaselineStore not yet implemented
   - ❌ **Service implementation**: Baseline creation and baseline-aware operations not implemented
   - ❌ **Route implementation**: Baseline endpoints not yet implemented
 - [ ] **ODPEdition entity**:
@@ -70,7 +70,7 @@
 
 ### 6.2 Shared Models
 - ✅ **Wave model** with temporal validation (year, quarter, date, derived name)
-- ✅ **ODPBaseline model** with simplified structure
+- ✅ **Baseline model** with simplified structure
 - ✅ **Baseline-aware request structures** for operational entities (documented)
 - [ ] Add ODPEdition model with draft/official lifecycle
 
@@ -79,7 +79,7 @@
   - ❌ Wave CLI commands need rework and proper implementation
   - ❌ Timeline management commands not implemented
 - ❌ **CLI commands for Baseline management**:
-  - ❌ `odp baseline create/list/show` not implemented
+  - ❌ `baseline create/list/show` not implemented
   - ❌ Historical navigation commands with `--baseline` flags not implemented
 - [ ] **CLI commands for ODP Edition management**:
   - [ ] `odp edition create/list/show/publish`

@@ -269,26 +269,45 @@ export class OperationalRequirementStore extends VersionedItemStore {
         }
     }
 
-    // Additional query methods
+    // Additional query methods with baseline support
 
     /**
      * Find requirements that are children of the given requirement (inverse REFINES)
      * @param {number} itemId - Parent requirement Item ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Child requirements with Reference structure
      */
-    async findChildren(itemId, transaction) {
+    async findChildren(itemId, transaction, baselineId = null) {
         try {
             const normalizedItemId = this.normalizeId(itemId);
-            const result = await transaction.run(`
-                MATCH (parent:OperationalRequirement)<-[:REFINES]-(childVersion:OperationalRequirementVersion)
-                MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
-                MATCH (child)-[:LATEST_VERSION]->(childVersion)
-                WHERE id(parent) = $itemId
-                RETURN id(child) as id, child.title as title, childVersion.type as type
-                ORDER BY child.title
-            `, { itemId: normalizedItemId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (parent:OperationalRequirement)<-[:REFINES]-(childVersion:OperationalRequirementVersion)
+                    MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
+                    MATCH (child)-[:LATEST_VERSION]->(childVersion)
+                    WHERE id(parent) = $itemId
+                    RETURN id(child) as id, child.title as title, childVersion.type as type
+                    ORDER BY child.title
+                `;
+                params = { itemId: normalizedItemId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(childVersion:OperationalRequirementVersion)-[:REFINES]->(parent:OperationalRequirement)
+                    MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
+                    WHERE id(baseline) = $baselineId AND id(parent) = $itemId
+                    RETURN id(child) as id, child.title as title, childVersion.type as type
+                    ORDER BY child.title
+                `;
+                params = { baselineId: numericBaselineId, itemId: normalizedItemId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find children requirements: ${error.message}`, error);
@@ -300,20 +319,39 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * @param {string} targetLabel - Target item label ('StakeholderCategory', 'Data', 'Service', 'RegulatoryAspect')
      * @param {number} targetId - Target item ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Requirements that impact the target with Reference structure
      */
-    async findRequirementsThatImpact(targetLabel, targetId, transaction) {
+    async findRequirementsThatImpact(targetLabel, targetId, transaction, baselineId = null) {
         try {
             const normalizedTargetId = this.normalizeId(targetId);
-            const result = await transaction.run(`
-                MATCH (target:${targetLabel})<-[:IMPACTS]-(version:OperationalRequirementVersion)
-                MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
-                MATCH (item)-[:LATEST_VERSION]->(version)
-                WHERE id(target) = $targetId
-                RETURN id(item) as id, item.title as title, version.type as type
-                ORDER BY item.title
-            `, { targetId: normalizedTargetId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (target:${targetLabel})<-[:IMPACTS]-(version:OperationalRequirementVersion)
+                    MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
+                    MATCH (item)-[:LATEST_VERSION]->(version)
+                    WHERE id(target) = $targetId
+                    RETURN id(item) as id, item.title as title, version.type as type
+                    ORDER BY item.title
+                `;
+                params = { targetId: normalizedTargetId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalRequirementVersion)-[:IMPACTS]->(target:${targetLabel})
+                    MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
+                    WHERE id(baseline) = $baselineId AND id(target) = $targetId
+                    RETURN id(item) as id, item.title as title, version.type as type
+                    ORDER BY item.title
+                `;
+                params = { baselineId: numericBaselineId, targetId: normalizedTargetId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find requirements that impact ${targetLabel}: ${error.message}`, error);
@@ -324,20 +362,41 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * Find parent requirements for a specific requirement
      * @param {number} itemId - Child requirement Item ID
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Parent requirements with Reference structure
      */
-    async findParents(itemId, transaction) {
+    async findParents(itemId, transaction, baselineId = null) {
         try {
             const normalizedItemId = this.normalizeId(itemId);
-            const result = await transaction.run(`
-                MATCH (child:OperationalRequirement)-[:LATEST_VERSION]->(childVersion:OperationalRequirementVersion)
-                MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
-                MATCH (parent)-[:LATEST_VERSION]->(parentVersion:OperationalRequirementVersion)
-                WHERE id(child) = $itemId
-                RETURN id(parent) as id, parent.title as title, parentVersion.type as type
-                ORDER BY parent.title
-            `, { itemId: normalizedItemId });
+            let query, params;
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (child:OperationalRequirement)-[:LATEST_VERSION]->(childVersion:OperationalRequirementVersion)
+                    MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
+                    MATCH (parent)-[:LATEST_VERSION]->(parentVersion:OperationalRequirementVersion)
+                    WHERE id(child) = $itemId
+                    RETURN id(parent) as id, parent.title as title, parentVersion.type as type
+                    ORDER BY parent.title
+                `;
+                params = { itemId: normalizedItemId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(childVersion:OperationalRequirementVersion)-[:VERSION_OF]->(child:OperationalRequirement)
+                    MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
+                    OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(parentVersion:OperationalRequirementVersion)-[:VERSION_OF]->(parent)
+                    WHERE id(baseline) = $baselineId AND id(child) = $itemId
+                    RETURN id(parent) as id, parent.title as title, 
+                           CASE WHEN parentVersion IS NOT NULL THEN parentVersion.type ELSE 'N/A' END as type
+                    ORDER BY parent.title
+                `;
+                params = { baselineId: numericBaselineId, itemId: normalizedItemId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find parent requirements: ${error.message}`, error);
@@ -347,17 +406,34 @@ export class OperationalRequirementStore extends VersionedItemStore {
     /**
      * Find all root requirements (no parents)
      * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<Array<object>>} Root requirements with Reference structure
      */
-    async findRoots(transaction) {
+    async findRoots(transaction, baselineId = null) {
         try {
-            const result = await transaction.run(`
-                MATCH (item:OperationalRequirement)-[:LATEST_VERSION]->(version:OperationalRequirementVersion)
-                WHERE NOT EXISTS((version)-[:REFINES]->(:OperationalRequirement))
-                RETURN id(item) as id, item.title as title, version.type as type
-                ORDER BY item.title
-            `);
+            let query, params = {};
 
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                    MATCH (item:OperationalRequirement)-[:LATEST_VERSION]->(version:OperationalRequirementVersion)
+                    WHERE NOT EXISTS((version)-[:REFINES]->(:OperationalRequirement))
+                    RETURN id(item) as id, item.title as title, version.type as type
+                    ORDER BY item.title
+                `;
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalRequirementVersion)-[:VERSION_OF]->(item:OperationalRequirement)
+                    WHERE id(baseline) = $baselineId AND NOT EXISTS((version)-[:REFINES]->(:OperationalRequirement))
+                    RETURN id(item) as id, item.title as title, version.type as type
+                    ORDER BY item.title
+                `;
+                params = { baselineId: numericBaselineId };
+            }
+
+            const result = await transaction.run(query, params);
             return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find root requirements: ${error.message}`, error);

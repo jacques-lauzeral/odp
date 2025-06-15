@@ -140,7 +140,7 @@ The node types required to the management of operational needs, requirements, an
 
 The node types and relationships required to the management of operational plan baselines management.
 
-### 5.1 ODPBaseline
+### 5.1 Baseline
 **Properties:**
 - `createdAt`: the baseline creation datetime
 - `createdBy`: the baseline creator
@@ -159,7 +159,7 @@ The node types and relationships required to the management of operational plan 
 **Baseline Creation Process:**
 ```cypher
 // 1. Create baseline
-CREATE (baseline:ODPBaseline {
+CREATE (baseline:Baseline {
   title: $title,
   createdAt: $timestamp,
   createdBy: $userId
@@ -179,7 +179,7 @@ CREATE (baseline)-[:HAS_ITEMS]->(version)
 - `type`: DRAFT or OFFICIAL
 
 **Relationships:**
-- `EXPOSES -> ODPBaseline`
+- `EXPOSES -> Baseline`
 - `HAS_ATTACHMENT -> Document`
 
 ## 6. Digital Asset Management
@@ -212,7 +212,7 @@ The node types required to the management of user reviews.
 
 **Relationships:**
 - `HAS_ATTACHMENT -> Document`
-- `COMMENTS_ON -> ODPBaseline`
+- `COMMENTS_ON -> Baseline`
 
 ## Design Notes
 
@@ -242,7 +242,7 @@ The system implements a sequential versioning pattern using root nodes (Item) + 
 ### Simplified Baseline Design
 The baseline system uses a simplified approach:
 - **Direct relationships**: Baseline connects directly to ItemVersion nodes via HAS_ITEMS
-- **No intermediate nodes**: Eliminates ODPBaselineItem complexity
+- **No intermediate nodes**: Eliminates BaselineItem complexity
 - **Atomic snapshots**: Single transaction captures all latest versions at creation time
 - **Simple queries**: Direct traversal from baseline to captured versions
 

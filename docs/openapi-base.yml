@@ -441,7 +441,7 @@ components:
           type: string
 
     # Baseline Management
-    ODPBaseline:
+    Baseline:
       type: object
       properties:
         id:
@@ -471,7 +471,7 @@ components:
             date:
               type: string
 
-    ODPBaselineRequest:
+    BaselineRequest:
       type: object
       required: [title]
       properties:
@@ -482,22 +482,3 @@ components:
           type: string
           nullable: true
           description: "Optional wave that this baseline starts from"
-
-    BaselineItem:
-      type: object
-      properties:
-        itemId:
-          type: string
-        itemTitle:
-          type: string
-        itemType:
-          type: string
-          enum: [OperationalRequirement, OperationalChange]
-        versionId:
-          type: string
-        version:
-          type: integer
-        capturedAt:
-          type: string
-          format: date-time
-          description: "When this version was captured in the baseline"

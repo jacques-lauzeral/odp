@@ -21,7 +21,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: 'openapi-base.yml#/components/schemas/ODPBaseline'
+                  $ref: 'openapi-base.yml#/components/schemas/Baseline'
         '500':
           description: Internal Server Error
           content:
@@ -41,14 +41,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'openapi-base.yml#/components/schemas/ODPBaselineRequest'
+              $ref: 'openapi-base.yml#/components/schemas/BaselineRequest'
       responses:
         '201':
           description: Baseline created successfully
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/ODPBaseline'
+                $ref: 'openapi-base.yml#/components/schemas/Baseline'
         '400':
           description: Bad Request - Invalid wave reference or validation error
           content:
@@ -79,7 +79,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/ODPBaseline'
+                $ref: 'openapi-base.yml#/components/schemas/Baseline'
         '404':
           description: Baseline not found
           content:
