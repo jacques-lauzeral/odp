@@ -110,6 +110,56 @@ export const ServiceRequests = {
     }
 };
 
+// API Wave model
+export const Wave = {
+    id: '',
+    year: 0,        // 4-digit year (YYYY)
+    quarter: 0,     // Quarter number (1-4)
+    date: '',       // Target date (YYYY-MM-DD)
+    name: ''        // Derived name (year.quarter, e.g., "2025.1")
+};
+
+// API Wave request structures
+export const WaveRequests = {
+    // Create request - year, quarter, date (name is derived)
+    create: {
+        year: 0,        // Required: 4-digit year in range [2025, 2124[
+        quarter: 0,     // Required: Quarter number (1-4)
+        date: ''        // Required: Target date in RFC 3339 format (YYYY-MM-DD)
+        // name is automatically generated as "year.quarter"
+    },
+
+    // Update request - same as create (complete replacement)
+    update: {
+        year: 0,        // Required: 4-digit year in range [2025, 2124[
+        quarter: 0,     // Required: Quarter number (1-4)
+        date: ''        // Required: Target date in RFC 3339 format (YYYY-MM-DD)
+        // name is automatically generated as "year.quarter"
+    }
+};
+
+// API Baseline model
+export const Baseline = {
+    id: '',
+    title: '',                  // Human-readable identifier
+    createdAt: '',             // Baseline creation timestamp
+    createdBy: '',             // Baseline creator
+    capturedItemCount: 0,      // Number of OR/OC versions captured
+    startsFromWave: null       // Optional wave reference object {id, name, year, quarter, date}
+};
+
+// API Baseline request structures
+export const BaselineRequests = {
+    // Create request - title and optional wave reference
+    create: {
+        title: '',              // Required: Unique baseline identifier
+        startsFromWaveId: null  // Optional: Wave ID that this baseline starts from
+    }
+
+    // No update request - baselines are immutable once created
+    // No delete request - baselines are immutable for historical integrity
+};
+
 // Milestone Event Types for validation and UI
 export const MilestoneEventTypes = [
     'API_PUBLICATION',
