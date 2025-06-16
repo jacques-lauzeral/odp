@@ -7,6 +7,7 @@ import {
 /**
  * VersionedItemService provides versioned CRUD operations with transaction management and user context.
  * Root class for operational entities (versioned with optimistic locking).
+ * Enhanced with baseline-aware operations for historical context support.
  */
 export class VersionedItemService {
     constructor(storeGetter) {
@@ -92,13 +93,16 @@ export class VersionedItemService {
     }
 
     /**
-     * Get entity by ID (latest version)
+     * Get entity by ID (latest version or baseline context)
+     * @param {number} itemId - Item ID
+     * @param {string} userId - User ID
+     * @param {number|null} baselineId - Optional baseline ID for historical context
      */
-    async getById(itemId, userId) {
+    async getById(itemId, userId, baselineId = null) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entity = await store.findById(itemId, tx);
+            const entity = await store.findById(itemId, tx, baselineId);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -140,13 +144,15 @@ export class VersionedItemService {
     }
 
     /**
-     * List all entities (latest versions)
+     * List all entities (latest versions or baseline context)
+     * @param {string} userId - User ID
+     * @param {number|null} baselineId - Optional baseline ID for historical context
      */
-    async getAll(userId) {
+    async getAll(userId, baselineId = null) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entities = await store.findAll(tx);
+            const entities = await store.findAll(tx, baselineId);
             await commitTransaction(tx);
             return entities;
         } catch (error) {

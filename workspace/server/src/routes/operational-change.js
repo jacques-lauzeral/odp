@@ -1,23 +1,27 @@
 import { VersionedItemRouter } from './versioned-item-router.js';
 import OperationalChangeService from '../services/OperationalChangeService.js';
 
-// Create base router using VersionedItemRouter
+// Create base router using VersionedItemRouter (now with baseline support)
 const versionedRouter = new VersionedItemRouter(OperationalChangeService, 'operational-change', 'Operational Change');
 const router = versionedRouter.getRouter();
 
-// MILESTONE CRUD ROUTES
+// MILESTONE CRUD ROUTES WITH BASELINE SUPPORT
 
-// GET /operational-changes/:id/milestones - List all milestones
+// GET /operational-changes/:id/milestones - List all milestones (latest version or baseline context)
 router.get('/:id/milestones', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);
-        console.log(`OperationalChangeService.getMilestones() itemId: ${req.params.id}, userId: ${userId}`);
-        const milestones = await OperationalChangeService.getMilestones(req.params.id, userId);
+        const baselineId = versionedRouter.getBaselineId(req);
+        console.log(`OperationalChangeService.getMilestones() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}`);
+        const milestones = await OperationalChangeService.getMilestones(req.params.id, userId, baselineId);
         res.json(milestones);
     } catch (error) {
         console.error('Error fetching milestones:', error);
         if (error.message === 'Operational change not found') {
-            res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Operational change not found' } });
+            const context = versionedRouter.getBaselineId(req) ? ` in baseline ${versionedRouter.getBaselineId(req)}` : '';
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: `Operational change not found${context}` } });
+        } else if (error.message.includes('Baseline not found')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
@@ -26,7 +30,30 @@ router.get('/:id/milestones', async (req, res) => {
     }
 });
 
-// POST /operational-changes/:id/milestones - Add milestone
+// GET /operational-changes/:id/milestones/:milestoneId - Get specific milestone (latest version or baseline context)
+router.get('/:id/milestones/:milestoneId', async (req, res) => {
+    try {
+        const userId = versionedRouter.getUserId(req);
+        const baselineId = versionedRouter.getBaselineId(req);
+        console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneId: ${req.params.milestoneId}, userId: ${userId}, baselineId: ${baselineId}`);
+        const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneId, userId, baselineId);
+        res.json(milestone);
+    } catch (error) {
+        console.error('Error fetching milestone:', error);
+        if (error.message === 'Operational change not found' || error.message === 'Milestone not found') {
+            const context = versionedRouter.getBaselineId(req) ? ` in baseline ${versionedRouter.getBaselineId(req)}` : '';
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: `${error.message}${context}` } });
+        } else if (error.message.includes('Baseline not found')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.message.includes('x-user-id')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+        }
+    }
+});
+
+// POST /operational-changes/:id/milestones - Add milestone (current context only)
 router.post('/:id/milestones', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);
@@ -56,26 +83,7 @@ router.post('/:id/milestones', async (req, res) => {
     }
 });
 
-// GET /operational-changes/:id/milestones/:milestoneId - Get specific milestone
-router.get('/:id/milestones/:milestoneId', async (req, res) => {
-    try {
-        const userId = versionedRouter.getUserId(req);
-        console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneId: ${req.params.milestoneId}, userId: ${userId}`);
-        const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneId, userId);
-        res.json(milestone);
-    } catch (error) {
-        console.error('Error fetching milestone:', error);
-        if (error.message === 'Operational change not found' || error.message === 'Milestone not found') {
-            res.status(404).json({ error: { code: 'NOT_FOUND', message: error.message } });
-        } else if (error.message.includes('x-user-id')) {
-            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-        } else {
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
-        }
-    }
-});
-
-// PUT /operational-changes/:id/milestones/:milestoneId - Update milestone
+// PUT /operational-changes/:id/milestones/:milestoneId - Update milestone (current context only)
 router.put('/:id/milestones/:milestoneId', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);
@@ -105,7 +113,7 @@ router.put('/:id/milestones/:milestoneId', async (req, res) => {
     }
 });
 
-// DELETE /operational-changes/:id/milestones/:milestoneId - Delete milestone
+// DELETE /operational-changes/:id/milestones/:milestoneId - Delete milestone (current context only)
 router.delete('/:id/milestones/:milestoneId', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);

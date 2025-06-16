@@ -1,14 +1,15 @@
 import { Router } from 'express';
 
 /**
- * SimpleItemRouter provides common CRUD routes for simple entity services.
+ * SimpleItemRouter provides common CRUD routes for simple item services.
  * Handles standard REST operations with user context and consistent error handling.
+ * Updated to use consistent *Item method names.
  */
 export class SimpleItemRouter {
     constructor(service, entityName, entityDisplayName = null) {
         this.service = service;
-        this.entityName = entityName; // for logging (e.g., 'data-category')
-        this.entityDisplayName = entityDisplayName || entityName; // for error messages (e.g., 'Data Category')
+        this.entityName = entityName; // for logging (e.g., 'wave')
+        this.entityDisplayName = entityDisplayName || entityName; // for error messages (e.g., 'Wave')
         this.router = Router();
         this.setupRoutes();
     }
@@ -25,13 +26,13 @@ export class SimpleItemRouter {
     }
 
     setupRoutes() {
-        // List all entities
+        // List all items
         this.router.get('/', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.listEntities() userId: ${userId}`);
-                const entities = await this.service.listEntities(userId);
-                res.json(entities);
+                console.log(`${this.service.constructor.name}.listItems() userId: ${userId}`);
+                const items = await this.service.listItems(userId);
+                res.json(items);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
                 if (error.message.includes('x-user-id')) {
@@ -42,18 +43,18 @@ export class SimpleItemRouter {
             }
         });
 
-        // Get entity by ID
+        // Get item by ID
         this.router.get('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.getEntity() id: ${req.params.id}, userId: ${userId}`);
-                const entity = await this.service.getEntity(req.params.id, userId);
-                if (!entity) {
+                console.log(`${this.service.constructor.name}.getItem() id: ${req.params.id}, userId: ${userId}`);
+                const item = await this.service.getItem(req.params.id, userId);
+                if (!item) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
                     });
                 }
-                res.json(entity);
+                res.json(item);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
@@ -64,13 +65,13 @@ export class SimpleItemRouter {
             }
         });
 
-        // Create new entity
+        // Create new item
         this.router.post('/', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.createEntity() userId: ${userId}, parentId: ${req.body.parentId}`);
-                const entity = await this.service.createEntity(req.body, userId);
-                res.status(201).json(entity);
+                console.log(`${this.service.constructor.name}.createItem() userId: ${userId}, parentId: ${req.body.parentId}`);
+                const item = await this.service.createItem(req.body, userId);
+                res.status(201).json(item);
             } catch (error) {
                 console.error(`Error creating ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
@@ -83,18 +84,18 @@ export class SimpleItemRouter {
             }
         });
 
-        // Update entity
+        // Update item
         this.router.put('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.updateEntity() id: ${req.params.id}, userId: ${userId}, parentId: ${req.body.parentId}`);
-                const entity = await this.service.updateEntity(req.params.id, req.body, userId);
-                if (!entity) {
+                console.log(`${this.service.constructor.name}.updateItem() id: ${req.params.id}, userId: ${userId}, parentId: ${req.body.parentId}`);
+                const item = await this.service.updateItem(req.params.id, req.body, userId);
+                if (!item) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
                     });
                 }
-                res.json(entity);
+                res.json(item);
             } catch (error) {
                 console.error(`Error updating ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
@@ -107,12 +108,12 @@ export class SimpleItemRouter {
             }
         });
 
-        // Delete entity
+        // Delete item
         this.router.delete('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.deleteEntity() id: ${req.params.id}, userId: ${userId}`);
-                const deleted = await this.service.deleteEntity(req.params.id, userId);
+                console.log(`${this.service.constructor.name}.deleteItem() id: ${req.params.id}, userId: ${userId}`);
+                const deleted = await this.service.deleteItem(req.params.id, userId);
                 if (!deleted) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
@@ -123,7 +124,7 @@ export class SimpleItemRouter {
                 console.error(`Error deleting ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('child entities') || error.message.includes('child categories')) {
+                } else if (error.message.includes('child items') || error.message.includes('child entities') || error.message.includes('child categories')) {
                     res.status(409).json({ error: { code: 'CONFLICT', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

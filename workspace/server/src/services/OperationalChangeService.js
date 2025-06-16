@@ -17,19 +17,22 @@ export class OperationalChangeService extends VersionedItemService {
     // Inherits from VersionedItemService:
     // - create(payload, userId)
     // - update(itemId, payload, expectedVersionId, userId)
-    // - getById(itemId, userId)
+    // - getById(itemId, userId, baselineId = null)
     // - getByIdAndVersion(itemId, versionNumber, userId)
     // - getVersionHistory(itemId, userId)
-    // - getAll(userId)
+    // - getAll(userId, baselineId = null)
     // - delete(itemId, userId)
 
     /**
-     * Get all milestones for operational change
+     * Get all milestones for operational change (latest version or baseline context)
+     * @param {number} itemId - Operational Change Item ID
+     * @param {string} userId - User ID
+     * @param {number|null} baselineId - Optional baseline ID for historical context
      */
-    async getMilestones(itemId, userId) {
+    async getMilestones(itemId, userId, baselineId = null) {
         const tx = createTransaction(userId);
         try {
-            const operationalChange = await this.getStore().findById(itemId, tx);
+            const operationalChange = await this.getStore().findById(itemId, tx, baselineId);
             if (!operationalChange) {
                 throw new Error('Operational change not found');
             }
@@ -42,10 +45,14 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     /**
-     * Get specific milestone by ID
+     * Get specific milestone by ID (latest version or baseline context)
+     * @param {number} itemId - Operational Change Item ID
+     * @param {number} milestoneId - Milestone ID
+     * @param {string} userId - User ID
+     * @param {number|null} baselineId - Optional baseline ID for historical context
      */
-    async getMilestone(itemId, milestoneId, userId) {
-        const milestones = await this.getMilestones(itemId, userId);
+    async getMilestone(itemId, milestoneId, userId, baselineId = null) {
+        const milestones = await this.getMilestones(itemId, userId, baselineId);
         const store = this.getStore();
         const milestone = milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
         if (!milestone) {
@@ -141,7 +148,7 @@ export class OperationalChangeService extends VersionedItemService {
             await commitTransaction(tx);
 
             // Return the updated milestone
-            const updatedMilestone = updatedOC.milestones.find(m => m.title === completePayload.title);
+            const updatedMilestone = updatedOC.milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
             return updatedMilestone;
         } catch (error) {
             await rollbackTransaction(tx);

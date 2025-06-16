@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
- * Handles versioned REST operations with user context, optimistic locking, and consistent error handling.
+ * Handles versioned REST operations with user context, optimistic locking, baseline support, and consistent error handling.
  */
 export class VersionedItemRouter {
     constructor(service, entityName, entityDisplayName = null) {
@@ -24,17 +24,27 @@ export class VersionedItemRouter {
         return userId;
     }
 
+    /**
+     * Extract baseline ID from query parameters
+     */
+    getBaselineId(req) {
+        return req.query.baseline || null;
+    }
+
     setupRoutes() {
-        // List all entities (latest versions)
+        // List all entities (latest versions or baseline context)
         this.router.get('/', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}`);
-                const entities = await this.service.getAll(userId);
+                const baselineId = this.getBaselineId(req);
+                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}`);
+                const entities = await this.service.getAll(userId, baselineId);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
                 if (error.message.includes('x-user-id')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message.includes('Baseline not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
@@ -42,15 +52,17 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get entity by ID (latest version)
+        // Get entity by ID (latest version or baseline context)
         this.router.get('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}`);
-                const entity = await this.service.getById(req.params.id, userId);
+                const baselineId = this.getBaselineId(req);
+                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}`);
+                const entity = await this.service.getById(req.params.id, userId, baselineId);
                 if (!entity) {
+                    const context = baselineId ? ` in baseline ${baselineId}` : '';
                     return res.status(404).json({
-                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found${context}` }
                     });
                 }
                 res.json(entity);
@@ -58,13 +70,15 @@ export class VersionedItemRouter {
                 console.error(`Error fetching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message.includes('Baseline not found')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }
             }
         });
 
-        // Get specific version of entity
+        // Get specific version of entity (no baseline support - version is explicit)
         this.router.get('/:id/versions/:versionNumber', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
@@ -87,7 +101,7 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get version history
+        // Get version history (no baseline support - shows all versions)
         this.router.get('/:id/versions', async (req, res) => {
             try {
                 const userId = this.getUserId(req);

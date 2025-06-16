@@ -7,6 +7,7 @@ import serviceRoutes from './routes/service.js';
 import waveRoutes from './routes/wave.js';
 import operationalRequirementRoutes from './routes/operational-requirement.js';
 import operationalChangeRoutes from './routes/operational-change.js';
+import baselineRoutes from './routes/baseline.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -30,6 +31,9 @@ app.use('/waves', waveRoutes);
 // Operational Entity API Routes
 app.use('/operational-requirements', operationalRequirementRoutes);
 app.use('/operational-changes', operationalChangeRoutes);
+
+// Baseline Management API Routes
+app.use('/baselines', baselineRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
@@ -66,9 +70,15 @@ async function startServer() {
             console.log(`  - http://localhost:${PORT}/regulatory-aspects`);
             console.log(`  - http://localhost:${PORT}/data-categories`);
             console.log(`  - http://localhost:${PORT}/services`);
+            console.log(`  - http://localhost:${PORT}/waves`);
             console.log(`Operational Entities:`);
             console.log(`  - http://localhost:${PORT}/operational-requirements`);
             console.log(`  - http://localhost:${PORT}/operational-changes`);
+            console.log(`Baseline Management:`);
+            console.log(`  - http://localhost:${PORT}/baselines`);
+            console.log(`Baseline-aware queries:`);
+            console.log(`  - http://localhost:${PORT}/operational-requirements?baseline=<id>`);
+            console.log(`  - http://localhost:${PORT}/operational-changes?baseline=<id>`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);
