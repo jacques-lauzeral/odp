@@ -1,4 +1,5 @@
-import { BaseStore, StoreError } from './base-store.js';
+import { BaseStore } from './base-store.js';
+import { StoreError } from './transaction.js';
 
 /**
  * BaselineStore provides data access operations for Baselines.

@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/baseline.js - Custom baseline commands (immutable operations)
+// workspace/cli/src/commands/baseline.js
 import { Command } from 'commander';
 import Table from 'cli-table3';
 import fetch from 'node-fetch';

@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/wave.js - Wave commands using field configuration
+// workspace/cli/src/commands/wave.js
 import { BaseCommands } from '../base-commands.js';
 
 export function waveCommands(program, config) {

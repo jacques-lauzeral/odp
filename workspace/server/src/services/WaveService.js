@@ -63,30 +63,40 @@ export class WaveService extends SimpleItemService {
      * Validate year is within allowed range [2025, 2124[
      */
     _validateYear(year) {
-        if (!Number.isInteger(year)) {
+        // Convert string to number if needed
+        const yearNum = parseInt(year, 10);
+
+        if (isNaN(yearNum) || !Number.isInteger(yearNum)) {
             throw new Error('Validation failed: year must be an integer');
         }
 
-        if (year < WaveService.YEAR_RANGE.MIN || year >= WaveService.YEAR_RANGE.MAX) {
+        if (yearNum < WaveService.YEAR_RANGE.MIN || yearNum >= WaveService.YEAR_RANGE.MAX) {
             throw new Error(
                 `Validation failed: year must be in range [${WaveService.YEAR_RANGE.MIN}, ${WaveService.YEAR_RANGE.MAX}[`
             );
         }
+
+        return yearNum; // Return converted number
     }
 
     /**
      * Validate quarter is within allowed range [1, 4]
      */
     _validateQuarter(quarter) {
-        if (!Number.isInteger(quarter)) {
+        // Convert string to number if needed
+        const quarterNum = parseInt(quarter, 10);
+
+        if (isNaN(quarterNum) || !Number.isInteger(quarterNum)) {
             throw new Error('Validation failed: quarter must be an integer');
         }
 
-        if (quarter < WaveService.QUARTER_RANGE.MIN || quarter > WaveService.QUARTER_RANGE.MAX) {
+        if (quarterNum < WaveService.QUARTER_RANGE.MIN || quarterNum > WaveService.QUARTER_RANGE.MAX) {
             throw new Error(
                 `Validation failed: quarter must be in range [${WaveService.QUARTER_RANGE.MIN}, ${WaveService.QUARTER_RANGE.MAX}]`
             );
         }
+
+        return quarterNum; // Return converted number
     }
 
     /**
@@ -143,13 +153,15 @@ export class WaveService extends SimpleItemService {
             throw new Error('Validation failed: date is required');
         }
 
-        // Field validation
-        this._validateYear(year);
-        this._validateQuarter(quarter);
+        // Field validation with conversion
+        const validatedYear = this._validateYear(year);
+        const validatedQuarter = this._validateQuarter(quarter);
         this._validateDate(date);
 
-        // Add derived name to data
-        data.name = this._generateWaveName(year, quarter);
+        // Update data object with converted values and derived name
+        data.year = validatedYear;
+        data.quarter = validatedQuarter;
+        data.name = this._generateWaveName(validatedYear, validatedQuarter);
     }
 
     // =============================================================================

@@ -1,4 +1,4 @@
-import { BaseCommands } from './base-commands.js';
+import { BaseCommands } from '../base-commands.js';
 
 export function dataCategoryCommands(program, config) {
     const commands = new BaseCommands(
