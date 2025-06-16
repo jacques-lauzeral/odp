@@ -71,11 +71,6 @@ export class VersionedItemService {
                 throw new Error('Entity not found');
             }
 
-            // Verify version for optimistic locking
-            if (current.versionId !== expectedVersionId) {
-                throw new Error('Outdated item version');
-            }
-
             // Delegate field merging to subclass
             const completePayload = await this._computePatchedPayload(current, patchPayload);
 
