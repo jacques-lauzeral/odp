@@ -1,4 +1,4 @@
-// workspace/cli/src/base-commands.js - Updated BaseCommands with user header support
+// workspace/cli/src/base-commands.js - Updated BaseCommands with field configuration support
 import { Command } from 'commander';
 import Table from 'cli-table3';
 import fetch from 'node-fetch';
@@ -7,13 +7,24 @@ import fetch from 'node-fetch';
  * BaseCommands provides common CRUD commands for item management.
  * Handles standard operations with consistent error handling and output formatting.
  * Automatically includes user context headers for all API calls.
+ * Supports configurable fields for different entity types.
  */
 export class BaseCommands {
-    constructor(itemName, urlPath, displayName, config) {
+    constructor(itemName, urlPath, displayName, config, fieldConfig = null) {
         this.itemName = itemName; // for command naming (e.g., 'stakeholder-category')
         this.urlPath = urlPath; // for API path (e.g., 'stakeholder-categories')
         this.displayName = displayName; // for user messages (e.g., 'category')
         this.baseUrl = config.server.baseUrl;
+
+        // Default field configuration for name/description entities
+        this.fieldConfig = fieldConfig || {
+            fields: ['name', 'description'],
+            headers: ['ID', 'Name', 'Description'],
+            colWidths: [10, 30, 50],
+            createSignature: '<name> <description>',
+            updateSignature: '<id> <name> <description>',
+            hasParent: true
+        };
     }
 
     /**
@@ -82,16 +93,16 @@ export class BaseCommands {
                     }
 
                     const table = new Table({
-                        head: ['ID', 'Name', 'Description'],
-                        colWidths: [10, 30, 50]
+                        head: this.fieldConfig.headers,
+                        colWidths: this.fieldConfig.colWidths
                     });
 
                     items.forEach(item => {
-                        table.push([
-                            item.id,
-                            item.name,
-                            item.description
-                        ]);
+                        const row = [item.id];
+                        this.fieldConfig.fields.forEach(field => {
+                            row.push(item[field]);
+                        });
+                        table.push(row);
                     });
 
                     console.log(table.toString());
@@ -124,8 +135,10 @@ export class BaseCommands {
                     const item = await response.json();
 
                     console.log(`ID: ${item.id}`);
-                    console.log(`Name: ${item.name}`);
-                    console.log(`Description: ${item.description}`);
+                    this.fieldConfig.fields.forEach(field => {
+                        const fieldName = field.charAt(0).toUpperCase() + field.slice(1);
+                        console.log(`${fieldName}: ${item[field]}`);
+                    });
                 } catch (error) {
                     console.error(`Error getting ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -134,75 +147,102 @@ export class BaseCommands {
     }
 
     addCreateCommand(entityCommand) {
-        entityCommand
-            .command('create <name> <description>')
-            .description(`Create a new ${this.displayName}`)
-            .option('--parent <id>', `Parent ${this.displayName} ID`)
-            .action(async (name, description, options) => {
-                try {
-                    const data = {
-                        name,
-                        description,
-                        parentId: options.parent || null
-                    };
+        const command = entityCommand
+            .command(`create ${this.fieldConfig.createSignature}`)
+            .description(`Create a new ${this.displayName}`);
 
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
-                        method: 'POST',
-                        headers: this.createHeaders(),
-                        body: JSON.stringify(data)
-                    });
+        if (this.fieldConfig.hasParent) {
+            command.option('--parent <id>', `Parent ${this.displayName} ID`);
+        }
 
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
-                    }
+        command.action(async (...args) => {
+            try {
+                const options = args[args.length - 1];
+                const fieldValues = args.slice(0, -1);
 
-                    const entity = await response.json();
-                    console.log(`Created ${this.displayName}: ${entity.name} (ID: ${entity.id})`);
-                } catch (error) {
-                    console.error(`Error creating ${this.displayName}:`, error.message);
-                    process.exit(1);
+                const data = {};
+                this.fieldConfig.fields.forEach((field, index) => {
+                    data[field] = fieldValues[index];
+                });
+
+                if (this.fieldConfig.hasParent) {
+                    data.parentId = options.parent || null;
                 }
-            });
+
+                const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
+                    method: 'POST',
+                    headers: this.createHeaders(),
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                }
+
+                const entity = await response.json();
+                const displayField = this.fieldConfig.fields.includes('name') ? entity.name :
+                    this.fieldConfig.fields.includes('title') ? entity.title :
+                        entity[this.fieldConfig.fields[0]];
+                console.log(`Created ${this.displayName}: ${displayField} (ID: ${entity.id})`);
+            } catch (error) {
+                console.error(`Error creating ${this.displayName}:`, error.message);
+                process.exit(1);
+            }
+        });
     }
 
     addUpdateCommand(entityCommand) {
-        entityCommand
-            .command('update <id> <name> <description>')
-            .description(`Update a ${this.displayName}`)
-            .option('--parent <id>', `Parent ${this.displayName} ID`)
-            .action(async (id, name, description, options) => {
-                try {
-                    const data = {
-                        id,
-                        name,
-                        description,
-                        parentId: options.parent || null
-                    };
+        const command = entityCommand
+            .command(`update ${this.fieldConfig.updateSignature}`)
+            .description(`Update a ${this.displayName}`);
 
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${id}`, {
-                        method: 'PUT',
-                        headers: this.createHeaders(),
-                        body: JSON.stringify(data)
-                    });
+        if (this.fieldConfig.hasParent) {
+            command.option('--parent <id>', `Parent ${this.displayName} ID`);
+        }
 
-                    if (response.status === 404) {
-                        console.error(`${this.displayName} with ID ${id} not found.`);
-                        process.exit(1);
-                    }
+        command.action(async (...args) => {
+            try {
+                const options = args[args.length - 1];
+                const allValues = args.slice(0, -1);
+                const id = allValues[0];
+                const fieldValues = allValues.slice(1);
 
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
-                    }
+                const data = { id };
+                this.fieldConfig.fields.forEach((field, index) => {
+                    data[field] = fieldValues[index];
+                });
 
-                    const entity = await response.json();
-                    console.log(`Updated ${this.displayName}: ${entity.name} (ID: ${entity.id})`);
-                } catch (error) {
-                    console.error(`Error updating ${this.displayName}:`, error.message);
+                if (this.fieldConfig.hasParent) {
+                    data.parentId = options.parent || null;
+                }
+
+                const response = await fetch(`${this.baseUrl}/${this.urlPath}/${id}`, {
+                    method: 'PUT',
+                    headers: this.createHeaders(),
+                    body: JSON.stringify(data)
+                });
+
+                if (response.status === 404) {
+                    console.error(`${this.displayName} with ID ${id} not found.`);
                     process.exit(1);
                 }
-            });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                }
+
+                const entity = await response.json();
+                const displayField = this.fieldConfig.fields.includes('name') ? entity.name :
+                    this.fieldConfig.fields.includes('title') ? entity.title :
+                        entity[this.fieldConfig.fields[0]];
+                console.log(`Updated ${this.displayName}: ${displayField} (ID: ${entity.id})`);
+            } catch (error) {
+                console.error(`Error updating ${this.displayName}:`, error.message);
+                process.exit(1);
+            }
+        });
     }
 
     addDeleteCommand(entityCommand) {
@@ -239,9 +279,12 @@ export class BaseCommands {
     }
 }
 
+// Add this to base-commands.js - Update VersionedCommands class with baseline support
+
 /**
  * VersionedCommands extends BaseCommands for versioned items (operational requirements/changes).
  * Adds version-specific operations and handles complex payloads.
+ * Supports baseline context for historical queries.
  */
 export class VersionedCommands extends BaseCommands {
     constructor(itemName, urlPath, displayName, config) {
@@ -267,26 +310,36 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Override list command for versioned items
+     * Override list command for versioned items with baseline support
      */
     addListCommand(itemCommand) {
         itemCommand
             .command('list')
-            .description(`List all ${this.displayName}s (latest versions)`)
-            .action(async () => {
+            .description(`List all ${this.displayName}s (latest versions or baseline context)`)
+            .option('--baseline <id>', 'Show items as they existed in specified baseline')
+            .action(async (options) => {
                 try {
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
+                    let url = `${this.baseUrl}/${this.urlPath}`;
+                    if (options.baseline) {
+                        url += `?baseline=${options.baseline}`;
+                    }
+
+                    const response = await fetch(url, {
                         headers: this.createHeaders()
                     });
 
                     if (!response.ok) {
+                        if (response.status === 400 && options.baseline) {
+                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
+                        }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
                     const items = await response.json();
 
                     if (items.length === 0) {
-                        console.log(`No ${this.displayName}s found.`);
+                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
+                        console.log(`No ${this.displayName}s found${context}.`);
                         return;
                     }
 
@@ -304,6 +357,8 @@ export class VersionedCommands extends BaseCommands {
                         ]);
                     });
 
+                    const context = options.baseline ? ` (Baseline ${options.baseline})` : ' (Latest Versions)';
+                    console.log(`${this.displayName}s${context}:`);
                     console.log(table.toString());
                 } catch (error) {
                     console.error(`Error listing ${this.displayName}s:`, error.message);
@@ -313,28 +368,43 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Override show command for versioned items
+     * Override show command for versioned items with baseline support
      */
     addShowCommand(itemCommand) {
         itemCommand
             .command('show <itemId>')
-            .description(`Show a specific ${this.displayName} (latest version)`)
-            .action(async (itemId) => {
+            .description(`Show a specific ${this.displayName} (latest version or baseline context)`)
+            .option('--baseline <id>', 'Show item as it existed in specified baseline')
+            .action(async (itemId, options) => {
                 try {
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
+                    let url = `${this.baseUrl}/${this.urlPath}/${itemId}`;
+                    if (options.baseline) {
+                        url += `?baseline=${options.baseline}`;
+                    }
+
+                    const response = await fetch(url, {
                         headers: this.createHeaders()
                     });
 
                     if (response.status === 404) {
-                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
+                        console.error(`${this.displayName} with ID ${itemId} not found${context}.`);
                         process.exit(1);
                     }
 
                     if (!response.ok) {
+                        if (response.status === 400 && options.baseline) {
+                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
+                        }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
                     const item = await response.json();
+
+                    if (options.baseline) {
+                        console.log(`=== ${this.displayName.toUpperCase()} (BASELINE ${options.baseline}) ===`);
+                    }
+
                     this.displayItemDetails(item);
                 } catch (error) {
                     console.error(`Error getting ${this.displayName}:`, error.message);
@@ -343,6 +413,7 @@ export class VersionedCommands extends BaseCommands {
             });
     }
 
+    // Keep existing versions and show-version commands unchanged
     addVersionsCommand(itemCommand) {
         itemCommand
             .command('versions <itemId>')

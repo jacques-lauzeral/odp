@@ -1,5 +1,5 @@
-// workspace/cli/src/commands/operational-requirement.js
-import { VersionedCommands } from './base-commands.js';
+// workspace/cli/src/commands/operational-requirement.js - Fixed import path
+import { VersionedCommands } from '../base-commands.js';  // Fixed: was './base-commands.js'
 import fetch from "node-fetch";
 
 class OperationalRequirementCommands extends VersionedCommands {

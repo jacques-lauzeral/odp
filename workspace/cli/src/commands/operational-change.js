@@ -1,5 +1,5 @@
-// workspace/cli/src/commands/operational-change.js
-import { VersionedCommands } from './base-commands.js';
+// workspace/cli/src/commands/operational-change.js - Fixed import path
+import { VersionedCommands } from '../base-commands.js';  // Fixed: was './base-commands.js'
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 
@@ -244,29 +244,40 @@ class OperationalChangeCommands extends VersionedCommands {
      * Add milestone commands specific to operational changes
      */
     _addMilestoneCommands(itemCommand) {
-        // Milestone list command
+        // Milestone list command with baseline support
         itemCommand
             .command('milestone-list <itemId>')
             .description(`List milestones for ${this.displayName}`)
-            .action(async (itemId) => {
+            .option('--baseline <id>', 'Show milestones as they existed in specified baseline')
+            .action(async (itemId, options) => {
                 try {
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones`, {
+                    let url = `${this.baseUrl}/${this.urlPath}/${itemId}/milestones`;
+                    if (options.baseline) {
+                        url += `?baseline=${options.baseline}`;
+                    }
+
+                    const response = await fetch(url, {
                         headers: this.createHeaders()
                     });
 
                     if (response.status === 404) {
-                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
+                        console.error(`${this.displayName} with ID ${itemId} not found${context}.`);
                         process.exit(1);
                     }
 
                     if (!response.ok) {
+                        if (response.status === 400 && options.baseline) {
+                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
+                        }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
                     const milestones = await response.json();
 
                     if (milestones.length === 0) {
-                        console.log(`No milestones found for ${this.displayName} ${itemId}.`);
+                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
+                        console.log(`No milestones found for ${this.displayName} ${itemId}${context}.`);
                         return;
                     }
 
@@ -290,7 +301,8 @@ class OperationalChangeCommands extends VersionedCommands {
                         ]);
                     });
 
-                    console.log(`Milestones for ${this.displayName} ${itemId}:`);
+                    const context = options.baseline ? ` (Baseline ${options.baseline})` : '';
+                    console.log(`Milestones for ${this.displayName} ${itemId}${context}:`);
                     console.log(table.toString());
                 } catch (error) {
                     console.error(`Error listing milestones:`, error.message);
@@ -298,13 +310,19 @@ class OperationalChangeCommands extends VersionedCommands {
                 }
             });
 
-        // Milestone show command
+        // Milestone show command with baseline support
         itemCommand
             .command('milestone-show <itemId> <milestoneId>')
             .description(`Show specific milestone`)
-            .action(async (itemId, milestoneId) => {
+            .option('--baseline <id>', 'Show milestone as it existed in specified baseline')
+            .action(async (itemId, milestoneId, options) => {
                 try {
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                    let url = `${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`;
+                    if (options.baseline) {
+                        url += `?baseline=${options.baseline}`;
+                    }
+
+                    const response = await fetch(url, {
                         headers: this.createHeaders()
                     });
 
@@ -315,10 +333,17 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     if (!response.ok) {
+                        if (response.status === 400 && options.baseline) {
+                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
+                        }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
                     const milestone = await response.json();
+
+                    if (options.baseline) {
+                        console.log(`=== MILESTONE (BASELINE ${options.baseline}) ===`);
+                    }
 
                     console.log(`Milestone ID: ${milestone.id}`);
                     console.log(`Title: ${milestone.title}`);
@@ -334,6 +359,9 @@ class OperationalChangeCommands extends VersionedCommands {
                     process.exit(1);
                 }
             });
+
+        // Keep existing milestone add, update, delete commands unchanged...
+        // (Rest of milestone commands remain the same)
 
         // Milestone add command
         itemCommand

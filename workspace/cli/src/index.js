@@ -1,4 +1,4 @@
-// workspace/cli/src/index.js - Updated CLI entry point with global user option
+// workspace/cli/src/index.js - Updated CLI entry point with baseline commands
 import { Command } from 'commander';
 import config from '../config.json' assert { type: 'json' };
 
@@ -8,6 +8,7 @@ import { regulatoryAspectCommands } from './commands/regulatory-aspect.js';
 import { dataCategoryCommands } from './commands/data-category.js';
 import { serviceCommands } from './commands/service.js';
 import { waveCommands } from './commands/wave.js';
+import { baselineCommands } from './commands/baseline.js';  // Added baseline commands
 import { operationalRequirementCommands } from './commands/operational-requirement.js';
 import { operationalChangeCommands } from './commands/operational-change.js';
 
@@ -30,12 +31,14 @@ program
             console.error('  npm run dev -- --user john.doe stakeholder-category list');
             console.error('  npm run dev -- --user jane.smith service create "API Gateway" "Main API service"');
             console.error('  npm run dev -- --user admin operational-requirement show 123');
+            console.error('  npm run dev -- --user admin baseline create "Q1 2025 Release"');
+            console.error('  npm run dev -- --user admin requirement list --baseline 456');
             process.exit(1);
         }
     });
 
 // Make program globally accessible for BaseCommands
-// global.program = program;
+global.program = program;
 
 // Register all entity commands
 stakeholderCategoryCommands(program, config);
@@ -43,6 +46,7 @@ regulatoryAspectCommands(program, config);
 dataCategoryCommands(program, config);
 serviceCommands(program, config);
 waveCommands(program, config);
+baselineCommands(program, config);  // Added baseline command registration
 operationalRequirementCommands(program, config);
 operationalChangeCommands(program, config);
 
