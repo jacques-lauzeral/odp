@@ -109,8 +109,8 @@ export class OperationalRequirementService extends VersionedItemService {
                     throw new Error(`Validation failed: parent requirement ${parentId} not found`);
                 }
 
-                // Business rule: OR cannot refine ON
-                if (type === 'OR' && parent.type === 'ON') {
+                // Business rule: ON cannot refine OR
+                if (type === 'ON' && parent.type === 'OR') {
                     throw new Error('Validation failed: OR requirements cannot refine ON requirements');
                 }
             }

@@ -115,8 +115,8 @@ export class BaselineStore extends BaseStore {
                 result_obj.startsFromWave = {
                     id: this.normalizeId(wave.identity),
                     name: waveProps.name,
-                    year: waveProps.year.toNumber(),
-                    quarter: waveProps.quarter.toNumber(),
+                    year: waveProps.year,
+                    quarter: waveProps.quarter,
                     date: waveProps.date
                 };
             }
@@ -159,8 +159,8 @@ export class BaselineStore extends BaseStore {
                     result_obj.startsFromWave = {
                         id: this.normalizeId(wave.identity),
                         name: waveProps.name,
-                        year: waveProps.year.toNumber(),
-                        quarter: waveProps.quarter.toNumber(),
+                        year: waveProps.year,
+                        quarter: waveProps.quarter,
                         date: waveProps.date
                     };
                 }
