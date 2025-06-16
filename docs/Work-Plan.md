@@ -75,10 +75,11 @@
 - ✅ **Baseline-aware request structures** for operational entities
 - ✅ **Updated shared/src/index.js** with Wave and Baseline models
 
-### 6.3 CLI Implementation ❌ NOT IMPLEMENTED
-- ❌ **CLI commands for Wave operations**: Need implementation with temporal validation
-- ❌ **CLI commands for Baseline management**: Need implementation (create/list/show only)
-- ❌ **Enhanced operational CLI**: Need `--baseline` flag support for historical queries
+### 6.3 CLI Implementation ✅ COMPLETED
+- ✅ **CLI commands for Wave operations**: Full CRUD with temporal validation and field configuration
+- ✅ **CLI commands for Baseline management**: Immutable operations (create/list/show)
+- ✅ **Enhanced operational CLI**: Complete `--baseline` flag support for historical queries
+- ✅ **Type conversion fixes**: String-to-integer conversion for Wave year/quarter fields
 
 ### 6.4 API Documentation ✅ COMPLETED
 - ✅ **Complete OpenAPI specification update**:
@@ -95,9 +96,8 @@
 - ✅ **Server integration**: All routes mounted and documented in server/src/index.js
 - ✅ **OpenAPI compliance**: Full conformance to specification
 
-**Phase 4 Summary**: ✅ **90% Complete** - Server implementation, route layer, and shared models fully complete. Only CLI implementation remains.
+**Phase 4 Summary**: ✅ **100% Complete** - Complete management entity system with Wave timeline management and Baseline deployment planning. All CLI commands working with historical context support.
 
-**Next Priority**: CLI implementation for Wave and Baseline operations to achieve 100% Phase 4 completion.
 ## 7 Phase 5: Web Client - Current Scope
 - [ ] Web Client technical solution setup
 - [ ] StakeholderCategory UI components:
@@ -112,7 +112,10 @@
 - [ ] RegulatoryAspect UI components following StakeholderCategory patterns
 - [ ] Service UI components following StakeholderCategory patterns
 - [ ] Data UI components following StakeholderCategory patterns
-- [ ] Wave UI components for timeline management
+- [ ] Wave UI components for timeline management:
+  - [ ] Quarter/year timeline visualization
+  - [ ] Wave creation with temporal validation
+  - [ ] Wave targeting interface for milestones
 - [ ] Unified hierarchy management across all setup entities
 - [ ] Cross-entity navigation and relationship display
 
@@ -133,22 +136,27 @@
   - [ ] Milestone timeline visualization
   - [ ] CRUD operations for milestones
   - [ ] Event type management
+  - [ ] Wave targeting interface
 
 ## 10 Phase 8: Web Client - Management Entities
 - [ ] Wave management interface:
   - [ ] Timeline view for quarterly planning
   - [ ] Wave creation with temporal validation
-- [ ] OperationalChange UI with milestone integration:
-  - [ ] Milestone timeline visualization
-  - [ ] Progress tracking interface
+  - [ ] Wave-milestone relationship visualization
 - [ ] Baseline creation and management:
-  - [ ] Snapshot creation interface
+  - [ ] Snapshot creation interface with progress indication
   - [ ] Historical navigation with baseline selection
-  - [ ] Baseline-aware entity browsing
+  - [ ] Baseline-aware entity browsing with context switching
+  - [ ] Baseline comparison views
+- [ ] OperationalChange UI with milestone integration:
+  - [ ] Milestone timeline visualization using Wave context
+  - [ ] Progress tracking interface across waves
 - [ ] ODP Edition interface:
   - [ ] Draft/official lifecycle management
   - [ ] Publication workflow
-- [ ] Comprehensive timeline view for deployment planning using Vis.js
+- [ ] Comprehensive deployment timeline view using Vis.js:
+  - [ ] Cross-entity timeline with milestones, waves, and baselines
+  - [ ] Interactive deployment planning interface
 
 ## Implementation Principles
 
@@ -204,22 +212,24 @@ For each new entity, follow this proven pattern:
 
 ## Current Status Summary
 
-**✅ Completed Phases**: 1-3 (Setup + Setup Entities + Operational Entities)
-**🔄 Current Phase**: 4 (Management Entities) - Design and documentation complete, implementation in early stages
-**📈 Overall Progress**: ~60% complete (Phases 1-3 complete, Phase 4 design done but implementation needed)
-**🎯 Next Milestone**: Implement Wave entity across service/route/CLI layers, then baseline management implementation
+**✅ Completed Phases**: 1-4 (Setup + Setup Entities + Operational Entities + Management Entities)
+**🎯 Next Phase**: 5 (Web Client Foundation)
+**📈 Overall Progress**: ~80% complete (Phases 1-4 complete, ready for web client development)
+**🎯 Next Milestone**: StakeholderCategory web UI to establish web client patterns
 
-**Key Achievements in Phases 1-3**:
-- Complete versioning system with optimistic locking and audit trails
-- PATCH operations for partial updates across all operational entities
-- Full milestone CRUD operations with versioning integration
-- Modular OpenAPI specification for maintainable API documentation
-- Comprehensive CLI with 25+ commands for all entity management
-- Factorized architecture patterns enabling rapid future development
+**Key Achievements in Phases 1-4**:
+- **Complete entity management system**: 6 entities with full CRUD and versioning
+- **Advanced CLI interface**: 30+ commands with baseline-aware historical queries
+- **Deployment planning system**: Wave timeline management and baseline snapshots
+- **Proven architecture patterns**: Manual routes approach with factorized CLI and service layers
+- **Production-ready features**: Optimistic locking, transaction management, comprehensive error handling
 
-**Phase 4 Progress**:
-- **Wave entity**: Store layer complete, service/route/CLI layers need implementation
-- **Baseline system**: Complete design and documentation, but no implementation yet
-- **API documentation**: Complete OpenAPI updates for Phase 4 features
+**Phase 4 Completion Significance**:
+- **Backend complete**: All core business logic and data management implemented
+- **API mature**: Comprehensive REST API with OpenAPI documentation
+- **CLI comprehensive**: Full operational capability through command-line interface
+- **Architecture proven**: Patterns established for rapid web client development
 
-This work plan maintains the successful manual routes approach established in Phase 1 while providing a clear roadmap for comprehensive ODP functionality across all planned phases.
+**Immediate next focus**: Web client foundation with StakeholderCategory UI to establish patterns for the remaining 5 entities and complex operational interfaces.
+
+This completion of Phase 4 represents the foundation for a complete operational deployment plan management system. The backend architecture is robust, scalable, and ready to support sophisticated web-based user interfaces for deployment planning and management workflows.
