@@ -1,8 +1,17 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Operational Requirement and Change Management
+  description: Operational Requirement and Change Management API
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
 paths:
   # Operational Requirement Endpoints
   /operational-requirements:
     get:
-      summary: List all operational requirements (latest versions or baseline context)
+      summary: List all operational requirements (latest versions, baseline context, or wave filtered)
       tags: [Operational Requirements]
       parameters:
         - name: baseline
@@ -11,6 +20,18 @@ paths:
           schema:
             type: string
           description: "Optional baseline ID to get requirements as they existed at baseline time"
+        - name: fromWave
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional wave ID for filtering (requirements referenced by changes with milestones at/after this wave)"
+        - name: odp
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -21,7 +42,7 @@ paths:
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '400':
-          description: Bad Request - Invalid baseline ID
+          description: Bad Request - Invalid baseline, wave, or ODP edition ID
           content:
             application/json:
               schema:
@@ -52,7 +73,7 @@ paths:
 
   /operational-requirements/{id}:
     get:
-      summary: Get operational requirement by ID (latest version or baseline context)
+      summary: Get operational requirement by ID (latest version, baseline context, or wave filtered)
       tags: [Operational Requirements]
       parameters:
         - name: id
@@ -67,6 +88,18 @@ paths:
           schema:
             type: string
           description: "Optional baseline ID to get requirement as it existed at baseline time"
+        - name: fromWave
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional wave ID for filtering"
+        - name: odp
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -75,13 +108,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '404':
-          description: Not Found - Requirement not found or not captured in specified baseline
+          description: Not Found - Requirement not found or not captured in specified context
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline ID
+          description: Bad Request - Invalid baseline, wave, or ODP edition ID
           content:
             application/json:
               schema:
@@ -204,7 +237,7 @@ paths:
   # Operational Change Endpoints
   /operational-changes:
     get:
-      summary: List all operational changes (latest versions or baseline context)
+      summary: List all operational changes (latest versions, baseline context, or wave filtered)
       tags: [Operational Changes]
       parameters:
         - name: baseline
@@ -213,6 +246,18 @@ paths:
           schema:
             type: string
           description: "Optional baseline ID to get changes as they existed at baseline time"
+        - name: fromWave
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional wave ID for filtering (changes with milestones at/after this wave)"
+        - name: odp
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -223,7 +268,7 @@ paths:
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '400':
-          description: Bad Request - Invalid baseline ID
+          description: Bad Request - Invalid baseline, wave, or ODP edition ID
           content:
             application/json:
               schema:
@@ -248,7 +293,7 @@ paths:
 
   /operational-changes/{id}:
     get:
-      summary: Get operational change by ID (latest version or baseline context)
+      summary: Get operational change by ID (latest version, baseline context, or wave filtered)
       tags: [Operational Changes]
       parameters:
         - name: id
@@ -263,6 +308,18 @@ paths:
           schema:
             type: string
           description: "Optional baseline ID to get change as it existed at baseline time"
+        - name: fromWave
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional wave ID for filtering"
+        - name: odp
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -271,13 +328,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '404':
-          description: Not Found - Change not found or not captured in specified baseline
+          description: Not Found - Change not found or not captured in specified context
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline ID
+          description: Bad Request - Invalid baseline, wave, or ODP edition ID
           content:
             application/json:
               schema:

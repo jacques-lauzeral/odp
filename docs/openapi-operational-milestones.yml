@@ -26,6 +26,12 @@ paths:
           schema:
             type: string
           description: "Optional baseline ID to get milestones as they existed at baseline time"
+        - name: fromWave
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional wave ID for filtering"
       responses:
         '200':
           description: Success
@@ -107,6 +113,12 @@ paths:
           schema:
             type: string
           description: "Optional baseline ID to get milestone as it existed at baseline time"
+        - name: fromWave
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional wave ID for filtering"
       responses:
         '200':
           description: Success

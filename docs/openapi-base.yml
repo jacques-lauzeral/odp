@@ -456,20 +456,6 @@ components:
         capturedItemCount:
           type: integer
           description: "Number of OR/OC versions captured in this baseline"
-        startsFromWave:
-          type: object
-          nullable: true
-          properties:
-            id:
-              type: string
-            name:
-              type: string
-            year:
-              type: integer
-            quarter:
-              type: integer
-            date:
-              type: string
 
     BaselineRequest:
       type: object
@@ -478,7 +464,63 @@ components:
         title:
           type: string
           description: "Unique identifier for the baseline"
+
+    # ODP Edition Management
+    ODPEdition:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [DRAFT, OFFICIAL]
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        baseline:
+          type: object
+          properties:
+            id:
+              type: string
+            title:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+        startsFromWave:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+              description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
+            year:
+              type: integer
+            quarter:
+              type: integer
+            date:
+              type: string
+              format: date
+
+    ODPEditionRequest:
+      type: object
+      required: [title, type, baselineId, startsFromWaveId]
+      properties:
+        title:
+          type: string
+          description: "Unique identifier for the ODP edition"
+        type:
+          type: string
+          enum: [DRAFT, OFFICIAL]
+          description: "Edition status"
+        baselineId:
+          type: string
+          description: "Baseline ID that this edition references"
         startsFromWaveId:
           type: string
-          nullable: true
-          description: "Optional wave that this baseline starts from"
+          description: "Wave ID that this edition starts from for filtering"

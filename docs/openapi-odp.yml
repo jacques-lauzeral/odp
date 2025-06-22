@@ -1,0 +1,123 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / ODP Edition Management
+  description: ODP Edition Management Operations for the Operational Deployment Plan Management API
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  # ODP Edition CRUD Endpoints
+  /odp:
+    get:
+      summary: List all ODP editions
+      tags: [ODP]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    post:
+      summary: Create new ODP edition
+      tags: [ODP]
+      description: |
+        Creates a new ODP Edition by referencing an existing baseline and specifying 
+        a starting wave. The edition provides a filtered view of the baseline content
+        based on the wave timeline.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ODPEditionRequest'
+      responses:
+        '201':
+          description: ODP Edition created successfully
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
+        '400':
+          description: Bad Request - Invalid baseline or wave reference
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /odp/{id}:
+    get:
+      summary: Get ODP edition by ID
+      tags: [ODP]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ODP Edition ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
+        '404':
+          description: ODP Edition not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /odp/{id}/context:
+    get:
+      summary: Resolve ODP edition context (baseline + wave)
+      tags: [ODP]
+      description: |
+        Resolves an ODP Edition to its underlying baseline and wave references.
+        Used by route layer for parameter resolution.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ODP Edition ID
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  baselineId:
+                    type: string
+                    description: Referenced baseline ID
+                  fromWaveId:
+                    type: string
+                    description: Starting wave ID for filtering
+        '404':
+          description: ODP Edition not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'

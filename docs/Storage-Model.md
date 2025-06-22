@@ -147,7 +147,6 @@ The node types and relationships required to the management of operational plan 
 - `title`: a short humanly readable unique identifier
 
 **Relationships:**
-- `STARTS_FROM -> Wave`
 - `HAS_ITEMS -> OperationalRequirementVersion`
 - `HAS_ITEMS -> OperationalChangeVersion`
 
@@ -155,21 +154,6 @@ The node types and relationships required to the management of operational plan 
 - Baseline creation captures snapshot of all LATEST_VERSION relationships at creation time
 - HAS_ITEMS relationships point directly to specific ItemVersion nodes that were latest at baseline time
 - Historical navigation uses HAS_ITEMS for accurate reconstruction of system state at baseline time
-
-**Baseline Creation Process:**
-```cypher
-// 1. Create baseline
-CREATE (baseline:Baseline {
-  title: $title,
-  createdAt: $timestamp,
-  createdBy: $userId
-})
-
-// 2. Capture all latest versions
-MATCH (item)-[:LATEST_VERSION]->(version)
-WHERE item:OperationalRequirement OR item:OperationalChange
-CREATE (baseline)-[:HAS_ITEMS]->(version)
-```
 
 ### 5.2 ODPEdition
 **Properties:**
@@ -179,8 +163,17 @@ CREATE (baseline)-[:HAS_ITEMS]->(version)
 - `type`: DRAFT or OFFICIAL
 
 **Relationships:**
+- `STARTS_FROM -> Wave`
 - `EXPOSES -> Baseline`
 - `HAS_ATTACHMENT -> Document`
+
+**Usage Pattern:**
+- ODPEdition references a baseline and specifies a starting wave
+- ODPEdition provides filtered views of baseline content based on the STARTS_FROM wave
+- Only OperationalChanges with milestones at/after the wave are included
+- Only OperationalRequirements referenced by those filtered changes (via SATISFIES/SUPERSEDS) are included
+- Acts as a "saved query" for specific baseline + wave combinations
+- Used as reference for review processes and deployment planning
 
 ## 6. Digital Asset Management
 
@@ -245,6 +238,13 @@ The baseline system uses a simplified approach:
 - **No intermediate nodes**: Eliminates BaselineItem complexity
 - **Atomic snapshots**: Single transaction captures all latest versions at creation time
 - **Simple queries**: Direct traversal from baseline to captured versions
+
+### ODPEdition Design
+The ODPEdition system provides filtered views of baselines:
+- **Wave-based filtering**: Uses STARTS_FROM wave to filter operational content
+- **Cascade filtering**: OCs filtered by milestone timing, ORs filtered by OC references
+- **Saved query pattern**: ODPEdition acts as bookmark for baseline + wave combinations
+- **Immutable references**: ODPEdition preserves specific baseline + wave combination
 
 ### Prototype Considerations
 - Presence constraints are not specified for this prototype phase
