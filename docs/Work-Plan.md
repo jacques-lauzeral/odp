@@ -50,53 +50,89 @@
 - ✅ **ID normalization** for consistent entity comparison
 - ✅ **Modular OpenAPI** specification for maintainable documentation
 
-## 6 Phase 4: Business Extension - Management Entities (✅ COMPLETED)
+## 6 Phase 4: Business Extension - Management Entities (🟡 PARTIALLY COMPLETED)
 
-### 6.1 Server Implementation ✅ COMPLETED
-- ✅ **Wave entity implementation**:
-  - ✅ Store Layer: WaveStore for timeline management
-  - ✅ Service Layer: WaveService with quarter/year validation extending SimpleItemService
-  - ✅ Route Layer: wave.js using SimpleItemRouter
-- ✅ **Baseline management system**:
+### 6.1 Server Implementation - Baseline ✅ COMPLETED
+- ✅ **Baseline entity implementation**:
   - ✅ **Simplified storage model**: Direct HAS_ITEMS relationships design complete
   - ✅ **Baseline entity design**: Atomic snapshot creation without intermediate nodes
   - ✅ **Store implementation**: BaselineStore with immutable operations
   - ✅ **Service implementation**: BaselineService with atomic snapshot creation
   - ✅ **Route implementation**: baseline.js standalone router with immutable enforcement
-- ✅ **Service layer refactoring**:
-  - ✅ SimpleItemService (abstract base with transaction management)
-  - ✅ TreeItemService (name/description validation + REFINES hierarchy)
-  - ✅ Individual concrete services (StakeholderCategoryService, DataCategoryService, ServiceService, RegulatoryAspectService)
-  - ✅ Enhanced VersionedItemService with baseline-aware operations
 
-### 6.2 Shared Models ✅ COMPLETED
-- ✅ **Wave model** with temporal validation (year, quarter, date, derived name)
-- ✅ **Baseline model** with simplified structure
-- ✅ **Baseline-aware request structures** for operational entities
-- ✅ **Updated shared/src/index.js** with Wave and Baseline models
+### 6.2 Server Implementation - Wave ✅ COMPLETED
+- ✅ **Wave entity implementation**:
+  - ✅ Store Layer: WaveStore for timeline management
+  - ✅ Service Layer: WaveService with quarter/year validation extending SimpleItemService
+  - ✅ Route Layer: wave.js using SimpleItemRouter
 
-### 6.3 CLI Implementation ✅ COMPLETED
+### 6.3 Server Implementation - ODP Edition 🟡 IN PROGRESS
+- ✅ **Updated shared models**: ODPEdition model with baseline and wave references
+- ✅ **Updated OpenAPI specification**: ODPEdition endpoints and schemas
+- ❌ **ODP Edition store implementation**:
+  - ❌ ODPEditionStore with baseline and wave references
+  - ❌ resolveContext() method for parameter resolution
+  - ❌ EXPOSES → Baseline and STARTS_FROM → Wave relationships
+- ❌ **ODP Edition service implementation**:
+  - ❌ ODPEditionService with reference validation
+  - ❌ Context resolution for route layer
+- ❌ **ODP Edition route implementation**:
+  - ❌ odp.js router with ODPEdition CRUD operations
+  - ❌ /odp/{id}/context endpoint for parameter resolution
+  - ❌ Integration with operational entity routes for context resolution
+
+### 6.4 Route Layer Refactoring 🟡 IN PROGRESS
+- ✅ **Enhanced router hierarchy**:
+  - ✅ SimpleItemRouter for CRUD operations (TreeItemService, WaveService)
+  - ✅ VersionedItemRouter with baseline parameter support
+  - ✅ Standalone baseline.js router with immutable operations
+- ❌ **ODPEdition parameter resolution**:
+  - ❌ Update VersionedItemRouter to handle odp query parameter
+  - ❌ Route-level context resolution (odp → baseline + fromWave)
+  - ❌ Parameter precedence handling (odp excludes baseline/fromWave)
+
+### 6.5 Service Layer Refactoring ✅ COMPLETED
+- ✅ SimpleItemService (abstract base with transaction management)
+- ✅ TreeItemService (name/description validation + REFINES hierarchy)
+- ✅ Individual concrete services (StakeholderCategoryService, DataCategoryService, ServiceService, RegulatoryAspectService)
+- ✅ Enhanced VersionedItemService with baseline-aware operations
+
+### 6.6 CLI Implementation - Legacy ✅ COMPLETED
 - ✅ **CLI commands for Wave operations**: Full CRUD with temporal validation and field configuration
 - ✅ **CLI commands for Baseline management**: Immutable operations (create/list/show)
 - ✅ **Enhanced operational CLI**: Complete `--baseline` flag support for historical queries
 - ✅ **Type conversion fixes**: String-to-integer conversion for Wave year/quarter fields
 
-### 6.4 API Documentation ✅ COMPLETED
-- ✅ **Complete OpenAPI specification update**:
-  - ✅ Wave endpoints and schemas
-  - ✅ Baseline management endpoints
-  - ✅ Baseline-aware query parameters for operational entities
-  - ✅ Updated root OpenAPI file with all Phase 4 endpoints
+### 6.7 CLI Implementation - ODP Edition 🟡 IN PROGRESS
+- ❌ **CLI commands for ODP Edition management**:
+  - ❌ odp create [title] [type] [baselineId] [startsFromWaveId]
+  - ❌ odp list
+  - ❌ odp show [id]
+  - ❌ odp resolve [id] (show resolved baseline + wave context)
+- ❌ **Enhanced operational CLI with ODP Edition support**:
+  - ❌ --odp flag support for requirement/change commands
+  - ❌ Parameter validation (odp excludes baseline/fromWave)
 
-### 6.5 Route Layer Implementation ✅ COMPLETED
-- ✅ **Enhanced router hierarchy**:
-  - ✅ SimpleItemRouter for CRUD operations (TreeItemService, WaveService)
-  - ✅ VersionedItemRouter with baseline parameter support
-  - ✅ Standalone baseline.js router with immutable operations
-- ✅ **Server integration**: All routes mounted and documented in server/src/index.js
-- ✅ **OpenAPI compliance**: Full conformance to specification
+### 6.8 Code Migration Tasks 🟡 IN PROGRESS
+- ❌ **Remove targetWave from Baseline**:
+  - ❌ Update BaselineStore to remove wave-related functionality
+  - ❌ Update baseline.js routes to remove wave parameters
+  - ❌ Update baseline CLI commands to remove wave targeting
+  - ❌ Update OpenAPI baseline schemas to remove wave references
+- ❌ **Database migration**:
+  - ❌ Remove any existing Baseline → Wave relationships
+  - ❌ Migrate existing baseline data (if any) to new structure
+- ❌ **Integration testing**:
+  - ❌ Verify baseline operations work without wave targeting
+  - ❌ Test ODP Edition context resolution end-to-end
+  - ❌ Validate operational entity queries with odp parameter
 
-**Phase 4 Summary**: ✅ **100% Complete** - Complete management entity system with Wave timeline management and Baseline deployment planning. All CLI commands working with historical context support.
+### 6.9 Server Integration 🟡 IN PROGRESS
+- ✅ **Enhanced baseline and wave routes**: All routes mounted and documented in server/src/index.js
+- ❌ **ODP Edition integration**: Mount ODP Edition routes in main server
+- ❌ **OpenAPI compliance**: Verify full conformance to updated specification
+
+**Phase 4 Current Status**: 🟡 **~75% Complete** - Wave and Baseline systems working, but ODP Edition concept needs full implementation to replace wave targeting in baselines. Core baseline management functional but architectural update to ODP Edition pattern not yet implemented in code.
 
 ## 7 Phase 5: Web Client - Current Scope
 - [ ] Web Client technical solution setup
@@ -116,6 +152,10 @@
   - [ ] Quarter/year timeline visualization
   - [ ] Wave creation with temporal validation
   - [ ] Wave targeting interface for milestones
+- [ ] ODP Edition UI components:
+  - [ ] Edition creation with baseline and wave selection
+  - [ ] Edition management interface
+  - [ ] Context resolution display
 - [ ] Unified hierarchy management across all setup entities
 - [ ] Cross-entity navigation and relationship display
 
@@ -137,6 +177,10 @@
   - [ ] CRUD operations for milestones
   - [ ] Event type management
   - [ ] Wave targeting interface
+- [ ] ODP Edition context switching:
+  - [ ] Edition selection interface
+  - [ ] Context-aware entity browsing
+  - [ ] Historical vs filtered view indicators
 
 ## 10 Phase 8: Web Client - Management Entities
 - [ ] Wave management interface:
@@ -145,18 +189,18 @@
   - [ ] Wave-milestone relationship visualization
 - [ ] Baseline creation and management:
   - [ ] Snapshot creation interface with progress indication
-  - [ ] Historical navigation with baseline selection
-  - [ ] Baseline-aware entity browsing with context switching
-  - [ ] Baseline comparison views
+  - [ ] Baseline browsing and selection
+- [ ] ODP Edition management interface:
+  - [ ] Edition creation workflow (baseline + wave selection)
+  - [ ] Edition comparison views
+  - [ ] Publication workflow (draft → official)
 - [ ] OperationalChange UI with milestone integration:
   - [ ] Milestone timeline visualization using Wave context
   - [ ] Progress tracking interface across waves
-- [ ] ODP Edition interface:
-  - [ ] Draft/official lifecycle management
-  - [ ] Publication workflow
 - [ ] Comprehensive deployment timeline view using Vis.js:
   - [ ] Cross-entity timeline with milestones, waves, and baselines
   - [ ] Interactive deployment planning interface
+  - [ ] ODP Edition filtering and context switching
 
 ## Implementation Principles
 
@@ -176,7 +220,7 @@
 - **Versioning pattern**: Item/ItemVersion dual-node approach for operational entities
 - **PATCH operations**: Partial updates with field inheritance for all versioned entities
 - **ID normalization**: Consistent ID comparison across all layers
-- **Baseline support**: Simplified direct relationships for historical context
+- **ODP Edition pattern**: Context resolution (baseline + wave) for deployment planning
 
 ### Quality Gates per Phase
 - **Working endpoints**: Full CRUD operations with proper error handling
@@ -200,7 +244,7 @@ For each new entity, follow this proven pattern:
 - All planned entities implemented with full CRUD operations
 - CLI commands provide complete functionality coverage for all entities
 - Web client offers intuitive user experience for all operational workflows
-- Baseline management enables reliable deployment planning
+- ODP Edition management enables flexible deployment planning with baseline + wave context
 - System demonstrates complete operational deployment plan lifecycle
 
 ### Technical Achievement
@@ -209,27 +253,28 @@ For each new entity, follow this proven pattern:
 - Clean separation between setup data and operational data
 - Efficient Neo4j utilization with proper relationship management
 - Consistent patterns that enable rapid development of future entities
+- Complete ODP Edition implementation with context resolution
 
 ## Current Status Summary
 
-**✅ Completed Phases**: 1-4 (Setup + Setup Entities + Operational Entities + Management Entities)
-**🎯 Next Phase**: 5 (Web Client Foundation)
-**📈 Overall Progress**: ~80% complete (Phases 1-4 complete, ready for web client development)
-**🎯 Next Milestone**: StakeholderCategory web UI to establish web client patterns
+**✅ Completed Phases**: 1-3 (Setup + Setup Entities + Operational Entities)
+**🟡 Current Phase**: 4 (~75% complete - ODP Edition implementation needed)
+**🎯 Next Milestone**: Complete ODP Edition implementation and baseline migration
+**📈 Overall Progress**: ~70% complete (Phases 1-3 complete, Phase 4 needs ODP Edition completion)
 
-**Key Achievements in Phases 1-4**:
+**Key Achievements in Phases 1-3**:
 - **Complete entity management system**: 6 entities with full CRUD and versioning
 - **Advanced CLI interface**: 30+ commands with baseline-aware historical queries
-- **Deployment planning system**: Wave timeline management and baseline snapshots
 - **Proven architecture patterns**: Manual routes approach with factorized CLI and service layers
 - **Production-ready features**: Optimistic locking, transaction management, comprehensive error handling
 
-**Phase 4 Completion Significance**:
-- **Backend complete**: All core business logic and data management implemented
-- **API mature**: Comprehensive REST API with OpenAPI documentation
-- **CLI comprehensive**: Full operational capability through command-line interface
-- **Architecture proven**: Patterns established for rapid web client development
+**Phase 4 Remaining Work**:
+- **ODP Edition implementation**: Store, service, and route layers for edition management
+- **Context resolution**: Route-level parameter resolution (odp → baseline + fromWave)
+- **CLI commands**: ODP Edition management and enhanced operational commands
+- **Code migration**: Remove targetWave from baseline, migrate existing data
+- **Integration testing**: End-to-end validation of ODP Edition functionality
 
-**Immediate next focus**: Web client foundation with StakeholderCategory UI to establish patterns for the remaining 5 entities and complex operational interfaces.
+**Immediate next focus**: Complete ODP Edition implementation to enable proper baseline + wave context management for deployment planning. This architectural update will finalize the backend foundation and enable web client development to proceed with the correct ODP Edition patterns.
 
-This completion of Phase 4 represents the foundation for a complete operational deployment plan management system. The backend architecture is robust, scalable, and ready to support sophisticated web-based user interfaces for deployment planning and management workflows.
+This completion of Phase 4 represents the final backend milestone before transitioning to web client development. The ODP Edition pattern provides the complete deployment planning foundation needed for sophisticated web-based interfaces.
