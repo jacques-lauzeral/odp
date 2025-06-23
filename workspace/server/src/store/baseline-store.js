@@ -12,7 +12,7 @@ export class BaselineStore extends BaseStore {
 
     /**
      * Create new baseline by capturing all latest OR/OC versions
-     * @param {object} data - {title, startsFromWaveId?}
+     * @param {object} data - {title}
      * @param {Transaction} transaction - Must have user context
      * @returns {Promise<object>} Created baseline with captured count
      */
@@ -23,13 +23,13 @@ export class BaselineStore extends BaseStore {
         try {
             // 1. Create baseline node
             const baselineResult = await transaction.run(`
-        CREATE (baseline:Baseline {
-          title: $title,
-          createdAt: $timestamp,
-          createdBy: $userId
-        })
-        RETURN baseline
-      `, {
+                CREATE (baseline:Baseline {
+                    title: $title,
+                    createdAt: $timestamp,
+                    createdBy: $userId
+                })
+                RETURN baseline
+            `, {
                 title: data.title,
                 timestamp,
                 userId
@@ -43,31 +43,14 @@ export class BaselineStore extends BaseStore {
 
             // 2. Capture all latest OR/OC versions
             const captureResult = await transaction.run(`
-        MATCH (baseline:Baseline) WHERE id(baseline) = $baselineId
-        MATCH (item)-[:LATEST_VERSION]->(version)
-        WHERE item:OperationalRequirement OR item:OperationalChange
-        CREATE (baseline)-[:HAS_ITEMS]->(version)
-        RETURN count(version) as capturedCount
-      `, { baselineId: baseline.id });
+                MATCH (baseline:Baseline) WHERE id(baseline) = $baselineId
+                MATCH (item)-[:LATEST_VERSION]->(version)
+                WHERE item:OperationalRequirement OR item:OperationalChange
+                CREATE (baseline)-[:HAS_ITEMS]->(version)
+                RETURN count(version) as capturedCount
+            `, { baselineId: baseline.id });
 
             const capturedCount = captureResult.records[0]?.get('capturedCount')?.toNumber() || 0;
-
-            // 3. Optional wave relationship
-            if (data.startsFromWaveId) {
-                const waveResult = await transaction.run(`
-          MATCH (baseline:Baseline), (wave:Wave)
-          WHERE id(baseline) = $baselineId AND id(wave) = $waveId
-          CREATE (baseline)-[:STARTS_FROM]->(wave)
-          RETURN wave
-        `, {
-                    baselineId: baseline.id,
-                    waveId: this.normalizeId(data.startsFromWaveId)
-                });
-
-                if (waveResult.records.length === 0) {
-                    throw new StoreError(`Wave with ID ${data.startsFromWaveId} does not exist`);
-                }
-            }
 
             return {
                 ...baseline,
@@ -81,7 +64,7 @@ export class BaselineStore extends BaseStore {
     }
 
     /**
-     * Find baseline by ID with metadata including wave and captured count
+     * Find baseline by ID with metadata
      * @param {number} id - Baseline ID
      * @param {Transaction} transaction
      * @returns {Promise<object|null>} Baseline with metadata or null
@@ -89,12 +72,11 @@ export class BaselineStore extends BaseStore {
     async findById(id, transaction) {
         try {
             const result = await transaction.run(`
-        MATCH (baseline:Baseline) WHERE id(baseline) = $id
-        OPTIONAL MATCH (baseline)-[:STARTS_FROM]->(wave:Wave)
-        OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(version)
-        WITH baseline, wave, count(version) as capturedCount
-        RETURN baseline, wave, capturedCount
-      `, { id: this.normalizeId(id) });
+                MATCH (baseline:Baseline) WHERE id(baseline) = $id
+                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(version)
+                WITH baseline, count(version) as capturedCount
+                RETURN baseline, capturedCount
+            `, { id: this.normalizeId(id) });
 
             if (result.records.length === 0) {
                 return null;
@@ -102,26 +84,12 @@ export class BaselineStore extends BaseStore {
 
             const record = result.records[0];
             const baseline = this.transformRecord(record, 'baseline');
-            const wave = record.get('wave');
             const capturedCount = record.get('capturedCount').toNumber();
 
-            const result_obj = {
+            return {
                 ...baseline,
                 capturedItemCount: capturedCount
             };
-
-            if (wave) {
-                const waveProps = wave.properties;
-                result_obj.startsFromWave = {
-                    id: this.normalizeId(wave.identity),
-                    name: waveProps.name,
-                    year: waveProps.year,
-                    quarter: waveProps.quarter,
-                    date: waveProps.date
-                };
-            }
-
-            return result_obj;
 
         } catch (error) {
             throw new StoreError(`Failed to find baseline: ${error.message}`, error);
@@ -136,36 +104,21 @@ export class BaselineStore extends BaseStore {
     async findAll(transaction) {
         try {
             const result = await transaction.run(`
-        MATCH (baseline:Baseline)
-        OPTIONAL MATCH (baseline)-[:STARTS_FROM]->(wave:Wave)
-        OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(version)
-        WITH baseline, wave, count(version) as capturedCount
-        RETURN baseline, wave, capturedCount
-        ORDER BY baseline.createdAt DESC
-      `);
+                MATCH (baseline:Baseline)
+                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(version)
+                WITH baseline, count(version) as capturedCount
+                RETURN baseline, capturedCount
+                ORDER BY baseline.createdAt DESC
+            `);
 
             return result.records.map(record => {
                 const baseline = this.transformRecord(record, 'baseline');
-                const wave = record.get('wave');
                 const capturedCount = record.get('capturedCount').toNumber();
 
-                const result_obj = {
+                return {
                     ...baseline,
                     capturedItemCount: capturedCount
                 };
-
-                if (wave) {
-                    const waveProps = wave.properties;
-                    result_obj.startsFromWave = {
-                        id: this.normalizeId(wave.identity),
-                        name: waveProps.name,
-                        year: waveProps.year,
-                        quarter: waveProps.quarter,
-                        date: waveProps.date
-                    };
-                }
-
-                return result_obj;
             });
 
         } catch (error) {
@@ -182,17 +135,17 @@ export class BaselineStore extends BaseStore {
     async getBaselineItems(baselineId, transaction) {
         try {
             const result = await transaction.run(`
-        MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version)-[:VERSION_OF]->(item)
-        WHERE id(baseline) = $baselineId
-        RETURN 
-          id(item) as itemId,
-          item.title as itemTitle,
-          labels(item)[0] as itemType,
-          id(version) as versionId,
-          version.version as version,
-          baseline.createdAt as capturedAt
-        ORDER BY itemType, item.title
-      `, { baselineId: this.normalizeId(baselineId) });
+                MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version)-[:VERSION_OF]->(item)
+                WHERE id(baseline) = $baselineId
+                RETURN 
+                    id(item) as itemId,
+                    item.title as itemTitle,
+                    labels(item)[0] as itemType,
+                    id(version) as versionId,
+                    version.version as version,
+                    baseline.createdAt as capturedAt
+                ORDER BY itemType, item.title
+            `, { baselineId: this.normalizeId(baselineId) });
 
             return result.records.map(record => ({
                 itemId: this.normalizeId(record.get('itemId')),

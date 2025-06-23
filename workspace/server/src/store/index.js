@@ -10,6 +10,7 @@ import { WaveStore } from './wave-store.js';
 import { OperationalRequirementStore } from './operational-requirement-store.js';
 import { OperationalChangeStore } from './operational-change-store.js';
 import { BaselineStore } from './baseline-store.js';
+import { ODPEditionStore } from './odp-edition-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
@@ -20,6 +21,7 @@ let waveStore = null;
 let operationalRequirementStore = null;
 let operationalChangeStore = null;
 let baselineStore = null;
+let odpEditionStore = null;
 
 /**
  * Initialize the store layer with Neo4j connection and store instances
@@ -46,6 +48,7 @@ export async function initializeStores() {
         operationalRequirementStore = new OperationalRequirementStore(driver);
         operationalChangeStore = new OperationalChangeStore(driver);
         baselineStore = new BaselineStore(driver);
+        odpEditionStore = new ODPEditionStore(driver);
 
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
@@ -56,7 +59,8 @@ export async function initializeStores() {
             wave: '✓',
             operationalRequirement: '✓',
             operationalChange: '✓',
-            baseline: '✓'
+            baseline: '✓',
+            odpEdition: '✓'
         });
 
     } catch (error) {
@@ -83,6 +87,7 @@ export async function closeStores() {
         operationalRequirementStore = null;
         operationalChangeStore = null;
         baselineStore = null;
+        odpEditionStore = null;
 
         // Close database connection
         await closeConnection();
@@ -195,6 +200,18 @@ function getBaselineStore() {
     return baselineStore;
 }
 
+/**
+ * Get ODPEdition store instance
+ * @returns {ODPEditionStore} Store instance
+ * @throws {Error} If store layer not initialized
+ */
+function getODPEditionStore() {
+    if (!odpEditionStore) {
+        throw new Error('Store layer not initialized. Call initializeStores() first.');
+    }
+    return odpEditionStore;
+}
+
 // Export store access functions with consistent naming
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
@@ -204,7 +221,8 @@ export {
     getWaveStore as waveStore,
     getOperationalRequirementStore as operationalRequirementStore,
     getOperationalChangeStore as operationalChangeStore,
-    getBaselineStore as baselineStore
+    getBaselineStore as baselineStore,
+    getODPEditionStore as odpEditionStore
 };
 
 /**
@@ -221,7 +239,8 @@ export function getAllStores() {
         wave: getWaveStore(),
         operationalRequirement: getOperationalRequirementStore(),
         operationalChange: getOperationalChangeStore(),
-        baseline: getBaselineStore()
+        baseline: getBaselineStore(),
+        odpEdition: getODPEditionStore()
     };
 }
 
@@ -238,7 +257,8 @@ export function isStoreLayerInitialized() {
         waveStore &&
         operationalRequirementStore &&
         operationalChangeStore &&
-        baselineStore
+        baselineStore &&
+        odpEditionStore
     );
 }
 
@@ -255,7 +275,8 @@ export function getStoreLayerStatus() {
         wave: !!waveStore,
         operationalRequirement: !!operationalRequirementStore,
         operationalChange: !!operationalChangeStore,
-        baseline: !!baselineStore
+        baseline: !!baselineStore,
+        odpEdition: !!odpEditionStore
     };
 
     const initializedCount = Object.values(stores).filter(Boolean).length;
