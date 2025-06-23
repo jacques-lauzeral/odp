@@ -99,7 +99,7 @@ const entities = await store.findAll(transaction, baselineId, fromWaveId)
 
 **Wave filtering behavior**:
 - **OperationalChanges**: Include only those with milestones targeting waves at/after the fromWave date
-- **OperationalRequirements**: Include only those referenced by filtered OperationalChanges via SATISFIES/SUPERSEDS
+- **OperationalRequirements**: Include only those referenced by filtered OperationalChanges via SATISFIES/SUPERSEDS, plus all ancestor requirements via REFINES hierarchy (upward cascade)
 
 ## OperationalRequirementStore
 **Inheritance**: `VersionedItemStore → BaseStore`
@@ -273,3 +273,10 @@ const changes = await store.findChangesThatSupersedeRequirement(reqId, transacti
 const milestones = await store.findMilestonesByWave(waveId, transaction, baselineId, fromWaveId)
 ```
 **Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context
+
+## Wave Filtering Errors
+Additional error conditions for multi-context operations:
+- `'Wave not found'` - Invalid fromWaveId in wave filtering operations
+- `'No matching milestones'` - Wave filter results in empty OC set
+
+*Note: See Store-Layer-API-Core.md for complete error documentation*

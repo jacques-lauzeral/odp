@@ -180,7 +180,7 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    async findById(itemId, transaction, baselineId = null) {
+    async findById(itemId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const numericItemId = this.normalizeId(itemId);
 
@@ -323,7 +323,7 @@ export class VersionedItemStore extends BaseStore {
     }
 
     // Override findAll to return latest versions or baseline versions with relationships as Reference objects
-    async findAll(transaction, baselineId = null) {
+    async findAll(transaction, baselineId = null, fromWaveId = null) {
         try {
             let query;
             let params = {};

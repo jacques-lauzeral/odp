@@ -81,7 +81,8 @@ RETURN target
 
 **OperationalRequirement Filtering**:
 - Include only ORs that are referenced by at least one filtered OC via SATISFIES or SUPERSEDS relationships
-- Cascading filter: Wave → Milestones → Changes → Requirements
+- Include all ancestor ORs via REFINES hierarchy (upward cascade)
+- Cascading filter: Wave → Milestones → Changes → Requirements → REFINES Ancestors
 
 ### Implementation Queries
 **OperationalChange wave filtering**:
@@ -98,10 +99,11 @@ RETURN ocVersion
 
 **OperationalRequirement wave filtering**:
 ```cypher
-// Find ORs referenced by filtered OCs
+// Find ORs referenced by filtered OCs + their REFINES ancestors
 MATCH (filteredOCVersion)-[:SATISFIES|SUPERSEDS]->(orItem:OperationalRequirement)
 WHERE id(filteredOCVersion) IN $filteredOCVersionIds
-RETURN DISTINCT orItem
+MATCH path = (orItem)<-[:REFINES*0..]-(descendant:OperationalRequirement)
+RETURN DISTINCT descendant
 ```
 
 ### Wave Date Comparison
@@ -111,7 +113,8 @@ const fromWave = { id: 456, name: "2025.2", date: "2025-06-30" };
 const targetWave = { id: 789, name: "2025.3", date: "2025-09-30" };
 
 // Include milestone if: targetWave.date >= fromWave.date
-const include = new Date(targetWave.date) >= new Date(fromWave.date); // true
+// Neo4j date() function for robust comparison
+WHERE date(targetWave.date) >= date(fromWave.date)
 ```
 
 ## Multi-Context Query Implementation

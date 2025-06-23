@@ -4,6 +4,7 @@ import { StoreError } from './transaction.js';
 /**
  * Store for OperationalChange items with versioning, milestone, and relationship management
  * Handles SATISFIES/SUPERSEDS relationships to OperationalRequirements and integrated milestone management
+ * Supports baseline and wave filtering for multi-context operations
  */
 export class OperationalChangeStore extends VersionedItemStore {
     constructor(driver) {
@@ -344,16 +345,105 @@ export class OperationalChangeStore extends VersionedItemStore {
         }
     }
 
-    // Additional query methods with baseline support
+    /**
+     * Check if OperationalChange version passes wave filter
+     * @private
+     * @param {number} versionId - OperationalChangeVersion ID
+     * @param {number} fromWaveId - Wave ID for filtering
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<boolean>} True if change has milestones at/after fromWave
+     */
+    async _checkWaveFilter(versionId, fromWaveId, transaction) {
+        try {
+            const result = await transaction.run(`
+                MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
+                MATCH (version:${this.versionLabel}) WHERE id(version) = $versionId
+                
+                RETURN EXISTS {
+                    MATCH (version)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
+                    WHERE date(targetWave.date) >= date(fromWave.date)
+                } as passesFilter
+            `, { versionId, fromWaveId: this.normalizeId(fromWaveId) });
+
+            if (result.records.length === 0) {
+                return false;
+            }
+
+            return result.records[0].get('passesFilter');
+        } catch (error) {
+            throw new StoreError(`Failed to check wave filter: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find OperationalChange by ID with multi-context support
+     * @param {number} itemId - OperationalChange Item ID
+     * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
+     * @returns {Promise<object|null>} OperationalChange with relationships or null
+     */
+    async findById(itemId, transaction, baselineId = null, fromWaveId = null) {
+        try {
+            // Step 1: Get base result (current or baseline)
+            const baseResult = await super.findById(itemId, transaction, baselineId);
+            if (!baseResult) {
+                return null;
+            }
+
+            // Step 2: Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                const passesFilter = await this._checkWaveFilter(baseResult.versionId, fromWaveId, transaction);
+                return passesFilter ? baseResult : null;
+            }
+
+            return baseResult;
+        } catch (error) {
+            throw new StoreError(`Failed to find ${this.nodeLabel} by ID with multi-context: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find all OperationalChanges with multi-context support
+     * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
+     * @returns {Promise<Array<object>>} Array of OperationalChanges with relationships
+     */
+    async findAll(transaction, baselineId = null, fromWaveId = null) {
+        try {
+            // Step 1: Get base result set (current or baseline)
+            const baseResults = await super.findAll(transaction, baselineId);
+
+            // Step 2: Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                const filteredResults = [];
+                for (const change of baseResults) {
+                    const passesFilter = await this._checkWaveFilter(change.versionId, fromWaveId, transaction);
+                    if (passesFilter) {
+                        filteredResults.push(change);
+                    }
+                }
+                return filteredResults;
+            }
+
+            return baseResults;
+        } catch (error) {
+            throw new StoreError(`Failed to find all ${this.nodeLabel}s with multi-context: ${error.message}`, error);
+        }
+    }
+
+    // Additional query methods with baseline and wave filtering support
 
     /**
      * Find changes that satisfy a specific requirement (inverse SATISFIES)
      * @param {number} requirementItemId - Requirement Item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
      * @returns {Promise<Array<object>>} Changes that satisfy the requirement with Reference structure
      */
-    async findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null) {
+    async findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const normalizedRequirementId = this.normalizeId(requirementItemId);
             let query, params;
@@ -365,7 +455,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     MATCH (change)-[:LATEST_VERSION]->(changeVersion)
                     WHERE id(req) = $requirementItemId
-                    RETURN id(change) as id, change.title as title
+                    RETURN id(change) as id, change.title as title, id(changeVersion) as versionId
                     ORDER BY change.title
                 `;
                 params = { requirementItemId: normalizedRequirementId };
@@ -376,14 +466,33 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SATISFIES]->(req:OperationalRequirement)
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     WHERE id(baseline) = $baselineId AND id(req) = $requirementItemId
-                    RETURN id(change) as id, change.title as title
+                    RETURN id(change) as id, change.title as title, id(changeVersion) as versionId
                     ORDER BY change.title
                 `;
                 params = { baselineId: numericBaselineId, requirementItemId: normalizedRequirementId };
             }
 
             const result = await transaction.run(query, params);
-            return result.records.map(record => this._buildReference(record));
+            const changes = result.records.map(record => ({
+                ...this._buildReference(record),
+                versionId: this.normalizeId(record.get('versionId'))
+            }));
+
+            // Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                const filteredChanges = [];
+                for (const change of changes) {
+                    const passesFilter = await this._checkWaveFilter(change.versionId, fromWaveId, transaction);
+                    if (passesFilter) {
+                        const { versionId, ...changeRef } = change;
+                        filteredChanges.push(changeRef);
+                    }
+                }
+                return filteredChanges;
+            }
+
+            // Remove versionId from response
+            return changes.map(({ versionId, ...changeRef }) => changeRef);
         } catch (error) {
             throw new StoreError(`Failed to find changes that satisfy requirement: ${error.message}`, error);
         }
@@ -394,9 +503,10 @@ export class OperationalChangeStore extends VersionedItemStore {
      * @param {number} requirementItemId - Requirement Item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
      * @returns {Promise<Array<object>>} Changes that supersede the requirement with Reference structure
      */
-    async findChangesThatSupersedeRequirement(requirementItemId, transaction, baselineId = null) {
+    async findChangesThatSupersedeRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const normalizedRequirementId = this.normalizeId(requirementItemId);
             let query, params;
@@ -408,7 +518,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     MATCH (change)-[:LATEST_VERSION]->(changeVersion)
                     WHERE id(req) = $requirementItemId
-                    RETURN id(change) as id, change.title as title
+                    RETURN id(change) as id, change.title as title, id(changeVersion) as versionId
                     ORDER BY change.title
                 `;
                 params = { requirementItemId: normalizedRequirementId };
@@ -419,14 +529,33 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SUPERSEDS]->(req:OperationalRequirement)
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     WHERE id(baseline) = $baselineId AND id(req) = $requirementItemId
-                    RETURN id(change) as id, change.title as title
+                    RETURN id(change) as id, change.title as title, id(changeVersion) as versionId
                     ORDER BY change.title
                 `;
                 params = { baselineId: numericBaselineId, requirementItemId: normalizedRequirementId };
             }
 
             const result = await transaction.run(query, params);
-            return result.records.map(record => this._buildReference(record));
+            const changes = result.records.map(record => ({
+                ...this._buildReference(record),
+                versionId: this.normalizeId(record.get('versionId'))
+            }));
+
+            // Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                const filteredChanges = [];
+                for (const change of changes) {
+                    const passesFilter = await this._checkWaveFilter(change.versionId, fromWaveId, transaction);
+                    if (passesFilter) {
+                        const { versionId, ...changeRef } = change;
+                        filteredChanges.push(changeRef);
+                    }
+                }
+                return filteredChanges;
+            }
+
+            // Remove versionId from response
+            return changes.map(({ versionId, ...changeRef }) => changeRef);
         } catch (error) {
             throw new StoreError(`Failed to find changes that supersede requirement: ${error.message}`, error);
         }
@@ -437,9 +566,10 @@ export class OperationalChangeStore extends VersionedItemStore {
      * @param {number} waveId - Wave node ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering (usually same as waveId)
      * @returns {Promise<Array<object>>} Milestones targeting the wave with change context
      */
-    async findMilestonesByWave(waveId, transaction, baselineId = null) {
+    async findMilestonesByWave(waveId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const normalizedWaveId = this.normalizeId(waveId);
             let query, params;
@@ -454,7 +584,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     WHERE id(wave) = $waveId
                     RETURN id(milestone) as milestoneId, milestone.title as title, 
                            milestone.description as description, milestone.eventTypes as eventTypes,
-                           id(change) as changeId, change.title as changeTitle
+                           id(change) as changeId, change.title as changeTitle, id(version) as versionId
                     ORDER BY change.title, milestone.title
                 `;
                 params = { waveId: normalizedWaveId };
@@ -469,14 +599,14 @@ export class OperationalChangeStore extends VersionedItemStore {
                     WHERE id(baseline) = $baselineId AND id(wave) = $waveId
                     RETURN id(milestone) as milestoneId, milestone.title as title, 
                            milestone.description as description, milestone.eventTypes as eventTypes,
-                           id(change) as changeId, change.title as changeTitle
+                           id(change) as changeId, change.title as changeTitle, id(version) as versionId
                     ORDER BY change.title, milestone.title
                 `;
                 params = { baselineId: numericBaselineId, waveId: normalizedWaveId };
             }
 
             const result = await transaction.run(query, params);
-            return result.records.map(record => ({
+            const milestones = result.records.map(record => ({
                 id: this.normalizeId(record.get('milestoneId')),
                 title: record.get('title'),
                 description: record.get('description'),
@@ -487,21 +617,39 @@ export class OperationalChangeStore extends VersionedItemStore {
                         if (field === 'title') return record.get('changeTitle');
                         return null;
                     }
-                })
+                }),
+                versionId: this.normalizeId(record.get('versionId'))
             }));
+
+            // Apply wave filtering if specified (rarely used for this method)
+            if (fromWaveId !== null && fromWaveId !== normalizedWaveId) {
+                const filteredMilestones = [];
+                for (const milestone of milestones) {
+                    const passesFilter = await this._checkWaveFilter(milestone.versionId, fromWaveId, transaction);
+                    if (passesFilter) {
+                        const { versionId, ...milestoneResult } = milestone;
+                        filteredMilestones.push(milestoneResult);
+                    }
+                }
+                return filteredMilestones;
+            }
+
+            // Remove versionId from response
+            return milestones.map(({ versionId, ...milestoneResult }) => milestoneResult);
         } catch (error) {
             throw new StoreError(`Failed to find milestones by wave: ${error.message}`, error);
         }
     }
-
+    
     /**
      * Find all milestones for a specific change
      * @param {number} itemId - OperationalChange Item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
      * @returns {Promise<Array<object>>} Milestones for the change
      */
-    async findMilestonesByChange(itemId, transaction, baselineId = null) {
+    async findMilestonesByChange(itemId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const normalizedItemId = this.normalizeId(itemId);
             let query, params;
@@ -517,7 +665,8 @@ export class OperationalChangeStore extends VersionedItemStore {
                     
                     RETURN id(milestone) as milestoneId, milestone.title as title, 
                            milestone.description as description, milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName
+                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate,
+                           id(version) as versionId
                     ORDER BY milestone.title
                 `;
                 params = { itemId: normalizedItemId };
@@ -533,31 +682,63 @@ export class OperationalChangeStore extends VersionedItemStore {
                     
                     RETURN id(milestone) as milestoneId, milestone.title as title, 
                            milestone.description as description, milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName
+                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate,
+                           id(version) as versionId
                     ORDER BY milestone.title
                 `;
                 params = { baselineId: numericBaselineId, itemId: normalizedItemId };
             }
 
             const result = await transaction.run(query, params);
-            return result.records.map(record => {
+            const milestones = result.records.map(record => {
                 const milestone = {
                     id: this.normalizeId(record.get('milestoneId')),
                     title: record.get('title'),
                     description: record.get('description'),
-                    eventTypes: record.get('eventTypes')
+                    eventTypes: record.get('eventTypes'),
+                    versionId: this.normalizeId(record.get('versionId'))
                 };
 
                 const waveId = record.get('waveId');
                 if (waveId) {
                     milestone.wave = {
                         id: this.normalizeId(waveId),
-                        title: record.get('waveName')
+                        title: record.get('waveName'),
+                        date: record.get('waveDate')
                     };
                 }
 
                 return milestone;
             });
+
+            // Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                // Get fromWave date for filtering
+                const fromWaveResult = await transaction.run(`
+                    MATCH (wave:Wave) WHERE id(wave) = $fromWaveId
+                    RETURN wave.date as fromWaveDate
+                `, { fromWaveId: this.normalizeId(fromWaveId) });
+
+                if (fromWaveResult.records.length === 0) {
+                    throw new StoreError('Wave not found');
+                }
+
+                const fromWaveDate = fromWaveResult.records[0].get('fromWaveDate');
+
+                // Filter milestones that target waves >= fromWaveDate
+                const filteredMilestones = milestones.filter(milestone => {
+                    if (!milestone.wave || !milestone.wave.date) {
+                        return false; // Milestones without waves don't pass filter
+                    }
+                    return milestone.wave.date >= fromWaveDate;
+                });
+
+                // Remove versionId from response
+                return filteredMilestones.map(({ versionId, ...milestoneResult }) => milestoneResult);
+            }
+
+            // Remove versionId from response
+            return milestones.map(({ versionId, ...milestoneResult }) => milestoneResult);
         } catch (error) {
             throw new StoreError(`Failed to find milestones by change: ${error.message}`, error);
         }

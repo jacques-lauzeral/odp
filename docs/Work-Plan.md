@@ -69,10 +69,10 @@
 ### 6.3 Server Implementation - ODP Edition 🟡 IN PROGRESS
 - ✅ **Updated shared models**: ODPEdition model with baseline and wave references
 - ✅ **Updated OpenAPI specification**: ODPEdition endpoints and schemas
-- ❌ **ODP Edition store implementation**:
-  - ❌ ODPEditionStore with baseline and wave references
-  - ❌ resolveContext() method for parameter resolution
-  - ❌ EXPOSES → Baseline and STARTS_FROM → Wave relationships
+- ✅ **ODP Edition store implementation**:
+  - ✅ ODPEditionStore with baseline and wave references
+  - ✅ resolveContext() method for parameter resolution
+  - ✅ EXPOSES → Baseline and STARTS_FROM → Wave relationships
 - ❌ **ODP Edition service implementation**:
   - ❌ ODPEditionService with reference validation
   - ❌ Context resolution for route layer
@@ -115,7 +115,7 @@
 
 ### 6.8 Code Migration Tasks 🟡 IN PROGRESS
 - ❌ **Remove targetWave from Baseline**:
-  - ❌ Update BaselineStore to remove wave-related functionality
+  - ✅ Update BaselineStore to remove wave-related functionality
   - ❌ Update baseline.js routes to remove wave parameters
   - ❌ Update baseline CLI commands to remove wave targeting
   - ❌ Update OpenAPI baseline schemas to remove wave references
@@ -132,6 +132,23 @@
 - ❌ **ODP Edition integration**: Mount ODP Edition routes in main server
 - ❌ **OpenAPI compliance**: Verify full conformance to updated specification
 
+### 6.10 Store Layer Multi-Context Support ✅ COMPLETED
+- ✅ **fromWaveId parameter support**: Added to all operational entity store methods
+  - ✅ OperationalChangeStore: Wave filtering based on milestone target dates
+  - ✅ OperationalRequirementStore: Cascade filtering via OC references + REFINES ancestors
+  - ✅ Method signatures updated: findById, findAll, and all relationship query methods
+- ✅ **Wave filtering implementation**:
+  - ✅ _checkWaveFilter() methods using Neo4j date() functions for robust comparison
+  - ✅ Two-step filtering pattern: baseline resolution → wave filtering
+  - ✅ Milestone-based filtering: OCs with milestones targeting waves >= fromWave.date
+- ✅ **REFINES cascade filtering**:
+  - ✅ Requirements referenced by filtered OCs (SATISFIES/SUPERSEDS relationships)
+  - ✅ Ancestor requirements via REFINES hierarchy (upward cascade only)
+  - ✅ Complete requirement context preservation for deployment planning
+- ✅ **VersionedItemStore base class updates**:
+  - ✅ Method signature updates for multi-context support
+  - ✅ Parameter pass-through to concrete store implementations
+  - ✅ Clean separation: baseline logic (base) vs wave logic (concrete stores)
 **Phase 4 Current Status**: 🟡 **~75% Complete** - Wave and Baseline systems working, but ODP Edition concept needs full implementation to replace wave targeting in baselines. Core baseline management functional but architectural update to ODP Edition pattern not yet implemented in code.
 
 ## 7 Phase 5: Web Client - Current Scope
@@ -258,9 +275,9 @@ For each new entity, follow this proven pattern:
 ## Current Status Summary
 
 **✅ Completed Phases**: 1-3 (Setup + Setup Entities + Operational Entities)
-**🟡 Current Phase**: 4 (~75% complete - ODP Edition implementation needed)
+**🟡 Current Phase**: 4 (~90% complete - ODP Edition implementation needed)
 **🎯 Next Milestone**: Complete ODP Edition implementation and baseline migration
-**📈 Overall Progress**: ~70% complete (Phases 1-3 complete, Phase 4 needs ODP Edition completion)
+**📈 Overall Progress**: ~75% complete (Phases 1-3 complete, Phase 4 needs ODP Edition completion)
 
 **Key Achievements in Phases 1-3**:
 - **Complete entity management system**: 6 entities with full CRUD and versioning
