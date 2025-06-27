@@ -74,8 +74,8 @@ class BaselineCommands {
                     }
 
                     const table = new Table({
-                        head: ['ID', 'Title', 'Items', 'Wave', 'Created'],
-                        colWidths: [10, 30, 10, 15, 25]
+                        head: ['ID', 'Title', 'Items', 'Created'],
+                        colWidths: [10, 30, 10, 25]
                     });
 
                     baselines.forEach(baseline => {
@@ -83,7 +83,6 @@ class BaselineCommands {
                             baseline.id,
                             baseline.title,
                             baseline.capturedItemCount || 0,
-                            baseline.startsFromWave?.name || 'None',
                             new Date(baseline.createdAt).toLocaleString()
                         ]);
                     });
@@ -121,12 +120,6 @@ class BaselineCommands {
                     console.log(`Title: ${baseline.title}`);
                     console.log(`Created: ${new Date(baseline.createdAt).toLocaleString()} by ${baseline.createdBy}`);
                     console.log(`Captured Items: ${baseline.capturedItemCount || 0}`);
-
-                    if (baseline.startsFromWave) {
-                        console.log(`Starts From Wave: ${baseline.startsFromWave.name} (${baseline.startsFromWave.year}.${baseline.startsFromWave.quarter}) - ${baseline.startsFromWave.date}`);
-                    } else {
-                        console.log('Starts From Wave: None');
-                    }
                 } catch (error) {
                     console.error('Error getting baseline:', error.message);
                     process.exit(1);
@@ -138,13 +131,9 @@ class BaselineCommands {
         baselineCommand
             .command('create <title>')
             .description('Create a new baseline (captures current state of all OR/OC)')
-            .option('--wave <id>', 'Optional wave that this baseline starts from')
-            .action(async (title, options) => {
+            .action(async (title) => {
                 try {
-                    const data = {
-                        title,
-                        startsFromWaveId: options.wave || null
-                    };
+                    const data = { title };
 
                     console.log('Creating baseline and capturing system state...');
 
@@ -163,11 +152,6 @@ class BaselineCommands {
 
                     console.log(`✓ Created baseline: ${baseline.title} (ID: ${baseline.id})`);
                     console.log(`✓ Captured ${baseline.capturedItemCount || 0} operational items`);
-
-                    if (baseline.startsFromWave) {
-                        console.log(`✓ Linked to wave: ${baseline.startsFromWave.name}`);
-                    }
-
                     console.log(`✓ Baseline created at: ${new Date(baseline.createdAt).toLocaleString()}`);
                 } catch (error) {
                     console.error('Error creating baseline:', error.message);

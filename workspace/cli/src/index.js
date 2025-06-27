@@ -1,4 +1,4 @@
-// workspace/cli/src/index.js - Updated CLI entry point with baseline commands
+// workspace/cli/src/index.js - Updated CLI entry point with ODP Edition commands
 import { Command } from 'commander';
 import config from '../config.json' assert { type: 'json' };
 
@@ -8,7 +8,8 @@ import { regulatoryAspectCommands } from './commands/regulatory-aspect.js';
 import { dataCategoryCommands } from './commands/data-category.js';
 import { serviceCommands } from './commands/service.js';
 import { waveCommands } from './commands/wave.js';
-import { baselineCommands } from './commands/baseline.js';  // Added baseline commands
+import { baselineCommands } from './commands/baseline.js';
+import { editionCommands } from './commands/odp-edition.js';  // Added ODP Edition commands
 import { operationalRequirementCommands } from './commands/operational-requirement.js';
 import { operationalChangeCommands } from './commands/operational-change.js';
 
@@ -33,6 +34,7 @@ program
             console.error('  npm run dev -- --user admin operational-requirement show 123');
             console.error('  npm run dev -- --user admin baseline create "Q1 2025 Release"');
             console.error('  npm run dev -- --user admin requirement list --baseline 456');
+            console.error('  npm run dev -- --user admin odp create "Q1 Edition" 123 DRAFT 456');
             process.exit(1);
         }
     });
@@ -46,7 +48,8 @@ regulatoryAspectCommands(program, config);
 dataCategoryCommands(program, config);
 serviceCommands(program, config);
 waveCommands(program, config);
-baselineCommands(program, config);  // Added baseline command registration
+baselineCommands(program, config);
+editionCommands(program, config);
 operationalRequirementCommands(program, config);
 operationalChangeCommands(program, config);
 

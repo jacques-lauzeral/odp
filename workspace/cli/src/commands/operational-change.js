@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-change.js - Fixed import path
+// workspace/cli/src/commands/operational-change.js - Updated with --edition support
 import { VersionedCommands } from '../base-commands.js';  // Fixed: was './base-commands.js'
 import Table from 'cli-table3';
 import fetch from "node-fetch";
@@ -241,129 +241,128 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Add milestone commands specific to operational changes
+     * Add milestone commands specific to operational changes with edition support
      */
     _addMilestoneCommands(itemCommand) {
-        // Milestone list command with baseline support
-        itemCommand
+        // Milestone list command with baseline and edition support
+        const milestoneListCommand = itemCommand
             .command('milestone-list <itemId>')
-            .description(`List milestones for ${this.displayName}`)
-            .option('--baseline <id>', 'Show milestones as they existed in specified baseline')
-            .action(async (itemId, options) => {
-                try {
-                    let url = `${this.baseUrl}/${this.urlPath}/${itemId}/milestones`;
-                    if (options.baseline) {
-                        url += `?baseline=${options.baseline}`;
-                    }
+            .description(`List milestones for ${this.displayName}`);
 
-                    const response = await fetch(url, {
-                        headers: this.createHeaders()
-                    });
+        this.addEditionSupportToMilestoneCommand(milestoneListCommand);
 
-                    if (response.status === 404) {
-                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
-                        console.error(`${this.displayName} with ID ${itemId} not found${context}.`);
-                        process.exit(1);
-                    }
+        milestoneListCommand.action(async (itemId, options) => {
+            try {
+                const { url, contextDisplay } = await this.buildMilestoneContextUrl(
+                    `${this.baseUrl}/${this.urlPath}/${itemId}/milestones`,
+                    options
+                );
 
-                    if (!response.ok) {
-                        if (response.status === 400 && options.baseline) {
-                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
-                        }
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
+                const response = await fetch(url, {
+                    headers: this.createHeaders()
+                });
 
-                    const milestones = await response.json();
-
-                    if (milestones.length === 0) {
-                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
-                        console.log(`No milestones found for ${this.displayName} ${itemId}${context}.`);
-                        return;
-                    }
-
-                    const table = new Table({
-                        head: ['ID', 'Title', 'Description', 'Event Types', 'Wave'],
-                        colWidths: [15, 20, 30, 25, 15]
-                    });
-
-                    milestones.forEach(milestone => {
-                        const eventTypes = milestone.eventTypes?.join(', ') || '';
-                        const wave = milestone.wave ?
-                            `${milestone.wave.year}.${milestone.wave.quarter}` :
-                            'Not targeted';
-
-                        table.push([
-                            milestone.id,
-                            milestone.title,
-                            milestone.description,
-                            eventTypes,
-                            wave
-                        ]);
-                    });
-
-                    const context = options.baseline ? ` (Baseline ${options.baseline})` : '';
-                    console.log(`Milestones for ${this.displayName} ${itemId}${context}:`);
-                    console.log(table.toString());
-                } catch (error) {
-                    console.error(`Error listing milestones:`, error.message);
+                if (response.status === 404) {
+                    console.error(`${this.displayName} with ID ${itemId} not found${contextDisplay}.`);
                     process.exit(1);
                 }
-            });
 
-        // Milestone show command with baseline support
-        itemCommand
+                if (!response.ok) {
+                    if (response.status === 400) {
+                        throw new Error(`Invalid baseline or wave ID in context`);
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const milestones = await response.json();
+
+                if (milestones.length === 0) {
+                    console.log(`No milestones found for ${this.displayName} ${itemId}${contextDisplay}.`);
+                    return;
+                }
+
+                const table = new Table({
+                    head: ['ID', 'Title', 'Description', 'Event Types', 'Wave'],
+                    colWidths: [15, 20, 30, 25, 15]
+                });
+
+                milestones.forEach(milestone => {
+                    const eventTypes = milestone.eventTypes?.join(', ') || '';
+                    const wave = milestone.wave ?
+                        `${milestone.wave.year}.${milestone.wave.quarter}` :
+                        'Not targeted';
+
+                    table.push([
+                        milestone.id,
+                        milestone.title,
+                        milestone.description,
+                        eventTypes,
+                        wave
+                    ]);
+                });
+
+                const displayContext = contextDisplay || '';
+                console.log(`Milestones for ${this.displayName} ${itemId}${displayContext}:`);
+                console.log(table.toString());
+            } catch (error) {
+                console.error(`Error listing milestones:`, error.message);
+                process.exit(1);
+            }
+        });
+
+        // Milestone show command with baseline and edition support
+        const milestoneShowCommand = itemCommand
             .command('milestone-show <itemId> <milestoneId>')
-            .description(`Show specific milestone`)
-            .option('--baseline <id>', 'Show milestone as it existed in specified baseline')
-            .action(async (itemId, milestoneId, options) => {
-                try {
-                    let url = `${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`;
-                    if (options.baseline) {
-                        url += `?baseline=${options.baseline}`;
-                    }
+            .description(`Show specific milestone`);
 
-                    const response = await fetch(url, {
-                        headers: this.createHeaders()
-                    });
+        this.addEditionSupportToMilestoneCommand(milestoneShowCommand);
 
-                    if (response.status === 404) {
-                        const error = await response.json();
-                        console.error(`Error: ${error.error?.message || 'Not found'}`);
-                        process.exit(1);
-                    }
+        milestoneShowCommand.action(async (itemId, milestoneId, options) => {
+            try {
+                const { url, contextDisplay } = await this.buildMilestoneContextUrl(
+                    `${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`,
+                    options
+                );
 
-                    if (!response.ok) {
-                        if (response.status === 400 && options.baseline) {
-                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
-                        }
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
+                const response = await fetch(url, {
+                    headers: this.createHeaders()
+                });
 
-                    const milestone = await response.json();
-
-                    if (options.baseline) {
-                        console.log(`=== MILESTONE (BASELINE ${options.baseline}) ===`);
-                    }
-
-                    console.log(`Milestone ID: ${milestone.id}`);
-                    console.log(`Title: ${milestone.title}`);
-                    console.log(`Description: ${milestone.description}`);
-                    console.log(`Event Types: ${milestone.eventTypes?.join(', ') || 'None'}`);
-                    if (milestone.wave) {
-                        console.log(`Target Wave: ${milestone.wave.year}.${milestone.wave.quarter} (${milestone.wave.date})`);
-                    } else {
-                        console.log(`Target Wave: Not specified`);
-                    }
-                } catch (error) {
-                    console.error(`Error fetching milestone:`, error.message);
+                if (response.status === 404) {
+                    const error = await response.json();
+                    console.error(`Error: ${error.error?.message || 'Not found'}`);
                     process.exit(1);
                 }
-            });
 
-        // Keep existing milestone add, update, delete commands unchanged...
-        // (Rest of milestone commands remain the same)
+                if (!response.ok) {
+                    if (response.status === 400) {
+                        throw new Error(`Invalid baseline or wave ID in context`);
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
 
-        // Milestone add command
+                const milestone = await response.json();
+
+                if (contextDisplay) {
+                    console.log(`=== MILESTONE${contextDisplay.toUpperCase()} ===`);
+                }
+
+                console.log(`Milestone ID: ${milestone.id}`);
+                console.log(`Title: ${milestone.title}`);
+                console.log(`Description: ${milestone.description}`);
+                console.log(`Event Types: ${milestone.eventTypes?.join(', ') || 'None'}`);
+                if (milestone.wave) {
+                    console.log(`Target Wave: ${milestone.wave.year}.${milestone.wave.quarter} (${milestone.wave.date})`);
+                } else {
+                    console.log(`Target Wave: Not specified`);
+                }
+            } catch (error) {
+                console.error(`Error fetching milestone:`, error.message);
+                process.exit(1);
+            }
+        });
+
+        // Milestone add command (no edition support - write operation)
         itemCommand
             .command('milestone-add <itemId> <expectedVersionId> <title> <description>')
             .description(`Add milestone to ${this.displayName} (creates new version)`)
@@ -414,7 +413,7 @@ class OperationalChangeCommands extends VersionedCommands {
                 }
             });
 
-        // Milestone update command
+        // Milestone update command (no edition support - write operation)
         itemCommand
             .command('milestone-update <itemId> <milestoneId> <expectedVersionId>')
             .description(`Update milestone (creates new version)`)
@@ -464,7 +463,7 @@ class OperationalChangeCommands extends VersionedCommands {
                 }
             });
 
-        // Milestone delete command
+        // Milestone delete command (no edition support - write operation)
         itemCommand
             .command('milestone-delete <itemId> <milestoneId> <expectedVersionId>')
             .description(`Delete milestone (creates new version)`)

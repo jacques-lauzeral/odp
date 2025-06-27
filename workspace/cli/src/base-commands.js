@@ -1,4 +1,4 @@
-// workspace/cli/src/base-commands.js - Updated BaseCommands with field configuration support
+// workspace/cli/src/base-commands.js - Updated BaseCommands with --edition support
 import { Command } from 'commander';
 import Table from 'cli-table3';
 import fetch from 'node-fetch';
@@ -279,16 +279,80 @@ export class BaseCommands {
     }
 }
 
-// Add this to base-commands.js - Update VersionedCommands class with baseline support
-
 /**
  * VersionedCommands extends BaseCommands for versioned items (operational requirements/changes).
  * Adds version-specific operations and handles complex payloads.
- * Supports baseline context for historical queries.
+ * Supports baseline and edition context for historical queries.
  */
 export class VersionedCommands extends BaseCommands {
     constructor(itemName, urlPath, displayName, config) {
         super(itemName, urlPath, displayName, config);
+    }
+
+    /**
+     * Resolve edition to baseline and fromWave parameters
+     */
+    async resolveEditionContext(editionId) {
+        try {
+            const response = await fetch(`${this.baseUrl}/odp-editions/${editionId}`, {
+                headers: this.createHeaders()
+            });
+
+            if (response.status === 404) {
+                throw new Error(`Edition with ID ${editionId} not found`);
+            }
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const edition = await response.json();
+            return {
+                baselineId: edition.baseline?.id,
+                fromWaveId: edition.startsFromWave?.id,
+                editionTitle: edition.title
+            };
+        } catch (error) {
+            throw new Error(`Error resolving edition: ${error.message}`);
+        }
+    }
+
+    /**
+     * Build URL with context parameters (baseline/fromWave from edition or direct params)
+     */
+    async buildContextUrl(baseUrl, options) {
+        let url = baseUrl;
+        let contextDisplay = '';
+
+        // Validate mutual exclusivity
+        if (options.baseline && options.edition) {
+            throw new Error('Cannot use both --baseline and --edition options together');
+        }
+
+        if (options.edition) {
+            // Resolve edition to baseline + fromWave
+            const context = await this.resolveEditionContext(options.edition);
+            const params = [];
+
+            if (context.baselineId) {
+                params.push(`baseline=${context.baselineId}`);
+            }
+            if (context.fromWaveId) {
+                params.push(`fromWave=${context.fromWaveId}`);
+            }
+
+            if (params.length > 0) {
+                url += `?${params.join('&')}`;
+            }
+
+            contextDisplay = ` (Edition ${options.edition})`;
+        } else if (options.baseline) {
+            // Direct baseline parameter
+            url += `?baseline=${options.baseline}`;
+            contextDisplay = ` (Baseline ${options.baseline})`;
+        }
+
+        return { url, contextDisplay };
     }
 
     /**
@@ -310,27 +374,25 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Override list command for versioned items with baseline support
+     * Override list command for versioned items with baseline and edition support
      */
     addListCommand(itemCommand) {
         itemCommand
             .command('list')
-            .description(`List all ${this.displayName}s (latest versions or baseline context)`)
+            .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
+            .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
             .action(async (options) => {
                 try {
-                    let url = `${this.baseUrl}/${this.urlPath}`;
-                    if (options.baseline) {
-                        url += `?baseline=${options.baseline}`;
-                    }
+                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
                     const response = await fetch(url, {
                         headers: this.createHeaders()
                     });
 
                     if (!response.ok) {
-                        if (response.status === 400 && options.baseline) {
-                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
+                        if (response.status === 400) {
+                            throw new Error(`Invalid baseline or wave ID in context`);
                         }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
@@ -338,8 +400,7 @@ export class VersionedCommands extends BaseCommands {
                     const items = await response.json();
 
                     if (items.length === 0) {
-                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
-                        console.log(`No ${this.displayName}s found${context}.`);
+                        console.log(`No ${this.displayName}s found${contextDisplay}.`);
                         return;
                     }
 
@@ -357,8 +418,8 @@ export class VersionedCommands extends BaseCommands {
                         ]);
                     });
 
-                    const context = options.baseline ? ` (Baseline ${options.baseline})` : ' (Latest Versions)';
-                    console.log(`${this.displayName}s${context}:`);
+                    const displayContext = contextDisplay || ' (Latest Versions)';
+                    console.log(`${this.displayName}s${displayContext}:`);
                     console.log(table.toString());
                 } catch (error) {
                     console.error(`Error listing ${this.displayName}s:`, error.message);
@@ -368,41 +429,38 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Override show command for versioned items with baseline support
+     * Override show command for versioned items with baseline and edition support
      */
     addShowCommand(itemCommand) {
         itemCommand
             .command('show <itemId>')
-            .description(`Show a specific ${this.displayName} (latest version or baseline context)`)
+            .description(`Show a specific ${this.displayName} (latest version, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show item as it existed in specified baseline')
+            .option('--edition <id>', 'Show item in specified edition context (mutually exclusive with --baseline)')
             .action(async (itemId, options) => {
                 try {
-                    let url = `${this.baseUrl}/${this.urlPath}/${itemId}`;
-                    if (options.baseline) {
-                        url += `?baseline=${options.baseline}`;
-                    }
+                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}/${itemId}`, options);
 
                     const response = await fetch(url, {
                         headers: this.createHeaders()
                     });
 
                     if (response.status === 404) {
-                        const context = options.baseline ? ` in baseline ${options.baseline}` : '';
-                        console.error(`${this.displayName} with ID ${itemId} not found${context}.`);
+                        console.error(`${this.displayName} with ID ${itemId} not found${contextDisplay}.`);
                         process.exit(1);
                     }
 
                     if (!response.ok) {
-                        if (response.status === 400 && options.baseline) {
-                            throw new Error(`Invalid baseline ID: ${options.baseline}`);
+                        if (response.status === 400) {
+                            throw new Error(`Invalid baseline or wave ID in context`);
                         }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
                     const item = await response.json();
 
-                    if (options.baseline) {
-                        console.log(`=== ${this.displayName.toUpperCase()} (BASELINE ${options.baseline}) ===`);
+                    if (contextDisplay) {
+                        console.log(`=== ${this.displayName.toUpperCase()}${contextDisplay.toUpperCase()} ===`);
                     }
 
                     this.displayItemDetails(item);
@@ -485,6 +543,22 @@ export class VersionedCommands extends BaseCommands {
                     process.exit(1);
                 }
             });
+    }
+
+    /**
+     * Helper method to add edition support to milestone commands
+     */
+    addEditionSupportToMilestoneCommand(command) {
+        return command
+            .option('--baseline <id>', 'Show as it existed in specified baseline')
+            .option('--edition <id>', 'Show in specified edition context (mutually exclusive with --baseline)');
+    }
+
+    /**
+     * Helper method to build milestone URL with context
+     */
+    async buildMilestoneContextUrl(baseUrl, options) {
+        return await this.buildContextUrl(baseUrl, options);
     }
 
     _addCreateCommand(itemCommand) {

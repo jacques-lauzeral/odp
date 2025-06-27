@@ -9,7 +9,7 @@ info:
 
 paths:
   # ODP Edition CRUD Endpoints
-  /odp:
+  /odp-editions:
     get:
       summary: List all ODP editions
       tags: [ODP]
@@ -62,7 +62,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
-  /odp/{id}:
+  /odp-editions/{id}:
     get:
       summary: Get ODP edition by ID
       tags: [ODP]
@@ -80,41 +80,6 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
-        '404':
-          description: ODP Edition not found
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-
-  /odp/{id}/context:
-    get:
-      summary: Resolve ODP edition context (baseline + wave)
-      tags: [ODP]
-      description: |
-        Resolves an ODP Edition to its underlying baseline and wave references.
-        Used by route layer for parameter resolution.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: ODP Edition ID
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  baselineId:
-                    type: string
-                    description: Referenced baseline ID
-                  fromWaveId:
-                    type: string
-                    description: Starting wave ID for filtering
         '404':
           description: ODP Edition not found
           content:
