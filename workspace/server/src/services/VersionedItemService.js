@@ -7,7 +7,7 @@ import {
 /**
  * VersionedItemService provides versioned CRUD operations with transaction management and user context.
  * Root class for operational entities (versioned with optimistic locking).
- * Enhanced with baseline-aware operations for historical context support.
+ * Enhanced with multi-context operations for baseline-aware and wave filtering support.
  */
 export class VersionedItemService {
     constructor(storeGetter) {
@@ -88,16 +88,17 @@ export class VersionedItemService {
     }
 
     /**
-     * Get entity by ID (latest version or baseline context)
+     * Get entity by ID (latest version, baseline context, or wave filtered)
      * @param {number} itemId - Item ID
      * @param {string} userId - User ID
      * @param {number|null} baselineId - Optional baseline ID for historical context
+     * @param {number|null} fromWaveId - Optional wave ID for filtering
      */
-    async getById(itemId, userId, baselineId = null) {
+    async getById(itemId, userId, baselineId = null, fromWaveId = null) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entity = await store.findById(itemId, tx, baselineId);
+            const entity = await store.findById(itemId, tx, baselineId, fromWaveId);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -139,15 +140,16 @@ export class VersionedItemService {
     }
 
     /**
-     * List all entities (latest versions or baseline context)
+     * List all entities (latest versions, baseline context, or wave filtered)
      * @param {string} userId - User ID
      * @param {number|null} baselineId - Optional baseline ID for historical context
+     * @param {number|null} fromWaveId - Optional wave ID for filtering
      */
-    async getAll(userId, baselineId = null) {
+    async getAll(userId, baselineId = null, fromWaveId = null) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entities = await store.findAll(tx, baselineId);
+            const entities = await store.findAll(tx, baselineId, fromWaveId);
             await commitTransaction(tx);
             return entities;
         } catch (error) {

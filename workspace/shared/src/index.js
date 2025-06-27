@@ -144,20 +144,53 @@ export const Baseline = {
     title: '',                  // Human-readable identifier
     createdAt: '',             // Baseline creation timestamp
     createdBy: '',             // Baseline creator
-    capturedItemCount: 0,      // Number of OR/OC versions captured
-    startsFromWave: null       // Optional wave reference object {id, name, year, quarter, date}
+    capturedItemCount: 0       // Number of OR/OC versions captured
 };
 
 // API Baseline request structures
 export const BaselineRequests = {
-    // Create request - title and optional wave reference
+    // Create request - title only (wave targeting removed)
     create: {
-        title: '',              // Required: Unique baseline identifier
-        startsFromWaveId: null  // Optional: Wave ID that this baseline starts from
+        title: ''              // Required: Unique baseline identifier
     }
 
     // No update request - baselines are immutable once created
     // No delete request - baselines are immutable for historical integrity
+};
+
+// API ODPEdition model
+export const ODPEdition = {
+    id: '',
+    title: '',                  // Human-readable identifier
+    type: 'DRAFT',             // 'DRAFT' | 'OFFICIAL'
+    createdAt: '',             // Edition creation timestamp
+    createdBy: '',             // Edition creator
+    baseline: {                // Referenced baseline object
+        id: '',
+        title: '',
+        createdAt: ''
+    },
+    startsFromWave: {          // Referenced wave object
+        id: '',
+        name: '',              // e.g., "2025.1"
+        year: 0,
+        quarter: 0,
+        date: ''
+    }
+};
+
+// API ODPEdition request structures
+export const ODPEditionRequests = {
+    // Create request - title, type, optional baseline, required wave
+    create: {
+        title: '',              // Required: Unique edition identifier
+        type: 'DRAFT',         // Required: 'DRAFT' | 'OFFICIAL'
+        baselineId: null,      // Optional: Baseline ID (auto-created if not provided)
+        startsFromWaveId: ''   // Required: Wave ID for filtering
+    }
+
+    // No update request - ODP editions are immutable once created
+    // No delete request - ODP editions are immutable for historical integrity
 };
 
 // Milestone Event Types for validation and UI

@@ -11,7 +11,7 @@ paths:
   # Milestone CRUD Endpoints
   /operational-changes/{id}/milestones:
     get:
-      summary: List all milestones for operational change (latest version or baseline context)
+      summary: List all milestones for operational change (latest version, baseline context, or wave filtered)
       tags: [Milestones]
       parameters:
         - name: id
@@ -48,7 +48,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline ID
+          description: Bad Request - Invalid baseline or wave ID
           content:
             application/json:
               schema:
@@ -92,7 +92,7 @@ paths:
 
   /operational-changes/{id}/milestones/{milestoneId}:
     get:
-      summary: Get specific milestone (latest version or baseline context)
+      summary: Get specific milestone (latest version, baseline context, or wave filtered)
       tags: [Milestones]
       parameters:
         - name: id
@@ -133,7 +133,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline ID
+          description: Bad Request - Invalid baseline or wave ID
           content:
             application/json:
               schema:

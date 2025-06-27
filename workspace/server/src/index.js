@@ -8,6 +8,7 @@ import waveRoutes from './routes/wave.js';
 import operationalRequirementRoutes from './routes/operational-requirement.js';
 import operationalChangeRoutes from './routes/operational-change.js';
 import baselineRoutes from './routes/baseline.js';
+import odpEditionRoutes from './routes/odp-edition.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -32,8 +33,9 @@ app.use('/waves', waveRoutes);
 app.use('/operational-requirements', operationalRequirementRoutes);
 app.use('/operational-changes', operationalChangeRoutes);
 
-// Baseline Management API Routes
+// Management Entity API Routes
 app.use('/baselines', baselineRoutes);
+app.use('/odp-editions', odpEditionRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
@@ -74,8 +76,9 @@ async function startServer() {
             console.log(`Operational Entities:`);
             console.log(`  - http://localhost:${PORT}/operational-requirements`);
             console.log(`  - http://localhost:${PORT}/operational-changes`);
-            console.log(`Baseline Management:`);
+            console.log(`Management Entities:`);
             console.log(`  - http://localhost:${PORT}/baselines`);
+            console.log(`  - http://localhost:${PORT}/odp-editions`);
             console.log(`Baseline-aware queries:`);
             console.log(`  - http://localhost:${PORT}/operational-requirements?baseline=<id>`);
             console.log(`  - http://localhost:${PORT}/operational-changes?baseline=<id>`);

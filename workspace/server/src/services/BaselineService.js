@@ -2,8 +2,7 @@ import {
     createTransaction,
     commitTransaction,
     rollbackTransaction,
-    baselineStore,
-    waveStore
+    baselineStore
 } from '../store/index.js';
 
 /**
@@ -18,40 +17,18 @@ export class BaselineService {
     // =============================================================================
 
     /**
-     * Validate wave reference exists if provided
-     */
-    async _validateWaveReference(startsFromWaveId, transaction) {
-        if (startsFromWaveId === null || startsFromWaveId === undefined) {
-            return; // Optional field - no validation needed
-        }
-
-        const wave = await waveStore().findById(startsFromWaveId, transaction);
-        if (!wave) {
-            throw new Error(`Wave with ID ${startsFromWaveId} does not exist`);
-        }
-    }
-
-    /**
      * Validate baseline creation data
      */
     _validateBaselineData(data) {
-        const { title, startsFromWaveId } = data;
+        const { title } = data;
 
         // Required fields
         if (!title || typeof title !== 'string' || title.trim() === '') {
             throw new Error('Title is required and must be a non-empty string');
         }
 
-        // Optional wave reference validation (type check only - existence checked in service)
-        if (startsFromWaveId !== null && startsFromWaveId !== undefined) {
-            if (typeof startsFromWaveId !== 'string' && typeof startsFromWaveId !== 'number') {
-                throw new Error('startsFromWaveId must be a string or number if provided');
-            }
-        }
-
         return {
-            title: title.trim(),
-            startsFromWaveId: startsFromWaveId || null
+            title: title.trim()
         };
     }
 
@@ -66,9 +43,6 @@ export class BaselineService {
         const tx = createTransaction(userId);
         try {
             const validatedData = this._validateBaselineData(data);
-
-            // Validate wave reference exists if provided
-            await this._validateWaveReference(validatedData.startsFromWaveId, tx);
 
             // Create baseline with atomic snapshot
             const baseline = await baselineStore().create(validatedData, tx);
@@ -126,24 +100,6 @@ export class BaselineService {
         }
     }
 
-    // =============================================================================
-    // NO UPDATE/DELETE OPERATIONS
-    // Baselines are immutable once created for historical integrity
-    // =============================================================================
-
-    /**
-     * Update operation not supported - baselines are immutable
-     */
-    async updateBaseline(id, data, userId) {
-        throw new Error('Baseline update not supported - baselines are immutable once created');
-    }
-
-    /**
-     * Delete operation not supported - baselines are immutable
-     */
-    async deleteBaseline(id, userId) {
-        throw new Error('Baseline deletion not supported - baselines are immutable for historical integrity');
-    }
 }
 
 // Export instance for route handlers

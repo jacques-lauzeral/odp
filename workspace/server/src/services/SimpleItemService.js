@@ -133,43 +133,4 @@ export class SimpleItemService {
         throw new Error('_validateUpdateData must be implemented by subclass');
     }
 
-    // =============================================================================
-    // LEGACY COMPATIBILITY METHODS
-    // For backward compatibility with existing router/CLI code
-    // =============================================================================
-
-    /**
-     * @deprecated Use listItems() instead
-     */
-    async listEntities(userId) {
-        return this.listItems(userId);
-    }
-
-    /**
-     * @deprecated Use getItem() instead
-     */
-    async getEntity(id, userId) {
-        return this.getItem(id, userId);
-    }
-
-    /**
-     * @deprecated Use createItem() instead
-     */
-    async createEntity(data, userId) {
-        return this.createItem(data, userId);
-    }
-
-    /**
-     * @deprecated Use updateItem() instead
-     */
-    async updateEntity(id, data, userId) {
-        return this.updateItem(id, data, userId);
-    }
-
-    /**
-     * @deprecated Use deleteItem() instead
-     */
-    async deleteEntity(id, userId) {
-        return this.deleteItem(id, userId);
-    }
 }

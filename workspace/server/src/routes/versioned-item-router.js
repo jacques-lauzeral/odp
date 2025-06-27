@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
- * Handles versioned REST operations with user context, optimistic locking, baseline support, and consistent error handling.
+ * Handles versioned REST operations with user context, optimistic locking, multi-context support, and consistent error handling.
  */
 export class VersionedItemRouter {
     constructor(service, entityName, entityDisplayName = null) {
@@ -31,20 +31,28 @@ export class VersionedItemRouter {
         return req.query.baseline || null;
     }
 
+    /**
+     * Extract fromWave ID from query parameters
+     */
+    getFromWaveId(req) {
+        return req.query.fromWave || null;
+    }
+
     setupRoutes() {
-        // List all entities (latest versions or baseline context)
+        // List all entities (latest versions, baseline context, or wave filtered)
         this.router.get('/', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
                 const baselineId = this.getBaselineId(req);
-                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}`);
-                const entities = await this.service.getAll(userId, baselineId);
+                const fromWaveId = this.getFromWaveId(req);
+                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
+                const entities = await this.service.getAll(userId, baselineId, fromWaveId);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found')) {
+                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
@@ -52,17 +60,19 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get entity by ID (latest version or baseline context)
+        // Get entity by ID (latest version, baseline context, or wave filtered)
         this.router.get('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
                 const baselineId = this.getBaselineId(req);
-                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}`);
-                const entity = await this.service.getById(req.params.id, userId, baselineId);
+                const fromWaveId = this.getFromWaveId(req);
+                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
+                const entity = await this.service.getById(req.params.id, userId, baselineId, fromWaveId);
                 if (!entity) {
                     const context = baselineId ? ` in baseline ${baselineId}` : '';
+                    const waveContext = fromWaveId ? ` (wave filtered)` : '';
                     return res.status(404).json({
-                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found${context}` }
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found${context}${waveContext}` }
                     });
                 }
                 res.json(entity);
@@ -70,7 +80,7 @@ export class VersionedItemRouter {
                 console.error(`Error fetching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found')) {
+                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
@@ -78,7 +88,7 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get specific version of entity (no baseline support - version is explicit)
+        // Get specific version of entity (no multi-context support - version is explicit)
         this.router.get('/:id/versions/:versionNumber', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
@@ -101,7 +111,7 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get version history (no baseline support - shows all versions)
+        // Get version history (no multi-context support - shows all versions)
         this.router.get('/:id/versions', async (req, res) => {
             try {
                 const userId = this.getUserId(req);

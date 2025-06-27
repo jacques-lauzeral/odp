@@ -26,12 +26,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering (requirements referenced by changes with milestones at/after this wave)"
-        - name: odp
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -42,7 +36,7 @@ paths:
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '400':
-          description: Bad Request - Invalid baseline, wave, or ODP edition ID
+          description: Bad Request - Invalid baseline or wave ID
           content:
             application/json:
               schema:
@@ -94,12 +88,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering"
-        - name: odp
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -114,7 +102,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline, wave, or ODP edition ID
+          description: Bad Request - Invalid baseline or wave ID
           content:
             application/json:
               schema:
@@ -252,12 +240,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering (changes with milestones at/after this wave)"
-        - name: odp
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -268,7 +250,7 @@ paths:
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '400':
-          description: Bad Request - Invalid baseline, wave, or ODP edition ID
+          description: Bad Request - Invalid baseline or wave ID
           content:
             application/json:
               schema:
@@ -314,12 +296,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering"
-        - name: odp
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Optional ODP edition ID (resolves to baseline + fromWave, excludes other parameters)"
       responses:
         '200':
           description: Success
@@ -334,7 +310,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline, wave, or ODP edition ID
+          description: Bad Request - Invalid baseline or wave ID
           content:
             application/json:
               schema:

@@ -17,22 +17,23 @@ export class OperationalChangeService extends VersionedItemService {
     // Inherits from VersionedItemService:
     // - create(payload, userId)
     // - update(itemId, payload, expectedVersionId, userId)
-    // - getById(itemId, userId, baselineId = null)
+    // - getById(itemId, userId, baselineId = null, fromWaveId = null)
     // - getByIdAndVersion(itemId, versionNumber, userId)
     // - getVersionHistory(itemId, userId)
-    // - getAll(userId, baselineId = null)
+    // - getAll(userId, baselineId = null, fromWaveId = null)
     // - delete(itemId, userId)
 
     /**
-     * Get all milestones for operational change (latest version or baseline context)
+     * Get all milestones for operational change (latest version, baseline context, or wave filtered)
      * @param {number} itemId - Operational Change Item ID
      * @param {string} userId - User ID
      * @param {number|null} baselineId - Optional baseline ID for historical context
+     * @param {number|null} fromWaveId - Optional wave ID for filtering
      */
-    async getMilestones(itemId, userId, baselineId = null) {
+    async getMilestones(itemId, userId, baselineId = null, fromWaveId = null) {
         const tx = createTransaction(userId);
         try {
-            const operationalChange = await this.getStore().findById(itemId, tx, baselineId);
+            const operationalChange = await this.getStore().findById(itemId, tx, baselineId, fromWaveId);
             if (!operationalChange) {
                 throw new Error('Operational change not found');
             }
@@ -45,14 +46,15 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     /**
-     * Get specific milestone by ID (latest version or baseline context)
+     * Get specific milestone by ID (latest version, baseline context, or wave filtered)
      * @param {number} itemId - Operational Change Item ID
      * @param {number} milestoneId - Milestone ID
      * @param {string} userId - User ID
      * @param {number|null} baselineId - Optional baseline ID for historical context
+     * @param {number|null} fromWaveId - Optional wave ID for filtering
      */
-    async getMilestone(itemId, milestoneId, userId, baselineId = null) {
-        const milestones = await this.getMilestones(itemId, userId, baselineId);
+    async getMilestone(itemId, milestoneId, userId, baselineId = null, fromWaveId = null) {
+        const milestones = await this.getMilestones(itemId, userId, baselineId, fromWaveId);
         const store = this.getStore();
         const milestone = milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
         if (!milestone) {
