@@ -25,5 +25,19 @@ services:
     environment:
       NODE_ENV: development
 
+  web-client:
+    image: node:20
+    working_dir: /app
+    ports:
+      - "3000:3000"  # Web client on port 3000
+    depends_on:
+      - odp-server
+    volumes:
+      - .:/app  # Mount entire odp root
+      - /app/workspace/web-client/node_modules  # Prevent overwriting web-client node_modules
+    command: ["sh", "-c", "cd workspace/web-client && npm install && npm run dev"]
+    environment:
+      NODE_ENV: development
+
 volumes:
   neo4j_data:

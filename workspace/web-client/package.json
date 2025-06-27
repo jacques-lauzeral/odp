@@ -1,25 +1,30 @@
 {
   "name": "@odp/web-client",
   "version": "1.0.0",
-  "description": "ODP web client application",
-  "private": true,
+  "description": "ODP Web Client - Operational Deployment Plan Management Interface",
   "type": "module",
   "main": "src/index.js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/jacques-lauzeral/odp"
-  },
   "scripts": {
-    "dev": "npx http-server  -p 3000 -c-1",
-    "start": "npx http-server  -p 8080"
+    "dev": "http-server src -p 3000 -c-1 --cors",
+    "preview": "http-server src -p 3000",
+    "build": "echo 'No build step required for vanilla JS'",
+    "clean": "echo 'No artifacts to clean'"
   },
   "dependencies": {
-    "@odp/shared": "*",
-    "ag-grid-community": "^31.0.0",
-    "quill": "^2.0.3",
-    "vis-timeline": "^7.7.3"
+    "@odp/shared": "file:../shared"
   },
   "devDependencies": {
     "http-server": "^14.1.1"
-  }
+  },
+  "keywords": [
+    "odp",
+    "web-client",
+    "vanilla-javascript"
+  ],
+  "author": "ODP Development Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "private": true
 }
