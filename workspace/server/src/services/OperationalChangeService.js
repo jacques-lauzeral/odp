@@ -64,6 +64,21 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     /**
+     * Convert milestone Reference objects to raw data format for store operations
+     * @private
+     * @param {Array<object>} milestones - Milestones with Reference structures
+     * @returns {Array<object>} Milestones in raw data format
+     */
+    _convertMilestonesToRawData(milestones) {
+        return milestones.map(milestone => ({
+            title: milestone.title,
+            description: milestone.description,
+            eventTypes: milestone.eventTypes,
+            waveId: milestone.wave?.id || null  // Extract waveId from wave Reference
+        }));
+    }
+
+    /**
      * Add milestone to operational change (creates new OC version)
      */
     async addMilestone(itemId, milestoneData, expectedVersionId, userId) {
@@ -77,8 +92,11 @@ export class OperationalChangeService extends VersionedItemService {
                 throw new Error('Operational change not found');
             }
 
+            // Convert existing milestones to raw data format
+            const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
+
             // Create new milestones array with added milestone
-            const newMilestones = [...current.milestones, milestoneData];
+            const newMilestones = [...existingMilestonesData, milestoneData];
 
             // Validate the new milestone
             this._validateMilestones(newMilestones);
@@ -121,6 +139,9 @@ export class OperationalChangeService extends VersionedItemService {
                 throw new Error('Operational change not found');
             }
 
+            // Convert existing milestones to raw data format
+            const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
+
             // Find and update the milestone
             const milestoneIndex = current.milestones.findIndex(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
             if (milestoneIndex === -1) {
@@ -128,8 +149,8 @@ export class OperationalChangeService extends VersionedItemService {
             }
 
             // Create new milestones array with updated milestone
-            const newMilestones = [...current.milestones];
-            newMilestones[milestoneIndex] = { ...milestoneData, id: milestoneId }; // Preserve ID
+            const newMilestones = [...existingMilestonesData];
+            newMilestones[milestoneIndex] = milestoneData; // Replace with new milestone data
 
             // Validate the updated milestones
             this._validateMilestones(newMilestones);
@@ -178,8 +199,9 @@ export class OperationalChangeService extends VersionedItemService {
                 throw new Error('Milestone not found');
             }
 
-            // Create new milestones array without the deleted milestone
-            const newMilestones = current.milestones.filter(m => store.normalizeId(m.id) !== store.normalizeId(milestoneId));
+            // Convert existing milestones to raw data format and filter out deleted milestone
+            const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
+            const newMilestones = existingMilestonesData.filter((_, index) => index !== milestoneIndex);
 
             // Create complete payload for update
             const completePayload = {
@@ -222,7 +244,7 @@ export class OperationalChangeService extends VersionedItemService {
             visibility: patchPayload.visibility !== undefined ? patchPayload.visibility : current.visibility,
             satisfiesRequirements: patchPayload.satisfiesRequirements !== undefined ? patchPayload.satisfiesRequirements : current.satisfiesRequirements.map(ref => ref.id),
             supersedsRequirements: patchPayload.supersedsRequirements !== undefined ? patchPayload.supersedsRequirements : current.supersedsRequirements.map(ref => ref.id),
-            milestones: patchPayload.milestones !== undefined ? patchPayload.milestones : current.milestones
+            milestones: patchPayload.milestones !== undefined ? patchPayload.milestones : this._convertMilestonesToRawData(current.milestones)
         };
     }
 

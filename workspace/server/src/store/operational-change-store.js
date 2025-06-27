@@ -334,9 +334,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                     const normalizedWaveId = this.normalizeId(waveId);
                     await transaction.run(`
                         MATCH (milestone:OperationalChangeMilestone), (wave:Wave)
-                        WHERE id(milestone) = $milestoneId AND id(wave) = $waveId
+                        WHERE id(milestone) = $milestoneId AND id(wave) = $normalizedWaveId
                         CREATE (milestone)-[:TARGETS]->(wave)
-                    `, { milestoneId, waveId: normalizedWaveId });
+                    `, { milestoneId, normalizedWaveId });
                 }
             }
         } catch (error) {
