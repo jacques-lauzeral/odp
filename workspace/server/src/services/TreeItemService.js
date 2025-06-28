@@ -8,7 +8,7 @@ import {
 /**
  * TreeItemService extends SimpleItemService with name/description validation and REFINES hierarchy management.
  * Combines NamedItemService validation with RefinableItemService hierarchy operations.
- * Base class for setup entities like StakeholderCategory, DataCategory, Service, RegulatoryAspect.
+ * Base class for setup entities like StakeholderCategories, DataCategories, Services, RegulatoryAspects.
  */
 export class TreeItemService extends SimpleItemService {
     constructor(storeGetter) {

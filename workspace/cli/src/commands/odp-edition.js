@@ -140,7 +140,7 @@ class EditionCommands {
                         const wave = edition.startsFromWave;
                         console.log(`Starts From Wave: ${wave.name} (${wave.year}.${wave.quarter}) - ${wave.date}`);
                     } else {
-                        console.log('Starts From Wave: None');
+                        console.log('Starts From Waves: None');
                     }
                 } catch (error) {
                     console.error('Error getting ODP edition:', error.message);
@@ -153,7 +153,7 @@ class EditionCommands {
         editionCommand
             .command('create <title>')
             .description('Create a new ODP edition')
-            .requiredOption('--from <waveId>', 'Wave ID that this edition starts from')
+            .requiredOption('--from <waveId>', 'Waves ID that this edition starts from')
             .option('--type <type>', 'Edition type (DRAFT or OFFICIAL)', 'DRAFT')
             .option('--baseline <baselineId>', 'Baseline ID (auto-created if not provided)')
             .action(async (title, options) => {

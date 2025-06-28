@@ -24,7 +24,7 @@ router.get('/:id/milestones', async (req, res) => {
             const context = baselineId ? ` in baseline ${baselineId}` : '';
             const waveContext = fromWaveId ? ` (wave filtered)` : '';
             res.status(404).json({ error: { code: 'NOT_FOUND', message: `Operational change not found${context}${waveContext}` } });
-        } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+        } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
@@ -51,7 +51,7 @@ router.get('/:id/milestones/:milestoneId', async (req, res) => {
             const context = baselineId ? ` in baseline ${baselineId}` : '';
             const waveContext = fromWaveId ? ` (wave filtered)` : '';
             res.status(404).json({ error: { code: 'NOT_FOUND', message: `${error.message}${context}${waveContext}` } });
-        } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+        } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });

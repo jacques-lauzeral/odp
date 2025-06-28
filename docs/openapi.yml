@@ -82,11 +82,11 @@ tags:
   - name: Data Categories
     description: Data category management
   - name: Services
-    description: Service management
+    description: Services management
   - name: Regulatory Aspects
     description: Regulatory aspect management
   - name: Waves
-    description: Wave management for deployment timelines
+    description: Waves management for deployment timelines
   - name: Operational Requirements
     description: Operational requirement management with versioning
   - name: Operational Changes

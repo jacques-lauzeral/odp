@@ -42,7 +42,7 @@ export class DataCategoryService extends TreeItemService {
         return this.deleteItem(id, userId);
     }
 
-    // Add any DataCategory-specific methods here if needed in the future
+    // Add any DataCategories-specific methods here if needed in the future
 }
 
 // Export instance for route handlers

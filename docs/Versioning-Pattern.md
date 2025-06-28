@@ -142,7 +142,7 @@ All relationships point from **ItemVersion → Item** to ensure they automatical
 ```cypher
 // Relationships from versioned entities point to Item nodes
 (OperationalRequirementVersion)-[:REFINES]->(OperationalRequirement)
-(OperationalRequirementVersion)-[:IMPACTS]->(StakeholderCategory)
+(OperationalRequirementVersion)-[:IMPACTS]->(StakeholderCategories)
 (OperationalChangeVersion)-[:SATISFIES]->(OperationalRequirement)
 ```
 
@@ -295,7 +295,7 @@ Current implementation supports linear versioning only. Future enhancement could
 ## Migration from Simple Entities
 
 ### Setup Entities (Non-Versioned)
-- StakeholderCategory, RegulatoryAspect, Data, Service
+- StakeholderCategories, RegulatoryAspects, Data, Services
 - Extend BaseStore directly
 - Simple CRUD operations with REFINES relationships
 

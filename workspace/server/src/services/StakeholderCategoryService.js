@@ -42,7 +42,7 @@ export class StakeholderCategoryService extends TreeItemService {
         return this.deleteItem(id, userId);
     }
 
-    // Add any StakeholderCategory-specific methods here if needed in the future
+    // Add any StakeholderCategories-specific methods here if needed in the future
 }
 
 // Export instance for route handlers

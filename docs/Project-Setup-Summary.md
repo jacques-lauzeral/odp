@@ -121,7 +121,7 @@ All endpoints support CORS for web client integration:
 - `GET/POST /stakeholder-categories` - Stakeholder management with hierarchy
 - `GET/POST /regulatory-aspects` - Regulatory aspect management
 - `GET/POST /data-categories` - Data category management
-- `GET/POST /services` - Service management
+- `GET/POST /services` - Services management
 - `GET/POST /waves` - Timeline wave management
 
 #### Operational Entities (Versioned)

@@ -42,7 +42,7 @@ export class RegulatoryAspectService extends TreeItemService {
         return this.deleteItem(id, userId);
     }
 
-    // Add any RegulatoryAspect-specific methods here if needed in the future
+    // Add any RegulatoryAspects-specific methods here if needed in the future
 }
 
 // Export instance for route handlers

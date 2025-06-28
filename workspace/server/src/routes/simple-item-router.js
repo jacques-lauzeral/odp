@@ -9,7 +9,7 @@ export class SimpleItemRouter {
     constructor(service, entityName, entityDisplayName = null) {
         this.service = service;
         this.entityName = entityName; // for logging (e.g., 'wave')
-        this.entityDisplayName = entityDisplayName || entityName; // for error messages (e.g., 'Wave')
+        this.entityDisplayName = entityDisplayName || entityName; // for error messages (e.g., 'Waves')
         this.router = Router();
         this.setupRoutes();
     }

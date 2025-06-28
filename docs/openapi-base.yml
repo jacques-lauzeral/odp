@@ -305,7 +305,7 @@ components:
               type: string
             name:
               type: string
-              description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
+              description: "Waves name in format 'year.quarter' (e.g., '2025.1')"
 
     MilestoneRequest:
       type: object
@@ -498,7 +498,7 @@ components:
               type: string
             name:
               type: string
-              description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
+              description: "Waves name in format 'year.quarter' (e.g., '2025.1')"
             year:
               type: integer
             quarter:
@@ -523,4 +523,4 @@ components:
           description: "Baseline ID that this edition references"
         startsFromWaveId:
           type: string
-          description: "Wave ID that this edition starts from for filtering"
+          description: "Waves ID that this edition starts from for filtering"

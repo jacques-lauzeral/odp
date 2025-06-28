@@ -10,7 +10,7 @@ Multi-context operations enable querying operational entities in different tempo
 **Behavior**: Returns versions captured in the specified baseline instead of latest versions
 **Implementation**: Uses HAS_ITEMS relationships from baseline to captured versions
 
-### fromWaveId (Wave Filtering)
+### fromWaveId (Waves Filtering)
 **Purpose**: Filter entities based on deployment timeline milestones
 **Behavior**: Applies cascading filter from waves to milestones to changes to requirements
 **Implementation**: Queries milestone timing and requirement references
@@ -72,7 +72,7 @@ MATCH (version)-[:IMPACTS]->(target)
 RETURN target
 ```
 
-## Wave Filtering Implementation
+## Waves Filtering Implementation
 
 ### Filtering Logic
 **OperationalChange Filtering**:
@@ -82,7 +82,7 @@ RETURN target
 **OperationalRequirement Filtering**:
 - Include only ORs that are referenced by at least one filtered OC via SATISFIES or SUPERSEDS relationships
 - Include all ancestor ORs via REFINES hierarchy (upward cascade)
-- Cascading filter: Wave → Milestones → Changes → Requirements → REFINES Ancestors
+- Cascading filter: Waves → Milestones → Changes → Requirements → REFINES Ancestors
 
 ### Implementation Queries
 **OperationalChange wave filtering**:
@@ -90,8 +90,8 @@ RETURN target
 // Find OCs with milestones at/after specified wave
 MATCH (ocVersion:OperationalChangeVersion)
 WHERE EXISTS {
-  MATCH (ocVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-  MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
+  MATCH (ocVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Waves)
+  MATCH (fromWave:Waves) WHERE id(fromWave) = $fromWaveId
   WHERE targetWave.date >= fromWave.date
 }
 RETURN ocVersion
@@ -106,9 +106,9 @@ MATCH path = (orItem)<-[:REFINES*0..]-(descendant:OperationalRequirement)
 RETURN DISTINCT descendant
 ```
 
-### Wave Date Comparison
+### Waves Date Comparison
 ```javascript
-// Wave filtering uses date field for temporal comparison
+// Waves filtering uses date field for temporal comparison
 const fromWave = { id: 456, name: "2025.2", date: "2025-06-30" };
 const targetWave = { id: 789, name: "2025.3", date: "2025-09-30" };
 
@@ -141,7 +141,7 @@ async findById(itemId, transaction, baselineId = null, fromWaveId = null) {
 }
 ```
 
-### Wave Filter Implementation
+### Waves Filter Implementation
 ```javascript
 async _checkWaveFilter(version, fromWaveId, transaction) {
   if (this.entityType === 'OperationalChange') {
@@ -155,7 +155,7 @@ async _checkWaveFilter(version, fromWaveId, transaction) {
 }
 ```
 
-### Baseline + Wave Combined Filtering
+### Baseline + Waves Combined Filtering
 ```javascript
 async findAll(transaction, baselineId = null, fromWaveId = null) {
   // Step 1: Get base result set (current or baseline)
@@ -211,7 +211,7 @@ app.get('/operational-requirements', async (req, res) => {
 async resolveContext(odpEditionId, transaction) {
   const result = await transaction.run(`
     MATCH (edition:ODPEdition)-[:EXPOSES]->(baseline:Baseline)
-    MATCH (edition)-[:STARTS_FROM]->(wave:Wave)
+    MATCH (edition)-[:STARTS_FROM]->(wave:Waves)
     WHERE id(edition) = $odpEditionId
     RETURN id(baseline) as baselineId, id(wave) as fromWaveId
   `, { odpEditionId });
@@ -255,7 +255,7 @@ MATCH (baseline)-[:HAS_ITEMS]->(version)
 WHERE id(baseline) = $baselineId
 ```
 
-**Wave Filtering Queries**:
+**Waves Filtering Queries**:
 ```cypher
 // Optimized: Use EXISTS for milestone checking
 WHERE EXISTS {
@@ -265,7 +265,7 @@ WHERE EXISTS {
 ```
 
 ### Caching Strategies
-- **Wave date lookup**: Cache wave date values for filtering comparisons
+- **Waves date lookup**: Cache wave date values for filtering comparisons
 - **Baseline item sets**: Cache baseline HAS_ITEMS relationships for frequent queries
 - **Filtered result sets**: Cache wave-filtered entity sets within transaction scope
 
@@ -284,11 +284,11 @@ const filteredORs = await this._batchFilterORsByOCs(filteredOCVersionIds, transa
 - **Complete state**: Baseline captures entire system state at creation time
 - **Relationship preservation**: Captured versions maintain their exact relationship state
 
-### Wave Filtering Consistency
-- **Temporal accuracy**: Wave date comparisons ensure correct timeline filtering
+### Waves Filtering Consistency
+- **Temporal accuracy**: Waves date comparisons ensure correct timeline filtering
 - **Cascade integrity**: OR filtering accurately reflects OC references
 - **Relationship consistency**: Filtered sets maintain referential integrity
-- **Version alignment**: Wave filtering respects version-specific milestones
+- **Version alignment**: Waves filtering respects version-specific milestones
 
 ### Multi-Context Validation
 ```javascript
@@ -304,7 +304,7 @@ if (baselineId !== null) {
 if (fromWaveId !== null) {
   const waveExists = await this._checkWaveExists(fromWaveId, transaction);
   if (!waveExists) {
-    throw new StoreError('Wave not found');
+    throw new StoreError('Waves not found');
   }
 }
 ```
@@ -313,11 +313,11 @@ if (fromWaveId !== null) {
 
 ### Context Parameter Errors
 - `'Baseline not found'` - Invalid baselineId parameter
-- `'Wave not found'` - Invalid fromWaveId parameter
+- `'Waves not found'` - Invalid fromWaveId parameter
 - `'ODPEdition not found'` - Invalid odpEditionId in route layer resolution
 
 ### Filtering Result Errors
-- `'No matching milestones'` - Wave filter results in empty OC set
+- `'No matching milestones'` - Waves filter results in empty OC set
 - `'No baseline items found'` - Baseline exists but captured no operational entities
 
 ### Query Combination Errors
@@ -329,16 +329,16 @@ if (baselineVersions.length === 0) {
 }
 
 if (waveFilteredVersions.length === 0) {
-  console.info(`Wave filter ${fromWaveId} matched no entities`);
+  console.info(`Waves filter ${fromWaveId} matched no entities`);
   return [];
 }
 ```
 
 ## Integration Patterns
 
-### Service Layer Integration
+### Services Layer Integration
 ```javascript
-// Service methods receive resolved context parameters
+// Services methods receive resolved context parameters
 class OperationalRequirementService {
   async findAll(baselineId, fromWaveId, userId) {
     const tx = createTransaction(userId);

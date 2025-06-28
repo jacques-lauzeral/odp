@@ -9,7 +9,7 @@ Complete API reference for the ODP Store Layer providing CRUD operations, versio
 Foundation APIs: initialization, transactions, base CRUD operations, hierarchy management
 
 ### [Setup Entity APIs](Store-Layer-API-Setup.md)
-Simple entities: StakeholderCategory, RegulatoryAspect, DataCategory, Service, Wave
+Simple entities: StakeholderCategories, RegulatoryAspects, DataCategories, Services, Waves
 
 ### [Operational Entity APIs](Store-Layer-API-Operational.md)
 Versioned entities: OperationalRequirement, OperationalChange with multi-context support
@@ -20,14 +20,14 @@ Deployment planning: Baseline, ODPEdition with wave filtering
 ## Quick Reference
 
 ### Entity Categories
-- **Setup**: StakeholderCategory, RegulatoryAspect, DataCategory, Service, Wave
+- **Setup**: StakeholderCategories, RegulatoryAspects, DataCategories, Services, Waves
 - **Operational**: OperationalRequirement, OperationalChange (versioned)
 - **Management**: Baseline, ODPEdition (immutable)
 
 ### Store Hierarchy
 ```
 BaseStore → RefinableEntityStore → Setup entities
-BaseStore → Wave, Baseline, ODPEdition  
+BaseStore → Waves, Baseline, ODPEdition  
 BaseStore → VersionedItemStore → Operational entities
 ```
 

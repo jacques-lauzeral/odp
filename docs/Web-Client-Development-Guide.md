@@ -1,11 +1,11 @@
 # Web Client Development Guide
 
 ## Overview
-This guide provides comprehensive instructions for developing the ODP Web Client. It covers established patterns, coding conventions, and step-by-step procedures for adding new features to the activity-based vanilla JavaScript application.
+This guide provides development instructions for the ODP Web Client using established patterns from the completed Setup Management Activity.
 
-**Target Audience**: Developers contributing to the ODP Web Client  
+**Target Audience**: Developers extending the ODP Web Client  
 **Prerequisites**: Familiarity with ES modules, vanilla JavaScript, and REST APIs  
-**Architecture**: Activity-based organization with reusable component patterns
+**Architecture**: Three-layer activity-based organization with TreeEntity/ListEntity base classes
 
 ---
 
@@ -13,833 +13,350 @@ This guide provides comprehensive instructions for developing the ODP Web Client
 
 ### Quick Start
 ```bash
-# Clone and start development environment
 git clone https://github.com/jacques-lauzeral/odp
 cd odp
 docker-compose up
 
 # Access points
 # Web Client: http://localhost:3000
-# API Server: http://localhost (backend)
-# Neo4j Browser: http://localhost:7474
+# API Server: http://localhost
 ```
 
 ### Directory Structure
 ```
 workspace/web-client/src/
-├── index.html              # Main HTML template
-├── index.js                # Application entry point
-├── app.js                  # Router and activity management
-├── config/
-│   └── api.js             # API configuration
-├── shared/
-│   ├── api-client.js      # HTTP client wrapper
-│   ├── error-handler.js   # Error management
-│   └── utils.js           # Common utilities
+├── index.html              # Main HTML template with header container
+├── app.js                  # Router with API client integration
 ├── components/
-│   ├── common/            # Reusable UI components
-│   └── forms/             # Form utilities
+│   ├── common/header.js    # ✅ Global navigation header
+│   └── setup/              # ✅ Base entity components
+│       ├── tree-entity.js  # ✅ Hierarchical entity base class
+│       └── list-entity.js  # ✅ List/table entity base class
 ├── activities/
-│   ├── landing/           # Landing page ✅
-│   ├── setup/             # Setup Management Activity 🔄
-│   ├── read/              # ODP Read Activity 📋
-│   └── elaboration/       # ODP Elaboration Activity 📋
-└── styles/
-    ├── main.css           # Global styles and design tokens
-    ├── components.css     # Component styling
-    └── activities.css     # Activity-specific layouts
-```
-
-### Development Commands
-```bash
-# Start web client development server
-cd workspace/web-client
-npm install
-npm run dev
-
-# Alternative: Start all services
-docker-compose up web-client
+│   ├── landing/landing.js  # ✅ Landing page with user identification
+│   └── setup/              # ✅ Complete Setup Management Activity
+│       ├── setup.js        # ✅ Activity router with entity tabs
+│       ├── stakeholder-categories.js  # ✅ TreeEntity extension example
+│       └── waves.js        # ✅ ListEntity extension example
+└── styles/                 # ✅ Complete responsive styling system
 ```
 
 ---
 
-## Established Patterns
+## Established Patterns (From Setup Activity)
 
-### 1. Activity Development Pattern
-
-#### Activity Structure
-Every activity follows this standard structure:
-```
-activities/activity-name/
-├── activity-name.js       # Activity router and main component
-├── activity-name.html     # Activity template (optional)
-└── entity-name/           # Entity-specific components
-    ├── list.js           # List view with CRUD actions
-    ├── form.js           # Create/edit form component
-    └── detail.js         # Detail view component
-```
-
-#### Activity Router Pattern
+### 1. Entity Extension Pattern
+**TreeEntity Extension** (for hierarchical entities):
 ```javascript
-// activities/setup/setup.js
-import { dom } from '../../shared/utils.js';
-import { apiClient } from '../../shared/api-client.js';
+import TreeEntity from '../../components/setup/tree-entity.js';
 
-export default class Setup {
+export default class StakeholderCategories extends TreeEntity {
+    constructor(app, entityConfig) {
+        super(app, entityConfig);
+    }
+
+    getDisplayName(item) {
+        return item.name;  // Override for entity-specific display
+    }
+
+    renderItemDetails(item) {
+        return `
+            <div class="item-details">
+                <div class="detail-field">
+                    <label>Name</label>
+                    <p>${item.name}</p>
+                </div>
+                <!-- Add entity-specific fields -->
+            </div>
+        `;
+    }
+
+    showCreateForm(parentId = null) {
+        // Entity-specific modal form implementation
+        const modalHtml = `
+            <div class="modal-overlay" id="create-modal">
+                <!-- Entity-specific form fields -->
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        this.attachModalEventListeners('#create-modal');
+    }
+}
+```
+
+**ListEntity Extension** (for simple list entities):
+```javascript
+import ListEntity from '../../components/setup/list-entity.js';
+
+export default class Waves extends ListEntity {
+    getTableColumns() {
+        return [
+            { key: 'year', label: 'Year', type: 'number' },
+            { key: 'quarter', label: 'Quarter', type: 'quarter' },
+            { key: 'startDate', label: 'Start Date', type: 'date' }
+        ];
+    }
+
+    formatCellValue(value, column, item) {
+        if (column.type === 'quarter') return `Q${value}`;
+        if (column.type === 'date') return value ? new Date(value).toLocaleDateString() : '-';
+        return super.formatCellValue(value, column, item);
+    }
+
+    handleAdd() {
+        this.showCreateForm(); // Implement entity-specific create form
+    }
+}
+```
+
+### 2. Activity Development Pattern
+```javascript
+// activities/new-activity/new-activity.js
+export default class NewActivity {
     constructor(app) {
         this.app = app;
-        this.container = null;
-        this.currentEntity = null;
+        this.entities = {
+            'entity-type': { name: 'Entity Name', endpoint: '/entity-endpoint', type: 'tree' }
+        };
     }
 
     async render(container, subPath = []) {
         this.container = container;
         
-        // Handle entity routing
-        if (subPath.length === 0) {
-            await this.showEntityNavigation();
-        } else {
-            const entityType = subPath[0];
-            const entityId = subPath[1];
-            await this.loadEntity(entityType, entityId);
+        // Parse entity from subPath
+        if (subPath.length > 0 && this.entities[subPath[0]]) {
+            this.currentEntity = subPath[0];
         }
+
+        this.renderUI();
+        await this.loadCurrentEntity();
     }
 
-    async handleSubPath(subPath) {
-        // Handle URL changes within activity
-        await this.render(this.container, subPath);
-    }
-
-    cleanup() {
-        // Cleanup when leaving activity
-        if (this.currentEntity?.cleanup) {
-            this.currentEntity.cleanup();
-        }
+    async loadCurrentEntity() {
+        // Dynamic import entity component
+        const entityModule = await import(`./${this.currentEntity}.js`);
+        const EntityComponent = entityModule.default;
+        
+        this.currentEntityComponent = new EntityComponent(this.app, this.entities[this.currentEntity]);
+        await this.currentEntityComponent.render(this.workspace);
     }
 }
 ```
 
-### 2. Component Development Pattern
-
-#### Component Structure
+### 3. Modal Form Pattern (From Setup Implementation)
 ```javascript
-// Standard component pattern
-import { dom, validate } from '../../shared/utils.js';
-import { apiClient } from '../../shared/api-client.js';
-
-export class EntityList {
-    constructor(activity, entityType) {
-        this.activity = activity;
-        this.entityType = entityType;
-        this.container = null;
-        this.entities = [];
-    }
-
-    async render(container) {
-        this.container = container;
-        
-        try {
-            // Load data
-            this.entities = await apiClient.listEntities(`/${this.entityType}`);
-            
-            // Render UI
-            this.renderTable();
-            this.bindEvents();
-            
-        } catch (error) {
-            this.renderError(error);
-        }
-    }
-
-    renderTable() {
-        // Create table with data
-        const table = dom.create('table', { className: 'table' });
-        // ... table implementation
-        
-        dom.clear(this.container);
-        this.container.appendChild(table);
-    }
-
-    bindEvents() {
-        // Attach event listeners
-        const createBtn = dom.find('.create-btn', this.container);
-        createBtn?.addEventListener('click', () => this.handleCreate());
-    }
-
-    cleanup() {
-        // Component cleanup
-        this.entities = [];
-    }
-}
-```
-
-### 3. API Integration Pattern
-
-#### Standard CRUD Operations
-```javascript
-// Create entity
-const newEntity = await apiClient.createEntity('/stakeholder-categories', {
-    name: 'New Category',
-    description: 'Description',
-    parentId: parentId || null
-});
-
-// Read entities
-const entities = await apiClient.listEntities('/stakeholder-categories');
-const entity = await apiClient.getEntity('/stakeholder-categories', id);
-
-// Update entity
-const updated = await apiClient.updateEntity('/stakeholder-categories', id, {
-    id: id,
-    name: 'Updated Name',
-    description: 'Updated Description'
-});
-
-// Delete entity
-await apiClient.deleteEntity('/stakeholder-categories', id);
-```
-
-#### Error Handling
-```javascript
-try {
-    const result = await apiClient.createEntity(endpoint, data);
-    this.handleSuccess(result);
-} catch (error) {
-    this.handleError(error);
-}
-
-handleError(error) {
-    // Error is automatically handled by errorHandler
-    // Component should update UI to reflect error state
-    this.showErrorMessage(error.message);
-}
-```
-
-### 4. Form Development Pattern
-
-#### Standard Form Component
-```javascript
-export class EntityForm {
-    constructor(activity, entityType, entityId = null) {
-        this.activity = activity;
-        this.entityType = entityType;
-        this.entityId = entityId; // null for create, ID for edit
-        this.isEditing = !!entityId;
-    }
-
-    async render(container) {
-        this.container = container;
-        
-        if (this.isEditing) {
-            this.entity = await apiClient.getEntity(`/${this.entityType}`, this.entityId);
-        }
-        
-        this.renderForm();
-        this.bindEvents();
-    }
-
-    renderForm() {
-        const form = dom.create('form', { className: 'entity-form' });
-        
-        // Add form fields
-        form.innerHTML = `
-            <div class="form-group">
-                <label for="name">Name:</label>
-                <input type="text" id="name" name="name" class="form-control" 
-                       value="${this.entity?.name || ''}" required>
+showCreateForm(parentId = null) {
+    const modalHtml = `
+        <div class="modal-overlay" id="create-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 class="modal-title">Create Entity</h3>
+                    <button class="modal-close" data-action="close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="create-form">
+                        <div class="form-group">
+                            <label for="name">Name *</label>
+                            <input type="text" id="name" name="name" class="form-control" required>
+                        </div>
+                        <!-- Add entity-specific fields -->
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
+                    <button type="button" class="btn btn-primary" data-action="save">Create</button>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="description">Description:</label>
-                <textarea id="description" name="description" class="form-control"
-                         rows="3">${this.entity?.description || ''}</textarea>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">
-                    ${this.isEditing ? 'Update' : 'Create'}
-                </button>
-                <button type="button" class="btn btn-secondary cancel-btn">Cancel</button>
-            </div>
-        `;
-        
-        dom.clear(this.container);
-        this.container.appendChild(form);
-    }
+        </div>
+    `;
 
-    bindEvents() {
-        const form = dom.find('form', this.container);
-        const cancelBtn = dom.find('.cancel-btn', this.container);
-        
-        form.addEventListener('submit', (e) => this.handleSubmit(e));
-        cancelBtn.addEventListener('click', () => this.handleCancel());
-    }
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    this.attachModalEventListeners('#create-modal');
+}
 
-    async handleSubmit(event) {
-        event.preventDefault();
-        
-        try {
-            const formData = new FormData(event.target);
-            const data = Object.fromEntries(formData);
-            
-            // Validate data
-            this.validateForm(data);
-            
-            // Submit to API
-            if (this.isEditing) {
-                data.id = this.entityId;
-                await apiClient.updateEntity(`/${this.entityType}`, this.entityId, data);
-            } else {
-                await apiClient.createEntity(`/${this.entityType}`, data);
-            }
-            
-            // Navigate back to list
-            this.activity.app.navigateTo(`/setup/${this.entityType}`);
-            
-        } catch (error) {
-            this.showValidationErrors(error);
-        }
-    }
-
-    validateForm(data) {
-        validate.required(data.name, 'Name');
-        validate.length(data.name, 2, 100, 'Name');
-        // Additional validation...
-    }
+attachModalEventListeners(modalSelector) {
+    const modal = document.querySelector(modalSelector);
+    modal.addEventListener('click', async (e) => {
+        const action = e.target.dataset.action;
+        if (action === 'close') this.closeModal(modal);
+        if (action === 'save') await this.handleCreateSave(modal);
+    });
 }
 ```
 
 ---
 
-## Step-by-Step Development Guides
+## Step-by-Step Development
 
-### Adding a New Entity Component
+### Adding New Entity to Setup Activity
 
-#### 1. Create Entity Directory
-```bash
-mkdir -p src/activities/setup/new-entity
-```
-
-#### 2. Implement List Component
-Create `src/activities/setup/new-entity/list.js`:
+#### 1. Create Entity Component
 ```javascript
-import { dom } from '../../../shared/utils.js';
-import { apiClient } from '../../../shared/api-client.js';
+// src/activities/setup/new-entity.js
+import TreeEntity from '../../components/setup/tree-entity.js';  // or ListEntity
 
-export class NewEntityList {
-    constructor(activity) {
-        this.activity = activity;
-        this.container = null;
-        this.entities = [];
-    }
-
-    async render(container) {
-        this.container = container;
-        await this.loadEntities();
-        this.renderUI();
-        this.bindEvents();
-    }
-
-    async loadEntities() {
-        try {
-            this.entities = await apiClient.listEntities('/new-entities');
-        } catch (error) {
-            this.entities = [];
-        }
-    }
-
-    renderUI() {
-        const html = `
-            <div class="entity-header">
-                <h2>New Entities</h2>
-                <button class="btn btn-primary create-btn">Create New Entity</button>
-            </div>
-            <div class="entity-table-container">
-                ${this.renderTable()}
-            </div>
-        `;
-        
-        this.container.innerHTML = html;
-    }
-
-    renderTable() {
-        if (this.entities.length === 0) {
-            return '<p class="no-data">No entities found. Create one to get started.</p>';
-        }
-
-        const rows = this.entities.map(entity => `
-            <tr>
-                <td>${entity.name}</td>
-                <td>${entity.description || ''}</td>
-                <td class="actions">
-                    <button class="btn btn-sm btn-outline view-btn" data-id="${entity.id}">View</button>
-                    <button class="btn btn-sm btn-secondary edit-btn" data-id="${entity.id}">Edit</button>
-                    <button class="btn btn-sm btn-outline delete-btn" data-id="${entity.id}">Delete</button>
-                </td>
-            </tr>
-        `).join('');
-
-        return `
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Description</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
-        `;
-    }
-
-    bindEvents() {
-        // Create button
-        const createBtn = dom.find('.create-btn', this.container);
-        createBtn?.addEventListener('click', () => this.handleCreate());
-
-        // Action buttons
-        const viewBtns = dom.findAll('.view-btn', this.container);
-        const editBtns = dom.findAll('.edit-btn', this.container);
-        const deleteBtns = dom.findAll('.delete-btn', this.container);
-
-        viewBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => this.handleView(e.target.dataset.id));
-        });
-
-        editBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => this.handleEdit(e.target.dataset.id));
-        });
-
-        deleteBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => this.handleDelete(e.target.dataset.id));
-        });
-    }
-
-    handleCreate() {
-        this.activity.app.navigateTo('/setup/new-entities/create');
-    }
-
-    handleView(id) {
-        this.activity.app.navigateTo(`/setup/new-entities/${id}`);
-    }
-
-    handleEdit(id) {
-        this.activity.app.navigateTo(`/setup/new-entities/${id}/edit`);
-    }
-
-    async handleDelete(id) {
-        if (confirm('Are you sure you want to delete this entity?')) {
-            try {
-                await apiClient.deleteEntity('/new-entities', id);
-                await this.loadEntities(); // Refresh list
-                this.renderUI();
-                this.bindEvents();
-            } catch (error) {
-                // Error handled by errorHandler
-            }
-        }
-    }
-
-    cleanup() {
-        this.entities = [];
-    }
+export default class NewEntity extends TreeEntity {
+    // Override base methods for entity-specific behavior
+    getDisplayName(item) { return item.name; }
+    renderItemDetails(item) { /* custom details */ }
+    handleAddRoot() { this.showCreateForm(); }
 }
 ```
 
-#### 3. Implement Form Component
-Create `src/activities/setup/new-entity/form.js` following the form pattern above.
-
-#### 4. Implement Detail Component
-Create `src/activities/setup/new-entity/detail.js`:
+#### 2. Register Entity in Setup Activity
 ```javascript
-import { dom } from '../../../shared/utils.js';
-import { apiClient } from '../../../shared/api-client.js';
-
-export class NewEntityDetail {
-    constructor(activity, entityId) {
-        this.activity = activity;
-        this.entityId = entityId;
-        this.container = null;
-        this.entity = null;
-    }
-
-    async render(container) {
-        this.container = container;
-        await this.loadEntity();
-        this.renderDetail();
-        this.bindEvents();
-    }
-
-    async loadEntity() {
-        this.entity = await apiClient.getEntity('/new-entities', this.entityId);
-    }
-
-    renderDetail() {
-        const html = `
-            <div class="entity-detail">
-                <div class="detail-header">
-                    <h2>${this.entity.name}</h2>
-                    <div class="actions">
-                        <button class="btn btn-primary edit-btn">Edit</button>
-                        <button class="btn btn-outline delete-btn">Delete</button>
-                        <button class="btn btn-secondary back-btn">Back to List</button>
-                    </div>
-                </div>
-                <div class="detail-content">
-                    <div class="detail-field">
-                        <label>Name:</label>
-                        <span>${this.entity.name}</span>
-                    </div>
-                    <div class="detail-field">
-                        <label>Description:</label>
-                        <span>${this.entity.description || 'No description'}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        this.container.innerHTML = html;
-    }
-
-    bindEvents() {
-        const editBtn = dom.find('.edit-btn', this.container);
-        const deleteBtn = dom.find('.delete-btn', this.container);
-        const backBtn = dom.find('.back-btn', this.container);
-
-        editBtn?.addEventListener('click', () => this.handleEdit());
-        deleteBtn?.addEventListener('click', () => this.handleDelete());
-        backBtn?.addEventListener('click', () => this.handleBack());
-    }
-
-    handleEdit() {
-        this.activity.app.navigateTo(`/setup/new-entities/${this.entityId}/edit`);
-    }
-
-    async handleDelete() {
-        if (confirm('Are you sure you want to delete this entity?')) {
-            try {
-                await apiClient.deleteEntity('/new-entities', this.entityId);
-                this.activity.app.navigateTo('/setup/new-entities');
-            } catch (error) {
-                // Error handled by errorHandler
-            }
-        }
-    }
-
-    handleBack() {
-        this.activity.app.navigateTo('/setup/new-entities');
-    }
-
-    cleanup() {
-        this.entity = null;
-    }
-}
+// In src/activities/setup/setup.js
+this.entities = {
+    // existing entities...
+    'new-entity': { name: 'New Entity', endpoint: '/new-entities', type: 'tree' }
+};
 ```
-
-#### 5. Update Activity Router
-Add entity routing to `src/activities/setup/setup.js`:
-```javascript
-import { NewEntityList } from './new-entity/list.js';
-import { NewEntityForm } from './new-entity/form.js';
-import { NewEntityDetail } from './new-entity/detail.js';
-
-// In the Setup class, add:
-async loadEntity(entityType, entityId, action) {
-    if (entityType === 'new-entities') {
-        if (!entityId) {
-            // List view
-            this.currentEntity = new NewEntityList(this);
-        } else if (entityId === 'create') {
-            // Create form
-            this.currentEntity = new NewEntityForm(this, 'new-entities');
-        } else if (action === 'edit') {
-            // Edit form
-            this.currentEntity = new NewEntityForm(this, 'new-entities', entityId);
-        } else {
-            // Detail view
-            this.currentEntity = new NewEntityDetail(this, entityId);
-        }
-        
-        await this.currentEntity.render(this.container);
-    }
-}
-```
-
-### Adding a New Activity
-
-#### 1. Create Activity Directory
-```bash
-mkdir -p src/activities/new-activity
-```
-
-#### 2. Create Activity Router
-Create `src/activities/new-activity/new-activity.js` following the activity pattern above.
 
 #### 3. Update Main App Router
-In `src/app.js`, add the new activity:
 ```javascript
-// In handleRoute method
+// In src/app.js - if adding new activity
 else if (segments[0] === 'new-activity') {
     await this.loadActivity('new-activity', segments.slice(1));
 }
 ```
 
-#### 4. Update Landing Page
-Add activity tile to `src/activities/landing/landing.html`.
+### Testing New Components
+
+#### Manual Testing Checklist
+- [ ] Component loads without errors
+- [ ] Create/Edit/Delete operations work
+- [ ] Form validation shows appropriate messages
+- [ ] Responsive design on mobile/desktop
+- [ ] API calls include user header correctly
+
+#### Browser Testing
+```javascript
+// Debug in browser console
+console.log('Component state:', window.debugComponent = this);
+console.log('API calls:', apiClient);
+```
+
+---
+
+## API Integration
+
+### Standard CRUD Operations (With User Authentication)
+```javascript
+// All API calls automatically include x-user-id header when user identified
+await apiClient.get('/stakeholder-categories');           // List entities
+await apiClient.post('/stakeholder-categories', data);    // Create entity
+await apiClient.put('/stakeholder-categories/123', data); // Update entity
+await apiClient.delete('/stakeholder-categories/123');    // Delete entity
+```
+
+### Error Handling
+```javascript
+try {
+    await apiClient.createEntity(endpoint, data);
+    this.closeModal(modal);
+    await this.refresh(); // Reload component data
+} catch (error) {
+    console.error('Failed to create entity:', error);
+    // Error automatically handled by error-handler.js
+}
+```
 
 ---
 
 ## Styling Guidelines
 
-### CSS Architecture
-The styling system uses a three-layer approach:
-
-1. **main.css**: Global styles, design tokens, utility classes
-2. **components.css**: Reusable component styling
-3. **activities.css**: Activity-specific layouts
-
-### Design Tokens
-Use CSS custom properties for consistency:
+### Use Design Tokens
 ```css
-/* Use existing design tokens */
 .my-component {
     padding: var(--space-4);
     background: var(--bg-primary);
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-md);
-    color: var(--text-primary);
 }
 ```
 
-### Component Styling
-Follow BEM-like naming conventions:
+### Component Naming
 ```css
-.entity-list {
-    /* Block */
-}
-
-.entity-list__header {
-    /* Element */
-}
-
-.entity-list--loading {
-    /* Modifier */
-}
+.entity-list { /* Block */ }
+.entity-list__header { /* Element */ }
+.entity-list--loading { /* Modifier */ }
 ```
 
 ### Responsive Design
-Use mobile-first approach:
 ```css
-.entity-grid {
+.component {
     display: grid;
     grid-template-columns: 1fr;
     gap: var(--space-4);
 }
 
 @media (min-width: 768px) {
-    .entity-grid {
+    .component {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+```
 
-@media (min-width: 1024px) {
-    .entity-grid {
-        grid-template-columns: repeat(3, 1fr);
+---
+
+## Performance and Quality
+
+### Component Cleanup
+```javascript
+cleanup() {
+    if (this.currentEntityComponent?.cleanup) {
+        this.currentEntityComponent.cleanup();
     }
+    // Clear references
+    this.data = [];
+    this.selectedItem = null;
 }
 ```
-
----
-
-## Testing and Debugging
-
-### Manual Testing Checklist
-For each new component:
-
-- [ ] Component renders without JavaScript errors
-- [ ] API calls work correctly with proper error handling
-- [ ] Form validation works and shows appropriate messages
-- [ ] Navigation works correctly (back buttons, breadcrumbs)
-- [ ] Responsive design works on mobile and desktop
-- [ ] Loading states are shown during API calls
-- [ ] Error states are handled gracefully
-
-### Debugging Tools
-
-#### Browser Console
-```javascript
-// Debug API calls
-console.log('API response:', response);
-
-// Debug component state
-console.log('Component state:', this);
-
-// Debug DOM elements
-console.log('Found elements:', dom.findAll('.selector', container));
-```
-
-#### Network Tab
-- Monitor API requests and responses
-- Check for CORS errors
-- Verify request/response formats
-
-#### Vue DevTools Alternative
-Since we're using vanilla JavaScript:
-```javascript
-// Add to any component for debugging
-window.debugComponent = this;
-// Then in console: debugComponent.entities
-```
-
-### Error Handling Verification
-```javascript
-// Test error scenarios
-try {
-    await apiClient.getEntity('/invalid-endpoint', 999);
-} catch (error) {
-    console.log('Error handled correctly:', error);
-}
-```
-
----
-
-## Performance Guidelines
 
 ### Efficient DOM Updates
 ```javascript
-// Good: Batch DOM updates
-const fragment = document.createDocumentFragment();
-items.forEach(item => {
-    const element = this.createItemElement(item);
-    fragment.appendChild(element);
-});
-container.appendChild(fragment);
+// Good: Update container once
+const html = items.map(item => `<div>${item.name}</div>`).join('');
+container.innerHTML = html;
 
 // Avoid: Multiple DOM manipulations
 items.forEach(item => {
-    const element = this.createItemElement(item);
-    container.appendChild(element); // Multiple reflows
+    container.appendChild(createElement(item)); // Multiple reflows
 });
 ```
 
-### Memory Management
-```javascript
-// Always cleanup event listeners
-cleanup() {
-    if (this.intervalId) {
-        clearInterval(this.intervalId);
-    }
-    
-    // Remove references
-    this.entities = [];
-    this.container = null;
-}
-```
+---
 
-### API Call Optimization
-```javascript
-// Debounce search inputs
-import { async } from '../shared/utils.js';
+## Extension Examples
 
-const debouncedSearch = async.debounce(async (query) => {
-    const results = await apiClient.search('/entities', { q: query });
-    this.updateResults(results);
-}, 300);
+### Adding Read Activity
+1. Create `src/activities/read/read.js` following activity pattern
+2. Focus on data browsing vs. CRUD operations
+3. Use existing API client with baseline/wave filtering
+
+### Adding Elaboration Activity
+1. Create `src/activities/elaboration/elaboration.js`
+2. Implement rich text editing for versioned entities
+3. Use TreeEntity pattern for requirement hierarchies
+
+---
+
+## Debugging and Testing
+
+### Common Issues
+- **Component loading errors**: Check file paths and naming (plural filenames, singular classes)
+- **API authentication errors**: Ensure user identified before entity operations
+- **CORS errors**: Verify x-user-id in server's allowed headers
+
+### Debug Tools
+```javascript
+// Add to any component
+window.debugComponent = this;
+
+// Check API client state
+console.log('User authenticated:', apiClient.app?.user?.name);
 ```
 
 ---
 
-## Common Patterns and Utilities
-
-### Loading States
-```javascript
-showLoading() {
-    this.container.innerHTML = '<div class="loading">Loading...</div>';
-}
-
-hideLoading() {
-    const loading = dom.find('.loading', this.container);
-    loading?.remove();
-}
-```
-
-### Confirmation Dialogs
-```javascript
-async confirmDelete(entityName) {
-    return new Promise((resolve) => {
-        const modal = this.createConfirmModal(
-            'Confirm Delete',
-            `Are you sure you want to delete "${entityName}"?`,
-            resolve
-        );
-        document.body.appendChild(modal);
-    });
-}
-```
-
-### Form Validation
-```javascript
-validateEntity(data) {
-    const errors = {};
-    
-    if (!data.name?.trim()) {
-        errors.name = 'Name is required';
-    } else if (data.name.length > 100) {
-        errors.name = 'Name must be less than 100 characters';
-    }
-    
-    if (data.description && data.description.length > 500) {
-        errors.description = 'Description must be less than 500 characters';
-    }
-    
-    return errors;
-}
-```
-
----
-
-## Contributing Guidelines
-
-### Code Review Checklist
-- [ ] Follows established patterns
-- [ ] Includes proper error handling
-- [ ] Has appropriate cleanup methods
-- [ ] Uses design tokens for styling
-- [ ] Includes responsive design
-- [ ] Tests manually in browser
-- [ ] No console errors
-- [ ] Proper API integration
-
-### Pull Request Template
-```markdown
-## Description
-Brief description of changes
-
-## Type of Change
-- [ ] New feature
-- [ ] Bug fix
-- [ ] Refactoring
-- [ ] Documentation
-
-## Testing
-- [ ] Manual testing completed
-- [ ] No console errors
-- [ ] Responsive design verified
-- [ ] API integration working
-
-## Screenshots
-(If applicable)
-```
-
-### Commit Message Convention
-```bash
-feat(setup): add stakeholder category management
-fix(api): handle network timeout errors
-style(landing): improve mobile responsiveness
-docs(readme): update setup instructions
-```
-
----
-
-This development guide provides the foundation for consistent, maintainable web client development. Follow these patterns and guidelines to ensure high-quality contributions to the ODP Web Client.
+This streamlined guide focuses on the proven patterns from our Setup Management Activity implementation, providing clear examples for extending the ODP Web Client efficiently.

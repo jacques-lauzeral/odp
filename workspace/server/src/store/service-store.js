@@ -1,7 +1,7 @@
 import { RefinableEntityStore } from './refinable-entity-store.js';
 
 /**
- * ServiceStore provides data access operations for Service entities.
+ * ServiceStore provides data access operations for Services entities.
  * Extends RefinableEntityStore to inherit both CRUD operations and REFINES hierarchy management.
  */
 export class ServiceStore extends RefinableEntityStore {
@@ -24,5 +24,5 @@ export class ServiceStore extends RefinableEntityStore {
     // - delete(id, transaction)
     // - exists(id, transaction)
 
-    // Add any Service-specific methods here if needed in the future
+    // Add any Services-specific methods here if needed in the future
 }

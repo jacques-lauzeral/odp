@@ -10,7 +10,7 @@ paths:
   /stakeholder-categories:
     get:
       tags:
-        - StakeholderCategory
+        - StakeholderCategories
       summary: List all stakeholder categories
       operationId: listStakeholderCategories
       responses:
@@ -30,7 +30,7 @@ paths:
                 $ref: '#/components/schemas/Error'
     post:
       tags:
-        - StakeholderCategory
+        - StakeholderCategories
       summary: Create a new stakeholder category
       operationId: createStakeholderCategory
       requestBody:
@@ -62,7 +62,7 @@ paths:
   /stakeholder-categories/{id}:
     get:
       tags:
-        - StakeholderCategory
+        - StakeholderCategories
       summary: Get a stakeholder category by ID
       operationId: getStakeholderCategory
       parameters:
@@ -93,7 +93,7 @@ paths:
                 $ref: '#/components/schemas/Error'
     put:
       tags:
-        - StakeholderCategory
+        - StakeholderCategories
       summary: Update a stakeholder category
       operationId: updateStakeholderCategory
       parameters:
@@ -136,7 +136,7 @@ paths:
                 $ref: '#/components/schemas/Error'
     delete:
       tags:
-        - StakeholderCategory
+        - StakeholderCategories
       summary: Delete a stakeholder category
       operationId: deleteStakeholderCategory
       parameters:

@@ -105,7 +105,7 @@ export { createTransaction, commitTransaction, rollbackTransaction };
 // Store access functions
 
 /**
- * Get StakeholderCategory store instance
+ * Get StakeholderCategories store instance
  * @returns {StakeholderCategoryStore} Store instance
  * @throws {Error} If store layer not initialized
  */
@@ -117,7 +117,7 @@ function getStakeholderCategoryStore() {
 }
 
 /**
- * Get RegulatoryAspect store instance
+ * Get RegulatoryAspects store instance
  * @returns {RegulatoryAspectStore} Store instance
  * @throws {Error} If store layer not initialized
  */
@@ -129,7 +129,7 @@ function getRegulatoryAspectStore() {
 }
 
 /**
- * Get DataCategory store instance
+ * Get DataCategories store instance
  * @returns {DataCategoryStore} Store instance
  * @throws {Error} If store layer not initialized
  */
@@ -141,7 +141,7 @@ function getDataCategoryStore() {
 }
 
 /**
- * Get Service store instance
+ * Get Services store instance
  * @returns {ServiceStore} Store instance
  * @throws {Error} If store layer not initialized
  */
@@ -153,7 +153,7 @@ function getServiceStore() {
 }
 
 /**
- * Get Wave store instance
+ * Get Waves store instance
  * @returns {WaveStore} Store instance
  * @throws {Error} If store layer not initialized
  */

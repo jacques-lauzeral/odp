@@ -222,7 +222,7 @@ paths:
         '204':
           description: No Content
 
-  # Service Endpoints
+  # Services Endpoints
   /services:
     get:
       summary: List all services
@@ -394,7 +394,7 @@ paths:
         '204':
           description: No Content
 
-  # Wave Endpoints
+  # Waves Endpoints
   /waves:
     get:
       summary: List all waves

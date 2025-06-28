@@ -42,7 +42,7 @@ export class ServiceService extends TreeItemService {
         return this.deleteItem(id, userId);
     }
 
-    // Add any Service-specific methods here if needed in the future
+    // Add any Services-specific methods here if needed in the future
 }
 
 // Export instance for route handlers

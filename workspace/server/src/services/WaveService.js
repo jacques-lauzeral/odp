@@ -2,8 +2,8 @@ import { SimpleItemService } from './SimpleItemService.js';
 import { waveStore } from '../store/index.js';
 
 /**
- * WaveService provides CRUD operations for Wave entities with temporal validation.
- * Extends SimpleItemService with Wave-specific quarter/year/date validation.
+ * WaveService provides CRUD operations for Waves entities with temporal validation.
+ * Extends SimpleItemService with Waves-specific quarter/year/date validation.
  * Handles timeline management for deployment planning.
  */
 export class WaveService extends SimpleItemService {
@@ -14,8 +14,8 @@ export class WaveService extends SimpleItemService {
     // Inherits from SimpleItemService:
     // - listItems(userId)
     // - getItem(id, userId)
-    // - createItem(data, userId) - with Wave validation
-    // - updateItem(id, data, userId) - with Wave validation
+    // - createItem(data, userId) - with Waves validation
+    // - updateItem(id, data, userId) - with Waves validation
     // - deleteItem(id, userId)
     // - Legacy compatibility methods (listEntities, getEntity, etc.)
 

@@ -119,7 +119,7 @@ export class ErrorHandler {
             default:
                 return {
                     type: 'api-unknown',
-                    title: 'Service Error',
+                    title: 'Services Error',
                     message: error.message || 'A service error occurred.',
                     showToUser: true,
                     retry: true

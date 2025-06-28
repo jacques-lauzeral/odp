@@ -13,12 +13,12 @@ The ODP Web Client implements a **vanilla JavaScript** architecture with activit
 
 ### Specialized Libraries (Planned)
 - **Rich text editing**: Quill or TinyMCE for content creation in Elaboration activity
-- **Data tables**: AG-Grid or Tabulator for entity management in Setup activity
-- **Timeline visualization**: Vis.js for temporal views in Read activity
+- **Data visualization**: Vis.js for timeline and relationship displays in Read activity
+- **Modal forms**: Native implementation for Setup activity CRUD operations
 
 ### Server Integration
 - **API Server**: Direct communication with ODP Express server on port 80
-- **CORS Configuration**: Server-side CORS middleware enables cross-origin requests
+- **CORS Configuration**: Server-side CORS middleware with x-user-id header support
 - **Shared Models**: Integration with @odp/shared workspace for consistent data structures
 
 ## Implemented Architecture
@@ -27,39 +27,43 @@ The ODP Web Client implements a **vanilla JavaScript** architecture with activit
 ```
 web-client/
 ├── src/
-│   ├── index.html               # ✅ Main HTML template with CSS/JS loading
+│   ├── index.html               # ✅ Main HTML template with header container
 │   ├── index.js                 # ✅ Entry point with error handling
-│   ├── app.js                   # ✅ App initialization & URL-based routing
+│   ├── app.js                   # ✅ App initialization, routing & API client integration
 │   ├── config/
 │   │   └── api.js              # ✅ API endpoints configuration with CORS
 │   ├── shared/
-│   │   ├── api-client.js       # ✅ Fetch wrapper with error handling
+│   │   ├── api-client.js       # ✅ Fetch wrapper with user header & error handling
 │   │   ├── error-handler.js    # ✅ Centralized error management
 │   │   └── utils.js            # ✅ DOM, validation, and formatting utilities
 │   ├── components/
 │   │   ├── common/
-│   │   │   ├── header.js       # 🔄 Navigation header (planned)
-│   │   │   ├── modal.js        # 🔄 Reusable modal component (planned)
-│   │   │   └── table.js        # 🔄 Table component wrapper (planned)
-│   │   └── forms/
-│   │       ├── form-builder.js # 🔄 Dynamic form generation (planned)
-│   │       └── validation.js   # 🔄 Form validation utilities (planned)
+│   │   │   └── header.js       # ✅ Global navigation header with user context
+│   │   └── setup/
+│   │       ├── tree-entity.js  # ✅ Base hierarchical entity component
+│   │       └── list-entity.js  # ✅ Base list/table entity component
 │   ├── activities/
 │   │   ├── landing/
 │   │   │   ├── landing.js      # ✅ Landing page component with user ID
 │   │   │   └── landing.html    # ✅ Landing page template
-│   │   ├── setup/              # 🔄 Setup activity (next phase)
-│   │   ├── read/               # 🔄 Read activity (planned)
-│   │   └── elaboration/        # 🔄 Elaboration activity (planned)
+│   │   ├── setup/
+│   │   │   ├── setup.js        # ✅ Setup activity with entity tab navigation
+│   │   │   ├── stakeholder-categories.js  # ✅ Hierarchy CRUD with name/description
+│   │   │   ├── regulatory-aspects.js      # ✅ Hierarchy CRUD with title/regulation ref
+│   │   │   ├── data-categories.js         # ✅ Hierarchy CRUD with classification
+│   │   │   ├── services.js                # ✅ Hierarchy CRUD with domain/type/owner
+│   │   │   └── waves.js                   # ✅ List CRUD with year/quarter validation
+│   │   ├── read/               # 📋 Read activity (planned)
+│   │   └── elaboration/        # 📋 Elaboration activity (planned)
 │   ├── styles/
 │   │   ├── main.css            # ✅ Global styles with design tokens
-│   │   ├── components.css      # ✅ Reusable component styling
-│   │   └── activities.css      # ✅ Activity-specific layouts
-│   └── assets/                 # 🔄 Icons and images (planned)
+│   │   ├── components.css      # ✅ Header & reusable component styling
+│   │   └── activities.css      # ✅ Setup activity & responsive layouts
+│   └── assets/                 # 📋 Icons and images (planned)
 └── package.json                # ✅ Dependencies and workspace integration
 ```
 
-**Legend**: ✅ Implemented | 🔄 Next Phase | 📋 Planned
+**Legend**: ✅ Implemented | 📋 Planned
 
 ## Proven Implementation Patterns
 
@@ -67,103 +71,72 @@ web-client/
 **URL Structure** (Implemented and tested):
 ```javascript
 /                                    # Landing page ✅
-/setup/stakeholder-categories        # Setup activity - entity list 🔄
-/setup/stakeholder-categories/123    # Setup activity - specific entity 🔄
+/setup/stakeholder-categories        # Setup activity - entity management ✅
+/setup/waves                         # Setup activity - wave management ✅
 /read/edition/456/requirements       # Read activity - filtered content 📋
 /elaboration/folders/789/req/234     # Elaboration - editing specific item 📋
 ```
 
-**Router Implementation Pattern**:
+**Three-Layer Architecture Pattern**:
 ```javascript
-// Proven pattern from app.js
-async handleRoute() {
-    const path = window.location.pathname;
-    const segments = path.split('/').filter(segment => segment.length > 0);
-    
-    if (segments.length === 0) {
-        await this.loadActivity('landing');
-    } else if (segments[0] === 'setup') {
-        await this.loadActivity('setup', segments.slice(1));
+// App.js handles Layer 1 (ODP Level) routing
+// setup.js handles Layer 2 (Activity Level) entity switching  
+// entity components handle Layer 3 (Entity Level) CRUD operations
+```
+
+### 2. API Integration with User Authentication
+**CORS Configuration** (Implemented and working):
+```javascript
+// Server CORS middleware includes x-user-id header
+res.header('Access-Control-Allow-Headers', 
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id');
+```
+
+**Client Authentication** (Tested and functional):
+```javascript
+// API client automatically includes user header when user identified
+getHeaders(additionalHeaders = {}) {
+    const headers = { ...this.defaultHeaders, ...additionalHeaders };
+    if (this.app?.user?.name) {
+        headers['x-user-id'] = this.app.user.name;
     }
-    // Additional activities...
+    return headers;
 }
 ```
 
-### 2. API Integration with CORS
-**Server Configuration** (Implemented and working):
+### 3. Entity Component Extension Pattern
+**Base Component Architecture** (Implemented):
 ```javascript
-// Added to server/src/index.js
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    
-    if (req.method === 'OPTIONS') {
-        res.sendStatus(200);
-    } else {
-        next();
-    }
-});
-```
+// TreeEntity.js - Base class for hierarchical entities
+export default class TreeEntity {
+    // Common tree rendering, selection, CRUD operations
+    // Extensible methods: getDisplayName(), renderItemDetails(), handleCreate()
+}
 
-**Client Configuration** (Tested and functional):
-```javascript
-// config/api.js
-export const apiConfig = {
-    baseUrl: 'http://localhost',  // Points to API server
-    timeout: 30000,
-    defaultHeaders: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
-};
-```
-
-### 3. Component Development Pattern
-**Module Structure** (Established pattern):
-```javascript
-// Proven pattern from landing.js
-import { dom, validate } from '../../shared/utils.js';
-import { apiClient } from '../../shared/api-client.js';
-
-export default class Landing {
-    constructor(app) {
-        this.app = app;
-        this.container = null;
-    }
-
-    async render(container, subPath = []) {
-        // Render implementation
-    }
-
-    async handleSubPath(subPath) {
-        // Sub-path handling
-    }
-
-    cleanup() {
-        // Cleanup when leaving activity
-    }
+// Example extension pattern:
+export default class StakeholderCategories extends TreeEntity {
+    getDisplayName(item) { return item.name; }
+    renderItemDetails(item) { /* custom details */ }
+    handleAddRoot() { this.showCreateForm(); }
 }
 ```
 
-### 4. Error Handling System
-**Centralized Error Management** (Implemented and tested):
+### 4. Modal-Based CRUD Operations
+**Form Management** (Implemented and tested):
 ```javascript
-// error-handler.js provides:
-- Network error detection and user notification
-- API error classification (400, 404, 409, 500)
-- User-friendly error messages with retry options
-- Console logging for debugging
-- Automatic error dismissal for non-critical errors
+// Consistent modal patterns across all entities:
+- showCreateForm(parentId = null)    # Create with optional parent
+- showEditForm(item)                 # Edit existing item
+- showDeleteConfirmation(item)       # Delete with cascade warning
+- attachModalEventListeners()        # Event handling with validation
 ```
 
-### 5. User Experience Patterns
-**Landing Page Implementation** (Working and tested):
-- **User identification**: Simple name entry without authentication
-- **Activity tiles**: Visual navigation to three main activities
-- **Connection status**: Real-time API server health checking
-- **Responsive design**: Mobile-friendly layout with CSS Grid
-- **Deep linking**: URL-based navigation with browser history support
+### 5. Responsive Design System
+**Three-Pane Layout** (Working and tested):
+- **Desktop**: Tree | Detail | Actions layout for hierarchical entities
+- **Mobile**: Stacked layout with collapsible sections
+- **List entities**: Simple table layout with responsive row actions
+- **Entity tabs**: Horizontal scroll on mobile with count badges
 
 ## Development Workflow
 
@@ -195,88 +168,68 @@ docker-compose up
 ```
 
 ### File Naming Conventions
-- **kebab-case**: Directories and HTML files (`landing-page/`, `landing.html`)
-- **camelCase**: JavaScript files and classes (`landing.js`, `LandingPage`)
-- **Entity names**: Match server-side entity naming exactly
+- **Plural filenames**: `stakeholder-categories.js` (matches URL structure)
+- **Singular classes**: `StakeholderCategory` (represents single entity)
+- **Base components**: `tree-entity.js`, `list-entity.js` in components/setup/
 
 ## Integration Standards
 
 ### API Communication Pattern
-**Proven Implementation**:
+**Entity-Specific Methods** (Proven implementation):
 ```javascript
-// apiClient provides consistent methods:
-await apiClient.get('/stakeholder-categories');           // List entities
-await apiClient.getEntity('/stakeholder-categories', id); // Get by ID
-await apiClient.createEntity('/stakeholder-categories', data); // Create
-await apiClient.updateEntity('/stakeholder-categories', id, data); // Update
-await apiClient.deleteEntity('/stakeholder-categories', id); // Delete
+// Base entity operations with user authentication:
+await apiClient.get('/stakeholder-categories');           // List with user header
+await apiClient.post('/stakeholder-categories', data);    // Create with validation
+await apiClient.put('/stakeholder-categories/123', data); // Update with user header
+await apiClient.delete('/stakeholder-categories/123');    // Delete with user header
 ```
 
 ### State Management
 - **URL-based context**: All application state reflected in URL for shareability
-- **Local component state**: Form data and UI interactions managed locally
-- **No browser storage**: Avoid localStorage/sessionStorage for Claude.ai compatibility
-- **User context**: Simple user object maintained in App instance
+- **Component state**: TreeEntity/ListEntity manage selection and form state
+- **User context**: Maintained in App instance, automatically included in API headers
+- **No browser storage**: Avoided for Claude.ai compatibility
 
 ### CSS Architecture
-**Design Token System** (Implemented):
+**Component-Based Styling** (Implemented):
 ```css
-:root {
-    /* Semantic color system */
-    --primary-500: #0ea5e9;
-    --bg-primary: #ffffff;
-    --text-primary: var(--gray-900);
-    
-    /* Spacing system */
-    --space-4: 1rem;
-    --space-8: 2rem;
-    
-    /* Component patterns */
-    --radius-md: 0.375rem;
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-}
+/* Three-layer styling approach */
+.odp-header { /* Layer 1: Global navigation */ }
+.entity-tabs { /* Layer 2: Activity navigation */ }
+.three-pane-layout { /* Layer 3: Entity operations */ }
+
+/* Status indicators for entity-specific features */
+.classification-badge { /* Data category classifications */ }
+.domain-badge { /* Service domain indicators */ }
 ```
 
-## Next Phase: Setup Activity
+## Current Implementation Status
 
-### Entity Component Pattern (Ready for Implementation)
-**Standard Entity Components**:
-```
-entity-name/
-├── list.js     # List view with hierarchy display and CRUD actions
-├── form.js     # Create/edit forms with validation
-└── detail.js   # Detail view with relationships and version history
-```
+### Completed Setup Activity
+**Entity Management** (Fully functional):
+- **5 entity types**: All with complete CRUD operations
+- **Base class patterns**: TreeEntity and ListEntity for rapid development
+- **Hierarchy management**: Parent/child relationships with validation
+- **Form validation**: Field validation, uniqueness constraints, date ranges
+- **Responsive design**: Mobile-friendly layouts with touch interactions
 
-**Setup Activity Entities**:
-- `stakeholder-category/` - Hierarchy management with REFINES relationships
-- `regulatory-aspect/` - Simple CRUD with description fields
-- `data-category/` - Category management with classification
-- `service/` - Service definition with metadata
-- `wave/` - Timeline management with quarter/year validation
-
-### Reusable Components (Next Phase)
-**Common Components** (Ready for development):
-- **Table wrapper**: Sortable, filterable data display with pagination
-- **Form builder**: Dynamic form generation from shared models
-- **Modal dialogs**: Confirmation, editing, and detail views
-- **Navigation header**: Activity switching with breadcrumb support
+### Testing Requirements
+**Manual CRUD Testing** (Required before next phase):
+- **Create operations**: Test all entity creation forms with validation
+- **Edit operations**: Test all entity update forms with data persistence
+- **Delete operations**: Test cascading deletes and confirmation workflows
+- **Hierarchy management**: Test parent/child relationships and circular reference prevention
 
 ## Quality Standards
 
 ### Code Organization
-- **Clear separation**: Activities, components, and utilities in distinct modules
-- **Consistent patterns**: Standardized component lifecycle and API integration
-- **Reusable abstractions**: DOM utilities, validation, and error handling
-
-### Testing Approach
-- **Manual testing**: Browser-based validation of all features
-- **Health monitoring**: Real-time connection status and error tracking
-- **Cross-browser compatibility**: Modern browser support (ES2020+)
+- **Base class inheritance**: TreeEntity/ListEntity provide consistent patterns
+- **Entity-specific customization**: Override methods for unique requirements
+- **Modal form patterns**: Consistent CRUD operations across all entities
 
 ### Performance Considerations
-- **Minimal dependencies**: Vanilla JavaScript for fast loading
-- **Lazy loading**: Dynamic import of activity modules
-- **Efficient DOM updates**: Utility functions for minimal manipulation
+- **Dynamic imports**: Activity modules loaded on demand
+- **Component caching**: Activity instances cached for fast switching
+- **Efficient DOM updates**: Minimal manipulation through utility functions
 
-This technical solution provides a proven foundation for rapid development of the remaining Setup, Read, and Elaboration activities while maintaining consistency with the established server architecture and development patterns.
+This technical solution establishes a complete Setup Management Activity foundation with proven patterns for rapid development of Read and Elaboration activities while maintaining consistency with the established server architecture.

@@ -3,10 +3,29 @@ import { apiConfig, buildUrl, buildQueryString } from '../config/api.js';
 import { errorHandler } from './error-handler.js';
 
 export class ApiClient {
-    constructor() {
+    constructor(app = null) {
+        this.app = app;
         this.baseUrl = apiConfig.baseUrl;
         this.timeout = apiConfig.timeout;
         this.defaultHeaders = { ...apiConfig.defaultHeaders };
+    }
+
+    setApp(app) {
+        this.app = app;
+    }
+
+    getHeaders(additionalHeaders = {}) {
+        const headers = {
+            ...this.defaultHeaders,
+            ...additionalHeaders
+        };
+
+        // Add user header if user is identified and this isn't a health check
+        if (this.app?.user?.name) {
+            headers['x-user-id'] = this.app.user.name;
+        }
+
+        return headers;
     }
 
     async request(method, endpoint, options = {}) {
@@ -30,10 +49,7 @@ export class ApiClient {
         // Prepare request options
         const requestOptions = {
             method,
-            headers: {
-                ...this.defaultHeaders,
-                ...headers
-            }
+            headers: this.getHeaders(headers)
         };
 
         // Add body for non-GET requests
@@ -158,7 +174,7 @@ export class ApiClient {
         return this.get(endpoint, { id, subPath: `versions/${versionNumber}` });
     }
 
-    // Health check
+    // Health check (no user header needed)
     async healthCheck() {
         try {
             const result = await this.get('/hello');
@@ -169,5 +185,5 @@ export class ApiClient {
     }
 }
 
-// Export singleton instance
+// Export singleton instance (will be initialized with app in index.js)
 export const apiClient = new ApiClient();

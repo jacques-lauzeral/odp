@@ -84,7 +84,7 @@ const edition = await store.create({
 
 **Throws**:
 - `StoreError('Invalid baseline reference')` - Baseline doesn't exist
-- `StoreError('Invalid wave reference')` - Wave doesn't exist
+- `StoreError('Invalid wave reference')` - Waves doesn't exist
 
 ### resolveContext(odpEditionId, transaction)
 ```javascript

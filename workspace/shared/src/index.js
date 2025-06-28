@@ -1,20 +1,20 @@
-// API DataCategory model
+// API DataCategories model
 export const DataCategory = {
     id: '',
     name: '',
     description: ''
 };
 
-// API DataCategory request structures
+// API DataCategories request structures
 export const DataCategoryRequests = {
-    // Create request - reuses DataCategory structure minus id, plus parentId
+    // Create request - reuses DataCategories structure minus id, plus parentId
     create: {
         ...DataCategory,
         id: undefined, // not needed for create
         parentId: null // optional - for REFINES relationship
     },
 
-    // Update request - reuses DataCategory structure plus parentId
+    // Update request - reuses DataCategories structure plus parentId
     update: {
         ...DataCategory,
         parentId: null
@@ -26,23 +26,23 @@ export const DataCategoryRequests = {
     }
 };
 
-// API RegulatoryAspect model
+// API RegulatoryAspects model
 export const RegulatoryAspect = {
     id: '',
     name: '',
     description: ''
 };
 
-// API RegulatoryAspect request structures
+// API RegulatoryAspects request structures
 export const RegulatoryAspectRequests = {
-    // Create request - reuses RegulatoryAspect structure minus id, plus parentId
+    // Create request - reuses RegulatoryAspects structure minus id, plus parentId
     create: {
         ...RegulatoryAspect,
         id: undefined, // not needed for create
         parentId: null // optional - for REFINES relationship
     },
 
-    // Update request - reuses RegulatoryAspect structure plus parentId
+    // Update request - reuses RegulatoryAspects structure plus parentId
     update: {
         ...RegulatoryAspect,
         parentId: null
@@ -54,23 +54,23 @@ export const RegulatoryAspectRequests = {
     }
 };
 
-// API StakeholderCategory model
+// API StakeholderCategories model
 export const StakeholderCategory = {
     id: '',
     name: '',
     description: ''
 };
 
-// API StakeholderCategory request structures
+// API StakeholderCategories request structures
 export const StakeholderCategoryRequests = {
-    // Create request - reuses StakeholderCategory structure minus id, plus parentId
+    // Create request - reuses StakeholderCategories structure minus id, plus parentId
     create: {
         ...StakeholderCategory,
         id: undefined, // not needed for create
         parentId: null // optional - for REFINES relationship
     },
 
-    // Update request - reuses StakeholderCategory structure plus parentId
+    // Update request - reuses StakeholderCategories structure plus parentId
     update: {
         ...StakeholderCategory,
         parentId: null
@@ -82,23 +82,23 @@ export const StakeholderCategoryRequests = {
     }
 };
 
-// API Service model
+// API Services model
 export const Service = {
     id: '',
     name: '',
     description: ''
 };
 
-// API Service request structures
+// API Services request structures
 export const ServiceRequests = {
-    // Create request - reuses Service structure minus id, plus parentId
+    // Create request - reuses Services structure minus id, plus parentId
     create: {
         ...Service,
         id: undefined, // not needed for create
         parentId: null // optional - for REFINES relationship
     },
 
-    // Update request - reuses Service structure plus parentId
+    // Update request - reuses Services structure plus parentId
     update: {
         ...Service,
         parentId: null
@@ -110,7 +110,7 @@ export const ServiceRequests = {
     }
 };
 
-// API Wave model
+// API Waves model
 export const Wave = {
     id: '',
     year: 0,        // 4-digit year (YYYY)
@@ -119,7 +119,7 @@ export const Wave = {
     name: ''        // Derived name (year.quarter, e.g., "2025.1")
 };
 
-// API Wave request structures
+// API Waves request structures
 export const WaveRequests = {
     // Create request - year, quarter, date (name is derived)
     create: {
@@ -186,7 +186,7 @@ export const ODPEditionRequests = {
         title: '',              // Required: Unique edition identifier
         type: 'DRAFT',         // Required: 'DRAFT' | 'OFFICIAL'
         baselineId: null,      // Optional: Baseline ID (auto-created if not provided)
-        startsFromWaveId: ''   // Required: Wave ID for filtering
+        startsFromWaveId: ''   // Required: Waves ID for filtering
     }
 
     // No update request - ODP editions are immutable once created

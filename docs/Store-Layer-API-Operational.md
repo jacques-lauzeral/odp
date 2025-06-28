@@ -97,7 +97,7 @@ const entities = await store.findAll(transaction, baselineId, fromWaveId)
 **Returns**: `Promise<Array<object>>` - Entities with relationships  
 **Throws**: `StoreError` - Query failure
 
-**Wave filtering behavior**:
+**Waves filtering behavior**:
 - **OperationalChanges**: Include only those with milestones targeting waves at/after the fromWave date
 - **OperationalRequirements**: Include only those referenced by filtered OperationalChanges via SATISFIES/SUPERSEDS, plus all ancestor requirements via REFINES hierarchy (upward cascade)
 
@@ -126,10 +126,10 @@ const entities = await store.findAll(transaction, baselineId, fromWaveId)
   
   // Relationship fields
   refinesParents: Array<number>,           // Parent requirement Item IDs
-  impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs
-  impactsData: Array<number>,              // DataCategory IDs
-  impactsServices: Array<number>,          // Service IDs
-  impactsRegulatoryAspects: Array<number>  // RegulatoryAspect IDs
+  impactsStakeholderCategories: Array<number>, // StakeholderCategories IDs
+  impactsData: Array<number>,              // DataCategories IDs
+  impactsServices: Array<number>,          // Services IDs
+  impactsRegulatoryAspects: Array<number>  // RegulatoryAspects IDs
 }
 ```
 
@@ -170,7 +170,7 @@ const children = await store.findChildren(itemId, transaction, baselineId, fromW
 const requirements = await store.findRequirementsThatImpact('Service', serviceId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `targetLabel: string` - 'StakeholderCategory'|'DataCategory'|'Service'|'RegulatoryAspect'
+- `targetLabel: string` - 'StakeholderCategories'|'DataCategories'|'Services'|'RegulatoryAspects'
 - `targetId: number` - Target entity ID
 
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements impacting the target
@@ -253,7 +253,7 @@ const updated = await store.update(itemId, {
 
 ### Milestone Management
 - **Storage**: `(Milestone)-[:BELONGS_TO]->(OperationalChangeVersion)`
-- **Wave targeting**: `(Milestone)-[:TARGETS]->(Wave)` (optional)
+- **Waves targeting**: `(Milestone)-[:TARGETS]->(Waves)` (optional)
 - **Ownership**: Milestones belong to specific versions (not shared)
 
 ### findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null)
@@ -274,9 +274,9 @@ const milestones = await store.findMilestonesByWave(waveId, transaction, baselin
 ```
 **Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context
 
-## Wave Filtering Errors
+## Waves Filtering Errors
 Additional error conditions for multi-context operations:
-- `'Wave not found'` - Invalid fromWaveId in wave filtering operations
-- `'No matching milestones'` - Wave filter results in empty OC set
+- `'Waves not found'` - Invalid fromWaveId in wave filtering operations
+- `'No matching milestones'` - Waves filter results in empty OC set
 
 *Note: See Store-Layer-API-Core.md for complete error documentation*

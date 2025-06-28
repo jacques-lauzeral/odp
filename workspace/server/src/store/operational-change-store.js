@@ -349,7 +349,7 @@ export class OperationalChangeStore extends VersionedItemStore {
      * Check if OperationalChange version passes wave filter
      * @private
      * @param {number} versionId - OperationalChangeVersion ID
-     * @param {number} fromWaveId - Wave ID for filtering
+     * @param {number} fromWaveId - Waves ID for filtering
      * @param {Transaction} transaction - Transaction instance
      * @returns {Promise<boolean>} True if change has milestones at/after fromWave
      */
@@ -563,7 +563,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
     /**
      * Find milestones by wave
-     * @param {number} waveId - Wave node ID
+     * @param {number} waveId - Waves node ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
      * @param {number|null} fromWaveId - Optional wave filtering (usually same as waveId)
@@ -720,7 +720,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 `, { fromWaveId: this.normalizeId(fromWaveId) });
 
                 if (fromWaveResult.records.length === 0) {
-                    throw new StoreError('Wave not found');
+                    throw new StoreError('Waves not found');
                 }
 
                 const fromWaveDate = fromWaveResult.records[0].get('fromWaveDate');

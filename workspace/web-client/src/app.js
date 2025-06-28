@@ -1,5 +1,7 @@
 // Core application class with routing and activity management
 import { errorHandler } from './shared/error-handler.js';
+import { apiClient } from './shared/api-client.js';
+import Header from './components/common/header.js';
 
 export class App {
     constructor(container) {
@@ -7,10 +9,21 @@ export class App {
         this.currentActivity = null;
         this.activities = new Map();
         this.user = null;
+        this.header = null;
     }
 
     async initialize() {
         console.log('Initializing ODP Web Client...');
+
+        // Connect API client to app for user header
+        apiClient.setApp(this);
+
+        // Create header
+        this.header = new Header(this);
+        const headerContainer = document.getElementById('header-container');
+        if (headerContainer) {
+            this.header.render(headerContainer);
+        }
 
         // Set up routing
         this.setupRouting();
@@ -53,6 +66,11 @@ export class App {
                 // Unknown route - redirect to landing
                 this.navigateTo('/');
                 return;
+            }
+
+            // Notify header of route change
+            if (this.header) {
+                this.header.onRouteChange();
             }
         } catch (error) {
             errorHandler.handle(error, 'routing');
@@ -111,9 +129,19 @@ export class App {
         this.handleRoute();
     }
 
+    // Method for header navigation
+    navigate(path) {
+        this.navigateTo(path);
+    }
+
     setUser(userData) {
         this.user = userData;
         console.log('User set:', userData.name);
+
+        // Notify header of user change
+        if (this.header) {
+            this.header.onUserChange();
+        }
     }
 
     getUser() {

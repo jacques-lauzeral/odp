@@ -30,13 +30,13 @@ The abstract node types and relationships that support the versioning.
 
 The node types and relationships related to the global application data. As a simplification, we propose to not version these data.
 
-### 2.1 StakeholderCategory
+### 2.1 StakeholderCategories
 **Properties:**
 - `name`
 - `description`
 
 **Relationships:**
-- `REFINES -> StakeholderCategory`
+- `REFINES -> StakeholderCategories`
 - `HAS_ATTACHMENT -> Document`
 
 ### 2.2 Data
@@ -48,25 +48,25 @@ The node types and relationships related to the global application data. As a si
 - `REFINES -> Data`
 - `HAS_ATTACHMENT -> Document`
 
-### 2.3 Service
+### 2.3 Services
 **Properties:**
 - `name`
 - `description`
 
 **Relationships:**
-- `REFINES -> Service`
+- `REFINES -> Services`
 - `HAS_ATTACHMENT -> Document`
 
-### 2.4 RegulatoryAspect
+### 2.4 RegulatoryAspects
 **Properties:**
 - `name`
 - `description`
 
 **Relationships:**
-- `REFINES -> RegulatoryAspect`
+- `REFINES -> RegulatoryAspects`
 - `HAS_ATTACHMENT -> Document`
 
-### 2.5 Wave
+### 2.5 Waves
 **Properties:**
 - `year`: YYYY
 - `quarter`: a digit between 1 and 4
@@ -108,10 +108,10 @@ The node types required to the management of operational needs, requirements, an
 
 **Item version relationships:**
 - `REFINES -> OperationalRequirement` (to Item, not ItemVersion)
-- `IMPACTS -> RegulatoryAspect`
-- `IMPACTS -> StakeholderCategory`
+- `IMPACTS -> RegulatoryAspects`
+- `IMPACTS -> StakeholderCategories`
 - `IMPACTS -> Data`
-- `IMPACTS -> Service`
+- `IMPACTS -> Services`
 
 ### 4.2 OperationalChange(Version): Item(Version)
 **Version properties:**
@@ -133,7 +133,7 @@ The node types required to the management of operational needs, requirements, an
 
 **Relationships:**
 - `BELONGS_TO -> OperationalChangeVersion` (to ItemVersion)
-- `TARGETS -> Wave`
+- `TARGETS -> Waves`
 - `HAS_ATTACHMENT -> Document`
 
 ## 5. Operational Deployment Plan Management
@@ -163,7 +163,7 @@ The node types and relationships required to the management of operational plan 
 - `type`: DRAFT or OFFICIAL
 
 **Relationships:**
-- `STARTS_FROM -> Wave`
+- `STARTS_FROM -> Waves`
 - `EXPOSES -> Baseline`
 - `HAS_ATTACHMENT -> Document`
 
@@ -241,7 +241,7 @@ The baseline system uses a simplified approach:
 
 ### ODPEdition Design
 The ODPEdition system provides filtered views of baselines:
-- **Wave-based filtering**: Uses STARTS_FROM wave to filter operational content
+- **Waves-based filtering**: Uses STARTS_FROM wave to filter operational content
 - **Cascade filtering**: OCs filtered by milestone timing, ORs filtered by OC references
 - **Saved query pattern**: ODPEdition acts as bookmark for baseline + wave combinations
 - **Immutable references**: ODPEdition preserves specific baseline + wave combination

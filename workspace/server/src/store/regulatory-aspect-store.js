@@ -1,7 +1,7 @@
 import { RefinableEntityStore } from './refinable-entity-store.js';
 
 /**
- * RegulatoryAspectStore provides data access operations for RegulatoryAspect entities.
+ * RegulatoryAspectStore provides data access operations for RegulatoryAspects entities.
  * Extends RefinableEntityStore to inherit both CRUD operations and REFINES hierarchy management.
  */
 export class RegulatoryAspectStore extends RefinableEntityStore {
@@ -24,5 +24,5 @@ export class RegulatoryAspectStore extends RefinableEntityStore {
     // - delete(id, transaction)
     // - exists(id, transaction)
 
-    // Add any RegulatoryAspect-specific methods here if needed in the future
+    // Add any RegulatoryAspects-specific methods here if needed in the future
 }

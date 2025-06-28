@@ -35,16 +35,16 @@ This document tracks the completed server-side implementation phases of the ODP 
 **Scope**: Core reference data entities with hierarchy support
 
 ### Entities Implemented ✅ COMPLETED
-- ✅ **StakeholderCategory**: Name, description with REFINES hierarchy
-- ✅ **RegulatoryAspect**: Title, description for compliance tracking
-- ✅ **DataCategory**: Name, description for data classification
-- ✅ **Service**: Name, description for service definitions
+- ✅ **StakeholderCategories**: Name, description with REFINES hierarchy
+- ✅ **RegulatoryAspects**: Title, description for compliance tracking
+- ✅ **DataCategories**: Name, description for data classification
+- ✅ **Services**: Name, description for service definitions
 
 ### Architecture Achievement ✅ COMPLETED
 - ✅ **Factorized architecture**: 95% code reduction through base pattern extraction
 - ✅ **REFINES hierarchy support**: Parent/child relationships for all entities
 - ✅ **Store pattern**: RefinableEntityStore extending BaseStore
-- ✅ **Service pattern**: TreeItemService for hierarchy management
+- ✅ **Services pattern**: TreeItemService for hierarchy management
 - ✅ **Routes pattern**: Consistent CRUD operations across all entities
 
 ### CLI Integration ✅ COMPLETED
@@ -90,10 +90,10 @@ This document tracks the completed server-side implementation phases of the ODP 
 **Scope**: Deployment planning with baseline and timeline management
 
 ### Timeline Management ✅ COMPLETED
-- ✅ **Wave entity**: Quarterly timeline management
+- ✅ **Waves entity**: Quarterly timeline management
   - Year/quarter validation and formatting
   - Temporal reference for deployment planning
-  - Wave-based filtering support
+  - Waves-based filtering support
 
 ### Baseline Management ✅ COMPLETED
 - ✅ **Baseline entity**: Immutable snapshot creation
@@ -104,17 +104,17 @@ This document tracks the completed server-side implementation phases of the ODP 
 ### Edition Management ✅ COMPLETED
 - ✅ **ODP Edition entity**: Complete deployment edition management
   - Baseline references with auto-creation support
-  - Wave timeline integration
+  - Waves timeline integration
   - Edition-based filtering and context
 
 ### Multi-Context Operations ✅ COMPLETED
 - ✅ **Baseline filtering**: Historical queries across all operational entities
-- ✅ **Wave filtering**: Timeline-based content filtering
+- ✅ **Waves filtering**: Timeline-based content filtering
 - ✅ **Combined filtering**: Baseline + wave for deployment snapshots
 - ✅ **Store layer enhancement**: Milestone-based cascade filtering
 
 ### Advanced CLI ✅ COMPLETED
-- ✅ **Management entity commands**: Wave, baseline, edition CRUD
+- ✅ **Management entity commands**: Waves, baseline, edition CRUD
 - ✅ **Multi-context flags**: --baseline and --edition support
 - ✅ **Enhanced operational CLI**: Contextual historical queries
 - ✅ **Edition workflow**: Complete edition creation and management
@@ -159,7 +159,7 @@ This document tracks the completed server-side implementation phases of the ODP 
 
 ### Deployment Planning Foundation ✅ COMPLETED
 - **Baseline snapshots** for immutable state capture
-- **Wave timeline management** for quarterly planning
+- **Waves timeline management** for quarterly planning
 - **Edition-based filtering** for deployment views
 - **Multi-context queries** for historical analysis
 

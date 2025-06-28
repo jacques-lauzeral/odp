@@ -57,10 +57,10 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 ## Entity Categories
 
 ### 1. Setup Entities (Non-Versioned)
-**Entities**: StakeholderCategory, RegulatoryAspect, DataCategory, Service, Wave
+**Entities**: StakeholderCategories, RegulatoryAspects, DataCategories, Services, Waves
 
 **Characteristics**:
-- Extend `BaseStore` (Wave) or `RefinableEntityStore` (others)
+- Extend `BaseStore` (Waves) or `RefinableEntityStore` (others)
 - Simple CRUD operations with immediate updates
 - REFINES hierarchy support (tree structure) for refinable entities
 - No versioning complexity
@@ -109,7 +109,7 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 
 (ODPEdition:ODPEdition {id, title, type, createdAt, createdBy})
 (ODPEdition)-[:EXPOSES]->(Baseline)
-(ODPEdition)-[:STARTS_FROM]->(Wave)
+(ODPEdition)-[:STARTS_FROM]->(Waves)
 ```
 
 ## Relationship Management
@@ -131,7 +131,7 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 **Milestone Ownership**:
 ```cypher
 (Milestone)-[:BELONGS_TO]->(ChangeVersion)
-(Milestone)-[:TARGETS]->(Wave)
+(Milestone)-[:TARGETS]->(Waves)
 ```
 
 **Management References**:
@@ -139,7 +139,7 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 (Baseline)-[:HAS_ITEMS]->(OperationalRequirementVersion)
 (Baseline)-[:HAS_ITEMS]->(OperationalChangeVersion)
 (ODPEdition)-[:EXPOSES]->(Baseline)
-(ODPEdition)-[:STARTS_FROM]->(Wave)
+(ODPEdition)-[:STARTS_FROM]->(Waves)
 ```
 
 ### Validation Patterns
@@ -153,13 +153,13 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 ### Context Parameters
 All operational entity queries support optional context parameters:
 - **baselineId**: Historical context (returns versions captured in baseline)
-- **fromWaveId**: Wave filtering (OCs with milestones at/after wave, ORs referenced by filtered OCs)
+- **fromWaveId**: Waves filtering (OCs with milestones at/after wave, ORs referenced by filtered OCs)
 - **Combined**: Both parameters can be used together for historical + filtered views
 
 ### Parameter Resolution
 - **ODPEdition**: Route layer resolves `odpEdition` parameter to `baselineId + fromWaveId`
 - **Store layer**: Always receives resolved `baseline + fromWave` parameters
-- **Service layer**: Uses resolved parameters for consistent query logic
+- **Services layer**: Uses resolved parameters for consistent query logic
 
 ### Query Contexts
 1. **Current state**: No context parameters

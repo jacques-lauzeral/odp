@@ -216,7 +216,7 @@ Relationships from versioned entities point to Item nodes (not ItemVersion nodes
 ```cypher
 // Correct: Relationships point to stable Item identity
 (OperationalRequirementVersion)-[:REFINES]->(OperationalRequirement)
-(OperationalRequirementVersion)-[:IMPACTS]->(StakeholderCategory)
+(OperationalRequirementVersion)-[:IMPACTS]->(StakeholderCategories)
 (OperationalChangeVersion)-[:SATISFIES]->(OperationalRequirement)
 ```
 
@@ -248,7 +248,7 @@ RETURN target
 Milestones belong to specific OperationalChange versions:
 ```cypher
 (Milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(OperationalChangeVersion)
-(Milestone)-[:TARGETS]->(Wave)  // Optional wave targeting
+(Milestone)-[:TARGETS]->(Waves)  // Optional wave targeting
 ```
 
 ### Milestone Inheritance

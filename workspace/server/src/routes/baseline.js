@@ -66,7 +66,7 @@ router.post('/', async (req, res) => {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('Validation failed:')) {
             res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
-        } else if (error.message.includes('Wave with ID') && error.message.includes('does not exist')) {
+        } else if (error.message.includes('Waves with ID') && error.message.includes('does not exist')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

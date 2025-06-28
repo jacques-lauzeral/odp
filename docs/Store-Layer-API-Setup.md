@@ -1,7 +1,7 @@
 # Store Layer API - Setup
 
 ## Overview
-Setup entity stores provide CRUD operations for system configuration entities. These are non-versioned entities that support hierarchical organization through REFINES relationships (except Wave). All setup entities extend either BaseStore or RefinableEntityStore from the Core APIs.
+Setup entity stores provide CRUD operations for system configuration entities. These are non-versioned entities that support hierarchical organization through REFINES relationships (except Waves). All setup entities extend either BaseStore or RefinableEntityStore from the Core APIs.
 
 ## StakeholderCategoryStore
 **Inheritance**: `RefinableEntityStore → BaseStore`  
@@ -154,7 +154,7 @@ try {
         date: "2025-03-31"
     }, tx);
 
-    // Wave.name is automatically derived as "2025.1"
+    // Waves.name is automatically derived as "2025.1"
     console.log(wave.name); // "2025.1"
 
     // Query waves by year

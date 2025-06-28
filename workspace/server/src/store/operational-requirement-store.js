@@ -58,7 +58,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const refinesParents = refinesResult.records.map(record => this._buildReference(record));
 
-            // Get IMPACTS relationships to StakeholderCategory
+            // Get IMPACTS relationships to StakeholderCategories
             const stakeholderResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:StakeholderCategory)
                 WHERE id(version) = $versionId
@@ -78,7 +78,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const impactsData = dataResult.records.map(record => this._buildReference(record));
 
-            // Get IMPACTS relationships to Service
+            // Get IMPACTS relationships to Services
             const serviceResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:Service)
                 WHERE id(version) = $versionId
@@ -88,7 +88,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const impactsServices = serviceResult.records.map(record => this._buildReference(record));
 
-            // Get IMPACTS relationships to RegulatoryAspect
+            // Get IMPACTS relationships to RegulatoryAspects
             const regulatoryResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:RegulatoryAspect)
                 WHERE id(version) = $versionId
@@ -274,7 +274,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * Check if OperationalRequirement passes wave filter (referenced by filtered OCs + REFINES cascade)
      * @private
      * @param {number} itemId - OperationalRequirement Item ID
-     * @param {number} fromWaveId - Wave ID for filtering
+     * @param {number} fromWaveId - Waves ID for filtering
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
      * @returns {Promise<boolean>} True if requirement is referenced by filtered OCs or ancestors are
@@ -493,7 +493,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Find requirements that impact a specific item
-     * @param {string} targetLabel - Target item label ('StakeholderCategory', 'Data', 'Service', 'RegulatoryAspect')
+     * @param {string} targetLabel - Target item label ('StakeholderCategories', 'Data', 'Services', 'RegulatoryAspects')
      * @param {number} targetId - Target item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context

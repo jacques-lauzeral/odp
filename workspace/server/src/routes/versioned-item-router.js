@@ -52,7 +52,7 @@ export class VersionedItemRouter {
                 console.error(`Error fetching ${this.entityName}s:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+                } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
@@ -80,7 +80,7 @@ export class VersionedItemRouter {
                 console.error(`Error fetching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+                } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

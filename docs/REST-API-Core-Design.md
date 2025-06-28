@@ -10,14 +10,14 @@ All API routes are manually implemented using Express.js with direct route defin
 
 **Architecture Pattern:**
 ```
-HTTP Requests → Express Routes → Service Layer → Store Layer → Neo4j Database
+HTTP Requests → Express Routes → Services Layer → Store Layer → Neo4j Database
 ```
 
 ### 2. Shared Model Foundation
 All API interactions are built around base entity models defined in `@odp/shared`:
 
 ```javascript
-export const StakeholderCategory = {
+export const StakeholderCategories = {
   id: '',
   name: '',
   description: ''
@@ -25,7 +25,7 @@ export const StakeholderCategory = {
 
 export const StakeholderCategoryRequests = {
   create: {
-    ...StakeholderCategory,
+    ...StakeholderCategories,
     id: undefined,     // not needed for create
     parentId: null     // additional field for hierarchy
   }
@@ -40,11 +40,11 @@ Responses return base model objects directly - no wrapper structures needed.
 ### File Structure Pattern
 ```
 src/routes/
-├── stakeholder-category.js      # Setup entities
-├── regulatory-aspect.js
-├── data-category.js
-├── service.js
-├── wave.js
+├── stakeholder-categories.js      # Setup entities
+├── regulatory-aspects.js
+├── data-categories.js
+├── services.js
+├── waves.js
 ├── operational-requirement.js   # Versioned entities
 ├── operational-change.js
 ├── baseline.js                  # Management entities
@@ -100,7 +100,7 @@ DELETE /entity-name/:id          # Delete
 ### Multi-Context Parameters (Operational entities)
 ```
 GET /operational-requirements?baseline=123           # Historical context
-GET /operational-requirements?fromWave=456          # Wave filtering  
+GET /operational-requirements?fromWave=456          # Waves filtering  
 GET /operational-requirements?baseline=123&fromWave=456  # Combined
 ```
 
@@ -158,9 +158,9 @@ PUT /operational-changes/:id/milestones/:milestoneId # Update milestone
 - **METHOD_NOT_ALLOWED**: Operation not supported (immutable entities)
 - **INTERNAL_ERROR**: Server-side error
 
-## Service Layer Integration
+## Services Layer Integration
 
-### Service Method Patterns
+### Services Method Patterns
 Routes delegate to service methods with consistent signatures:
 
 **Setup Entities:**
@@ -225,7 +225,7 @@ GET /operational-requirements/123/versions/2
 GET /operational-requirements/123/versions
 ```
 
-### Baseline and Wave Filtering
+### Baseline and Waves Filtering
 ```javascript
 // Historical state at baseline time
 GET /operational-requirements?baseline=123

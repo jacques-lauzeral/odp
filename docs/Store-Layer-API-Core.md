@@ -302,16 +302,16 @@ const roots = await store.findRoots(transaction)
 - `'No items captured in baseline'` - Baseline created but no OR/OC existed
 
 #### Milestone Errors
-- `'Wave with ID [waveId] does not exist'` - Invalid wave reference
+- `'Waves with ID [waveId] does not exist'` - Invalid wave reference
 
 #### ODPEdition Errors
 - `'ODPEdition not found'` - Invalid odpEditionId in context resolution
 - `'Invalid baseline reference'` - Baseline doesn't exist when creating ODPEdition
-- `'Invalid wave reference'` - Wave doesn't exist when creating ODPEdition
+- `'Invalid wave reference'` - Waves doesn't exist when creating ODPEdition
 
-#### Wave Filtering Errors
-- `'Wave not found'` - Invalid fromWaveId in wave filtering operations
-- `'No matching milestones'` - Wave filter results in empty OC set
+#### Waves Filtering Errors
+- `'Waves not found'` - Invalid fromWaveId in wave filtering operations
+- `'No matching milestones'` - Waves filter results in empty OC set
 
 ## Configuration
 

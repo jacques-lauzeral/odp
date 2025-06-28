@@ -13,7 +13,7 @@
   - Node.js 20 for application runtime
   - Neo4j 5.15 for graph database
 - **Development workflow:** Live code reloading in containers
-- **Service coordination:** Automated startup and dependency management
+- **Services coordination:** Automated startup and dependency management
 
 ## Development Environment Setup
 
@@ -32,7 +32,7 @@ cd odp
 docker-compose up
 ```
 
-### Service Access Points
+### Services Access Points
 - **ODP API Server:** http://localhost
 - **Neo4j Browser:** http://localhost:7474 (neo4j/password123)
 - **API Health Check:** http://localhost/hello
@@ -75,13 +75,13 @@ workspace/
 1. **Environment startup:** `docker-compose up`
 2. **Code editing:** Direct file editing on host
 3. **Live reload:** Automatic container restart on changes via nodemon
-4. **Service logs:** Visible in docker-compose output
+4. **Services logs:** Visible in docker-compose output
 5. **Debugging:** Container exec for inspection
 
 ### Manual API Development Process
 1. **Entity modeling:** Define data structures in `@odp/shared`
 2. **Store layer:** Create entity store extending BaseStore
-3. **Service layer:** Implement business logic with transaction management
+3. **Services layer:** Implement business logic with transaction management
 4. **Route layer:** Create Express routes for CRUD operations
 5. **CLI integration:** Add commands using direct HTTP calls
 6. **Testing:** Use CLI and curl for endpoint verification
@@ -148,8 +148,8 @@ npm run dev entity-name delete <id>
 ### Query Testing
 ```cypher
 // Test queries in Neo4j Browser
-MATCH (n:StakeholderCategory) RETURN n;
-MATCH (n:StakeholderCategory)-[:REFINES]->(p:StakeholderCategory) RETURN n, p;
+MATCH (n:StakeholderCategories) RETURN n;
+MATCH (n:StakeholderCategories)-[:REFINES]->(p:StakeholderCategories) RETURN n, p;
 MATCH (n) WHERE id(n) = 0 RETURN n;
 ```
 
@@ -157,7 +157,7 @@ MATCH (n) WHERE id(n) = 0 RETURN n;
 
 ### Manual Route Development
 - **Route organization:** One file per entity in src/routes/
-- **Service integration:** Clean separation between HTTP and business logic
+- **Services integration:** Clean separation between HTTP and business logic
 - **Error handling:** Consistent JSON error responses
 - **Testing:** CLI provides comprehensive API validation
 
@@ -217,7 +217,7 @@ services:
 - **Database config:** `workspace/server/src/store/config.json`
 - **CLI config:** `workspace/cli/config.json`
 - **Environment variables:** Docker Compose environment section
-- **Service discovery:** Internal Docker network resolution
+- **Services discovery:** Internal Docker network resolution
 - **Port management:** Host-to-container port mapping
 
 ## Extension and Customization
@@ -250,7 +250,7 @@ services:
 - **Error handling:** Proper exit codes and error messages
 
 ### Development Environment Customization
-- **Service modification:** Update docker-compose.yml as needed
+- **Services modification:** Update docker-compose.yml as needed
 - **Port changes:** Modify port mappings for different services
 - **Volume mounting:** Adjust file system mounting for specific workflows
 - **Environment variables:** Configure service-specific settings

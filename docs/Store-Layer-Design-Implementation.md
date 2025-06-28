@@ -194,7 +194,7 @@ export async function rollbackTransaction(transaction) {
 
 ### Single Transaction per Operation
 ```javascript
-// Service layer pattern - one transaction per user action
+// Services layer pattern - one transaction per user action
 async updateOperationalRequirement(itemId, data, expectedVersionId, userId) {
   const tx = createTransaction(userId);
   try {
@@ -246,7 +246,7 @@ export async function initializeStores() {
 MATCH (n:EntityType) WHERE id(n) = $id RETURN n
 
 // Use indexed properties when available
-MATCH (n:Wave) WHERE n.year = $year AND n.quarter = $quarter RETURN n
+MATCH (n:Waves) WHERE n.year = $year AND n.quarter = $quarter RETURN n
 ```
 
 **Efficient Relationship Traversal**:
