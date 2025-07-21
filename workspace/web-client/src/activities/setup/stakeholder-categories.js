@@ -1,8 +1,13 @@
 import TreeEntity from '../../components/setup/tree-entity.js';
+import { apiClient } from '../../shared/api-client.js';
 
 export default class StakeholderCategories extends TreeEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
+    }
+
+    getNewButtonText() {
+        return 'New Stakeholder Category';
     }
 
     getDisplayName(item) {
@@ -53,10 +58,10 @@ export default class StakeholderCategories extends TreeEntity {
         return `
             <div class="action-buttons">
                 <button class="btn btn-primary btn-sm" data-action="edit" data-id="${item.id}">
-                    Edit Category
+                    Edit Stakeholder Category
                 </button>
                 <button class="btn btn-secondary btn-sm" data-action="add-child" data-id="${item.id}">
-                    Add Subcategory
+                    Add Child
                 </button>
                 <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${item.id}">
                     Delete
@@ -65,7 +70,7 @@ export default class StakeholderCategories extends TreeEntity {
         `;
     }
 
-    handleAddRoot() {
+    handleNewRoot() {
         this.showCreateForm();
     }
 
@@ -89,7 +94,7 @@ export default class StakeholderCategories extends TreeEntity {
                 <div class="modal">
                     <div class="modal-header">
                         <h3 class="modal-title">
-                            ${parentInfo ? `Add Subcategory to "${parentInfo.name}"` : 'Add Root Category'}
+                            ${parentInfo ? `Add Subcategory to "${parentInfo.name}"` : 'New Stakeholder Category'}
                         </h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
@@ -103,9 +108,9 @@ export default class StakeholderCategories extends TreeEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="description">Description</label>
+                                <label for="description">Description *</label>
                                 <textarea id="description" name="description" class="form-control form-textarea" 
-                                         placeholder="Optional description of this stakeholder category"></textarea>
+                                         placeholder="Description of this stakeholder category" required></textarea>
                             </div>
                             
                             ${parentInfo ? `
@@ -118,7 +123,7 @@ export default class StakeholderCategories extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Create Category</button>
+                        <button type="button" class="btn btn-primary" data-action="save">Create Stakeholder Category</button>
                     </div>
                 </div>
             </div>
@@ -139,7 +144,7 @@ export default class StakeholderCategories extends TreeEntity {
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Category: ${item.name}</h3>
+                        <h3 class="modal-title">Edit Stakeholder Category: ${item.name}</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -154,8 +159,9 @@ export default class StakeholderCategories extends TreeEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-description">Description</label>
-                                <textarea id="edit-description" name="description" class="form-control form-textarea">${item.description || ''}</textarea>
+                                <label for="edit-description">Description *</label>
+                                <textarea id="edit-description" name="description" class="form-control form-textarea" 
+                                         required>${item.description || ''}</textarea>
                             </div>
                             
                             ${item.parentId ? `
@@ -168,7 +174,7 @@ export default class StakeholderCategories extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="update">Update Category</button>
+                        <button type="button" class="btn btn-primary" data-action="update">Update Stakeholder Category</button>
                     </div>
                 </div>
             </div>
@@ -186,7 +192,7 @@ export default class StakeholderCategories extends TreeEntity {
             <div class="modal-overlay" id="delete-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Delete Category</h3>
+                        <h3 class="modal-title">Delete Stakeholder Category</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -194,7 +200,7 @@ export default class StakeholderCategories extends TreeEntity {
                         
                         ${hasChildren ? `
                             <div class="warning-message">
-                                <p><strong>Warning:</strong> This category has ${childrenCount} subcategories. 
+                                <p><strong>Warning:</strong> This stakeholder category has ${childrenCount} subcategories. 
                                 Deleting it will also delete all subcategories.</p>
                             </div>
                         ` : ''}
@@ -206,7 +212,7 @@ export default class StakeholderCategories extends TreeEntity {
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
                         <button type="button" class="btn btn-primary" data-action="confirm-delete">
-                            Delete Category
+                            Delete Stakeholder Category
                         </button>
                     </div>
                 </div>
@@ -217,108 +223,70 @@ export default class StakeholderCategories extends TreeEntity {
         this.attachModalEventListeners('#delete-modal');
     }
 
-    attachModalEventListeners(modalSelector) {
-        const modal = document.querySelector(modalSelector);
-        if (!modal) return;
-
-        modal.addEventListener('click', async (e) => {
-            const action = e.target.dataset.action;
-
-            switch (action) {
-                case 'close':
-                    this.closeModal(modal);
-                    break;
-                case 'save':
-                    await this.handleCreateSave(modal);
-                    break;
-                case 'update':
-                    await this.handleUpdateSave(modal);
-                    break;
-                case 'confirm-delete':
-                    await this.handleDeleteConfirm(modal);
-                    break;
-            }
-        });
-
-        // Close modal on overlay click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeModal(modal);
-            }
-        });
-
-        // Close modal on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal(modal);
-            }
-        });
-    }
-
     async handleCreateSave(modal) {
+        // Validate form before proceeding
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
         const data = {
             name: formData.get('name'),
-            description: formData.get('description') || undefined
+            description: formData.get('description')
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.post(this.config.endpoint, data);
+            const newItem = await apiClient.post(this.config.endpoint, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(newItem.id);
         } catch (error) {
-            console.error('Failed to create category:', error);
-            // TODO: Show error message in modal
+            console.error('Failed to create stakeholder category:', error);
         }
     }
 
     async handleUpdateSave(modal) {
+        // Validate form before proceeding
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
-        const id = formData.get('id');
+        const id = parseInt(formData.get('id'), 10);
         const data = {
             name: formData.get('name'),
-            description: formData.get('description') || undefined
+            description: formData.get('description')
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.put(`${this.config.endpoint}/${id}`, data);
+            await apiClient.put(`${this.config.endpoint}/${id}`, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(id);
         } catch (error) {
-            console.error('Failed to update category:', error);
-            // TODO: Show error message in modal
+            console.error('Failed to update stakeholder category:', error);
         }
     }
 
     async handleDeleteConfirm(modal) {
-        const itemId = modal.querySelector('#delete-item-id').value;
+        const itemId = parseInt(modal.querySelector('#delete-item-id').value, 10);
 
         try {
-            await this.app.apiClient.delete(`${this.config.endpoint}/${itemId}`);
+            await apiClient.delete(`${this.config.endpoint}/${itemId}`);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndClearSelection();
         } catch (error) {
-            console.error('Failed to delete category:', error);
-            // TODO: Show error message in modal
+            console.error('Failed to delete stakeholder category:', error);
         }
-    }
-
-    closeModal(modal) {
-        modal.remove();
     }
 }

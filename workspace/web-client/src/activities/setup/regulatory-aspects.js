@@ -1,31 +1,30 @@
 import TreeEntity from '../../components/setup/tree-entity.js';
+import { apiClient } from '../../shared/api-client.js';
 
 export default class RegulatoryAspects extends TreeEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
     }
 
+    getNewButtonText() {
+        return 'New Regulatory Aspect';
+    }
+
     getDisplayName(item) {
-        return item.title || item.name;
+        return item.name;
     }
 
     renderItemDetails(item) {
         return `
             <div class="item-details">
                 <div class="detail-field">
-                    <label>Title</label>
-                    <p>${item.title}</p>
+                    <label>Name</label>
+                    <p>${item.name}</p>
                 </div>
                 ${item.description ? `
                     <div class="detail-field">
                         <label>Description</label>
                         <p>${item.description}</p>
-                    </div>
-                ` : ''}
-                ${item.regulationReference ? `
-                    <div class="detail-field">
-                        <label>Regulation Reference</label>
-                        <p>${item.regulationReference}</p>
                     </div>
                 ` : ''}
                 ${item.parentId ? `
@@ -48,7 +47,7 @@ export default class RegulatoryAspects extends TreeEntity {
 
     getParentName(parentId) {
         const parent = this.data.find(item => item.id === parentId);
-        return parent ? (parent.title || parent.name) : 'Unknown';
+        return parent ? parent.name : 'Unknown';
     }
 
     getChildrenCount(itemId) {
@@ -59,10 +58,10 @@ export default class RegulatoryAspects extends TreeEntity {
         return `
             <div class="action-buttons">
                 <button class="btn btn-primary btn-sm" data-action="edit" data-id="${item.id}">
-                    Edit Aspect
+                    Edit
                 </button>
                 <button class="btn btn-secondary btn-sm" data-action="add-child" data-id="${item.id}">
-                    Add Sub-aspect
+                    Add Child
                 </button>
                 <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${item.id}">
                     Delete
@@ -71,7 +70,7 @@ export default class RegulatoryAspects extends TreeEntity {
         `;
     }
 
-    handleAddRoot() {
+    handleNewRoot() {
         this.showCreateForm();
     }
 
@@ -95,7 +94,7 @@ export default class RegulatoryAspects extends TreeEntity {
                 <div class="modal">
                     <div class="modal-header">
                         <h3 class="modal-title">
-                            ${parentInfo ? `Add Sub-aspect to "${parentInfo.title || parentInfo.name}"` : 'Add Root Regulatory Aspect'}
+                            ${parentInfo ? `Add Sub-aspect to "${parentInfo.name}"` : 'New Regulatory Aspect'}
                         </h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
@@ -104,34 +103,28 @@ export default class RegulatoryAspects extends TreeEntity {
                             ${parentId ? `<input type="hidden" name="parentId" value="${parentId}">` : ''}
                             
                             <div class="form-group">
-                                <label for="title">Title *</label>
-                                <input type="text" id="title" name="title" class="form-control" required
+                                <label for="name">Name *</label>
+                                <input type="text" id="name" name="name" class="form-control" required
                                        placeholder="e.g., GDPR, SOX, Basel III">
                             </div>
                             
                             <div class="form-group">
                                 <label for="description">Description</label>
                                 <textarea id="description" name="description" class="form-control form-textarea" 
-                                         placeholder="Detailed description of this regulatory aspect"></textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="regulationReference">Regulation Reference</label>
-                                <input type="text" id="regulationReference" name="regulationReference" class="form-control"
-                                       placeholder="Official regulation number or code">
+                                         placeholder="Description of this regulatory aspect"></textarea>
                             </div>
                             
                             ${parentInfo ? `
                                 <div class="form-group">
                                     <label>Parent Regulatory Aspect</label>
-                                    <p class="form-text">${parentInfo.title || parentInfo.name}</p>
+                                    <p class="form-text">${parentInfo.name}</p>
                                 </div>
                             ` : ''}
                         </form>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Create Aspect</button>
+                        <button type="button" class="btn btn-primary" data-action="save">Create Regulatory Aspect</button>
                     </div>
                 </div>
             </div>
@@ -140,10 +133,10 @@ export default class RegulatoryAspects extends TreeEntity {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.attachModalEventListeners('#create-modal');
 
-        // Focus on title field
-        const titleField = document.querySelector('#create-modal #title');
-        if (titleField) {
-            titleField.focus();
+        // Focus on name field
+        const nameField = document.querySelector('#create-modal #name');
+        if (nameField) {
+            nameField.focus();
         }
     }
 
@@ -152,7 +145,7 @@ export default class RegulatoryAspects extends TreeEntity {
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Regulatory Aspect: ${item.title || item.name}</h3>
+                        <h3 class="modal-title">Edit Regulatory Aspect</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -161,20 +154,14 @@ export default class RegulatoryAspects extends TreeEntity {
                             ${item.parentId ? `<input type="hidden" name="parentId" value="${item.parentId}">` : ''}
                             
                             <div class="form-group">
-                                <label for="edit-title">Title *</label>
-                                <input type="text" id="edit-title" name="title" class="form-control" 
-                                       value="${item.title || item.name || ''}" required>
+                                <label for="edit-name">Name *</label>
+                                <input type="text" id="edit-name" name="name" class="form-control" 
+                                       value="${item.name}" required>
                             </div>
                             
                             <div class="form-group">
                                 <label for="edit-description">Description</label>
                                 <textarea id="edit-description" name="description" class="form-control form-textarea">${item.description || ''}</textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-regulationReference">Regulation Reference</label>
-                                <input type="text" id="edit-regulationReference" name="regulationReference" class="form-control"
-                                       value="${item.regulationReference || ''}">
                             </div>
                             
                             ${item.parentId ? `
@@ -187,7 +174,7 @@ export default class RegulatoryAspects extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="update">Update Aspect</button>
+                        <button type="button" class="btn btn-primary" data-action="update">Update</button>
                     </div>
                 </div>
             </div>
@@ -209,7 +196,7 @@ export default class RegulatoryAspects extends TreeEntity {
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <p>Are you sure you want to delete <strong>"${item.title || item.name}"</strong>?</p>
+                        <p>Are you sure you want to delete <strong>"${item.name}"</strong>?</p>
                         
                         ${hasChildren ? `
                             <div class="warning-message">
@@ -225,7 +212,7 @@ export default class RegulatoryAspects extends TreeEntity {
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
                         <button type="button" class="btn btn-primary" data-action="confirm-delete">
-                            Delete Aspect
+                            Delete Regulatory Aspect
                         </button>
                     </div>
                 </div>
@@ -236,110 +223,68 @@ export default class RegulatoryAspects extends TreeEntity {
         this.attachModalEventListeners('#delete-modal');
     }
 
-    attachModalEventListeners(modalSelector) {
-        const modal = document.querySelector(modalSelector);
-        if (!modal) return;
-
-        modal.addEventListener('click', async (e) => {
-            const action = e.target.dataset.action;
-
-            switch (action) {
-                case 'close':
-                    this.closeModal(modal);
-                    break;
-                case 'save':
-                    await this.handleCreateSave(modal);
-                    break;
-                case 'update':
-                    await this.handleUpdateSave(modal);
-                    break;
-                case 'confirm-delete':
-                    await this.handleDeleteConfirm(modal);
-                    break;
-            }
-        });
-
-        // Close modal on overlay click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeModal(modal);
-            }
-        });
-
-        // Close modal on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal(modal);
-            }
-        });
-    }
-
     async handleCreateSave(modal) {
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
         const data = {
-            title: formData.get('title'),
-            description: formData.get('description') || undefined,
-            regulationReference: formData.get('regulationReference') || undefined
+            name: formData.get('name'),
+            description: formData.get('description') || undefined
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.post(this.config.endpoint, data);
+            const newItem = await apiClient.post(this.config.endpoint, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(newItem.id);
         } catch (error) {
             console.error('Failed to create regulatory aspect:', error);
-            // TODO: Show error message in modal
         }
     }
 
     async handleUpdateSave(modal) {
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
-        const id = formData.get('id');
+        const id = parseInt(formData.get('id'), 10);
         const data = {
-            title: formData.get('title'),
-            description: formData.get('description') || undefined,
-            regulationReference: formData.get('regulationReference') || undefined
+            name: formData.get('name'),
+            description: formData.get('description') || undefined
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.put(`${this.config.endpoint}/${id}`, data);
+            await apiClient.put(`${this.config.endpoint}/${id}`, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(id);
         } catch (error) {
             console.error('Failed to update regulatory aspect:', error);
-            // TODO: Show error message in modal
         }
     }
 
     async handleDeleteConfirm(modal) {
-        const itemId = modal.querySelector('#delete-item-id').value;
+        const itemId = parseInt(modal.querySelector('#delete-item-id').value, 10);
 
         try {
-            await this.app.apiClient.delete(`${this.config.endpoint}/${itemId}`);
+            await apiClient.delete(`${this.config.endpoint}/${itemId}`);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndClearSelection();
         } catch (error) {
             console.error('Failed to delete regulatory aspect:', error);
-            // TODO: Show error message in modal
         }
-    }
-
-    closeModal(modal) {
-        modal.remove();
     }
 }

@@ -1,8 +1,13 @@
 import TreeEntity from '../../components/setup/tree-entity.js';
+import { apiClient } from '../../shared/api-client.js';
 
 export default class DataCategories extends TreeEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
+    }
+
+    getNewButtonText() {
+        return 'New Data Category';
     }
 
     getDisplayName(item) {
@@ -20,12 +25,6 @@ export default class DataCategories extends TreeEntity {
                     <div class="detail-field">
                         <label>Description</label>
                         <p>${item.description}</p>
-                    </div>
-                ` : ''}
-                ${item.classification ? `
-                    <div class="detail-field">
-                        <label>Classification</label>
-                        <p><span class="classification-badge classification-${item.classification.toLowerCase()}">${item.classification}</span></p>
                     </div>
                 ` : ''}
                 ${item.parentId ? `
@@ -59,10 +58,10 @@ export default class DataCategories extends TreeEntity {
         return `
             <div class="action-buttons">
                 <button class="btn btn-primary btn-sm" data-action="edit" data-id="${item.id}">
-                    Edit Category
+                    Edit Data Category
                 </button>
                 <button class="btn btn-secondary btn-sm" data-action="add-child" data-id="${item.id}">
-                    Add Subcategory
+                    Add Child
                 </button>
                 <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${item.id}">
                     Delete
@@ -71,7 +70,7 @@ export default class DataCategories extends TreeEntity {
         `;
     }
 
-    handleAddRoot() {
+    handleNewRoot() {
         this.showCreateForm();
     }
 
@@ -95,7 +94,7 @@ export default class DataCategories extends TreeEntity {
                 <div class="modal">
                     <div class="modal-header">
                         <h3 class="modal-title">
-                            ${parentInfo ? `Add Subcategory to "${parentInfo.name}"` : 'Add Root Data Category'}
+                            ${parentInfo ? `Add Subcategory to "${parentInfo.name}"` : 'New Data Category'}
                         </h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
@@ -110,21 +109,9 @@ export default class DataCategories extends TreeEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="description">Description</label>
+                                <label for="description">Description *</label>
                                 <textarea id="description" name="description" class="form-control form-textarea" 
-                                         placeholder="Detailed description of this data category and what it encompasses"></textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="classification">Data Classification</label>
-                                <select id="classification" name="classification" class="form-control form-select">
-                                    <option value="">Select classification...</option>
-                                    <option value="Public">Public</option>
-                                    <option value="Internal">Internal</option>
-                                    <option value="Confidential">Confidential</option>
-                                    <option value="Restricted">Restricted</option>
-                                </select>
-                                <small class="form-text">Classification level determines access controls and handling requirements</small>
+                                         placeholder="Description of this data category and what it encompasses" required></textarea>
                             </div>
                             
                             ${parentInfo ? `
@@ -137,7 +124,7 @@ export default class DataCategories extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Create Category</button>
+                        <button type="button" class="btn btn-primary" data-action="save">Create Data Category</button>
                     </div>
                 </div>
             </div>
@@ -173,19 +160,9 @@ export default class DataCategories extends TreeEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-description">Description</label>
-                                <textarea id="edit-description" name="description" class="form-control form-textarea">${item.description || ''}</textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-classification">Data Classification</label>
-                                <select id="edit-classification" name="classification" class="form-control form-select">
-                                    <option value="">Select classification...</option>
-                                    <option value="Public" ${item.classification === 'Public' ? 'selected' : ''}>Public</option>
-                                    <option value="Internal" ${item.classification === 'Internal' ? 'selected' : ''}>Internal</option>
-                                    <option value="Confidential" ${item.classification === 'Confidential' ? 'selected' : ''}>Confidential</option>
-                                    <option value="Restricted" ${item.classification === 'Restricted' ? 'selected' : ''}>Restricted</option>
-                                </select>
+                                <label for="edit-description">Description *</label>
+                                <textarea id="edit-description" name="description" class="form-control form-textarea" 
+                                         required>${item.description || ''}</textarea>
                             </div>
                             
                             ${item.parentId ? `
@@ -198,7 +175,7 @@ export default class DataCategories extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="update">Update Category</button>
+                        <button type="button" class="btn btn-primary" data-action="update">Update Data Category</button>
                     </div>
                 </div>
             </div>
@@ -229,10 +206,6 @@ export default class DataCategories extends TreeEntity {
                             </div>
                         ` : ''}
                         
-                        ${item.classification ? `
-                            <p class="text-secondary">Classification: <span class="classification-badge classification-${item.classification.toLowerCase()}">${item.classification}</span></p>
-                        ` : ''}
-                        
                         <p class="text-secondary">This action cannot be undone.</p>
                         
                         <input type="hidden" id="delete-item-id" value="${item.id}">
@@ -240,7 +213,7 @@ export default class DataCategories extends TreeEntity {
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
                         <button type="button" class="btn btn-primary" data-action="confirm-delete">
-                            Delete Category
+                            Delete Data Category
                         </button>
                     </div>
                 </div>
@@ -251,110 +224,70 @@ export default class DataCategories extends TreeEntity {
         this.attachModalEventListeners('#delete-modal');
     }
 
-    attachModalEventListeners(modalSelector) {
-        const modal = document.querySelector(modalSelector);
-        if (!modal) return;
-
-        modal.addEventListener('click', async (e) => {
-            const action = e.target.dataset.action;
-
-            switch (action) {
-                case 'close':
-                    this.closeModal(modal);
-                    break;
-                case 'save':
-                    await this.handleCreateSave(modal);
-                    break;
-                case 'update':
-                    await this.handleUpdateSave(modal);
-                    break;
-                case 'confirm-delete':
-                    await this.handleDeleteConfirm(modal);
-                    break;
-            }
-        });
-
-        // Close modal on overlay click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeModal(modal);
-            }
-        });
-
-        // Close modal on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal(modal);
-            }
-        });
-    }
-
     async handleCreateSave(modal) {
+        // Validate form before proceeding
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
         const data = {
             name: formData.get('name'),
-            description: formData.get('description') || undefined,
-            classification: formData.get('classification') || undefined
+            description: formData.get('description')
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.post(this.config.endpoint, data);
+            const newItem = await apiClient.post(this.config.endpoint, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(newItem.id);
         } catch (error) {
             console.error('Failed to create data category:', error);
-            // TODO: Show error message in modal
         }
     }
 
     async handleUpdateSave(modal) {
+        // Validate form before proceeding
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
-        const id = formData.get('id');
+        const id = parseInt(formData.get('id'), 10);
         const data = {
             name: formData.get('name'),
-            description: formData.get('description') || undefined,
-            classification: formData.get('classification') || undefined
+            description: formData.get('description')
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.put(`${this.config.endpoint}/${id}`, data);
+            await apiClient.put(`${this.config.endpoint}/${id}`, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(id);
         } catch (error) {
             console.error('Failed to update data category:', error);
-            // TODO: Show error message in modal
         }
     }
 
     async handleDeleteConfirm(modal) {
-        const itemId = modal.querySelector('#delete-item-id').value;
+        const itemId = parseInt(modal.querySelector('#delete-item-id').value, 10);
 
         try {
-            await this.app.apiClient.delete(`${this.config.endpoint}/${itemId}`);
+            await apiClient.delete(`${this.config.endpoint}/${itemId}`);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndClearSelection();
         } catch (error) {
             console.error('Failed to delete data category:', error);
-            // TODO: Show error message in modal
         }
-    }
-
-    closeModal(modal) {
-        modal.remove();
     }
 }

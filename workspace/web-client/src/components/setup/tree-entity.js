@@ -31,6 +31,10 @@ export default class TreeEntity {
         }
     }
 
+    getNewButtonText() {
+        return 'New';
+    }
+
     renderUI() {
         const html = `
             <div class="tree-entity">
@@ -39,7 +43,7 @@ export default class TreeEntity {
                         <div class="pane-header">
                             <h3>${this.config.name}</h3>
                             <button class="btn btn-sm btn-primary" id="add-root-btn">
-                                Add Root
+                                ${this.getNewButtonText()}
                             </button>
                         </div>
                         <div class="tree-container" id="tree-container">
@@ -73,7 +77,7 @@ export default class TreeEntity {
 
     renderTree() {
         if (!Array.isArray(this.data) || this.data.length === 0) {
-            return '<p class="no-data">No items found. Click "Add Root" to create the first item.</p>';
+            return `<p class="no-data">No items found. Click "${this.getNewButtonText()}" to create the first item.</p>`;
         }
 
         return `<div class="tree-nodes">${this.renderTreeNodes(this.treeStructure)}</div>`;
@@ -211,11 +215,11 @@ export default class TreeEntity {
             });
         });
 
-        // Add root button
-        const addRootBtn = dom.find('#add-root-btn', this.container);
-        if (addRootBtn) {
-            addRootBtn.addEventListener('click', () => {
-                this.handleAddRoot();
+        // New root button
+        const newRootBtn = dom.find('#add-root-btn', this.container);
+        if (newRootBtn) {
+            newRootBtn.addEventListener('click', () => {
+                this.handleNewRoot();
             });
         }
 
@@ -234,20 +238,20 @@ export default class TreeEntity {
     }
 
     selectItem(itemId) {
-        // Remove previous selection
-        const prevSelected = dom.find('.tree-item--selected', this.container);
-        if (prevSelected) {
-            prevSelected.classList.remove('tree-item--selected');
-        }
+        // Clear all selections first (defensive approach)
+        const allTreeItems = dom.findAll('.tree-item', this.container);
+        allTreeItems.forEach(item => item.classList.remove('tree-item--selected'));
 
-        // Add selection to clicked item
-        const selectedElement = dom.find(`[data-id="${itemId}"]`, this.container);
+        // Select only the clicked item
+        const selectedElement = dom.find(`.tree-item[data-id="${itemId}"]`, this.container);
         if (selectedElement) {
             selectedElement.classList.add('tree-item--selected');
         }
 
-        // Update selected item and show details/actions
-        this.selectedItem = this.data.find(item => item.id === itemId);
+        // Update state and UI
+        const numericItemId = parseInt(itemId, 10);
+        this.selectedItem = this.data.find(item => item.id === numericItemId);
+
         if (this.selectedItem) {
             this.updateDetails();
             this.updateActions();
@@ -256,15 +260,23 @@ export default class TreeEntity {
 
     updateDetails() {
         const detailContainer = dom.find('#detail-container', this.container);
-        if (detailContainer && this.selectedItem) {
-            detailContainer.innerHTML = this.renderItemDetails(this.selectedItem);
+        if (detailContainer) {
+            if (this.selectedItem) {
+                detailContainer.innerHTML = this.renderItemDetails(this.selectedItem);
+            } else {
+                detailContainer.innerHTML = this.renderEmptyDetails();
+            }
         }
     }
 
     updateActions() {
         const actionsContainer = dom.find('#actions-container', this.container);
-        if (actionsContainer && this.selectedItem) {
-            actionsContainer.innerHTML = this.renderItemActions(this.selectedItem);
+        if (actionsContainer) {
+            if (this.selectedItem) {
+                actionsContainer.innerHTML = this.renderItemActions(this.selectedItem);
+            } else {
+                actionsContainer.innerHTML = this.renderEmptyActions();
+            }
         }
     }
 
@@ -281,13 +293,14 @@ export default class TreeEntity {
     }
 
     // Action handlers - to be implemented by subclasses
-    handleAddRoot() {
-        console.log('Add root item for', this.config.name);
+    handleNewRoot() {
+        console.log('New', this.config.name);
         // Override in subclasses
     }
 
     handleAction(action, itemId) {
-        const item = this.data.find(d => d.id === itemId);
+        const numericItemId = parseInt(itemId, 10);
+        const item = this.data.find(d => d.id === numericItemId);
 
         switch (action) {
             case 'edit':
@@ -319,9 +332,119 @@ export default class TreeEntity {
         // Override in subclasses
     }
 
+    // Form validation methods - shared by all tree entities
+    validateForm(modal) {
+        // Clear previous errors
+        const errorFields = modal.querySelectorAll('.error');
+        errorFields.forEach(field => this.clearFieldError(field));
+
+        let isValid = true;
+
+        // Check required fields
+        const requiredFields = modal.querySelectorAll('[required]');
+        requiredFields.forEach(field => {
+            if (!field.value.trim()) {
+                this.showFieldError(field, 'This field is required');
+                isValid = false;
+            }
+        });
+
+        return isValid;
+    }
+
+    showFieldError(field, message) {
+        this.clearFieldError(field);
+        field.classList.add('error');
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        field.parentNode.appendChild(errorDiv);
+    }
+
+    clearFieldError(field) {
+        field.classList.remove('error');
+        const existingError = field.parentNode.querySelector('.error-message');
+        if (existingError) {
+            existingError.remove();
+        }
+    }
+
+    // Modal management methods - shared by all tree entities
+    attachModalEventListeners(modalSelector) {
+        const modal = document.querySelector(modalSelector);
+        if (!modal) return;
+
+        modal.addEventListener('click', async (e) => {
+            const action = e.target.dataset.action;
+
+            switch (action) {
+                case 'close':
+                    this.closeModal(modal);
+                    break;
+                case 'save':
+                    await this.handleCreateSave(modal);
+                    break;
+                case 'update':
+                    await this.handleUpdateSave(modal);
+                    break;
+                case 'confirm-delete':
+                    await this.handleDeleteConfirm(modal);
+                    break;
+            }
+        });
+
+        // Close modal on overlay click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.closeModal(modal);
+            }
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeModal(modal);
+            }
+        });
+    }
+
+    closeModal(modal) {
+        modal.remove();
+    }
+
+    // Default CRUD handlers - to be overridden by subclasses
+    async handleCreateSave(modal) {
+        console.log('handleCreateSave not implemented in', this.constructor.name);
+        // Override in subclasses
+    }
+
+    async handleUpdateSave(modal) {
+        console.log('handleUpdateSave not implemented in', this.constructor.name);
+        // Override in subclasses
+    }
+
+    async handleDeleteConfirm(modal) {
+        console.log('handleDeleteConfirm not implemented in', this.constructor.name);
+        // Override in subclasses
+    }
+
+    // Selection management methods for post-operation behavior
+    async refreshAndSelect(itemId) {
+        await this.refresh();
+        if (itemId) {
+            this.selectItem(itemId.toString());
+        }
+    }
+
+    async refreshAndClearSelection() {
+        this.selectedItem = null;
+        await this.refresh();
+        this.updateDetails();
+        this.updateActions();
+    }
+
     async refresh() {
         await this.loadData();
-        this.renderTree();
 
         // Update tree container
         const treeContainer = dom.find('#tree-container', this.container);

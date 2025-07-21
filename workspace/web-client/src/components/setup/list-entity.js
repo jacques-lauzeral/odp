@@ -34,6 +34,14 @@ export default class ListEntity {
         return data;
     }
 
+    getNewButtonText() {
+        // Default add button text - can be overridden by subclasses
+        const singular = this.config.name.endsWith('s')
+            ? this.config.name.slice(0, -1)
+            : this.config.name;
+        return `New ${singular}`;
+    }
+
     renderUI() {
         const html = `
             <div class="list-entity">
@@ -44,7 +52,7 @@ export default class ListEntity {
                     </div>
                     <div class="entity-actions">
                         <button class="btn btn-primary" id="add-item-btn">
-                            ${this.getAddButtonText()}
+                            ${this.getNewButtonText()}
                         </button>
                     </div>
                 </div>
@@ -65,17 +73,9 @@ export default class ListEntity {
         return `Manage ${this.config.name.toLowerCase()} for the system`;
     }
 
-    getAddButtonText() {
-        // Default add button text - can be overridden by subclasses
-        const singular = this.config.name.endsWith('s')
-            ? this.config.name.slice(0, -1)
-            : this.config.name;
-        return `Add ${singular}`;
-    }
-
     renderTable() {
         if (!Array.isArray(this.data) || this.data.length === 0) {
-            return `<p class="no-data">No ${this.config.name.toLowerCase()} found. Click "${this.getAddButtonText()}" to create the first item.</p>`;
+            return `<p class="no-data">No ${this.config.name.toLowerCase()} found. Click "${this.getNewButtonText()}" to create the first item.</p>`;
         }
 
         const columns = this.getTableColumns();
@@ -111,8 +111,10 @@ export default class ListEntity {
             return `<td>${this.formatCellValue(value, col, item)}</td>`;
         }).join('');
 
+        const isSelected = this.selectedItem?.id === item.id;
+
         return `
-            <tr class="table-row" data-id="${item.id}">
+            <tr class="table-row ${isSelected ? 'table-row--selected' : ''}" data-id="${item.id}">
                 ${cells}
                 <td>
                     <div class="row-actions">
@@ -215,7 +217,8 @@ export default class ListEntity {
         }
 
         // Update selected item
-        this.selectedItem = this.data.find(item => item.id === itemId);
+        const numericItemId = parseInt(itemId, 10);
+        this.selectedItem = this.data.find(item => item.id === numericItemId);
 
         // Notify subclasses of selection change
         this.onItemSelected(this.selectedItem);
@@ -233,7 +236,8 @@ export default class ListEntity {
     }
 
     handleAction(action, itemId) {
-        const item = this.data.find(d => d.id === itemId);
+        const numericItemId = parseInt(itemId, 10);
+        const item = this.data.find(d => d.id === numericItemId);
 
         switch (action) {
             case 'edit':
@@ -265,6 +269,19 @@ export default class ListEntity {
         // Override in subclasses
     }
 
+    // Selection management methods for post-operation behavior
+    async refreshAndSelect(itemId) {
+        await this.refresh();
+        if (itemId) {
+            this.selectItem(itemId.toString());
+        }
+    }
+
+    async refreshAndClearSelection() {
+        this.selectedItem = null;
+        await this.refresh();
+    }
+
     async refresh() {
         await this.loadData();
 
@@ -287,7 +304,12 @@ export default class ListEntity {
         // Re-attach only table-specific event listeners after refresh
         const tableContainer = dom.find('#table-container', this.container);
         if (tableContainer) {
-            tableContainer.addEventListener('click', (e) => {
+            // Clear any existing listeners by cloning the container
+            const newTableContainer = tableContainer.cloneNode(true);
+            tableContainer.parentNode.replaceChild(newTableContainer, tableContainer);
+
+            // Now attach fresh listeners to the clean container
+            newTableContainer.addEventListener('click', (e) => {
                 const button = e.target.closest('[data-action]');
                 if (button) {
                     const action = button.dataset.action;
@@ -297,11 +319,17 @@ export default class ListEntity {
             });
         }
 
+        // Clear and re-add row selection listeners
         const tableRows = dom.findAll('.table-row', this.container);
         tableRows.forEach(row => {
-            row.addEventListener('click', (e) => {
+            // Clone to remove old listeners
+            const newRow = row.cloneNode(true);
+            row.parentNode.replaceChild(newRow, row);
+
+            // Add fresh listener
+            newRow.addEventListener('click', (e) => {
                 if (!e.target.closest('[data-action]')) {
-                    const itemId = row.dataset.id;
+                    const itemId = newRow.dataset.id;
                     this.selectItem(itemId);
                 }
             });

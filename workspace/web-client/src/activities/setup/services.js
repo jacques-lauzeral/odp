@@ -1,8 +1,13 @@
 import TreeEntity from '../../components/setup/tree-entity.js';
+import { apiClient } from '../../shared/api-client.js';
 
 export default class Services extends TreeEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
+    }
+
+    getNewButtonText() {
+        return 'New Service';
     }
 
     getDisplayName(item) {
@@ -20,24 +25,6 @@ export default class Services extends TreeEntity {
                     <div class="detail-field">
                         <label>Description</label>
                         <p>${item.description}</p>
-                    </div>
-                ` : ''}
-                ${item.domain ? `
-                    <div class="detail-field">
-                        <label>Domain</label>
-                        <p><span class="domain-badge">${item.domain}</span></p>
-                    </div>
-                ` : ''}
-                ${item.serviceType ? `
-                    <div class="detail-field">
-                        <label>Service Type</label>
-                        <p>${item.serviceType}</p>
-                    </div>
-                ` : ''}
-                ${item.owner ? `
-                    <div class="detail-field">
-                        <label>Service Owner</label>
-                        <p>${item.owner}</p>
                     </div>
                 ` : ''}
                 ${item.parentId ? `
@@ -71,10 +58,10 @@ export default class Services extends TreeEntity {
         return `
             <div class="action-buttons">
                 <button class="btn btn-primary btn-sm" data-action="edit" data-id="${item.id}">
-                    Edit Service
+                    Edit
                 </button>
                 <button class="btn btn-secondary btn-sm" data-action="add-child" data-id="${item.id}">
-                    Add Sub-service
+                    Add Child
                 </button>
                 <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${item.id}">
                     Delete
@@ -83,7 +70,7 @@ export default class Services extends TreeEntity {
         `;
     }
 
-    handleAddRoot() {
+    handleNewRoot() {
         this.showCreateForm();
     }
 
@@ -107,7 +94,7 @@ export default class Services extends TreeEntity {
                 <div class="modal">
                     <div class="modal-header">
                         <h3 class="modal-title">
-                            ${parentInfo ? `Add Sub-service to "${parentInfo.name}"` : 'Add Root Services'}
+                            ${parentInfo ? `Add Sub-service to "${parentInfo.name}"` : 'New Service'}
                         </h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
@@ -116,43 +103,15 @@ export default class Services extends TreeEntity {
                             ${parentId ? `<input type="hidden" name="parentId" value="${parentId}">` : ''}
                             
                             <div class="form-group">
-                                <label for="name">Service Name *</label>
+                                <label for="name">Name *</label>
                                 <input type="text" id="name" name="name" class="form-control" required
-                                       placeholder="e.g., Customer Portal, Payment Gateway, Authentication Service">
+                                       placeholder="e.g., iDL Elaboration Service">
                             </div>
                             
                             <div class="form-group">
                                 <label for="description">Description</label>
                                 <textarea id="description" name="description" class="form-control form-textarea" 
-                                         placeholder="Detailed description of the service functionality and purpose"></textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="domain">Domain</label>
-                                <input type="text" id="domain" name="domain" class="form-control"
-                                       placeholder="e.g., Customer Management, Finance, Infrastructure">
-                                <small class="form-text">Business domain or area this service belongs to</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="serviceType">Service Type</label>
-                                <select id="serviceType" name="serviceType" class="form-control form-select">
-                                    <option value="">Select type...</option>
-                                    <option value="Web Service">Web Service</option>
-                                    <option value="Database">Database</option>
-                                    <option value="Application">Application</option>
-                                    <option value="Infrastructure">Infrastructure</option>
-                                    <option value="Integration">Integration</option>
-                                    <option value="Security">Security</option>
-                                    <option value="Monitoring">Monitoring</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="owner">Service Owner</label>
-                                <input type="text" id="owner" name="owner" class="form-control"
-                                       placeholder="Team or person responsible for this service">
+                                         placeholder="Description of the service functionality and purpose"></textarea>
                             </div>
                             
                             ${parentInfo ? `
@@ -186,7 +145,7 @@ export default class Services extends TreeEntity {
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Service: ${item.name}</h3>
+                        <h3 class="modal-title">Edit Service</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -195,7 +154,7 @@ export default class Services extends TreeEntity {
                             ${item.parentId ? `<input type="hidden" name="parentId" value="${item.parentId}">` : ''}
                             
                             <div class="form-group">
-                                <label for="edit-name">Service Name *</label>
+                                <label for="edit-name">Name *</label>
                                 <input type="text" id="edit-name" name="name" class="form-control" 
                                        value="${item.name}" required>
                             </div>
@@ -203,33 +162,6 @@ export default class Services extends TreeEntity {
                             <div class="form-group">
                                 <label for="edit-description">Description</label>
                                 <textarea id="edit-description" name="description" class="form-control form-textarea">${item.description || ''}</textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-domain">Domain</label>
-                                <input type="text" id="edit-domain" name="domain" class="form-control"
-                                       value="${item.domain || ''}">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-serviceType">Service Type</label>
-                                <select id="edit-serviceType" name="serviceType" class="form-control form-select">
-                                    <option value="">Select type...</option>
-                                    <option value="Web Service" ${item.serviceType === 'Web Services' ? 'selected' : ''}>Web Service</option>
-                                    <option value="Database" ${item.serviceType === 'Database' ? 'selected' : ''}>Database</option>
-                                    <option value="Application" ${item.serviceType === 'Application' ? 'selected' : ''}>Application</option>
-                                    <option value="Infrastructure" ${item.serviceType === 'Infrastructure' ? 'selected' : ''}>Infrastructure</option>
-                                    <option value="Integration" ${item.serviceType === 'Integration' ? 'selected' : ''}>Integration</option>
-                                    <option value="Security" ${item.serviceType === 'Security' ? 'selected' : ''}>Security</option>
-                                    <option value="Monitoring" ${item.serviceType === 'Monitoring' ? 'selected' : ''}>Monitoring</option>
-                                    <option value="Other" ${item.serviceType === 'Other' ? 'selected' : ''}>Other</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-owner">Service Owner</label>
-                                <input type="text" id="edit-owner" name="owner" class="form-control"
-                                       value="${item.owner || ''}">
                             </div>
                             
                             ${item.parentId ? `
@@ -242,7 +174,7 @@ export default class Services extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="update">Update Service</button>
+                        <button type="button" class="btn btn-primary" data-action="update">Update</button>
                     </div>
                 </div>
             </div>
@@ -265,14 +197,6 @@ export default class Services extends TreeEntity {
                     </div>
                     <div class="modal-body">
                         <p>Are you sure you want to delete <strong>"${item.name}"</strong>?</p>
-                        
-                        ${item.domain ? `
-                            <p class="text-secondary">Domain: <span class="domain-badge">${item.domain}</span></p>
-                        ` : ''}
-                        
-                        ${item.serviceType ? `
-                            <p class="text-secondary">Type: ${item.serviceType}</p>
-                        ` : ''}
                         
                         ${hasChildren ? `
                             <div class="warning-message">
@@ -299,114 +223,68 @@ export default class Services extends TreeEntity {
         this.attachModalEventListeners('#delete-modal');
     }
 
-    attachModalEventListeners(modalSelector) {
-        const modal = document.querySelector(modalSelector);
-        if (!modal) return;
-
-        modal.addEventListener('click', async (e) => {
-            const action = e.target.dataset.action;
-
-            switch (action) {
-                case 'close':
-                    this.closeModal(modal);
-                    break;
-                case 'save':
-                    await this.handleCreateSave(modal);
-                    break;
-                case 'update':
-                    await this.handleUpdateSave(modal);
-                    break;
-                case 'confirm-delete':
-                    await this.handleDeleteConfirm(modal);
-                    break;
-            }
-        });
-
-        // Close modal on overlay click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeModal(modal);
-            }
-        });
-
-        // Close modal on Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal(modal);
-            }
-        });
-    }
-
     async handleCreateSave(modal) {
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
         const data = {
             name: formData.get('name'),
-            description: formData.get('description') || undefined,
-            domain: formData.get('domain') || undefined,
-            serviceType: formData.get('serviceType') || undefined,
-            owner: formData.get('owner') || undefined
+            description: formData.get('description') || undefined
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.post(this.config.endpoint, data);
+            const newItem = await apiClient.post(this.config.endpoint, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(newItem.id);
         } catch (error) {
             console.error('Failed to create service:', error);
-            // TODO: Show error message in modal
         }
     }
 
     async handleUpdateSave(modal) {
+        if (!this.validateForm(modal)) {
+            return;
+        }
+
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
-        const id = formData.get('id');
+        const id = parseInt(formData.get('id'), 10);
         const data = {
             name: formData.get('name'),
-            description: formData.get('description') || undefined,
-            domain: formData.get('domain') || undefined,
-            serviceType: formData.get('serviceType') || undefined,
-            owner: formData.get('owner') || undefined
+            description: formData.get('description') || undefined
         };
 
         if (formData.get('parentId')) {
-            data.parentId = formData.get('parentId');
+            data.parentId = parseInt(formData.get('parentId'), 10);
         }
 
         try {
-            await this.app.apiClient.put(`${this.config.endpoint}/${id}`, data);
+            await apiClient.put(`${this.config.endpoint}/${id}`, data);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndSelect(id);
         } catch (error) {
             console.error('Failed to update service:', error);
-            // TODO: Show error message in modal
         }
     }
 
     async handleDeleteConfirm(modal) {
-        const itemId = modal.querySelector('#delete-item-id').value;
+        const itemId = parseInt(modal.querySelector('#delete-item-id').value, 10);
 
         try {
-            await this.app.apiClient.delete(`${this.config.endpoint}/${itemId}`);
+            await apiClient.delete(`${this.config.endpoint}/${itemId}`);
             this.closeModal(modal);
-            await this.refresh();
-            // TODO: Show success message
+            await this.refreshAndClearSelection();
         } catch (error) {
             console.error('Failed to delete service:', error);
-            // TODO: Show error message in modal
         }
-    }
-
-    closeModal(modal) {
-        modal.remove();
     }
 }

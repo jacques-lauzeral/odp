@@ -397,7 +397,7 @@
     background: var(--bg-secondary);
 }
 
-.tree-item--selected .tree-item-content {
+.tree-item--selected > .tree-item-content {
     background: var(--accent-primary);
     color: white;
 }
@@ -431,7 +431,7 @@
     border-radius: var(--radius-base);
 }
 
-.tree-item--selected .child-count {
+.tree-item--selected > .tree-item-content .child-count {
     background: rgba(255, 255, 255, 0.2);
     color: white;
 }
