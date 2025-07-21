@@ -4,7 +4,7 @@
 This document tracks the web client development phases for the ODP system. The backend is complete and provides full API support for all planned web client features.
 
 **Current Status**: Phase 6 (Setup Activity) - ✅ COMPLETED  
-**Next Milestone**: Read Activity development  
+**Next Milestone**: ODP Browser/Navigator Component development  
 **Backend Support**: ✅ 100% complete with 7 entities and full API coverage
 
 ---
@@ -76,61 +76,107 @@ This document tracks the web client development phases for the ODP system. The b
 
 ---
 
-## 📋 Phase 7: Read Activity (PLANNED)
-**Scope**: Query and browse interface for operational content
+## 🔄 Phase 7: ODP Browser/Navigator Component (DESIGN COMPLETE)
+**Scope**: Unified browsing component for operational content across multiple activities
 
-### Edition Browser 📋 PLANNED
-- [ ] **Edition selector**: Dropdown with edition metadata
-- [ ] **Baseline selection**: Historical state browsing
-- [ ] **Wave filtering**: Timeline-based content filtering
-- [ ] **Multi-context switching**: Combined baseline + wave filtering
+### Architecture Design ✅ COMPLETED
+- ✅ **Unified component approach**: Single component serves Read, Elaboration, and Review activities
+- ✅ **Multi-context support**: Edition, Baseline, and Repository entry points
+- ✅ **Mode configuration**: Elaboration, Read, Internal-Review, External-Comment modes
+- ✅ **Dual perspective design**: Hierarchical and Temporal navigation with toggle switching
+- ✅ **API compatibility validation**: Current API supports all browsing contexts
 
-### Search and Filter Interface 📋 PLANNED
-- [ ] **Advanced search**: Multi-field search across operational entities
-- [ ] **Filter management**: Saved and shareable filter configurations
-- [ ] **Sort options**: Multiple sort criteria with save preferences
-- [ ] **Result pagination**: Efficient large dataset navigation
+### Component Specifications ✅ COMPLETED
+- ✅ **Configuration interface**: Context, mode, perspective, and user permission model
+- ✅ **Layout specifications**: Hierarchical (tree-based) and Temporal (timeline-based) layouts
+- ✅ **Action system design**: Mode-specific and perspective-specific action frameworks
+- ✅ **Integration patterns**: Reuse of Setup Activity TreeEntity patterns for operational entities
 
-### Content Display 📋 PLANNED
-- [ ] **Requirements browser**: Hierarchical requirement display
-- [ ] **Change tracking**: Visual change history and comparisons
-- [ ] **Relationship mapping**: Visual entity relationship display
-- [ ] **Timeline view**: Chronological content evolution using Vis.js
-
-### Export and Reporting 📋 PLANNED
-- [ ] **PDF generation**: Formatted reports from filtered content
-- [ ] **Excel export**: Structured data export for analysis
-- [ ] **Printing support**: Print-friendly content formatting
-- [ ] **Shareable links**: URL-based saved searches and filters
+### Next Implementation Tasks 📋 PLANNED
+- [ ] **Base ODPBrowser component**: Create unified component foundation
+- [ ] **Context selector**: Edition/Baseline/Repository picker with metadata
+- [ ] **Hierarchical perspective**: Two-tab structure (Requirements | Changes) with tree navigation
+- [ ] **Temporal perspective**: Timeline visualization with wave/milestone integration
+- [ ] **Mode implementation**: Configure action availability for each activity mode
+- [ ] **Component integration**: Extend TreeEntity patterns for operational content
 
 ---
 
-## 📋 Phase 8: Elaboration Activity (PLANNED)
-**Scope**: Content creation and editing workspace
+## 📋 Phase 8: Read Activity Implementation (PLANNED)
+**Scope**: Read-only interface using ODP Browser component
 
-### Content Editor 📋 PLANNED
-- [ ] **Rich text editing**: Quill/TinyMCE integration for statement/rationale
-- [ ] **Version management**: Visual version history and comparison
-- [ ] **Auto-save**: Periodic saving with conflict detection
-- [ ] **Collaborative editing**: Multi-user editing indicators
+### Implementation Approach 📋 PLANNED
+- [ ] **ODP Browser integration**: Configure component for read-only mode
+- [ ] **Edition selection**: Primary entry point with published edition focus
+- [ ] **Content browsing**: Hierarchical and temporal navigation of operational content
+- [ ] **Export capabilities**: PDF generation and data export functionality
 
-### Operational Requirement Management 📋 PLANNED
-- [ ] **Requirement editor**: Full CRUD with versioning support
-- [ ] **Hierarchy management**: REFINES relationship editing
-- [ ] **Relationship editor**: Visual relationship management
-- [ ] **Validation workflow**: Content validation and review
+### Key Features 📋 PLANNED
+- [ ] **Edition metadata display**: Status, publication date, version information
+- [ ] **Hierarchical browsing**: Requirements and Changes tree navigation
+- [ ] **Temporal filtering**: Wave-based content filtering and timeline view
+- [ ] **Version history access**: Entity version comparison and historical view
+- [ ] **Search and filtering**: Advanced search across operational entities
+- [ ] **Export and reporting**: PDF generation and structured data export
 
-### Operational Change Management 📋 PLANNED
-- [ ] **Change editor**: Full CRUD with milestone integration
-- [ ] **Milestone management**: Timeline-based milestone editing
-- [ ] **Impact analysis**: Visual change impact assessment
-- [ ] **Approval workflow**: Review and approval process support
+---
 
-### Advanced Features 📋 PLANNED
-- [ ] **Baseline creation**: Interactive baseline generation
-- [ ] **Edition management**: Complete edition creation workflow
-- [ ] **Deployment planning**: Interactive timeline with drag-and-drop
-- [ ] **Progress tracking**: Visual progress indicators and metrics
+## 📋 Phase 9: Elaboration Activity Implementation (PLANNED)
+**Scope**: Content creation and editing workspace using ODP Browser component
+
+### Implementation Approach 📋 PLANNED
+- [ ] **ODP Browser integration**: Configure component for full CRUD operations
+- [ ] **Repository access**: Live development content with latest version focus
+- [ ] **Content management**: Create, edit, and organize operational requirements and changes
+- [ ] **Version control**: Advanced versioning with optimistic locking
+
+### Key Features 📋 PLANNED
+- [ ] **Rich text editing**: Quill/TinyMCE integration for statement/rationale content
+- [ ] **Hierarchy management**: REFINES relationship editing with visual feedback
+- [ ] **Version management**: Create versions, compare changes, revert capabilities
+- [ ] **Milestone integration**: Timeline-based milestone editing and deployment planning
+- [ ] **Auto-save functionality**: Periodic saving with conflict detection
+- [ ] **Validation workflow**: Content validation and review process integration
+
+---
+
+## 📋 Phase 10: Review Activities Implementation (PLANNED)
+**Scope**: Internal review and external commenting using ODP Browser component
+
+### Internal Review Activity 📋 PLANNED
+- [ ] **ODP Browser integration**: Configure component for internal review mode
+- [ ] **Comment threading**: Internal stakeholder comment and reply system
+- [ ] **Review status controls**: Mark reviewed, approve, request changes
+- [ ] **Workflow integration**: Review completion triggers and notifications
+
+### External Comment Activity 📋 PLANNED
+- [ ] **ODP Browser integration**: Configure component for external comment mode
+- [ ] **Public consultation**: External stakeholder comment submission
+- [ ] **Comment moderation**: Comment review and approval workflow
+- [ ] **Feedback collection**: Structured feedback gathering and analysis
+
+---
+
+## Dependencies and Integration
+
+### Backend Dependencies ✅ AVAILABLE
+- **Complete API coverage**: All necessary endpoints implemented and tested
+- **CORS support**: Cross-origin requests properly configured
+- **Error responses**: Standardized error handling for UI integration
+- **Data validation**: Server-side validation supporting client feedback
+- **Multi-context queries**: Baseline and wave filtering support
+
+### External Libraries (Implementation Phase)
+- **Rich text editing**: Quill or TinyMCE for content creation in Elaboration activity
+- **Data visualization**: Vis.js for timeline and relationship displays in Temporal perspective
+- **Table management**: AG-Grid or Tabulator for advanced data tables
+- **PDF generation**: jsPDF or similar for report generation
+
+### Component Reuse Strategy
+- **TreeEntity extension**: Operational entities reuse Setup Activity patterns
+- **Modal forms**: CRUD operations reuse established form patterns
+- **API client**: Same authentication and error handling across all activities
+- **Responsive design**: Consistent mobile and desktop layouts
 
 ---
 
@@ -138,6 +184,7 @@ This document tracks the web client development phases for the ODP system. The b
 
 ### Development Approach
 - ✅ **Pattern establishment**: Reusable patterns successfully established in Setup Activity
+- **Component unification**: Single ODP Browser component serves multiple activities
 - **Progressive enhancement**: Build complexity incrementally across phases
 - ✅ **Component reuse**: Maximum reusability achieved with TreeEntity/ListEntity base classes
 - **User feedback integration**: Iterative improvement based on usage patterns
@@ -153,6 +200,7 @@ This document tracks the web client development phases for the ODP system. The b
 - ✅ **Pattern consistency**: All similar components follow established TreeEntity/ListEntity patterns
 - ✅ **Mobile compatibility**: Responsive design validated across all screen sizes
 - ✅ **Performance validation**: Efficient DOM updates and API usage confirmed
+- **ODP Browser validation**: Unified component successfully serves multiple activity modes
 
 ---
 
@@ -167,53 +215,40 @@ This document tracks the web client development phases for the ODP system. The b
 - ✅ **CRUD testing**: Manual testing of all create/edit/delete operations completed successfully
 - ✅ **Tree selection fix**: CSS inheritance issue resolved for proper UI behavior
 
-### Phase 7 Preparation
-- ✅ **Solid foundation**: Setup Activity provides proven patterns for complex entity management
-- ✅ **API integration**: Established patterns ready for Read Activity operational entities
-- ✅ **Component library**: Reusable components available for Read Activity development
-- ✅ **Styling system**: Complete design token system ready for new activity layouts
+### Phase 7 Architecture Criteria ✅ ACHIEVED
+- ✅ **Unified component design**: ODP Browser architecture defined and validated
+- ✅ **Multi-activity support**: Component supports Read, Elaboration, and Review activities
+- ✅ **API compatibility**: Current backend supports all browsing contexts and modes
+- ✅ **Pattern consistency**: Reuse of proven Setup Activity patterns for operational content
+- ✅ **UI design authority**: Complete specifications documented in Web-Client-UI-Design.md
 
-### Overall Web Client Goals
-- **Complete UI coverage**: Full functionality parity with CLI capabilities
-- **Intuitive interface**: Easy-to-use interface for all user personas
-- **Performance**: Fast, responsive interface with efficient API usage
-- **Scalability**: Component patterns supporting future entity additions
-
----
-
-## Dependencies and Integration
-
-### Backend Dependencies ✅ AVAILABLE
-- **Complete API coverage**: All necessary endpoints implemented and tested
-- **CORS support**: Cross-origin requests properly configured
-- **Error responses**: Standardized error handling for UI integration
-- **Data validation**: Server-side validation supporting client feedback
-
-### External Libraries (Planned)
-- **Rich text editing**: Quill or TinyMCE for content creation
-- **Data visualization**: Vis.js for timeline and relationship displays
-- **Table management**: AG-Grid or Tabulator for advanced data tables
-- **PDF generation**: jsPDF or similar for report generation
+### Phase 8+ Implementation Targets
+- **Component functionality**: ODP Browser component operational with all mode configurations
+- **Activity integration**: Read, Elaboration, and Review activities using unified browser
+- **User experience validation**: Consistent navigation and interaction across all activities
+- **Performance optimization**: Efficient handling of large operational content datasets
 
 ---
 
-## Current Focus: Read Activity Development
+## Current Focus: ODP Browser/Navigator Implementation
 
-**Achievement**: Setup Management Activity COMPLETED with all 5 entity types working flawlessly
+**Achievement**: Architecture design completed with comprehensive specifications
 
-**Key accomplishments**:
-- ✅ **TreeEntity pattern**: Proven base class for hierarchical entity management
-- ✅ **ListEntity pattern**: Proven base class for simple list management
-- ✅ **CRUD operations**: All create, read, update, delete operations tested and working
-- ✅ **Form validation**: Comprehensive validation with user-friendly error messaging
-- ✅ **Hierarchy management**: Parent/child relationships with circular reference prevention
-- ✅ **Responsive design**: Mobile and desktop layouts working perfectly
-- ✅ **Tree selection UI**: Fixed CSS inheritance issue for proper single-item selection
+**Key design decisions**:
+- ✅ **Unified component strategy**: Single browser serves multiple activities
+- ✅ **Three entry points**: Edition (primary), Baseline (advanced), Repository (contributors)
+- ✅ **Dual perspectives**: Hierarchical (tree-based) and Temporal (timeline-based) navigation
+- ✅ **Mode configuration**: Pluggable action system based on activity requirements
+- ✅ **API reusability**: Current endpoints support all browsing contexts
 
 **Next immediate tasks**:
-1. 📋 **Read Activity foundation**: Apply established patterns to Read Activity development
-2. 📋 **Edition browser**: Implement edition selection and filtering capabilities
-3. 📋 **Content display**: Build hierarchical requirement and change browsers
-4. 📋 **Search interface**: Implement advanced search and filtering
+1. 📋 **Component foundation**: Implement base ODPBrowser component with mode/perspective configuration
+2. 📋 **Hierarchical perspective**: Create two-tab structure with operational entity trees
+3. 📋 **Context integration**: Implement Edition/Baseline/Repository selection and API integration
+4. 📋 **Action framework**: Build mode-specific action system for different activities
 
-**Success metrics**: Setup Management Activity fully functional, providing solid foundation and proven patterns for rapid Read Activity development.
+**Success metrics**: ODP Browser component functional with configurable modes, providing foundation for rapid Read, Elaboration, and Review activity development.
+
+---
+
+*This work plan reflects the evolution from separate activity implementations to a unified ODP Browser/Navigator approach, maximizing component reuse and ensuring consistent user experience across all operational content activities.*

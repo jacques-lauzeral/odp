@@ -2,8 +2,8 @@
 
 ## Document Overview
 **Purpose**: UI design specifications and architectural patterns for the ODP Web Client  
-**Status**: Setup Management Activity architecture defined  
-**Last Updated**: June 28, 2025
+**Status**: Setup Management Activity complete, ODP Browser/Navigator architecture defined  
+**Last Updated**: July 21, 2025
 
 ---
 
@@ -84,20 +84,6 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - **Tree Navigation**: Click any node to view/edit that entity
 - **Breadcrumb**: Show hierarchy path for current selection
 
-**Example Structure**:
-```
-▶ Government Entities (3 children)
-  └─ Federal Aviation Authority
-  └─ Regional Authorities  
-▶ Air Navigation Services Providers (5 children)
-  └─ ANSP
-    └─ FMP (Flow Management Position)
-    └─ NEC (Network Emergency Coordinator)
-    └─ NRC (Network Resource Coordinator) 
-    └─ TOWER
-Technology Vendors (standalone)
-```
-
 #### Entity-Specific Patterns
 
 **Stakeholder Categories** (Reference Implementation):
@@ -129,25 +115,178 @@ Technology Vendors (standalone)
 
 ---
 
-### ODP Read Activity (Future)
-**Purpose**: Query and browse interface for operational content
+## ODP Browser/Navigator Component
+**Purpose**: Unified browsing component for operational content across Read, Elaboration, and Review activities
 
-**Planned Layout**:
-- Edition selector with baseline filtering
-- Multi-faceted search interface
-- Results display with drill-down capabilities
-- Timeline visualization for content evolution
+### Component Architecture
+**Unified Design**: Single component serves multiple activities with configurable modes and perspectives
+
+**Configuration Interface**:
+```javascript
+<ODPBrowser 
+  context={{type: "edition|baseline|repository", id: "123"}}
+  mode="elaboration|read|internal-review|external-comment"
+  perspective="hierarchical|temporal"
+  user={{permissions: [...], role: "..."}}
+/>
+```
+
+### Content Context Selection
+**Three Entry Points**:
+- **ODP Edition** (primary): Published editions for formal review and consultation
+- **Baseline** (advanced): Historical snapshots for cross-time analysis
+- **Repository** (contributors): Live development content with latest versions
+
+**Context Selector**: Dropdown interface with edition metadata (status, publication date, version)
+
+### Mode Configurations
+**Elaboration Mode**: Full CRUD operations on repository content
+- Create, edit, delete operational requirements and changes
+- Hierarchy management with REFINES relationships
+- Version control and milestone management
+
+**Read Mode**: View-only navigation for published editions
+- Browse content structure and relationships
+- Export and print capabilities
+- Historical version access
+
+**Internal Review Mode**: Review capabilities for internal stakeholders
+- Content browsing with comment threading
+- Review status controls and approval workflow
+- Internal stakeholder notification system
+
+**External Comment Mode**: Limited commenting for external stakeholders
+- Content browsing with comment submission
+- Comment threading without status changes
+- Public consultation workflow support
+
+### Dual Perspective Design
+**Perspective Toggle**: Clear switching between two distinct navigation approaches
+
+**Hierarchical Perspective (📁)**:
+- Two-root structure: `Operational Requirements | Operational Changes`
+- Tree navigation with REFINES relationship display
+- Three-pane layout: tabs | tree | details
+- Reuses proven Setup Activity TreeEntity patterns
+
+**Temporal Perspective (📅)**:
+- Timeline visualization of deployment schedule
+- Wave and milestone-based filtering
+- Chronological view of content evolution
+- Integration with deployment planning tools
+
+### Layout Specifications
+
+#### Hierarchical Perspective Layout
+**Activity Structure (Layer 2)**:
+- Content context selector (Edition/Baseline/Repository)
+- Perspective toggle: `📁 Hierarchy | 📅 Timeline`
+- Entity navigation tabs: `Operational Requirements | Operational Changes`
+- Mode-specific action toolbar
+
+**Entity Navigation Pattern (Layer 3)**:
+- **Left Pane**: Hierarchical tree with REFINES relationships
+- **Center Pane**: Entity details with versioning information
+- **Action Toolbar**: Mode-specific operations (view/edit/comment/status)
+
+**Tree Interaction**:
+- Collapsible hierarchy with visual relationship indicators
+- Click-to-select with persistent selection across mode changes
+- Context-sensitive actions based on selection and permissions
+
+#### Temporal Perspective Layout
+**Timeline Visualization Area**:
+- Horizontal timeline with wave and milestone markers
+- Interactive timeline controls for date range selection
+- Entity placement on timeline based on milestone associations
+
+**Timeline Integration**:
+- Same entity detail pane as hierarchical perspective
+- Timeline-specific actions: milestone shifts, wave reassignments
+- Deployment schedule visualization with dependency tracking
+
+### Action System Design
+**Mode-Specific Toolbars**:
+- **Elaboration**: Create, Edit, Delete, Add Child, Version Management
+- **Read**: View Details, Export, Print, Version History
+- **Review**: Comment, Set Status, Mark Reviewed, View Comments
+- **Comment**: Add Comment, View Thread, Reply to Comments
+
+**Perspective-Specific Actions**:
+- **Hierarchical**: Hierarchy management, parent/child operations
+- **Temporal**: Timeline operations, milestone management, schedule adjustments
+
+**Context-Sensitive Behavior**:
+- Actions availability based on user permissions and content context
+- Visual feedback for disabled actions with explanatory tooltips
+- Bulk operation support where applicable
 
 ---
 
-### ODP Elaboration Activity (Future)
-**Purpose**: Content creation and editing workspace
+### Read Activity
+**Purpose**: Query and browse interface for operational content using ODP Browser in read-only mode
 
-**Planned Layout**:
-- Folder tree navigation (left pane)
-- Rich text content editor (center pane)
-- Version management and relationships (right pane)
-- Baseline and milestone management tools
+**Implementation**: ODP Browser component configured for read-only access
+```javascript
+<ODPBrowser 
+  context={{type: "edition", id: selectedEditionId}}
+  mode="read"
+  perspective="hierarchical"
+  user={{permissions: ["view", "export"], role: "reader"}}
+/>
+```
+
+**Primary User Flow**:
+1. Select ODP Edition from available published editions
+2. Browse content using hierarchical or temporal perspectives
+3. Access entity details and version history
+4. Export or print content as needed
+
+---
+
+### Elaboration Activity
+**Purpose**: Content creation and editing workspace using ODP Browser with full edit capabilities
+
+**Implementation**: ODP Browser component configured for full CRUD operations
+```javascript
+<ODPBrowser 
+  context={{type: "repository", id: "current"}}
+  mode="elaboration"
+  perspective="hierarchical"
+  user={{permissions: ["view", "create", "edit", "delete"], role: "contributor"}}
+/>
+```
+
+**Primary User Flow**:
+1. Access repository content for editing
+2. Create, edit, and organize operational requirements and changes
+3. Manage REFINES hierarchies and version control
+4. Use temporal perspective for deployment planning
+
+---
+
+### Review Activities
+**Purpose**: Internal review and external commenting using ODP Browser with review capabilities
+
+**Internal Review Implementation**:
+```javascript
+<ODPBrowser 
+  context={{type: "edition", id: reviewEditionId}}
+  mode="internal-review"
+  perspective="hierarchical"
+  user={{permissions: ["view", "comment", "status"], role: "internal-reviewer"}}
+/>
+```
+
+**External Comment Implementation**:
+```javascript
+<ODPBrowser 
+  context={{type: "edition", id: publishedEditionId}}
+  mode="external-comment"
+  perspective="hierarchical"
+  user={{permissions: ["view", "comment"], role: "external-commenter"}}
+/>
+```
 
 ---
 
@@ -160,7 +299,7 @@ Technology Vendors (standalone)
 - User context and system status
 
 **Activity Navigation**: Consistent patterns within activities
-- Tab-based entity switching (Setup)
+- Tab-based entity switching (Setup and ODP Browser)
 - Breadcrumb navigation for hierarchy
 - Context preservation during navigation
 
@@ -200,20 +339,18 @@ Technology Vendors (standalone)
 - Success/error notifications
 - Confirmation dialogs for destructive actions
 
----
+### Integration with Existing Patterns
+**Component Reuse**:
+- TreeEntity base class extended for operational entities
+- Modal forms for CRUD operations in Elaboration mode
+- Error handling and validation patterns from Setup Activity
+- Responsive design tokens and styling system
 
-## Design Questions and Considerations
-
-### Current Considerations
-- **Tree visualization**: Balance between information density and usability
-- **Mobile hierarchy navigation**: Optimal patterns for small screens
-- **Bulk operations**: Specific multi-select interaction patterns
-
-### Future Considerations
-- **Rich text editing requirements** for Elaboration activity
-- **Timeline visualization** approaches for Read activity
-- **Collaborative editing** indicators and conflict resolution
-- **Permission boundaries** between activities
+**API Integration**:
+- Multi-context parameter support for baseline/wave filtering
+- Version history endpoints for temporal navigation
+- Optimistic locking for concurrent editing in Elaboration mode
+- Comment threading API for Review and Comment modes
 
 ---
 
