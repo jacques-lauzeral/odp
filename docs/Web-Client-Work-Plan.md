@@ -3,8 +3,8 @@
 ## Overview
 This document tracks the web client development phases for the ODP system. The backend is complete and provides full API support for all planned web client features.
 
-**Current Status**: Phase 6 (Setup Activity) - ✅ COMPLETED  
-**Next Milestone**: ODP Browser/Navigator Component development  
+**Current Status**: Phase 7 (ODP Browser Architecture) - ✅ COMPLETED  
+**Next Milestone**: Elaboration Activity Implementation with Collection Perspective  
 **Backend Support**: ✅ 100% complete with 7 entities and full API coverage
 
 ---
@@ -76,84 +76,134 @@ This document tracks the web client development phases for the ODP system. The b
 
 ---
 
-## 🔄 Phase 7: ODP Browser/Navigator Component (DESIGN COMPLETE)
-**Scope**: Unified browsing component for operational content across multiple activities
+## ✅ Phase 7: ODP Browser Architecture Design (COMPLETED)
+**Scope**: Unified browsing component architecture with Collection perspective as default
 
 ### Architecture Design ✅ COMPLETED
-- ✅ **Unified component approach**: Single component serves Read, Elaboration, and Review activities
+- ✅ **Three-pillar component strategy**: TreeEntity + ListEntity + CollectionEntity base classes
+- ✅ **Collection perspective default**: SharePoint Lists-inspired interface as primary experience
 - ✅ **Multi-context support**: Edition, Baseline, and Repository entry points
 - ✅ **Mode configuration**: Elaboration, Read, Internal-Review, External-Comment modes
-- ✅ **Dual perspective design**: Hierarchical and Temporal navigation with toggle switching
-- ✅ **API compatibility validation**: Current API supports all browsing contexts
+- ✅ **Triple perspective design**: Collection (default) + Hierarchical + Temporal navigation
 
 ### Component Specifications ✅ COMPLETED
+- ✅ **CollectionEntity architecture**: Four-area layout with grouping and filtering capabilities
+- ✅ **ODPBrowser container**: Unified component orchestrating multiple perspectives
 - ✅ **Configuration interface**: Context, mode, perspective, and user permission model
-- ✅ **Layout specifications**: Hierarchical (tree-based) and Temporal (timeline-based) layouts
-- ✅ **Action system design**: Mode-specific and perspective-specific action frameworks
-- ✅ **Integration patterns**: Reuse of Setup Activity TreeEntity patterns for operational entities
+- ✅ **SharePoint Lists features**: "Edit in Collection View" toggle, flexible grouping, bulk operations
+- ✅ **Integration patterns**: Extends Setup Activity patterns for operational content
 
-### Next Implementation Tasks 📋 PLANNED
-- [ ] **Base ODPBrowser component**: Create unified component foundation
-- [ ] **Context selector**: Edition/Baseline/Repository picker with metadata
-- [ ] **Hierarchical perspective**: Two-tab structure (Requirements | Changes) with tree navigation
-- [ ] **Temporal perspective**: Timeline visualization with wave/milestone integration
-- [ ] **Mode implementation**: Configure action availability for each activity mode
-- [ ] **Component integration**: Extend TreeEntity patterns for operational content
+### Technical Foundation ✅ COMPLETED
+- ✅ **Component file structure**: Defined `components/odp/` directory organization
+- ✅ **Extension patterns**: Detailed CollectionEntity override points for entity-specific behavior
+- ✅ **API integration**: Server-side grouping and filtering parameter design
+- ✅ **UI design authority**: Complete Collection perspective specifications documented
 
 ---
 
-## 📋 Phase 8: Read Activity Implementation (PLANNED)
-**Scope**: Read-only interface using ODP Browser component
+## 🔄 Phase 8: Elaboration Activity - Envelope Components (IN PROGRESS)
+**Scope**: Container components establishing activity and entity-level structure
 
-### Implementation Approach 📋 PLANNED
-- [ ] **ODP Browser integration**: Configure component for read-only mode
-- [ ] **Edition selection**: Primary entry point with published edition focus
-- [ ] **Content browsing**: Hierarchical and temporal navigation of operational content
-- [ ] **Export capabilities**: PDF generation and data export functionality
+### Elaboration Activity Root 📋 IN PROGRESS
+- [ ] **Activity container**: `/elaboration` route with Repository context (Layer 2)
+- [ ] **Entity navigation tabs**: `Operational Requirements | Operational Changes` with count badges
+- [ ] **Perspective toggle**: Collection selected with placeholder for future Hierarchical/Temporal
+- [ ] **Global actions**: Activity-level create, import, export capabilities
+- [ ] **User permissions**: Elaboration mode with full CRUD permissions (create/edit/delete)
 
-### Key Features 📋 PLANNED
-- [ ] **Edition metadata display**: Status, publication date, version information
-- [ ] **Hierarchical browsing**: Requirements and Changes tree navigation
-- [ ] **Temporal filtering**: Wave-based content filtering and timeline view
-- [ ] **Version history access**: Entity version comparison and historical view
-- [ ] **Search and filtering**: Advanced search across operational entities
-- [ ] **Export and reporting**: PDF generation and structured data export
+### Operational Requirements Root 📋 PLANNED
+- [ ] **Entity container**: Requirements tab content with Collection perspective integration
+- [ ] **Context management**: Repository context with operational requirements endpoint
+- [ ] **Empty state handling**: First-time user experience with guidance
+- [ ] **Loading states**: Proper feedback during data fetching and operations
+- [ ] **Error boundaries**: Entity-level error handling and recovery
 
----
+### Operational Changes Root 📋 PLANNED
+- [ ] **Entity container**: Changes tab content with Collection perspective integration
+- [ ] **Context management**: Repository context with operational changes endpoint
+- [ ] **Relationship awareness**: Integration with related requirements (SATISFIES/SUPERSEDS)
+- [ ] **Milestone integration**: Wave and milestone association capabilities
+- [ ] **Deployment planning**: Connection to temporal planning features
 
-## 📋 Phase 9: Elaboration Activity Implementation (PLANNED)
-**Scope**: Content creation and editing workspace using ODP Browser component
-
-### Implementation Approach 📋 PLANNED
-- [ ] **ODP Browser integration**: Configure component for full CRUD operations
-- [ ] **Repository access**: Live development content with latest version focus
-- [ ] **Content management**: Create, edit, and organize operational requirements and changes
-- [ ] **Version control**: Advanced versioning with optimistic locking
-
-### Key Features 📋 PLANNED
-- [ ] **Rich text editing**: Quill/TinyMCE integration for statement/rationale content
-- [ ] **Hierarchy management**: REFINES relationship editing with visual feedback
-- [ ] **Version management**: Create versions, compare changes, revert capabilities
-- [ ] **Milestone integration**: Timeline-based milestone editing and deployment planning
-- [ ] **Auto-save functionality**: Periodic saving with conflict detection
-- [ ] **Validation workflow**: Content validation and review process integration
+### Integration Points 📋 PLANNED
+- [ ] **URL routing**: Deep linking to specific entities and items (`/elaboration/requirements`, `/elaboration/changes`)
+- [ ] **State preservation**: Maintain selection and view state when switching between tabs
+- [ ] **Shared actions**: Cross-entity operations (bulk operations, validation)
+- [ ] **Navigation consistency**: Breadcrumb and context preservation
 
 ---
 
-## 📋 Phase 10: Review Activities Implementation (PLANNED)
-**Scope**: Internal review and external commenting using ODP Browser component
+## 📋 Phase 9: Collection Foundation (PLANNED)
+**Scope**: CollectionEntity base class and Requirements Collection implementation
 
-### Internal Review Activity 📋 PLANNED
-- [ ] **ODP Browser integration**: Configure component for internal review mode
-- [ ] **Comment threading**: Internal stakeholder comment and reply system
-- [ ] **Review status controls**: Mark reviewed, approve, request changes
-- [ ] **Workflow integration**: Review completion triggers and notifications
+### CollectionEntity Base Class 📋 PLANNED
+- [ ] **Four-area layout**: Filtering (collapsible) | Actions | List | Details implementation
+- [ ] **Mode switching**: "View Collection" ↔ "Edit in Collection View" toggle functionality
+- [ ] **Grouping engine**: Dropdown selector with expand/collapse group headers
+- [ ] **Filtering system**: Advanced filters with field-specific controls and combined logic
+- [ ] **Bulk operations**: Multi-select with context-sensitive actions
+- [ ] **API integration**: Server-side grouping and filtering parameter handling
 
-### External Comment Activity 📋 PLANNED
-- [ ] **ODP Browser integration**: Configure component for external comment mode
-- [ ] **Public consultation**: External stakeholder comment submission
-- [ ] **Comment moderation**: Comment review and approval workflow
-- [ ] **Feedback collection**: Structured feedback gathering and analysis
+### Operational Requirements Collection 📋 PLANNED
+- [ ] **Requirements extension**: CollectionEntity specialized for operational requirements
+- [ ] **Column definitions**: ID, Type (ON/OR), Statement preview, Status, Modified By, Modified Date
+- [ ] **Grouping options**: Type, Status, Stakeholder Category, Regulatory Aspect, Folder, Modified By/Date
+- [ ] **Filter fields**: Search (statement/rationale), Type, Status multi-select, Folder tree-select
+- [ ] **Cell rendering**: Badge types, text previews, status indicators, person fields
+- [ ] **Details pane**: Rich text display for statement, rationale, references, relationships
+
+### SharePoint Lists Features 📋 PLANNED
+- [ ] **Edit mode**: Excel-like editable cells with immediate saving and undo/redo
+- [ ] **Group interactions**: Expand/collapse all, group-level actions, group sorting
+- [ ] **Performance optimization**: 100 items per page with server-side pagination
+- [ ] **Responsive design**: Mobile-friendly grouping and filtering with touch interactions
+
+---
+
+## 📋 Phase 10: Collection Extension (PLANNED)
+**Scope**: Operational Changes Collection proving CollectionEntity reusability
+
+### Operational Changes Collection 📋 PLANNED
+- [ ] **Changes extension**: CollectionEntity specialized for operational changes
+- [ ] **Column definitions**: ID, Description preview, Visibility (NM/NETWORK), Target Wave, Status, Modified
+- [ ] **Grouping options**: Visibility, Target Wave, Status, Related Requirements, Folder, Modified By/Date
+- [ ] **Filter fields**: Search (description), Visibility, Target Wave, Status, Milestone status
+- [ ] **Cell rendering**: Wave badges, visibility indicators, milestone status, relationship links
+- [ ] **Details pane**: Description display, milestone information, requirement relationships
+
+### Reusability Validation 📋 PLANNED
+- [ ] **Pattern consistency**: Verify CollectionEntity provides sufficient abstraction
+- [ ] **Code reuse metrics**: Measure shared code vs entity-specific customization
+- [ ] **Performance comparison**: Validate grouping and filtering work equally well for both entities
+- [ ] **User experience**: Consistent interaction patterns across Requirements and Changes
+
+### Cross-Entity Features 📋 PLANNED
+- [ ] **Relationship navigation**: Click requirement references in Changes to navigate to Requirements tab
+- [ ] **Unified search**: Search across both Requirements and Changes from either tab
+- [ ] **Bulk operations**: Cross-entity operations where applicable (export, validation)
+- [ ] **Consistent grouping**: Same grouping UI and behavior across both entity collections
+
+---
+
+## 📋 Phase 11: Read Activity Implementation (PLANNED)
+**Scope**: Read-only interface using Collection perspective with Edition context
+
+### Read Activity Integration 📋 PLANNED
+- [ ] **Edition context**: ODP Edition selection with published content focus
+- [ ] **Read-only mode**: Collection perspective configured for view-only operations
+- [ ] **Export capabilities**: PDF generation and structured data export from grouped views
+- [ ] **Version history**: Access to historical versions and comparison features
+
+---
+
+## 📋 Phase 12: Review Activities Implementation (PLANNED)
+**Scope**: Internal review and external commenting using Collection perspective
+
+### Review Activity Integration 📋 PLANNED
+- [ ] **Review modes**: Internal-review and external-comment configurations
+- [ ] **Comment integration**: Comment threading in Collection details pane
+- [ ] **Status workflow**: Review status controls integrated with Collection grouping
+- [ ] **Notification systems**: Review completion triggers and stakeholder notifications
 
 ---
 
@@ -168,15 +218,16 @@ This document tracks the web client development phases for the ODP system. The b
 
 ### External Libraries (Implementation Phase)
 - **Rich text editing**: Quill or TinyMCE for content creation in Elaboration activity
-- **Data visualization**: Vis.js for timeline and relationship displays in Temporal perspective
-- **Table management**: AG-Grid or Tabulator for advanced data tables
-- **PDF generation**: jsPDF or similar for report generation
+- **Data visualization**: Vis.js for timeline and relationship displays in future Temporal perspective
+- **Table management**: Native implementation using CollectionEntity four-area layout
+- **PDF generation**: jsPDF or similar for report generation in Read activity
 
 ### Component Reuse Strategy
-- **TreeEntity extension**: Operational entities reuse Setup Activity patterns
-- **Modal forms**: CRUD operations reuse established form patterns
+- **CollectionEntity extension**: Operational entities extend new Collection base class
+- **TreeEntity reuse**: Hierarchical perspective (future) reuses Setup Activity patterns
+- **Modal forms**: CRUD operations reuse established form patterns from Setup Activity
 - **API client**: Same authentication and error handling across all activities
-- **Responsive design**: Consistent mobile and desktop layouts
+- **Responsive design**: Consistent mobile and desktop layouts with Collection four-area adaptation
 
 ---
 
@@ -184,9 +235,9 @@ This document tracks the web client development phases for the ODP system. The b
 
 ### Development Approach
 - ✅ **Pattern establishment**: Reusable patterns successfully established in Setup Activity
-- **Component unification**: Single ODP Browser component serves multiple activities
-- **Progressive enhancement**: Build complexity incrementally across phases
-- ✅ **Component reuse**: Maximum reusability achieved with TreeEntity/ListEntity base classes
+- ✅ **Architecture completion**: Collection perspective and ODPBrowser design complete
+- **Incremental implementation**: Envelope → Foundation → Extension → Integration sequence
+- **Pattern validation**: Each phase proves component reusability before building complexity
 - **User feedback integration**: Iterative improvement based on usage patterns
 
 ### Technical Standards
@@ -197,58 +248,49 @@ This document tracks the web client development phases for the ODP system. The b
 
 ### Quality Gates
 - ✅ **Working functionality**: Setup Activity components fully functional
-- ✅ **Pattern consistency**: All similar components follow established TreeEntity/ListEntity patterns
+- ✅ **Pattern consistency**: All similar components follow established base class patterns
 - ✅ **Mobile compatibility**: Responsive design validated across all screen sizes
 - ✅ **Performance validation**: Efficient DOM updates and API usage confirmed
-- **ODP Browser validation**: Unified component successfully serves multiple activity modes
+- ✅ **Architecture design**: Collection perspective and ODPBrowser specifications complete
 
 ---
 
 ## Success Criteria
 
-### Phase 6 Completion Criteria ✅ ACHIEVED
-- ✅ StakeholderCategories CRUD operations fully functional
-- ✅ Hierarchy management working with validation
-- ✅ Reusable patterns established (TreeEntity, ListEntity, modal forms)
-- ✅ Error handling and loading states implemented
-- ✅ Mobile-responsive design validated
-- ✅ **CRUD testing**: Manual testing of all create/edit/delete operations completed successfully
-- ✅ **Tree selection fix**: CSS inheritance issue resolved for proper UI behavior
+### Phase 7 Completion Criteria ✅ ACHIEVED
+- ✅ **Collection perspective design**: SharePoint Lists-inspired interface specified as default
+- ✅ **Three-pillar architecture**: TreeEntity + ListEntity + CollectionEntity base classes defined
+- ✅ **ODPBrowser container**: Unified component architecture for perspective switching
+- ✅ **Technical specifications**: Complete CollectionEntity class structure and integration patterns
+- ✅ **UI design authority**: Comprehensive four-area layout and interaction patterns documented
 
-### Phase 7 Architecture Criteria ✅ ACHIEVED
-- ✅ **Unified component design**: ODP Browser architecture defined and validated
-- ✅ **Multi-activity support**: Component supports Read, Elaboration, and Review activities
-- ✅ **API compatibility**: Current backend supports all browsing contexts and modes
-- ✅ **Pattern consistency**: Reuse of proven Setup Activity patterns for operational content
-- ✅ **UI design authority**: Complete specifications documented in Web-Client-UI-Design.md
+### Phase 8 Implementation Targets
+- **Envelope functionality**: Elaboration activity with Requirements/Changes navigation operational
+- **Repository integration**: Live development content context properly configured
+- **Perspective placeholder**: Collection-only interface with toggle prepared for future extensions
+- **Deep linking**: URL-based navigation to specific entities and states
+- **Error handling**: Robust error boundaries and user feedback at container level
 
-### Phase 8+ Implementation Targets
-- **Component functionality**: ODP Browser component operational with all mode configurations
-- **Activity integration**: Read, Elaboration, and Review activities using unified browser
-- **User experience validation**: Consistent navigation and interaction across all activities
-- **Performance optimization**: Efficient handling of large operational content datasets
+### Phase 9-10 Implementation Targets
+- **Collection reusability**: CollectionEntity successfully extended for both Requirements and Changes
+- **SharePoint Lists UX**: Grouping, filtering, and "Edit in Collection View" fully functional
+- **Performance validation**: Efficient handling of large operational content datasets
+- **User experience**: Intuitive interface matching SharePoint Lists interaction patterns
 
 ---
 
-## Current Focus: ODP Browser/Navigator Implementation
+## Current Focus: Elaboration Activity Implementation
 
-**Achievement**: Architecture design completed with comprehensive specifications
+**Achievement**: Complete architecture design with Collection perspective as default
 
-**Key design decisions**:
-- ✅ **Unified component strategy**: Single browser serves multiple activities
-- ✅ **Three entry points**: Edition (primary), Baseline (advanced), Repository (contributors)
-- ✅ **Dual perspectives**: Hierarchical (tree-based) and Temporal (timeline-based) navigation
-- ✅ **Mode configuration**: Pluggable action system based on activity requirements
-- ✅ **API reusability**: Current endpoints support all browsing contexts
+**Next immediate tasks (Phase 8)**:
+1. 🔄 **Elaboration root**: Activity container with Repository context and entity tab navigation
+2. 📋 **Requirements root**: Entity container ready for Collection perspective integration
+3. 📋 **Changes root**: Entity container with milestone and relationship awareness
+4. 📋 **Integration testing**: Deep linking, state preservation, and navigation consistency
 
-**Next immediate tasks**:
-1. 📋 **Component foundation**: Implement base ODPBrowser component with mode/perspective configuration
-2. 📋 **Hierarchical perspective**: Create two-tab structure with operational entity trees
-3. 📋 **Context integration**: Implement Edition/Baseline/Repository selection and API integration
-4. 📋 **Action framework**: Build mode-specific action system for different activities
-
-**Success metrics**: ODP Browser component functional with configurable modes, providing foundation for rapid Read, Elaboration, and Review activity development.
+**Success metrics**: Envelope components provide solid foundation for Collection perspective implementation, with clear separation between container logic and content rendering.
 
 ---
 
-*This work plan reflects the evolution from separate activity implementations to a unified ODP Browser/Navigator approach, maximizing component reuse and ensuring consistent user experience across all operational content activities.*
+*This work plan reflects the evolution to Collection perspective as the default experience, with a structured envelope-first implementation approach that validates architecture before building complex functionality.*
