@@ -125,34 +125,34 @@ export default class RequirementsEntity extends CollectionEntity {
                 sortable: true
             },
             {
-                key: 'parent',
-                label: 'Parent',
-                width: '100px',
+                key: 'refinesParents',
+                label: 'Refines',
+                width: '120px',
                 sortable: true
             },
             {
-                key: 'impact.data',
+                key: 'impactsData',
                 label: 'Data Impact',
                 width: '100px',
                 sortable: true,
                 render: 'status'
             },
             {
-                key: 'impact.stakeholder',
+                key: 'impactsStakeholderCategories',
                 label: 'Stakeholder Impact',
                 width: '120px',
                 sortable: true,
                 render: 'status'
             },
             {
-                key: 'impact.regulatory',
+                key: 'impactsRegulatoryAspects',
                 label: 'Regulatory Impact',
                 width: '120px',
                 sortable: true,
                 render: 'status'
             },
             {
-                key: 'impact.services',
+                key: 'impactsServices',
                 label: 'Services Impact',
                 width: '110px',
                 sortable: true,
@@ -179,11 +179,11 @@ export default class RequirementsEntity extends CollectionEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
-            { key: 'parent', label: 'Parent' },
-            { key: 'impact.data', label: 'Data Impact' },
-            { key: 'impact.stakeholder', label: 'Stakeholder Impact' },
-            { key: 'impact.regulatory', label: 'Regulatory Impact' },
-            { key: 'impact.services', label: 'Services Impact' }
+            { key: 'refinesParents', label: 'Refines' },
+            { key: 'impactsData', label: 'Data Impact' },
+            { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact' },
+            { key: 'impactsRegulatoryAspects', label: 'Regulatory Impact' },
+            { key: 'impactsServices', label: 'Services Impact' }
         ];
     }
 
@@ -192,8 +192,17 @@ export default class RequirementsEntity extends CollectionEntity {
         switch (key) {
             case 'itemId':
                 return item.itemId || item.id;
-            case 'parent':
-                return item.parentId || item.parent?.title || item.parent?.name || null;
+            case 'refinesParents':
+                // Return the full array for cell rendering
+                return item.refinesParents || [];
+            case 'impactsData':
+                return item.impactsData || [];
+            case 'impactsStakeholderCategories':
+                return item.impactsStakeholderCategories || [];
+            case 'impactsRegulatoryAspects':
+                return item.impactsRegulatoryAspects || [];
+            case 'impactsServices':
+                return item.impactsServices || [];
             case 'lastUpdatedBy':
                 return item.lastUpdatedBy || item.updatedBy || item.createdBy;
             case 'lastUpdatedAt':
@@ -213,30 +222,75 @@ export default class RequirementsEntity extends CollectionEntity {
                     key: value || 'unknown',
                     title: this.formatTypeGroupTitle(value)
                 };
-            case 'parent':
+            case 'refinesParents':
+                // For grouping, use first refined requirement's title
+                if (Array.isArray(value) && value.length > 0) {
+                    const firstRefine = value[0];
+                    const title = firstRefine.title || firstRefine;
+                    return {
+                        key: title || 'no-refines',
+                        title: `Refines: ${title}`
+                    };
+                }
                 return {
-                    key: value || 'no-parent',
-                    title: value ? `Parent: ${value}` : 'No Parent'
+                    key: 'no-refines',
+                    title: 'No Refinement'
                 };
-            case 'impact.data':
+            case 'impactsData':
+                // For grouping, use first impact item if array has content
+                if (Array.isArray(value) && value.length > 0) {
+                    const firstImpact = value[0];
+                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
+                    return {
+                        key: displayName || 'none',
+                        title: `Data: ${displayName || 'Not Specified'}`
+                    };
+                }
                 return {
-                    key: value || 'none',
-                    title: `Data: ${this.formatImpactValue(value, 'dataCategories')}`
+                    key: 'none',
+                    title: 'Data: Not Specified'
                 };
-            case 'impact.stakeholder':
+            case 'impactsStakeholderCategories':
+                // For grouping, use first impact item if array has content
+                if (Array.isArray(value) && value.length > 0) {
+                    const firstImpact = value[0];
+                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
+                    return {
+                        key: displayName || 'none',
+                        title: `Stakeholder: ${displayName || 'Not Specified'}`
+                    };
+                }
                 return {
-                    key: value || 'none',
-                    title: `Stakeholder: ${this.formatImpactValue(value, 'stakeholderCategories')}`
+                    key: 'none',
+                    title: 'Stakeholder: Not Specified'
                 };
-            case 'impact.regulatory':
+            case 'impactsRegulatoryAspects':
+                // For grouping, use first impact item if array has content
+                if (Array.isArray(value) && value.length > 0) {
+                    const firstImpact = value[0];
+                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
+                    return {
+                        key: displayName || 'none',
+                        title: `Regulatory: ${displayName || 'Not Specified'}`
+                    };
+                }
                 return {
-                    key: value || 'none',
-                    title: `Regulatory: ${this.formatImpactValue(value, 'regulatoryAspects')}`
+                    key: 'none',
+                    title: 'Regulatory: Not Specified'
                 };
-            case 'impact.services':
+            case 'impactsServices':
+                // For grouping, use first impact item if array has content
+                if (Array.isArray(value) && value.length > 0) {
+                    const firstImpact = value[0];
+                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
+                    return {
+                        key: displayName || 'none',
+                        title: `Services: ${displayName || 'Not Specified'}`
+                    };
+                }
                 return {
-                    key: value || 'none',
-                    title: `Services: ${this.formatImpactValue(value, 'services')}`
+                    key: 'none',
+                    title: 'Services: Not Specified'
                 };
             default:
                 return super.getGroupInfo(item, groupBy);
@@ -276,9 +330,14 @@ export default class RequirementsEntity extends CollectionEntity {
             return priorities[key] || 99;
         }
 
-        if (groupBy.startsWith('impact.')) {
+        if (groupBy.startsWith('impacts')) {
             if (key === 'none') return 99;
             return 0; // Keep alphabetical order for impact categories
+        }
+
+        if (groupBy === 'refinesParents') {
+            if (key === 'no-refines') return 99;
+            return 0; // Keep alphabetical order for refined requirements
         }
 
         return super.getGroupPriority(key, groupBy);
@@ -288,18 +347,72 @@ export default class RequirementsEntity extends CollectionEntity {
     renderCellValue(item, column) {
         const value = this.getItemValue(item, column.key);
 
+        // Custom rendering for refines (multiline)
+        if (column.key === 'refinesParents') {
+            const cellContent = this.renderRefinesCell(value);
+            // Add CSS class for multiline rendering
+            return `<div class="multiline-cell">${cellContent}</div>`;
+        }
+
+        // Custom rendering for impact columns (multiline)
+        if (column.key.startsWith('impacts')) {
+            const cellContent = this.renderImpactCell(value, column.key);
+            // Add CSS class for multiline rendering
+            return `<div class="multiline-cell">${cellContent}</div>`;
+        }
+
         // Custom rendering for requirement types
         if (column.key === 'type') {
             return this.renderRequirementType(value);
         }
 
         // Custom rendering for impact columns
-        if (column.key.startsWith('impact.')) {
-            const impactType = column.key.split('.')[1];
+        if (column.key.startsWith('impacts')) {
+            const impactType = this.getImpactTypeFromKey(column.key);
             return this.renderImpactLevel(value, impactType);
         }
 
         return super.renderCellValue(item, column);
+    }
+
+    renderRefinesCell(refinesArray) {
+        if (!Array.isArray(refinesArray) || refinesArray.length === 0) {
+            return '-';
+        }
+
+        // Get titles from refines array and join with newlines for multiline display
+        const titles = refinesArray.map(refine => {
+            const title = refine.title || refine;
+            return this.escapeHtml(title);
+        });
+
+        return titles.join('\n');
+    }
+
+    renderImpactCell(impactArray, fieldKey) {
+        if (!Array.isArray(impactArray) || impactArray.length === 0) {
+            return '-';
+        }
+
+        // Get display names from impact objects and join with newlines for multiline display
+        const displayNames = impactArray.map(impact => {
+            // Handle both object references and direct values
+            const displayName = impact?.title || impact?.name || impact;
+            return this.escapeHtml(displayName);
+        });
+
+        return displayNames.join('\n');
+    }
+
+    getImpactTypeFromKey(fieldKey) {
+        // Extract impact type from field key (e.g., 'impactsStakeholderCategories' -> 'stakeholder')
+        const typeMap = {
+            'impactsData': 'data',
+            'impactsStakeholderCategories': 'stakeholder',
+            'impactsRegulatoryAspects': 'regulatory',
+            'impactsServices': 'services'
+        };
+        return typeMap[fieldKey] || 'data';
     }
 
     renderRequirementType(type) {
@@ -322,10 +435,14 @@ export default class RequirementsEntity extends CollectionEntity {
     renderImpactLevel(value, impactType) {
         if (!value) return '-';
 
-        // Display the formatted name from setup data
-        const displayValue = this.formatImpactValue(value, this.getSetupDataKeyForImpactType(impactType));
+        // For single values, display the formatted name from setup data
+        if (!Array.isArray(value)) {
+            const displayValue = this.formatImpactValue(value, this.getSetupDataKeyForImpactType(impactType));
+            return `<span class="item-status impact-${impactType}">${this.escapeHtml(displayValue)}</span>`;
+        }
 
-        return `<span class="item-status impact-${impactType}">${this.escapeHtml(displayValue)}</span>`;
+        // For arrays (shouldn't happen in this context, but handle gracefully)
+        return this.renderImpactCell(value, `impacts${impactType}`);
     }
 
     getSetupDataKeyForImpactType(impactType) {
@@ -352,19 +469,20 @@ export default class RequirementsEntity extends CollectionEntity {
 
     // Override for Requirements-specific field filtering
     matchesFieldFilter(item, key, value) {
-        if (key.startsWith('impact.')) {
+        if (key.startsWith('impacts')) {
             const itemValue = this.getItemValue(item, key);
-            if (!itemValue) return false;
+            if (!itemValue || itemValue.length === 0) return false;
 
-            // Support both ID and name matching
+            // Support both ID and name matching for impact arrays
             const lowerValue = value.toLowerCase();
-            const itemString = itemValue.toString().toLowerCase();
+            const impactType = this.getImpactTypeFromKey(key);
+            const setupDataKey = this.getSetupDataKeyForImpactType(impactType);
 
-            // Also check if the display name matches
-            const impactType = key.split('.')[1];
-            const displayValue = this.formatImpactValue(itemValue, this.getSetupDataKeyForImpactType(impactType));
-
-            return itemString.includes(lowerValue) || displayValue.toLowerCase().includes(lowerValue);
+            return itemValue.some(impact => {
+                // Handle object references
+                const displayName = impact?.title || impact?.name || impact;
+                return displayName?.toString().toLowerCase().includes(lowerValue);
+            });
         }
 
         return super.matchesFieldFilter(item, key, value);
@@ -402,15 +520,26 @@ export default class RequirementsEntity extends CollectionEntity {
         }
 
         // Show impact details with setup data names
-        const impacts = ['data', 'stakeholder', 'regulatory', 'services'];
-        impacts.forEach(impactType => {
-            const value = this.getItemValue(item, `impact.${impactType}`);
-            if (value) {
-                const displayValue = this.formatImpactValue(value, this.getSetupDataKeyForImpactType(impactType));
+        const impacts = ['impactsData', 'impactsStakeholderCategories', 'impactsRegulatoryAspects', 'impactsServices'];
+        const impactLabels = {
+            'impactsData': 'Data Impact',
+            'impactsStakeholderCategories': 'Stakeholder Impact',
+            'impactsRegulatoryAspects': 'Regulatory Impact',
+            'impactsServices': 'Services Impact'
+        };
+
+        impacts.forEach(impactKey => {
+            const value = this.getItemValue(item, impactKey);
+            if (Array.isArray(value) && value.length > 0) {
+                // Handle object references - get titles/names from objects
+                const displayNames = value.map(impact =>
+                    impact?.title || impact?.name || impact
+                ).join(', ');
+
                 details.push(`
                     <div class="detail-field">
-                        <label>${format.entityName(impactType)} Impact</label>
-                        <p>${this.escapeHtml(displayValue)}</p>
+                        <label>${impactLabels[impactKey]}</label>
+                        <p>${this.escapeHtml(displayNames)}</p>
                     </div>
                 `);
             }

@@ -466,6 +466,23 @@
     margin: 0;
 }
 
+/* Multiline cell rendering */
+.multiline-cell {
+    white-space: pre-line;  /* Preserves \n line breaks */
+    line-height: 1.3;       /* Compact line spacing */
+}
+
+/* Impact column specific styling */
+.collection-cell--impactsStakeholderCategories,
+.collection-cell--impactsData,
+.collection-cell--impactsRegulatoryAspects,
+.collection-cell--impactsServices,
+.collection-cell--refinesParents {
+    vertical-align: top;    /* Align to top for multiline content */
+    max-height: 4em;        /* Limit max height */
+    overflow: hidden;       /* Hide overflow */
+}
+
 /* Action Buttons */
 .elaboration-actions {
     display: flex;
