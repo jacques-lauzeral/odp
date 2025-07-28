@@ -7,6 +7,8 @@ export default class ElaborationActivity {
         this.container = null;
         this.currentEntity = 'requirements'; // Default to requirements
         this.currentEntityComponent = null;
+        this.setupData = null;
+        this.loading = true;
 
         // Entity configuration for Elaboration Activity
         this.entities = {
@@ -38,12 +40,80 @@ export default class ElaborationActivity {
         }
 
         try {
+            // Show loading state first
+            this.renderLoadingState();
+
+            // Load setup data
+            await this.loadSetupData();
+
+            // Load entity counts
             await this.loadEntityCounts();
+
+            // Render the activity
             this.renderUI();
+
+            // Load current entity
             await this.loadCurrentEntity();
+
         } catch (error) {
             console.error('Failed to render Elaboration Activity:', error);
             this.renderError(error);
+        }
+    }
+
+    renderLoadingState() {
+        this.container.innerHTML = `
+            <div class="elaboration-activity">
+                <div class="elaboration-header">
+                    <h1>
+                        ODP Elaboration
+                        <span class="repository-context">Repository</span>
+                    </h1>
+                    <p>Create and edit operational requirements and changes for the next ODP edition</p>
+                </div>
+                
+                <div class="elaboration-workspace">
+                    <div class="collection-container">
+                        <div class="loading-state">
+                            <div class="spinner"></div>
+                            <p>Loading setup data...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async loadSetupData() {
+        try {
+            // Load all setup entities in parallel
+            const [
+                stakeholderCategories,
+                dataCategories,
+                regulatoryAspects,
+                services,
+                waves
+            ] = await Promise.all([
+                apiClient.get('/stakeholder-categories'),
+                apiClient.get('/data-categories'),
+                apiClient.get('/regulatory-aspects'),
+                apiClient.get('/services'),
+                apiClient.get('/waves')
+            ]);
+
+            this.setupData = {
+                stakeholderCategories: stakeholderCategories || [],
+                dataCategories: dataCategories || [],
+                regulatoryAspects: regulatoryAspects || [],
+                services: services || [],
+                waves: waves || []
+            };
+
+            this.loading = false;
+
+        } catch (error) {
+            this.loading = false;
+            throw new Error(`Failed to load setup data: ${error.message}`);
         }
     }
 
@@ -72,38 +142,8 @@ export default class ElaborationActivity {
                 
                 <div class="elaboration-workspace">
                     <div class="collection-container">
-                        <div class="collection-filters">
-                            <div class="group-controls">
-                                <label for="groupBy">Group by:</label>
-                                <select id="groupBy" class="form-control group-select">
-                                    <option value="status">Status</option>
-                                    <option value="type">Type</option>
-                                    <option value="wave">Wave</option>
-                                    <option value="none">No grouping</option>
-                                </select>
-                            </div>
-                            
-                            <div class="filter-controls">
-                                <input 
-                                    type="text" 
-                                    id="filterText" 
-                                    class="form-control filter-input" 
-                                    placeholder="Search content..."
-                                >
-                                <button class="filter-clear" id="clearFilter" title="Clear filter">×</button>
-                            </div>
-                            
-                            <div class="perspective-toggle">
-                                <button class="perspective-option perspective-option--active" data-perspective="collection">
-                                    Collection
-                                </button>
-                                <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
-                                    Hierarchical
-                                </button>
-                                <button class="perspective-option" data-perspective="temporal" disabled title="Coming soon">
-                                    Temporal
-                                </button>
-                            </div>
+                        <div class="collection-filters" id="collectionFilters">
+                            <!-- Dynamic filters will be rendered here -->
                         </div>
                         
                         <div class="collection-actions">
@@ -115,12 +155,6 @@ export default class ElaborationActivity {
                             <div class="elaboration-actions">
                                 <button class="btn btn-primary action-create" id="createEntity">
                                     + New ${this.getSingularEntityName(this.currentEntity)}
-                                </button>
-                                <button class="btn btn-secondary action-import" id="importEntity">
-                                    Import
-                                </button>
-                                <button class="btn btn-secondary action-export" id="exportEntity">
-                                    Export
                                 </button>
                             </div>
                         </div>
@@ -166,60 +200,12 @@ export default class ElaborationActivity {
             });
         });
 
-        // Filter controls
-        const filterInput = this.container.querySelector('#filterText');
-        const clearFilter = this.container.querySelector('#clearFilter');
-        const groupSelect = this.container.querySelector('#groupBy');
-
-        if (filterInput) {
-            filterInput.addEventListener('input', asyncUtils.debounce((e) => {
-                this.handleFilter(e.target.value);
-            }, 300));
-        }
-
-        if (clearFilter) {
-            clearFilter.addEventListener('click', () => {
-                filterInput.value = '';
-                this.handleFilter('');
-            });
-        }
-
-        if (groupSelect) {
-            groupSelect.addEventListener('change', (e) => {
-                this.handleGrouping(e.target.value);
-            });
-        }
-
-        // Perspective toggle (placeholder for future)
-        const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
-        perspectiveButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const perspective = e.currentTarget.dataset.perspective;
-                if (perspective === 'collection') {
-                    // Already active - no action needed
-                    return;
-                }
-                // Future: Handle hierarchical and temporal perspectives
-                console.log(`${perspective} perspective not yet implemented`);
-            });
-        });
-
         // Action buttons
         const createBtn = this.container.querySelector('#createEntity');
-        const importBtn = this.container.querySelector('#importEntity');
-        const exportBtn = this.container.querySelector('#exportEntity');
         const editToggle = this.container.querySelector('#editInCollection');
 
         if (createBtn) {
             createBtn.addEventListener('click', () => this.handleCreate());
-        }
-
-        if (importBtn) {
-            importBtn.addEventListener('click', () => this.handleImport());
-        }
-
-        if (exportBtn) {
-            exportBtn.addEventListener('click', () => this.handleExport());
         }
 
         if (editToggle) {
@@ -227,6 +213,8 @@ export default class ElaborationActivity {
                 this.handleEditModeToggle(e.target.checked);
             });
         }
+
+        // Dynamic filter and grouping controls will be bound when entity loads
     }
 
     async switchEntity(entity) {
@@ -274,12 +262,18 @@ export default class ElaborationActivity {
             const entityModule = await import(`./${this.currentEntity}.js`);
             const EntityComponent = entityModule.default;
 
-            // Create and render the entity component
-            this.currentEntityComponent = new EntityComponent(this.app, entityConfig);
+            // Create and render the entity component with setup data
+            this.currentEntityComponent = new EntityComponent(this.app, entityConfig, this.setupData);
 
             const contentContainer = this.container.querySelector('#entityContent');
             if (contentContainer) {
                 await this.currentEntityComponent.render(contentContainer);
+
+                // After entity is loaded, render dynamic controls
+                this.renderDynamicControls();
+
+                // Update count badge
+                await this.updateEntityCount(this.currentEntity);
             }
 
         } catch (error) {
@@ -306,10 +300,183 @@ export default class ElaborationActivity {
         }
     }
 
+    async updateEntityCount(entityType) {
+        try {
+            const badge = this.container.querySelector(`#${entityType}-count`);
+            if (!badge) return;
+
+            const entity = this.entities[entityType];
+            if (entity) {
+                const response = await apiClient.get(entity.endpoint);
+                const count = Array.isArray(response) ? response.length : 0;
+                badge.textContent = count || '0';
+                this.entityCounts[entityType] = count;
+            }
+        } catch (error) {
+            // Silently fail count updates - not critical
+            console.warn(`Failed to update ${entityType} count:`, error);
+        }
+    }
+
+    renderDynamicControls() {
+        if (!this.currentEntityComponent) return;
+
+        const filtersContainer = this.container.querySelector('#collectionFilters');
+        if (!filtersContainer) return;
+
+        // Get configurations from current entity
+        const filterConfig = this.currentEntityComponent.getFilterConfig ?
+            this.currentEntityComponent.getFilterConfig() : [];
+        const groupingConfig = this.currentEntityComponent.getGroupingConfig ?
+            this.currentEntityComponent.getGroupingConfig() : [];
+
+        // Render dynamic filter and grouping controls
+        filtersContainer.innerHTML = `
+            <div class="group-controls">
+                <label for="groupBy">Group by:</label>
+                <select id="groupBy" class="form-control group-select">
+                    ${groupingConfig.map(option => `
+                        <option value="${option.key}">${option.label}</option>
+                    `).join('')}
+                </select>
+            </div>
+            
+            <div class="filter-controls">
+                ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
+                <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
+            </div>
+            
+            <div class="perspective-toggle">
+                <button class="perspective-option perspective-option--active" data-perspective="collection">
+                    📋 Collection
+                </button>
+                <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
+                    📁 Hierarchical
+                </button>
+                <button class="perspective-option" data-perspective="temporal" disabled title="Coming soon">
+                    📅 Temporal
+                </button>
+            </div>
+        `;
+
+        // Bind events for dynamic controls
+        this.bindDynamicEvents();
+    }
+
+    renderFilterControl(filter) {
+        switch (filter.type) {
+            case 'text':
+                return `
+                    <div class="filter-group">
+                        <label for="filter-${filter.key}">${filter.label}:</label>
+                        <input 
+                            type="text" 
+                            id="filter-${filter.key}"
+                            data-filter-key="${filter.key}"
+                            class="form-control filter-input" 
+                            placeholder="${filter.placeholder || `Filter by ${filter.label.toLowerCase()}...`}"
+                        >
+                    </div>
+                `;
+            case 'select':
+                return `
+                    <div class="filter-group">
+                        <label for="filter-${filter.key}">${filter.label}:</label>
+                        <select 
+                            id="filter-${filter.key}"
+                            data-filter-key="${filter.key}"
+                            class="form-control filter-select"
+                        >
+                            ${filter.options.map(option => {
+                    if (typeof option === 'string') {
+                        return `<option value="${option}">${option}</option>`;
+                    } else {
+                        return `<option value="${option.value}">${option.label}</option>`;
+                    }
+                }).join('')}
+                        </select>
+                    </div>
+                `;
+            default:
+                return '';
+        }
+    }
+
+    bindDynamicEvents() {
+        // Grouping control
+        const groupSelect = this.container.querySelector('#groupBy');
+        if (groupSelect) {
+            groupSelect.addEventListener('change', (e) => {
+                this.handleGrouping(e.target.value);
+            });
+        }
+
+        // Filter controls
+        const filterInputs = this.container.querySelectorAll('[data-filter-key]');
+        filterInputs.forEach(input => {
+            const filterKey = input.dataset.filterKey;
+
+            if (input.type === 'text') {
+                input.addEventListener('input', asyncUtils.debounce((e) => {
+                    this.handleSpecificFilter(filterKey, e.target.value);
+                }, 300));
+            } else if (input.tagName === 'SELECT') {
+                input.addEventListener('change', (e) => {
+                    this.handleSpecificFilter(filterKey, e.target.value);
+                });
+            }
+        });
+
+        // Clear all filters
+        const clearAllBtn = this.container.querySelector('#clearAllFilters');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => {
+                this.clearAllFilters();
+            });
+        }
+
+        // Perspective toggle (placeholder for future)
+        const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
+        perspectiveButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                const perspective = e.currentTarget.dataset.perspective;
+                if (perspective === 'collection') {
+                    // Already active - no action needed
+                    return;
+                }
+                // Future: Handle hierarchical and temporal perspectives
+                console.log(`${perspective} perspective not yet implemented`);
+            });
+        });
+    }
+
+    handleSpecificFilter(filterKey, filterValue) {
+        if (this.currentEntityComponent?.handleFilter) {
+            this.currentEntityComponent.handleFilter(filterKey, filterValue);
+        }
+    }
+
+    clearAllFilters() {
+        // Clear all filter inputs
+        const filterInputs = this.container.querySelectorAll('[data-filter-key]');
+        filterInputs.forEach(input => {
+            if (input.type === 'text') {
+                input.value = '';
+            } else if (input.tagName === 'SELECT') {
+                input.selectedIndex = 0;
+            }
+
+            // Trigger clear for each filter
+            const filterKey = input.dataset.filterKey;
+            this.handleSpecificFilter(filterKey, '');
+        });
+    }
+
     // Event handlers for Collection perspective
     handleFilter(filterText) {
-        if (this.currentEntityComponent?.handleFilter) {
-            this.currentEntityComponent.handleFilter(filterText);
+        // Legacy method - now handled by handleSpecificFilter
+        if (this.currentEntityComponent?.handleTextFilter) {
+            this.currentEntityComponent.handleTextFilter(filterText);
         }
     }
 
@@ -325,17 +492,6 @@ export default class ElaborationActivity {
         }
     }
 
-    handleImport() {
-        // Placeholder for import functionality
-        console.log('Import functionality not yet implemented');
-    }
-
-    handleExport() {
-        if (this.currentEntityComponent?.handleExport) {
-            this.currentEntityComponent.handleExport();
-        }
-    }
-
     handleEditModeToggle(enabled) {
         if (this.currentEntityComponent?.handleEditModeToggle) {
             this.currentEntityComponent.handleEditModeToggle(enabled);
@@ -344,16 +500,25 @@ export default class ElaborationActivity {
 
     renderError(error) {
         this.container.innerHTML = `
-            <div class="error-container">
-                <h1>Failed to Load Elaboration Activity</h1>
-                <p>An error occurred while loading the elaboration interface.</p>
-                <details>
-                    <summary>Error details</summary>
-                    <pre>${error.message}\n${error.stack}</pre>
-                </details>
-                <button class="btn btn-primary" onclick="window.location.reload()">
-                    Reload Page
-                </button>
+            <div class="elaboration-activity">
+                <div class="elaboration-header">
+                    <h1>
+                        ODP Elaboration
+                        <span class="repository-context">Repository</span>
+                    </h1>
+                    <p>Create and edit operational requirements and changes for the next ODP edition</p>
+                </div>
+                
+                <div class="elaboration-workspace">
+                    <div class="error-container">
+                        <h3>Failed to Load Elaboration Activity</h3>
+                        <p>An error occurred while loading the elaboration interface.</p>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <button class="btn btn-primary" onclick="window.location.reload()">
+                            Reload Page
+                        </button>
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -381,6 +546,14 @@ export default class ElaborationActivity {
         return entityMap[entityKey] || 'Item';
     }
 
+    getSetupData() {
+        return this.setupData;
+    }
+
+    isLoading() {
+        return this.loading;
+    }
+
     cleanup() {
         if (this.currentEntityComponent?.cleanup) {
             this.currentEntityComponent.cleanup();
@@ -389,5 +562,6 @@ export default class ElaborationActivity {
         // Clear references
         this.container = null;
         this.currentEntityComponent = null;
+        this.setupData = null;
     }
 }

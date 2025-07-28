@@ -2,9 +2,10 @@ import { async as asyncUtils, validate, format } from '../../shared/utils.js';
 import { apiClient } from '../../shared/api-client.js';
 
 export default class CollectionEntity {
-    constructor(app, entityConfig) {
+    constructor(app, entityConfig, setupData = null) {
         this.app = app;
         this.entityConfig = entityConfig;
+        this.setupData = setupData;
         this.container = null;
 
         // Collection state
@@ -38,7 +39,7 @@ export default class CollectionEntity {
     // Override in subclasses for entity-specific column configuration
     getColumnConfig() {
         return [
-            { key: 'id', label: 'ID', width: '80px', sortable: true },
+            { key: 'itemId', label: 'ID', width: '80px', sortable: true },
             { key: 'title', label: 'Title', width: 'auto', sortable: true },
             { key: 'status', label: 'Status', width: '120px', sortable: true, render: 'status' },
             { key: 'updatedBy', label: 'Updated By', width: '150px', sortable: true },
@@ -53,6 +54,62 @@ export default class CollectionEntity {
             { key: 'status', label: 'Status' },
             { key: 'type', label: 'Type' }
         ];
+    }
+
+    // Helper methods for accessing setup data
+    getSetupData() {
+        return this.setupData;
+    }
+
+    hasSetupData() {
+        return this.setupData !== null && this.setupData !== undefined;
+    }
+
+    getSetupDataEntity(entityName) {
+        return this.setupData?.[entityName] || [];
+    }
+
+    // Helper method to build select options from setup data
+    buildOptionsFromSetupData(entityName, emptyLabel = 'Any', valueKey = 'id', labelKey = 'name') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
+
+        if (!this.hasSetupData()) {
+            return baseOptions;
+        }
+
+        const entities = this.getSetupDataEntity(entityName);
+        if (!Array.isArray(entities) || entities.length === 0) {
+            return baseOptions;
+        }
+
+        const setupOptions = entities.map(entity => ({
+            value: entity[valueKey] || entity[labelKey],
+            label: entity[labelKey] || entity[valueKey] || 'Unknown'
+        }));
+
+        return baseOptions.concat(setupOptions);
+    }
+
+    // Helper method to find setup data entity by ID or name
+    findSetupDataEntity(entityName, value) {
+        if (!this.hasSetupData() || !value) {
+            return null;
+        }
+
+        const entities = this.getSetupDataEntity(entityName);
+        return entities.find(entity =>
+            (entity.id === value) ||
+            (entity.name === value) ||
+            (entity.title === value)
+        );
+    }
+
+    // Helper method to get display name from setup data
+    getSetupDataDisplayName(entityName, value) {
+        if (!value) return 'Not Specified';
+
+        const entity = this.findSetupDataEntity(entityName, value);
+        return entity ? (entity.name || entity.title || entity.id) : value;
     }
 
     async render(container) {
@@ -133,11 +190,12 @@ export default class CollectionEntity {
     }
 
     renderTableRow(item) {
-        const isSelected = this.selectedItem?.id === item.id;
+        const itemId = this.getItemValue(item, 'itemId');
+        const isSelected = this.selectedItem && this.getItemValue(this.selectedItem, 'itemId') === itemId;
 
         return `
             <tr class="collection-row ${isSelected ? 'collection-row--selected' : ''}" 
-                data-item-id="${item.id}">
+                data-item-id="${itemId}">
                 ${this.columnConfig.map(col => `
                     <td class="collection-cell collection-cell--${col.key}">
                         ${this.renderCellValue(item, col)}
@@ -175,7 +233,14 @@ export default class CollectionEntity {
             }
             return value;
         }
-        return item[key];
+
+        // Default mapping for common fields
+        switch (key) {
+            case 'itemId':
+                return item.itemId || item.id;
+            default:
+                return item[key];
+        }
     }
 
     renderStatusCell(value) {
@@ -307,7 +372,11 @@ export default class CollectionEntity {
     }
 
     selectItem(itemId) {
-        const item = this.data.find(d => d.id.toString() === itemId.toString());
+        const item = this.data.find(d => {
+            const dataItemId = this.getItemValue(d, 'itemId');
+            return dataItemId?.toString() === itemId?.toString();
+        });
+
         if (!item) {
             console.warn('Item not found:', itemId);
             return;
@@ -485,5 +554,6 @@ export default class CollectionEntity {
         this.filteredData = [];
         this.selectedItem = null;
         this.currentFilters = {};
+        this.setupData = null;
     }
 }

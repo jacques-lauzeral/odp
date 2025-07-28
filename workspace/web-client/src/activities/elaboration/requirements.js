@@ -2,11 +2,12 @@ import CollectionEntity from '../../components/odp/collection-entity.js';
 import { format } from '../../shared/utils.js';
 
 export default class RequirementsEntity extends CollectionEntity {
-    constructor(app, entityConfig) {
-        super(app, entityConfig);
+    constructor(app, entityConfig, setupData) {
+        super(app, entityConfig, setupData);
+        this.setupData = setupData;
     }
 
-    // Requirements-specific filter configuration
+    // Requirements-specific filter configuration using setup data
     getFilterConfig() {
         return [
             {
@@ -15,9 +16,8 @@ export default class RequirementsEntity extends CollectionEntity {
                 type: 'select',
                 options: [
                     { value: '', label: 'All Types' },
-                    { value: 'functional', label: 'Functional' },
-                    { value: 'non-functional', label: 'Non-Functional' },
-                    { value: 'constraint', label: 'Constraint' }
+                    { value: 'ON', label: 'ON (Operational Need)' },
+                    { value: 'OR', label: 'OR (Operational Requirement)' }
                 ]
             },
             {
@@ -30,58 +30,83 @@ export default class RequirementsEntity extends CollectionEntity {
                 key: 'impact.data',
                 label: 'Data Impact',
                 type: 'select',
-                options: [
-                    { value: '', label: 'Any' },
-                    { value: 'high', label: 'High' },
-                    { value: 'medium', label: 'Medium' },
-                    { value: 'low', label: 'Low' },
-                    { value: 'none', label: 'None' }
-                ]
+                options: this.getDataCategoryOptions()
             },
             {
                 key: 'impact.stakeholder',
                 label: 'Stakeholder Impact',
                 type: 'select',
-                options: [
-                    { value: '', label: 'Any' },
-                    { value: 'high', label: 'High' },
-                    { value: 'medium', label: 'Medium' },
-                    { value: 'low', label: 'Low' },
-                    { value: 'none', label: 'None' }
-                ]
+                options: this.getStakeholderCategoryOptions()
             },
             {
                 key: 'impact.regulatory',
                 label: 'Regulatory Impact',
                 type: 'select',
-                options: [
-                    { value: '', label: 'Any' },
-                    { value: 'high', label: 'High' },
-                    { value: 'medium', label: 'Medium' },
-                    { value: 'low', label: 'Low' },
-                    { value: 'none', label: 'None' }
-                ]
+                options: this.getRegulatoryAspectOptions()
             },
             {
                 key: 'impact.services',
                 label: 'Services Impact',
                 type: 'select',
-                options: [
-                    { value: '', label: 'Any' },
-                    { value: 'high', label: 'High' },
-                    { value: 'medium', label: 'Medium' },
-                    { value: 'low', label: 'Low' },
-                    { value: 'none', label: 'None' }
-                ]
+                options: this.getServicesOptions()
             }
         ];
+    }
+
+    // Helper methods to build filter options from setup data
+    getDataCategoryOptions() {
+        const baseOptions = [{ value: '', label: 'Any Data Category' }];
+        if (this.setupData?.dataCategories) {
+            const setupOptions = this.setupData.dataCategories.map(category => ({
+                value: category.id || category.name,
+                label: category.name
+            }));
+            return baseOptions.concat(setupOptions);
+        }
+        return baseOptions;
+    }
+
+    getStakeholderCategoryOptions() {
+        const baseOptions = [{ value: '', label: 'Any Stakeholder Category' }];
+        if (this.setupData?.stakeholderCategories) {
+            const setupOptions = this.setupData.stakeholderCategories.map(category => ({
+                value: category.id || category.name,
+                label: category.name
+            }));
+            return baseOptions.concat(setupOptions);
+        }
+        return baseOptions;
+    }
+
+    getRegulatoryAspectOptions() {
+        const baseOptions = [{ value: '', label: 'Any Regulatory Aspect' }];
+        if (this.setupData?.regulatoryAspects) {
+            const setupOptions = this.setupData.regulatoryAspects.map(aspect => ({
+                value: aspect.id || aspect.name,
+                label: aspect.name
+            }));
+            return baseOptions.concat(setupOptions);
+        }
+        return baseOptions;
+    }
+
+    getServicesOptions() {
+        const baseOptions = [{ value: '', label: 'Any Service' }];
+        if (this.setupData?.services) {
+            const setupOptions = this.setupData.services.map(service => ({
+                value: service.id || service.name,
+                label: service.name
+            }));
+            return baseOptions.concat(setupOptions);
+        }
+        return baseOptions;
     }
 
     // Requirements-specific column configuration
     getColumnConfig() {
         return [
             {
-                key: 'id',
+                key: 'itemId',
                 label: 'ID',
                 width: '80px',
                 sortable: true
@@ -162,9 +187,11 @@ export default class RequirementsEntity extends CollectionEntity {
         ];
     }
 
-    // Override for Requirements-specific value extraction
+    // Override for Requirements-specific value extraction (fixed ID mapping)
     getItemValue(item, key) {
         switch (key) {
+            case 'itemId':
+                return item.itemId || item.id;
             case 'parent':
                 return item.parentId || item.parent?.title || item.parent?.name || null;
             case 'lastUpdatedBy':
@@ -192,13 +219,24 @@ export default class RequirementsEntity extends CollectionEntity {
                     title: value ? `Parent: ${value}` : 'No Parent'
                 };
             case 'impact.data':
-            case 'impact.stakeholder':
-            case 'impact.regulatory':
-            case 'impact.services':
-                const impactType = groupBy.split('.')[1];
                 return {
                     key: value || 'none',
-                    title: `${this.formatImpactLabel(impactType)}: ${this.formatImpactLevel(value)}`
+                    title: `Data: ${this.formatImpactValue(value, 'dataCategories')}`
+                };
+            case 'impact.stakeholder':
+                return {
+                    key: value || 'none',
+                    title: `Stakeholder: ${this.formatImpactValue(value, 'stakeholderCategories')}`
+                };
+            case 'impact.regulatory':
+                return {
+                    key: value || 'none',
+                    title: `Regulatory: ${this.formatImpactValue(value, 'regulatoryAspects')}`
+                };
+            case 'impact.services':
+                return {
+                    key: value || 'none',
+                    title: `Services: ${this.formatImpactValue(value, 'services')}`
                 };
             default:
                 return super.getGroupInfo(item, groupBy);
@@ -207,54 +245,40 @@ export default class RequirementsEntity extends CollectionEntity {
 
     formatTypeGroupTitle(type) {
         const typeTitles = {
-            'functional': 'Functional Requirements',
-            'non-functional': 'Non-Functional Requirements',
-            'constraint': 'Constraint Requirements',
+            'ON': 'Operational Needs',
+            'OR': 'Operational Requirements',
             'unknown': 'Type Not Specified'
         };
         return typeTitles[type] || format.entityName(type);
     }
 
-    formatImpactLabel(impactType) {
-        const labels = {
-            'data': 'Data',
-            'stakeholder': 'Stakeholder',
-            'regulatory': 'Regulatory',
-            'services': 'Services'
-        };
-        return labels[impactType] || format.entityName(impactType);
-    }
+    formatImpactValue(value, setupDataKey) {
+        if (!value) return 'Not Specified';
 
-    formatImpactLevel(level) {
-        const levels = {
-            'high': 'High Impact',
-            'medium': 'Medium Impact',
-            'low': 'Low Impact',
-            'none': 'No Impact'
-        };
-        return levels[level] || 'Not Specified';
+        if (this.setupData?.[setupDataKey]) {
+            const item = this.setupData[setupDataKey].find(item =>
+                (item.id === value) || (item.name === value)
+            );
+            if (item) return item.name;
+        }
+
+        return value;
     }
 
     // Override for Requirements-specific group priorities
     getGroupPriority(key, groupBy) {
         if (groupBy === 'type') {
             const priorities = {
-                'functional': 1,
-                'non-functional': 2,
-                'constraint': 3,
-                'unknown': 4
+                'ON': 1,
+                'OR': 2,
+                'unknown': 3
             };
             return priorities[key] || 99;
         }
 
         if (groupBy.startsWith('impact.')) {
-            const priorities = {
-                'high': 1,
-                'medium': 2,
-                'low': 3,
-                'none': 4
-            };
-            return priorities[key] || 99;
+            if (key === 'none') return 99;
+            return 0; // Keep alphabetical order for impact categories
         }
 
         return super.getGroupPriority(key, groupBy);
@@ -271,7 +295,8 @@ export default class RequirementsEntity extends CollectionEntity {
 
         // Custom rendering for impact columns
         if (column.key.startsWith('impact.')) {
-            return this.renderImpactLevel(value);
+            const impactType = column.key.split('.')[1];
+            return this.renderImpactLevel(value, impactType);
         }
 
         return super.renderCellValue(item, column);
@@ -280,14 +305,12 @@ export default class RequirementsEntity extends CollectionEntity {
     renderRequirementType(type) {
         if (!type) return '-';
         const typeClasses = {
-            'functional': 'req-type-functional',
-            'non-functional': 'req-type-nonfunctional',
-            'constraint': 'req-type-constraint'
+            'ON': 'req-type-on',
+            'OR': 'req-type-or'
         };
         const typeLabels = {
-            'functional': 'Functional',
-            'non-functional': 'Non-Functional',
-            'constraint': 'Constraint'
+            'ON': 'ON',
+            'OR': 'OR'
         };
 
         const cssClass = typeClasses[type] || 'req-type-other';
@@ -296,25 +319,23 @@ export default class RequirementsEntity extends CollectionEntity {
         return `<span class="item-badge ${cssClass}">${label}</span>`;
     }
 
-    renderImpactLevel(level) {
-        if (!level) return '-';
-        const impactClasses = {
-            'high': 'impact-high',
-            'medium': 'impact-medium',
-            'low': 'impact-low',
-            'none': 'impact-none'
-        };
-        const impactLabels = {
-            'high': 'High',
-            'medium': 'Medium',
-            'low': 'Low',
-            'none': 'None'
-        };
+    renderImpactLevel(value, impactType) {
+        if (!value) return '-';
 
-        const cssClass = impactClasses[level] || 'impact-unknown';
-        const label = impactLabels[level] || level;
+        // Display the formatted name from setup data
+        const displayValue = this.formatImpactValue(value, this.getSetupDataKeyForImpactType(impactType));
 
-        return `<span class="item-status ${cssClass}">${label}</span>`;
+        return `<span class="item-status impact-${impactType}">${this.escapeHtml(displayValue)}</span>`;
+    }
+
+    getSetupDataKeyForImpactType(impactType) {
+        const keyMap = {
+            'data': 'dataCategories',
+            'stakeholder': 'stakeholderCategories',
+            'regulatory': 'regulatoryAspects',
+            'services': 'services'
+        };
+        return keyMap[impactType] || 'dataCategories';
     }
 
     // Override for Requirements-specific text filtering
@@ -327,6 +348,26 @@ export default class RequirementsEntity extends CollectionEntity {
             (item.rationale?.toLowerCase().includes(lowerQuery)) ||
             (item.statement?.toLowerCase().includes(lowerQuery))
         );
+    }
+
+    // Override for Requirements-specific field filtering
+    matchesFieldFilter(item, key, value) {
+        if (key.startsWith('impact.')) {
+            const itemValue = this.getItemValue(item, key);
+            if (!itemValue) return false;
+
+            // Support both ID and name matching
+            const lowerValue = value.toLowerCase();
+            const itemString = itemValue.toString().toLowerCase();
+
+            // Also check if the display name matches
+            const impactType = key.split('.')[1];
+            const displayValue = this.formatImpactValue(itemValue, this.getSetupDataKeyForImpactType(impactType));
+
+            return itemString.includes(lowerValue) || displayValue.toLowerCase().includes(lowerValue);
+        }
+
+        return super.matchesFieldFilter(item, key, value);
     }
 
     // Override for Requirements-specific additional details
@@ -359,6 +400,21 @@ export default class RequirementsEntity extends CollectionEntity {
                 </div>
             `);
         }
+
+        // Show impact details with setup data names
+        const impacts = ['data', 'stakeholder', 'regulatory', 'services'];
+        impacts.forEach(impactType => {
+            const value = this.getItemValue(item, `impact.${impactType}`);
+            if (value) {
+                const displayValue = this.formatImpactValue(value, this.getSetupDataKeyForImpactType(impactType));
+                details.push(`
+                    <div class="detail-field">
+                        <label>${format.entityName(impactType)} Impact</label>
+                        <p>${this.escapeHtml(displayValue)}</p>
+                    </div>
+                `);
+            }
+        });
 
         return details.join('');
     }

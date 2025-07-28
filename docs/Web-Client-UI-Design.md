@@ -2,8 +2,8 @@
 
 ## Document Overview
 **Purpose**: UI design specifications and architectural patterns for the ODP Web Client  
-**Status**: Setup Management Activity complete, ODP Browser/Navigator architecture defined with Collection perspective as default  
-**Last Updated**: July 27, 2025
+**Status**: Setup Management Activity complete, Elaboration Activity implemented with Collection perspective  
+**Last Updated**: July 28, 2025
 
 ---
 
@@ -34,7 +34,7 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 ### Landing Page
 **Purpose**: Simple activity launcher with user identification
 
-**Layout**:
+**Implemented Layout**:
 - Clean, minimal interface with three activity tiles
 - User identification prompt (name entry, no authentication)
 - Connection status indicator
@@ -42,7 +42,7 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 ---
 
-### Setup Management Activity
+### Setup Management Activity ✅ IMPLEMENTED
 **Purpose**: Entity management interface for reference data configuration
 
 #### Activity Structure (Layer 2)
@@ -52,10 +52,10 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - Entity count badges on each tab
 - Responsive horizontal scroll on mobile
 
-**Layout Pattern**: Three-pane workspace for all setup entities
+**Layout Pattern**: Three-pane workspace for hierarchical entities, simple list for waves
 
 #### Entity Management Pattern (Layer 3)
-**Left Pane: Entity Tree**
+**Left Pane: Entity Tree** (for hierarchical entities)
 - Collapsible hierarchy tree for REFINES relationships
 - Visual indicators: `▶` (expandable), `└─` (child), indentation levels
 - Click to select any node in hierarchy
@@ -67,12 +67,12 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - Toggle between view/edit modes
 - Auto-focus when creating new entities
 
-**Top Toolbar: Actions**
+**Right Pane: Actions**
 - **Entity Actions**: Add Child | Edit | Delete (context-sensitive)
 - **Bulk Actions**: Import | Export | Validate Hierarchy
 - **Navigation**: Breadcrumb showing current entity path
 
-#### REFINES Hierarchy Management
+#### Implemented REFINES Hierarchy Management
 **Visual Representation**:
 - Tree structure with expand/collapse controls
 - Clear parent-child relationships through indentation
@@ -84,290 +84,116 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - **Tree Navigation**: Click any node to view/edit that entity
 - **Breadcrumb**: Show hierarchy path for current selection
 
-#### Entity-Specific Patterns
-
-**Stakeholder Categories** (Reference Implementation):
-- Full REFINES hierarchy support
-- Name, description fields
-- Parent selection with validation
-- Child count display
-
-**Regulatory Aspects**:
-- REFINES hierarchy support
-- Name/title, description, regulation reference fields
-- Similar tree patterns as StakeholderCategories
-
-**Data Categories**:
-- REFINES hierarchy support
-- Name, description fields for data classification
-- Tree navigation patterns
-
-**Services**:
-- REFINES hierarchy support
-- Name, description, domain associations
-- User/stakeholder category relationships
-
-**Waves**:
-- **Simple list pattern** (no REFINES hierarchy)
-- Year, quarter, optional date fields
-- Chronological sorting (most recent first)
-- Validation: quarter 1-4, future dates only
-
 ---
 
-## ODP Browser/Navigator Component
-**Purpose**: Unified browsing component for operational content across Read, Elaboration, and Review activities
+### Elaboration Activity ✅ IMPLEMENTED
+**Purpose**: Content creation and editing workspace using Collection perspective with full edit capabilities
 
-### Component Architecture
-**Unified Design**: Single component serves multiple activities with configurable modes and perspectives
+#### Implemented Activity Structure (Layer 2)
+**Repository Context Display**:
+- Clear "Repository" context indicator in header
+- Development content focus messaging
 
-**Configuration Interface**:
-```javascript
-<ODPBrowser 
-  context={{type: "edition|baseline|repository", id: "123"}}
-  mode="elaboration|read|internal-review|external-comment"
-  perspective="collection|hierarchical|temporal"
-  user={{permissions: [...], role: "..."}}
-/>
-```
+**Entity Navigation Tabs**:
+- `Operational Requirements | Operational Changes`
+- Dynamic count badges updated from API
+- Tab switching with proper state management
 
-### Content Context Selection
-**Three Entry Points**:
-- **ODP Edition** (primary): Published editions for formal review and consultation
-- **Baseline** (advanced): Historical snapshots for cross-time analysis
-- **Repository** (contributors): Live development content with latest versions
+**Perspective Toggle**:
+- `📋 Collection` (active and functional)
+- `📁 Hierarchical` (disabled, "Coming soon")
+- `📅 Temporal` (disabled, "Coming soon")
 
-**Context Selector**: Dropdown interface with edition metadata (status, publication date, version)
-
-### Mode Configurations
-**Elaboration Mode**: Full CRUD operations on repository content
-- Create, edit, delete operational requirements and changes
-- Hierarchy management with REFINES relationships
-- Version control and milestone management
-
-**Read Mode**: View-only navigation for published editions
-- Browse content structure and relationships
-- Export and print capabilities
-- Historical version access
-
-**Internal Review Mode**: Review capabilities for internal stakeholders
-- Content browsing with comment threading
-- Review status controls and approval workflow
-- Internal stakeholder notification system
-
-**External Comment Mode**: Limited commenting for external stakeholders
-- Content browsing with comment submission
-- Comment threading without status changes
-- Public consultation workflow support
-
-### Triple Perspective Design
-**Perspective Toggle**: Clear switching between three distinct navigation approaches
-
-**Collection Perspective (📋)** - DEFAULT:
-- **SharePoint Lists-inspired interface** with grouping capabilities
-- **Four functional areas**: Filtering (collapsible) | List | Details | Actions (persistent toolbar)
-- **Dual editing modes**: "View Collection" (read-only) ↔ "Edit in Collection View" (editable grid)
-- **Flexible grouping**: Dropdown selector with expand/collapse group headers
-- **Combined filtering and grouping** for powerful data organization
-
-**Hierarchical Perspective (📁)**:
-- Two-root structure: `Operational Requirements | Operational Changes`
-- Tree navigation with REFINES relationship display
-- Three-pane layout: tabs | tree | details
-- Reuses proven Setup Activity TreeEntity patterns
-
-**Temporal Perspective (📅)**:
-- Timeline visualization of deployment schedule
-- Wave and milestone-based filtering
-- Chronological view of content evolution
-- Integration with deployment planning tools
-
-### Layout Specifications
-
-#### Collection Perspective Layout (DEFAULT)
-**Activity Structure (Layer 2)**:
-- Content context selector (Edition/Baseline/Repository)
-- Perspective toggle: `📋 Collection | 📁 Hierarchical | 📅 Temporal`
-- Entity navigation tabs: `Operational Requirements | Operational Changes`
-
-**Four-Area Layout (Layer 3)**:
+#### Implemented Collection Perspective Layout (Layer 3)
+**Four-Area Layout Implementation**:
 
 **1. Filtering Area (Collapsible)**:
-- Search box with full-text search across statement, rationale, references
-- Column-specific filters (Type, Status, Wave, Folder, Impact categories)
-- Advanced filter combinations (AND/OR logic)
-- Filter badges showing active filters with quick removal
-- Expand/collapse toggle to maximize list space
+- **Requirements Filters**:
+    - Type: ON (Operational Need) / OR (Operational Requirement) / All Types
+    - Title Pattern: Text search
+    - Impact filters: Data/Stakeholder/Regulatory/Services (populated from setup data)
+- **Changes Filters**:
+    - Title Pattern: Text search
+    - Wave: Dynamic options from setup data (e.g., "2025 Q1", "2024 Q4")
+    - Satisfies: Text search for requirement references
+    - Supersedes: Text search for change references
+- **Clear All Filters**: Reset all filter controls
 
 **2. Actions Area (Persistent Toolbar)**:
-- **Mode Toggle**: "View Collection" | "Edit in Collection View" (SharePoint-style)
-- **Context-Sensitive Actions**: Create, Edit, Delete, Add Child (enabled/disabled based on selection)
-- **Grouping Control**: "Group by: [None/Status/Type/Wave/Folder] ▼"
-- **Bulk Operations**: Import, Export, Validate, when multiple items selected
-- **View Options**: Group expand/collapse all, column selection
+- **Edit Mode Toggle**: "Edit in Collection View" checkbox (functional)
+- **Create Actions**: "New Requirement" / "New Change" (context-sensitive)
+- **Grouping Control**: Dynamic dropdown based on entity configuration
+- **Perspective Toggle**: Collection active, others disabled with tooltips
 
-**3. List Area (Table Format)**:
-- **View Mode**: Read-only table with brief info (ID, Title, Status, Type, Modified)
-- **Edit Mode**: Excel-like editable cells with immediate save, undo/redo capabilities
-- **Grouping Display**: Collapsible group headers with item counts
-- **Selection**: Single-click select for details pane, multi-select for bulk operations
-- **Performance**: 100 items per page with pagination
+**3. Collection List Area**:
+- **Table-based Display**: One row per item with configurable columns
+- **Requirements Columns**: ID | Type | Title | Parent | Data Impact | Stakeholder Impact | Regulatory Impact | Services Impact | Updated By | Updated
+- **Changes Columns**: ID | Title | Wave | Visibility | Satisfies | Supersedes | Updated By | Updated
+- **Grouping Support**: Collapsible groups with count badges
+- **Row Selection**: Single-select with highlighting
+- **Custom Cell Rendering**: Badges for types, status indicators for impacts, formatted dates
 
-**4. Selected Item Details Area**:
-- **View Mode**: Read-only display of selected item's full details
-- **Context Display**: Shows selected item even when in edit mode for reference
-- **Rich Content**: Statement, rationale, references, relationships, version history
-- **Consistent Width**: Fixed pane width to maintain context during list scrolling
+**4. Details Panel**:
+- **Selected Item Details**: Dynamic content based on selection
+- **Requirements Details**: Description, rationale, statement, impact details with setup data names
+- **Changes Details**: Description, milestone info, implementation notes, requirement/change relationships
+- **No Selection State**: Helpful placeholder with icon and instructions
 
-#### Collection Perspective Grouping
-**Requirements Grouping Options**:
-- **Type**: ON (Operational Need) | OR (Operational Requirement)
-- **Status**: Draft | Review | Approved | Published
-- **Impact Categories**: By Stakeholder Category, Regulatory Aspect, Data Category, Service
-- **Folder**: By organizational folder location
-- **Version Status**: Latest | Historical | All Versions
-- **Modified By**: Group by contributor
-- **Modified Date**: Group by time periods (This Week, Last Week, This Month, etc.)
+#### Implemented Setup Data Integration
+**Dynamic Filter Population**:
+- **Stakeholder Categories**: Loaded from `/stakeholder-categories` API
+- **Data Categories**: Loaded from `/data-categories` API
+- **Regulatory Aspects**: Loaded from `/regulatory-aspects` API
+- **Services**: Loaded from `/services` API
+- **Waves**: Loaded from `/waves` API with year/quarter formatting
 
-**Changes Grouping Options**:
-- **Visibility**: NM | NETWORK
-- **Target Wave**: Group by deployment wave (Q1 2025, Q2 2025, etc.)
-- **Status**: Draft | Ready | Deployed | Cancelled
-- **Related Requirements**: Group by SATISFIES/SUPERSEDS relationships
-- **Folder**: By organizational folder location
-- **Milestone Status**: By milestone completion status
-- **Modified By**: Group by contributor
-- **Modified Date**: Group by time periods
+**Setup Data Loading Process**:
+1. Elaboration activity loads all setup data on initialization
+2. Setup data passed to Requirements and Changes entities
+3. Entities build dynamic filter options from setup data
+4. Display names resolved using setup data (show names instead of IDs)
+5. Loading states shown during setup data fetch
 
-**Group Interaction Patterns**:
-- **Group Headers**: Clickable to expand/collapse, show item counts
-- **Group Actions**: Right-click context menu for group-level operations
-- **Multi-level Grouping**: Primary and secondary grouping levels
-- **Group Sorting**: Ascending/descending order for group headers
-- **Expand/Collapse All**: Master controls in actions toolbar
+#### Implemented Responsive Design
+**Mobile Layout (< 768px)**:
+- **Stacked Layout**: Filters → Actions → List → Details (vertical stack)
+- **Tab Navigation**: Show only count badges, hide entity names
+- **Collapsible Filters**: Full-width filter controls
+- **Touch-Friendly**: Larger touch targets for groups and items
 
-#### Hierarchical Perspective Layout
-**Activity Structure (Layer 2)**:
-- Content context selector (Edition/Baseline/Repository)
-- Perspective toggle: `📋 Collection | 📁 Hierarchical | 📅 Temporal`
-- Entity navigation tabs: `Operational Requirements | Operational Changes`
-- Mode-specific action toolbar
+**Desktop Layout (≥ 1024px)**:
+- **Four-Area Grid**: Full layout with sidebar details panel
+- **Hover States**: Rich hover feedback on interactive elements
+- **Keyboard Navigation**: Full keyboard support with focus indicators
 
-**Entity Navigation Pattern (Layer 3)**:
-- **Left Pane**: Hierarchical tree with REFINES relationships
-- **Center Pane**: Entity details with versioning information
-- **Action Toolbar**: Mode-specific operations (view/edit/comment/status)
+#### Implemented Error and Loading States
+**Loading States**:
+- **Initial Load**: Setup data loading with spinner and message
+- **Entity Loading**: Individual entity loading states
+- **Empty States**: Helpful guidance for first-time users
 
-**Tree Interaction**:
-- Collapsible hierarchy with visual relationship indicators
-- Click-to-select with persistent selection across mode changes
-- Context-sensitive actions based on selection and permissions
+**Error Handling**:
+- **Setup Data Errors**: Graceful fallback with retry options
+- **Entity Load Errors**: Clear error messaging with reload capability
+- **Network Errors**: Connection status integration with retry actions
 
-#### Temporal Perspective Layout
-**Timeline Visualization Area**:
-- Horizontal timeline with wave and milestone markers
-- Interactive timeline controls for date range selection
-- Entity placement on timeline based on milestone associations
+#### Implemented Interaction Patterns
+**Filter Behavior**:
+- **Text Filters**: 300ms debounced input for performance
+- **Select Filters**: Immediate application on change
+- **Clear All**: Single-click to reset all active filters
+- **Filter Persistence**: Filters maintained during tab switching
 
-**Timeline Integration**:
-- Same entity detail pane as hierarchical perspective
-- Timeline-specific actions: milestone shifts, wave reassignments
-- Deployment schedule visualization with dependency tracking
+**Grouping Behavior**:
+- **Dynamic Options**: Based on entity configuration (Type, Parent, Impact categories for Requirements; Wave, Satisfies, Supersedes for Changes)
+- **Group Headers**: Expandable/collapsible with item counts
+- **Group Priorities**: Logical ordering (e.g., ON before OR, assigned waves before unassigned)
 
-### Action System Design
-**Mode-Specific Toolbars**:
-- **Elaboration**: Create, Edit, Delete, Add Child, Version Management, Edit in Collection View
-- **Read**: View Details, Export, Print, Version History, Group By controls
-- **Review**: Comment, Set Status, Mark Reviewed, View Comments, Group By controls
-- **Comment**: Add Comment, View Thread, Reply to Comments
-
-**Perspective-Specific Actions**:
-- **Collection**: Group By controls, Edit in Collection View toggle, filtering, bulk operations
-- **Hierarchical**: Hierarchy management, parent/child operations
-- **Temporal**: Timeline operations, milestone management, schedule adjustments
-
-**Context-Sensitive Behavior**:
-- Actions availability based on user permissions and content context
-- Visual feedback for disabled actions with explanatory tooltips
-- Bulk operation support in Collection perspective when multiple items selected
-- Group-level actions when items grouped
-
----
-
-### Read Activity
-**Purpose**: Query and browse interface for operational content using ODP Browser in read-only mode
-
-**Implementation**: ODP Browser component configured for read-only access
-```javascript
-<ODPBrowser 
-  context={{type: "edition", id: selectedEditionId}}
-  mode="read"
-  perspective="collection"
-  user={{permissions: ["view", "export"], role: "reader"}}
-/>
-```
-
-**Primary User Flow**:
-1. Select ODP Edition from available published editions
-2. Browse content using collection (default), hierarchical, or temporal perspectives
-3. Use grouping and filtering to organize large datasets
-4. Access entity details and version history
-5. Export or print content as needed
-
----
-
-### Elaboration Activity
-**Purpose**: Content creation and editing workspace using ODP Browser with full edit capabilities
-
-**Implementation**: ODP Browser component configured for full CRUD operations
-```javascript
-<ODPBrowser 
-  context={{type: "repository", id: "current"}}
-  mode="elaboration"
-  perspective="collection"
-  user={{permissions: ["view", "create", "edit", "delete"], role: "contributor"}}
-/>
-```
-
-**Primary User Flow**:
-1. Access repository content for editing
-2. Use Collection perspective (default) for efficient bulk editing
-3. Group by Status, Type, or Wave for organized content management
-4. Switch to "Edit in Collection View" for SharePoint-style grid editing
-5. Use Hierarchical perspective for REFINES relationship management
-6. Use Temporal perspective for deployment timeline planning
-7. Manage versions and milestone associations
-
----
-
-### Review Activities
-**Purpose**: Internal review and external commenting using ODP Browser with review capabilities
-
-**Internal Review Implementation**:
-```javascript
-<ODPBrowser 
-  context={{type: "edition", id: reviewEditionId}}
-  mode="internal-review"
-  perspective="collection"
-  user={{permissions: ["view", "comment", "status"], role: "internal-reviewer"}}
-/>
-```
-
-**External Comment Implementation**:
-```javascript
-<ODPBrowser 
-  context={{type: "edition", id: publishedEditionId}}
-  mode="external-comment"
-  perspective="collection"
-  user={{permissions: ["view", "comment"], role: "external-commenter"}}
-/>
-```
-
-**Review-Specific Features**:
-- Group by Status to focus on items needing review
-- Comment threading in details pane
-- Bulk status updates in Collection edit mode
-- Filter by commented items or review status
+**Selection and Details**:
+- **Single Selection**: Click row to select and update details panel
+- **Visual Feedback**: Selected row highlighting
+- **Details Update**: Immediate details panel refresh on selection
+- **Context Preservation**: Selection maintained during filtering/grouping
 
 ---
 
@@ -375,72 +201,72 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 ### Navigation Consistency
 **Application Header**: Persistent across all activities
-- Clear activity identification
+- Clear activity identification with active state
 - One-click switching between activities
 - User context and system status
 
 **Activity Navigation**: Consistent patterns within activities
-- Tab-based entity switching (Setup and ODP Browser)
-- Perspective toggle with clear visual indicators
-- Breadcrumb navigation for hierarchy
-- Context preservation during navigation
+- Tab-based entity switching (Setup and Elaboration)
+- Count badges showing live entity counts
+- Responsive tab behavior on mobile devices
 
-### Responsive Design
-**Mobile Considerations**:
-- Horizontal scroll for entity tabs
-- Collapsible filtering area for more screen space
-- Touch-friendly group headers and action buttons
-- Stacked layout for four-area Collection design
-- Swipe gestures for perspective switching
+### Visual Hierarchy Implementation
+**Status Indicators**:
+- **Requirements**: ON/OR badges with distinct styling
+- **Changes**: Wave badges with setup data formatting
+- **Impact Levels**: Color-coded status indicators using setup data names
+- **Connection Status**: Live API connection monitoring
 
-**Desktop Optimization**:
-- Full four-area Collection layout utilization
-- Hover-revealed actions for clean interface
-- Keyboard navigation support with shortcuts
-- Multi-monitor support for wide layouts
+**Interactive Feedback**:
+- **Hover States**: Consistent hover styling across all interactive elements
+- **Loading States**: Spinners and progress messaging during operations
+- **Selection States**: Clear visual distinction for selected items
+- **Focus States**: Keyboard navigation support with focus rings
 
 ### Action Organization
-**Toolbar Placement**: Top of content area (not right sidebar)
-- Primary actions: Create, Edit, Delete, Edit in Collection View
-- Secondary actions: Import, Export, Group By, Filter
-- Navigation actions: Perspective toggle, context selector
+**Toolbar Placement**: Actions positioned above content area
+- **Primary Actions**: Create new items (context-sensitive button text)
+- **Mode Controls**: Edit mode toggle with clear labeling
+- **View Controls**: Grouping dropdown and perspective toggle
+- **Filter Controls**: Organized in collapsible filter area
 
-**Context Sensitivity**: Actions change based on selection and mode
-- "Edit in Collection View" toggles entire interface mode
-- Group By controls adapt to available columns for each entity type
-- Bulk actions available when multiple items selected
-- Single-item actions enabled/disabled based on selection state
+**Context Sensitivity**: Actions adapt based on selection and state
+- **Create Button**: "New Requirement" vs "New Change" based on active tab
+- **Edit Mode**: Visual distinction when edit mode is enabled
+- **Group Controls**: Dynamic options based on current entity type
+- **Disabled States**: Clear indication for unavailable features
 
-### Visual Hierarchy
-**Status Indicators**:
-- Entity count badges on tabs and group headers
-- Connection status indicators
-- Edit mode visual distinction from view mode
-- Grouping level indentation and visual separators
-- Loading states during group expand/collapse
-
-**Interaction Feedback**:
-- Hover states for all interactive elements
-- Loading states during API operations and group operations
-- Success/error notifications with undo capabilities
-- Confirmation dialogs for destructive actions
-- Group header expand/collapse animations
-
-### Integration with Existing Patterns
+### Integration with Established Patterns
 **Component Reuse**:
-- TreeEntity base class extended for hierarchical perspective
-- Modal forms for complex CRUD operations
-- Error handling and validation patterns from Setup Activity
-- Responsive design tokens and styling system
-- SharePoint Lists-inspired editing patterns in Collection perspective
+- **Base Classes**: CollectionEntity pattern proven and extensible
+- **Error Handling**: Consistent error display and retry mechanisms
+- **API Integration**: Standardized loading states and error handling
+- **Responsive Design**: Mobile-first approach with progressive enhancement
 
-**API Integration**:
-- Multi-context parameter support for baseline/wave filtering
-- Grouping query parameters for server-side grouping optimization
-- Version history endpoints for temporal navigation
-- Optimistic locking for concurrent editing in Collection edit mode
-- Comment threading API for Review and Comment modes
+**Data Flow Patterns**:
+- **Setup Data**: Centralized loading and distribution to entities
+- **State Management**: Consistent state handling across components
+- **Event Handling**: Debounced inputs and immediate UI feedback
+- **URL Integration**: Deep linking support for entity navigation
 
 ---
 
-*This document serves as the UI design authority for ODP Web Client development and defines the visual and interaction patterns for all activities, with the Collection perspective as the default user experience.*
+## Implementation Status
+
+### ✅ Completed Features
+- **Landing Page**: Full implementation with user identification
+- **Setup Management**: Complete entity management with hierarchy support
+- **Elaboration Activity**: Collection perspective with dynamic setup data integration
+- **Responsive Design**: Mobile and desktop layouts tested and functional
+- **Error Handling**: Comprehensive error management with user-friendly messaging
+
+### Current Capabilities
+- **Two Activity Types**: Landing page navigation to Setup and Elaboration activities
+- **Five Setup Entities**: Full CRUD with hierarchy management for reference data
+- **Two Operational Entities**: Requirements and Changes with Collection perspective interface
+- **Dynamic Data Integration**: Setup data automatically populates filter options
+- **Real-time Updates**: Live entity counts and connection status monitoring
+
+---
+
+*This document reflects the implemented UI patterns and design decisions for the ODP Web Client, providing the foundation for consistent user experience across all current and future activities.*

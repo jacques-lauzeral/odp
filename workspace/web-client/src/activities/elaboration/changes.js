@@ -2,11 +2,12 @@ import CollectionEntity from '../../components/odp/collection-entity.js';
 import { format } from '../../shared/utils.js';
 
 export default class ChangesEntity extends CollectionEntity {
-    constructor(app, entityConfig) {
-        super(app, entityConfig);
+    constructor(app, entityConfig, setupData) {
+        super(app, entityConfig, setupData);
+        this.setupData = setupData;
     }
 
-    // Changes-specific filter configuration
+    // Changes-specific filter configuration using setup data
     getFilterConfig() {
         return [
             {
@@ -19,14 +20,7 @@ export default class ChangesEntity extends CollectionEntity {
                 key: 'wave',
                 label: 'Wave',
                 type: 'select',
-                options: [
-                    { value: '', label: 'All Waves' },
-                    { value: '1', label: 'Wave 1' },
-                    { value: '2', label: 'Wave 2' },
-                    { value: '3', label: 'Wave 3' },
-                    { value: '4', label: 'Wave 4' },
-                    { value: '5', label: 'Wave 5' }
-                ]
+                options: this.getWaveOptions()
             },
             {
                 key: 'satisfies',
@@ -43,11 +37,31 @@ export default class ChangesEntity extends CollectionEntity {
         ];
     }
 
+    // Helper method to build wave options from setup data
+    getWaveOptions() {
+        const baseOptions = [{ value: '', label: 'All Waves' }];
+        if (this.setupData?.waves) {
+            const setupOptions = this.setupData.waves.map(wave => ({
+                value: wave.id || `${wave.year}-${wave.quarter}`,
+                label: this.formatWaveLabel(wave)
+            }));
+            return baseOptions.concat(setupOptions);
+        }
+        return baseOptions;
+    }
+
+    formatWaveLabel(wave) {
+        if (wave.year && wave.quarter) {
+            return `${wave.year} Q${wave.quarter}`;
+        }
+        return wave.name || wave.id || 'Unknown Wave';
+    }
+
     // Changes-specific column configuration
     getColumnConfig() {
         return [
             {
-                key: 'id',
+                key: 'itemId',
                 label: 'ID',
                 width: '80px',
                 sortable: true
@@ -112,9 +126,11 @@ export default class ChangesEntity extends CollectionEntity {
         ];
     }
 
-    // Override for Changes-specific value extraction
+    // Override for Changes-specific value extraction (fixed ID mapping)
     getItemValue(item, key) {
         switch (key) {
+            case 'itemId':
+                return item.itemId || item.id;
             case 'wave':
                 return item.wave || item.targetWave || null;
             case 'visibility':
@@ -156,7 +172,7 @@ export default class ChangesEntity extends CollectionEntity {
             case 'wave':
                 return {
                     key: value || 'unassigned',
-                    title: value ? `Wave ${value}` : 'Unassigned Wave'
+                    title: this.formatWaveGroupTitle(value)
                 };
             case 'satisfies':
                 if (!value || value.length === 0) {
@@ -189,11 +205,45 @@ export default class ChangesEntity extends CollectionEntity {
         }
     }
 
+    formatWaveGroupTitle(waveValue) {
+        if (!waveValue) return 'Unassigned Wave';
+
+        // Try to find the wave in setup data for proper formatting
+        if (this.setupData?.waves) {
+            const wave = this.setupData.waves.find(w =>
+                (w.id === waveValue) ||
+                (`${w.year}-${w.quarter}` === waveValue) ||
+                (w.name === waveValue)
+            );
+            if (wave) {
+                return this.formatWaveLabel(wave);
+            }
+        }
+
+        return `Wave ${waveValue}`;
+    }
+
     // Override for Changes-specific group priorities
     getGroupPriority(key, groupBy) {
         if (groupBy === 'wave') {
             if (key === 'unassigned') return 99;
-            return parseInt(key) || 0;
+
+            // Try to find wave in setup data for proper ordering
+            if (this.setupData?.waves) {
+                const wave = this.setupData.waves.find(w =>
+                    (w.id === key) ||
+                    (`${w.year}-${w.quarter}` === key) ||
+                    (w.name === key)
+                );
+                if (wave) {
+                    // Sort by year and quarter
+                    return (wave.year * 10) + (wave.quarter || 0);
+                }
+            }
+
+            // Fallback: try to parse as number
+            const numericValue = parseInt(key);
+            return isNaN(numericValue) ? 50 : numericValue;
         }
 
         if (groupBy === 'satisfies' || groupBy === 'supersedes') {
@@ -228,18 +278,25 @@ export default class ChangesEntity extends CollectionEntity {
 
     renderWave(wave) {
         if (!wave) return '-';
-        return `<span class="item-badge wave-badge">Wave ${wave}</span>`;
+
+        // Try to format using setup data
+        const displayValue = this.formatWaveGroupTitle(wave);
+        return `<span class="item-badge wave-badge">${this.escapeHtml(displayValue)}</span>`;
     }
 
     renderVisibility(visibility) {
         if (!visibility) return '-';
         const visibilityClasses = {
+            'NM': 'visibility-nm',
+            'NETWORK': 'visibility-network',
             'public': 'visibility-public',
             'internal': 'visibility-internal',
             'restricted': 'visibility-restricted',
             'confidential': 'visibility-confidential'
         };
         const visibilityLabels = {
+            'NM': 'NM',
+            'NETWORK': 'Network',
             'public': 'Public',
             'internal': 'Internal',
             'restricted': 'Restricted',
@@ -289,6 +346,19 @@ export default class ChangesEntity extends CollectionEntity {
 
     // Override for Changes-specific field filtering
     matchesFieldFilter(item, key, value) {
+        if (key === 'wave') {
+            const itemValue = this.getItemValue(item, key);
+            if (!itemValue) return false;
+
+            const lowerValue = value.toLowerCase();
+            const itemString = itemValue.toString().toLowerCase();
+
+            // Also check if the display name matches
+            const displayValue = this.formatWaveGroupTitle(itemValue);
+
+            return itemString.includes(lowerValue) || displayValue.toLowerCase().includes(lowerValue);
+        }
+
         if (key === 'satisfies' || key === 'supersedes') {
             const itemValue = this.getItemValue(item, key);
             if (!itemValue || itemValue.length === 0) return false;
@@ -339,6 +409,18 @@ export default class ChangesEntity extends CollectionEntity {
                 <div class="detail-field">
                     <label>Impact Level</label>
                     <p>${this.formatImpactLevel(item.impactLevel)}</p>
+                </div>
+            `);
+        }
+
+        // Show wave details with setup data
+        const waveValue = this.getItemValue(item, 'wave');
+        if (waveValue) {
+            const waveDisplay = this.formatWaveGroupTitle(waveValue);
+            details.push(`
+                <div class="detail-field">
+                    <label>Target Wave</label>
+                    <p>${this.escapeHtml(waveDisplay)}</p>
                 </div>
             `);
         }
