@@ -7,7 +7,7 @@ export default class ChangesEntity extends CollectionEntity {
         this.setupData = setupData;
     }
 
-    // Changes-specific filter configuration using setup data
+    // FIXED: Changes-specific filter configuration
     getFilterConfig() {
         return [
             {
@@ -24,15 +24,15 @@ export default class ChangesEntity extends CollectionEntity {
             },
             {
                 key: 'satisfies',
-                label: 'Satisfies',
+                label: 'Satisfies Requirements',
                 type: 'text',
                 placeholder: 'Requirement ID or title...'
             },
             {
                 key: 'supersedes',
-                label: 'Supersedes',
+                label: 'Supersedes Requirements',
                 type: 'text',
-                placeholder: 'Change ID or title...'
+                placeholder: 'Requirement ID or title...'
             }
         ];
     }
@@ -57,7 +57,7 @@ export default class ChangesEntity extends CollectionEntity {
         return wave.name || wave.id || 'Unknown Wave';
     }
 
-    // Changes-specific column configuration
+    // FIXED: Changes-specific column configuration
     getColumnConfig() {
         return [
             {
@@ -88,15 +88,15 @@ export default class ChangesEntity extends CollectionEntity {
             },
             {
                 key: 'satisfies',
-                label: 'Satisfies',
-                width: '120px',
+                label: 'Satisfies Requirements',
+                width: '150px',
                 sortable: true,
                 render: 'list'
             },
             {
                 key: 'supersedes',
-                label: 'Supersedes',
-                width: '120px',
+                label: 'Supersedes Requirements',
+                width: '150px',
                 sortable: true,
                 render: 'list'
             },
@@ -116,45 +116,64 @@ export default class ChangesEntity extends CollectionEntity {
         ];
     }
 
-    // Changes-specific grouping configuration
+    // FIXED: Changes-specific grouping configuration
     getGroupingConfig() {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'wave', label: 'Wave' },
-            { key: 'satisfies', label: 'Satisfies (Requirements)' },
-            { key: 'supersedes', label: 'Supersedes (Changes)' }
+            { key: 'satisfies', label: 'Satisfies Requirements' },
+            { key: 'supersedes', label: 'Supersedes Requirements' }
         ];
     }
 
-    // Override for Changes-specific value extraction (fixed ID mapping)
+    // FIXED: Override for Changes-specific value extraction
     getItemValue(item, key) {
         switch (key) {
             case 'itemId':
                 return item.itemId || item.id;
             case 'wave':
-                return item.wave || item.targetWave || null;
+                // FIXED: Extract wave from milestones that have a wave assigned
+                if (item.milestones && Array.isArray(item.milestones)) {
+                    // Find the first milestone with a wave
+                    const milestoneWithWave = item.milestones.find(m => m.wave);
+                    if (milestoneWithWave && milestoneWithWave.wave) {
+                        const wave = milestoneWithWave.wave;
+                        return wave.name || wave.title || `${wave.year}.${wave.quarter}` || wave.id;
+                    }
+                }
+                // Fallback to direct wave properties
+                if (item.wave) {
+                    return typeof item.wave === 'object' ? item.wave.id || item.wave.name : item.wave;
+                }
+                if (item.targetWave) {
+                    return typeof item.targetWave === 'object' ? item.targetWave.id || item.targetWave.name : item.targetWave;
+                }
+                return null;
             case 'visibility':
                 return item.visibility || item.scope || null;
             case 'satisfies':
-                // Handle both array and single value
-                if (Array.isArray(item.satisfies)) {
-                    return item.satisfies;
-                } else if (item.satisfies) {
-                    return [item.satisfies];
-                } else if (item.requirements) {
-                    return Array.isArray(item.requirements) ? item.requirements : [item.requirements];
+                // Handle satisfies relationships (contains Requirements)
+                let satisfiesArray = [];
+                if (Array.isArray(item.satisfiesRequirements)) {
+                    satisfiesArray = item.satisfiesRequirements;
+                } else if (item.satisfiesRequirements) {
+                    satisfiesArray = [item.satisfiesRequirements];
                 }
-                return [];
+
+                // Return the array of requirement objects
+                return satisfiesArray;
             case 'supersedes':
-                // Handle both array and single value
-                if (Array.isArray(item.supersedes)) {
-                    return item.supersedes;
-                } else if (item.supersedes) {
-                    return [item.supersedes];
-                } else if (item.replacedChanges) {
-                    return Array.isArray(item.replacedChanges) ? item.replacedChanges : [item.replacedChanges];
+                // FIXED: Use correct API field 'supersedsRequirements' (contains Requirements, not Changes)
+                let supersedesArray = [];
+
+                if (Array.isArray(item.supersedsRequirements)) {
+                    supersedesArray = item.supersedsRequirements;
+                } else if (item.supersedsRequirements) {
+                    supersedesArray = [item.supersedsRequirements];
                 }
-                return [];
+
+                // Return the array of requirement objects (not changes)
+                return supersedesArray;
             case 'lastUpdatedBy':
                 return item.lastUpdatedBy || item.updatedBy || item.createdBy;
             case 'lastUpdatedAt':
@@ -164,7 +183,7 @@ export default class ChangesEntity extends CollectionEntity {
         }
     }
 
-    // Override for Changes-specific grouping
+    // FIXED: Override for Changes-specific grouping
     getGroupInfo(item, groupBy) {
         const value = this.getItemValue(item, groupBy);
 
@@ -175,34 +194,46 @@ export default class ChangesEntity extends CollectionEntity {
                     title: this.formatWaveGroupTitle(value)
                 };
             case 'satisfies':
-                if (!value || value.length === 0) {
+                if (!value || !Array.isArray(value) || value.length === 0) {
                     return {
                         key: 'no-requirements',
                         title: 'No Requirements Satisfied'
                     };
                 }
-                // Group by first requirement for simplicity
-                const firstReq = Array.isArray(value) ? value[0] : value;
+                // Group by first requirement title
+                const firstReq = value[0];
+                const firstReqDisplay = firstReq?.title || firstReq?.name || firstReq?.id || 'Unknown';
                 return {
-                    key: firstReq,
-                    title: `Satisfies: ${firstReq}`
+                    key: firstReqDisplay,
+                    title: `Satisfies: ${firstReqDisplay}`
                 };
             case 'supersedes':
-                if (!value || value.length === 0) {
+                if (!value || !Array.isArray(value) || value.length === 0) {
                     return {
                         key: 'no-supersedes',
-                        title: 'No Changes Superseded'
+                        title: 'No Requirements Superseded'
                     };
                 }
-                // Group by first superseded change for simplicity
-                const firstChange = Array.isArray(value) ? value[0] : value;
+                // Group by first superseded requirement title
+                const firstSuperseded = value[0];
+                const firstSupersededDisplay = firstSuperseded?.title || firstSuperseded?.name || firstSuperseded?.id || 'Unknown';
                 return {
-                    key: firstChange,
-                    title: `Supersedes: ${firstChange}`
+                    key: firstSupersededDisplay,
+                    title: `Supersedes: ${firstSupersededDisplay}`
                 };
             default:
                 return super.getGroupInfo(item, groupBy);
         }
+    }
+
+    // Helper method to get display value from relationship object
+    getDisplayValue(item) {
+        if (!item) return 'Unknown';
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object') {
+            return item.title || item.name || item.id || 'Unknown';
+        }
+        return item.toString();
     }
 
     formatWaveGroupTitle(waveValue) {
@@ -247,14 +278,14 @@ export default class ChangesEntity extends CollectionEntity {
         }
 
         if (groupBy === 'satisfies' || groupBy === 'supersedes') {
-            if (key.startsWith('no-')) return 99;
+            if (key.startsWith('no-') || key === 'Unknown') return 99;
             return 0; // Keep alphabetical order for requirements/changes
         }
 
         return super.getGroupPriority(key, groupBy);
     }
 
-    // Override cell rendering for Changes-specific styling
+    // FIXED: Override cell rendering for Changes-specific styling
     renderCellValue(item, column) {
         const value = this.getItemValue(item, column.key);
 
@@ -268,7 +299,7 @@ export default class ChangesEntity extends CollectionEntity {
             return this.renderVisibility(value);
         }
 
-        // Custom rendering for satisfies/supersedes
+        // FIXED: Custom rendering for satisfies/supersedes
         if (column.key === 'satisfies' || column.key === 'supersedes') {
             return this.renderRelationshipList(value);
         }
@@ -309,19 +340,19 @@ export default class ChangesEntity extends CollectionEntity {
         return `<span class="item-status ${cssClass}">${label}</span>`;
     }
 
+    // FIXED: Improved relationship list rendering for Requirements
     renderRelationshipList(relationships) {
-        if (!relationships || relationships.length === 0) return '-';
-
-        const items = Array.isArray(relationships) ? relationships : [relationships];
-        if (items.length === 0) return '-';
+        if (!relationships || !Array.isArray(relationships) || relationships.length === 0) {
+            return '-';
+        }
 
         // Show first few items, with "..." if more
-        const displayItems = items.slice(0, 2);
-        const remainingCount = items.length - displayItems.length;
+        const displayItems = relationships.slice(0, 2);
+        const remainingCount = relationships.length - displayItems.length;
 
-        let html = displayItems.map(item => {
-            // Handle both ID and object references
-            const displayValue = typeof item === 'object' ? (item.title || item.name || item.id) : item;
+        let html = displayItems.map(req => {
+            // Handle requirement objects with id, title, type properties
+            const displayValue = req?.title || req?.name || req?.id || 'Unknown';
             return `<span class="relationship-item">${this.escapeHtml(displayValue)}</span>`;
         }).join(', ');
 
@@ -344,7 +375,7 @@ export default class ChangesEntity extends CollectionEntity {
         );
     }
 
-    // Override for Changes-specific field filtering
+    // FIXED: Override for Changes-specific field filtering
     matchesFieldFilter(item, key, value) {
         if (key === 'wave') {
             const itemValue = this.getItemValue(item, key);
@@ -361,19 +392,27 @@ export default class ChangesEntity extends CollectionEntity {
 
         if (key === 'satisfies' || key === 'supersedes') {
             const itemValue = this.getItemValue(item, key);
-            if (!itemValue || itemValue.length === 0) return false;
+            if (!itemValue || !Array.isArray(itemValue) || itemValue.length === 0) {
+                return false;
+            }
 
             const lowerValue = value.toLowerCase();
-            return itemValue.some(rel => {
-                const displayValue = typeof rel === 'object' ? (rel.title || rel.name || rel.id) : rel;
-                return displayValue?.toString().toLowerCase().includes(lowerValue);
+            return itemValue.some(req => {
+                // Handle requirement objects
+                const id = req?.id?.toString().toLowerCase();
+                const title = req?.title?.toLowerCase();
+                const name = req?.name?.toLowerCase();
+
+                return (id && id.includes(lowerValue)) ||
+                    (title && title.includes(lowerValue)) ||
+                    (name && name.includes(lowerValue));
             });
         }
 
         return super.matchesFieldFilter(item, key, value);
     }
 
-    // Override for Changes-specific additional details
+    // FIXED: Override for Changes-specific additional details
     renderAdditionalDetails(item) {
         const details = [];
 
@@ -425,29 +464,25 @@ export default class ChangesEntity extends CollectionEntity {
             `);
         }
 
-        // Show full lists in details
+        // FIXED: Show requirement relationships with proper titles
         const satisfies = this.getItemValue(item, 'satisfies');
-        if (satisfies && satisfies.length > 0) {
+        if (satisfies && Array.isArray(satisfies) && satisfies.length > 0) {
+            const satisfiesDisplay = satisfies.map(req => req?.title || req?.name || req?.id || 'Unknown').join(', ');
             details.push(`
                 <div class="detail-field">
                     <label>Satisfies Requirements</label>
-                    <p>${satisfies.map(req => {
-                const displayValue = typeof req === 'object' ? (req.title || req.name || req.id) : req;
-                return this.escapeHtml(displayValue);
-            }).join(', ')}</p>
+                    <p>${this.escapeHtml(satisfiesDisplay)}</p>
                 </div>
             `);
         }
 
         const supersedes = this.getItemValue(item, 'supersedes');
-        if (supersedes && supersedes.length > 0) {
+        if (supersedes && Array.isArray(supersedes) && supersedes.length > 0) {
+            const supersedesDisplay = supersedes.map(req => req?.title || req?.name || req?.id || 'Unknown').join(', ');
             details.push(`
                 <div class="detail-field">
-                    <label>Supersedes Changes</label>
-                    <p>${supersedes.map(change => {
-                const displayValue = typeof change === 'object' ? (change.title || change.name || change.id) : change;
-                return this.escapeHtml(displayValue);
-            }).join(', ')}</p>
+                    <label>Supersedes Requirements</label>
+                    <p>${this.escapeHtml(supersedesDisplay)}</p>
                 </div>
             `);
         }

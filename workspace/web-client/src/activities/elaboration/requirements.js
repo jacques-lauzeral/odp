@@ -27,25 +27,25 @@ export default class RequirementsEntity extends CollectionEntity {
                 placeholder: 'Search in title...'
             },
             {
-                key: 'impact.data',
+                key: 'impactsData',
                 label: 'Data Impact',
                 type: 'select',
                 options: this.getDataCategoryOptions()
             },
             {
-                key: 'impact.stakeholder',
+                key: 'impactsStakeholderCategories',
                 label: 'Stakeholder Impact',
                 type: 'select',
                 options: this.getStakeholderCategoryOptions()
             },
             {
-                key: 'impact.regulatory',
+                key: 'impactsRegulatoryAspects',
                 label: 'Regulatory Impact',
                 type: 'select',
                 options: this.getRegulatoryAspectOptions()
             },
             {
-                key: 'impact.services',
+                key: 'impactsServices',
                 label: 'Services Impact',
                 type: 'select',
                 options: this.getServicesOptions()
@@ -467,21 +467,32 @@ export default class RequirementsEntity extends CollectionEntity {
         );
     }
 
-    // Override for Requirements-specific field filtering
+    // FIXED: Override for Requirements-specific field filtering
     matchesFieldFilter(item, key, value) {
         if (key.startsWith('impacts')) {
             const itemValue = this.getItemValue(item, key);
-            if (!itemValue || itemValue.length === 0) return false;
+            if (!itemValue || !Array.isArray(itemValue) || itemValue.length === 0) {
+                return false;
+            }
 
             // Support both ID and name matching for impact arrays
             const lowerValue = value.toLowerCase();
-            const impactType = this.getImpactTypeFromKey(key);
-            const setupDataKey = this.getSetupDataKeyForImpactType(impactType);
 
             return itemValue.some(impact => {
-                // Handle object references
-                const displayName = impact?.title || impact?.name || impact;
-                return displayName?.toString().toLowerCase().includes(lowerValue);
+                // Handle object references with id, name, or title
+                if (typeof impact === 'object' && impact !== null) {
+                    const id = impact.id?.toString().toLowerCase();
+                    const name = impact.name?.toString().toLowerCase();
+                    const title = impact.title?.toString().toLowerCase();
+
+                    return (id && id.includes(lowerValue)) ||
+                        (name && name.includes(lowerValue)) ||
+                        (title && title.includes(lowerValue));
+                }
+
+                // Handle direct string values
+                const displayName = impact?.toString().toLowerCase();
+                return displayName && displayName.includes(lowerValue);
             });
         }
 

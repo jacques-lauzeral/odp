@@ -70,7 +70,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             // Get IMPACTS relationships to Data
             const dataResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:Data)
+                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:DataCategory)
                 WHERE id(version) = $versionId
                 RETURN id(target) as id, target.name as title
                 ORDER BY target.name
@@ -226,7 +226,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             // Create IMPACTS relationships (with normalization)
             await this._createImpactsRelationshipsFromIds(versionId, 'StakeholderCategory', impactsStakeholderCategories, transaction);
-            await this._createImpactsRelationshipsFromIds(versionId, 'Data', impactsData, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'DataCategory', impactsData, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'Service', impactsServices, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'RegulatoryAspect', impactsRegulatoryAspects, transaction);
 
