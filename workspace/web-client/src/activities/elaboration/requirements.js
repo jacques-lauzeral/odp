@@ -1,13 +1,49 @@
 import CollectionEntity from '../../components/odp/collection-entity.js';
+import RequirementForm from './requirement-form.js';
+import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
+import { apiClient } from '../../shared/api-client.js';
 import { format } from '../../shared/utils.js';
 
-export default class RequirementsEntity extends CollectionEntity {
+export default class RequirementsEntity {
     constructor(app, entityConfig, setupData) {
-        super(app, entityConfig, setupData);
+        this.app = app;
+        this.entityConfig = entityConfig;
         this.setupData = setupData;
+        this.container = null;
+
+        // Initialize collection with ODP column types
+        this.collection = new CollectionEntity(app, entityConfig, {
+            columnTypes: odpColumnTypes,
+            context: { setupData },
+
+            // Configuration methods
+            getFilterConfig: () => this.getFilterConfig(),
+            getColumnConfig: () => this.getColumnConfig(),
+            getGroupingConfig: () => this.getGroupingConfig(),
+
+            // Event handlers
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate(),
+            onRefresh: () => this.handleRefresh(),
+
+            // Empty state customization
+            getEmptyStateMessage: () => ({
+                icon: '📋',
+                title: 'No Requirements Yet',
+                description: 'Start creating operational requirements to define system needs and behaviors.',
+                createButtonText: 'Create First Requirement',
+                showCreateButton: true
+            })
+        });
+
+        // Initialize form handler
+        this.form = new RequirementForm(entityConfig, setupData);
     }
 
-    // Requirements-specific filter configuration using setup data
+    // ====================
+    // COLLECTION CONFIGURATION
+    // ====================
+
     getFilterConfig() {
         return [
             {
@@ -30,151 +66,120 @@ export default class RequirementsEntity extends CollectionEntity {
                 key: 'impactsData',
                 label: 'Data Impact',
                 type: 'select',
-                options: this.getDataCategoryOptions()
+                options: this.buildOptionsFromSetupData('dataCategories', 'Any Data Category')
             },
             {
                 key: 'impactsStakeholderCategories',
                 label: 'Stakeholder Impact',
                 type: 'select',
-                options: this.getStakeholderCategoryOptions()
+                options: this.buildOptionsFromSetupData('stakeholderCategories', 'Any Stakeholder Category')
             },
             {
                 key: 'impactsRegulatoryAspects',
                 label: 'Regulatory Impact',
                 type: 'select',
-                options: this.getRegulatoryAspectOptions()
+                options: this.buildOptionsFromSetupData('regulatoryAspects', 'Any Regulatory Aspect')
             },
             {
                 key: 'impactsServices',
                 label: 'Services Impact',
                 type: 'select',
-                options: this.getServicesOptions()
+                options: this.buildOptionsFromSetupData('services', 'Any Service')
             }
         ];
     }
 
-    // Helper methods to build filter options from setup data
-    getDataCategoryOptions() {
-        const baseOptions = [{ value: '', label: 'Any Data Category' }];
-        if (this.setupData?.dataCategories) {
-            const setupOptions = this.setupData.dataCategories.map(category => ({
-                value: category.id || category.name,
-                label: category.name
-            }));
-            return baseOptions.concat(setupOptions);
-        }
-        return baseOptions;
-    }
-
-    getStakeholderCategoryOptions() {
-        const baseOptions = [{ value: '', label: 'Any Stakeholder Category' }];
-        if (this.setupData?.stakeholderCategories) {
-            const setupOptions = this.setupData.stakeholderCategories.map(category => ({
-                value: category.id || category.name,
-                label: category.name
-            }));
-            return baseOptions.concat(setupOptions);
-        }
-        return baseOptions;
-    }
-
-    getRegulatoryAspectOptions() {
-        const baseOptions = [{ value: '', label: 'Any Regulatory Aspect' }];
-        if (this.setupData?.regulatoryAspects) {
-            const setupOptions = this.setupData.regulatoryAspects.map(aspect => ({
-                value: aspect.id || aspect.name,
-                label: aspect.name
-            }));
-            return baseOptions.concat(setupOptions);
-        }
-        return baseOptions;
-    }
-
-    getServicesOptions() {
-        const baseOptions = [{ value: '', label: 'Any Service' }];
-        if (this.setupData?.services) {
-            const setupOptions = this.setupData.services.map(service => ({
-                value: service.id || service.name,
-                label: service.name
-            }));
-            return baseOptions.concat(setupOptions);
-        }
-        return baseOptions;
-    }
-
-    // Requirements-specific column configuration
     getColumnConfig() {
         return [
             {
                 key: 'itemId',
                 label: 'ID',
                 width: '80px',
-                sortable: true
+                sortable: true,
+                type: 'text'
             },
             {
                 key: 'type',
                 label: 'Type',
-                width: '120px',
+                width: '80px',
                 sortable: true,
-                render: 'badge'
+                type: 'requirement-type',
+                groupPriority: { 'ON': 1, 'OR': 2 }
             },
             {
                 key: 'title',
                 label: 'Title',
                 width: 'auto',
-                sortable: true
+                sortable: true,
+                type: 'text'
             },
             {
                 key: 'refinesParents',
                 label: 'Refines',
-                width: '120px',
-                sortable: true
+                width: '150px',
+                sortable: false,
+                type: 'entity-reference-list',
+                maxDisplay: 1,
+                noneLabel: 'No Refinement',
+                groupPrefix: 'Refines'
             },
             {
                 key: 'impactsData',
-                label: 'Data Impact',
-                width: '100px',
+                label: 'Data',
+                width: '120px',
                 sortable: true,
-                render: 'status'
+                type: 'multi-setup-reference',
+                setupEntity: 'dataCategories',
+                renderMode: 'inline',
+                noneLabel: 'No Data Impact'
             },
             {
                 key: 'impactsStakeholderCategories',
-                label: 'Stakeholder Impact',
+                label: 'Stakeholder',
                 width: '120px',
                 sortable: true,
-                render: 'status'
+                type: 'multi-setup-reference',
+                setupEntity: 'stakeholderCategories',
+                renderMode: 'inline',
+                noneLabel: 'No Stakeholder Impact'
             },
             {
                 key: 'impactsRegulatoryAspects',
-                label: 'Regulatory Impact',
+                label: 'Regulatory',
                 width: '120px',
                 sortable: true,
-                render: 'status'
+                type: 'multi-setup-reference',
+                setupEntity: 'regulatoryAspects',
+                renderMode: 'inline',
+                noneLabel: 'No Regulatory Impact'
             },
             {
                 key: 'impactsServices',
-                label: 'Services Impact',
-                width: '110px',
+                label: 'Services',
+                width: '120px',
                 sortable: true,
-                render: 'status'
+                type: 'multi-setup-reference',
+                setupEntity: 'services',
+                renderMode: 'inline',
+                noneLabel: 'No Services Impact'
             },
             {
                 key: 'lastUpdatedBy',
                 label: 'Updated By',
                 width: '130px',
-                sortable: true
+                sortable: true,
+                type: 'text'
             },
             {
                 key: 'lastUpdatedAt',
                 label: 'Updated',
                 width: '110px',
                 sortable: true,
-                render: 'date'
+                type: 'date'
             }
         ];
     }
 
-    // Requirements-specific grouping configuration
     getGroupingConfig() {
         return [
             { key: 'none', label: 'No grouping' },
@@ -187,392 +192,285 @@ export default class RequirementsEntity extends CollectionEntity {
         ];
     }
 
-    // Override for Requirements-specific value extraction (fixed ID mapping)
-    getItemValue(item, key) {
-        switch (key) {
-            case 'itemId':
-                return item.itemId || item.id;
-            case 'refinesParents':
-                // Return the full array for cell rendering
-                return item.refinesParents || [];
-            case 'impactsData':
-                return item.impactsData || [];
-            case 'impactsStakeholderCategories':
-                return item.impactsStakeholderCategories || [];
-            case 'impactsRegulatoryAspects':
-                return item.impactsRegulatoryAspects || [];
-            case 'impactsServices':
-                return item.impactsServices || [];
-            case 'lastUpdatedBy':
-                return item.lastUpdatedBy || item.updatedBy || item.createdBy;
-            case 'lastUpdatedAt':
-                return item.lastUpdatedAt || item.updatedAt || item.createdAt;
-            default:
-                return super.getItemValue(item, key);
-        }
-    }
+    // ====================
+    // HELPER METHODS
+    // ====================
 
-    // Override for Requirements-specific grouping
-    getGroupInfo(item, groupBy) {
-        const value = this.getItemValue(item, groupBy);
+    buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
 
-        switch (groupBy) {
-            case 'type':
-                return {
-                    key: value || 'unknown',
-                    title: this.formatTypeGroupTitle(value)
-                };
-            case 'refinesParents':
-                // For grouping, use first refined requirement's title
-                if (Array.isArray(value) && value.length > 0) {
-                    const firstRefine = value[0];
-                    const title = firstRefine.title || firstRefine;
-                    return {
-                        key: title || 'no-refines',
-                        title: `Refines: ${title}`
-                    };
-                }
-                return {
-                    key: 'no-refines',
-                    title: 'No Refinement'
-                };
-            case 'impactsData':
-                // For grouping, use first impact item if array has content
-                if (Array.isArray(value) && value.length > 0) {
-                    const firstImpact = value[0];
-                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
-                    return {
-                        key: displayName || 'none',
-                        title: `Data: ${displayName || 'Not Specified'}`
-                    };
-                }
-                return {
-                    key: 'none',
-                    title: 'Data: Not Specified'
-                };
-            case 'impactsStakeholderCategories':
-                // For grouping, use first impact item if array has content
-                if (Array.isArray(value) && value.length > 0) {
-                    const firstImpact = value[0];
-                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
-                    return {
-                        key: displayName || 'none',
-                        title: `Stakeholder: ${displayName || 'Not Specified'}`
-                    };
-                }
-                return {
-                    key: 'none',
-                    title: 'Stakeholder: Not Specified'
-                };
-            case 'impactsRegulatoryAspects':
-                // For grouping, use first impact item if array has content
-                if (Array.isArray(value) && value.length > 0) {
-                    const firstImpact = value[0];
-                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
-                    return {
-                        key: displayName || 'none',
-                        title: `Regulatory: ${displayName || 'Not Specified'}`
-                    };
-                }
-                return {
-                    key: 'none',
-                    title: 'Regulatory: Not Specified'
-                };
-            case 'impactsServices':
-                // For grouping, use first impact item if array has content
-                if (Array.isArray(value) && value.length > 0) {
-                    const firstImpact = value[0];
-                    const displayName = firstImpact?.title || firstImpact?.name || firstImpact;
-                    return {
-                        key: displayName || 'none',
-                        title: `Services: ${displayName || 'Not Specified'}`
-                    };
-                }
-                return {
-                    key: 'none',
-                    title: 'Services: Not Specified'
-                };
-            default:
-                return super.getGroupInfo(item, groupBy);
-        }
-    }
-
-    formatTypeGroupTitle(type) {
-        const typeTitles = {
-            'ON': 'Operational Needs',
-            'OR': 'Operational Requirements',
-            'unknown': 'Type Not Specified'
-        };
-        return typeTitles[type] || format.entityName(type);
-    }
-
-    formatImpactValue(value, setupDataKey) {
-        if (!value) return 'Not Specified';
-
-        if (this.setupData?.[setupDataKey]) {
-            const item = this.setupData[setupDataKey].find(item =>
-                (item.id === value) || (item.name === value)
-            );
-            if (item) return item.name;
+        if (!this.setupData?.[entityName]) {
+            return baseOptions;
         }
 
-        return value;
+        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
+        const setupOptions = this.setupData[entityName].map(entity => ({
+            value: entity.id,
+            label: entity[labelKey] || entity.name || entity.id
+        }));
+
+        return baseOptions.concat(setupOptions);
     }
 
-    // Override for Requirements-specific group priorities
-    getGroupPriority(key, groupBy) {
-        if (groupBy === 'type') {
-            const priorities = {
-                'ON': 1,
-                'OR': 2,
-                'unknown': 3
-            };
-            return priorities[key] || 99;
-        }
+    // ====================
+    // EVENT HANDLERS
+    // ====================
 
-        if (groupBy.startsWith('impacts')) {
-            if (key === 'none') return 99;
-            return 0; // Keep alphabetical order for impact categories
-        }
-
-        if (groupBy === 'refinesParents') {
-            if (key === 'no-refines') return 99;
-            return 0; // Keep alphabetical order for refined requirements
-        }
-
-        return super.getGroupPriority(key, groupBy);
+    handleCreate() {
+        this.form.showCreateModal();
     }
 
-    // Override cell rendering for Requirements-specific styling
-    renderCellValue(item, column) {
-        const value = this.getItemValue(item, column.key);
+    handleEdit(item) {
+        this.form.showEditModal(item || this.collection.selectedItem);
+    }
 
-        // Custom rendering for refines (multiline)
-        if (column.key === 'refinesParents') {
-            const cellContent = this.renderRefinesCell(value);
-            // Add CSS class for multiline rendering
-            return `<div class="multiline-cell">${cellContent}</div>`;
+    handleItemSelect(item) {
+        // Update details panel
+        this.updateDetailsPanel(item);
+    }
+
+    handleRefresh() {
+        // Any additional refresh logic
+        console.log('Requirements refreshed');
+    }
+
+    updateDetailsPanel(item) {
+        const detailsContainer = document.querySelector('#detailsContent');
+        if (!detailsContainer) return;
+
+        const detailsHtml = this.form.generateReadOnlyView(item);
+        detailsContainer.innerHTML = `
+            <div class="item-details">
+                ${detailsHtml}
+                <div class="details-actions">
+                    <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
+                    ${this.renderAdditionalActions(item)}
+                </div>
+            </div>
+        `;
+
+        // Bind edit button
+        const editBtn = detailsContainer.querySelector('#editItemBtn');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => this.handleEdit(item));
         }
 
-        // Custom rendering for impact columns (multiline)
-        if (column.key.startsWith('impacts')) {
-            const cellContent = this.renderImpactCell(value, column.key);
-            // Add CSS class for multiline rendering
-            return `<div class="multiline-cell">${cellContent}</div>`;
+        // Bind additional action buttons
+        this.bindAdditionalActions(item);
+    }
+
+    renderAdditionalActions(item) {
+        const actions = [];
+
+        // Show "Create Child Requirement" for ONs
+        if (item.type === 'ON') {
+            actions.push(`
+                <button class="btn btn-secondary btn-sm" id="createChildBtn">
+                    Create Child OR
+                </button>
+            `);
         }
 
-        // Custom rendering for requirement types
-        if (column.key === 'type') {
-            return this.renderRequirementType(value);
+        // Show "View Children" if this requirement has children
+        if (this.hasChildRequirements(item)) {
+            actions.push(`
+                <button class="btn btn-secondary btn-sm" id="viewChildrenBtn">
+                    View Children
+                </button>
+            `);
         }
 
-        // Custom rendering for impact columns
-        if (column.key.startsWith('impacts')) {
-            const impactType = this.getImpactTypeFromKey(column.key);
-            return this.renderImpactLevel(value, impactType);
+        // Show "View Changes" if there are changes that satisfy this requirement
+        if (item.satisfiedByChanges && item.satisfiedByChanges.length > 0) {
+            actions.push(`
+                <button class="btn btn-secondary btn-sm" id="viewChangesBtn">
+                    View Changes (${item.satisfiedByChanges.length})
+                </button>
+            `);
         }
 
-        return super.renderCellValue(item, column);
+        return actions.join('');
     }
 
-    renderRefinesCell(refinesArray) {
-        if (!Array.isArray(refinesArray) || refinesArray.length === 0) {
-            return '-';
-        }
-
-        // Get titles from refines array and join with newlines for multiline display
-        const titles = refinesArray.map(refine => {
-            const title = refine.title || refine;
-            return this.escapeHtml(title);
-        });
-
-        return titles.join('\n');
-    }
-
-    renderImpactCell(impactArray, fieldKey) {
-        if (!Array.isArray(impactArray) || impactArray.length === 0) {
-            return '-';
-        }
-
-        // Get display names from impact objects and join with newlines for multiline display
-        const displayNames = impactArray.map(impact => {
-            // Handle both object references and direct values
-            const displayName = impact?.title || impact?.name || impact;
-            return this.escapeHtml(displayName);
-        });
-
-        return displayNames.join('\n');
-    }
-
-    getImpactTypeFromKey(fieldKey) {
-        // Extract impact type from field key (e.g., 'impactsStakeholderCategories' -> 'stakeholder')
-        const typeMap = {
-            'impactsData': 'data',
-            'impactsStakeholderCategories': 'stakeholder',
-            'impactsRegulatoryAspects': 'regulatory',
-            'impactsServices': 'services'
-        };
-        return typeMap[fieldKey] || 'data';
-    }
-
-    renderRequirementType(type) {
-        if (!type) return '-';
-        const typeClasses = {
-            'ON': 'req-type-on',
-            'OR': 'req-type-or'
-        };
-        const typeLabels = {
-            'ON': 'ON',
-            'OR': 'OR'
-        };
-
-        const cssClass = typeClasses[type] || 'req-type-other';
-        const label = typeLabels[type] || format.entityName(type);
-
-        return `<span class="item-badge ${cssClass}">${label}</span>`;
-    }
-
-    renderImpactLevel(value, impactType) {
-        if (!value) return '-';
-
-        // For single values, display the formatted name from setup data
-        if (!Array.isArray(value)) {
-            const displayValue = this.formatImpactValue(value, this.getSetupDataKeyForImpactType(impactType));
-            return `<span class="item-status impact-${impactType}">${this.escapeHtml(displayValue)}</span>`;
-        }
-
-        // For arrays (shouldn't happen in this context, but handle gracefully)
-        return this.renderImpactCell(value, `impacts${impactType}`);
-    }
-
-    getSetupDataKeyForImpactType(impactType) {
-        const keyMap = {
-            'data': 'dataCategories',
-            'stakeholder': 'stakeholderCategories',
-            'regulatory': 'regulatoryAspects',
-            'services': 'services'
-        };
-        return keyMap[impactType] || 'dataCategories';
-    }
-
-    // Override for Requirements-specific text filtering
-    matchesTextFilter(item, query) {
-        const lowerQuery = query.toLowerCase();
-        return (
-            (item.title?.toLowerCase().includes(lowerQuery)) ||
-            (item.name?.toLowerCase().includes(lowerQuery)) ||
-            (item.description?.toLowerCase().includes(lowerQuery)) ||
-            (item.rationale?.toLowerCase().includes(lowerQuery)) ||
-            (item.statement?.toLowerCase().includes(lowerQuery))
-        );
-    }
-
-    // FIXED: Override for Requirements-specific field filtering
-    matchesFieldFilter(item, key, value) {
-        if (key.startsWith('impacts')) {
-            const itemValue = this.getItemValue(item, key);
-            if (!itemValue || !Array.isArray(itemValue) || itemValue.length === 0) {
-                return false;
-            }
-
-            // Support both ID and name matching for impact arrays
-            const lowerValue = value.toLowerCase();
-
-            return itemValue.some(impact => {
-                // Handle object references with id, name, or title
-                if (typeof impact === 'object' && impact !== null) {
-                    const id = impact.id?.toString().toLowerCase();
-                    const name = impact.name?.toString().toLowerCase();
-                    const title = impact.title?.toString().toLowerCase();
-
-                    return (id && id.includes(lowerValue)) ||
-                        (name && name.includes(lowerValue)) ||
-                        (title && title.includes(lowerValue));
-                }
-
-                // Handle direct string values
-                const displayName = impact?.toString().toLowerCase();
-                return displayName && displayName.includes(lowerValue);
+    bindAdditionalActions(item) {
+        // Create Child OR button
+        const createChildBtn = document.querySelector('#createChildBtn');
+        if (createChildBtn) {
+            createChildBtn.addEventListener('click', () => {
+                this.handleCreateChild(item);
             });
         }
 
-        return super.matchesFieldFilter(item, key, value);
+        // View Children button
+        const viewChildrenBtn = document.querySelector('#viewChildrenBtn');
+        if (viewChildrenBtn) {
+            viewChildrenBtn.addEventListener('click', () => {
+                this.handleViewChildren(item);
+            });
+        }
+
+        // View Changes button
+        const viewChangesBtn = document.querySelector('#viewChangesBtn');
+        if (viewChangesBtn) {
+            viewChangesBtn.addEventListener('click', () => {
+                this.handleViewChanges(item);
+            });
+        }
     }
 
-    // Override for Requirements-specific additional details
-    renderAdditionalDetails(item) {
-        const details = [];
-
-        if (item.description) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Description</label>
-                    <p>${this.escapeHtml(item.description)}</p>
-                </div>
-            `);
-        }
-
-        if (item.rationale) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Rationale</label>
-                    <p>${this.escapeHtml(item.rationale)}</p>
-                </div>
-            `);
-        }
-
-        if (item.statement) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Statement</label>
-                    <p>${this.escapeHtml(item.statement)}</p>
-                </div>
-            `);
-        }
-
-        // Show impact details with setup data names
-        const impacts = ['impactsData', 'impactsStakeholderCategories', 'impactsRegulatoryAspects', 'impactsServices'];
-        const impactLabels = {
-            'impactsData': 'Data Impact',
-            'impactsStakeholderCategories': 'Stakeholder Impact',
-            'impactsRegulatoryAspects': 'Regulatory Impact',
-            'impactsServices': 'Services Impact'
-        };
-
-        impacts.forEach(impactKey => {
-            const value = this.getItemValue(item, impactKey);
-            if (Array.isArray(value) && value.length > 0) {
-                // Handle object references - get titles/names from objects
-                const displayNames = value.map(impact =>
-                    impact?.title || impact?.name || impact
-                ).join(', ');
-
-                details.push(`
-                    <div class="detail-field">
-                        <label>${impactLabels[impactKey]}</label>
-                        <p>${this.escapeHtml(displayNames)}</p>
-                    </div>
-                `);
-            }
+    hasChildRequirements(item) {
+        // Check if any requirements refine this one
+        return this.collection.data.some(req => {
+            const refinesParents = req.refinesParents || [];
+            return refinesParents.some(parent => {
+                const parentId = parent.itemId || parent.id || parent;
+                return parentId === (item.itemId || item.id);
+            });
         });
-
-        return details.join('');
     }
 
-    // Override for Requirements-specific empty state
-    getEmptyStateIcon() {
-        return '📋';
+    handleCreateChild(parentItem) {
+        // Create a new OR that refines this ON
+        // This would need to be implemented in RequirementForm to pre-select the parent
+        console.log('Create child OR for:', parentItem);
+        // TODO: Pass parent context to form
+        this.form.showCreateModal();
     }
 
-    getEmptyStateTitle() {
-        return 'No Requirements Yet';
+    handleViewChildren(item) {
+        // Filter the collection to show only children of this requirement
+        const itemId = item.itemId || item.id;
+
+        // Clear other filters first
+        this.collection.clearFilters();
+
+        // Apply a custom filter for children
+        // This would need enhancement in the collection entity
+        console.log('View children of:', item);
     }
 
-    getEmptyStateMessage() {
-        return 'Start creating operational requirements to define system needs and behaviors.';
+    handleViewChanges(item) {
+        // Navigate to changes view filtered by this requirement
+        // This would need coordination with the app router
+        console.log('View changes satisfying:', item);
     }
 
-    getCreateFirstButtonText() {
-        return 'Create First Requirement';
+    // ====================
+    // PUBLIC INTERFACE
+    // ====================
+
+    async render(container) {
+        this.container = container;
+        await this.collection.render(container);
+    }
+
+    async refresh() {
+        await this.collection.refresh();
+
+        // After refresh, reload form's parent cache if needed
+        if (this.form.parentRequirementsCache) {
+            this.form.parentRequirementsCache = null;
+        }
+    }
+
+    handleFilter(filterKey, filterValue) {
+        this.collection.handleFilter(filterKey, filterValue);
+    }
+
+    handleGrouping(groupBy) {
+        this.collection.handleGrouping(groupBy);
+    }
+
+    handleEditModeToggle(enabled) {
+        // Future: Handle inline editing mode
+        console.log('Edit mode:', enabled);
+    }
+
+    cleanup() {
+        this.collection.cleanup();
+        this.container = null;
+    }
+
+    // ====================
+    // REQUIREMENT-SPECIFIC OPERATIONS
+    // ====================
+
+    async getRequirementHierarchy(rootId = null) {
+        try {
+            // Get all requirements
+            const allRequirements = this.collection.data;
+
+            // Build hierarchy
+            const hierarchy = [];
+            const requirementsById = {};
+
+            // Index by ID
+            allRequirements.forEach(req => {
+                const id = req.itemId || req.id;
+                requirementsById[id] = { ...req, children: [] };
+            });
+
+            // Build tree
+            allRequirements.forEach(req => {
+                const refinesParents = req.refinesParents || [];
+                if (refinesParents.length === 0) {
+                    // Root requirement
+                    if (!rootId || (req.itemId || req.id) === rootId) {
+                        hierarchy.push(requirementsById[req.itemId || req.id]);
+                    }
+                } else {
+                    // Child requirement
+                    refinesParents.forEach(parent => {
+                        const parentId = parent.itemId || parent.id || parent;
+                        if (requirementsById[parentId]) {
+                            requirementsById[parentId].children.push(requirementsById[req.itemId || req.id]);
+                        }
+                    });
+                }
+            });
+
+            return hierarchy;
+        } catch (error) {
+            console.error('Failed to build requirement hierarchy:', error);
+            return [];
+        }
+    }
+
+    async getImpactSummary() {
+        try {
+            const summary = {
+                stakeholder: {},
+                data: {},
+                regulatory: {},
+                services: {}
+            };
+
+            this.collection.data.forEach(req => {
+                // Count stakeholder impacts
+                (req.impactsStakeholderCategories || []).forEach(id => {
+                    summary.stakeholder[id] = (summary.stakeholder[id] || 0) + 1;
+                });
+
+                // Count data impacts
+                (req.impactsData || []).forEach(id => {
+                    summary.data[id] = (summary.data[id] || 0) + 1;
+                });
+
+                // Count regulatory impacts
+                (req.impactsRegulatoryAspects || []).forEach(id => {
+                    summary.regulatory[id] = (summary.regulatory[id] || 0) + 1;
+                });
+
+                // Count services impacts
+                (req.impactsServices || []).forEach(id => {
+                    summary.services[id] = (summary.services[id] || 0) + 1;
+                });
+            });
+
+            return summary;
+        } catch (error) {
+            console.error('Failed to calculate impact summary:', error);
+            return null;
+        }
     }
 }

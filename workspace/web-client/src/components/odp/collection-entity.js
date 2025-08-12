@@ -1,11 +1,14 @@
-import { async as asyncUtils, validate, format } from '../../shared/utils.js';
+import { async as asyncUtils } from '../../shared/utils.js';
 import { apiClient } from '../../shared/api-client.js';
 
+/**
+ * CollectionEntity - Pure table/list rendering engine
+ * Business-agnostic collection management with pluggable column types
+ */
 export default class CollectionEntity {
-    constructor(app, entityConfig, setupData = null) {
+    constructor(app, entityConfig, options = {}) {
         this.app = app;
         this.entityConfig = entityConfig;
-        this.setupData = setupData;
         this.container = null;
 
         // Collection state
@@ -14,9 +17,24 @@ export default class CollectionEntity {
         this.selectedItem = null;
         this.currentFilters = {};
         this.currentGrouping = 'none';
-        this.editMode = false;
 
-        // Configuration
+        // Options and injected dependencies
+        this.columnTypes = { ...this.getDefaultColumnTypes(), ...(options.columnTypes || {}) };
+        this.context = options.context || {};
+
+        // Configuration methods (to be provided by subclasses)
+        this.getFilterConfig = options.getFilterConfig || (() => []);
+        this.getColumnConfig = options.getColumnConfig || (() => []);
+        this.getGroupingConfig = options.getGroupingConfig || (() => []);
+
+        // Event handlers (to be provided by subclasses)
+        this.onItemSelect = options.onItemSelect || (() => {});
+        this.onCreate = options.onCreate || (() => {});
+        this.onEdit = options.onEdit || (() => {});
+        this.onDelete = options.onDelete || (() => {});
+        this.onRefresh = options.onRefresh || (() => {});
+
+        // Cache configurations
         this.filterConfig = this.getFilterConfig();
         this.columnConfig = this.getColumnConfig();
         this.groupingConfig = this.getGroupingConfig();
@@ -28,89 +46,72 @@ export default class CollectionEntity {
         );
     }
 
-    // Override in subclasses for entity-specific filter configuration
-    getFilterConfig() {
-        return [
-            { key: 'title', label: 'Title Pattern', type: 'text' },
-            { key: 'status', label: 'Status', type: 'select', options: ['draft', 'review', 'approved', 'published'] }
-        ];
+    // ====================
+    // DEFAULT COLUMN TYPES
+    // ====================
+
+    getDefaultColumnTypes() {
+        return {
+            'text': {
+                render: (value) => this.escapeHtml(value || '-'),
+                filter: (value, filterValue) => {
+                    if (!value) return false;
+                    return value.toString().toLowerCase().includes(filterValue.toLowerCase());
+                },
+                sort: (a, b) => (a || '').toString().localeCompare((b || '').toString())
+            },
+
+            'date': {
+                render: (value) => {
+                    if (!value) return '-';
+                    try {
+                        return new Date(value).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                        });
+                    } catch (error) {
+                        return value;
+                    }
+                },
+                filter: (value, filterValue) => {
+                    if (!value) return false;
+                    return value.toString().includes(filterValue);
+                },
+                sort: (a, b) => new Date(a || 0) - new Date(b || 0)
+            },
+
+            'enum': {
+                render: (value, column) => {
+                    if (!value) return '-';
+                    const cssClass = column.enumStyles?.[value] || '';
+                    const label = column.enumLabels?.[value] || value;
+                    return cssClass ?
+                        `<span class="${this.escapeHtml(cssClass)}">${this.escapeHtml(label)}</span>` :
+                        this.escapeHtml(label);
+                },
+                filter: (value, filterValue, column) => {
+                    if (!filterValue) return true;
+                    if (!value) return false;
+                    // Check both the raw value and the display label
+                    const label = column.enumLabels?.[value] || value;
+                    return value === filterValue ||
+                        label.toLowerCase().includes(filterValue.toLowerCase());
+                },
+                getFilterOptions: (column) => {
+                    if (!column.enumLabels) return [];
+                    return Object.entries(column.enumLabels).map(([value, label]) => ({
+                        value,
+                        label
+                    }));
+                }
+            }
+        };
     }
 
-    // Override in subclasses for entity-specific column configuration
-    getColumnConfig() {
-        return [
-            { key: 'itemId', label: 'ID', width: '80px', sortable: true },
-            { key: 'title', label: 'Title', width: 'auto', sortable: true },
-            { key: 'status', label: 'Status', width: '120px', sortable: true, render: 'status' },
-            { key: 'updatedBy', label: 'Updated By', width: '150px', sortable: true },
-            { key: 'updatedAt', label: 'Updated', width: '120px', sortable: true, render: 'date' }
-        ];
-    }
-
-    // Override in subclasses for entity-specific grouping configuration
-    getGroupingConfig() {
-        return [
-            { key: 'none', label: 'No grouping' },
-            { key: 'status', label: 'Status' },
-            { key: 'type', label: 'Type' }
-        ];
-    }
-
-    // Helper methods for accessing setup data
-    getSetupData() {
-        return this.setupData;
-    }
-
-    hasSetupData() {
-        return this.setupData !== null && this.setupData !== undefined;
-    }
-
-    getSetupDataEntity(entityName) {
-        return this.setupData?.[entityName] || [];
-    }
-
-    // Helper method to build select options from setup data
-    buildOptionsFromSetupData(entityName, emptyLabel = 'Any', valueKey = 'id', labelKey = 'name') {
-        const baseOptions = [{ value: '', label: emptyLabel }];
-
-        if (!this.hasSetupData()) {
-            return baseOptions;
-        }
-
-        const entities = this.getSetupDataEntity(entityName);
-        if (!Array.isArray(entities) || entities.length === 0) {
-            return baseOptions;
-        }
-
-        const setupOptions = entities.map(entity => ({
-            value: entity[valueKey] || entity[labelKey],
-            label: entity[labelKey] || entity[valueKey] || 'Unknown'
-        }));
-
-        return baseOptions.concat(setupOptions);
-    }
-
-    // Helper method to find setup data entity by ID or name
-    findSetupDataEntity(entityName, value) {
-        if (!this.hasSetupData() || !value) {
-            return null;
-        }
-
-        const entities = this.getSetupDataEntity(entityName);
-        return entities.find(entity =>
-            (entity.id === value) ||
-            (entity.name === value) ||
-            (entity.title === value)
-        );
-    }
-
-    // Helper method to get display name from setup data
-    getSetupDataDisplayName(entityName, value) {
-        if (!value) return 'Not Specified';
-
-        const entity = this.findSetupDataEntity(entityName, value);
-        return entity ? (entity.name || entity.title || entity.id) : value;
-    }
+    // ====================
+    // DATA MANAGEMENT
+    // ====================
 
     async render(container) {
         this.container = container;
@@ -137,6 +138,20 @@ export default class CollectionEntity {
         }
     }
 
+    async refresh() {
+        await this.loadData();
+        this.applyFilters();
+
+        // Notify parent
+        if (this.onRefresh) {
+            this.onRefresh();
+        }
+    }
+
+    // ====================
+    // RENDERING
+    // ====================
+
     renderContent() {
         if (this.data.length === 0) {
             this.renderEmptyState();
@@ -161,7 +176,7 @@ export default class CollectionEntity {
             <div class="collection-group">
                 ${showGroupHeader ? `
                     <div class="group-header" data-group="${group.key}">
-                        <h3 class="group-title">${group.title}</h3>
+                        <h3 class="group-title">${this.escapeHtml(group.title)}</h3>
                         <span class="group-count">${group.items.length}</span>
                     </div>
                 ` : ''}
@@ -171,10 +186,10 @@ export default class CollectionEntity {
                         <thead>
                             <tr>
                                 ${this.columnConfig.map(col => `
-                                    <th style="width: ${col.width}" 
+                                    <th style="width: ${col.width || 'auto'}" 
                                         class="${col.sortable ? 'sortable' : ''}" 
                                         data-column="${col.key}">
-                                        ${col.label}
+                                        ${this.escapeHtml(col.label)}
                                         ${col.sortable ? '<span class="sort-indicator"></span>' : ''}
                                     </th>
                                 `).join('')}
@@ -190,12 +205,12 @@ export default class CollectionEntity {
     }
 
     renderTableRow(item) {
-        const itemId = this.getItemValue(item, 'itemId');
-        const isSelected = this.selectedItem && this.getItemValue(this.selectedItem, 'itemId') === itemId;
+        const itemId = this.getItemId(item);
+        const isSelected = this.selectedItem && this.getItemId(this.selectedItem) === itemId;
 
         return `
             <tr class="collection-row ${isSelected ? 'collection-row--selected' : ''}" 
-                data-item-id="${itemId}">
+                data-item-id="${this.escapeHtml(itemId)}">
                 ${this.columnConfig.map(col => `
                     <td class="collection-cell collection-cell--${col.key}">
                         ${this.renderCellValue(item, col)}
@@ -206,66 +221,107 @@ export default class CollectionEntity {
     }
 
     renderCellValue(item, column) {
-        const value = this.getItemValue(item, column.key);
+        const value = this.getItemValue(item, column);
+        const columnType = this.columnTypes[column.type || 'text'];
 
-        switch (column.render) {
-            case 'status':
-                return this.renderStatusCell(value);
-            case 'date':
-                return this.renderDateCell(value);
-            case 'badge':
-                return this.renderBadgeCell(value);
-            case 'list':
-                return this.renderListCell(value);
-            default:
-                return this.renderTextCell(value);
+        if (columnType && columnType.render) {
+            return columnType.render(value, column, item, this.context);
         }
+
+        // Fallback to text rendering
+        return this.escapeHtml(value?.toString() || '-');
     }
 
-    // Override in subclasses for entity-specific value extraction
-    getItemValue(item, key) {
-        // Handle nested properties like 'impact.data'
-        if (key.includes('.')) {
-            const parts = key.split('.');
-            let value = item;
-            for (const part of parts) {
-                value = value?.[part];
+    renderEmptyState() {
+        const message = this.getEmptyStateMessage();
+
+        this.container.innerHTML = `
+            <div class="empty-state">
+                <div class="icon">${message.icon || '📄'}</div>
+                <h3>${message.title || 'No Items'}</h3>
+                <p>${message.description || 'No items to display.'}</p>
+                ${message.showCreateButton !== false ? `
+                    <button class="btn btn-primary" id="createFirstItem">
+                        ${message.createButtonText || 'Create First Item'}
+                    </button>
+                ` : ''}
+            </div>
+        `;
+
+        if (message.showCreateButton !== false) {
+            const createBtn = this.container.querySelector('#createFirstItem');
+            if (createBtn) {
+                createBtn.addEventListener('click', () => {
+                    if (this.onCreate) {
+                        this.onCreate();
+                    }
+                });
             }
-            return value;
-        }
-
-        // Default mapping for common fields
-        switch (key) {
-            case 'itemId':
-                return item.itemId || item.id;
-            default:
-                return item[key];
         }
     }
 
-    renderStatusCell(value) {
-        if (!value) return '-';
-        return `<span class="item-status status-${value}">${this.formatStatus(value)}</span>`;
+    renderError(error) {
+        this.container.innerHTML = `
+            <div class="error-state">
+                <h3>Failed to Load ${this.entityConfig.name}</h3>
+                <p>Error: ${this.escapeHtml(error.message)}</p>
+                <button class="btn btn-secondary" onclick="window.location.reload()">
+                    Reload Page
+                </button>
+            </div>
+        `;
     }
 
-    renderDateCell(value) {
-        if (!value) return '-';
-        return this.formatDate(value);
+    // ====================
+    // FILTERING
+    // ====================
+
+    handleFilter(filterKey, filterValue) {
+        this.currentFilters[filterKey] = filterValue;
+        this.debouncedFilter();
     }
 
-    renderBadgeCell(value) {
-        if (!value) return '-';
-        return `<span class="item-badge">${this.escapeHtml(value)}</span>`;
+    applyFilters() {
+        this.filteredData = this.data.filter(item => {
+            for (const [filterKey, filterValue] of Object.entries(this.currentFilters)) {
+                if (!filterValue) continue;
+
+                const column = this.columnConfig.find(col => col.key === filterKey);
+                if (!column) continue;
+
+                const columnType = this.columnTypes[column.type || 'text'];
+                const value = this.getItemValue(item, column);
+
+                if (columnType && columnType.filter) {
+                    if (!columnType.filter(value, filterValue, column)) {
+                        return false;
+                    }
+                } else {
+                    // Default text filtering
+                    if (!value || !value.toString().toLowerCase().includes(filterValue.toLowerCase())) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        });
+
+        this.renderContent();
     }
 
-    renderListCell(value) {
-        if (!value || !Array.isArray(value) || value.length === 0) return '-';
-        return value.map(v => this.escapeHtml(v)).join(', ');
+    clearFilters() {
+        this.currentFilters = {};
+        this.filteredData = [...this.data];
+        this.renderContent();
     }
 
-    renderTextCell(value) {
-        if (value === null || value === undefined) return '-';
-        return this.escapeHtml(value.toString());
+    // ====================
+    // GROUPING
+    // ====================
+
+    handleGrouping(groupBy) {
+        this.currentGrouping = groupBy;
+        this.renderContent();
     }
 
     groupData(data, groupBy) {
@@ -277,79 +333,159 @@ export default class CollectionEntity {
             }];
         }
 
-        const grouped = data.reduce((acc, item) => {
-            const groupInfo = this.getGroupInfo(item, groupBy);
+        const column = this.columnConfig.find(col => col.key === groupBy);
+        if (!column) {
+            return [{
+                key: 'all',
+                title: `All Items (${data.length})`,
+                items: data
+            }];
+        }
 
-            if (!acc[groupInfo.key]) {
-                acc[groupInfo.key] = {
-                    key: groupInfo.key,
-                    title: groupInfo.title,
+        const grouped = {};
+
+        for (const item of data) {
+            const value = this.getItemValue(item, column);
+            const groupKey = this.getGroupKey(value, column);
+            const groupTitle = this.getGroupTitle(value, column);
+
+            if (!grouped[groupKey]) {
+                grouped[groupKey] = {
+                    key: groupKey,
+                    title: groupTitle,
                     items: []
                 };
             }
-            acc[groupInfo.key].items.push(item);
-            return acc;
-        }, {});
+            grouped[groupKey].items.push(item);
+        }
 
-        return Object.values(grouped).sort((a, b) =>
-            this.getGroupPriority(a.key, groupBy) - this.getGroupPriority(b.key, groupBy)
-        );
+        // Sort groups
+        return Object.values(grouped).sort((a, b) => {
+            const priority = this.getGroupPriority(a.key, b.key, column);
+            if (priority !== 0) return priority;
+            return a.title.localeCompare(b.title);
+        });
     }
 
-    // Override in subclasses for entity-specific grouping
-    getGroupInfo(item, groupBy) {
-        const value = this.getItemValue(item, groupBy) || 'unknown';
-        return {
-            key: value.toString(),
-            title: this.formatGroupTitle(value, groupBy)
-        };
+    getGroupKey(value, column) {
+        if (value === null || value === undefined) return 'none';
+        if (Array.isArray(value)) {
+            return value.length > 0 ? value[0].toString() : 'none';
+        }
+        return value.toString();
     }
 
-    // Override in subclasses for entity-specific group priorities
-    getGroupPriority(key, groupBy) {
-        return 0; // Default: maintain original order
+    getGroupTitle(value, column) {
+        if (value === null || value === undefined || value === 'none') {
+            return column.noneLabel || 'Not Specified';
+        }
+
+        const columnType = this.columnTypes[column.type || 'text'];
+        if (columnType && columnType.getGroupTitle) {
+            return columnType.getGroupTitle(value, column, this.context);
+        }
+
+        // For enum types, use the label
+        if (column.enumLabels && column.enumLabels[value]) {
+            return column.enumLabels[value];
+        }
+
+        return value.toString();
     }
 
-    // Override in subclasses for entity-specific group titles
-    formatGroupTitle(value, groupBy) {
-        if (value === 'unknown') return 'Unknown';
-        return format.entityName(value.toString());
+    getGroupPriority(keyA, keyB, column) {
+        // 'none' group always goes last
+        if (keyA === 'none') return 1;
+        if (keyB === 'none') return -1;
+
+        // Check if column defines custom priority
+        if (column.groupPriority) {
+            const priorityA = column.groupPriority[keyA] ?? 999;
+            const priorityB = column.groupPriority[keyB] ?? 999;
+            return priorityA - priorityB;
+        }
+
+        return 0;
     }
 
-    renderEmptyState() {
-        this.container.innerHTML = `
-            <div class="empty-state">
-                <div class="icon">${this.getEmptyStateIcon()}</div>
-                <h3>${this.getEmptyStateTitle()}</h3>
-                <p>${this.getEmptyStateMessage()}</p>
-                <button class="btn btn-primary" id="createFirstItem">
-                    ${this.getCreateFirstButtonText()}
-                </button>
-            </div>
-        `;
+    // ====================
+    // SORTING
+    // ====================
 
-        const createBtn = this.container.querySelector('#createFirstItem');
-        if (createBtn) {
-            createBtn.addEventListener('click', () => this.handleCreate());
+    handleSort(columnKey) {
+        const column = this.columnConfig.find(col => col.key === columnKey);
+        if (!column || !column.sortable) return;
+
+        // Toggle sort direction
+        if (this.currentSort?.column === columnKey) {
+            this.currentSort.direction = this.currentSort.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.currentSort = { column: columnKey, direction: 'asc' };
+        }
+
+        this.sortData();
+        this.renderContent();
+    }
+
+    sortData() {
+        if (!this.currentSort) return;
+
+        const column = this.columnConfig.find(col => col.key === this.currentSort.column);
+        if (!column) return;
+
+        const columnType = this.columnTypes[column.type || 'text'];
+
+        this.filteredData.sort((a, b) => {
+            const valueA = this.getItemValue(a, column);
+            const valueB = this.getItemValue(b, column);
+
+            let result = 0;
+
+            if (columnType && columnType.sort) {
+                result = columnType.sort(valueA, valueB, column);
+            } else {
+                // Default comparison
+                if (valueA < valueB) result = -1;
+                if (valueA > valueB) result = 1;
+            }
+
+            return this.currentSort.direction === 'desc' ? -result : result;
+        });
+    }
+
+    // ====================
+    // SELECTION
+    // ====================
+
+    selectItem(itemId) {
+        const item = this.data.find(d => this.getItemId(d) === itemId);
+
+        if (!item) {
+            console.warn('Item not found:', itemId);
+            return;
+        }
+
+        this.selectedItem = item;
+
+        // Update UI
+        const rows = this.container.querySelectorAll('.collection-row');
+        rows.forEach(row => {
+            if (row.dataset.itemId === itemId) {
+                row.classList.add('collection-row--selected');
+            } else {
+                row.classList.remove('collection-row--selected');
+            }
+        });
+
+        // Notify parent
+        if (this.onItemSelect) {
+            this.onItemSelect(item);
         }
     }
 
-    // Override in subclasses for entity-specific empty states
-    getEmptyStateIcon() {
-        return '📄';
-    }
-
-    getEmptyStateTitle() {
-        return `No ${this.entityConfig.name} Yet`;
-    }
-
-    getEmptyStateMessage() {
-        return `Start creating ${this.entityConfig.name.toLowerCase()} to manage your content.`;
-    }
-
-    getCreateFirstButtonText() {
-        return `Create First ${this.entityConfig.name.slice(0, -1)}`;
-    }
+    // ====================
+    // EVENT BINDING
+    // ====================
 
     bindEvents() {
         // Row selection
@@ -371,162 +507,53 @@ export default class CollectionEntity {
         });
     }
 
-    selectItem(itemId) {
-        const item = this.data.find(d => {
-            const dataItemId = this.getItemValue(d, 'itemId');
-            return dataItemId?.toString() === itemId?.toString();
-        });
+    // ====================
+    // HELPERS
+    // ====================
 
-        if (!item) {
-            console.warn('Item not found:', itemId);
-            return;
+    getItemId(item) {
+        // Try common ID fields
+        return item?.itemId || item?.id || item?._id || null;
+    }
+
+    getItemValue(item, column) {
+        if (!item || !column) return null;
+
+        const key = column.key;
+
+        // Handle nested properties like 'impact.data'
+        if (key.includes('.')) {
+            const parts = key.split('.');
+            let value = item;
+            for (const part of parts) {
+                value = value?.[part];
+            }
+            return value;
         }
 
-        this.selectedItem = item;
-
-        // Update UI
-        const rows = this.container.querySelectorAll('.collection-row');
-        rows.forEach(row => {
-            if (row.dataset.itemId === itemId) {
-                row.classList.add('collection-row--selected');
-            } else {
-                row.classList.remove('collection-row--selected');
-            }
-        });
-
-        // Update details panel
-        this.updateDetailsPanel(item);
+        return item[key];
     }
 
-    updateDetailsPanel(item) {
-        const detailsContainer = document.querySelector('#detailsContent');
-        if (!detailsContainer) return;
-
-        detailsContainer.innerHTML = this.renderItemDetails(item);
-    }
-
-    // Override in subclasses for entity-specific details
-    renderItemDetails(item) {
-        return `
-            <div class="item-details">
-                ${this.columnConfig.map(col => `
-                    <div class="detail-field">
-                        <label>${col.label}</label>
-                        <p>${this.renderCellValue(item, col)}</p>
-                    </div>
-                `).join('')}
-                ${this.renderAdditionalDetails(item)}
-            </div>
-        `;
-    }
-
-    // Override in subclasses for entity-specific additional details
-    renderAdditionalDetails(item) {
-        return '';
-    }
-
-    handleSort(column) {
-        // Placeholder for sorting functionality
-        console.log(`Sort by ${column} - not yet implemented`);
-    }
-
-    // Public interface methods called from parent activity
-    handleFilter(filterKey, filterValue) {
-        this.currentFilters[filterKey] = filterValue;
-        this.debouncedFilter();
-    }
-
-    handleTextFilter(filterText) {
-        this.currentFilters.text = filterText;
-        this.debouncedFilter();
-    }
-
-    applyFilters() {
-        this.filteredData = this.data.filter(item => {
-            // Apply all active filters
-            for (const [key, value] of Object.entries(this.currentFilters)) {
-                if (!value) continue; // Skip empty filters
-
-                if (key === 'text') {
-                    // Text search across multiple fields
-                    if (!this.matchesTextFilter(item, value)) {
-                        return false;
-                    }
-                } else {
-                    // Specific field filter
-                    if (!this.matchesFieldFilter(item, key, value)) {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        });
-
-        this.renderContent();
-    }
-
-    // Override in subclasses for entity-specific text filtering
-    matchesTextFilter(item, query) {
-        const lowerQuery = query.toLowerCase();
-        return (
-            (item.title?.toLowerCase().includes(lowerQuery)) ||
-            (item.name?.toLowerCase().includes(lowerQuery)) ||
-            (item.description?.toLowerCase().includes(lowerQuery))
-        );
-    }
-
-    // Override in subclasses for entity-specific field filtering
-    matchesFieldFilter(item, key, value) {
-        const itemValue = this.getItemValue(item, key);
-        if (!itemValue) return false;
-
-        if (Array.isArray(itemValue)) {
-            return itemValue.some(v => v.toString().toLowerCase().includes(value.toLowerCase()));
-        }
-
-        return itemValue.toString().toLowerCase().includes(value.toLowerCase());
-    }
-
-    handleGrouping(groupBy) {
-        this.currentGrouping = groupBy;
-        this.renderContent();
-    }
-
-    handleCreate() {
-        console.log(`Create ${this.entityConfig.name.slice(0, -1)} - base implementation`);
-    }
-
-    handleExport() {
-        console.log(`Export ${this.entityConfig.name} - base implementation`);
-    }
-
-    handleEditModeToggle(enabled) {
-        this.editMode = enabled;
-        console.log(`Edit mode ${enabled ? 'enabled' : 'disabled'} - base implementation`);
-    }
-
-    // Utility methods
-    formatStatus(status) {
-        const statusMap = {
-            'draft': 'Draft',
-            'review': 'In Review',
-            'approved': 'Approved',
-            'published': 'Published'
+    getEmptyStateMessage() {
+        // Can be overridden by passing options
+        return {
+            icon: '📄',
+            title: `No ${this.entityConfig.name || 'Items'} Yet`,
+            description: `Start creating ${(this.entityConfig.name || 'items').toLowerCase()} to see them here.`,
+            createButtonText: `Create First ${this.getEntitySingularName()}`,
+            showCreateButton: true
         };
-        return statusMap[status] || format.entityName(status || 'unknown');
     }
 
-    formatDate(dateString) {
-        if (!dateString) return '-';
-        try {
-            return new Date(dateString).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-        } catch (error) {
-            return dateString;
+    getEntitySingularName() {
+        const name = this.entityConfig.name || 'Item';
+        if (name.endsWith('ies')) {
+            return name.slice(0, -3) + 'y';
         }
+        if (name.endsWith('s')) {
+            return name.slice(0, -1);
+        }
+        return name;
     }
 
     escapeHtml(text) {
@@ -536,17 +563,9 @@ export default class CollectionEntity {
         return div.innerHTML;
     }
 
-    renderError(error) {
-        this.container.innerHTML = `
-            <div class="error-state">
-                <h3>Failed to Load ${this.entityConfig.name}</h3>
-                <p>Error: ${this.escapeHtml(error.message)}</p>
-                <button class="btn btn-secondary" onclick="window.location.reload()">
-                    Reload Page
-                </button>
-            </div>
-        `;
-    }
+    // ====================
+    // CLEANUP
+    // ====================
 
     cleanup() {
         this.container = null;
@@ -554,6 +573,7 @@ export default class CollectionEntity {
         this.filteredData = [];
         this.selectedItem = null;
         this.currentFilters = {};
-        this.setupData = null;
+        this.currentGrouping = 'none';
+        this.currentSort = null;
     }
 }

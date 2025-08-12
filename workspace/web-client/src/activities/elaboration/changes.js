@@ -1,13 +1,73 @@
 import CollectionEntity from '../../components/odp/collection-entity.js';
+import ChangeForm from './change-form.js';
+import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
+import { apiClient } from '../../shared/api-client.js';
 import { format } from '../../shared/utils.js';
 
-export default class ChangesEntity extends CollectionEntity {
+export default class ChangesEntity {
     constructor(app, entityConfig, setupData) {
-        super(app, entityConfig, setupData);
+        this.app = app;
+        this.entityConfig = entityConfig;
         this.setupData = setupData;
+        this.container = null;
+
+        // Initialize collection with ODP column types and wave column
+        const customColumnTypes = {
+            ...odpColumnTypes,
+            // Add custom column type for milestone-derived wave
+            'milestone-wave': {
+                render: (value, column, item, context) => {
+                    const wave = this.extractWaveFromMilestones(item);
+                    if (!wave) return '-';
+                    return odpColumnTypes.wave.render(wave, column, item, context);
+                },
+                filter: (value, filterValue, column) => {
+                    if (!filterValue) return true;
+                    const wave = this.extractWaveFromMilestones({ milestones: value });
+                    if (!wave) return false;
+                    return odpColumnTypes.wave.filter(wave, filterValue, column);
+                },
+                getFilterOptions: (column, context) => odpColumnTypes.wave.getFilterOptions(column, context),
+                sort: (a, b, column) => {
+                    const waveA = this.extractWaveFromMilestones({ milestones: a });
+                    const waveB = this.extractWaveFromMilestones({ milestones: b });
+                    return odpColumnTypes.wave.sort(waveA, waveB, column);
+                }
+            }
+        };
+
+        this.collection = new CollectionEntity(app, entityConfig, {
+            columnTypes: customColumnTypes,
+            context: { setupData },
+
+            // Configuration methods
+            getFilterConfig: () => this.getFilterConfig(),
+            getColumnConfig: () => this.getColumnConfig(),
+            getGroupingConfig: () => this.getGroupingConfig(),
+
+            // Event handlers
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate(),
+            onRefresh: () => this.handleRefresh(),
+
+            // Empty state customization
+            getEmptyStateMessage: () => ({
+                icon: '🔄',
+                title: 'No Changes Yet',
+                description: 'Start creating operational changes to define implementation activities and milestones.',
+                createButtonText: 'Create First Change',
+                showCreateButton: true
+            })
+        });
+
+        // Initialize form handler
+        this.form = new ChangeForm(entityConfig, setupData);
     }
 
-    // FIXED: Changes-specific filter configuration
+    // ====================
+    // COLLECTION CONFIGURATION
+    // ====================
+
     getFilterConfig() {
         return [
             {
@@ -17,19 +77,44 @@ export default class ChangesEntity extends CollectionEntity {
                 placeholder: 'Search in title...'
             },
             {
-                key: 'wave',
+                key: 'milestones',
                 label: 'Wave',
                 type: 'select',
-                options: this.getWaveOptions()
+                options: this.buildWaveOptions()
             },
             {
-                key: 'satisfies',
+                key: 'status',
+                label: 'Status',
+                type: 'select',
+                options: [
+                    { value: '', label: 'All Statuses' },
+                    { value: 'draft', label: 'Draft' },
+                    { value: 'review', label: 'Review' },
+                    { value: 'approved', label: 'Approved' },
+                    { value: 'in_progress', label: 'In Progress' },
+                    { value: 'completed', label: 'Completed' },
+                    { value: 'cancelled', label: 'Cancelled' }
+                ]
+            },
+            {
+                key: 'visibility',
+                label: 'Visibility',
+                type: 'select',
+                options: [
+                    { value: '', label: 'All Visibility' },
+                    { value: 'public', label: 'Public' },
+                    { value: 'internal', label: 'Internal' },
+                    { value: 'restricted', label: 'Restricted' }
+                ]
+            },
+            {
+                key: 'satisfiesRequirements',
                 label: 'Satisfies Requirements',
                 type: 'text',
                 placeholder: 'Requirement ID or title...'
             },
             {
-                key: 'supersedes',
+                key: 'supersedsRequirements',
                 label: 'Supersedes Requirements',
                 type: 'text',
                 placeholder: 'Requirement ID or title...'
@@ -37,483 +122,317 @@ export default class ChangesEntity extends CollectionEntity {
         ];
     }
 
-    // Helper method to build wave options from setup data
-    getWaveOptions() {
-        const baseOptions = [{ value: '', label: 'All Waves' }];
-        if (this.setupData?.waves) {
-            const setupOptions = this.setupData.waves.map(wave => ({
-                value: wave.id || `${wave.year}-${wave.quarter}`,
-                label: this.formatWaveLabel(wave)
-            }));
-            return baseOptions.concat(setupOptions);
-        }
-        return baseOptions;
-    }
-
-    formatWaveLabel(wave) {
-        if (wave.year && wave.quarter) {
-            return `${wave.year} Q${wave.quarter}`;
-        }
-        return wave.name || wave.id || 'Unknown Wave';
-    }
-
-    // FIXED: Changes-specific column configuration
     getColumnConfig() {
         return [
             {
                 key: 'itemId',
                 label: 'ID',
                 width: '80px',
-                sortable: true
+                sortable: true,
+                type: 'text'
             },
             {
                 key: 'title',
                 label: 'Title',
                 width: 'auto',
-                sortable: true
+                sortable: true,
+                type: 'text'
             },
             {
-                key: 'wave',
+                key: 'milestones',
                 label: 'Wave',
-                width: '80px',
+                width: '100px',
                 sortable: true,
-                render: 'badge'
+                type: 'milestone-wave'
+            },
+            {
+                key: 'status',
+                label: 'Status',
+                width: '100px',
+                sortable: true,
+                type: 'enum',
+                enumLabels: {
+                    'draft': 'Draft',
+                    'review': 'Review',
+                    'approved': 'Approved',
+                    'in_progress': 'In Progress',
+                    'completed': 'Completed',
+                    'cancelled': 'Cancelled'
+                },
+                enumStyles: {
+                    'draft': 'status-draft',
+                    'review': 'status-review',
+                    'approved': 'status-approved',
+                    'in_progress': 'status-progress',
+                    'completed': 'status-completed',
+                    'cancelled': 'status-cancelled'
+                }
             },
             {
                 key: 'visibility',
                 label: 'Visibility',
                 width: '100px',
                 sortable: true,
-                render: 'status'
+                type: 'visibility'
             },
             {
-                key: 'satisfies',
-                label: 'Satisfies Requirements',
-                width: '150px',
+                key: 'completionPercentage',
+                label: 'Progress',
+                width: '80px',
                 sortable: true,
-                render: 'list'
+                type: 'text',
+                render: (value) => {
+                    if (value === null || value === undefined) return '-';
+                    return `${value}%`;
+                }
             },
             {
-                key: 'supersedes',
-                label: 'Supersedes Requirements',
+                key: 'satisfiesRequirements',
+                label: 'Satisfies',
                 width: '150px',
-                sortable: true,
-                render: 'list'
+                sortable: false,
+                type: 'entity-reference-list',
+                maxDisplay: 2,
+                noneLabel: 'No Requirements',
+                groupPrefix: 'Satisfies'
+            },
+            {
+                key: 'supersedsRequirements',
+                label: 'Supersedes',
+                width: '150px',
+                sortable: false,
+                type: 'entity-reference-list',
+                maxDisplay: 1,
+                noneLabel: 'No Superseded',
+                groupPrefix: 'Supersedes'
             },
             {
                 key: 'lastUpdatedBy',
                 label: 'Updated By',
                 width: '130px',
-                sortable: true
+                sortable: true,
+                type: 'text'
             },
             {
                 key: 'lastUpdatedAt',
                 label: 'Updated',
                 width: '110px',
                 sortable: true,
-                render: 'date'
+                type: 'date'
             }
         ];
     }
 
-    // FIXED: Changes-specific grouping configuration
     getGroupingConfig() {
         return [
             { key: 'none', label: 'No grouping' },
-            { key: 'wave', label: 'Wave' },
-            { key: 'satisfies', label: 'Satisfies Requirements' },
-            { key: 'supersedes', label: 'Supersedes Requirements' }
+            { key: 'milestones', label: 'Wave' },
+            { key: 'status', label: 'Status' },
+            { key: 'visibility', label: 'Visibility' },
+            { key: 'satisfiesRequirements', label: 'Satisfies Requirements' },
+            { key: 'supersedsRequirements', label: 'Supersedes Requirements' }
         ];
     }
 
-    // FIXED: Override for Changes-specific value extraction
-    getItemValue(item, key) {
-        switch (key) {
-            case 'itemId':
-                return item.itemId || item.id;
-            case 'wave':
-                // FIXED: Extract wave from milestones that have a wave assigned
-                if (item.milestones && Array.isArray(item.milestones)) {
-                    // Find the first milestone with a wave
-                    const milestoneWithWave = item.milestones.find(m => m.wave);
-                    if (milestoneWithWave && milestoneWithWave.wave) {
-                        const wave = milestoneWithWave.wave;
-                        return wave.name || wave.title || `${wave.year}.${wave.quarter}` || wave.id;
-                    }
-                }
-                // Fallback to direct wave properties
-                if (item.wave) {
-                    return typeof item.wave === 'object' ? item.wave.id || item.wave.name : item.wave;
-                }
-                if (item.targetWave) {
-                    return typeof item.targetWave === 'object' ? item.targetWave.id || item.targetWave.name : item.targetWave;
-                }
-                return null;
-            case 'visibility':
-                return item.visibility || item.scope || null;
-            case 'satisfies':
-                // Handle satisfies relationships (contains Requirements)
-                let satisfiesArray = [];
-                if (Array.isArray(item.satisfiesRequirements)) {
-                    satisfiesArray = item.satisfiesRequirements;
-                } else if (item.satisfiesRequirements) {
-                    satisfiesArray = [item.satisfiesRequirements];
-                }
+    // ====================
+    // HELPER METHODS
+    // ====================
 
-                // Return the array of requirement objects
-                return satisfiesArray;
-            case 'supersedes':
-                // FIXED: Use correct API field 'supersedsRequirements' (contains Requirements, not Changes)
-                let supersedesArray = [];
-
-                if (Array.isArray(item.supersedsRequirements)) {
-                    supersedesArray = item.supersedsRequirements;
-                } else if (item.supersedsRequirements) {
-                    supersedesArray = [item.supersedsRequirements];
-                }
-
-                // Return the array of requirement objects (not changes)
-                return supersedesArray;
-            case 'lastUpdatedBy':
-                return item.lastUpdatedBy || item.updatedBy || item.createdBy;
-            case 'lastUpdatedAt':
-                return item.lastUpdatedAt || item.updatedAt || item.createdAt;
-            default:
-                return super.getItemValue(item, key);
+    extractWaveFromMilestones(item) {
+        if (!item?.milestones || !Array.isArray(item.milestones) || item.milestones.length === 0) {
+            return null;
         }
+
+        // Find the first milestone with a wave
+        const milestoneWithWave = item.milestones.find(m => m.wave || m.waveId);
+        if (!milestoneWithWave) return null;
+
+        // Return wave object or ID
+        if (milestoneWithWave.wave) {
+            return milestoneWithWave.wave;
+        }
+
+        // If only waveId, find in setup data
+        if (milestoneWithWave.waveId && this.setupData?.waves) {
+            return this.setupData.waves.find(w => w.id === milestoneWithWave.waveId);
+        }
+
+        return milestoneWithWave.waveId;
     }
 
-    // FIXED: Override for Changes-specific grouping
-    getGroupInfo(item, groupBy) {
-        const value = this.getItemValue(item, groupBy);
+    buildWaveOptions() {
+        const baseOptions = [{ value: '', label: 'All Waves' }];
 
-        switch (groupBy) {
-            case 'wave':
-                return {
-                    key: value || 'unassigned',
-                    title: this.formatWaveGroupTitle(value)
-                };
-            case 'satisfies':
-                if (!value || !Array.isArray(value) || value.length === 0) {
-                    return {
-                        key: 'no-requirements',
-                        title: 'No Requirements Satisfied'
-                    };
-                }
-                // Group by first requirement title
-                const firstReq = value[0];
-                const firstReqDisplay = firstReq?.title || firstReq?.name || firstReq?.id || 'Unknown';
-                return {
-                    key: firstReqDisplay,
-                    title: `Satisfies: ${firstReqDisplay}`
-                };
-            case 'supersedes':
-                if (!value || !Array.isArray(value) || value.length === 0) {
-                    return {
-                        key: 'no-supersedes',
-                        title: 'No Requirements Superseded'
-                    };
-                }
-                // Group by first superseded requirement title
-                const firstSuperseded = value[0];
-                const firstSupersededDisplay = firstSuperseded?.title || firstSuperseded?.name || firstSuperseded?.id || 'Unknown';
-                return {
-                    key: firstSupersededDisplay,
-                    title: `Supersedes: ${firstSupersededDisplay}`
-                };
-            default:
-                return super.getGroupInfo(item, groupBy);
+        if (!this.setupData?.waves) {
+            return baseOptions;
         }
+
+        const waveOptions = this.setupData.waves.map(wave => ({
+            value: wave.id,
+            label: `${wave.year} Q${wave.quarter}`
+        }));
+
+        return baseOptions.concat(waveOptions);
     }
 
-    // Helper method to get display value from relationship object
-    getDisplayValue(item) {
-        if (!item) return 'Unknown';
-        if (typeof item === 'string') return item;
-        if (typeof item === 'object') {
-            return item.title || item.name || item.id || 'Unknown';
-        }
-        return item.toString();
+    // ====================
+    // EVENT HANDLERS
+    // ====================
+
+    handleCreate() {
+        this.form.showCreateModal();
     }
 
-    formatWaveGroupTitle(waveValue) {
-        if (!waveValue) return 'Unassigned Wave';
-
-        // Try to find the wave in setup data for proper formatting
-        if (this.setupData?.waves) {
-            const wave = this.setupData.waves.find(w =>
-                (w.id === waveValue) ||
-                (`${w.year}-${w.quarter}` === waveValue) ||
-                (w.name === waveValue)
-            );
-            if (wave) {
-                return this.formatWaveLabel(wave);
-            }
-        }
-
-        return `Wave ${waveValue}`;
+    handleEdit(item) {
+        this.form.showEditModal(item || this.collection.selectedItem);
     }
 
-    // Override for Changes-specific group priorities
-    getGroupPriority(key, groupBy) {
-        if (groupBy === 'wave') {
-            if (key === 'unassigned') return 99;
-
-            // Try to find wave in setup data for proper ordering
-            if (this.setupData?.waves) {
-                const wave = this.setupData.waves.find(w =>
-                    (w.id === key) ||
-                    (`${w.year}-${w.quarter}` === key) ||
-                    (w.name === key)
-                );
-                if (wave) {
-                    // Sort by year and quarter
-                    return (wave.year * 10) + (wave.quarter || 0);
-                }
-            }
-
-            // Fallback: try to parse as number
-            const numericValue = parseInt(key);
-            return isNaN(numericValue) ? 50 : numericValue;
-        }
-
-        if (groupBy === 'satisfies' || groupBy === 'supersedes') {
-            if (key.startsWith('no-') || key === 'Unknown') return 99;
-            return 0; // Keep alphabetical order for requirements/changes
-        }
-
-        return super.getGroupPriority(key, groupBy);
+    handleItemSelect(item) {
+        // Update details panel
+        this.updateDetailsPanel(item);
     }
 
-    // FIXED: Override cell rendering for Changes-specific styling
-    renderCellValue(item, column) {
-        const value = this.getItemValue(item, column.key);
-
-        // Custom rendering for wave
-        if (column.key === 'wave') {
-            return this.renderWave(value);
-        }
-
-        // Custom rendering for visibility
-        if (column.key === 'visibility') {
-            return this.renderVisibility(value);
-        }
-
-        // FIXED: Custom rendering for satisfies/supersedes
-        if (column.key === 'satisfies' || column.key === 'supersedes') {
-            return this.renderRelationshipList(value);
-        }
-
-        return super.renderCellValue(item, column);
+    handleRefresh() {
+        // Any additional refresh logic
+        console.log('Changes refreshed');
     }
 
-    renderWave(wave) {
-        if (!wave) return '-';
+    updateDetailsPanel(item) {
+        const detailsContainer = document.querySelector('#detailsContent');
+        if (!detailsContainer) return;
 
-        // Try to format using setup data
-        const displayValue = this.formatWaveGroupTitle(wave);
-        return `<span class="item-badge wave-badge">${this.escapeHtml(displayValue)}</span>`;
-    }
+        const detailsHtml = this.form.generateReadOnlyView(item);
+        detailsContainer.innerHTML = `
+            <div class="item-details">
+                ${detailsHtml}
+                <div class="details-actions">
+                    <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
+                    ${this.renderMilestoneActions(item)}
+                </div>
+            </div>
+        `;
 
-    renderVisibility(visibility) {
-        if (!visibility) return '-';
-        const visibilityClasses = {
-            'NM': 'visibility-nm',
-            'NETWORK': 'visibility-network',
-            'public': 'visibility-public',
-            'internal': 'visibility-internal',
-            'restricted': 'visibility-restricted',
-            'confidential': 'visibility-confidential'
-        };
-        const visibilityLabels = {
-            'NM': 'NM',
-            'NETWORK': 'Network',
-            'public': 'Public',
-            'internal': 'Internal',
-            'restricted': 'Restricted',
-            'confidential': 'Confidential'
-        };
-
-        const cssClass = visibilityClasses[visibility] || 'visibility-other';
-        const label = visibilityLabels[visibility] || format.entityName(visibility);
-
-        return `<span class="item-status ${cssClass}">${label}</span>`;
-    }
-
-    // FIXED: Improved relationship list rendering for Requirements
-    renderRelationshipList(relationships) {
-        if (!relationships || !Array.isArray(relationships) || relationships.length === 0) {
-            return '-';
+        // Bind edit button
+        const editBtn = detailsContainer.querySelector('#editItemBtn');
+        if (editBtn) {
+            editBtn.addEventListener('click', () => this.handleEdit(item));
         }
 
-        // Show first few items, with "..." if more
-        const displayItems = relationships.slice(0, 2);
-        const remainingCount = relationships.length - displayItems.length;
-
-        let html = displayItems.map(req => {
-            // Handle requirement objects with id, title, type properties
-            const displayValue = req?.title || req?.name || req?.id || 'Unknown';
-            return `<span class="relationship-item">${this.escapeHtml(displayValue)}</span>`;
-        }).join(', ');
-
-        if (remainingCount > 0) {
-            html += `, <span class="relationship-more">+${remainingCount} more</span>`;
-        }
-
-        return html;
+        // Bind milestone action buttons
+        this.bindMilestoneActions(item);
     }
 
-    // Override for Changes-specific text filtering
-    matchesTextFilter(item, query) {
-        const lowerQuery = query.toLowerCase();
-        return (
-            (item.title?.toLowerCase().includes(lowerQuery)) ||
-            (item.name?.toLowerCase().includes(lowerQuery)) ||
-            (item.description?.toLowerCase().includes(lowerQuery)) ||
-            (item.implementationNotes?.toLowerCase().includes(lowerQuery)) ||
-            (item.milestone?.toLowerCase().includes(lowerQuery))
-        );
-    }
-
-    // FIXED: Override for Changes-specific field filtering
-    matchesFieldFilter(item, key, value) {
-        if (key === 'wave') {
-            const itemValue = this.getItemValue(item, key);
-            if (!itemValue) return false;
-
-            const lowerValue = value.toLowerCase();
-            const itemString = itemValue.toString().toLowerCase();
-
-            // Also check if the display name matches
-            const displayValue = this.formatWaveGroupTitle(itemValue);
-
-            return itemString.includes(lowerValue) || displayValue.toLowerCase().includes(lowerValue);
+    renderMilestoneActions(item) {
+        if (!item?.milestones || item.milestones.length === 0) {
+            return '';
         }
 
-        if (key === 'satisfies' || key === 'supersedes') {
-            const itemValue = this.getItemValue(item, key);
-            if (!itemValue || !Array.isArray(itemValue) || itemValue.length === 0) {
-                return false;
-            }
+        // Show quick actions for milestone management
+        return `
+            <button class="btn btn-secondary btn-sm" id="manageMilestonesBtn">
+                Manage Milestones
+            </button>
+        `;
+    }
 
-            const lowerValue = value.toLowerCase();
-            return itemValue.some(req => {
-                // Handle requirement objects
-                const id = req?.id?.toString().toLowerCase();
-                const title = req?.title?.toLowerCase();
-                const name = req?.name?.toLowerCase();
-
-                return (id && id.includes(lowerValue)) ||
-                    (title && title.includes(lowerValue)) ||
-                    (name && name.includes(lowerValue));
+    bindMilestoneActions(item) {
+        const manageMilestonesBtn = document.querySelector('#manageMilestonesBtn');
+        if (manageMilestonesBtn) {
+            manageMilestonesBtn.addEventListener('click', () => {
+                // Open edit modal focused on milestones section
+                this.handleEdit(item);
             });
         }
-
-        return super.matchesFieldFilter(item, key, value);
     }
 
-    // FIXED: Override for Changes-specific additional details
-    renderAdditionalDetails(item) {
-        const details = [];
+    // ====================
+    // PUBLIC INTERFACE
+    // ====================
 
-        if (item.description) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Description</label>
-                    <p>${this.escapeHtml(item.description)}</p>
-                </div>
-            `);
-        }
-
-        if (item.milestone) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Milestone</label>
-                    <p>${this.escapeHtml(item.milestone)}</p>
-                </div>
-            `);
-        }
-
-        if (item.implementationNotes) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Implementation Notes</label>
-                    <p>${this.escapeHtml(item.implementationNotes)}</p>
-                </div>
-            `);
-        }
-
-        if (item.impactLevel) {
-            details.push(`
-                <div class="detail-field">
-                    <label>Impact Level</label>
-                    <p>${this.formatImpactLevel(item.impactLevel)}</p>
-                </div>
-            `);
-        }
-
-        // Show wave details with setup data
-        const waveValue = this.getItemValue(item, 'wave');
-        if (waveValue) {
-            const waveDisplay = this.formatWaveGroupTitle(waveValue);
-            details.push(`
-                <div class="detail-field">
-                    <label>Target Wave</label>
-                    <p>${this.escapeHtml(waveDisplay)}</p>
-                </div>
-            `);
-        }
-
-        // FIXED: Show requirement relationships with proper titles
-        const satisfies = this.getItemValue(item, 'satisfies');
-        if (satisfies && Array.isArray(satisfies) && satisfies.length > 0) {
-            const satisfiesDisplay = satisfies.map(req => req?.title || req?.name || req?.id || 'Unknown').join(', ');
-            details.push(`
-                <div class="detail-field">
-                    <label>Satisfies Requirements</label>
-                    <p>${this.escapeHtml(satisfiesDisplay)}</p>
-                </div>
-            `);
-        }
-
-        const supersedes = this.getItemValue(item, 'supersedes');
-        if (supersedes && Array.isArray(supersedes) && supersedes.length > 0) {
-            const supersedesDisplay = supersedes.map(req => req?.title || req?.name || req?.id || 'Unknown').join(', ');
-            details.push(`
-                <div class="detail-field">
-                    <label>Supersedes Requirements</label>
-                    <p>${this.escapeHtml(supersedesDisplay)}</p>
-                </div>
-            `);
-        }
-
-        return details.join('');
+    async render(container) {
+        this.container = container;
+        await this.collection.render(container);
     }
 
-    formatImpactLevel(level) {
-        const levels = {
-            'low': 'Low Impact',
-            'medium': 'Medium Impact',
-            'high': 'High Impact',
-            'critical': 'Critical Impact'
-        };
-        return levels[level] || format.entityName(level);
+    async refresh() {
+        await this.collection.refresh();
     }
 
-    // Override for Changes-specific empty state
-    getEmptyStateIcon() {
-        return '🔄';
+    handleFilter(filterKey, filterValue) {
+        // Special handling for wave filter (filters by milestones)
+        if (filterKey === 'wave') {
+            filterKey = 'milestones';
+        }
+
+        // Special handling for requirement reference filters
+        if (filterKey === 'satisfiesRequirements' || filterKey === 'supersedsRequirements') {
+            // These are entity reference lists, filter will check title/id
+            this.collection.handleFilter(filterKey, filterValue);
+        } else {
+            this.collection.handleFilter(filterKey, filterValue);
+        }
     }
 
-    getEmptyStateTitle() {
-        return 'No Changes Yet';
+    handleGrouping(groupBy) {
+        // Special handling for wave grouping (groups by milestones)
+        if (groupBy === 'wave') {
+            groupBy = 'milestones';
+        }
+
+        this.collection.handleGrouping(groupBy);
     }
 
-    getEmptyStateMessage() {
-        return 'Start creating operational changes to define implementation activities and milestones.';
+    handleEditModeToggle(enabled) {
+        // Future: Handle inline editing mode
+        console.log('Edit mode:', enabled);
     }
 
-    getCreateFirstButtonText() {
-        return 'Create First Change';
+    cleanup() {
+        this.collection.cleanup();
+        this.container = null;
+    }
+
+    // ====================
+    // MILESTONE MANAGEMENT
+    // ====================
+
+    async addMilestone(changeId, milestone) {
+        try {
+            const response = await apiClient.post(
+                `${this.entityConfig.endpoint}/${changeId}/milestones`,
+                milestone
+            );
+            await this.refresh();
+            return response;
+        } catch (error) {
+            console.error('Failed to add milestone:', error);
+            throw error;
+        }
+    }
+
+    async updateMilestone(changeId, milestoneId, milestone) {
+        try {
+            const response = await apiClient.put(
+                `${this.entityConfig.endpoint}/${changeId}/milestones/${milestoneId}`,
+                milestone
+            );
+            await this.refresh();
+            return response;
+        } catch (error) {
+            console.error('Failed to update milestone:', error);
+            throw error;
+        }
+    }
+
+    async deleteMilestone(changeId, milestoneId) {
+        try {
+            await apiClient.delete(
+                `${this.entityConfig.endpoint}/${changeId}/milestones/${milestoneId}`
+            );
+            await this.refresh();
+        } catch (error) {
+            console.error('Failed to delete milestone:', error);
+            throw error;
+        }
     }
 }
