@@ -3,18 +3,16 @@ import { apiClient } from '../../shared/api-client.js';
 
 /**
  * ChangeForm - Operational Change form configuration and handling
- * Encapsulates all form-related logic for changes
+ * Matches the API schema exactly for OperationalChangeRequest
  */
 export default class ChangeForm {
     constructor(entityConfig, setupData) {
         this.entityConfig = entityConfig;
         this.setupData = setupData;
 
-        // Cache for requirements and changes
+        // Cache for requirements
         this.requirementsCache = null;
         this.requirementsCacheTime = 0;
-        this.changesCache = null;
-        this.changesCacheTime = 0;
         this.cacheTimeout = 60000; // 1 minute cache
 
         // Initialize the base form
@@ -89,69 +87,34 @@ export default class ChangeForm {
                         }
                     },
                     {
-                        key: 'implementationNotes',
-                        label: 'Implementation Notes',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        rows: 4,
-                        placeholder: 'Technical notes, considerations, or implementation guidance...',
-                        helpText: 'Additional technical details for implementation teams'
-                    },
-                    {
                         key: 'visibility',
                         label: 'Visibility',
                         type: 'radio',
                         modes: ['create', 'read', 'edit'],
+                        required: true,
                         options: [
-                            { value: 'public', label: 'Public - Visible to all stakeholders' },
-                            { value: 'internal', label: 'Internal - NM internal use only' },
-                            { value: 'restricted', label: 'Restricted - Limited access' }
+                            { value: 'NM', label: 'NM - Network Manager internal' },
+                            { value: 'NETWORK', label: 'NETWORK - Visible to network' }
                         ],
-                        defaultValue: 'public',
+                        defaultValue: 'NETWORK',
                         helpTextAbove: 'Control who can see this change'
                     }
                 ]
             },
 
-            // Planning Section
+            // Milestones Section
             {
-                title: 'Planning & Milestones',
+                title: 'Milestones',
                 fields: [
                     {
                         key: 'milestones',
                         label: 'Milestones',
                         type: 'custom',
                         modes: ['create', 'read', 'edit'],
+                        required: true,
                         render: (field, fieldId, value, required) => this.renderMilestonesField(field, fieldId, value, required),
                         format: (value) => this.formatMilestones(value),
-                        helpText: 'Define key milestones and their target waves'
-                    },
-                    {
-                        key: 'impactLevel',
-                        label: 'Impact Level',
-                        type: 'select',
-                        modes: ['create', 'read', 'edit'],
-                        options: [
-                            { value: '', label: 'Not Specified' },
-                            { value: 'low', label: 'Low - Minor impact' },
-                            { value: 'medium', label: 'Medium - Moderate impact' },
-                            { value: 'high', label: 'High - Significant impact' },
-                            { value: 'critical', label: 'Critical - Major system change' }
-                        ],
-                        helpText: 'Assess the overall impact of this change'
-                    },
-                    {
-                        key: 'priority',
-                        label: 'Priority',
-                        type: 'select',
-                        modes: ['create', 'read', 'edit'],
-                        options: [
-                            { value: '', label: 'Not Set' },
-                            { value: 'low', label: 'Low' },
-                            { value: 'medium', label: 'Medium' },
-                            { value: 'high', label: 'High' },
-                            { value: 'urgent', label: 'Urgent' }
-                        ]
+                        helpText: 'Define at least one milestone with its target wave'
                     }
                 ]
             },
@@ -165,9 +128,10 @@ export default class ChangeForm {
                         label: 'Satisfies Requirements',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
+                        required: true,
                         size: 5,
                         options: async () => await this.getRequirementOptions(),
-                        helpText: 'Select requirements that this change satisfies or implements',
+                        helpText: 'Select requirements that this change satisfies (use empty array if none)',
                         format: (value) => this.formatEntityReferences(value, 'requirement')
                     },
                     {
@@ -175,70 +139,11 @@ export default class ChangeForm {
                         label: 'Supersedes Requirements',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
-                        size: 3,
+                        required: true,
+                        size: 5,
                         options: async () => await this.getRequirementOptions(),
-                        helpText: 'Select requirements that this change supersedes or replaces',
+                        helpText: 'Select requirements that this change supersedes (use empty array if none)',
                         format: (value) => this.formatEntityReferences(value, 'requirement')
-                    },
-                    {
-                        key: 'relatedChanges',
-                        label: 'Related Changes',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        size: 3,
-                        options: async () => await this.getChangeOptions(),
-                        helpText: 'Select other changes that are related to this one',
-                        format: (value) => this.formatEntityReferences(value, 'change')
-                    },
-                    {
-                        key: 'dependencies',
-                        label: 'Dependencies',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        size: 3,
-                        options: async () => await this.getChangeOptions(),
-                        helpText: 'Select changes that must be completed before this one',
-                        format: (value) => this.formatEntityReferences(value, 'change')
-                    }
-                ]
-            },
-
-            // Status Section
-            {
-                title: 'Status & Progress',
-                fields: [
-                    {
-                        key: 'status',
-                        label: 'Status',
-                        type: 'select',
-                        modes: ['create', 'read', 'edit'],
-                        options: [
-                            { value: 'draft', label: 'Draft - Under development' },
-                            { value: 'review', label: 'Review - Awaiting approval' },
-                            { value: 'approved', label: 'Approved - Ready for implementation' },
-                            { value: 'in_progress', label: 'In Progress - Being implemented' },
-                            { value: 'completed', label: 'Completed - Fully implemented' },
-                            { value: 'cancelled', label: 'Cancelled - Will not be implemented' }
-                        ],
-                        defaultValue: 'draft'
-                    },
-                    {
-                        key: 'completionPercentage',
-                        label: 'Completion (%)',
-                        type: 'number',
-                        modes: ['create', 'read', 'edit'],
-                        min: 0,
-                        max: 100,
-                        placeholder: '0-100',
-                        helpText: 'Estimated completion percentage'
-                    },
-                    {
-                        key: 'notes',
-                        label: 'Status Notes',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        rows: 3,
-                        placeholder: 'Additional notes about current status...'
                     }
                 ]
             },
@@ -331,9 +236,14 @@ export default class ChangeForm {
                 <div class="milestones-list">
         `;
 
-        milestones.forEach((milestone, index) => {
-            html += this.renderMilestoneRow(milestone, index);
-        });
+        if (milestones.length === 0) {
+            // Start with one empty milestone for new changes
+            html += this.renderMilestoneRow({}, 0);
+        } else {
+            milestones.forEach((milestone, index) => {
+                html += this.renderMilestoneRow(milestone, index);
+            });
+        }
 
         html += `
                 </div>
@@ -354,41 +264,84 @@ export default class ChangeForm {
 
         return `
             <div class="milestone-row" data-index="${index}">
-                <input type="text" 
-                    name="milestones[${index}].name" 
-                    placeholder="Milestone name"
-                    value="${this.escapeHtml(milestone.name || '')}"
-                    class="form-control milestone-name">
-                
-                <select name="milestones[${index}].wave" 
-                    class="form-control milestone-wave">
-                    <option value="">Select wave...</option>
-                    ${waves.map(wave => `
-                        <option value="${wave.value}" ${milestone.waveId === wave.value ? 'selected' : ''}>
-                            ${this.escapeHtml(wave.label)}
-                        </option>
-                    `).join('')}
-                </select>
-                
-                <select name="milestones[${index}].status" 
-                    class="form-control milestone-status">
-                    <option value="planned" ${milestone.status === 'planned' ? 'selected' : ''}>Planned</option>
-                    <option value="in_progress" ${milestone.status === 'in_progress' ? 'selected' : ''}>In Progress</option>
-                    <option value="completed" ${milestone.status === 'completed' ? 'selected' : ''}>Completed</option>
-                    <option value="delayed" ${milestone.status === 'delayed' ? 'selected' : ''}>Delayed</option>
-                </select>
-                
-                <button type="button" class="btn btn-danger btn-sm remove-milestone-btn" data-index="${index}">
-                    Remove
-                </button>
+                <div class="milestone-fields">
+                    <input type="text" 
+                        name="milestones[${index}].title" 
+                        placeholder="Milestone title"
+                        value="${this.escapeHtml(milestone.title || '')}"
+                        class="form-control milestone-title"
+                        required>
+                    
+                    <textarea 
+                        name="milestones[${index}].description" 
+                        placeholder="Milestone description"
+                        class="form-control milestone-description"
+                        rows="2"
+                        required>${this.escapeHtml(milestone.description || '')}</textarea>
+                    
+                    <select name="milestones[${index}].waveId" 
+                        class="form-control milestone-wave"
+                        required>
+                        <option value="">Select wave...</option>
+                        ${waves.map(wave => `
+                            <option value="${wave.value}" ${milestone.waveId === wave.value ? 'selected' : ''}>
+                                ${this.escapeHtml(wave.label)}
+                            </option>
+                        `).join('')}
+                    </select>
+                    
+                    <input type="text" 
+                        name="milestones[${index}].eventTypes" 
+                        placeholder="Event types (comma-separated)"
+                        value="${this.escapeHtml(milestone.eventTypes ? milestone.eventTypes.join(', ') : '')}"
+                        class="form-control milestone-event-types"
+                        required>
+                    <small class="form-text">e.g., API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION</small>
+                    
+                    <button type="button" class="btn btn-danger btn-sm remove-milestone-btn" data-index="${index}">
+                        Remove Milestone
+                    </button>
+                </div>
             </div>
         `;
     }
 
     bindMilestoneEvents(fieldId) {
-        // This would be called to bind events for the milestone editor
-        // In practice, this might need to be handled differently depending on the framework
-        console.log('Milestone events would be bound here for field:', fieldId);
+        const container = document.getElementById(fieldId);
+        if (!container) return;
+
+        // Add milestone button
+        const addBtn = container.querySelector('.add-milestone-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const list = container.querySelector('.milestones-list');
+                const newIndex = list.children.length;
+                const newRow = document.createElement('div');
+                newRow.innerHTML = this.renderMilestoneRow({}, newIndex);
+                list.appendChild(newRow.firstElementChild);
+            });
+        }
+
+        // Remove milestone buttons
+        container.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-milestone-btn')) {
+                const row = e.target.closest('.milestone-row');
+                row.remove();
+                // Re-index remaining milestones
+                this.reindexMilestones(container);
+            }
+        });
+    }
+
+    reindexMilestones(container) {
+        const rows = container.querySelectorAll('.milestone-row');
+        rows.forEach((row, index) => {
+            row.dataset.index = index;
+            // Update all input names
+            row.querySelectorAll('[name^="milestones["]').forEach(input => {
+                input.name = input.name.replace(/milestones\[\d+\]/, `milestones[${index}]`);
+            });
+        });
     }
 
     formatMilestones(milestones) {
@@ -398,9 +351,9 @@ export default class ChangeForm {
 
         return milestones.map(m => {
             const wave = this.getWaveDisplay(m.waveId || m.wave);
-            const status = m.status ? `(${m.status})` : '';
-            return `${m.name}: ${wave} ${status}`;
-        }).join('<br>');
+            const eventTypes = m.eventTypes ? `(${m.eventTypes.join(', ')})` : '';
+            return `<strong>${m.title}:</strong> ${m.description}<br>Wave: ${wave} ${eventTypes}`;
+        }).join('<br><br>');
     }
 
     // ====================
@@ -413,7 +366,7 @@ export default class ChangeForm {
         }
 
         return this.setupData.waves.map(wave => ({
-            value: wave.id,
+            value: parseInt(wave.id, 10),  // Convert to number
             label: `${wave.year} Q${wave.quarter}`
         }));
     }
@@ -441,7 +394,7 @@ export default class ChangeForm {
             const requirements = Array.isArray(response) ? response : [];
 
             const options = requirements.map(req => ({
-                value: req.itemId || req.id,
+                value: parseInt(req.itemId || req.id, 10),  // Convert to number
                 label: `[${req.type}] ${req.itemId}: ${req.title}`
             }));
 
@@ -457,35 +410,6 @@ export default class ChangeForm {
         }
     }
 
-    async getChangeOptions() {
-        try {
-            // Use cache if available
-            const now = Date.now();
-            if (this.changesCache && (now - this.changesCacheTime) < this.cacheTimeout) {
-                return this.changesCache;
-            }
-
-            // Load all changes
-            const response = await apiClient.get(this.entityConfig.endpoint);
-            const changes = Array.isArray(response) ? response : [];
-
-            const options = changes.map(change => ({
-                value: change.itemId || change.id,
-                label: `${change.itemId}: ${change.title}`
-            }));
-
-            // Cache the results
-            this.changesCache = options;
-            this.changesCacheTime = now;
-
-            return options;
-
-        } catch (error) {
-            console.error('Failed to load changes:', error);
-            return [];
-        }
-    }
-
     // ====================
     // DATA TRANSFORMATION
     // ====================
@@ -493,51 +417,55 @@ export default class ChangeForm {
     transformDataForSave(data, mode, item) {
         const transformed = { ...data };
 
-        // Process milestones
+        // Process milestones from form inputs
         if (transformed.milestones) {
-            // Clean up milestone data
-            transformed.milestones = transformed.milestones
-                .filter(m => m.name && m.name.trim()) // Remove empty milestones
-                .map(m => ({
-                    name: m.name,
-                    waveId: m.wave || m.waveId,
-                    status: m.status || 'planned'
-                }));
+            // Parse milestone data from form
+            const milestoneData = this.parseMilestoneFormData(transformed);
 
-            if (transformed.milestones.length === 0) {
-                delete transformed.milestones;
-            }
+            // Transform to API format
+            transformed.milestones = milestoneData.map(m => ({
+                title: m.title || '',
+                description: m.description || '',
+                waveId: m.waveId || null,
+                eventTypes: m.eventTypes ? m.eventTypes.split(',').map(e => e.trim()).filter(e => e) : []
+            }));
+
+            // Remove empty milestones
+            transformed.milestones = transformed.milestones.filter(m =>
+                m.title && m.description && m.waveId
+            );
+        } else {
+            // Ensure milestones array exists
+            transformed.milestones = [];
         }
 
-        // Clean up empty arrays
-        const arrayFields = [
+        // Ensure all required array fields are present (even if empty)
+        const requiredArrayFields = [
             'satisfiesRequirements',
-            'supersedsRequirements',
-            'relatedChanges',
-            'dependencies'
+            'supersedsRequirements'
         ];
 
-        arrayFields.forEach(key => {
-            if (transformed[key] && Array.isArray(transformed[key])) {
-                if (transformed[key].length === 0) {
-                    delete transformed[key];
-                }
+        requiredArrayFields.forEach(key => {
+            if (transformed[key] === undefined || transformed[key] === null) {
+                transformed[key] = [];
+            }
+            if (!Array.isArray(transformed[key])) {
+                transformed[key] = [];
             }
         });
 
-        // Clean up empty strings
-        Object.keys(transformed).forEach(key => {
-            if (transformed[key] === '') {
-                delete transformed[key];
+        // Ensure all required text fields are present
+        const requiredTextFields = ['title', 'description', 'visibility'];
+
+        requiredTextFields.forEach(key => {
+            if (transformed[key] === undefined || transformed[key] === null) {
+                transformed[key] = '';
             }
         });
 
-        // Convert completion percentage to number
-        if (transformed.completionPercentage !== undefined) {
-            transformed.completionPercentage = parseInt(transformed.completionPercentage, 10);
-            if (isNaN(transformed.completionPercentage)) {
-                delete transformed.completionPercentage;
-            }
+        // Set default visibility if not set
+        if (!transformed.visibility) {
+            transformed.visibility = 'NETWORK';
         }
 
         // Add version ID for optimistic locking on edit
@@ -548,6 +476,32 @@ export default class ChangeForm {
         return transformed;
     }
 
+    parseMilestoneFormData(formData) {
+        const milestones = [];
+        const milestoneIndices = new Set();
+
+        // Find all milestone indices
+        Object.keys(formData).forEach(key => {
+            const match = key.match(/milestones\[(\d+)\]/);
+            if (match) {
+                milestoneIndices.add(parseInt(match[1]));
+            }
+        });
+
+        // Build milestone objects
+        milestoneIndices.forEach(index => {
+            const milestone = {
+                title: formData[`milestones[${index}].title`],
+                description: formData[`milestones[${index}].description`],
+                waveId: formData[`milestones[${index}].waveId`],
+                eventTypes: formData[`milestones[${index}].eventTypes`]
+            };
+            milestones.push(milestone);
+        });
+
+        return milestones;
+    }
+
     transformDataForEdit(item) {
         if (!item) return {};
 
@@ -556,28 +510,27 @@ export default class ChangeForm {
         // Extract IDs from object references
         const referenceFields = [
             'satisfiesRequirements',
-            'supersedsRequirements',
-            'relatedChanges',
-            'dependencies'
+            'supersedsRequirements'
         ];
 
         referenceFields.forEach(field => {
             if (transformed[field] && Array.isArray(transformed[field])) {
                 transformed[field] = transformed[field].map(ref => {
                     if (typeof ref === 'object' && ref !== null) {
-                        return ref.itemId || ref.id || ref;
+                        const id = ref.itemId || ref.id || ref;
+                        return typeof id === 'string' ? parseInt(id, 10) : id;
                     }
-                    return ref;
-                });
+                    return typeof ref === 'string' && /^\d+$/.test(ref) ? parseInt(ref, 10) : ref;                });
             }
         });
 
         // Process milestones
         if (transformed.milestones && Array.isArray(transformed.milestones)) {
             transformed.milestones = transformed.milestones.map(m => ({
-                name: m.name,
-                waveId: m.waveId || m.wave?.id,
-                status: m.status || 'planned'
+                title: m.title || '',
+                description: m.description || '',
+                waveId: m.waveId || m.wave?.id ? parseInt(m.waveId || m.wave?.id, 10) : null,
+                eventTypes: Array.isArray(m.eventTypes) ? m.eventTypes : []
             }));
         }
 
@@ -592,41 +545,38 @@ export default class ChangeForm {
         const errors = [];
 
         // Validate milestones
-        if (data.milestones && Array.isArray(data.milestones)) {
+        if (!data.milestones || !Array.isArray(data.milestones) || data.milestones.length === 0) {
+            errors.push({
+                field: 'milestones',
+                message: 'At least one milestone must be defined'
+            });
+        } else {
             data.milestones.forEach((milestone, index) => {
-                if (!milestone.name || !milestone.name.trim()) {
+                if (!milestone.title || !milestone.title.trim()) {
                     errors.push({
-                        field: `milestones[${index}]`,
-                        message: `Milestone ${index + 1} must have a name`
+                        field: `milestones[${index}].title`,
+                        message: `Milestone ${index + 1} must have a title`
+                    });
+                }
+                if (!milestone.description || !milestone.description.trim()) {
+                    errors.push({
+                        field: `milestones[${index}].description`,
+                        message: `Milestone ${index + 1} must have a description`
+                    });
+                }
+                if (!milestone.waveId) {
+                    errors.push({
+                        field: `milestones[${index}].waveId`,
+                        message: `Milestone ${index + 1} must have a target wave`
+                    });
+                }
+                if (!milestone.eventTypes || milestone.eventTypes.length === 0) {
+                    errors.push({
+                        field: `milestones[${index}].eventTypes`,
+                        message: `Milestone ${index + 1} must have at least one event type`
                     });
                 }
             });
-        }
-
-        // Validate status transitions
-        if (mode === 'edit' && item) {
-            if (item.status === 'completed' && data.status !== 'completed') {
-                errors.push({
-                    field: 'status',
-                    message: 'Cannot change status from completed to another status'
-                });
-            }
-        }
-
-        // Validate completion percentage with status
-        if (data.status === 'completed' && data.completionPercentage !== 100) {
-            console.warn('Status is completed but completion percentage is not 100%');
-        }
-
-        // Check for circular dependencies
-        if (data.dependencies && Array.isArray(data.dependencies)) {
-            const currentId = item?.itemId || item?.id;
-            if (currentId && data.dependencies.includes(currentId)) {
-                errors.push({
-                    field: 'dependencies',
-                    message: 'A change cannot depend on itself'
-                });
-            }
         }
 
         return {
@@ -640,9 +590,8 @@ export default class ChangeForm {
     // ====================
 
     async saveChange(data, mode, item) {
-        // Clear caches when saving
+        // Clear cache when saving
         this.requirementsCache = null;
-        this.changesCache = null;
 
         if (mode === 'create') {
             return await apiClient.post(this.entityConfig.endpoint, data);
@@ -650,7 +599,7 @@ export default class ChangeForm {
             if (!item) {
                 throw new Error('No item provided for update');
             }
-            const itemId = item.itemId || item.id;
+            const itemId = parseInt(item.itemId || item.id, 10);
             return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
         }
     }
@@ -661,7 +610,7 @@ export default class ChangeForm {
 
     formatEntityReferences(values, type) {
         if (!values || !Array.isArray(values) || values.length === 0) {
-            return '-';
+            return 'None';
         }
 
         return values.map(ref => {
@@ -684,19 +633,19 @@ export default class ChangeForm {
     // PUBLIC API
     // ====================
 
-    showCreateModal() {
-        this.form.showCreateModal();
+    async showCreateModal() {
+        await this.form.showCreateModal();
     }
 
-    showEditModal(item) {
-        this.form.showEditModal(item);
+    async showEditModal(item) {
+        await this.form.showEditModal(item);
     }
 
-    showReadOnlyModal(item) {
-        this.form.showReadOnlyModal(item);
+    async showReadOnlyModal(item) {
+        await this.form.showReadOnlyModal(item);
     }
 
-    generateReadOnlyView(item) {
-        return this.form.generateForm('read', item);
+    async generateReadOnlyView(item) {
+        return await this.form.generateForm('read', item);
     }
 }

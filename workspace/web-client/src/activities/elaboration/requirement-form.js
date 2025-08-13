@@ -3,7 +3,7 @@ import { apiClient } from '../../shared/api-client.js';
 
 /**
  * RequirementForm - Operational Requirement form configuration and handling
- * Encapsulates all form-related logic for requirements
+ * Matches the API schema exactly for OperationalRequirementRequest
  */
 export default class RequirementForm {
     constructor(entityConfig, setupData) {
@@ -82,7 +82,14 @@ export default class RequirementForm {
                             }
                             return { valid: true };
                         }
-                    },
+                    }
+                ]
+            },
+
+            // Content Section
+            {
+                title: 'Requirement Content',
+                fields: [
                     {
                         key: 'statement',
                         label: 'Statement',
@@ -91,7 +98,7 @@ export default class RequirementForm {
                         required: true,
                         rows: 6,
                         placeholder: 'Describe the operational need or requirement in detail...',
-                        helpText: 'Provide a complete description of what is needed and why',
+                        helpText: 'Provide a complete description of what is needed',
                         validate: (value) => {
                             if (!value || value.length < 20) {
                                 return { valid: false, message: 'Statement must be at least 20 characters long' };
@@ -104,25 +111,50 @@ export default class RequirementForm {
                         label: 'Rationale',
                         type: 'textarea',
                         modes: ['create', 'read', 'edit'],
+                        required: true,
                         rows: 4,
                         placeholder: 'Explain the reasoning behind this requirement...',
                         helpText: 'Why is this requirement necessary? What problem does it solve?'
-                    },
-                    {
-                        key: 'description',
-                        label: 'Additional Description',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        rows: 3,
-                        placeholder: 'Any additional context or clarification...'
                     },
                     {
                         key: 'references',
                         label: 'References',
                         type: 'textarea',
                         modes: ['create', 'read', 'edit'],
-                        rows: 2,
-                        placeholder: 'External references, documents, or links...'
+                        required: false,
+                        rows: 3,
+                        placeholder: 'External references, documents, standards, or links...',
+                        helpText: 'Include any relevant external documentation or standards'
+                    },
+                    {
+                        key: 'risksAndOpportunities',
+                        label: 'Risks and Opportunities',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        rows: 4,
+                        placeholder: 'Describe potential risks and opportunities associated with this requirement...',
+                        helpText: 'What risks does this address? What opportunities does it create?'
+                    },
+                    {
+                        key: 'flows',
+                        label: 'Flows',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        rows: 4,
+                        placeholder: 'Describe the operational flows or processes...',
+                        helpText: 'How does this requirement affect operational flows?'
+                    },
+                    {
+                        key: 'flowExamples',
+                        label: 'Flow Examples',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        rows: 4,
+                        placeholder: 'Provide specific examples of the flows described above...',
+                        helpText: 'Concrete examples help clarify the requirement'
                     }
                 ]
             },
@@ -136,6 +168,7 @@ export default class RequirementForm {
                         label: 'Stakeholder Categories',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
+                        required: false,
                         size: 4,
                         options: () => this.getSetupDataOptions('stakeholderCategories'),
                         helpText: 'Select all stakeholder categories affected by this requirement',
@@ -146,6 +179,7 @@ export default class RequirementForm {
                         label: 'Data Categories',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
+                        required: false,
                         size: 4,
                         options: () => this.getSetupDataOptions('dataCategories'),
                         helpText: 'Select all data categories impacted by this requirement',
@@ -156,6 +190,7 @@ export default class RequirementForm {
                         label: 'Regulatory Aspects',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
+                        required: false,
                         size: 4,
                         options: () => this.getSetupDataOptions('regulatoryAspects'),
                         helpText: 'Select all regulatory aspects relevant to this requirement',
@@ -166,6 +201,7 @@ export default class RequirementForm {
                         label: 'Services',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
+                        required: false,
                         size: 4,
                         options: () => this.getSetupDataOptions('services'),
                         helpText: 'Select all services affected by this requirement',
@@ -183,19 +219,11 @@ export default class RequirementForm {
                         label: 'Refines (Parent Requirements)',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
+                        required: false,
                         size: 5,
                         options: async () => await this.getParentRequirementOptions(),
-                        helpText: 'Select parent requirements that this requirement refines or elaborates',
-                        format: (value) => this.formatEntityReferences(value),
-                        visible: (item, mode) => {
-                            // Show for all ORs, optional for ONs
-                            if (mode === 'create') {
-                                // In create mode, check the current form value
-                                const typeRadio = document.querySelector('input[name="type"]:checked');
-                                return !typeRadio || typeRadio.value === 'OR';
-                            }
-                            return item?.type === 'OR';
-                        }
+                        helpText: 'Select parent requirements that this requirement refines (use empty array if none)',
+                        format: (value) => this.formatEntityReferences(value)
                     }
                 ]
             },
@@ -282,7 +310,7 @@ export default class RequirementForm {
         const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
 
         return this.setupData[entityName].map(entity => ({
-            value: entity.id,
+            value: parseInt(entity.id, 10),  // Convert to number
             label: entity[labelKey] || entity.name || entity.id
         }));
     }
@@ -298,12 +326,12 @@ export default class RequirementForm {
             // Load all requirements
             const requirements = await apiClient.get(this.entityConfig.endpoint);
 
-            // Build options - typically ONs are parents, but allow any requirement
+            // Build options - allow any requirement as parent
             const options = requirements
                 .map(req => ({
-                    value: req.itemId || req.id,
+                    value: parseInt(req.itemId || req.id, 10),  // Convert to number
                     label: `[${req.type}] ${req.itemId}: ${req.title}`,
-                    group: req.type // For potential grouping in the future
+                    group: req.type
                 }))
                 .sort((a, b) => {
                     // Sort ONs first, then by ID
@@ -330,29 +358,38 @@ export default class RequirementForm {
     // ====================
 
     transformDataForSave(data, mode, item) {
+        console.log('Requirementform.transformDataForSave in')
         const transformed = { ...data };
 
-        // Clean up empty arrays
-        const arrayFields = [
+        // Ensure all required array fields are present (even if empty)
+        const requiredArrayFields = [
+            'refinesParents',
             'impactsStakeholderCategories',
             'impactsData',
             'impactsRegulatoryAspects',
-            'impactsServices',
-            'refinesParents'
+            'impactsServices'
         ];
 
-        arrayFields.forEach(key => {
-            if (transformed[key] && Array.isArray(transformed[key])) {
-                if (transformed[key].length === 0) {
-                    delete transformed[key];
-                }
+        requiredArrayFields.forEach(key => {
+            // If field is undefined or null, set to empty array
+            if (transformed[key] === undefined || transformed[key] === null) {
+                transformed[key] = [];
+            }
+            // Ensure it's an array
+            if (!Array.isArray(transformed[key])) {
+                transformed[key] = [];
             }
         });
 
-        // Clean up empty strings
-        Object.keys(transformed).forEach(key => {
-            if (transformed[key] === '') {
-                delete transformed[key];
+        // Ensure all required text fields are present (even if empty)
+        const requiredTextFields = [
+            'title', 'type', 'statement', 'rationale',
+            'references', 'risksAndOpportunities', 'flows', 'flowExamples'
+        ];
+
+        requiredTextFields.forEach(key => {
+            if (transformed[key] === undefined || transformed[key] === null) {
+                transformed[key] = '';
             }
         });
 
@@ -382,9 +419,10 @@ export default class RequirementForm {
             if (transformed[field] && Array.isArray(transformed[field])) {
                 transformed[field] = transformed[field].map(value => {
                     if (typeof value === 'object' && value !== null) {
-                        return value.itemId || value.id || value;
+                        const id = value.itemId || value.id || value;
+                        return typeof id === 'string' ? parseInt(id, 10) : id;
                     }
-                    return value;
+                    return typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value, 10) : value;
                 });
             }
         });
@@ -397,31 +435,15 @@ export default class RequirementForm {
     // ====================
 
     async validateRequirement(data, mode, item) {
+        console.log('RequirementForm.validateRequirement in')
         const errors = [];
 
-        // Type-specific validation
-        if (data.type === 'OR') {
-            // ORs typically should refine an ON
-            if (!data.refinesParents || data.refinesParents.length === 0) {
-                // This is a warning, not an error - ORs can exist without parents
-                console.warn('Operational Requirement does not refine any parent requirements');
-            }
-        }
+        // All required fields are marked in the field definitions
+        // The form framework will handle required field validation
 
-        // Check for at least one impact category
-        const hasImpact =
-            (data.impactsStakeholderCategories && data.impactsStakeholderCategories.length > 0) ||
-            (data.impactsData && data.impactsData.length > 0) ||
-            (data.impactsRegulatoryAspects && data.impactsRegulatoryAspects.length > 0) ||
-            (data.impactsServices && data.impactsServices.length > 0);
+        // placeholder for additional business logic validation
 
-        if (!hasImpact) {
-            // Warning, not error
-            console.warn('No impact categories selected');
-        }
-
-        // Check for duplicate title (in production, this would be an API call)
-        // For now, just a placeholder
+        console.log('RequirementForm.validateRequirement out - error count: %d', errors.length)
 
         return {
             valid: errors.length === 0,
@@ -434,6 +456,7 @@ export default class RequirementForm {
     // ====================
 
     async saveRequirement(data, mode, item) {
+        console.log("Requirementform.saveRequirement in - mode: %s", mode);
         // Clear cache when saving as it might affect parent options
         this.parentRequirementsCache = null;
 
@@ -443,9 +466,8 @@ export default class RequirementForm {
             if (!item) {
                 throw new Error('No item provided for update');
             }
-            const itemId = item.itemId || item.id;
-            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
-        }
+            const itemId = parseInt(item.itemId || item.id, 10);
+            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);        }
     }
 
     // ====================
@@ -454,7 +476,7 @@ export default class RequirementForm {
 
     formatMultiSetupData(values, entityName) {
         if (!values || !Array.isArray(values) || values.length === 0) {
-            return '-';
+            return 'None';
         }
 
         const entities = this.setupData?.[entityName] || [];
@@ -470,7 +492,7 @@ export default class RequirementForm {
 
     formatEntityReferences(values) {
         if (!values || !Array.isArray(values) || values.length === 0) {
-            return '-';
+            return 'None';
         }
 
         return values.map(ref => {
@@ -486,19 +508,19 @@ export default class RequirementForm {
     // PUBLIC API
     // ====================
 
-    showCreateModal() {
-        this.form.showCreateModal();
+    async showCreateModal() {
+        await this.form.showCreateModal();
     }
 
-    showEditModal(item) {
-        this.form.showEditModal(item);
+    async showEditModal(item) {
+        await this.form.showEditModal(item);
     }
 
-    showReadOnlyModal(item) {
-        this.form.showReadOnlyModal(item);
+    async showReadOnlyModal(item) {
+        await this.form.showReadOnlyModal(item);
     }
 
-    generateReadOnlyView(item) {
-        return this.form.generateForm('read', item);
+    async generateReadOnlyView(item) {
+        return await this.form.generateForm('read', item);
     }
 }

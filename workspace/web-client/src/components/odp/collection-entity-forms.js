@@ -499,6 +499,7 @@ export default class CollectionEntityForm {
     // ====================
 
     async handleSave() {
+        console.log('Collectionentityform.handleSave in')
         const form = this.currentModal.querySelector('form');
         if (!form) return;
 
@@ -550,7 +551,12 @@ export default class CollectionEntityForm {
                 // Collect all selected options
                 const select = form.querySelector(`[name="${field.key}"]`);
                 if (select) {
-                    data[field.key] = Array.from(select.selectedOptions).map(opt => opt.value);
+                    // Convert to numbers if they look like IDs
+                    data[field.key] = Array.from(select.selectedOptions).map(opt => {
+                        const val = opt.value;
+                        // Only convert to number if it's a numeric string
+                        return /^\d+$/.test(val) ? parseInt(val, 10) : val;
+                    });
                 }
             } else if (field.type === 'checkbox') {
                 // Handle checkbox as boolean
@@ -566,7 +572,11 @@ export default class CollectionEntityForm {
                 // Regular fields
                 const value = formData.get(field.key);
                 if (value !== null && value !== '') {
-                    data[field.key] = value;
+                    if (field.type === 'select' && /^\d+$/.test(value)) {
+                        data[field.key] = parseInt(value, 10);
+                    } else {
+                        data[field.key] = value;
+                    }
                 }
             }
         }
@@ -579,6 +589,7 @@ export default class CollectionEntityForm {
     // ====================
 
     async validateForm(data) {
+        console.log('Collectionentityform.validateForm in')
         const errors = [];
         const fields = this.getFieldDefinitions();
 

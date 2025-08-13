@@ -458,8 +458,8 @@ export default class CollectionEntity {
     // ====================
 
     selectItem(itemId) {
-        const item = this.data.find(d => this.getItemId(d) === itemId);
-
+        const numericId = parseInt(itemId, 10);
+        const item = this.data.find(d => this.getItemId(d) === numericId);
         if (!item) {
             console.warn('Item not found:', itemId);
             return;
@@ -513,7 +513,8 @@ export default class CollectionEntity {
 
     getItemId(item) {
         // Try common ID fields
-        return item?.itemId || item?.id || item?._id || null;
+        const id = item?.itemId || item?.id || item?._id || null;
+        return id !== null && id !== undefined ? parseInt(id, 10) : null;
     }
 
     getItemValue(item, column) {
