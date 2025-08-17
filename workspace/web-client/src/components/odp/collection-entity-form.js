@@ -1,28 +1,64 @@
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
- * Provides a framework for creating, editing, and validating entity forms
+ * Base class for entity-specific forms using inheritance
  */
-export default class CollectionEntityForm {
-    constructor(options = {}) {
-        this.options = options;
-        this.endpoint = options.endpoint;
-        this.context = options.context || {};
-
-        // Callbacks
-        this.onSave = options.onSave || (() => {});
-        this.onCancel = options.onCancel || (() => {});
-        this.onValidate = options.onValidate || (() => ({ valid: true }));
-
-        // Form configuration (to be provided by subclasses)
-        this.getFieldDefinitions = options.getFieldDefinitions || (() => []);
-        this.getFormTitle = options.getFormTitle || ((mode) => mode === 'create' ? 'Create Item' : 'Edit Item');
-        this.transformDataForSave = options.transformDataForSave || ((data) => data);
-        this.transformDataForEdit = options.transformDataForEdit || ((data) => data);
+export class CollectionEntityForm {
+    constructor(entityConfig, context = {}) {
+        this.entityConfig = entityConfig;
+        this.endpoint = entityConfig?.endpoint;
+        this.context = context;
 
         // Modal reference
         this.currentModal = null;
         this.currentMode = null;
         this.currentItem = null;
+    }
+
+    // ====================
+    // VIRTUAL METHODS - Override in subclasses
+    // ====================
+
+    getFieldDefinitions() {
+        // Override in subclasses to provide field definitions
+        return [];
+    }
+
+    getFormTitle(mode) {
+        // Override in subclasses for custom titles
+        switch (mode) {
+            case 'create':
+                return 'Create Item';
+            case 'edit':
+                return 'Edit Item';
+            case 'read':
+                return 'Item Details';
+            default:
+                return 'Item';
+        }
+    }
+
+    transformDataForSave(data, mode, item) {
+        // Override in subclasses for custom data transformation
+        return data;
+    }
+
+    transformDataForEdit(item) {
+        // Override in subclasses for custom data transformation
+        return item || {};
+    }
+
+    async onSave(data, mode, item) {
+        // Override in subclasses for custom save logic
+        throw new Error('onSave() must be implemented by subclass');
+    }
+
+    async onValidate(data, mode, item) {
+        // Override in subclasses for custom validation
+        return { valid: true };
+    }
+
+    onCancel() {
+        // Override in subclasses for custom cancel logic
     }
 
     // ====================
@@ -60,6 +96,11 @@ export default class CollectionEntityForm {
         const transformedItem = this.transformDataForEdit(item);
         const form = await this.generateForm('read', transformedItem);
         this.showModal(form, 'read');
+    }
+
+    async generateReadOnlyView(item) {
+        const transformedItem = this.transformDataForEdit(item);
+        return await this.generateForm('read', transformedItem);
     }
 
     // ====================
@@ -326,12 +367,15 @@ export default class CollectionEntityForm {
             case 'hidden':
                 return `<input type="hidden" name="${field.key}" value="${this.escapeHtml(value || '')}">`;
 
-            default:
-                // Custom field type - allow field to render itself
+            case 'custom':
+                // Allow field to render itself
                 if (field.render) {
                     return field.render(field, fieldId, value, required);
                 }
-                // Fallback to text
+                return '';
+
+            default:
+                // Fallback to text input
                 return `<input type="text" 
                     id="${fieldId}" 
                     name="${field.key}" 
@@ -439,7 +483,7 @@ export default class CollectionEntityForm {
     attachModalEvents() {
         if (!this.currentModal) return;
 
-        // Click events
+        // Click events - bind to this instance
         this.currentModal.addEventListener('click', async (e) => {
             const action = e.target.dataset.action || e.target.closest('[data-action]')?.dataset.action;
 
@@ -499,7 +543,7 @@ export default class CollectionEntityForm {
     // ====================
 
     async handleSave() {
-        console.log('Collectionentityform.handleSave in')
+        console.log('CollectionEntityForm.handleSave');
         const form = this.currentModal.querySelector('form');
         if (!form) return;
 
@@ -510,7 +554,8 @@ export default class CollectionEntityForm {
         const formData = this.collectFormData(form);
 
         // Validate
-        const validation = await this.validateForm(formData);
+        const validation = await this.validateForm(formData, this.currentMode);
+        console.log("CollectionEntityForm.handleSave valid: ", validation.valid);
         if (!validation.valid) {
             this.showValidationErrors(validation.errors);
             return;
@@ -542,7 +587,17 @@ export default class CollectionEntityForm {
         const data = {};
         const fields = this.getFieldDefinitions();
 
-        for (const field of fields) {
+        // Flatten fields from sections
+        const allFields = [];
+        for (const section of fields) {
+            if (section.fields) {
+                allFields.push(...section.fields);
+            } else {
+                allFields.push(section);
+            }
+        }
+
+        for (const field of allFields) {
             // Skip computed and read-only fields
             if (field.computed) continue;
             if (this.currentMode === 'edit' && field.editableOnlyOnCreate) continue;
@@ -572,6 +627,7 @@ export default class CollectionEntityForm {
                 // Regular fields
                 const value = formData.get(field.key);
                 if (value !== null && value !== '') {
+                    // Convert to number if it's a select field with numeric value
                     if (field.type === 'select' && /^\d+$/.test(value)) {
                         data[field.key] = parseInt(value, 10);
                     } else {
@@ -588,19 +644,29 @@ export default class CollectionEntityForm {
     // VALIDATION
     // ====================
 
-    async validateForm(data) {
-        console.log('Collectionentityform.validateForm in')
+    async validateForm(data, mode) {
+        console.log('CollectionEntityForm.validateForm ', mode);
         const errors = [];
         const fields = this.getFieldDefinitions();
 
+        // Flatten fields from sections
+        const allFields = [];
+        for (const section of fields) {
+            if (section.fields) {
+                allFields.push(...section.fields);
+            } else {
+                allFields.push(section);
+            }
+        }
+
         // Field-level validation
-        for (const field of fields) {
+        for (const field of allFields) {
             if (field.computed) continue;
 
             const value = data[field.key];
 
             // Required validation
-            if (field.required && !value) {
+            if (field.required && (mode==='create' || !field.editableOnlyOnCreate) && !value) {
                 errors.push({
                     field: field.key,
                     message: `${field.label} is required`
@@ -618,9 +684,11 @@ export default class CollectionEntityForm {
                 }
             }
         }
+        console.log('CollectionEntityForm.validateForm field-error-count: ', errors.length);
 
         // Form-level validation
         const customValidation = await this.onValidate(data, this.currentMode, this.currentItem);
+        console.log('CollectionEntityForm.validateForm customValidation: ', customValidation.valid);
         if (!customValidation.valid) {
             if (customValidation.errors) {
                 errors.push(...customValidation.errors);
@@ -646,6 +714,7 @@ export default class CollectionEntityForm {
     }
 
     showFieldError(fieldKey, message) {
+        console.log('CollectionEntityForm.showFieldError %s: %s', fieldKey, message);
         const formGroup = this.currentModal.querySelector(`[data-field="${fieldKey}"]`);
         if (!formGroup) return;
 

@@ -1,4 +1,4 @@
-import CollectionEntityForm from '../../components/odp/collection-entity-forms.js';
+import CollectionEntityForm from '../../components/odp/collection-entity-form.js';
 import { apiClient } from '../../shared/api-client.js';
 
 /**

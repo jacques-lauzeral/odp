@@ -11,22 +11,16 @@ export default class RequirementsEntity {
         this.setupData = setupData;
         this.container = null;
 
-        // Initialize collection with ODP column types
+        // Initialize collection with ODP column types (unchanged)
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
             context: { setupData },
-
-            // Configuration methods
             getFilterConfig: () => this.getFilterConfig(),
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
-
-            // Event handlers
             onItemSelect: (item) => this.handleItemSelect(item),
             onCreate: () => this.handleCreate(),
             onRefresh: () => this.handleRefresh(),
-
-            // Empty state customization
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Requirements Yet',
@@ -36,7 +30,7 @@ export default class RequirementsEntity {
             })
         });
 
-        // Initialize form handler
+        // CHANGED: Initialize form using new inheritance pattern
         this.form = new RequirementForm(entityConfig, setupData);
     }
 

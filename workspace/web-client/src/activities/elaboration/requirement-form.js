@@ -1,36 +1,26 @@
-import CollectionEntityForm from '../../components/odp/collection-entity-forms.js';
+import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
 import { apiClient } from '../../shared/api-client.js';
 
 /**
  * RequirementForm - Operational Requirement form configuration and handling
+ * Extends CollectionEntityForm using inheritance pattern
  * Matches the API schema exactly for OperationalRequirementRequest
  */
-export default class RequirementForm {
+export default class RequirementForm extends CollectionEntityForm {
     constructor(entityConfig, setupData) {
-        this.entityConfig = entityConfig;
+        // Call parent constructor with appropriate context
+        super(entityConfig, { setupData });
+
         this.setupData = setupData;
 
         // Cache for parent requirements
         this.parentRequirementsCache = null;
         this.parentRequirementsCacheTime = 0;
         this.cacheTimeout = 60000; // 1 minute cache
-
-        // Initialize the base form
-        this.form = new CollectionEntityForm({
-            endpoint: entityConfig.endpoint,
-            context: { setupData },
-
-            getFieldDefinitions: () => this.getFieldDefinitions(),
-            getFormTitle: (mode) => this.getFormTitle(mode),
-            transformDataForSave: (data, mode, item) => this.transformDataForSave(data, mode, item),
-            transformDataForEdit: (item) => this.transformDataForEdit(item),
-            onSave: (data, mode, item) => this.saveRequirement(data, mode, item),
-            onValidate: (data, mode, item) => this.validateRequirement(data, mode, item)
-        });
     }
 
     // ====================
-    // FIELD DEFINITIONS
+    // OVERRIDE VIRTUAL METHODS
     // ====================
 
     getFieldDefinitions() {
@@ -298,67 +288,8 @@ export default class RequirementForm {
         }
     }
 
-    // ====================
-    // DATA OPTIONS
-    // ====================
-
-    getSetupDataOptions(entityName) {
-        if (!this.setupData?.[entityName]) {
-            return [];
-        }
-
-        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
-
-        return this.setupData[entityName].map(entity => ({
-            value: parseInt(entity.id, 10),  // Convert to number
-            label: entity[labelKey] || entity.name || entity.id
-        }));
-    }
-
-    async getParentRequirementOptions() {
-        try {
-            // Use cache if available and not expired
-            const now = Date.now();
-            if (this.parentRequirementsCache && (now - this.parentRequirementsCacheTime) < this.cacheTimeout) {
-                return this.parentRequirementsCache;
-            }
-
-            // Load all requirements
-            const requirements = await apiClient.get(this.entityConfig.endpoint);
-
-            // Build options - allow any requirement as parent
-            const options = requirements
-                .map(req => ({
-                    value: parseInt(req.itemId || req.id, 10),  // Convert to number
-                    label: `[${req.type}] ${req.itemId}: ${req.title}`,
-                    group: req.type
-                }))
-                .sort((a, b) => {
-                    // Sort ONs first, then by ID
-                    if (a.group !== b.group) {
-                        return a.group === 'ON' ? -1 : 1;
-                    }
-                    return a.label.localeCompare(b.label);
-                });
-
-            // Cache the results
-            this.parentRequirementsCache = options;
-            this.parentRequirementsCacheTime = now;
-
-            return options;
-
-        } catch (error) {
-            console.error('Failed to load parent requirements:', error);
-            return [];
-        }
-    }
-
-    // ====================
-    // DATA TRANSFORMATION
-    // ====================
-
     transformDataForSave(data, mode, item) {
-        console.log('Requirementform.transformDataForSave in')
+        console.log('RequirementForm.transformDataForSave in');
         const transformed = { ...data };
 
         // Ensure all required array fields are present (even if empty)
@@ -430,33 +361,9 @@ export default class RequirementForm {
         return transformed;
     }
 
-    // ====================
-    // VALIDATION
-    // ====================
+    async onSave(data, mode, item) {
+        console.log("RequirementForm.onSave in - mode: %s", mode);
 
-    async validateRequirement(data, mode, item) {
-        console.log('RequirementForm.validateRequirement in')
-        const errors = [];
-
-        // All required fields are marked in the field definitions
-        // The form framework will handle required field validation
-
-        // placeholder for additional business logic validation
-
-        console.log('RequirementForm.validateRequirement out - error count: %d', errors.length)
-
-        return {
-            valid: errors.length === 0,
-            errors
-        };
-    }
-
-    // ====================
-    // SAVE OPERATION
-    // ====================
-
-    async saveRequirement(data, mode, item) {
-        console.log("Requirementform.saveRequirement in - mode: %s", mode);
         // Clear cache when saving as it might affect parent options
         this.parentRequirementsCache = null;
 
@@ -467,7 +374,85 @@ export default class RequirementForm {
                 throw new Error('No item provided for update');
             }
             const itemId = parseInt(item.itemId || item.id, 10);
-            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);        }
+            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
+        }
+    }
+
+    async onValidate(data, mode, item) {
+        console.log('RequirementForm.onValidate');
+        const errors = [];
+
+        // All required fields are marked in the field definitions
+        // The form framework will handle required field validation
+
+        // Add any additional business logic validation here if needed
+
+        console.log('RequirementForm.onValidate - error count: %d', errors.length);
+
+        return {
+            valid: errors.length === 0,
+            errors
+        };
+    }
+
+    onCancel() {
+        // Custom cancel logic if needed
+        console.log('RequirementForm cancelled');
+    }
+
+    // ====================
+    // DATA OPTIONS HELPERS
+    // ====================
+
+    getSetupDataOptions(entityName) {
+        if (!this.setupData?.[entityName]) {
+            return [];
+        }
+
+        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
+
+        return this.setupData[entityName].map(entity => ({
+            value: parseInt(entity.id, 10),  // Convert to number
+            label: entity[labelKey] || entity.name || entity.id
+        }));
+    }
+
+    async getParentRequirementOptions() {
+        try {
+            // Use cache if available and not expired
+            const now = Date.now();
+            if (this.parentRequirementsCache && (now - this.parentRequirementsCacheTime) < this.cacheTimeout) {
+                return this.parentRequirementsCache;
+            }
+
+            // Load all requirements
+            const requirements = await apiClient.get(this.entityConfig.endpoint);
+
+            // Build options - allow any requirement as parent
+            const options = requirements
+                .map(req => ({
+                    value: parseInt(req.itemId || req.id, 10),  // Convert to number
+                    label: `[${req.type}] ${req.itemId}: ${req.title}`,
+                    group: req.type
+                }))
+                .sort((a, b) => {
+                    // Sort ONs first, then by ID
+                    if (a.group !== b.group) {
+                        return a.group === 'ON' ? -1 : 1;
+                    }
+                    return a.label.localeCompare(b.label);
+                });
+
+            // Cache the results
+            this.parentRequirementsCache = options;
+            this.parentRequirementsCacheTime = now;
+
+            return options;
+
+        } catch (error) {
+            console.error('Failed to load parent requirements:', error);
+            return [];
+        }
     }
 
     // ====================
@@ -505,22 +490,24 @@ export default class RequirementForm {
     }
 
     // ====================
-    // PUBLIC API
+    // PUBLIC API (convenience methods)
     // ====================
 
     async showCreateModal() {
-        await this.form.showCreateModal();
+        console.log("RequirementForm.showCreateModal");
+        await super.showCreateModal();
     }
 
     async showEditModal(item) {
-        await this.form.showEditModal(item);
+        console.log("RequirementForm.showEditModal");
+        await super.showEditModal(item);
     }
 
     async showReadOnlyModal(item) {
-        await this.form.showReadOnlyModal(item);
+        await super.showReadOnlyModal(item);
     }
 
     async generateReadOnlyView(item) {
-        return await this.form.generateForm('read', item);
+        return await super.generateReadOnlyView(item);
     }
 }

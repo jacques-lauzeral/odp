@@ -11,10 +11,9 @@ export default class ChangesEntity {
         this.setupData = setupData;
         this.container = null;
 
-        // Initialize collection with ODP column types and wave column
+        // Initialize collection with custom column types (unchanged)
         const customColumnTypes = {
             ...odpColumnTypes,
-            // Add custom column type for milestone-derived wave
             'milestone-wave': {
                 render: (value, column, item, context) => {
                     const wave = this.extractWaveFromMilestones(item);
@@ -39,18 +38,12 @@ export default class ChangesEntity {
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: customColumnTypes,
             context: { setupData },
-
-            // Configuration methods
             getFilterConfig: () => this.getFilterConfig(),
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
-
-            // Event handlers
             onItemSelect: (item) => this.handleItemSelect(item),
             onCreate: () => this.handleCreate(),
             onRefresh: () => this.handleRefresh(),
-
-            // Empty state customization
             getEmptyStateMessage: () => ({
                 icon: '🔄',
                 title: 'No Changes Yet',
@@ -60,7 +53,7 @@ export default class ChangesEntity {
             })
         });
 
-        // Initialize form handler
+        // CHANGED: Initialize form using new inheritance pattern
         this.form = new ChangeForm(entityConfig, setupData);
     }
 
