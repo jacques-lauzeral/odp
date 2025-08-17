@@ -326,6 +326,7 @@ export default class RequirementForm extends CollectionEntityForm {
 
         // Add version ID for optimistic locking on edit (only if item exists)
         if (mode === 'edit' && item) {
+            transformed.type = item.type;
             transformed.expectedVersionId = item.versionId || item.expectedVersionId;
         }
 

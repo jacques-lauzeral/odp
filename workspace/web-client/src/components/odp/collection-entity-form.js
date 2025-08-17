@@ -73,6 +73,7 @@ export class CollectionEntityForm {
     }
 
     async showEditModal(item) {
+        console.log("CollectionEntityForm.showEditModal");
         if (!item) {
             console.warn('No item provided for editing');
             return;
@@ -433,6 +434,7 @@ export class CollectionEntityForm {
     // ====================
 
     showModal(formContent, mode) {
+        console.log("CollectionEntityForm.showModal");
         const title = this.getFormTitle(mode);
         const showFooter = mode !== 'read';
 
@@ -512,6 +514,7 @@ export class CollectionEntityForm {
     }
 
     closeModal() {
+        console.log("CollectionEntityForm.closeModal");
         if (this.currentModal) {
             this.currentModal.remove();
             this.currentModal = null;
@@ -521,9 +524,6 @@ export class CollectionEntityForm {
             document.removeEventListener('keydown', this.escapeHandler);
             this.escapeHandler = null;
         }
-
-        this.currentMode = null;
-        this.currentItem = null;
     }
 
     focusFirstInput() {
@@ -570,7 +570,8 @@ export class CollectionEntityForm {
 
             // Close modal on success
             this.closeModal();
-
+            this.currentMode = null;
+            this.currentItem = null;
         } catch (error) {
             console.error('Failed to save:', error);
             this.showFormError(error.message || 'Failed to save. Please try again.');
@@ -580,9 +581,12 @@ export class CollectionEntityForm {
     handleCancel() {
         this.onCancel();
         this.closeModal();
+        this.currentMode = null;
+        this.currentItem = null;
     }
 
     collectFormData(form) {
+        console.log('CollectionEntityForm.collectFormData');
         const formData = new FormData(form);
         const data = {};
         const fields = this.getFieldDefinitions();
@@ -635,6 +639,7 @@ export class CollectionEntityForm {
                     }
                 }
             }
+            console.log("CollectionEntityForm.collectFormData %s: %s", field.key, data[field.key]);
         }
 
         return data;
@@ -666,7 +671,7 @@ export class CollectionEntityForm {
             const value = data[field.key];
 
             // Required validation
-            if (field.required && (mode==='create' || !field.editableOnlyOnCreate) && !value) {
+            if (field.required && (this.currentMode === 'create' || !field.editableOnlyOnCreate) && !value) {
                 errors.push({
                     field: field.key,
                     message: `${field.label} is required`
