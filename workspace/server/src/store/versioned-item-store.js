@@ -93,6 +93,14 @@ export class VersionedItemStore extends BaseStore {
             // Extract relationships from input data
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
 
+            // Sanitize contentData
+            console.log(`VersionItemStore.update() data: ${contentData}`);
+            if ('versionId' in contentData) {
+                delete contentData.versionId;
+            }
+            console.log(`VersionItemStore.update() sanitized data: ${contentData}`);
+
+
             // Get current latest version info and validate expectedVersionId
             const currentResult = await transaction.run(`
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(currentVersion:${this.versionLabel})
@@ -110,7 +118,6 @@ export class VersionedItemStore extends BaseStore {
             const currentVersionNumeric = this.normalizeId(currentVersion);
             const currentTitle = record.get('currentTitle');
 
-            console.log(`VersionItemStore.update() current version - expected version: ${currentVersionId} - ${numericExpectedVersionId}`);
             if (currentVersionId !== numericExpectedVersionId) {
                 throw new StoreError('Outdated item version');
             }
