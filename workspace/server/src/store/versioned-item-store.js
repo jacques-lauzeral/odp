@@ -93,7 +93,7 @@ export class VersionedItemStore extends BaseStore {
             // Extract relationships from input data
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
 
-            // Sanitize contentData
+            // Sanitize contentData - prevent mismatch between received versionId and id(version)
             console.log(`VersionItemStore.update() data: ${contentData}`);
             if ('versionId' in contentData) {
                 delete contentData.versionId;
