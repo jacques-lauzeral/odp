@@ -1,36 +1,26 @@
-import CollectionEntityForm from '../../components/odp/collection-entity-form.js';
+import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
 import { apiClient } from '../../shared/api-client.js';
 
 /**
  * ChangeForm - Operational Change form configuration and handling
+ * Extends CollectionEntityForm using inheritance pattern
  * Matches the API schema exactly for OperationalChangeRequest
  */
-export default class ChangeForm {
+export default class ChangeForm extends CollectionEntityForm {
     constructor(entityConfig, setupData) {
-        this.entityConfig = entityConfig;
+        // Call parent constructor with appropriate context
+        super(entityConfig, { setupData });
+
         this.setupData = setupData;
 
         // Cache for requirements
         this.requirementsCache = null;
         this.requirementsCacheTime = 0;
         this.cacheTimeout = 60000; // 1 minute cache
-
-        // Initialize the base form
-        this.form = new CollectionEntityForm({
-            endpoint: entityConfig.endpoint,
-            context: { setupData },
-
-            getFieldDefinitions: () => this.getFieldDefinitions(),
-            getFormTitle: (mode) => this.getFormTitle(mode),
-            transformDataForSave: (data, mode, item) => this.transformDataForSave(data, mode, item),
-            transformDataForEdit: (item) => this.transformDataForEdit(item),
-            onSave: (data, mode, item) => this.saveChange(data, mode, item),
-            onValidate: (data, mode, item) => this.validateChange(data, mode, item)
-        });
     }
 
     // ====================
-    // FIELD DEFINITIONS
+    // OVERRIDE VIRTUAL METHODS
     // ====================
 
     getFieldDefinitions() {
@@ -111,7 +101,7 @@ export default class ChangeForm {
                         label: 'Milestones',
                         type: 'custom',
                         modes: ['create', 'read', 'edit'],
-                        required: true,
+                        required: false,
                         render: (field, fieldId, value, required) => this.renderMilestonesField(field, fieldId, value, required),
                         format: (value) => this.formatMilestones(value),
                         helpText: 'Define at least one milestone with its target wave'
@@ -128,7 +118,7 @@ export default class ChangeForm {
                         label: 'Satisfies Requirements',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
-                        required: true,
+                        required: false,
                         size: 5,
                         options: async () => await this.getRequirementOptions(),
                         helpText: 'Select requirements that this change satisfies (use empty array if none)',
@@ -139,7 +129,7 @@ export default class ChangeForm {
                         label: 'Supersedes Requirements',
                         type: 'multiselect',
                         modes: ['create', 'read', 'edit'],
-                        required: true,
+                        required: false,
                         size: 5,
                         options: async () => await this.getRequirementOptions(),
                         helpText: 'Select requirements that this change supersedes (use empty array if none)',
@@ -218,13 +208,170 @@ export default class ChangeForm {
         }
     }
 
+    transformDataForSave(data, mode, item) {
+        const transformed = { ...data };
+
+        // Process milestones from form inputs
+        if (transformed.milestones) {
+            // Parse milestone data from form
+            const milestoneData = this.parseMilestoneFormData(transformed);
+
+            // Transform to API format
+            transformed.milestones = milestoneData.map(m => ({
+                title: m.title || '',
+                description: m.description || '',
+                waveId: m.waveId || null,
+                eventTypes: m.eventTypes ? m.eventTypes.split(',').map(e => e.trim()).filter(e => e) : []
+            }));
+
+            // Remove empty milestones
+            transformed.milestones = transformed.milestones.filter(m =>
+                m.title && m.description && m.waveId
+            );
+        } else {
+            // Ensure milestones array exists
+            transformed.milestones = [];
+        }
+
+        // Ensure all required array fields are present (even if empty)
+        const requiredArrayFields = [
+            'satisfiesRequirements',
+            'supersedsRequirements'
+        ];
+
+        requiredArrayFields.forEach(key => {
+            if (transformed[key] === undefined || transformed[key] === null) {
+                transformed[key] = [];
+            }
+            if (!Array.isArray(transformed[key])) {
+                transformed[key] = [];
+            }
+        });
+
+        // Ensure all required text fields are present
+        const requiredTextFields = ['title', 'description', 'visibility'];
+
+        requiredTextFields.forEach(key => {
+            if (transformed[key] === undefined || transformed[key] === null) {
+                transformed[key] = '';
+            }
+        });
+
+        // Set default visibility if not set
+        if (!transformed.visibility) {
+            transformed.visibility = 'NETWORK';
+        }
+
+        // Add version ID for optimistic locking on edit
+        if (mode === 'edit' && item) {
+            transformed.expectedVersionId = item.versionId || item.expectedVersionId;
+        }
+
+        return transformed;
+    }
+
+    transformDataForEdit(item) {
+        if (!item) return {};
+
+        const transformed = { ...item };
+
+        // Extract IDs from object references
+        const referenceFields = [
+            'satisfiesRequirements',
+            'supersedsRequirements'
+        ];
+
+        referenceFields.forEach(field => {
+            if (transformed[field] && Array.isArray(transformed[field])) {
+                transformed[field] = transformed[field].map(ref => {
+                    if (typeof ref === 'object' && ref !== null) {
+                        const id = ref.itemId || ref.id || ref;
+                        return typeof id === 'string' ? parseInt(id, 10) : id;
+                    }
+                    return typeof ref === 'string' && /^\d+$/.test(ref) ? parseInt(ref, 10) : ref;
+                });
+            }
+        });
+
+        // Process milestones
+        if (transformed.milestones && Array.isArray(transformed.milestones)) {
+            transformed.milestones = transformed.milestones.map(m => ({
+                title: m.title || '',
+                description: m.description || '',
+                waveId: m.waveId || m.wave?.id ? parseInt(m.waveId || m.wave?.id, 10) : null,
+                eventTypes: Array.isArray(m.eventTypes) ? m.eventTypes : []
+            }));
+        }
+
+        return transformed;
+    }
+
+    async onSave(data, mode, item) {
+        // Clear cache when saving
+        this.requirementsCache = null;
+
+        if (mode === 'create') {
+            return await apiClient.post(this.entityConfig.endpoint, data);
+        } else {
+            if (!item) {
+                throw new Error('No item provided for update');
+            }
+            const itemId = parseInt(item.itemId || item.id, 10);
+            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
+        }
+    }
+
+    async onValidate(data, mode, item) {
+        const errors = [];
+
+        // Validate milestones
+        if (data.milestones && data.milestones.length > 0) {
+            data.milestones.forEach((milestone, index) => {
+                if (!milestone.title || !milestone.title.trim()) {
+                    errors.push({
+                        field: `milestones[${index}].title`,
+                        message: `Milestone ${index + 1} must have a title`
+                    });
+                }
+                if (!milestone.description || !milestone.description.trim()) {
+                    errors.push({
+                        field: `milestones[${index}].description`,
+                        message: `Milestone ${index + 1} must have a description`
+                    });
+                }
+                if (!milestone.waveId) {
+                    errors.push({
+                        field: `milestones[${index}].waveId`,
+                        message: `Milestone ${index + 1} must have a target wave`
+                    });
+                }
+                if (!milestone.eventTypes || milestone.eventTypes.length === 0) {
+                    errors.push({
+                        field: `milestones[${index}].eventTypes`,
+                        message: `Milestone ${index + 1} must have at least one event type`
+                    });
+                }
+            });
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors
+        };
+    }
+
+    onCancel() {
+        // Custom cancel logic if needed
+        console.log('ChangeForm cancelled');
+    }
+
     // ====================
     // CUSTOM FIELD RENDERING
     // ====================
 
     renderMilestonesField(field, fieldId, value, required) {
         // For read mode, just format the milestones
-        if (field.modes.includes('read') && !field.modes.includes('edit')) {
+        if (field.modes && field.modes.includes('read') && this.currentMode === 'read') {
             return `<div class="milestones-display">${this.formatMilestones(value)}</div>`;
         }
 
@@ -357,7 +504,37 @@ export default class ChangeForm {
     }
 
     // ====================
-    // DATA OPTIONS
+    // DATA HELPERS
+    // ====================
+
+    parseMilestoneFormData(formData) {
+        const milestones = [];
+        const milestoneIndices = new Set();
+
+        // Find all milestone indices
+        Object.keys(formData).forEach(key => {
+            const match = key.match(/milestones\[(\d+)\]/);
+            if (match) {
+                milestoneIndices.add(parseInt(match[1]));
+            }
+        });
+
+        // Build milestone objects
+        milestoneIndices.forEach(index => {
+            const milestone = {
+                title: formData[`milestones[${index}].title`],
+                description: formData[`milestones[${index}].description`],
+                waveId: formData[`milestones[${index}].waveId`],
+                eventTypes: formData[`milestones[${index}].eventTypes`]
+            };
+            milestones.push(milestone);
+        });
+
+        return milestones;
+    }
+
+    // ====================
+    // DATA OPTIONS HELPERS
     // ====================
 
     getWaveOptions() {
@@ -411,200 +588,6 @@ export default class ChangeForm {
     }
 
     // ====================
-    // DATA TRANSFORMATION
-    // ====================
-
-    transformDataForSave(data, mode, item) {
-        const transformed = { ...data };
-
-        // Process milestones from form inputs
-        if (transformed.milestones) {
-            // Parse milestone data from form
-            const milestoneData = this.parseMilestoneFormData(transformed);
-
-            // Transform to API format
-            transformed.milestones = milestoneData.map(m => ({
-                title: m.title || '',
-                description: m.description || '',
-                waveId: m.waveId || null,
-                eventTypes: m.eventTypes ? m.eventTypes.split(',').map(e => e.trim()).filter(e => e) : []
-            }));
-
-            // Remove empty milestones
-            transformed.milestones = transformed.milestones.filter(m =>
-                m.title && m.description && m.waveId
-            );
-        } else {
-            // Ensure milestones array exists
-            transformed.milestones = [];
-        }
-
-        // Ensure all required array fields are present (even if empty)
-        const requiredArrayFields = [
-            'satisfiesRequirements',
-            'supersedsRequirements'
-        ];
-
-        requiredArrayFields.forEach(key => {
-            if (transformed[key] === undefined || transformed[key] === null) {
-                transformed[key] = [];
-            }
-            if (!Array.isArray(transformed[key])) {
-                transformed[key] = [];
-            }
-        });
-
-        // Ensure all required text fields are present
-        const requiredTextFields = ['title', 'description', 'visibility'];
-
-        requiredTextFields.forEach(key => {
-            if (transformed[key] === undefined || transformed[key] === null) {
-                transformed[key] = '';
-            }
-        });
-
-        // Set default visibility if not set
-        if (!transformed.visibility) {
-            transformed.visibility = 'NETWORK';
-        }
-
-        // Add version ID for optimistic locking on edit
-        if (mode === 'edit' && item) {
-            transformed.expectedVersionId = item.versionId || item.expectedVersionId;
-        }
-
-        return transformed;
-    }
-
-    parseMilestoneFormData(formData) {
-        const milestones = [];
-        const milestoneIndices = new Set();
-
-        // Find all milestone indices
-        Object.keys(formData).forEach(key => {
-            const match = key.match(/milestones\[(\d+)\]/);
-            if (match) {
-                milestoneIndices.add(parseInt(match[1]));
-            }
-        });
-
-        // Build milestone objects
-        milestoneIndices.forEach(index => {
-            const milestone = {
-                title: formData[`milestones[${index}].title`],
-                description: formData[`milestones[${index}].description`],
-                waveId: formData[`milestones[${index}].waveId`],
-                eventTypes: formData[`milestones[${index}].eventTypes`]
-            };
-            milestones.push(milestone);
-        });
-
-        return milestones;
-    }
-
-    transformDataForEdit(item) {
-        if (!item) return {};
-
-        const transformed = { ...item };
-
-        // Extract IDs from object references
-        const referenceFields = [
-            'satisfiesRequirements',
-            'supersedsRequirements'
-        ];
-
-        referenceFields.forEach(field => {
-            if (transformed[field] && Array.isArray(transformed[field])) {
-                transformed[field] = transformed[field].map(ref => {
-                    if (typeof ref === 'object' && ref !== null) {
-                        const id = ref.itemId || ref.id || ref;
-                        return typeof id === 'string' ? parseInt(id, 10) : id;
-                    }
-                    return typeof ref === 'string' && /^\d+$/.test(ref) ? parseInt(ref, 10) : ref;                });
-            }
-        });
-
-        // Process milestones
-        if (transformed.milestones && Array.isArray(transformed.milestones)) {
-            transformed.milestones = transformed.milestones.map(m => ({
-                title: m.title || '',
-                description: m.description || '',
-                waveId: m.waveId || m.wave?.id ? parseInt(m.waveId || m.wave?.id, 10) : null,
-                eventTypes: Array.isArray(m.eventTypes) ? m.eventTypes : []
-            }));
-        }
-
-        return transformed;
-    }
-
-    // ====================
-    // VALIDATION
-    // ====================
-
-    async validateChange(data, mode, item) {
-        const errors = [];
-
-        // Validate milestones
-        if (!data.milestones || !Array.isArray(data.milestones) || data.milestones.length === 0) {
-            errors.push({
-                field: 'milestones',
-                message: 'At least one milestone must be defined'
-            });
-        } else {
-            data.milestones.forEach((milestone, index) => {
-                if (!milestone.title || !milestone.title.trim()) {
-                    errors.push({
-                        field: `milestones[${index}].title`,
-                        message: `Milestone ${index + 1} must have a title`
-                    });
-                }
-                if (!milestone.description || !milestone.description.trim()) {
-                    errors.push({
-                        field: `milestones[${index}].description`,
-                        message: `Milestone ${index + 1} must have a description`
-                    });
-                }
-                if (!milestone.waveId) {
-                    errors.push({
-                        field: `milestones[${index}].waveId`,
-                        message: `Milestone ${index + 1} must have a target wave`
-                    });
-                }
-                if (!milestone.eventTypes || milestone.eventTypes.length === 0) {
-                    errors.push({
-                        field: `milestones[${index}].eventTypes`,
-                        message: `Milestone ${index + 1} must have at least one event type`
-                    });
-                }
-            });
-        }
-
-        return {
-            valid: errors.length === 0,
-            errors
-        };
-    }
-
-    // ====================
-    // SAVE OPERATION
-    // ====================
-
-    async saveChange(data, mode, item) {
-        // Clear cache when saving
-        this.requirementsCache = null;
-
-        if (mode === 'create') {
-            return await apiClient.post(this.entityConfig.endpoint, data);
-        } else {
-            if (!item) {
-                throw new Error('No item provided for update');
-            }
-            const itemId = parseInt(item.itemId || item.id, 10);
-            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
-        }
-    }
-
-    // ====================
     // FORMAT HELPERS
     // ====================
 
@@ -622,30 +605,23 @@ export default class ChangeForm {
         }).join(', ');
     }
 
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text.toString();
-        return div.innerHTML;
-    }
-
     // ====================
-    // PUBLIC API
+    // PUBLIC API (convenience methods)
     // ====================
 
     async showCreateModal() {
-        await this.form.showCreateModal();
+        await super.showCreateModal();
     }
 
     async showEditModal(item) {
-        await this.form.showEditModal(item);
+        await super.showEditModal(item);
     }
 
     async showReadOnlyModal(item) {
-        await this.form.showReadOnlyModal(item);
+        await super.showReadOnlyModal(item);
     }
 
     async generateReadOnlyView(item) {
-        return await this.form.generateForm('read', item);
+        return await super.generateReadOnlyView(item);
     }
 }

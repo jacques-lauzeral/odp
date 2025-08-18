@@ -100,6 +100,7 @@ export class VersionedItemService {
             const store = this.getStore();
             const entity = await store.findById(itemId, tx, baselineId, fromWaveId);
             await commitTransaction(tx);
+            console.log('VersionedItemService.getById', entity);
             return entity;
         } catch (error) {
             await rollbackTransaction(tx);
