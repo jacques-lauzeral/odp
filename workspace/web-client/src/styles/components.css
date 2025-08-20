@@ -373,6 +373,57 @@
     background-color: var(--bg-secondary);
 }
 
+/* Form Tabs - Add this section to components.css */
+.form-tabs {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-headers {
+    display: flex;
+    border-bottom: 1px solid var(--border-primary, #ddd);
+    margin-bottom: var(--space-4, 1rem);
+    flex-shrink: 0;
+}
+
+.tab-header {
+    padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--text-secondary, #666);
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-header:hover {
+    color: var(--text-primary, #333);
+}
+
+.tab-header.active {
+    border-bottom-color: var(--accent-primary, #007bff);
+    color: var(--text-primary, #333);
+    font-weight: 600;
+}
+
+.tab-contents {
+    flex: 1;
+    overflow: hidden;
+}
+
+.tab-panel {
+    display: none;
+    height: 100%;
+    overflow-y: auto;
+    padding-right: var(--space-2, 0.5rem); /* For scrollbar space */
+}
+
+.tab-panel.active {
+    display: block;
+}
+
 /* Modal Components */
 .modal-overlay {
     position: fixed;
@@ -392,10 +443,16 @@
     background-color: white;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
-    max-width: 500px;
+    max-width: 1200px;
     width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
+    height: 90vh;
+    max-height: 95vh;
+    min-height: 400px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    resize: both;
+    min-width: 400px;
 }
 
 .modal-header {
@@ -428,6 +485,8 @@
 
 .modal-body {
     padding: var(--space-6);
+    flex: 1;
+    overflow: hidden;
 }
 
 .modal-footer {

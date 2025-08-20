@@ -125,7 +125,14 @@ export default class RequirementForm extends CollectionEntityForm {
                         rows: 4,
                         placeholder: 'Describe potential risks and opportunities associated with this requirement...',
                         helpText: 'What risks does this address? What opportunities does it create?'
-                    },
+                    }
+                ]
+            },
+
+            // Flows Section
+            {
+                title: 'Flows',
+                fields: [
                     {
                         key: 'flows',
                         label: 'Flows',
@@ -149,9 +156,9 @@ export default class RequirementForm extends CollectionEntityForm {
                 ]
             },
 
-            // Impact Categories Section
+            // Impact Section
             {
-                title: 'Impact Categories',
+                title: 'Impact',
                 fields: [
                     {
                         key: 'impactsStakeholderCategories',

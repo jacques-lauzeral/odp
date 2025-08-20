@@ -112,26 +112,43 @@ export class CollectionEntityForm {
         const fields = this.getFieldDefinitions();
         const sections = this.groupFieldsIntoSections(fields);
 
-        let html = '';
+        // NEW: Tab structure instead of vertical
+        let html = `
+        <div class="form-tabs">
+            <div class="tab-headers">
+    `;
 
+        // Generate tab headers
+        sections.forEach((section, index) => {
+            const visibleFields = this.getVisibleFields(section.fields || [section], mode);
+            if (visibleFields.length === 0) return;
+
+            html += `
+            <button type="button" class="tab-header ${index === 0 ? 'active' : ''}" 
+                    data-tab="${index}">
+                ${this.escapeHtml(section.title)}
+            </button>
+        `;
+        });
+
+        html += `</div><div class="tab-contents">`;
+
+        // Generate tab content panels
         for (const section of sections) {
+            const index = sections.indexOf(section);
             const visibleFields = this.getVisibleFields(section.fields || [section], mode);
             if (visibleFields.length === 0) continue;
 
-            if (section.title) {
-                html += `<fieldset class="form-section">
-                    <legend>${this.escapeHtml(section.title)}</legend>`;
-            }
+            html += `<div class="tab-panel ${index === 0 ? 'active' : ''}" data-tab="${index}">`;
 
             for (const field of visibleFields) {
                 html += await this.renderField(field, this.getFieldValue(item, field), mode);
             }
 
-            if (section.title) {
-                html += `</fieldset>`;
-            }
+            html += `</div>`;
         }
 
+        html += `</div></div>`;
         return html;
     }
 
@@ -429,6 +446,18 @@ export class CollectionEntityForm {
         return this.escapeHtml(value.toString());
     }
 
+    switchTab(tabIndex) {
+        // Update headers
+        this.currentModal.querySelectorAll('.tab-header').forEach(header => {
+            header.classList.toggle('active', header.dataset.tab === tabIndex);
+        });
+
+        // Update panels
+        this.currentModal.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.toggle('active', panel.dataset.tab === tabIndex);
+        });
+    }
+
     // ====================
     // MODAL MANAGEMENT
     // ====================
@@ -511,6 +540,14 @@ export class CollectionEntityForm {
                 this.clearFieldError(e.target);
             });
         }
+
+        // NEW: Tab switching
+        this.currentModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab-header')) {
+                const tabIndex = e.target.dataset.tab;
+                this.switchTab(tabIndex);
+            }
+        });
     }
 
     closeModal() {
