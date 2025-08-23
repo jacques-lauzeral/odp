@@ -1,5 +1,6 @@
 import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
 import { apiClient } from '../../shared/api-client.js';
+import { MilestoneEditorModal } from './milestone-editor-modal.js';
 
 /**
  * ChangeForm - Operational Change form configuration and handling
@@ -11,12 +12,19 @@ export default class ChangeForm extends CollectionEntityForm {
         // Call parent constructor with appropriate context
         super(entityConfig, { setupData });
 
+        // DEBUG: Check if MilestoneEditorModal imported correctly
+        console.log('ChangeForm constructor - MilestoneEditorModal available:', typeof MilestoneEditorModal);
+
         this.setupData = setupData;
 
         // Cache for requirements
         this.requirementsCache = null;
         this.requirementsCacheTime = 0;
         this.cacheTimeout = 60000; // 1 minute cache
+
+        // Milestone management
+        this.milestones = [];
+        this.milestoneEditor = null;
     }
 
     // ====================
@@ -102,9 +110,8 @@ export default class ChangeForm extends CollectionEntityForm {
                         type: 'custom',
                         modes: ['create', 'read', 'edit'],
                         required: false,
-                        render: (field, fieldId, value, required) => this.renderMilestonesField(field, fieldId, value, required),
-                        format: (value) => this.formatMilestones(value),
-                        helpText: 'Define at least one milestone with its target wave'
+                        render: (field, fieldId, value, required) => this.renderMilestonesTable(field, fieldId, value, required),
+                        helpText: 'Manage milestones for this operational change'
                     }
                 ]
             },
@@ -211,27 +218,8 @@ export default class ChangeForm extends CollectionEntityForm {
     transformDataForSave(data, mode, item) {
         const transformed = { ...data };
 
-        // Process milestones from form inputs
-        if (transformed.milestones) {
-            // Parse milestone data from form
-            const milestoneData = this.parseMilestoneFormData(transformed);
-
-            // Transform to API format
-            transformed.milestones = milestoneData.map(m => ({
-                title: m.title || '',
-                description: m.description || '',
-                waveId: m.waveId || null,
-                eventTypes: m.eventTypes ? m.eventTypes.split(',').map(e => e.trim()).filter(e => e) : []
-            }));
-
-            // Remove empty milestones
-            transformed.milestones = transformed.milestones.filter(m =>
-                m.title && m.description && m.waveId
-            );
-        } else {
-            // Ensure milestones array exists
-            transformed.milestones = [];
-        }
+        // Remove milestones from data - they're managed independently
+        delete transformed.milestones;
 
         // Ensure all required array fields are present (even if empty)
         const requiredArrayFields = [
@@ -293,15 +281,8 @@ export default class ChangeForm extends CollectionEntityForm {
             }
         });
 
-        // Process milestones
-        if (transformed.milestones && Array.isArray(transformed.milestones)) {
-            transformed.milestones = transformed.milestones.map(m => ({
-                title: m.title || '',
-                description: m.description || '',
-                waveId: m.waveId || m.wave?.id ? parseInt(m.waveId || m.wave?.id, 10) : null,
-                eventTypes: Array.isArray(m.eventTypes) ? m.eventTypes : []
-            }));
-        }
+        // Store milestones separately (not part of form data)
+        this.milestones = transformed.milestones || [];
 
         return transformed;
     }
@@ -311,49 +292,30 @@ export default class ChangeForm extends CollectionEntityForm {
         this.requirementsCache = null;
 
         if (mode === 'create') {
-            return await apiClient.post(this.entityConfig.endpoint, data);
+            const result = await apiClient.post(this.entityConfig.endpoint, data);
+            // After creation, update current item for milestone operations
+            if (result) {
+                this.currentItem = result;
+                this.initializeMilestoneEditor();
+            }
+            return result;
         } else {
             if (!item) {
                 throw new Error('No item provided for update');
             }
             const itemId = parseInt(item.itemId || item.id, 10);
-            return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
+            const result = await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
+            // Update current item after successful save
+            if (result) {
+                this.currentItem = result;
+            }
+            return result;
         }
     }
 
     async onValidate(data, mode, item) {
         const errors = [];
-
-        // Validate milestones
-        if (data.milestones && data.milestones.length > 0) {
-            data.milestones.forEach((milestone, index) => {
-                if (!milestone.title || !milestone.title.trim()) {
-                    errors.push({
-                        field: `milestones[${index}].title`,
-                        message: `Milestone ${index + 1} must have a title`
-                    });
-                }
-                if (!milestone.description || !milestone.description.trim()) {
-                    errors.push({
-                        field: `milestones[${index}].description`,
-                        message: `Milestone ${index + 1} must have a description`
-                    });
-                }
-                if (!milestone.waveId) {
-                    errors.push({
-                        field: `milestones[${index}].waveId`,
-                        message: `Milestone ${index + 1} must have a target wave`
-                    });
-                }
-                if (!milestone.eventTypes || milestone.eventTypes.length === 0) {
-                    errors.push({
-                        field: `milestones[${index}].eventTypes`,
-                        message: `Milestone ${index + 1} must have at least one event type`
-                    });
-                }
-            });
-        }
-
+        // No milestone validation here since they're managed independently
         return {
             valid: errors.length === 0,
             errors
@@ -366,197 +328,335 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // CUSTOM FIELD RENDERING
+    // MILESTONE TABLE RENDERING
     // ====================
 
-    renderMilestonesField(field, fieldId, value, required) {
-        // For read mode, just format the milestones
-        if (field.modes && field.modes.includes('read') && this.currentMode === 'read') {
-            return `<div class="milestones-display">${this.formatMilestones(value)}</div>`;
+    renderMilestonesTable(field, fieldId, value, required) {
+        console.log('ChangeForm.renderMilestonesTable - called');
+        console.log('ChangeForm.renderMilestonesTable - currentMode:', this.currentMode);
+        console.log('ChangeForm.renderMilestonesTable - currentItem:', this.currentItem);
+
+        const isReadMode = this.currentMode === 'read';
+        const itemId = this.currentItem?.itemId || this.currentItem?.id;
+
+        console.log('ChangeForm.renderMilestonesTable - isReadMode:', isReadMode, 'itemId:', itemId);
+
+        let html = `<div class="milestones-section" id="${fieldId}">`;
+
+        // Section header with Add button (only in edit/create modes)
+        if (!isReadMode && itemId) {
+            html += `
+                <div class="milestones-header">
+                    <span class="milestones-label">Milestones:</span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="add-milestone-btn">
+                        + Add Milestone
+                    </button>
+                </div>
+            `;
+            console.log('ChangeForm.renderMilestonesTable - Add button will be rendered');
+        } else if (!isReadMode && !itemId) {
+            html += `
+                <div class="milestones-header">
+                    <span class="milestones-label">Milestones:</span>
+                    <small class="form-text text-muted">Save the change first to manage milestones</small>
+                </div>
+            `;
+            console.log('ChangeForm.renderMilestonesTable - Save first message will be rendered');
+        } else {
+            html += `<div class="milestones-header"><span class="milestones-label">Milestones:</span></div>`;
+            console.log('ChangeForm.renderMilestonesTable - Read-only header will be rendered');
         }
 
-        // For edit/create mode, render milestone editor
-        const milestones = value || [];
+        // Milestone table
+        html += this.renderMilestoneTable(isReadMode, !!itemId);
 
+        html += `</div>`;
+
+        // Note: Event binding moved to showEditModal to ensure DOM is ready
+        return html;
+    }
+
+    renderMilestoneTable(isReadMode, hasItemId) {
         let html = `
-            <div class="milestones-editor" id="${fieldId}">
-                <div class="milestones-list">
+            <table class="milestones-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Wave</th>
+                        <th>Event Types</th>
         `;
 
-        if (milestones.length === 0) {
-            // Start with one empty milestone for new changes
-            html += this.renderMilestoneRow({}, 0);
-        } else {
-            milestones.forEach((milestone, index) => {
-                html += this.renderMilestoneRow(milestone, index);
-            });
+        if (!isReadMode && hasItemId) {
+            html += `<th>Actions</th>`;
         }
 
         html += `
-                </div>
-                <button type="button" class="btn btn-secondary btn-sm add-milestone-btn" data-field="${fieldId}">
-                    + Add Milestone
-                </button>
-            </div>
+                    </tr>
+                </thead>
+                <tbody id="milestones-tbody">
         `;
 
-        // Note: Event binding would need to be handled after rendering
-        setTimeout(() => this.bindMilestoneEvents(fieldId), 0);
+        if (this.milestones && this.milestones.length > 0) {
+            this.milestones.forEach((milestone, index) => {
+                html += this.renderMilestoneRow(milestone, index, isReadMode, hasItemId);
+            });
+        } else {
+            const colspan = (!isReadMode && hasItemId) ? 4 : 3;
+            html += `
+                <tr class="empty-state">
+                    <td colspan="${colspan}" class="text-center text-muted">
+                        No milestones defined yet
+                    </td>
+                </tr>
+            `;
+        }
+
+        html += `
+                </tbody>
+            </table>
+        `;
 
         return html;
     }
 
-    renderMilestoneRow(milestone, index) {
-        const waves = this.getWaveOptions();
+    renderMilestoneRow(milestone, index, isReadMode, hasItemId) {
+        const title = this.escapeHtml(milestone.title || '');
+        const wave = this.formatWave(milestone.wave);
+        const eventTypes = this.formatEventTypes(milestone.eventTypes);
 
-        return `
-            <div class="milestone-row" data-index="${index}">
-                <div class="milestone-fields">
-                    <input type="text" 
-                        name="milestones[${index}].title" 
-                        placeholder="Milestone title"
-                        value="${this.escapeHtml(milestone.title || '')}"
-                        class="form-control milestone-title"
-                        required>
-                    
-                    <textarea 
-                        name="milestones[${index}].description" 
-                        placeholder="Milestone description"
-                        class="form-control milestone-description"
-                        rows="2"
-                        required>${this.escapeHtml(milestone.description || '')}</textarea>
-                    
-                    <select name="milestones[${index}].waveId" 
-                        class="form-control milestone-wave"
-                        required>
-                        <option value="">Select wave...</option>
-                        ${waves.map(wave => `
-                            <option value="${wave.value}" ${milestone.waveId === wave.value ? 'selected' : ''}>
-                                ${this.escapeHtml(wave.label)}
-                            </option>
-                        `).join('')}
-                    </select>
-                    
-                    <input type="text" 
-                        name="milestones[${index}].eventTypes" 
-                        placeholder="Event types (comma-separated)"
-                        value="${this.escapeHtml(milestone.eventTypes ? milestone.eventTypes.join(', ') : '')}"
-                        class="form-control milestone-event-types"
-                        required>
-                    <small class="form-text">e.g., API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION</small>
-                    
-                    <button type="button" class="btn btn-danger btn-sm remove-milestone-btn" data-index="${index}">
-                        Remove Milestone
-                    </button>
-                </div>
-            </div>
-        `;
+        // Apply zebra striping
+        const rowClass = index % 2 === 0 ? 'even' : 'odd';
+
+        let html = `<tr class="milestone-row ${rowClass}">`;
+        html += `<td class="milestone-title" title="${title}">${this.truncateText(title, 30)}</td>`;
+        html += `<td class="milestone-wave">${wave}</td>`;
+        html += `<td class="milestone-events">${eventTypes}</td>`;
+
+        if (!isReadMode && hasItemId) {
+            html += `
+                <td class="milestone-actions">
+                    <button type="button" class="btn-icon edit-milestone" 
+                            data-milestone-id="${milestone.id}" 
+                            title="Edit milestone">✏️</button>
+                    <button type="button" class="btn-icon delete-milestone" 
+                            data-milestone-id="${milestone.id}"
+                            title="Delete milestone">🗑️</button>
+                </td>
+            `;
+        }
+
+        html += `</tr>`;
+        return html;
     }
 
-    bindMilestoneEvents(fieldId) {
-        const container = document.getElementById(fieldId);
-        if (!container) return;
+    formatWave(wave) {
+        if (!wave) return 'Not assigned';
+
+        if (wave.year && wave.quarter) {
+            return `${wave.year} Q${wave.quarter}`;
+        }
+
+        return wave.name || 'Not assigned';
+    }
+
+    formatEventTypes(eventTypes) {
+        if (!eventTypes || eventTypes.length === 0) {
+            return '-';
+        }
+
+        const formatted = eventTypes.map(type =>
+            type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
+        );
+
+        const joined = formatted.join(', ');
+        return this.truncateText(joined, 40);
+    }
+
+    truncateText(text, maxLength) {
+        if (!text || text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
+    }
+
+    // ====================
+    // MILESTONE EVENT HANDLING
+    // ====================
+
+    bindMilestoneEvents() {
+        console.log('ChangeForm.bindMilestoneEvents - called');
+
+        // Initialize milestone editor if not already done
+        this.initializeMilestoneEditor();
+
+        // Debug: Check what's in the DOM
+        const milestonesSection = document.querySelector('.milestones-section');
+        console.log('ChangeForm.bindMilestoneEvents - milestonesSection found:', !!milestonesSection);
+
+        if (milestonesSection) {
+            console.log('ChangeForm.bindMilestoneEvents - milestonesSection HTML:', milestonesSection.innerHTML);
+        }
 
         // Add milestone button
-        const addBtn = container.querySelector('.add-milestone-btn');
+        const addBtn = document.getElementById('add-milestone-btn');
+        console.log('ChangeForm.bindMilestoneEvents - addBtn found:', !!addBtn);
+
+        // Try alternative selector
+        const addBtnAlt = document.querySelector('.milestones-section button');
+        console.log('ChangeForm.bindMilestoneEvents - addBtnAlt found:', !!addBtnAlt);
+
         if (addBtn) {
             addBtn.addEventListener('click', () => {
-                const list = container.querySelector('.milestones-list');
-                const newIndex = list.children.length;
-                const newRow = document.createElement('div');
-                newRow.innerHTML = this.renderMilestoneRow({}, newIndex);
-                list.appendChild(newRow.firstElementChild);
+                console.log('Add milestone button clicked');
+                this.handleAddMilestone();
+            });
+        } else if (addBtnAlt) {
+            console.log('ChangeForm.bindMilestoneEvents - Using alternative button selector');
+            addBtnAlt.addEventListener('click', () => {
+                console.log('Add milestone button clicked (alt)');
+                this.handleAddMilestone();
             });
         }
 
-        // Remove milestone buttons
-        container.addEventListener('click', (e) => {
-            if (e.target.classList.contains('remove-milestone-btn')) {
-                const row = e.target.closest('.milestone-row');
-                row.remove();
-                // Re-index remaining milestones
-                this.reindexMilestones(container);
-            }
-        });
-    }
+        // Edit/Delete milestone buttons
+        const tbody = document.getElementById('milestones-tbody');
+        if (tbody) {
+            tbody.addEventListener('click', (e) => {
+                const milestoneId = e.target.dataset.milestoneId;
+                if (!milestoneId) return;
 
-    reindexMilestones(container) {
-        const rows = container.querySelectorAll('.milestone-row');
-        rows.forEach((row, index) => {
-            row.dataset.index = index;
-            // Update all input names
-            row.querySelectorAll('[name^="milestones["]').forEach(input => {
-                input.name = input.name.replace(/milestones\[\d+\]/, `milestones[${index}]`);
+                if (e.target.classList.contains('edit-milestone')) {
+                    this.handleEditMilestone(milestoneId);
+                } else if (e.target.classList.contains('delete-milestone')) {
+                    this.handleDeleteMilestone(milestoneId);
+                }
             });
-        });
+        }
     }
 
-    formatMilestones(milestones) {
-        if (!milestones || !Array.isArray(milestones) || milestones.length === 0) {
-            return 'No milestones defined';
+    initializeMilestoneEditor() {
+        console.log('ChangeForm.initializeMilestoneEditor - called');
+        console.log('ChangeForm.initializeMilestoneEditor - currentItem:', this.currentItem);
+
+        if (!this.milestoneEditor && this.currentItem) {
+            const changeId = this.currentItem.itemId || this.currentItem.id;
+            console.log('ChangeForm.initializeMilestoneEditor - creating editor with changeId:', changeId);
+            this.milestoneEditor = new MilestoneEditorModal(changeId, this.setupData, this);
+            console.log('ChangeForm.initializeMilestoneEditor - editor created:', !!this.milestoneEditor);
+        }
+    }
+
+    async handleAddMilestone() {
+        console.log('ChangeForm.handleAddMilestone - called');
+        console.log('ChangeForm.handleAddMilestone - milestoneEditor:', !!this.milestoneEditor);
+
+        if (this.milestoneEditor) {
+            console.log('ChangeForm.handleAddMilestone - calling showCreateModal');
+            await this.milestoneEditor.showCreateModal();
+        } else {
+            console.error('ChangeForm.handleAddMilestone - no milestone editor available');
+        }
+    }
+
+    async handleEditMilestone(milestoneId) {
+        const milestone = this.milestones.find(m => m.id.toString() === milestoneId.toString());
+        if (milestone && this.milestoneEditor) {
+            await this.milestoneEditor.showEditModal(milestone);
+        }
+    }
+
+    async handleDeleteMilestone(milestoneId) {
+        const milestone = this.milestones.find(m => m.id.toString() === milestoneId.toString());
+        if (!milestone) return;
+
+        const confirmed = confirm(`Delete milestone "${milestone.title}"?`);
+        if (!confirmed) return;
+
+        try {
+            const changeId = this.currentItem.itemId || this.currentItem.id;
+            const expectedVersionId = this.currentItem.versionId;
+
+            await apiClient.deleteMilestone(changeId, milestoneId, expectedVersionId);
+
+            // Refresh milestone list
+            await this.refreshMilestones();
+
+            console.log('Milestone deleted successfully');
+        } catch (error) {
+            console.error('Failed to delete milestone:', error);
+            alert('Failed to delete milestone: ' + (error.message || 'Unknown error'));
+        }
+    }
+
+    // ====================
+    // MILESTONE REFRESH (Called by MilestoneEditorModal)
+    // ====================
+
+    async refreshMilestones() {
+        if (!this.currentItem) return;
+
+        try {
+            const changeId = this.currentItem.itemId || this.currentItem.id;
+            this.milestones = await apiClient.getMilestones(changeId);
+
+            // Re-render milestone table
+            const tbody = document.getElementById('milestones-tbody');
+            if (tbody) {
+                const isReadMode = this.currentMode === 'read';
+                const hasItemId = !!(this.currentItem?.itemId || this.currentItem?.id);
+
+                if (this.milestones && this.milestones.length > 0) {
+                    tbody.innerHTML = this.milestones.map((milestone, index) =>
+                        this.renderMilestoneRow(milestone, index, isReadMode, hasItemId)
+                    ).join('');
+                } else {
+                    const colspan = (!isReadMode && hasItemId) ? 4 : 3;
+                    tbody.innerHTML = `
+                        <tr class="empty-state">
+                            <td colspan="${colspan}" class="text-center text-muted">
+                                No milestones defined yet
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            // Rebind events after milestone list update
+            this.bindMilestoneEvents();
+        } catch (error) {
+            console.error('Failed to refresh milestones:', error);
+        }
+    }
+
+    // ====================
+    // ENHANCED MODAL METHODS
+    // ====================
+
+    async showEditModal(item) {
+        await super.showEditModal(item);
+
+        // Load milestones after modal is shown
+        if (item && (item.itemId || item.id)) {
+            await this.refreshMilestones();
         }
 
-        return milestones.map(m => {
-            const wave = this.getWaveDisplay(m.waveId || m.wave);
-            const eventTypes = m.eventTypes ? `(${m.eventTypes.join(', ')})` : '';
-            return `<strong>${m.title}:</strong> ${m.description}<br>Wave: ${wave} ${eventTypes}`;
-        }).join('<br><br>');
+        // IMPORTANT: Bind milestone events AFTER modal is fully rendered
+        setTimeout(() => {
+            console.log('ChangeForm.showEditModal - Binding events after modal render');
+            this.bindMilestoneEvents();
+        }, 100); // Slightly longer delay to ensure DOM is ready
     }
 
-    // ====================
-    // DATA HELPERS
-    // ====================
+    async showReadOnlyModal(item) {
+        await super.showReadOnlyModal(item);
 
-    parseMilestoneFormData(formData) {
-        const milestones = [];
-        const milestoneIndices = new Set();
-
-        // Find all milestone indices
-        Object.keys(formData).forEach(key => {
-            const match = key.match(/milestones\[(\d+)\]/);
-            if (match) {
-                milestoneIndices.add(parseInt(match[1]));
-            }
-        });
-
-        // Build milestone objects
-        milestoneIndices.forEach(index => {
-            const milestone = {
-                title: formData[`milestones[${index}].title`],
-                description: formData[`milestones[${index}].description`],
-                waveId: formData[`milestones[${index}].waveId`],
-                eventTypes: formData[`milestones[${index}].eventTypes`]
-            };
-            milestones.push(milestone);
-        });
-
-        return milestones;
+        // Load milestones for read-only view
+        if (item && (item.itemId || item.id)) {
+            await this.refreshMilestones();
+        }
     }
 
     // ====================
     // DATA OPTIONS HELPERS
     // ====================
-
-    getWaveOptions() {
-        if (!this.setupData?.waves) {
-            return [];
-        }
-
-        return this.setupData.waves.map(wave => ({
-            value: parseInt(wave.id, 10),  // Convert to number
-            label: `${wave.year} Q${wave.quarter}`
-        }));
-    }
-
-    getWaveDisplay(waveId) {
-        if (!waveId) return 'Not assigned';
-
-        const wave = this.setupData?.waves?.find(w => w.id === waveId);
-        if (wave) {
-            return `${wave.year} Q${wave.quarter}`;
-        }
-        return waveId;
-    }
 
     async getRequirementOptions() {
         try {
@@ -613,15 +713,18 @@ export default class ChangeForm extends CollectionEntityForm {
         await super.showCreateModal();
     }
 
-    async showEditModal(item) {
-        await super.showEditModal(item);
-    }
-
-    async showReadOnlyModal(item) {
-        await super.showReadOnlyModal(item);
-    }
-
     async generateReadOnlyView(item) {
         return await super.generateReadOnlyView(item);
+    }
+
+    // ====================
+    // UTILITIES
+    // ====================
+
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }

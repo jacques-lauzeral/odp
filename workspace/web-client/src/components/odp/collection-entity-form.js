@@ -8,7 +8,8 @@ export class CollectionEntityForm {
         this.endpoint = entityConfig?.endpoint;
         this.context = context;
 
-        // Modal reference
+        // Modal stack for nested modals
+        this.modalStack = [];
         this.currentModal = null;
         this.currentMode = null;
         this.currentItem = null;
@@ -459,23 +460,30 @@ export class CollectionEntityForm {
     }
 
     // ====================
-    // MODAL MANAGEMENT
+    // MODAL MANAGEMENT WITH STACK SUPPORT
     // ====================
 
-    showModal(formContent, mode) {
-        console.log("CollectionEntityForm.showModal");
+    showModal(formContent, mode, isNested = false) {
+        console.log("CollectionEntityForm.showModal - mode:", mode, "isNested:", isNested);
         const title = this.getFormTitle(mode);
         const showFooter = mode !== 'read';
+        const modalId = `${mode}-modal-${Date.now()}`;
+
+        // Calculate z-index based on modal stack depth
+        const baseZIndex = 1000;
+        const zIndex = baseZIndex + (this.modalStack.length * 10);
+
+        console.log("CollectionEntityForm.showModal - zIndex:", zIndex, "stack depth:", this.modalStack.length);
 
         const modalHtml = `
-            <div class="modal-overlay" id="${mode}-modal">
+            <div class="modal-overlay" id="${modalId}" style="z-index: ${zIndex}">
                 <div class="modal modal-large">
                     <div class="modal-header">
                         <h3 class="modal-title">${this.escapeHtml(title)}</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <form id="${mode}-form" novalidate>
+                        <form id="${mode}-form-${Date.now()}" novalidate>
                             ${formContent}
                         </form>
                     </div>
@@ -495,12 +503,26 @@ export class CollectionEntityForm {
             </div>
         `;
 
-        // Remove any existing modal
-        this.closeModal();
-
         // Add new modal
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-        this.currentModal = document.getElementById(`${mode}-modal`);
+        const modalElement = document.getElementById(modalId);
+
+        // Push to stack if this is a nested modal
+        if (isNested && this.currentModal) {
+            console.log("CollectionEntityForm.showModal - pushing to stack:", {
+                element: this.currentModal.id,
+                mode: this.currentMode,
+                item: this.currentItem?.itemId || this.currentItem?.id
+            });
+            this.modalStack.push({
+                element: this.currentModal,
+                mode: this.currentMode,
+                item: this.currentItem
+            });
+        }
+
+        // Set as current modal
+        this.currentModal = modalElement;
 
         // Attach events
         this.attachModalEvents();
@@ -509,6 +531,11 @@ export class CollectionEntityForm {
         if (mode !== 'read') {
             this.focusFirstInput();
         }
+    }
+
+    showNestedModal(formContent, mode) {
+        console.log("CollectionEntityForm.showNestedModal - called with mode:", mode);
+        this.showModal(formContent, mode, true);
     }
 
     attachModalEvents() {
@@ -525,13 +552,15 @@ export class CollectionEntityForm {
             }
         });
 
-        // Escape key
-        this.escapeHandler = (e) => {
-            if (e.key === 'Escape') {
-                this.handleCancel();
-            }
-        };
-        document.addEventListener('keydown', this.escapeHandler);
+        // Escape key - only for top modal
+        if (this.modalStack.length === 0) {
+            this.escapeHandler = (e) => {
+                if (e.key === 'Escape') {
+                    this.handleCancel();
+                }
+            };
+            document.addEventListener('keydown', this.escapeHandler);
+        }
 
         // Form validation on input
         const form = this.currentModal.querySelector('form');
@@ -541,7 +570,7 @@ export class CollectionEntityForm {
             });
         }
 
-        // NEW: Tab switching
+        // Tab switching
         this.currentModal.addEventListener('click', (e) => {
             if (e.target.classList.contains('tab-header')) {
                 const tabIndex = e.target.dataset.tab;
@@ -551,15 +580,40 @@ export class CollectionEntityForm {
     }
 
     closeModal() {
-        console.log("CollectionEntityForm.closeModal");
+        console.log("CollectionEntityForm.closeModal - called");
+        console.log("CollectionEntityForm.closeModal - stack length:", this.modalStack.length);
+
         if (this.currentModal) {
+            console.log("CollectionEntityForm.closeModal - removing current modal:", this.currentModal.id);
             this.currentModal.remove();
-            this.currentModal = null;
         }
 
-        if (this.escapeHandler) {
-            document.removeEventListener('keydown', this.escapeHandler);
-            this.escapeHandler = null;
+        // Check if we have a parent modal to restore
+        if (this.modalStack.length > 0) {
+            const parentModal = this.modalStack.pop();
+            console.log("CollectionEntityForm.closeModal - restoring parent modal:", {
+                elementId: parentModal.element.id,
+                mode: parentModal.mode,
+                itemId: parentModal.item?.itemId || parentModal.item?.id
+            });
+
+            this.currentModal = parentModal.element;
+            this.currentMode = parentModal.mode;
+            this.currentItem = parentModal.item;
+
+            console.log("CollectionEntityForm.closeModal - restored to parent modal");
+        } else {
+            this.currentModal = null;
+            this.currentMode = null;
+            this.currentItem = null;
+
+            // Remove escape handler only when closing the root modal
+            if (this.escapeHandler) {
+                document.removeEventListener('keydown', this.escapeHandler);
+                this.escapeHandler = null;
+                console.log("CollectionEntityForm.closeModal - removed escape handler");
+            }
+            console.log("CollectionEntityForm.closeModal - closed root modal");
         }
     }
 
@@ -607,8 +661,6 @@ export class CollectionEntityForm {
 
             // Close modal on success
             this.closeModal();
-            this.currentMode = null;
-            this.currentItem = null;
         } catch (error) {
             console.error('Failed to save:', error);
             this.showFormError(error.message || 'Failed to save. Please try again.');
@@ -618,8 +670,6 @@ export class CollectionEntityForm {
     handleCancel() {
         this.onCancel();
         this.closeModal();
-        this.currentMode = null;
-        this.currentItem = null;
     }
 
     collectFormData(form) {

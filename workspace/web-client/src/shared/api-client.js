@@ -174,6 +174,41 @@ export class ApiClient {
         return this.get(endpoint, { id, subPath: `versions/${versionNumber}` });
     }
 
+    // Milestone CRUD convenience methods
+    async getMilestones(changeId, params = {}) {
+        return this.get('/operational-changes', { id: changeId, subPath: 'milestones', params });
+    }
+
+    async getMilestone(changeId, milestoneId, params = {}) {
+        return this.get('/operational-changes', {
+            id: changeId,
+            subPath: `milestones/${milestoneId}`,
+            params
+        });
+    }
+
+    async createMilestone(changeId, milestoneData) {
+        return this.post('/operational-changes', milestoneData, {
+            id: changeId,
+            subPath: 'milestones'
+        });
+    }
+
+    async updateMilestone(changeId, milestoneId, milestoneData) {
+        return this.put('/operational-changes', milestoneData, {
+            id: changeId,
+            subPath: `milestones/${milestoneId}`
+        });
+    }
+
+    async deleteMilestone(changeId, milestoneId, expectedVersionId) {
+        return this.delete('/operational-changes', {
+            id: changeId,
+            subPath: `milestones/${milestoneId}`,
+            data: { expectedVersionId }
+        });
+    }
+
     // Health check (no user header needed)
     async healthCheck() {
         try {
