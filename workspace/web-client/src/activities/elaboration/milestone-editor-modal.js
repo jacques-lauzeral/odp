@@ -560,7 +560,7 @@ export class MilestoneEditorModal {
         console.log('MilestoneEditorModal.closeMilestoneModal - called');
         if (this.milestoneModal) {
             console.log('MilestoneEditorModal.closeMilestoneModal - removing modal');
-            document.body.removeChild(this.milestoneModal);
+            this.milestoneModal.remove();
             this.milestoneModal = null;
             console.log('MilestoneEditorModal.closeMilestoneModal - modal removed');
         }
