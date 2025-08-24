@@ -1,5 +1,6 @@
 import { VersionedItemStore } from './versioned-item-store.js';
 import { StoreError } from './transaction.js';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Store for OperationalChange items with versioning, milestone, and relationship management
@@ -214,8 +215,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                 
                 OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                 
-                RETURN id(milestone) as milestoneId, milestone.title as title, 
-                       milestone.description as description, milestone.eventTypes as eventTypes,
+                RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
+                       milestone.title as title, milestone.description as description, 
+                       milestone.eventTypes as eventTypes,
                        id(wave) as waveId, wave.year as waveYear, wave.quarter as waveQuarter, 
                        wave.date as waveDate, wave.name as waveName
                 ORDER BY milestone.title
@@ -224,6 +226,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             return result.records.map(record => {
                 const milestone = {
                     id: this.normalizeId(record.get('milestoneId')),
+                    milestoneKey: record.get('milestoneKey'),
                     title: record.get('title'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
@@ -264,13 +267,15 @@ export class OperationalChangeStore extends VersionedItemStore {
                 
                 OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                 
-                RETURN milestone.title as title, milestone.description as description, 
-                       milestone.eventTypes as eventTypes, id(wave) as waveId
+                RETURN milestone.milestoneKey as milestoneKey, milestone.title as title, 
+                       milestone.description as description, milestone.eventTypes as eventTypes, 
+                       id(wave) as waveId
                 ORDER BY milestone.title
             `, { versionId });
 
             return result.records.map(record => {
                 const milestoneData = {
+                    milestoneKey: record.get('milestoneKey'), // Preserve stable identifier
                     title: record.get('title'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
@@ -302,7 +307,10 @@ export class OperationalChangeStore extends VersionedItemStore {
 
         try {
             for (const milestoneData of milestonesData) {
-                const { title, description, eventTypes, waveId } = milestoneData;
+                const { milestoneKey, title, description, eventTypes, waveId } = milestoneData;
+
+                // Generate new milestoneKey if not present (for new milestones)
+                const finalMilestoneKey = milestoneKey || `ms_${uuidv4()}`;
 
                 // Validate wave exists if specified (normalize waveId first)
                 if (waveId) {
@@ -313,12 +321,13 @@ export class OperationalChangeStore extends VersionedItemStore {
                 // Create fresh milestone node for this version
                 const milestoneResult = await transaction.run(`
                     CREATE (milestone:OperationalChangeMilestone {
+                        milestoneKey: $milestoneKey,
                         title: $title,
                         description: $description,
                         eventTypes: $eventTypes
                     })
                     RETURN id(milestone) as milestoneId
-                `, { title, description, eventTypes });
+                `, { milestoneKey: finalMilestoneKey, title, description, eventTypes });
 
                 const milestoneId = this.normalizeId(milestoneResult.records[0].get('milestoneId'));
 
@@ -582,8 +591,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (version)-[:VERSION_OF]->(change:OperationalChange)
                     MATCH (change)-[:LATEST_VERSION]->(version)
                     WHERE id(wave) = $waveId
-                    RETURN id(milestone) as milestoneId, milestone.title as title, 
-                           milestone.description as description, milestone.eventTypes as eventTypes,
+                    RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
+                           milestone.title as title, milestone.description as description, 
+                           milestone.eventTypes as eventTypes,
                            id(change) as changeId, change.title as changeTitle, id(version) as versionId
                     ORDER BY change.title, milestone.title
                 `;
@@ -597,8 +607,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (milestone)-[:TARGETS]->(wave:Wave)
                     MATCH (version)-[:VERSION_OF]->(change:OperationalChange)
                     WHERE id(baseline) = $baselineId AND id(wave) = $waveId
-                    RETURN id(milestone) as milestoneId, milestone.title as title, 
-                           milestone.description as description, milestone.eventTypes as eventTypes,
+                    RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
+                           milestone.title as title, milestone.description as description, 
+                           milestone.eventTypes as eventTypes,
                            id(change) as changeId, change.title as changeTitle, id(version) as versionId
                     ORDER BY change.title, milestone.title
                 `;
@@ -608,6 +619,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             const result = await transaction.run(query, params);
             const milestones = result.records.map(record => ({
                 id: this.normalizeId(record.get('milestoneId')),
+                milestoneKey: record.get('milestoneKey'),
                 title: record.get('title'),
                 description: record.get('description'),
                 eventTypes: record.get('eventTypes'),
@@ -640,7 +652,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             throw new StoreError(`Failed to find milestones by wave: ${error.message}`, error);
         }
     }
-    
+
     /**
      * Find all milestones for a specific change
      * @param {number} itemId - OperationalChange Item ID
@@ -663,25 +675,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                     
                     OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                     
-                    RETURN id(milestone) as milestoneId, milestone.title as title, 
-                           milestone.description as description, milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate,
-                           id(version) as versionId
-                    ORDER BY milestone.title
-                `;
-                params = { itemId: normalizedItemId };
-            } else {
-                // Baseline version query
-                const numericBaselineId = this.normalizeId(baselineId);
-                query = `
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalChangeVersion)-[:VERSION_OF]->(change:OperationalChange)
-                    MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
-                    WHERE id(baseline) = $baselineId AND id(change) = $itemId
-                    
-                    OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
-                    
-                    RETURN id(milestone) as milestoneId, milestone.title as title, 
-                           milestone.description as description, milestone.eventTypes as eventTypes,
+                    RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
+                           milestone.title as title, milestone.description as description, 
+                           milestone.eventTypes as eventTypes,
                            id(wave) as waveId, wave.name as waveName, wave.date as waveDate,
                            id(version) as versionId
                     ORDER BY milestone.title
@@ -693,6 +689,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             const milestones = result.records.map(record => {
                 const milestone = {
                     id: this.normalizeId(record.get('milestoneId')),
+                    milestoneKey: record.get('milestoneKey'),
                     title: record.get('title'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes'),
@@ -720,7 +717,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 `, { fromWaveId: this.normalizeId(fromWaveId) });
 
                 if (fromWaveResult.records.length === 0) {
-                    throw new StoreError('Waves not found');
+                    throw new StoreError('Wave not found');
                 }
 
                 const fromWaveDate = fromWaveResult.records[0].get('fromWaveDate');
@@ -741,6 +738,111 @@ export class OperationalChangeStore extends VersionedItemStore {
             return milestones.map(({ versionId, ...milestoneResult }) => milestoneResult);
         } catch (error) {
             throw new StoreError(`Failed to find milestones by change: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find milestone by milestoneKey within a specific change
+     * @param {number} itemId - OperationalChange Item ID
+     * @param {string} milestoneKey - Milestone stable identifier
+     * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
+     * @returns {Promise<object|null>} Milestone object or null if not found
+     */
+    async findMilestoneByKey(itemId, milestoneKey, transaction, baselineId = null, fromWaveId = null) {
+        try {
+            const normalizedItemId = this.normalizeId(itemId);
+            let query, params;
+
+            if (baselineId === null) {
+                // Latest version query
+                query = `
+                    MATCH (change:OperationalChange)-[:LATEST_VERSION]->(version:OperationalChangeVersion)
+                    MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
+                    WHERE id(change) = $itemId AND milestone.milestoneKey = $milestoneKey
+                    
+                    OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
+                    
+                    RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
+                           milestone.title as title, milestone.description as description, 
+                           milestone.eventTypes as eventTypes,
+                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate,
+                           id(version) as versionId
+                `;
+                params = { itemId: normalizedItemId, milestoneKey };
+            } else {
+                // Baseline version query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalChangeVersion)-[:VERSION_OF]->(change:OperationalChange)
+                    MATCH (milestone:OperationalChangeMilestone)-[:BELONGS_TO]->(version)
+                    WHERE id(baseline) = $baselineId AND id(change) = $itemId AND milestone.milestoneKey = $milestoneKey
+                    
+                    OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
+                    
+                    RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
+                           milestone.title as title, milestone.description as description, 
+                           milestone.eventTypes as eventTypes,
+                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate,
+                           id(version) as versionId
+                `;
+                params = { baselineId: numericBaselineId, itemId: normalizedItemId, milestoneKey };
+            }
+
+            const result = await transaction.run(query, params);
+
+            if (result.records.length === 0) {
+                return null;
+            }
+
+            const record = result.records[0];
+            const milestone = {
+                id: this.normalizeId(record.get('milestoneId')),
+                milestoneKey: record.get('milestoneKey'),
+                title: record.get('title'),
+                description: record.get('description'),
+                eventTypes: record.get('eventTypes'),
+                versionId: this.normalizeId(record.get('versionId'))
+            };
+
+            const waveId = record.get('waveId');
+            if (waveId) {
+                milestone.wave = {
+                    id: this.normalizeId(waveId),
+                    title: record.get('waveName'),
+                    date: record.get('waveDate')
+                };
+            }
+
+            // Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                if (!milestone.wave || !milestone.wave.date) {
+                    return null; // Milestone without wave doesn't pass filter
+                }
+
+                // Get fromWave date for filtering
+                const fromWaveResult = await transaction.run(`
+                    MATCH (wave:Wave) WHERE id(wave) = $fromWaveId
+                    RETURN wave.date as fromWaveDate
+                `, { fromWaveId: this.normalizeId(fromWaveId) });
+
+                if (fromWaveResult.records.length === 0) {
+                    throw new StoreError('Wave not found');
+                }
+
+                const fromWaveDate = fromWaveResult.records[0].get('fromWaveDate');
+
+                if (milestone.wave.date < fromWaveDate) {
+                    return null; // Milestone doesn't pass wave filter
+                }
+            }
+
+            // Remove versionId from response
+            const { versionId, ...milestoneResult } = milestone;
+            return milestoneResult;
+        } catch (error) {
+            throw new StoreError(`Failed to find milestone by key: ${error.message}`, error);
         }
     }
 }

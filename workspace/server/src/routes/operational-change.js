@@ -34,14 +34,14 @@ router.get('/:id/milestones', async (req, res) => {
     }
 });
 
-// GET /operational-changes/:id/milestones/:milestoneId - Get specific milestone (latest version, baseline context, or wave filtered)
-router.get('/:id/milestones/:milestoneId', async (req, res) => {
+// GET /operational-changes/:id/milestones/:milestoneKey - Get specific milestone (latest version, baseline context, or wave filtered)
+router.get('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);
         const baselineId = versionedRouter.getBaselineId(req);
         const fromWaveId = versionedRouter.getFromWaveId(req);
-        console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneId: ${req.params.milestoneId}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
-        const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneId, userId, baselineId, fromWaveId);
+        console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
+        const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneKey, userId, baselineId, fromWaveId);
         res.json(milestone);
     } catch (error) {
         console.error('Error fetching milestone:', error);
@@ -73,8 +73,8 @@ router.post('/:id/milestones', async (req, res) => {
         }
 
         console.log(`OperationalChangeService.addMilestone() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        const milestone = await OperationalChangeService.addMilestone(req.params.id, req.body, expectedVersionId, userId);
-        res.status(201).json(milestone);
+        const response = await OperationalChangeService.addMilestone(req.params.id, req.body, expectedVersionId, userId);
+        res.status(201).json(response);
     } catch (error) {
         console.error('Error adding milestone:', error);
         if (error.message === 'Operational change not found') {
@@ -91,8 +91,8 @@ router.post('/:id/milestones', async (req, res) => {
     }
 });
 
-// PUT /operational-changes/:id/milestones/:milestoneId - Update milestone (current context only)
-router.put('/:id/milestones/:milestoneId', async (req, res) => {
+// PUT /operational-changes/:id/milestones/:milestoneKey - Update milestone (current context only)
+router.put('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);
         const expectedVersionId = req.body.expectedVersionId;
@@ -102,9 +102,9 @@ router.put('/:id/milestones/:milestoneId', async (req, res) => {
             });
         }
 
-        console.log(`OperationalChangeService.updateMilestone() itemId: ${req.params.id}, milestoneId: ${req.params.milestoneId}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        const milestone = await OperationalChangeService.updateMilestone(req.params.id, req.params.milestoneId, req.body, expectedVersionId, userId);
-        res.json(milestone);
+        console.log(`OperationalChangeService.updateMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
+        const response = await OperationalChangeService.updateMilestone(req.params.id, req.params.milestoneKey, req.body, expectedVersionId, userId);
+        res.json(response);
     } catch (error) {
         console.error('Error updating milestone:', error);
         if (error.message === 'Operational change not found' || error.message === 'Milestone not found') {
@@ -121,8 +121,8 @@ router.put('/:id/milestones/:milestoneId', async (req, res) => {
     }
 });
 
-// DELETE /operational-changes/:id/milestones/:milestoneId - Delete milestone (current context only)
-router.delete('/:id/milestones/:milestoneId', async (req, res) => {
+// DELETE /operational-changes/:id/milestones/:milestoneKey - Delete milestone (current context only)
+router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
         const userId = versionedRouter.getUserId(req);
         const expectedVersionId = req.body.expectedVersionId;
@@ -132,8 +132,8 @@ router.delete('/:id/milestones/:milestoneId', async (req, res) => {
             });
         }
 
-        console.log(`OperationalChangeService.deleteMilestone() itemId: ${req.params.id}, milestoneId: ${req.params.milestoneId}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneId, expectedVersionId, userId);
+        console.log(`OperationalChangeService.deleteMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
+        await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, userId);
         res.status(204).send();
     } catch (error) {
         console.error('Error deleting milestone:', error);

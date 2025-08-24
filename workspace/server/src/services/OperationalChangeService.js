@@ -46,21 +46,26 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     /**
-     * Get specific milestone by ID (latest version, baseline context, or wave filtered)
+     * Get specific milestone by milestoneKey (latest version, baseline context, or wave filtered)
      * @param {number} itemId - Operational Change Item ID
-     * @param {number} milestoneId - Milestone ID
+     * @param {string} milestoneKey - Milestone Key (stable identifier)
      * @param {string} userId - User ID
      * @param {number|null} baselineId - Optional baseline ID for historical context
      * @param {number|null} fromWaveId - Optional wave ID for filtering
      */
-    async getMilestone(itemId, milestoneId, userId, baselineId = null, fromWaveId = null) {
-        const milestones = await this.getMilestones(itemId, userId, baselineId, fromWaveId);
-        const store = this.getStore();
-        const milestone = milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
-        if (!milestone) {
-            throw new Error('Milestone not found');
+    async getMilestone(itemId, milestoneKey, userId, baselineId = null, fromWaveId = null) {
+        const tx = createTransaction(userId);
+        try {
+            const milestone = await this.getStore().findMilestoneByKey(itemId, milestoneKey, tx, baselineId, fromWaveId);
+            if (!milestone) {
+                throw new Error('Milestone not found');
+            }
+            await commitTransaction(tx);
+            return milestone;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
         }
-        return milestone;
     }
 
     /**
@@ -71,6 +76,7 @@ export class OperationalChangeService extends VersionedItemService {
      */
     _convertMilestonesToRawData(milestones) {
         return milestones.map(milestone => ({
+            milestoneKey: milestone.milestoneKey,  // Preserve stable identifier
             title: milestone.title,
             description: milestone.description,
             eventTypes: milestone.eventTypes,
@@ -80,6 +86,11 @@ export class OperationalChangeService extends VersionedItemService {
 
     /**
      * Add milestone to operational change (creates new OC version)
+     * @param {number} itemId - Operational Change Item ID
+     * @param {object} milestoneData - Milestone data to add
+     * @param {string} expectedVersionId - Expected version ID for optimistic locking
+     * @param {string} userId - User ID
+     * @returns {object} MilestoneCreateResponse with milestone and operationalChange version info
      */
     async addMilestone(itemId, milestoneData, expectedVersionId, userId) {
         const tx = createTransaction(userId);
@@ -95,7 +106,7 @@ export class OperationalChangeService extends VersionedItemService {
             // Convert existing milestones to raw data format
             const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
 
-            // Create new milestones array with added milestone
+            // Create new milestones array with added milestone (milestoneKey will be generated in store)
             const newMilestones = [...existingMilestonesData, milestoneData];
 
             // Validate the new milestone
@@ -116,9 +127,17 @@ export class OperationalChangeService extends VersionedItemService {
             const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
             await commitTransaction(tx);
 
-            // Return the newly added milestone
+            // Return the newly added milestone (last in array) with version info
             const addedMilestone = updatedOC.milestones[updatedOC.milestones.length - 1];
-            return addedMilestone;
+
+            return {
+                milestone: addedMilestone,
+                operationalChange: {
+                    itemId: updatedOC.itemId,
+                    versionId: updatedOC.versionId,
+                    version: updatedOC.version
+                }
+            };
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
@@ -127,8 +146,14 @@ export class OperationalChangeService extends VersionedItemService {
 
     /**
      * Update milestone (creates new OC version)
+     * @param {number} itemId - Operational Change Item ID
+     * @param {string} milestoneKey - Milestone Key (stable identifier)
+     * @param {object} milestoneData - Updated milestone data
+     * @param {string} expectedVersionId - Expected version ID for optimistic locking
+     * @param {string} userId - User ID
+     * @returns {object} MilestoneUpdateResponse with milestone and operationalChange version info
      */
-    async updateMilestone(itemId, milestoneId, milestoneData, expectedVersionId, userId) {
+    async updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, userId) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
@@ -142,15 +167,18 @@ export class OperationalChangeService extends VersionedItemService {
             // Convert existing milestones to raw data format
             const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
 
-            // Find and update the milestone
-            const milestoneIndex = current.milestones.findIndex(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+            // Find the milestone to update by milestoneKey
+            const milestoneIndex = current.milestones.findIndex(m => m.milestoneKey === milestoneKey);
             if (milestoneIndex === -1) {
                 throw new Error('Milestone not found');
             }
 
-            // Create new milestones array with updated milestone
+            // Create new milestones array with updated milestone (preserve milestoneKey)
             const newMilestones = [...existingMilestonesData];
-            newMilestones[milestoneIndex] = milestoneData; // Replace with new milestone data
+            newMilestones[milestoneIndex] = {
+                ...milestoneData,
+                milestoneKey: milestoneKey  // Preserve the stable identifier
+            };
 
             // Validate the updated milestones
             this._validateMilestones(newMilestones);
@@ -170,9 +198,17 @@ export class OperationalChangeService extends VersionedItemService {
             const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
             await commitTransaction(tx);
 
-            // Return the updated milestone
-            const updatedMilestone = updatedOC.milestones.find(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
-            return updatedMilestone;
+            // Return the updated milestone (at the same index position) with version info
+            const updatedMilestone = updatedOC.milestones[milestoneIndex];
+
+            return {
+                milestone: updatedMilestone,
+                operationalChange: {
+                    itemId: updatedOC.itemId,
+                    versionId: updatedOC.versionId,
+                    version: updatedOC.version
+                }
+            };
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
@@ -181,8 +217,13 @@ export class OperationalChangeService extends VersionedItemService {
 
     /**
      * Delete milestone (creates new OC version)
+     * @param {number} itemId - Operational Change Item ID
+     * @param {string} milestoneKey - Milestone Key (stable identifier)
+     * @param {string} expectedVersionId - Expected version ID for optimistic locking
+     * @param {string} userId - User ID
+     * @returns {boolean} True if successful
      */
-    async deleteMilestone(itemId, milestoneId, expectedVersionId, userId) {
+    async deleteMilestone(itemId, milestoneKey, expectedVersionId, userId) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
@@ -193,8 +234,8 @@ export class OperationalChangeService extends VersionedItemService {
                 throw new Error('Operational change not found');
             }
 
-            // Find milestone to delete
-            const milestoneIndex = current.milestones.findIndex(m => store.normalizeId(m.id) === store.normalizeId(milestoneId));
+            // Find milestone to delete by milestoneKey
+            const milestoneIndex = current.milestones.findIndex(m => m.milestoneKey === milestoneKey);
             if (milestoneIndex === -1) {
                 throw new Error('Milestone not found');
             }

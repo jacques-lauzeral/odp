@@ -76,7 +76,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/Milestone'
+                $ref: 'openapi-base.yml#/components/schemas/MilestoneCreateResponse'
         '409':
           description: Version Conflict - expectedVersionId is outdated
           content:
@@ -90,7 +90,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
-  /operational-changes/{id}/milestones/{milestoneId}:
+  /operational-changes/{id}/milestones/{milestoneKey}:
     get:
       summary: Get specific milestone (latest version, baseline context, or wave filtered)
       tags: [Milestones]
@@ -101,12 +101,12 @@ paths:
           schema:
             type: string
           description: Operational Change Item ID
-        - name: milestoneId
+        - name: milestoneKey
           in: path
           required: true
           schema:
             type: string
-          description: Milestone ID
+          description: Milestone Key (stable identifier preserved across versions)
         - name: baseline
           in: query
           required: false
@@ -149,12 +149,12 @@ paths:
           schema:
             type: string
           description: Operational Change Item ID
-        - name: milestoneId
+        - name: milestoneKey
           in: path
           required: true
           schema:
             type: string
-          description: Milestone ID
+          description: Milestone Key (stable identifier preserved across versions)
       requestBody:
         required: true
         content:
@@ -167,21 +167,21 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/Milestone'
+                $ref: 'openapi-base.yml#/components/schemas/MilestoneUpdateResponse'
         '409':
           description: Version Conflict - expectedVersionId is outdated
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
-        '404':
-          description: Milestone or Operational Change not found
+        '400':
+          description: Validation Error - Invalid milestone data or wave reference
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
-        '400':
-          description: Validation Error - Invalid milestone data or wave reference
+        '404':
+          description: Milestone or Operational Change not found
           content:
             application/json:
               schema:
@@ -197,12 +197,12 @@ paths:
           schema:
             type: string
           description: Operational Change Item ID
-        - name: milestoneId
+        - name: milestoneKey
           in: path
           required: true
           schema:
             type: string
-          description: Milestone ID
+          description: Milestone Key (stable identifier preserved across versions)
       requestBody:
         required: true
         content:

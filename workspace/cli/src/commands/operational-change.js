@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-change.js - Updated with --edition support
+// workspace/cli/src/commands/operational-change.js - Updated with milestoneKey support
 import { VersionedCommands } from '../base-commands.js';  // Fixed: was './base-commands.js'
 import Table from 'cli-table3';
 import fetch from "node-fetch";
@@ -43,8 +43,8 @@ class OperationalChangeCommands extends VersionedCommands {
             console.log(`\nMilestones:`);
 
             const table = new Table({
-                head: ['ID', 'Title', 'Description', 'Event Types', 'Wave'],
-                colWidths: [15, 20, 30, 25, 15]
+                head: ['Milestone Key', 'Title', 'Description', 'Event Types', 'Wave'],
+                colWidths: [25, 20, 30, 25, 15]
             });
 
             item.milestones.forEach(milestone => {
@@ -54,7 +54,7 @@ class OperationalChangeCommands extends VersionedCommands {
                     'Not targeted';
 
                 table.push([
-                    milestone.id,
+                    milestone.milestoneKey,
                     milestone.title,
                     milestone.description,
                     eventTypes,
@@ -282,8 +282,8 @@ class OperationalChangeCommands extends VersionedCommands {
                 }
 
                 const table = new Table({
-                    head: ['ID', 'Title', 'Description', 'Event Types', 'Wave'],
-                    colWidths: [15, 20, 30, 25, 15]
+                    head: ['Milestone Key', 'Title', 'Description', 'Event Types', 'Wave'],
+                    colWidths: [25, 20, 30, 25, 15]
                 });
 
                 milestones.forEach(milestone => {
@@ -293,7 +293,7 @@ class OperationalChangeCommands extends VersionedCommands {
                         'Not targeted';
 
                     table.push([
-                        milestone.id,
+                        milestone.milestoneKey,
                         milestone.title,
                         milestone.description,
                         eventTypes,
@@ -312,15 +312,15 @@ class OperationalChangeCommands extends VersionedCommands {
 
         // Milestone show command with baseline and edition support
         const milestoneShowCommand = itemCommand
-            .command('milestone-show <itemId> <milestoneId>')
-            .description(`Show specific milestone`);
+            .command('milestone-show <itemId> <milestoneKey>')
+            .description(`Show specific milestone by milestone key`);
 
         this.addEditionSupportToMilestoneCommand(milestoneShowCommand);
 
-        milestoneShowCommand.action(async (itemId, milestoneId, options) => {
+        milestoneShowCommand.action(async (itemId, milestoneKey, options) => {
             try {
                 const { url, contextDisplay } = await this.buildMilestoneContextUrl(
-                    `${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`,
+                    `${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneKey}`,
                     options
                 );
 
@@ -347,7 +347,8 @@ class OperationalChangeCommands extends VersionedCommands {
                     console.log(`=== MILESTONE${contextDisplay.toUpperCase()} ===`);
                 }
 
-                console.log(`Milestone ID: ${milestone.id}`);
+                console.log(`Milestone Key: ${milestone.milestoneKey}`);
+                console.log(`Technical ID: ${milestone.id}`);
                 console.log(`Title: ${milestone.title}`);
                 console.log(`Description: ${milestone.description}`);
                 console.log(`Event Types: ${milestone.eventTypes?.join(', ') || 'None'}`);
@@ -404,9 +405,14 @@ class OperationalChangeCommands extends VersionedCommands {
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
                     }
 
-                    const milestone = await response.json();
-                    console.log(`Added milestone: ${milestone.title} (ID: ${milestone.id})`);
-                    console.log(`${this.displayName} updated to new version`);
+                    const result = await response.json();
+
+                    // Handle new response format: {milestone: {...}, operationalChange: {...}}
+                    const milestone = result.milestone;
+                    const operationalChange = result.operationalChange;
+
+                    console.log(`Added milestone: ${milestone.title} (Key: ${milestone.milestoneKey})`);
+                    console.log(`${this.displayName} updated to version ${operationalChange.version} (Version ID: ${operationalChange.versionId})`);
                 } catch (error) {
                     console.error(`Error adding milestone:`, error.message);
                     process.exit(1);
@@ -415,13 +421,13 @@ class OperationalChangeCommands extends VersionedCommands {
 
         // Milestone update command (no edition support - write operation)
         itemCommand
-            .command('milestone-update <itemId> <milestoneId> <expectedVersionId>')
-            .description(`Update milestone (creates new version)`)
+            .command('milestone-update <itemId> <milestoneKey> <expectedVersionId>')
+            .description(`Update milestone by milestone key (creates new version)`)
             .option('--title <title>', 'New title')
             .option('--description <description>', 'New description')
             .option('--event-types <types...>', 'New event types')
             .option('--wave <waveId>', 'New target wave ID')
-            .action(async (itemId, milestoneId, expectedVersionId, options) => {
+            .action(async (itemId, milestoneKey, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
 
@@ -430,7 +436,7 @@ class OperationalChangeCommands extends VersionedCommands {
                     if (options.eventTypes) data.eventTypes = options.eventTypes;
                     if (options.wave) data.waveId = options.wave;
 
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneKey}`, {
                         method: 'PUT',
                         headers: this.createHeaders(),
                         body: JSON.stringify(data)
@@ -454,9 +460,14 @@ class OperationalChangeCommands extends VersionedCommands {
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
                     }
 
-                    const milestone = await response.json();
-                    console.log(`Updated milestone: ${milestone.title} (ID: ${milestone.id})`);
-                    console.log(`${this.displayName} updated to new version`);
+                    const result = await response.json();
+
+                    // Handle new response format: {milestone: {...}, operationalChange: {...}}
+                    const milestone = result.milestone;
+                    const operationalChange = result.operationalChange;
+
+                    console.log(`Updated milestone: ${milestone.title} (Key: ${milestone.milestoneKey})`);
+                    console.log(`${this.displayName} updated to version ${operationalChange.version} (Version ID: ${operationalChange.versionId})`);
                 } catch (error) {
                     console.error(`Error updating milestone:`, error.message);
                     process.exit(1);
@@ -465,13 +476,13 @@ class OperationalChangeCommands extends VersionedCommands {
 
         // Milestone delete command (no edition support - write operation)
         itemCommand
-            .command('milestone-delete <itemId> <milestoneId> <expectedVersionId>')
-            .description(`Delete milestone (creates new version)`)
-            .action(async (itemId, milestoneId, expectedVersionId) => {
+            .command('milestone-delete <itemId> <milestoneKey> <expectedVersionId>')
+            .description(`Delete milestone by milestone key (creates new version)`)
+            .action(async (itemId, milestoneKey, expectedVersionId) => {
                 try {
                     const data = { expectedVersionId };
 
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneKey}`, {
                         method: 'DELETE',
                         headers: this.createHeaders(),
                         body: JSON.stringify(data)
@@ -494,7 +505,7 @@ class OperationalChangeCommands extends VersionedCommands {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
 
-                    console.log(`Deleted milestone with ID: ${milestoneId}`);
+                    console.log(`Deleted milestone with key: ${milestoneKey}`);
                     console.log(`${this.displayName} updated to new version`);
                 } catch (error) {
                     console.error(`Error deleting milestone:`, error.message);

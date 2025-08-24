@@ -1,15 +1,11 @@
-openapi: 3.0.3
-
 components:
   securitySchemes:
     UserContext:
       type: apiKey
       in: header
-      name: x-user-id
-      description: User identifier for audit context
+      name: X-User-ID
 
   schemas:
-    # Error Responses
     Error:
       type: object
       properties:
@@ -18,11 +14,29 @@ components:
           properties:
             code:
               type: string
-              enum: [BAD_REQUEST, VALIDATION_ERROR, NOT_FOUND, VERSION_CONFLICT, CONFLICT, INTERNAL_ERROR]
             message:
               type: string
 
-    # Setup Entities (Simple)
+    EntityReference:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+
+    OperationalRequirementReference:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [ON, OR]
+
+    # Setup Entity Schemas
     StakeholderCategory:
       type: object
       properties:
@@ -32,6 +46,12 @@ components:
           type: string
         description:
           type: string
+        parentCategory:
+          $ref: '#/components/schemas/EntityReference'
+        childCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityReference'
 
     StakeholderCategoryRequest:
       type: object
@@ -41,7 +61,7 @@ components:
           type: string
         description:
           type: string
-        parentId:
+        parentCategoryId:
           type: string
           nullable: true
 
@@ -54,6 +74,12 @@ components:
           type: string
         description:
           type: string
+        parentCategory:
+          $ref: '#/components/schemas/EntityReference'
+        childCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityReference'
 
     DataCategoryRequest:
       type: object
@@ -63,7 +89,7 @@ components:
           type: string
         description:
           type: string
-        parentId:
+        parentCategoryId:
           type: string
           nullable: true
 
@@ -85,9 +111,6 @@ components:
           type: string
         description:
           type: string
-        parentId:
-          type: string
-          nullable: true
 
     RegulatoryAspect:
       type: object
@@ -107,9 +130,6 @@ components:
           type: string
         description:
           type: string
-        parentId:
-          type: string
-          nullable: true
 
     Wave:
       type: object
@@ -118,18 +138,14 @@ components:
           type: string
         year:
           type: integer
-          minimum: 2020
-          maximum: 2030
         quarter:
           type: integer
-          minimum: 1
-          maximum: 4
         date:
           type: string
           format: date
         name:
           type: string
-          description: "Derived name in format 'year.quarter' (e.g., '2025.1')"
+          description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
 
     WaveRequest:
       type: object
@@ -137,40 +153,17 @@ components:
       properties:
         year:
           type: integer
-          minimum: 2020
+          minimum: 2024
           maximum: 2030
-          description: "4-digit year (YYYY)"
         quarter:
           type: integer
           minimum: 1
           maximum: 4
-          description: "Quarter number (1-4)"
         date:
           type: string
           format: date
-          description: "Target date for the wave (YYYY-MM-DD)"
 
-    # Reference Objects (for operational entity outputs)
-    EntityReference:
-      type: object
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-
-    OperationalRequirementReference:
-      type: object
-      properties:
-        id:
-          type: string
-        title:
-          type: string
-        type:
-          type: string
-          enum: [ON, OR]
-
-    # Operational Entities (Versioned)
+    # Operational Entity Schemas
     OperationalRequirement:
       type: object
       properties:
@@ -288,6 +281,10 @@ components:
       properties:
         id:
           type: string
+          description: "Technical node ID (changes with each version)"
+        milestoneKey:
+          type: string
+          description: "Stable milestone identifier (preserved across versions)"
         title:
           type: string
         description:
@@ -305,7 +302,7 @@ components:
               type: string
             name:
               type: string
-              description: "Waves name in format 'year.quarter' (e.g., '2025.1')"
+              description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
 
     MilestoneRequest:
       type: object
@@ -333,6 +330,36 @@ components:
             expectedVersionId:
               type: string
               description: Version ID of the OperationalChange (for optimistic locking)
+
+    MilestoneCreateResponse:
+      type: object
+      properties:
+        milestone:
+          $ref: '#/components/schemas/Milestone'
+        operationalChange:
+          type: object
+          properties:
+            itemId:
+              type: string
+            versionId:
+              type: string
+            version:
+              type: integer
+
+    MilestoneUpdateResponse:
+      type: object
+      properties:
+        milestone:
+          $ref: '#/components/schemas/Milestone'
+        operationalChange:
+          type: object
+          properties:
+            itemId:
+              type: string
+            versionId:
+              type: string
+            version:
+              type: integer
 
     OperationalChange:
       type: object
@@ -440,7 +467,7 @@ components:
         createdBy:
           type: string
 
-    # Baseline Management
+    # Management Entity Schemas
     Baseline:
       type: object
       properties:
@@ -453,9 +480,6 @@ components:
           format: date-time
         createdBy:
           type: string
-        capturedItemCount:
-          type: integer
-          description: "Number of OR/OC versions captured in this baseline"
 
     BaselineRequest:
       type: object
@@ -463,9 +487,7 @@ components:
       properties:
         title:
           type: string
-          description: "Unique identifier for the baseline"
 
-    # ODP Edition Management
     ODPEdition:
       type: object
       properties:
@@ -475,37 +497,16 @@ components:
           type: string
         type:
           type: string
-          enum: [DRAFT, OFFICIAL]
+          enum: [ALPHA, BETA, RELEASE]
         createdAt:
           type: string
           format: date-time
         createdBy:
           type: string
         baseline:
-          type: object
-          properties:
-            id:
-              type: string
-            title:
-              type: string
-            createdAt:
-              type: string
-              format: date-time
+          $ref: '#/components/schemas/EntityReference'
         startsFromWave:
-          type: object
-          properties:
-            id:
-              type: string
-            name:
-              type: string
-              description: "Waves name in format 'year.quarter' (e.g., '2025.1')"
-            year:
-              type: integer
-            quarter:
-              type: integer
-            date:
-              type: string
-              format: date
+          $ref: '#/components/schemas/EntityReference'
 
     ODPEditionRequest:
       type: object
@@ -513,14 +514,10 @@ components:
       properties:
         title:
           type: string
-          description: "Unique identifier for the ODP edition"
         type:
           type: string
-          enum: [DRAFT, OFFICIAL]
-          description: "Edition status"
+          enum: [ALPHA, BETA, RELEASE]
         baselineId:
           type: string
-          description: "Baseline ID that this edition references"
         startsFromWaveId:
           type: string
-          description: "Waves ID that this edition starts from for filtering"
