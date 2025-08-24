@@ -1,6 +1,5 @@
 import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
 import { apiClient } from '../../shared/api-client.js';
-import { MilestoneEditorModal } from './milestone-editor-modal.js';
 
 /**
  * ChangeForm - Operational Change form configuration and handling
@@ -12,9 +11,6 @@ export default class ChangeForm extends CollectionEntityForm {
         // Call parent constructor with appropriate context
         super(entityConfig, { setupData });
 
-        // DEBUG: Check if MilestoneEditorModal imported correctly
-        console.log('ChangeForm constructor - MilestoneEditorModal available:', typeof MilestoneEditorModal);
-
         this.setupData = setupData;
 
         // Cache for requirements
@@ -24,7 +20,16 @@ export default class ChangeForm extends CollectionEntityForm {
 
         // Milestone management
         this.milestones = [];
-        this.milestoneEditor = null;
+
+        // Available event types from API schema
+        this.availableEventTypes = [
+            'API_PUBLICATION',
+            'API_TEST_DEPLOYMENT',
+            'UI_TEST_DEPLOYMENT',
+            'SERVICE_ACTIVATION',
+            'API_DECOMMISSIONING',
+            'OTHER'
+        ];
     }
 
     // ====================
@@ -296,7 +301,6 @@ export default class ChangeForm extends CollectionEntityForm {
             // After creation, update current item for milestone operations
             if (result) {
                 this.currentItem = result;
-                this.initializeMilestoneEditor();
             }
             return result;
         } else {
@@ -332,14 +336,8 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
 
     renderMilestonesTable(field, fieldId, value, required) {
-        console.log('ChangeForm.renderMilestonesTable - called');
-        console.log('ChangeForm.renderMilestonesTable - currentMode:', this.currentMode);
-        console.log('ChangeForm.renderMilestonesTable - currentItem:', this.currentItem);
-
         const isReadMode = this.currentMode === 'read';
         const itemId = this.currentItem?.itemId || this.currentItem?.id;
-
-        console.log('ChangeForm.renderMilestonesTable - isReadMode:', isReadMode, 'itemId:', itemId);
 
         let html = `<div class="milestones-section" id="${fieldId}">`;
 
@@ -353,7 +351,6 @@ export default class ChangeForm extends CollectionEntityForm {
                     </button>
                 </div>
             `;
-            console.log('ChangeForm.renderMilestonesTable - Add button will be rendered');
         } else if (!isReadMode && !itemId) {
             html += `
                 <div class="milestones-header">
@@ -361,10 +358,8 @@ export default class ChangeForm extends CollectionEntityForm {
                     <small class="form-text text-muted">Save the change first to manage milestones</small>
                 </div>
             `;
-            console.log('ChangeForm.renderMilestonesTable - Save first message will be rendered');
         } else {
             html += `<div class="milestones-header"><span class="milestones-label">Milestones:</span></div>`;
-            console.log('ChangeForm.renderMilestonesTable - Read-only header will be rendered');
         }
 
         // Milestone table
@@ -372,7 +367,6 @@ export default class ChangeForm extends CollectionEntityForm {
 
         html += `</div>`;
 
-        // Note: Event binding moved to showEditModal to ensure DOM is ready
         return html;
     }
 
@@ -478,89 +472,184 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE EVENT HANDLING
+    // MILESTONE EVENT HANDLING - INTEGRATED WITH MODAL STACK
     // ====================
 
     bindMilestoneEvents() {
         console.log('ChangeForm.bindMilestoneEvents - called');
 
-        // Initialize milestone editor if not already done
-        this.initializeMilestoneEditor();
+        // PREVENT MULTIPLE BINDINGS
+        if (this._milestoneEventsBound) {
+            console.log('ChangeForm.bindMilestoneEvents - already bound, skipping');
+            return;
+        }
 
-        // Debug: Check what's in the DOM
+        // Add milestone button - use event delegation to avoid multiple bindings
         const milestonesSection = document.querySelector('.milestones-section');
-        console.log('ChangeForm.bindMilestoneEvents - milestonesSection found:', !!milestonesSection);
-
         if (milestonesSection) {
-            console.log('ChangeForm.bindMilestoneEvents - milestonesSection HTML:', milestonesSection.innerHTML);
-        }
+            // Remove any existing listeners first
+            milestonesSection.removeEventListener('click', this._milestoneClickHandler);
 
-        // Add milestone button
-        const addBtn = document.getElementById('add-milestone-btn');
-        console.log('ChangeForm.bindMilestoneEvents - addBtn found:', !!addBtn);
-
-        // Try alternative selector
-        const addBtnAlt = document.querySelector('.milestones-section button');
-        console.log('ChangeForm.bindMilestoneEvents - addBtnAlt found:', !!addBtnAlt);
-
-        if (addBtn) {
-            addBtn.addEventListener('click', () => {
-                console.log('Add milestone button clicked');
-                this.handleAddMilestone();
-            });
-        } else if (addBtnAlt) {
-            console.log('ChangeForm.bindMilestoneEvents - Using alternative button selector');
-            addBtnAlt.addEventListener('click', () => {
-                console.log('Add milestone button clicked (alt)');
-                this.handleAddMilestone();
-            });
-        }
-
-        // Edit/Delete milestone buttons
-        const tbody = document.getElementById('milestones-tbody');
-        if (tbody) {
-            tbody.addEventListener('click', (e) => {
-                const milestoneId = e.target.dataset.milestoneId;
-                if (!milestoneId) return;
-
-                if (e.target.classList.contains('edit-milestone')) {
-                    this.handleEditMilestone(milestoneId);
-                } else if (e.target.classList.contains('delete-milestone')) {
-                    this.handleDeleteMilestone(milestoneId);
+            // Create bound handler
+            this._milestoneClickHandler = (e) => {
+                if (e.target.id === 'add-milestone-btn') {
+                    console.log('Add milestone button clicked');
+                    this.handleAddMilestone();
                 }
-            });
+
+                const milestoneId = e.target.dataset.milestoneId;
+                if (milestoneId) {
+                    if (e.target.classList.contains('edit-milestone')) {
+                        this.handleEditMilestone(milestoneId);
+                    } else if (e.target.classList.contains('delete-milestone')) {
+                        this.handleDeleteMilestone(milestoneId);
+                    }
+                }
+            };
+
+            // Add single event listener
+            milestonesSection.addEventListener('click', this._milestoneClickHandler);
         }
+        this._milestoneEventsBound = true;
     }
 
-    initializeMilestoneEditor() {
-        console.log('ChangeForm.initializeMilestoneEditor - called');
-        console.log('ChangeForm.initializeMilestoneEditor - currentItem:', this.currentItem);
+    // ====================
+    // NEW: INTEGRATED MILESTONE FORM GENERATION
+    // ====================
 
-        if (!this.milestoneEditor && this.currentItem) {
-            const changeId = this.currentItem.itemId || this.currentItem.id;
-            console.log('ChangeForm.initializeMilestoneEditor - creating editor with changeId:', changeId);
-            this.milestoneEditor = new MilestoneEditorModal(changeId, this.setupData, this);
-            console.log('ChangeForm.initializeMilestoneEditor - editor created:', !!this.milestoneEditor);
-        }
+    generateMilestoneForm(mode, milestone = null) {
+        const isEdit = mode === 'edit';
+        const title = milestone?.title || '';
+        const description = milestone?.description || '';
+        const waveId = milestone?.wave?.id || milestone?.waveId || '';
+        const selectedEventTypes = milestone?.eventTypes || [];
+
+        return `
+            <div class="milestone-form">
+                <!-- Title Field -->
+                <div class="form-group" data-field="title">
+                    <label for="milestone-title">Title <span class="required">*</span></label>
+                    <input type="text" 
+                        id="milestone-title" 
+                        name="title" 
+                        class="form-control" 
+                        value="${this.escapeHtml(title)}"
+                        placeholder="Enter milestone title"
+                        required>
+                    <div class="validation-message"></div>
+                </div>
+
+                <!-- Description Field -->
+                <div class="form-group" data-field="description">
+                    <label for="milestone-description">Description</label>
+                    <textarea 
+                        id="milestone-description" 
+                        name="description" 
+                        class="form-control" 
+                        rows="3"
+                        placeholder="Describe this milestone...">${this.escapeHtml(description)}</textarea>
+                    <div class="validation-message"></div>
+                </div>
+
+                <!-- Wave Selection -->
+                <div class="form-group" data-field="waveId">
+                    <label for="milestone-wave">Target Wave</label>
+                    <select id="milestone-wave" name="waveId" class="form-control">
+                        <option value="">Not assigned</option>
+                        ${this.renderWaveOptions(waveId)}
+                    </select>
+                    <small class="form-text">Select the deployment wave for this milestone</small>
+                    <div class="validation-message"></div>
+                </div>
+
+                <!-- Event Types with Tag/Label Pattern -->
+                <div class="form-group" data-field="eventTypes">
+                    <label>Event Types</label>
+                    <div class="tag-selector" id="event-types-selector" data-selected='${JSON.stringify(selectedEventTypes)}'>
+                        <div class="selected-tags" id="selected-event-types">
+                            ${this.renderSelectedEventTypes(selectedEventTypes)}
+                        </div>
+                        <div class="add-tag-container">
+                            <select id="event-type-dropdown" class="form-control">
+                                <option value="">+ Add Event Type</option>
+                                ${this.renderAvailableEventTypes(selectedEventTypes)}
+                            </select>
+                        </div>
+                    </div>
+                    <small class="form-text">Select one or more event types for this milestone</small>
+                    <div class="validation-message"></div>
+                </div>
+            </div>
+        `;
     }
+
+    renderWaveOptions(selectedWaveId) {
+        if (!this.setupData?.waves) {
+            return '';
+        }
+
+        return this.setupData.waves.map(wave => {
+            const waveId = wave.id.toString();
+            const selected = selectedWaveId && selectedWaveId.toString() === waveId ? 'selected' : '';
+            const label = `${wave.year} Q${wave.quarter}`;
+            return `<option value="${waveId}" ${selected}>${this.escapeHtml(label)}</option>`;
+        }).join('');
+    }
+
+    renderSelectedEventTypes(selectedEventTypes) {
+        return selectedEventTypes.map(eventType => `
+            <span class="tag" data-event-type="${eventType}">
+                ${this.formatEventType(eventType)}
+                <button type="button" class="tag-remove" data-event-type="${eventType}" title="Remove">×</button>
+            </span>
+        `).join('');
+    }
+
+    renderAvailableEventTypes(selectedEventTypes) {
+        const available = this.availableEventTypes.filter(type =>
+            !selectedEventTypes.includes(type)
+        );
+
+        return available.map(eventType => `
+            <option value="${eventType}">${this.formatEventType(eventType)}</option>
+        `).join('');
+    }
+
+    formatEventType(eventType) {
+        // Convert API enum to display format
+        return eventType.replace(/_/g, ' ').toLowerCase()
+            .replace(/\b\w/g, l => l.toUpperCase());
+    }
+
+    // ====================
+    // MILESTONE HANDLERS - USING NESTED MODALS
+    // ====================
 
     async handleAddMilestone() {
         console.log('ChangeForm.handleAddMilestone - called');
-        console.log('ChangeForm.handleAddMilestone - milestoneEditor:', !!this.milestoneEditor);
 
-        if (this.milestoneEditor) {
-            console.log('ChangeForm.handleAddMilestone - calling showCreateModal');
-            await this.milestoneEditor.showCreateModal();
-        } else {
-            console.error('ChangeForm.handleAddMilestone - no milestone editor available');
+        if (!this.currentItem) {
+            console.error('No current item for milestone creation');
+            return;
         }
+
+        const formContent = this.generateMilestoneForm('create');
+        this.showNestedModal(formContent, 'create-milestone');
     }
 
     async handleEditMilestone(milestoneId) {
         const milestone = this.milestones.find(m => m.id.toString() === milestoneId.toString());
-        if (milestone && this.milestoneEditor) {
-            await this.milestoneEditor.showEditModal(milestone);
+        if (!milestone) {
+            console.error('Milestone not found:', milestoneId);
+            return;
         }
+
+        const formContent = this.generateMilestoneForm('edit', milestone);
+
+        // Store milestone for save operation
+        this._editingMilestone = milestone;
+
+        this.showNestedModal(formContent, 'edit-milestone');
     }
 
     async handleDeleteMilestone(milestoneId) {
@@ -587,7 +676,140 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE REFRESH (Called by MilestoneEditorModal)
+    // OVERRIDE: NESTED MODAL HANDLING
+    // ====================
+
+    async handleSave() {
+        // Check if this is a milestone save
+        if (this.currentMode === 'create-milestone' || this.currentMode === 'edit-milestone') {
+            return await this.handleMilestoneSave();
+        }
+
+        // Otherwise, use parent save handling
+        return await super.handleSave();
+    }
+
+    async handleMilestoneSave() {
+        console.log('ChangeForm.handleMilestoneSave - called');
+
+        if (!this.currentModal) {
+            console.error('No current modal for milestone save');
+            return;
+        }
+
+        const form = this.currentModal.querySelector('form');
+        if (!form) {
+            console.error('No form found in milestone modal');
+            return;
+        }
+
+        // Clear previous errors
+        this.clearAllErrors();
+
+        // Collect form data
+        const formData = this.collectMilestoneFormData(form);
+
+        // Validate
+        const validation = this.validateMilestone(formData);
+        if (!validation.valid) {
+            this.showValidationErrors(validation.errors);
+            return;
+        }
+
+        // Prepare milestone data
+        const milestoneData = this.prepareMilestoneData(formData);
+
+        try {
+            let result;
+
+            if (this.currentMode === 'create-milestone') {
+                result = await apiClient.createMilestone(
+                    this.currentItem.itemId || this.currentItem.id,
+                    milestoneData
+                );
+            } else {
+                result = await apiClient.updateMilestone(
+                    this.currentItem.itemId || this.currentItem.id,
+                    this._editingMilestone.id,
+                    milestoneData
+                );
+            }
+
+            console.log('Milestone saved successfully');
+
+            // Close nested modal
+            this.closeModal();
+
+            // Refresh milestone list
+            await this.refreshMilestones();
+
+        } catch (error) {
+            console.error('Failed to save milestone:', error);
+            this.showFormError(error.message || 'Failed to save milestone. Please try again.');
+        }
+    }
+
+    collectMilestoneFormData(form) {
+        // Get basic form values
+        const titleInput = form.querySelector('#milestone-title');
+        const descriptionInput = form.querySelector('#milestone-description');
+        const waveInput = form.querySelector('#milestone-wave');
+
+        // Get selected event types from tag selector
+        const eventTypesSelector = form.querySelector('#event-types-selector');
+        const selectedEventTypes = eventTypesSelector ?
+            JSON.parse(eventTypesSelector.dataset.selected || '[]') : [];
+
+        // Also check for any changes made during this session
+        const tags = form.querySelectorAll('.tag[data-event-type]');
+        const currentEventTypes = Array.from(tags).map(tag => tag.dataset.eventType);
+
+        const data = {
+            title: titleInput ? titleInput.value.trim() : '',
+            description: descriptionInput ? descriptionInput.value.trim() : '',
+            waveId: waveInput && waveInput.value ? waveInput.value : null,
+            eventTypes: currentEventTypes.length > 0 ? currentEventTypes : selectedEventTypes
+        };
+
+        return data;
+    }
+
+    validateMilestone(data) {
+        const errors = [];
+
+        // Title is required
+        if (!data.title || data.title.trim().length === 0) {
+            errors.push({
+                field: 'title',
+                message: 'Title is required'
+            });
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors
+        };
+    }
+
+    prepareMilestoneData(formData) {
+        const data = {
+            title: formData.title,
+            description: formData.description,
+            eventTypes: formData.eventTypes || [],
+            waveId: formData.waveId ? parseInt(formData.waveId, 10) : null
+        };
+
+        // Add expected version ID for updates (optimistic locking)
+        const currentItem = this.currentItem;
+        if (currentItem?.versionId) {
+            data.expectedVersionId = currentItem.versionId;
+        }
+
+        return data;
+    }
+
+    // ====================
+    // MILESTONE REFRESH
     // ====================
 
     async refreshMilestones() {
@@ -620,7 +842,10 @@ export default class ChangeForm extends CollectionEntityForm {
             }
 
             // Rebind events after milestone list update
-            this.bindMilestoneEvents();
+            if (!this._milestoneEventsBound) {
+                this.bindMilestoneEvents();
+                this._milestoneEventsBound = true;
+            }
         } catch (error) {
             console.error('Failed to refresh milestones:', error);
         }
@@ -637,12 +862,6 @@ export default class ChangeForm extends CollectionEntityForm {
         if (item && (item.itemId || item.id)) {
             await this.refreshMilestones();
         }
-
-        // IMPORTANT: Bind milestone events AFTER modal is fully rendered
-        setTimeout(() => {
-            console.log('ChangeForm.showEditModal - Binding events after modal render');
-            this.bindMilestoneEvents();
-        }, 100); // Slightly longer delay to ensure DOM is ready
     }
 
     async showReadOnlyModal(item) {
@@ -651,6 +870,86 @@ export default class ChangeForm extends CollectionEntityForm {
         // Load milestones for read-only view
         if (item && (item.itemId || item.id)) {
             await this.refreshMilestones();
+        }
+    }
+
+    showNestedModal(formContent, mode) {
+        // Store the current milestone editing mode
+        const previousMode = this.currentMode;
+        this.currentMode = mode;
+
+        // Call parent's showNestedModal method
+        super.showNestedModal(formContent, mode);
+
+        // Bind event type selector events for milestone forms
+        if (mode === 'create-milestone' || mode === 'edit-milestone') {
+            setTimeout(() => {
+                this.bindEventTypeSelector();
+            }, 100);
+        }
+    }
+
+    bindEventTypeSelector() {
+        // Event type dropdown change
+        const dropdown = document.querySelector('#event-type-dropdown');
+        if (dropdown) {
+            dropdown.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    this.addEventType(e.target.value);
+                    e.target.value = ''; // Reset dropdown
+                }
+            });
+        }
+
+        // Tag removal clicks
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tag-remove')) {
+                const eventType = e.target.dataset.eventType;
+                this.removeEventType(eventType);
+            }
+        });
+    }
+
+    addEventType(eventType) {
+        const eventTypesSelector = document.querySelector('#event-types-selector');
+        if (!eventTypesSelector) return;
+
+        const currentTypes = JSON.parse(eventTypesSelector.dataset.selected || '[]');
+        if (!currentTypes.includes(eventType)) {
+            currentTypes.push(eventType);
+            eventTypesSelector.dataset.selected = JSON.stringify(currentTypes);
+            this.refreshEventTypeDisplay();
+        }
+    }
+
+    removeEventType(eventType) {
+        const eventTypesSelector = document.querySelector('#event-types-selector');
+        if (!eventTypesSelector) return;
+
+        const currentTypes = JSON.parse(eventTypesSelector.dataset.selected || '[]');
+        const filteredTypes = currentTypes.filter(type => type !== eventType);
+        eventTypesSelector.dataset.selected = JSON.stringify(filteredTypes);
+        this.refreshEventTypeDisplay();
+    }
+
+    refreshEventTypeDisplay() {
+        const eventTypesSelector = document.querySelector('#event-types-selector');
+        if (!eventTypesSelector) return;
+
+        const currentTypes = JSON.parse(eventTypesSelector.dataset.selected || '[]');
+
+        const selectedContainer = document.getElementById('selected-event-types');
+        const dropdown = document.getElementById('event-type-dropdown');
+
+        if (selectedContainer) {
+            selectedContainer.innerHTML = this.renderSelectedEventTypes(currentTypes);
+        }
+
+        if (dropdown) {
+            // Preserve current dropdown state
+            const currentValue = dropdown.value;
+            dropdown.innerHTML = `<option value="">+ Add Event Type</option>${this.renderAvailableEventTypes(currentTypes)}`;
+            dropdown.value = currentValue;
         }
     }
 
