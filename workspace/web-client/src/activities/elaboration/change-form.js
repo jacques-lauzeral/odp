@@ -427,13 +427,15 @@ export default class ChangeForm extends CollectionEntityForm {
         html += `<td class="milestone-events">${eventTypes}</td>`;
 
         if (!isReadMode && hasItemId) {
+            // Use milestoneKey instead of id for action buttons
+            const milestoneKey = milestone.milestoneKey || milestone.id; // Fallback for backwards compatibility
             html += `
                 <td class="milestone-actions">
                     <button type="button" class="btn-icon edit-milestone" 
-                            data-milestone-id="${milestone.id}" 
+                            data-milestone-key="${milestoneKey}" 
                             title="Edit milestone">✏️</button>
                     <button type="button" class="btn-icon delete-milestone" 
-                            data-milestone-id="${milestone.id}"
+                            data-milestone-key="${milestoneKey}"
                             title="Delete milestone">🗑️</button>
                 </td>
             `;
@@ -497,12 +499,13 @@ export default class ChangeForm extends CollectionEntityForm {
                     this.handleAddMilestone();
                 }
 
-                const milestoneId = e.target.dataset.milestoneId;
-                if (milestoneId) {
+                // Updated to use milestoneKey instead of milestoneId
+                const milestoneKey = e.target.dataset.milestoneKey;
+                if (milestoneKey) {
                     if (e.target.classList.contains('edit-milestone')) {
-                        this.handleEditMilestone(milestoneId);
+                        this.handleEditMilestone(milestoneKey);
                     } else if (e.target.classList.contains('delete-milestone')) {
-                        this.handleDeleteMilestone(milestoneId);
+                        this.handleDeleteMilestone(milestoneKey);
                     }
                 }
             };
@@ -637,10 +640,15 @@ export default class ChangeForm extends CollectionEntityForm {
         this.showNestedModal(formContent, 'create-milestone');
     }
 
-    async handleEditMilestone(milestoneId) {
-        const milestone = this.milestones.find(m => m.id.toString() === milestoneId.toString());
+    async handleEditMilestone(milestoneKey) {
+        // Find milestone by milestoneKey instead of id
+        const milestone = this.milestones.find(m =>
+            (m.milestoneKey && m.milestoneKey === milestoneKey) ||
+            (m.id && m.id.toString() === milestoneKey.toString()) // Fallback for backwards compatibility
+        );
+
         if (!milestone) {
-            console.error('Milestone not found:', milestoneId);
+            console.error('Milestone not found:', milestoneKey);
             return;
         }
 
@@ -652,8 +660,13 @@ export default class ChangeForm extends CollectionEntityForm {
         this.showNestedModal(formContent, 'edit-milestone');
     }
 
-    async handleDeleteMilestone(milestoneId) {
-        const milestone = this.milestones.find(m => m.id.toString() === milestoneId.toString());
+    async handleDeleteMilestone(milestoneKey) {
+        // Find milestone by milestoneKey instead of id
+        const milestone = this.milestones.find(m =>
+            (m.milestoneKey && m.milestoneKey === milestoneKey) ||
+            (m.id && m.id.toString() === milestoneKey.toString()) // Fallback for backwards compatibility
+        );
+
         if (!milestone) return;
 
         const confirmed = confirm(`Delete milestone "${milestone.title}"?`);
@@ -663,7 +676,9 @@ export default class ChangeForm extends CollectionEntityForm {
             const changeId = this.currentItem.itemId || this.currentItem.id;
             const expectedVersionId = this.currentItem.versionId;
 
-            await apiClient.deleteMilestone(changeId, milestoneId, expectedVersionId);
+            // Use milestoneKey for API call (with fallback to id for backwards compatibility)
+            const keyToUse = milestone.milestoneKey || milestone.id;
+            await apiClient.deleteMilestone(changeId, keyToUse, expectedVersionId);
 
             // Refresh milestone list
             await this.refreshMilestones();
@@ -727,12 +742,26 @@ export default class ChangeForm extends CollectionEntityForm {
                     this.currentItem.itemId || this.currentItem.id,
                     milestoneData
                 );
+
+                // Update current item with new version info from response
+                if (result && result.operationalChange) {
+                    this.currentItem.versionId = result.operationalChange.versionId;
+                    this.currentItem.version = result.operationalChange.version;
+                }
             } else {
+                // Use milestoneKey for update operation
+                const keyToUse = this._editingMilestone.milestoneKey || this._editingMilestone.id;
                 result = await apiClient.updateMilestone(
                     this.currentItem.itemId || this.currentItem.id,
-                    this._editingMilestone.id,
+                    keyToUse,
                     milestoneData
                 );
+
+                // Update current item with new version info from response
+                if (result && result.operationalChange) {
+                    this.currentItem.versionId = result.operationalChange.versionId;
+                    this.currentItem.version = result.operationalChange.version;
+                }
             }
 
             console.log('Milestone saved successfully');

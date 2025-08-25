@@ -4,6 +4,8 @@ import { apiClient } from '../../shared/api-client.js';
  * MilestoneEditorModal - Pure utility class for milestone form generation and API operations
  * NO LONGER MANAGES MODALS - that's handled by ChangeForm using the modal stack
  * This class only provides form content generation and data operations
+ *
+ * Updated to support milestone UUID-based keys (milestoneKey) and enhanced API responses
  */
 export class MilestoneEditorModal {
     constructor(changeId, setupData, parentForm) {
@@ -201,7 +203,7 @@ export class MilestoneEditorModal {
     }
 
     // ====================
-    // API OPERATIONS (called by parent form)
+    // API OPERATIONS (updated for UUID-based keys and enhanced responses)
     // ====================
 
     async createMilestone(milestoneData) {
@@ -210,6 +212,21 @@ export class MilestoneEditorModal {
         try {
             const result = await apiClient.createMilestone(this.changeId, milestoneData);
             console.log('MilestoneEditorModal.createMilestone - API result:', result);
+
+            // API now returns both milestone and operationalChange info
+            if (result && result.operationalChange) {
+                console.log('MilestoneEditorModal.createMilestone - updating parent form version info:', {
+                    versionId: result.operationalChange.versionId,
+                    version: result.operationalChange.version
+                });
+
+                // Update parent form's current item with new version info
+                if (this.parentForm && this.parentForm.currentItem) {
+                    this.parentForm.currentItem.versionId = result.operationalChange.versionId;
+                    this.parentForm.currentItem.version = result.operationalChange.version;
+                }
+            }
+
             return result;
         } catch (error) {
             console.error('MilestoneEditorModal.createMilestone - API error:', error);
@@ -217,12 +234,27 @@ export class MilestoneEditorModal {
         }
     }
 
-    async updateMilestone(milestoneId, milestoneData) {
-        console.log('MilestoneEditorModal.updateMilestone - called with id:', milestoneId, 'data:', milestoneData);
+    async updateMilestone(milestoneKey, milestoneData) {
+        console.log('MilestoneEditorModal.updateMilestone - called with milestoneKey:', milestoneKey, 'data:', milestoneData);
 
         try {
-            const result = await apiClient.updateMilestone(this.changeId, milestoneId, milestoneData);
+            const result = await apiClient.updateMilestone(this.changeId, milestoneKey, milestoneData);
             console.log('MilestoneEditorModal.updateMilestone - API result:', result);
+
+            // API now returns both milestone and operationalChange info
+            if (result && result.operationalChange) {
+                console.log('MilestoneEditorModal.updateMilestone - updating parent form version info:', {
+                    versionId: result.operationalChange.versionId,
+                    version: result.operationalChange.version
+                });
+
+                // Update parent form's current item with new version info
+                if (this.parentForm && this.parentForm.currentItem) {
+                    this.parentForm.currentItem.versionId = result.operationalChange.versionId;
+                    this.parentForm.currentItem.version = result.operationalChange.version;
+                }
+            }
+
             return result;
         } catch (error) {
             console.error('MilestoneEditorModal.updateMilestone - API error:', error);
@@ -230,12 +262,17 @@ export class MilestoneEditorModal {
         }
     }
 
-    async deleteMilestone(milestoneId, expectedVersionId) {
-        console.log('MilestoneEditorModal.deleteMilestone - called with id:', milestoneId);
+    async deleteMilestone(milestoneKey, expectedVersionId) {
+        console.log('MilestoneEditorModal.deleteMilestone - called with milestoneKey:', milestoneKey);
 
         try {
-            await apiClient.deleteMilestone(this.changeId, milestoneId, expectedVersionId);
+            // Delete operation uses milestoneKey in URL path
+            await apiClient.deleteMilestone(this.changeId, milestoneKey, expectedVersionId);
             console.log('MilestoneEditorModal.deleteMilestone - completed successfully');
+
+            // Note: Delete operation returns 204 No Content, so no version info to update
+            // The parent form will need to refresh the operational change to get updated version
+
         } catch (error) {
             console.error('MilestoneEditorModal.deleteMilestone - API error:', error);
             throw error;
@@ -253,6 +290,41 @@ export class MilestoneEditorModal {
             console.error('MilestoneEditorModal.getMilestones - API error:', error);
             throw error;
         }
+    }
+
+    // ====================
+    // MILESTONE KEY UTILITIES (new)
+    // ====================
+
+    /**
+     * Extract milestone key from milestone object, with fallback for backwards compatibility
+     */
+    getMilestoneKey(milestone) {
+        if (!milestone) return null;
+
+        // Prefer milestoneKey, fall back to id for backwards compatibility
+        return milestone.milestoneKey || milestone.id;
+    }
+
+    /**
+     * Check if milestone has stable UUID-based key
+     */
+    hasStableMilestoneKey(milestone) {
+        return milestone && milestone.milestoneKey && milestone.milestoneKey.startsWith('ms_');
+    }
+
+    /**
+     * Find milestone in array by key (milestoneKey or id)
+     */
+    findMilestoneByKey(milestones, key) {
+        if (!milestones || !Array.isArray(milestones) || !key) {
+            return null;
+        }
+
+        return milestones.find(m =>
+            (m.milestoneKey && m.milestoneKey === key) ||
+            (m.id && m.id.toString() === key.toString())
+        );
     }
 
     // ====================
@@ -329,6 +401,54 @@ export class MilestoneEditorModal {
             default:
                 return mode;
         }
+    }
+
+    // ====================
+    // VERSION TRACKING HELPERS (new)
+    // ====================
+
+    /**
+     * Extract version info from API response
+     */
+    extractVersionInfo(apiResponse) {
+        if (!apiResponse || !apiResponse.operationalChange) {
+            return null;
+        }
+
+        return {
+            versionId: apiResponse.operationalChange.versionId,
+            version: apiResponse.operationalChange.version,
+            itemId: apiResponse.operationalChange.itemId
+        };
+    }
+
+    /**
+     * Update parent form with new version information
+     */
+    updateParentFormVersion(versionInfo) {
+        if (!this.parentForm || !this.parentForm.currentItem || !versionInfo) {
+            return false;
+        }
+
+        console.log('MilestoneEditorModal.updateParentFormVersion - updating with:', versionInfo);
+
+        this.parentForm.currentItem.versionId = versionInfo.versionId;
+        this.parentForm.currentItem.version = versionInfo.version;
+
+        return true;
+    }
+
+    /**
+     * Get current operational change version for optimistic locking
+     */
+    getCurrentVersion() {
+        const currentItem = this.parentForm?.currentItem;
+
+        return {
+            versionId: currentItem?.versionId,
+            version: currentItem?.version,
+            itemId: currentItem?.itemId || currentItem?.id
+        };
     }
 
     // ====================
