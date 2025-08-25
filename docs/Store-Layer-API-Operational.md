@@ -9,13 +9,13 @@ Operational entity stores provide versioned CRUD operations for deployment plann
 ### Data Model
 ```javascript
 {
-  itemId: number,           // Item node ID
-  title: string,            // Item title
-  versionId: number,        // ItemVersion node ID (for optimistic locking)
-  version: number,          // Sequential version number
-  createdAt: string,        // ISO timestamp
-  createdBy: string,        // User identifier
-  // ... entity-specific fields
+    itemId: number,           // Item node ID
+        title: string,            // Item title
+        versionId: number,        // ItemVersion node ID (for optimistic locking)
+        version: number,          // Sequential version number
+        createdAt: string,        // ISO timestamp
+        createdBy: string,        // User identifier
+    // ... entity-specific fields
 }
 ```
 
@@ -54,50 +54,35 @@ const entity = await store.findById(itemId, transaction, baselineId, fromWaveId)
 **Parameters**:
 - `itemId: number` - Item node ID
 - `transaction: Transaction`
-- `baselineId: number` - Optional: returns version captured in baseline instead of latest
-- `fromWaveId: number` - Optional: applies wave filtering (OCs with milestones at/after wave, ORs referenced by filtered OCs)
+- `baselineId: number|null` - Optional baseline context for historical queries
+- `fromWaveId: number|null` - Optional wave filtering
 
 **Returns**: `Promise<object|null>` - Entity with relationships or null  
-**Throws**: `StoreError` - Query failure
-
-### findByIdAndVersion(itemId, versionNumber, transaction)
-```javascript
-const entity = await store.findByIdAndVersion(itemId, versionNumber, transaction)
-```
-**Parameters**:
-- `itemId: number` - Item node ID
-- `versionNumber: number` - Specific version to retrieve
-- `transaction: Transaction`
-
-**Returns**: `Promise<object|null>` - Specific version with relationships or null  
-**Throws**: `StoreError` - Query failure
-
-### findVersionHistory(itemId, transaction)
-```javascript
-const history = await store.findVersionHistory(itemId, transaction)
-```
-**Parameters**:
-- `itemId: number` - Item node ID
-- `transaction: Transaction`
-
-**Returns**: `Promise<Array<{versionId: number, version: number, createdAt: string, createdBy: string}>>` - Version metadata (newest first)  
-**Throws**:
-- `StoreError('Item not found')` - Item doesn't exist
-- `StoreError('Data integrity error')` - No versions found
+**Multi-Context Behavior**:
+- No context: Returns latest version
+- Baseline only: Returns version captured in baseline
+- Wave only: Returns latest version if passes wave filter
+- Both: Returns baseline version if passes wave filter
 
 ### findAll(transaction, baselineId = null, fromWaveId = null)
 ```javascript
 const entities = await store.findAll(transaction, baselineId, fromWaveId)
 ```
-**Parameters**:
-- `transaction: Transaction`
-- `baselineId: number` - Optional: returns versions captured in baseline instead of latest versions
-- `fromWaveId: number` - Optional: applies wave filtering to results
+Similar multi-context behavior as `findById`
 
-**Returns**: `Promise<Array<object>>` - Entities with relationships  
-**Throws**: `StoreError` - Query failure
+### getVersionHistory(itemId, transaction)
+```javascript
+const history = await store.getVersionHistory(itemId, transaction)
+```
+**Returns**: `Promise<Array<object>>` - Version metadata (newest first)
 
-**Waves filtering behavior**:
+### patch(itemId, patchPayload, expectedVersionId, transaction)
+```javascript
+const entity = await store.patch(itemId, patchPayload, expectedVersionId, transaction)
+```
+**Behavior**: Creates new version with partial updates + relationship inheritance
+
+**Wave Filtering Context**: For operational entities supporting wave filtering
 - **OperationalChanges**: Include only those with milestones targeting waves at/after the fromWave date
 - **OperationalRequirements**: Include only those referenced by filtered OperationalChanges via SATISFIES/SUPERSEDS, plus all ancestor requirements via REFINES hierarchy (upward cascade)
 
@@ -126,10 +111,10 @@ const entities = await store.findAll(transaction, baselineId, fromWaveId)
   
   // Relationship fields
   refinesParents: Array<number>,           // Parent requirement Item IDs
-  impactsStakeholderCategories: Array<number>, // StakeholderCategories IDs
-  impactsData: Array<number>,              // DataCategories IDs
-  impactsServices: Array<number>,          // Services IDs
-  impactsRegulatoryAspects: Array<number>  // RegulatoryAspects IDs
+  impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs
+  impactsData: Array<number>,              // DataCategory IDs
+  impactsServices: Array<number>,          // Service IDs
+  impactsRegulatoryAspects: Array<number>  // RegulatoryAspect IDs
 }
 ```
 
@@ -170,7 +155,7 @@ const children = await store.findChildren(itemId, transaction, baselineId, fromW
 const requirements = await store.findRequirementsThatImpact('Service', serviceId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `targetLabel: string` - 'StakeholderCategories'|'DataCategories'|'Services'|'RegulatoryAspects'
+- `targetLabel: string` - 'StakeholderCategory'|'DataCategory'|'Service'|'RegulatoryAspect'
 - `targetId: number` - Target entity ID
 
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements impacting the target
@@ -199,7 +184,8 @@ const requirements = await store.findRequirementsThatImpact('Service', serviceId
   
   // Milestone fields
   milestones: Array<{
-    id: number,
+    id: number,             // Technical node ID (changes with each version)
+    milestoneKey: string,   // Stable identifier (preserved across versions)
     title: string,
     description: string,
     eventTypes: Array<string>,
@@ -229,6 +215,7 @@ const change = await store.create({
       description: "Milestone 1", 
       eventTypes: ["API_PUBLICATION"],
       waveId: 123 
+      // milestoneKey will be auto-generated as 'ms_uuid'
     }
   ],
   satisfiesRequirements: [reqId1, reqId2]
@@ -241,8 +228,19 @@ const change = await store.create({
 const updated = await store.update(itemId, {
   description: "Updated description",
   milestones: [
-    { title: "M1", description: "Updated M1", eventTypes: ["API_PUBLICATION"] },
-    { title: "M2", description: "New M2", eventTypes: ["SERVICE_ACTIVATION"], waveId: 456 }
+    { 
+      milestoneKey: "ms_existing_uuid", // Preserve existing milestone
+      title: "M1", 
+      description: "Updated M1", 
+      eventTypes: ["API_PUBLICATION"] 
+    },
+    { 
+      title: "M2", 
+      description: "New M2", 
+      eventTypes: ["SERVICE_ACTIVATION"], 
+      waveId: 456 
+      // New milestone gets auto-generated milestoneKey
+    }
   ]
 }, expectedVersionId, transaction)
 ```
@@ -250,11 +248,37 @@ const updated = await store.update(itemId, {
 - If milestones not provided, copies milestone data from previous version to new version
 - If relationships not provided, copies relationship data from previous version to new version
 - Previous version keeps its own milestones and relationships
+- Milestone keys are preserved when provided, generated when missing
 
 ### Milestone Management
 - **Storage**: `(Milestone)-[:BELONGS_TO]->(OperationalChangeVersion)`
-- **Waves targeting**: `(Milestone)-[:TARGETS]->(Waves)` (optional)
+- **Wave targeting**: `(Milestone)-[:TARGETS]->(Wave)` (optional)
 - **Ownership**: Milestones belong to specific versions (not shared)
+- **Stable Identity**: Each milestone has a `milestoneKey` (UUID-based) preserved across versions
+
+### findMilestoneByKey(itemId, milestoneKey, transaction, baselineId = null, fromWaveId = null)
+```javascript
+const milestone = await store.findMilestoneByKey(itemId, "ms_uuid", transaction, baselineId, fromWaveId)
+```
+**Parameters**:
+- `itemId: number` - OperationalChange Item ID
+- `milestoneKey: string` - Stable milestone identifier
+- `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context
+- `fromWaveId: number|null` - Optional wave filtering
+
+**Returns**: `Promise<object|null>` - Milestone object with wave information or null if not found
+
+**Multi-Context Support**:
+- Latest version: Returns milestone from current version if exists
+- Baseline context: Returns milestone from baseline-captured version if exists
+- Wave filtering: Returns milestone only if it passes wave date filter
+
+### findMilestonesByChange(itemId, transaction, baselineId = null, fromWaveId = null)
+```javascript
+const milestones = await store.findMilestonesByChange(itemId, transaction, baselineId, fromWaveId)
+```
+**Returns**: `Promise<Array<object>>` - All milestones for the change with full wave information
 
 ### findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
@@ -274,9 +298,46 @@ const milestones = await store.findMilestonesByWave(waveId, transaction, baselin
 ```
 **Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context
 
-## Waves Filtering Errors
+## Milestone Stable Identity
+
+### Design Principles
+- **Stable Keys**: Each milestone gets a UUID-based `milestoneKey` (format: `ms_uuid`)
+- **Version Independence**: Milestone keys are preserved across OperationalChange versions
+- **Technical vs Business ID**: `id` is technical node ID (changes), `milestoneKey` is business identifier (stable)
+
+### Key Generation
+- **New milestones**: Auto-generated UUID when `milestoneKey` not provided
+- **Existing milestones**: Preserved from previous version when milestone data inherited
+- **Format**: `ms_${uuid}` (e.g., `ms_a1b2c3d4-e5f6-7890-abcd-ef1234567890`)
+
+### Milestone Operations
+```javascript
+// Find milestone by stable key across versions
+const milestone = await store.findMilestoneByKey(changeId, "ms_uuid", transaction);
+
+// Update uses milestoneKey in milestone data for preservation
+const updatedChange = await store.update(changeId, {
+  milestones: [
+    {
+      milestoneKey: "ms_existing_uuid",  // Preserve identity
+      title: "Updated title",
+      description: "Updated description"
+    }
+  ]
+}, expectedVersionId, transaction);
+```
+
+### Migration Support
+Existing milestones without `milestoneKey` can be updated with:
+```cypher
+MATCH (milestone:OperationalChangeMilestone)
+WHERE milestone.milestoneKey IS NULL
+SET milestone.milestoneKey = 'ms_' + randomUUID()
+```
+
+## Wave Filtering Errors
 Additional error conditions for multi-context operations:
-- `'Waves not found'` - Invalid fromWaveId in wave filtering operations
-- `'No matching milestones'` - Waves filter results in empty OC set
+- `'Wave not found'` - Invalid fromWaveId in wave filtering operations
+- `'No matching milestones'` - Wave filter results in empty OC set
 
 *Note: See Store-Layer-API-Core.md for complete error documentation*
