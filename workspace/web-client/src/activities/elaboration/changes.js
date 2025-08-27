@@ -55,6 +55,13 @@ export default class ChangesEntity {
 
         // CHANGED: Initialize form using new inheritance pattern
         this.form = new ChangeForm(entityConfig, setupData);
+
+        // Listen for save events
+        document.addEventListener('entitySaved', async(e) => {
+            if (e.detail.entityType === 'Operational Changes') {
+                await this.collection.refresh();
+            }
+        });
     }
 
     // ====================
@@ -76,28 +83,13 @@ export default class ChangesEntity {
                 options: this.buildWaveOptions()
             },
             {
-                key: 'status',
-                label: 'Status',
-                type: 'select',
-                options: [
-                    { value: '', label: 'All Statuses' },
-                    { value: 'draft', label: 'Draft' },
-                    { value: 'review', label: 'Review' },
-                    { value: 'approved', label: 'Approved' },
-                    { value: 'in_progress', label: 'In Progress' },
-                    { value: 'completed', label: 'Completed' },
-                    { value: 'cancelled', label: 'Cancelled' }
-                ]
-            },
-            {
                 key: 'visibility',
                 label: 'Visibility',
                 type: 'select',
                 options: [
                     { value: '', label: 'All Visibility' },
-                    { value: 'public', label: 'Public' },
-                    { value: 'internal', label: 'Internal' },
-                    { value: 'restricted', label: 'Restricted' }
+                    { value: 'NETWORK', label: 'NETWORK' },
+                    { value: 'NM', label: 'NM' }
                 ]
             },
             {
@@ -139,45 +131,11 @@ export default class ChangesEntity {
                 type: 'milestone-wave'
             },
             {
-                key: 'status',
-                label: 'Status',
-                width: '100px',
-                sortable: true,
-                type: 'enum',
-                enumLabels: {
-                    'draft': 'Draft',
-                    'review': 'Review',
-                    'approved': 'Approved',
-                    'in_progress': 'In Progress',
-                    'completed': 'Completed',
-                    'cancelled': 'Cancelled'
-                },
-                enumStyles: {
-                    'draft': 'status-draft',
-                    'review': 'status-review',
-                    'approved': 'status-approved',
-                    'in_progress': 'status-progress',
-                    'completed': 'status-completed',
-                    'cancelled': 'status-cancelled'
-                }
-            },
-            {
                 key: 'visibility',
                 label: 'Visibility',
                 width: '100px',
                 sortable: true,
                 type: 'visibility'
-            },
-            {
-                key: 'completionPercentage',
-                label: 'Progress',
-                width: '80px',
-                sortable: true,
-                type: 'text',
-                render: (value) => {
-                    if (value === null || value === undefined) return '-';
-                    return `${value}%`;
-                }
             },
             {
                 key: 'satisfiesRequirements',
@@ -200,14 +158,14 @@ export default class ChangesEntity {
                 groupPrefix: 'Supersedes'
             },
             {
-                key: 'lastUpdatedBy',
+                key: 'createdBy',
                 label: 'Updated By',
                 width: '130px',
                 sortable: true,
                 type: 'text'
             },
             {
-                key: 'lastUpdatedAt',
+                key: 'createdAt',
                 label: 'Updated',
                 width: '110px',
                 sortable: true,
@@ -220,7 +178,6 @@ export default class ChangesEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'milestones', label: 'Wave' },
-            { key: 'status', label: 'Status' },
             { key: 'visibility', label: 'Visibility' },
             { key: 'satisfiesRequirements', label: 'Satisfies Requirements' },
             { key: 'supersedsRequirements', label: 'Supersedes Requirements' }
@@ -290,51 +247,31 @@ export default class ChangesEntity {
         console.log('Changes refreshed');
     }
 
-    updateDetailsPanel(item) {
+    async updateDetailsPanel(item) {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
 
-        const detailsHtml = this.form.generateReadOnlyView(item);
+        const detailsHtml = await this.form.generateReadOnlyView(item);
         detailsContainer.innerHTML = `
-            <div class="item-details">
-                ${detailsHtml}
-                <div class="details-actions">
-                    <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
-                    ${this.renderMilestoneActions(item)}
-                </div>
+        <div class="details-sticky-header">
+            <div class="item-title-section">
+                <h3 class="item-title">${item.title || `${item.type || 'Item'} ${item.itemId}`}</h3>
+                <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
             </div>
+            <div class="details-actions">
+                <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
+                <!-- Placeholder for future Delete button -->
+            </div>
+        </div>
+        <div class="details-scrollable-content">
+            ${detailsHtml}
+        </div>
         `;
 
         // Bind edit button
         const editBtn = detailsContainer.querySelector('#editItemBtn');
         if (editBtn) {
             editBtn.addEventListener('click', () => this.handleEdit(item));
-        }
-
-        // Bind milestone action buttons
-        this.bindMilestoneActions(item);
-    }
-
-    renderMilestoneActions(item) {
-        if (!item?.milestones || item.milestones.length === 0) {
-            return '';
-        }
-
-        // Show quick actions for milestone management
-        return `
-            <button class="btn btn-secondary btn-sm" id="manageMilestonesBtn">
-                Manage Milestones
-            </button>
-        `;
-    }
-
-    bindMilestoneActions(item) {
-        const manageMilestonesBtn = document.querySelector('#manageMilestonesBtn');
-        if (manageMilestonesBtn) {
-            manageMilestonesBtn.addEventListener('click', () => {
-                // Open edit modal focused on milestones section
-                this.handleEdit(item);
-            });
         }
     }
 

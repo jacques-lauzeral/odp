@@ -147,11 +147,6 @@ export default class ElaborationActivity {
                         </div>
                         
                         <div class="collection-actions">
-                            <div class="edit-mode-toggle">
-                                <input type="checkbox" id="editInCollection" />
-                                <label for="editInCollection">Edit in Collection View</label>
-                            </div>
-                            
                             <div class="elaboration-actions">
                                 <button class="btn btn-primary action-create" id="createEntity">
                                     + New ${this.getSingularEntityName(this.currentEntity)}
@@ -169,9 +164,6 @@ export default class ElaborationActivity {
                         </div>
                         
                         <div class="collection-details">
-                            <div class="details-header">
-                                <h3 class="details-title">Details</h3>
-                            </div>
                             <div class="details-content" id="detailsContent">
                                 <div class="no-selection-message">
                                     <div class="icon">📄</div>
@@ -202,16 +194,9 @@ export default class ElaborationActivity {
 
         // Action buttons
         const createBtn = this.container.querySelector('#createEntity');
-        const editToggle = this.container.querySelector('#editInCollection');
 
         if (createBtn) {
             createBtn.addEventListener('click', () => this.handleCreate());
-        }
-
-        if (editToggle) {
-            editToggle.addEventListener('change', (e) => {
-                this.handleEditModeToggle(e.target.checked);
-            });
         }
 
         // Dynamic filter and grouping controls will be bound when entity loads
@@ -229,6 +214,18 @@ export default class ElaborationActivity {
         }
 
         this.currentEntity = entity;
+
+        // Clear details panel when switching entities
+        const detailsContainer = this.container.querySelector('#detailsContent');
+        if (detailsContainer) {
+            detailsContainer.innerHTML = `
+            <div class="no-selection-message">
+                <div class="icon">📄</div>
+                <h3>No item selected</h3>
+                <p>Select an item from the list to view its details</p>
+            </div>
+        `;
+        }
 
         // Update URL
         const newPath = `/elaboration/${entity}`;
@@ -489,12 +486,6 @@ export default class ElaborationActivity {
     handleCreate() {
         if (this.currentEntityComponent?.handleCreate) {
             this.currentEntityComponent.handleCreate();
-        }
-    }
-
-    handleEditModeToggle(enabled) {
-        if (this.currentEntityComponent?.handleEditModeToggle) {
-            this.currentEntityComponent.handleEditModeToggle(enabled);
         }
     }
 

@@ -13,8 +13,43 @@ export class CollectionEntityForm {
         this.currentModal = null;
         this.currentMode = null;
         this.currentItem = null;
+
+        // Initialize tab delegation once
+        this.initTabDelegation();
     }
 
+    initTabDelegation() {
+        // Prevent multiple bindings
+        if (CollectionEntityForm._tabDelegationInitialized) {
+            return;
+        }
+
+        // Single event listener for all tab headers anywhere in the document
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab-header')) {
+                const tabIndex = e.target.dataset.tab;
+                const container = e.target.closest('.form-tabs, .item-details, .modal');
+
+                if (container && tabIndex !== undefined) {
+                    this.switchTabInContainer(container, tabIndex);
+                }
+            }
+        });
+
+        CollectionEntityForm._tabDelegationInitialized = true;
+    }
+
+    switchTabInContainer(container, tabIndex) {
+        // Update headers within this container
+        container.querySelectorAll('.tab-header').forEach(header => {
+            header.classList.toggle('active', header.dataset.tab === tabIndex);
+        });
+
+        // Update panels within this container
+        container.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.toggle('active', panel.dataset.tab === tabIndex);
+        });
+    }
     // ====================
     // VIRTUAL METHODS - Override in subclasses
     // ====================
@@ -658,6 +693,16 @@ export class CollectionEntityForm {
         try {
             // Save
             const result = await this.onSave(dataToSave, this.currentMode, this.currentItem);
+
+            // Emit event after successful save
+            const event = new CustomEvent('entitySaved', {
+                detail: {
+                    entity: result,
+                    mode: this.currentMode,
+                    entityType: this.entityConfig.name
+                }
+            });
+            document.dispatchEvent(event);
 
             // Close modal on success
             this.closeModal();

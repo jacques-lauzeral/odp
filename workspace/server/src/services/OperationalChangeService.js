@@ -291,7 +291,7 @@ export class OperationalChangeService extends VersionedItemService {
 
     // Validation helper methods
     _validateRequiredFieldsForCreate(payload) {
-        const requiredFields = ['title', 'description', 'visibility', 'satisfiesRequirements', 'supersedsRequirements', 'milestones'];
+        const requiredFields = ['title', 'description', 'visibility'];
 
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {

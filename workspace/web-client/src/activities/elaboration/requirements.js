@@ -32,6 +32,13 @@ export default class RequirementsEntity {
 
         // CHANGED: Initialize form using new inheritance pattern
         this.form = new RequirementForm(entityConfig, setupData);
+
+        // Listen for save events
+        document.addEventListener('entitySaved', async(e) => {
+            if (e.detail.entityType === 'Operational Requirements') {
+                await this.collection.refresh();
+            }
+        });
     }
 
     // ====================
@@ -158,14 +165,14 @@ export default class RequirementsEntity {
                 noneLabel: 'No Services Impact'
             },
             {
-                key: 'lastUpdatedBy',
+                key: 'createdBy',
                 label: 'Updated By',
                 width: '130px',
                 sortable: true,
                 type: 'text'
             },
             {
-                key: 'lastUpdatedAt',
+                key: 'createdAt',
                 label: 'Updated',
                 width: '110px',
                 sortable: true,
@@ -228,19 +235,25 @@ export default class RequirementsEntity {
         console.log('Requirements refreshed');
     }
 
-    updateDetailsPanel(item) {
+    async updateDetailsPanel(item) {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
 
-        const detailsHtml = this.form.generateReadOnlyView(item);
+        const detailsHtml = await this.form.generateReadOnlyView(item);
         detailsContainer.innerHTML = `
-            <div class="item-details">
-                ${detailsHtml}
-                <div class="details-actions">
-                    <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
-                    ${this.renderAdditionalActions(item)}
-                </div>
+        <div class="details-sticky-header">
+            <div class="item-title-section">
+                <h3 class="item-title">${item.title || `${item.type || 'Item'} ${item.itemId}`}</h3>
+                <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
             </div>
+            <div class="details-actions">
+                <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
+                <!-- Placeholder for future Delete button -->
+            </div>
+        </div>
+        <div class="details-scrollable-content">
+            ${detailsHtml}
+        </div>
         `;
 
         // Bind edit button
