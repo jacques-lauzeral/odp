@@ -53,8 +53,8 @@ export default class ChangeForm extends CollectionEntityForm {
                         key: 'version',
                         label: 'Version',
                         type: 'text',
-                        modes: ['read'],
-                        computed: true
+                        modes: ['read', 'edit'],
+                        readOnly: true
                     },
                     {
                         key: 'title',
@@ -159,24 +159,18 @@ export default class ChangeForm extends CollectionEntityForm {
                         label: 'Created By',
                         type: 'text',
                         modes: ['read', 'edit'],
-                        computed: true
+                        readOnly: true
                     },
                     {
                         key: 'createdAt',
                         label: 'Created',
                         type: 'date',
                         modes: ['read', 'edit'],
-                        computed: true,
+                        readOnly: true,
                         format: (value) => {
                             if (!value) return '-';
                             return new Date(value).toLocaleString();
                         }
-                    },
-                    {
-                        key: 'versionId',
-                        label: 'Version ID',
-                        type: 'hidden',
-                        modes: ['read', 'edit']
                     }
                 ]
             }

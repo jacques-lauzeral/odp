@@ -178,6 +178,8 @@ export class CollectionEntityForm {
             html += `<div class="tab-panel ${index === 0 ? 'active' : ''}" data-tab="${index}">`;
 
             for (const field of visibleFields) {
+                console.log('generateForm ' + mode + '/' + section.title + '/' + field.key);
+
                 html += await this.renderField(field, this.getFieldValue(item, field), mode);
             }
 

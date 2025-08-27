@@ -40,8 +40,8 @@ export default class RequirementForm extends CollectionEntityForm {
                         key: 'version',
                         label: 'Version',
                         type: 'text',
-                        modes: ['read'],
-                        computed: true
+                        modes: ['read', 'edit'],
+                        readOnly: true
                     },
                     {
                         key: 'type',
@@ -230,52 +230,22 @@ export default class RequirementForm extends CollectionEntityForm {
                 title: 'Metadata',
                 fields: [
                     {
-                        key: 'lastUpdatedBy',
-                        label: 'Last Updated By',
-                        type: 'text',
-                        modes: ['read'],
-                        computed: true
-                    },
-                    {
-                        key: 'lastUpdatedAt',
-                        label: 'Last Updated',
-                        type: 'date',
-                        modes: ['read'],
-                        computed: true,
-                        format: (value) => {
-                            if (!value) return '-';
-                            return new Date(value).toLocaleString();
-                        }
-                    },
-                    {
                         key: 'createdBy',
                         label: 'Created By',
                         type: 'text',
-                        modes: ['read'],
-                        computed: true
+                        modes: ['read', 'edit'],
+                        readOnly: true
                     },
                     {
                         key: 'createdAt',
                         label: 'Created',
                         type: 'date',
-                        modes: ['read'],
-                        computed: true,
+                        modes: ['read', 'edit'],
+                        readOnly: true,
                         format: (value) => {
                             if (!value) return '-';
                             return new Date(value).toLocaleString();
                         }
-                    },
-                    {
-                        key: 'versionId',
-                        label: 'Version ID',
-                        type: 'hidden',
-                        modes: ['edit']
-                    },
-                    {
-                        key: 'expectedVersionId',
-                        label: 'Expected Version ID',
-                        type: 'hidden',
-                        modes: ['edit']
                     }
                 ]
             }
