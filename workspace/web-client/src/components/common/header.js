@@ -21,8 +21,9 @@ export default class Header {
                 <nav class="odp-header__nav">
                     <button class="odp-header__nav-item" data-activity="landing">Landing</button>
                     <button class="odp-header__nav-item" data-activity="setup">Setup</button>
-                    <button class="odp-header__nav-item" data-activity="read">Read</button>
                     <button class="odp-header__nav-item" data-activity="elaboration">Elaboration</button>
+                    <button class="odp-header__nav-item" data-activity="publication">Publication</button>
+                    <button class="odp-header__nav-item" data-activity="read">Read</button>
                 </nav>
                 
                 <div class="odp-header__context">

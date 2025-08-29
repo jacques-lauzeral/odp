@@ -2,8 +2,8 @@
 
 ## Document Overview
 **Purpose**: UI design specifications and architectural patterns for the ODP Web Client  
-**Status**: Setup Management Activity complete, Elaboration Activity implemented with Collection perspective  
-**Last Updated**: July 28, 2025
+**Status**: Setup Management Activity complete, Elaboration Activity complete, Publication Activity in progress  
+**Last Updated**: August 29, 2025
 
 ---
 
@@ -13,7 +13,7 @@
 The ODP Web Client follows a consistent three-layer navigation hierarchy across all activities:
 
 **Layer 1: ODP Level (Global Application Chrome)**
-- Persistent header across all activities: `Landing | Setup | Read | Elaboration`
+- Persistent header across all activities: `Landing | Setup | Elaboration | Publication | Read`
 - User context display and connection status
 - Consistent application-wide navigation
 
@@ -31,14 +31,14 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 ## Activity UI Specifications
 
-### Landing Page
+### Landing Page ✅ IMPLEMENTED
 **Purpose**: Simple activity launcher with user identification
 
 **Implemented Layout**:
-- Clean, minimal interface with three activity tiles
+- Clean, minimal interface with activity tiles
 - User identification prompt (name entry, no authentication)
 - Connection status indicator
-- Direct navigation to Setup, Read, or Elaboration activities
+- Direct navigation to Setup, Elaboration, Publication, and Read activities
 
 ---
 
@@ -54,42 +54,12 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 **Layout Pattern**: Three-pane workspace for hierarchical entities, simple list for waves
 
-#### Entity Management Pattern (Layer 3)
-**Left Pane: Entity Tree** (for hierarchical entities)
-- Collapsible hierarchy tree for REFINES relationships
-- Visual indicators: `▶` (expandable), `└─` (child), indentation levels
-- Click to select any node in hierarchy
-- Real-time tree updates when entities are added/modified
-
-**Center Pane: Detail/Editor**
-- **View Mode**: Read-only display of selected entity
-- **Edit Mode**: Form-based editing with validation
-- Toggle between view/edit modes
-- Auto-focus when creating new entities
-
-**Right Pane: Actions**
-- **Entity Actions**: Add Child | Edit | Delete (context-sensitive)
-- **Bulk Actions**: Import | Export | Validate Hierarchy
-- **Navigation**: Breadcrumb showing current entity path
-
-#### Implemented REFINES Hierarchy Management
-**Visual Representation**:
-- Tree structure with expand/collapse controls
-- Clear parent-child relationships through indentation
-- Status badges: "Hierarchy Root" | "Child Entity" | "Standalone"
-
-**Interaction Patterns**:
-- **Create Child**: Auto-select parent, open editor for new child
-- **Parent Selection**: Dropdown with hierarchy validation (prevent circular references)
-- **Tree Navigation**: Click any node to view/edit that entity
-- **Breadcrumb**: Show hierarchy path for current selection
-
 ---
 
 ### Elaboration Activity ✅ IMPLEMENTED
-**Purpose**: Content creation and editing workspace using Collection perspective with full edit capabilities
+**Purpose**: Content creation and editing workspace using Collection perspective
 
-#### Implemented Activity Structure (Layer 2)
+#### Activity Structure (Layer 2)
 **Repository Context Display**:
 - Clear "Repository" context indicator in header
 - Development content focus messaging
@@ -99,101 +69,64 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - Dynamic count badges updated from API
 - Tab switching with proper state management
 
-**Perspective Toggle**:
-- `📋 Collection` (active and functional)
-- `📁 Hierarchical` (disabled, "Coming soon")
-- `📅 Temporal` (disabled, "Coming soon")
-
-#### Implemented Collection Perspective Layout (Layer 3)
+#### Collection Perspective Layout (Layer 3)
 **Four-Area Layout Implementation**:
+1. **Filtering Area**: Collapsible filters with dynamic setup data options
+2. **Actions Area**: Create actions and grouping controls
+3. **Collection List Area**: Table-based display with grouping support
+4. **Details Panel**: Selected item details with edit actions
 
-**1. Filtering Area (Collapsible)**:
-- **Requirements Filters**:
-    - Type: ON (Operational Need) / OR (Operational Requirement) / All Types
-    - Title Pattern: Text search
-    - Impact filters: Data/Stakeholder/Regulatory/Services (populated from setup data)
-- **Changes Filters**:
-    - Title Pattern: Text search
-    - Wave: Dynamic options from setup data (e.g., "2025 Q1", "2024 Q4")
-    - Satisfies: Text search for requirement references
-    - Supersedes: Text search for change references
+---
+
+### Publication Activity 🔄 IN PROGRESS
+**Purpose**: ODP Edition management interface for creating and browsing published editions
+
+#### Activity Structure (Layer 2)
+**Publication Context Display**:
+- Clear "Publication" context indicator in header
+- Edition management focus messaging
+
+**Single Entity Focus**:
+- No entity tabs required (single entity: ODP Editions)
+- Direct Collection perspective implementation
+- Edition count display in activity header
+
+#### Collection Perspective Layout (Layer 3)
+**Four-Area Layout for ODP Editions**:
+
+**1. Filtering Area**:
+- **Type Filter**: ALPHA | BETA | RELEASE | All Types
+- **Title Pattern**: Text search in edition titles
+- **Baseline Filter**: Dynamic options from available baselines
+- **Wave Filter**: Dynamic options from setup data waves
 - **Clear All Filters**: Reset all filter controls
 
-**2. Actions Area (Persistent Toolbar)**:
-- **Edit Mode Toggle**: "Edit in Collection View" checkbox (functional)
-- **Create Actions**: "New Requirement" / "New Change" (context-sensitive)
-- **Grouping Control**: Dynamic dropdown based on entity configuration
-- **Perspective Toggle**: Collection active, others disabled with tooltips
+**2. Actions Area**:
+- **Create Action**: "New Edition" button
+- **Grouping Control**: Group by Type | Baseline | Wave | None
+- **Edition Count**: Display total editions with filter indicator
 
 **3. Collection List Area**:
-- **Table-based Display**: One row per item with configurable columns
-- **Requirements Columns**: ID | Type | Title | Parent | Data Impact | Stakeholder Impact | Regulatory Impact | Services Impact | Updated By | Updated
-- **Changes Columns**: ID | Title | Wave | Visibility | Satisfies | Supersedes | Updated By | Updated
-- **Grouping Support**: Collapsible groups with count badges
-- **Row Selection**: Single-select with highlighting
-- **Custom Cell Rendering**: Badges for types, status indicators for impacts, formatted dates
+- **Table Columns**: Title | Type | Starts From Wave | Created At | Created By
+- **Type Badges**: Color-coded ALPHA/BETA/RELEASE indicators
+- **Wave Display**: Year/Quarter format (e.g., "2025 Q2")
+- **Row Actions**: Read Edition (navigate to Read activity with context)
+- **Grouping Support**: Collapsible groups with edition counts
 
 **4. Details Panel**:
-- **Selected Item Details**: Dynamic content based on selection
-- **Requirements Details**: Description, rationale, statement, impact details with setup data names
-- **Changes Details**: Description, milestone info, implementation notes, requirement/change relationships
-- **No Selection State**: Helpful placeholder with icon and instructions
+- **Edition Metadata**: Creation details and context information
+- **Baseline Reference**: Link to baseline used for the edition
+- **Wave Reference**: Starting wave information with timeline context
+- **Action Buttons**: Read Edition (primary action)
+- **Content Preview**: Summary of included requirements and changes
 
-#### Implemented Setup Data Integration
-**Dynamic Filter Population**:
-- **Stakeholder Categories**: Loaded from `/stakeholder-categories` API
-- **Data Categories**: Loaded from `/data-categories` API
-- **Regulatory Aspects**: Loaded from `/regulatory-aspects` API
-- **Services**: Loaded from `/services` API
-- **Waves**: Loaded from `/waves` API with year/quarter formatting
-
-**Setup Data Loading Process**:
-1. Elaboration activity loads all setup data on initialization
-2. Setup data passed to Requirements and Changes entities
-3. Entities build dynamic filter options from setup data
-4. Display names resolved using setup data (show names instead of IDs)
-5. Loading states shown during setup data fetch
-
-#### Implemented Responsive Design
-**Mobile Layout (< 768px)**:
-- **Stacked Layout**: Filters → Actions → List → Details (vertical stack)
-- **Tab Navigation**: Show only count badges, hide entity names
-- **Collapsible Filters**: Full-width filter controls
-- **Touch-Friendly**: Larger touch targets for groups and items
-
-**Desktop Layout (≥ 1024px)**:
-- **Four-Area Grid**: Full layout with sidebar details panel
-- **Hover States**: Rich hover feedback on interactive elements
-- **Keyboard Navigation**: Full keyboard support with focus indicators
-
-#### Implemented Error and Loading States
-**Loading States**:
-- **Initial Load**: Setup data loading with spinner and message
-- **Entity Loading**: Individual entity loading states
-- **Empty States**: Helpful guidance for first-time users
-
-**Error Handling**:
-- **Setup Data Errors**: Graceful fallback with retry options
-- **Entity Load Errors**: Clear error messaging with reload capability
-- **Network Errors**: Connection status integration with retry actions
-
-#### Implemented Interaction Patterns
-**Filter Behavior**:
-- **Text Filters**: 300ms debounced input for performance
-- **Select Filters**: Immediate application on change
-- **Clear All**: Single-click to reset all active filters
-- **Filter Persistence**: Filters maintained during tab switching
-
-**Grouping Behavior**:
-- **Dynamic Options**: Based on entity configuration (Type, Parent, Impact categories for Requirements; Wave, Satisfies, Supersedes for Changes)
-- **Group Headers**: Expandable/collapsible with item counts
-- **Group Priorities**: Logical ordering (e.g., ON before OR, assigned waves before unassigned)
-
-**Selection and Details**:
-- **Single Selection**: Click row to select and update details panel
-- **Visual Feedback**: Selected row highlighting
-- **Details Update**: Immediate details panel refresh on selection
-- **Context Preservation**: Selection maintained during filtering/grouping
+#### Edition Form Modal
+**Create New Edition Form**:
+- **Title Field**: Required text input for edition name
+- **Type Selection**: Radio buttons for ALPHA | BETA | RELEASE
+- **Baseline Selection**: Dropdown of available baselines with creation dates
+- **Starting Wave**: Dropdown of waves with year/quarter display
+- **Form Validation**: Required field validation and business rules
 
 ---
 
@@ -207,47 +140,25 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 **Activity Navigation**: Consistent patterns within activities
 - Tab-based entity switching (Setup and Elaboration)
+- Single entity focus (Publication)
 - Count badges showing live entity counts
-- Responsive tab behavior on mobile devices
 
 ### Visual Hierarchy Implementation
 **Status Indicators**:
-- **Requirements**: ON/OR badges with distinct styling
-- **Changes**: Wave badges with setup data formatting
-- **Impact Levels**: Color-coded status indicators using setup data names
-- **Connection Status**: Live API connection monitoring
+- **Edition Types**: ALPHA/BETA/RELEASE badges with distinct styling
+- **Wave References**: Year/quarter badges with consistent formatting
+- **Creation Status**: Timestamps and user attribution display
 
 **Interactive Feedback**:
 - **Hover States**: Consistent hover styling across all interactive elements
 - **Loading States**: Spinners and progress messaging during operations
 - **Selection States**: Clear visual distinction for selected items
-- **Focus States**: Keyboard navigation support with focus rings
 
 ### Action Organization
 **Toolbar Placement**: Actions positioned above content area
 - **Primary Actions**: Create new items (context-sensitive button text)
-- **Mode Controls**: Edit mode toggle with clear labeling
-- **View Controls**: Grouping dropdown and perspective toggle
-- **Filter Controls**: Organized in collapsible filter area
-
-**Context Sensitivity**: Actions adapt based on selection and state
-- **Create Button**: "New Requirement" vs "New Change" based on active tab
-- **Edit Mode**: Visual distinction when edit mode is enabled
-- **Group Controls**: Dynamic options based on current entity type
-- **Disabled States**: Clear indication for unavailable features
-
-### Integration with Established Patterns
-**Component Reuse**:
-- **Base Classes**: CollectionEntity pattern proven and extensible
-- **Error Handling**: Consistent error display and retry mechanisms
-- **API Integration**: Standardized loading states and error handling
-- **Responsive Design**: Mobile-first approach with progressive enhancement
-
-**Data Flow Patterns**:
-- **Setup Data**: Centralized loading and distribution to entities
-- **State Management**: Consistent state handling across components
-- **Event Handling**: Debounced inputs and immediate UI feedback
-- **URL Integration**: Deep linking support for entity navigation
+- **View Controls**: Grouping dropdown and filter controls
+- **Secondary Actions**: Edition-specific actions (Read Edition)
 
 ---
 
@@ -258,15 +169,18 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - **Setup Management**: Complete entity management with hierarchy support
 - **Elaboration Activity**: Collection perspective with dynamic setup data integration
 - **Responsive Design**: Mobile and desktop layouts tested and functional
-- **Error Handling**: Comprehensive error management with user-friendly messaging
 
 ### Current Capabilities
-- **Two Activity Types**: Landing page navigation to Setup and Elaboration activities
-- **Five Setup Entities**: Full CRUD with hierarchy management for reference data
-- **Two Operational Entities**: Requirements and Changes with Collection perspective interface
+- **Three Activity Types**: Landing, Setup, and Elaboration activities fully operational
+- **Seven Setup + Operational Entities**: Complete CRUD with advanced filtering and grouping
 - **Dynamic Data Integration**: Setup data automatically populates filter options
 - **Real-time Updates**: Live entity counts and connection status monitoring
 
+### 🔄 In Progress
+- **Publication Activity**: ODP Edition management interface implementation
+- **Edition Workflow**: Create and browse editions with baseline/wave integration
+- **Read Activity Integration**: Context passing for edition browsing
+
 ---
 
-*This document reflects the implemented UI patterns and design decisions for the ODP Web Client, providing the foundation for consistent user experience across all current and future activities.*
+*This document reflects the implemented and planned UI patterns for the ODP Web Client, providing consistent user experience across all activities while adapting to each activity's specific requirements.*

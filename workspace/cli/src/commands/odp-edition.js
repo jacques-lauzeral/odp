@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/odp-edition.js
+// workspace/cli/src/commands/odp-editions.js
 import { Command } from 'commander';
 import Table from 'cli-table3';
 import fetch from 'node-fetch';

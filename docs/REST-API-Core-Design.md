@@ -48,7 +48,7 @@ src/routes/
 ├── operational-requirement.js   # Versioned entities
 ├── operational-change.js
 ├── baseline.js                  # Management entities
-├── odp-edition.js
+├── odp-editions.js
 └── versioned-item-router.js     # Shared router base
 ```
 

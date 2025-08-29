@@ -64,8 +64,8 @@ export default class RequirementForm extends CollectionEntityForm {
                         required: true,
                         placeholder: 'Enter a clear, concise title for this requirement',
                         validate: (value) => {
-                            if (!value || value.length < 5) {
-                                return { valid: false, message: 'Title must be at least 5 characters long' };
+                            if (!value || value.length < 4) {
+                                return { valid: false, message: 'Title must be at least 4 characters long' };
                             }
                             if (value.length > 200) {
                                 return { valid: false, message: 'Title must be less than 200 characters' };
@@ -90,8 +90,8 @@ export default class RequirementForm extends CollectionEntityForm {
                         placeholder: 'Describe the operational need or requirement in detail...',
                         helpText: 'Provide a complete description of what is needed',
                         validate: (value) => {
-                            if (!value || value.length < 20) {
-                                return { valid: false, message: 'Statement must be at least 20 characters long' };
+                            if (!value || value.length < 8) {
+                                return { valid: false, message: 'Statement must be at least 8 characters long' };
                             }
                             return { valid: true };
                         }

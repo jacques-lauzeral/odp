@@ -64,8 +64,8 @@ export default class ChangeForm extends CollectionEntityForm {
                         required: true,
                         placeholder: 'Enter a clear, concise title for this change',
                         validate: (value) => {
-                            if (!value || value.length < 5) {
-                                return { valid: false, message: 'Title must be at least 5 characters long' };
+                            if (!value || value.length < 4) {
+                                return { valid: false, message: 'Title must be at least 4 characters long' };
                             }
                             if (value.length > 200) {
                                 return { valid: false, message: 'Title must be less than 200 characters' };
@@ -83,8 +83,8 @@ export default class ChangeForm extends CollectionEntityForm {
                         placeholder: 'Describe the operational change in detail...',
                         helpText: 'Provide a complete description of what will change and how',
                         validate: (value) => {
-                            if (!value || value.length < 20) {
-                                return { valid: false, message: 'Description must be at least 20 characters long' };
+                            if (!value || value.length < 8) {
+                                return { valid: false, message: 'Description must be at least 8 characters long' };
                             }
                             return { valid: true };
                         }
