@@ -62,8 +62,8 @@ export class App {
                 await this.loadActivity('elaboration', segments.slice(1));
             } else if (segments[0] === 'publication') {
                 await this.loadActivity('publication', segments.slice(1));
-            } else if (segments[0] === 'read') {
-                await this.loadActivity('read', segments.slice(1));
+            } else if (segments[0] === 'review') {
+                await this.loadActivity('review', segments.slice(1));
             } else {
                 // Unknown route - redirect to landing
                 this.navigateTo('/');

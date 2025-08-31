@@ -2,8 +2,8 @@
 
 ## Document Overview
 **Purpose**: UI design specifications and architectural patterns for the ODP Web Client  
-**Status**: Setup Management Activity complete, Elaboration Activity complete, Publication Activity in progress  
-**Last Updated**: August 29, 2025
+**Status**: Setup Management Activity complete, Elaboration Activity complete, Publication Activity complete, Review Activity in progress  
+**Last Updated**: August 31, 2025
 
 ---
 
@@ -13,7 +13,7 @@
 The ODP Web Client follows a consistent three-layer navigation hierarchy across all activities:
 
 **Layer 1: ODP Level (Global Application Chrome)**
-- Persistent header across all activities: `Landing | Setup | Elaboration | Publication | Read`
+- Persistent header across all activities: `Landing | Setup | Elaboration | Publication | Review`
 - User context display and connection status
 - Consistent application-wide navigation
 
@@ -38,7 +38,7 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - Clean, minimal interface with activity tiles
 - User identification prompt (name entry, no authentication)
 - Connection status indicator
-- Direct navigation to Setup, Elaboration, Publication, and Read activities
+- Direct navigation to Setup, Elaboration, Publication, and Review activities
 
 ---
 
@@ -53,6 +53,18 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - Responsive horizontal scroll on mobile
 
 **Layout Pattern**: Three-pane workspace for hierarchical entities, simple list for waves
+
+#### Entity Type Implementation (Layer 3)
+**TreeEntity Pattern**: Used for hierarchical entities
+- **Three-Pane Layout**: Navigation tree, item list, details panel
+- **Hierarchy Management**: REFINES relationships with visual indentation
+- **CRUD Operations**: Create, edit, delete with validation
+- **Form Inheritance**: Consistent modal forms across entity types
+
+**ListEntity Pattern**: Used for simple list entities (Waves)
+- **Two-Pane Layout**: Item list and details panel
+- **Table Display**: Sortable columns with responsive design
+- **Inline Editing**: Direct manipulation with validation feedback
 
 ---
 
@@ -71,14 +83,35 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 #### Collection Perspective Layout (Layer 3)
 **Four-Area Layout Implementation**:
-1. **Filtering Area**: Collapsible filters with dynamic setup data options
-2. **Actions Area**: Create actions and grouping controls
-3. **Collection List Area**: Table-based display with grouping support
-4. **Details Panel**: Selected item details with edit actions
+
+**1. Filtering Area**: Collapsible filters with dynamic setup data options
+- **Text Search**: Pattern matching across entity titles and descriptions
+- **Category Filters**: Dynamic dropdowns populated from setup data
+- **Status Filters**: Entity-specific status and workflow states
+- **Clear All**: Reset all filters with single action
+
+**2. Actions Area**: Create actions and grouping controls
+- **Create Button**: Context-sensitive "New Requirement" / "New Change" text
+- **Grouping Dropdown**: Group by category, status, impact, or none
+- **View Controls**: List density and column visibility options
+- **Bulk Actions**: Multi-select operations where appropriate
+
+**3. Collection List Area**: Table-based display with grouping support
+- **Dynamic Columns**: Entity-specific column configurations
+- **Grouping Headers**: Collapsible groups with item counts
+- **Row Selection**: Single and multi-select with visual feedback
+- **Pagination**: Virtual scrolling for large datasets
+- **Sort Controls**: Multi-column sorting with visual indicators
+
+**4. Details Panel**: Selected item details with edit actions
+- **Metadata Display**: Creation, modification, and ownership details
+- **Content Preview**: Rich text content with formatting preservation
+- **Action Buttons**: Edit, duplicate, delete with permission checks
+- **Relationship Display**: Connected entities and dependencies
 
 ---
 
-### Publication Activity 🔄 IN PROGRESS
+### Publication Activity ✅ IMPLEMENTED
 **Purpose**: ODP Edition management interface for creating and browsing published editions
 
 #### Activity Structure (Layer 2)
@@ -110,14 +143,14 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - **Table Columns**: Title | Type | Starts From Wave | Created At | Created By
 - **Type Badges**: Color-coded ALPHA/BETA/RELEASE indicators
 - **Wave Display**: Year/Quarter format (e.g., "2025 Q2")
-- **Row Actions**: Read Edition (navigate to Read activity with context)
+- **Row Actions**: Review Edition (navigate to Review activity with context)
 - **Grouping Support**: Collapsible groups with edition counts
 
 **4. Details Panel**:
 - **Edition Metadata**: Creation details and context information
 - **Baseline Reference**: Link to baseline used for the edition
 - **Wave Reference**: Starting wave information with timeline context
-- **Action Buttons**: Read Edition (primary action)
+- **Action Buttons**: Review Edition (primary action)
 - **Content Preview**: Summary of included requirements and changes
 
 #### Edition Form Modal
@@ -127,6 +160,49 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - **Baseline Selection**: Dropdown of available baselines with creation dates
 - **Starting Wave**: Dropdown of waves with year/quarter display
 - **Form Validation**: Required field validation and business rules
+
+---
+
+### Review Activity 🔄 IN PROGRESS
+**Purpose**: Edition review interface for examining published content with commenting capability
+
+#### Activity Structure (Layer 2)
+**Edition Context Display**:
+- Clear "Review" context indicator in header
+- Selected edition metadata display
+- Review mode messaging
+
+**Entity Navigation Tabs**:
+- `Operational Requirements | Operational Changes`
+- Tab switching with edition context preservation
+- Entity count badges showing filtered content
+
+#### Collection Perspective Layout (Layer 3)
+**Four-Area Layout for Edition Review**:
+
+**1. Filtering Area**:
+- **Text Search**: Pattern matching across requirements and changes
+- **Category Filters**: Dynamic options from setup data (read-only mode)
+- **Status Filters**: Show changes, new items, modified items
+- **Clear All Filters**: Reset all filter controls
+
+**2. Actions Area**:
+- **Export Actions**: PDF, structured data export
+- **View Controls**: Grouping dropdown and display options
+- **Comment Mode**: Toggle commenting capability
+- **Edition Info**: Selected edition title and metadata display
+
+**3. Collection List Area**:
+- **Table Display**: Same columns as Elaboration but read-only
+- **Visual Indicators**: Change highlighting, version differences
+- **Comment Indicators**: Show items with comments or discussions
+- **Grouping Support**: Same grouping options as Elaboration
+
+**4. Details Panel**:
+- **Content Display**: Full content rendering with formatting
+- **Version Information**: Edition context and change history
+- **Comment Section**: Inline commenting and discussion threads
+- **Related Items**: Cross-references and dependencies
 
 ---
 
@@ -140,7 +216,7 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 **Activity Navigation**: Consistent patterns within activities
 - Tab-based entity switching (Setup and Elaboration)
-- Single entity focus (Publication)
+- Single entity focus (Publication and Review)
 - Count badges showing live entity counts
 
 ### Visual Hierarchy Implementation
@@ -158,7 +234,7 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 **Toolbar Placement**: Actions positioned above content area
 - **Primary Actions**: Create new items (context-sensitive button text)
 - **View Controls**: Grouping dropdown and filter controls
-- **Secondary Actions**: Edition-specific actions (Read Edition)
+- **Secondary Actions**: Edition-specific actions (Review Edition)
 
 ---
 
@@ -168,18 +244,20 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 - **Landing Page**: Full implementation with user identification
 - **Setup Management**: Complete entity management with hierarchy support
 - **Elaboration Activity**: Collection perspective with dynamic setup data integration
+- **Publication Activity**: Complete ODP Edition management with baseline/wave integration
 - **Responsive Design**: Mobile and desktop layouts tested and functional
 
 ### Current Capabilities
-- **Three Activity Types**: Landing, Setup, and Elaboration activities fully operational
+- **Four Activity Types**: Landing, Setup, Elaboration, and Publication activities fully operational
 - **Seven Setup + Operational Entities**: Complete CRUD with advanced filtering and grouping
 - **Dynamic Data Integration**: Setup data automatically populates filter options
+- **Edition Management**: Complete ODP Edition lifecycle with Review activity integration
 - **Real-time Updates**: Live entity counts and connection status monitoring
 
 ### 🔄 In Progress
-- **Publication Activity**: ODP Edition management interface implementation
-- **Edition Workflow**: Create and browse editions with baseline/wave integration
-- **Read Activity Integration**: Context passing for edition browsing
+- **Review Activity**: Edition review interface with read-only Collection perspective
+- **Comment Integration**: Inline commenting system for review feedback
+- **Context Passing**: Seamless navigation from Publication to Review activities
 
 ---
 

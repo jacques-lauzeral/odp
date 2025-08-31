@@ -57,18 +57,6 @@ export default class ODPEditionsEntity {
                 ]
             },
             {
-                key: 'title',
-                label: 'Title Pattern',
-                type: 'text',
-                placeholder: 'Search in title...'
-            },
-            {
-                key: 'baseline',
-                label: 'Baseline',
-                type: 'select',
-                options: this.buildBaselineOptions()
-            },
-            {
                 key: 'startsFromWave',
                 label: 'Wave',
                 type: 'select',
@@ -114,7 +102,7 @@ export default class ODPEditionsEntity {
                 label: 'Starts From Wave',
                 width: '140px',
                 sortable: true,
-                type: 'wave',
+                type: 'entity-reference',
                 noneLabel: 'No Wave'
             },
             {
@@ -138,7 +126,6 @@ export default class ODPEditionsEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
-            { key: 'baseline', label: 'Baseline' },
             { key: 'startsFromWave', label: 'Wave' }
         ];
     }
@@ -146,21 +133,6 @@ export default class ODPEditionsEntity {
     // ====================
     // HELPER METHODS
     // ====================
-
-    buildBaselineOptions() {
-        const baseOptions = [{ value: '', label: 'All Baselines' }];
-
-        if (!this.supportData?.baselines) {
-            return baseOptions;
-        }
-
-        const baselineOptions = this.supportData.baselines.map(baseline => ({
-            value: baseline.id,
-            label: baseline.title || `Baseline ${baseline.id}`
-        }));
-
-        return baseOptions.concat(baselineOptions);
-    }
 
     buildWaveOptions() {
         const baseOptions = [{ value: '', label: 'All Waves' }];

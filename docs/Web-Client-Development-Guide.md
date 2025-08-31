@@ -1,205 +1,127 @@
 # Web Client Development Guide
 
-## Overview
-This guide provides development instructions for the ODP Web Client using established patterns from the completed Setup Management Activity.
+## Quick Start
+This guide provides practical patterns for extending the ODP Web Client, based on proven implementations from Setup Management and Elaboration activities.
 
-**Target Audience**: Developers extending the ODP Web Client  
-**Prerequisites**: Familiarity with ES modules, vanilla JavaScript, and REST APIs  
-**Architecture**: Three-layer activity-based organization with TreeEntity/ListEntity base classes
+## Project Structure
 
----
-
-## Development Environment Setup
-
-### Quick Start
-```bash
-git clone https://github.com/jacques-lauzeral/odp
-cd odp
-docker-compose up
-
-# Access points
-# Web Client: http://localhost:3000
-# API Server: http://localhost
+### Core Architecture
 ```
-
-### Directory Structure
-```
-workspace/web-client/src/
-├── index.html              # Main HTML template with header container
-├── app.js                  # Router with API client integration
-├── components/
-│   ├── common/header.js    # ✅ Global navigation header
-│   └── setup/              # ✅ Base entity components
-│       ├── tree-entity.js  # ✅ Hierarchical entity base class
-│       └── list-entity.js  # ✅ List/table entity base class
+web-client/src/
 ├── activities/
-│   ├── landing/landing.js  # ✅ Landing page with user identification
-│   └── setup/              # ✅ Complete Setup Management Activity
-│       ├── setup.js        # ✅ Activity router with entity tabs
-│       ├── stakeholder-categories.js  # ✅ TreeEntity extension example
-│       └── waves.js        # ✅ ListEntity extension example
-└── styles/                 # ✅ Complete responsive styling system
+│   ├── landing/           # ✅ Simple activity launcher
+│   ├── setup/             # ✅ Entity management with TreeEntity/ListEntity
+│   ├── elaboration/       # ✅ Collection perspective implementation
+│   ├── publication/       # ✅ ODP Edition management
+│   └── review/            # 🔄 Edition review interface (in progress)
+├── components/
+│   ├── common/            # Global navigation, error handling
+│   ├── setup/             # TreeEntity, ListEntity base classes
+│   └── odp/               # CollectionEntity and forms
+└── shared/                # API client, utilities, error handling
 ```
 
----
+### Component Patterns
 
-## Established Patterns (From Setup Activity)
-
-### 1. Entity Extension Pattern
-**TreeEntity Extension** (for hierarchical entities):
+#### 1. TreeEntity (Hierarchical Data)
+**Use for**: Categories, classifications with parent-child relationships
 ```javascript
-import TreeEntity from '../../components/setup/tree-entity.js';
-
-export default class StakeholderCategories extends TreeEntity {
-    constructor(app, entityConfig) {
-        super(app, entityConfig);
+// Example: StakeholderCategoriesEntity extends TreeEntity
+class MyTreeEntity extends TreeEntity {
+    constructor(container, apiClient, setupData) {
+        super(container, apiClient, '/my-endpoint', setupData);
+        this.entityName = 'My Entity';
+        this.entityNamePlural = 'My Entities';
     }
-
-    getDisplayName(item) {
-        return item.name;  // Override for entity-specific display
-    }
-
-    renderItemDetails(item) {
-        return `
-            <div class="item-details">
-                <div class="detail-field">
-                    <label>Name</label>
-                    <p>${item.name}</p>
-                </div>
-                <!-- Add entity-specific fields -->
-            </div>
-        `;
-    }
-
-    showCreateForm(parentId = null) {
-        // Entity-specific modal form implementation
-        const modalHtml = `
-            <div class="modal-overlay" id="create-modal">
-                <!-- Entity-specific form fields -->
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        this.attachModalEventListeners('#create-modal');
-    }
-}
-```
-
-**ListEntity Extension** (for simple list entities):
-```javascript
-import ListEntity from '../../components/setup/list-entity.js';
-
-export default class Waves extends ListEntity {
-    getTableColumns() {
+    
+    getFormFields(item = {}) {
         return [
-            { key: 'year', label: 'Year', type: 'number' },
-            { key: 'quarter', label: 'Quarter', type: 'quarter' },
-            { key: 'startDate', label: 'Start Date', type: 'date' }
+            { name: 'name', label: 'Name', type: 'text', required: true },
+            { name: 'parent', label: 'Parent', type: 'select', 
+              options: this.getParentOptions() }
         ];
     }
+}
+```
 
-    formatCellValue(value, column, item) {
-        if (column.type === 'quarter') return `Q${value}`;
-        if (column.type === 'date') return value ? new Date(value).toLocaleDateString() : '-';
-        return super.formatCellValue(value, column, item);
+#### 2. ListEntity (Simple Lists)
+**Use for**: Simple list data without hierarchy
+```javascript
+// Example: WavesEntity extends ListEntity  
+class MyListEntity extends ListEntity {
+    constructor(container, apiClient, setupData) {
+        super(container, apiClient, '/my-endpoint', setupData);
+        this.entityName = 'My Item';
     }
-
-    handleAdd() {
-        this.showCreateForm(); // Implement entity-specific create form
+    
+    getColumns() {
+        return [
+            { key: 'name', label: 'Name', sortable: true },
+            { key: 'createdAt', label: 'Created', type: 'date' }
+        ];
     }
 }
 ```
 
-### 2. Activity Development Pattern
+#### 3. CollectionEntity (Rich Content)
+**Use for**: Operational content, editions, complex entities
 ```javascript
-// activities/new-activity/new-activity.js
-export default class NewActivity {
-    constructor(app) {
-        this.app = app;
-        this.entities = {
-            'entity-type': { name: 'Entity Name', endpoint: '/entity-endpoint', type: 'tree' }
-        };
-    }
-
-    async render(container, subPath = []) {
-        this.container = container;
+// Example: RequirementsEntity extends CollectionEntity
+class MyCollectionEntity extends CollectionEntity {
+    constructor(container, apiClient, setupData) {
+        super(container, apiClient, '/my-endpoint', setupData);
+        this.entityName = 'My Content';
+        this.entityNamePlural = 'My Contents';
         
-        // Parse entity from subPath
-        if (subPath.length > 0 && this.entities[subPath[0]]) {
-            this.currentEntity = subPath[0];
-        }
-
-        this.renderUI();
-        await this.loadCurrentEntity();
+        // Configure Collection features
+        this.configureFilters();
+        this.configureColumns();
+        this.configureGrouping();
     }
-
-    async loadCurrentEntity() {
-        // Dynamic import entity component
-        const entityModule = await import(`./${this.currentEntity}.js`);
-        const EntityComponent = entityModule.default;
-        
-        this.currentEntityComponent = new EntityComponent(this.app, this.entities[this.currentEntity]);
-        await this.currentEntityComponent.render(this.workspace);
+    
+    configureFilters() {
+        this.availableFilters = [
+            { key: 'title', label: 'Title Pattern', type: 'text' },
+            { key: 'status', label: 'Status', type: 'select', 
+              options: ['Draft', 'Review', 'Published'] }
+        ];
     }
-}
-```
-
-### 3. Modal Form Pattern (From Setup Implementation)
-```javascript
-showCreateForm(parentId = null) {
-    const modalHtml = `
-        <div class="modal-overlay" id="create-modal">
-            <div class="modal">
-                <div class="modal-header">
-                    <h3 class="modal-title">Create Entity</h3>
-                    <button class="modal-close" data-action="close">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <form id="create-form">
-                        <div class="form-group">
-                            <label for="name">Name *</label>
-                            <input type="text" id="name" name="name" class="form-control" required>
-                        </div>
-                        <!-- Add entity-specific fields -->
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                    <button type="button" class="btn btn-primary" data-action="save">Create</button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    this.attachModalEventListeners('#create-modal');
-}
-
-attachModalEventListeners(modalSelector) {
-    const modal = document.querySelector(modalSelector);
-    modal.addEventListener('click', async (e) => {
-        const action = e.target.dataset.action;
-        if (action === 'close') this.closeModal(modal);
-        if (action === 'save') await this.handleCreateSave(modal);
-    });
 }
 ```
 
 ---
 
-## Step-by-Step Development
+## Implementation Examples
 
-### Adding New Entity to Setup Activity
+### Adding New Setup Entity
 
 #### 1. Create Entity Component
 ```javascript
-// src/activities/setup/new-entity.js
-import TreeEntity from '../../components/setup/tree-entity.js';  // or ListEntity
+// src/activities/setup/entities/my-entities.js
+import { TreeEntity } from '../../../components/setup/tree-entity.js';
 
-export default class NewEntity extends TreeEntity {
-    // Override base methods for entity-specific behavior
-    getDisplayName(item) { return item.name; }
-    renderItemDetails(item) { /* custom details */ }
-    handleAddRoot() { this.showCreateForm(); }
+export class MyEntitiesEntity extends TreeEntity {
+    constructor(container, apiClient, setupData) {
+        super(container, apiClient, '/my-entities', setupData);
+        this.entityName = 'My Entity';
+        this.entityNamePlural = 'My Entities';
+    }
+    
+    getFormFields(item = {}) {
+        return [
+            { name: 'name', label: 'Name', type: 'text', required: true },
+            { name: 'description', label: 'Description', type: 'textarea' },
+            { name: 'parent', label: 'Parent Category', type: 'select', 
+              options: this.getParentOptions() }
+        ];
+    }
+    
+    getParentOptions() {
+        return [
+            { value: '', label: 'No Parent' },
+            ...this.data.map(item => ({ value: item.id, label: item.name }))
+        ];
+    }
 }
 ```
 
@@ -208,15 +130,15 @@ export default class NewEntity extends TreeEntity {
 // In src/activities/setup/setup.js
 this.entities = {
     // existing entities...
-    'new-entity': { name: 'New Entity', endpoint: '/new-entities', type: 'tree' }
+    'my-entities': { name: 'My Entities', endpoint: '/my-entities', type: 'tree' }
 };
 ```
 
 #### 3. Update Main App Router
 ```javascript
 // In src/app.js - if adding new activity
-else if (segments[0] === 'new-activity') {
-    await this.loadActivity('new-activity', segments.slice(1));
+else if (segments[0] === 'review') {
+    await this.loadActivity('review', segments.slice(1));
 }
 ```
 
@@ -329,15 +251,18 @@ items.forEach(item => {
 
 ## Extension Examples
 
-### Adding Read Activity
-1. Create `src/activities/read/read.js` following activity pattern
+### Adding Review Activity
+1. Create `src/activities/review/review.js` following activity pattern
 2. Focus on data browsing vs. CRUD operations
 3. Use existing API client with baseline/wave filtering
+4. Implement read-only mode for Collection perspective
+5. Add commenting integration for review feedback
 
 ### Adding Elaboration Activity
 1. Create `src/activities/elaboration/elaboration.js`
 2. Implement rich text editing for versioned entities
 3. Use TreeEntity pattern for requirement hierarchies
+4. Extend CollectionEntity for operational content
 
 ---
 

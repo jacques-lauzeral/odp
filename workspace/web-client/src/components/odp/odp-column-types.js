@@ -246,6 +246,79 @@ export const multiSetupDataColumn = {
 };
 
 // ====================
+// ENTITY REFERENCE
+// ====================
+
+export const entityReferenceColumn = {
+    /**
+     * Render entity reference with title display
+     */
+    render: (value, column, item, context) => {
+        if (!value) return column.noneLabel || '-';
+
+        // Handle EntityReference format {id, title}
+        if (typeof value === 'object' && value !== null) {
+            const displayValue = value.title || value.name || value.id || 'Unknown';
+            return escapeHtml(displayValue);
+        }
+
+        // Fallback for primitive values
+        return escapeHtml(value.toString());
+    },
+
+    /**
+     * Filter by entity reference
+     */
+    filter: (value, filterValue, column) => {
+        if (!filterValue) return true;
+        if (!value) return false;
+
+        // Handle EntityReference format
+        if (typeof value === 'object' && value !== null) {
+            const id = value.id?.toString().toLowerCase();
+            const title = value.title?.toLowerCase();
+            const name = value.name?.toLowerCase();
+            const lowerFilter = filterValue.toLowerCase();
+
+            return (id && id.includes(lowerFilter)) ||
+                (title && title.includes(lowerFilter)) ||
+                (name && name.includes(lowerFilter));
+        }
+
+        // Fallback for primitive values
+        return value.toString().toLowerCase().includes(filterValue.toLowerCase());
+    },
+
+    /**
+     * Sort by title/name
+     */
+    sort: (a, b, column) => {
+        const getDisplayValue = (value) => {
+            if (!value) return '';
+            if (typeof value === 'object' && value !== null) {
+                return value.title || value.name || value.id || '';
+            }
+            return value.toString();
+        };
+
+        return getDisplayValue(a).localeCompare(getDisplayValue(b));
+    },
+
+    /**
+     * Get group title
+     */
+    getGroupTitle: (value, column, context) => {
+        if (!value) return column.noneLabel || 'Not Specified';
+
+        if (typeof value === 'object' && value !== null) {
+            return value.title || value.name || value.id || 'Unknown';
+        }
+
+        return value.toString();
+    }
+};
+
+// ====================
 // ENTITY REFERENCE LIST
 // ====================
 
@@ -526,6 +599,7 @@ function escapeHtml(text) {
 export const odpColumnTypes = {
     'setup-reference': setupDataColumn,
     'multi-setup-reference': multiSetupDataColumn,
+    'entity-reference': entityReferenceColumn,
     'entity-reference-list': entityReferenceListColumn,
     'wave': waveColumn,
     'requirement-type': requirementTypeColumn,
