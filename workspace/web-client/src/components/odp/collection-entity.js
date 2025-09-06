@@ -127,9 +127,45 @@ export default class CollectionEntity {
 
     async loadData() {
         try {
-            const response = await apiClient.get(this.entityConfig.endpoint);
+            let endpoint = this.entityConfig.endpoint;
+
+            // FIXED: Check if we have edition context from the current activity
+            const editionContext = this.app?.currentActivity?.config?.dataSource;
+            if (editionContext &&
+                editionContext !== 'repository' &&
+                editionContext !== 'Repository' &&
+                typeof editionContext === 'string' &&
+                editionContext.match(/^\d+$/)) { // Ensure it looks like an edition ID
+
+                console.log(`Resolving edition context: ${editionContext}`);
+
+                // Step 1: Fetch the edition details to get baseline and wave references
+                const edition = await apiClient.get(`/odp-editions/${editionContext}`);
+                console.log('Edition details:', edition);
+
+                // Step 2: Build query parameters from resolved context
+                const queryParams = {};
+                if (edition.baseline?.id) {
+                    queryParams.baseline = edition.baseline.id;
+                }
+                if (edition.startsFromWave?.id) {
+                    queryParams.fromWave = edition.startsFromWave.id;
+                }
+
+                // Step 3: Append query parameters if we have any
+                if (Object.keys(queryParams).length > 0) {
+                    const queryString = new URLSearchParams(queryParams).toString();
+                    endpoint = `${endpoint}?${queryString}`;
+                    console.log(`Loading data with edition context - baseline: ${queryParams.baseline}, fromWave: ${queryParams.fromWave}`);
+                }
+            }
+
+            console.log(`Making API call to: ${endpoint}`);
+            const response = await apiClient.get(endpoint);
             this.data = Array.isArray(response) ? response : [];
             this.filteredData = [...this.data];
+
+            console.log(`Loaded ${this.data.length} items for ${this.entityConfig.name}`);
         } catch (error) {
             console.error(`Failed to load ${this.entityConfig.name.toLowerCase()} data:`, error);
             this.data = [];

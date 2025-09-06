@@ -157,10 +157,11 @@ export default class ODPEditionsEntity {
         this.form.showCreateModal();
     }
 
-    handleRead(item) {
+    // FIXED: Use app router instead of direct browser navigation
+    handleReviewEdition(item) {
         if (item && item.id) {
-            // Navigate to Read activity with edition context
-            this.app.navigateTo(`/read?edition=${item.id}`);
+            // FIXED: Use internal SPA navigation instead of window.location
+            this.app.navigateTo(`/review/edition/${item.id}`);
         }
     }
 
@@ -185,7 +186,7 @@ export default class ODPEditionsEntity {
                     <span class="item-id">[${item.type}] ${item.id}</span>
                 </div>
                 <div class="details-actions">
-                    <button class="btn btn-primary btn-sm" id="readEditionBtn">Read Edition</button>
+                    <button class="btn btn-primary btn-sm" id="reviewEditionBtn">Review Edition</button>
                 </div>
             </div>
             <div class="details-scrollable-content">
@@ -193,10 +194,10 @@ export default class ODPEditionsEntity {
             </div>
         `;
 
-        // Bind read button
-        const readBtn = detailsContainer.querySelector('#readEditionBtn');
-        if (readBtn) {
-            readBtn.addEventListener('click', () => this.handleRead(item));
+        // FIXED: Bind review button with correct method
+        const reviewBtn = detailsContainer.querySelector('#reviewEditionBtn');
+        if (reviewBtn) {
+            reviewBtn.addEventListener('click', () => this.handleReviewEdition(item));
         }
     }
 

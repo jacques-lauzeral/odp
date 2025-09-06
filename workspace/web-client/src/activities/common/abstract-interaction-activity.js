@@ -56,7 +56,7 @@ export default class AbstractInteractionActivity {
             // Load setup data
             await this.loadSetupData();
 
-            // Load entity counts
+            // Load entity counts with edition context
             await this.loadEntityCounts();
 
             // Render the activity
@@ -134,6 +134,8 @@ export default class AbstractInteractionActivity {
         const activityClass = this.config.activityName.toLowerCase();
         const contextLabel = this.getContextLabel();
 
+        // FIXED: Use consistent tab styling across all interaction activities
+        // Use 'interaction' as base class instead of activity-specific classes
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
@@ -144,14 +146,14 @@ export default class AbstractInteractionActivity {
                     <p>${this.config.description}</p>
                 </div>
                 
-                <div class="${activityClass}-tabs">
+                <div class="interaction-tabs">
                     ${Object.entries(this.entities).map(([key, entity]) => `
                         <button 
-                            class="${activityClass}-tab ${key === this.currentEntity ? activityClass + '-tab--active' : ''}"
+                            class="interaction-tab ${key === this.currentEntity ? 'interaction-tab--active' : ''}"
                             data-entity="${key}"
                         >
-                            <span class="${activityClass}-tab__name">${entity.name}</span>
-                            <span class="${activityClass}-tab__count">${this.entityCounts[key] || 0}</span>
+                            <span class="interaction-tab__name">${entity.name}</span>
+                            <span class="interaction-tab__count" id="${key}-count">${this.entityCounts[key] || 0}</span>
                         </button>
                     `).join('')}
                 </div>
@@ -225,10 +227,9 @@ export default class AbstractInteractionActivity {
     }
 
     bindEvents() {
-        const activityClass = this.config.activityName.toLowerCase();
-
+        // FIXED: Use consistent interaction-tab class for event binding
         // Entity tab switching
-        const tabs = this.container.querySelectorAll(`.${activityClass}-tab`);
+        const tabs = this.container.querySelectorAll('.interaction-tab');
         tabs.forEach(tab => {
             tab.addEventListener('click', (e) => {
                 const entity = e.currentTarget.dataset.entity;
@@ -286,14 +287,13 @@ export default class AbstractInteractionActivity {
         const newPath = `/${activityName}/${entity}`;
         window.history.pushState(null, '', newPath);
 
-        // Update active tab
-        const activityClass = this.config.activityName.toLowerCase();
-        const tabs = this.container.querySelectorAll(`.${activityClass}-tab`);
+        // FIXED: Update active tab using consistent class names
+        const tabs = this.container.querySelectorAll('.interaction-tab');
         tabs.forEach(tab => {
             if (tab.dataset.entity === entity) {
-                tab.classList.add(`${activityClass}-tab--active`);
+                tab.classList.add('interaction-tab--active');
             } else {
-                tab.classList.remove(`${activityClass}-tab--active`);
+                tab.classList.remove('interaction-tab--active');
             }
         });
 
@@ -334,8 +334,8 @@ export default class AbstractInteractionActivity {
                 // After entity is loaded, render dynamic controls
                 this.renderDynamicControls();
 
-                // Update count badge
-                await this.updateEntityCount(this.currentEntity);
+                // FIXED: Update count badge after entity loads its filtered data
+                await this.updateEntityCountAfterLoad(this.currentEntity);
             }
 
         } catch (error) {
@@ -344,18 +344,44 @@ export default class AbstractInteractionActivity {
         }
     }
 
+    // FIXED: Resolve edition context before loading counts
     async loadEntityCounts() {
         try {
             const promises = Object.entries(this.entities).map(async ([key, entity]) => {
                 try {
-                    // Modify endpoint based on data source if needed
                     let endpoint = entity.endpoint;
-                    if (this.config.dataSource !== 'repository' && this.config.dataSource) {
-                        endpoint = `${entity.endpoint}?edition=${this.config.dataSource}`;
+
+                    // Check if we have edition context that needs resolution
+                    if (this.config.dataSource &&
+                        this.config.dataSource !== 'repository' &&
+                        this.config.dataSource !== 'Repository' &&
+                        typeof this.config.dataSource === 'string' &&
+                        this.config.dataSource.match(/^\d+$/)) {
+
+                        console.log(`Loading count for ${key} with edition context: ${this.config.dataSource}`);
+
+                        // Step 1: Fetch the edition details to get baseline and wave references
+                        const edition = await apiClient.get(`/odp-editions/${this.config.dataSource}`);
+
+                        // Step 2: Build query parameters from resolved context
+                        const queryParams = {};
+                        if (edition.baseline?.id) {
+                            queryParams.baseline = edition.baseline.id;
+                        }
+                        if (edition.startsFromWave?.id) {
+                            queryParams.fromWave = edition.startsFromWave.id;
+                        }
+
+                        // Step 3: Append query parameters if we have any
+                        if (Object.keys(queryParams).length > 0) {
+                            const queryString = new URLSearchParams(queryParams).toString();
+                            endpoint = `${endpoint}?${queryString}`;
+                        }
                     }
 
                     const response = await apiClient.get(endpoint);
                     this.entityCounts[key] = Array.isArray(response) ? response.length : 0;
+                    console.log(`Loaded count for ${key}: ${this.entityCounts[key]}`);
                 } catch (error) {
                     console.warn(`Failed to load count for ${key}:`, error);
                     this.entityCounts[key] = 0;
@@ -368,16 +394,46 @@ export default class AbstractInteractionActivity {
         }
     }
 
-    async updateEntityCount(entityType) {
+    // FIXED: Update individual count with proper edition context resolution
+    async updateEntityCountAfterLoad(entityType) {
         try {
             const badge = this.container.querySelector(`#${entityType}-count`);
             if (!badge) return;
 
+            // Get count from the loaded entity component if available
+            if (this.currentEntityComponent?.collection?.data) {
+                const count = this.currentEntityComponent.collection.data.length;
+                badge.textContent = count || '0';
+                this.entityCounts[entityType] = count;
+                console.log(`Updated ${entityType} count from loaded data: ${count}`);
+                return;
+            }
+
+            // Fallback to API call with edition context resolution
             const entity = this.entities[entityType];
             if (entity) {
                 let endpoint = entity.endpoint;
-                if (this.config.dataSource !== 'repository' && this.config.dataSource) {
-                    endpoint = `${entity.endpoint}?edition=${this.config.dataSource}`;
+
+                if (this.config.dataSource &&
+                    this.config.dataSource !== 'repository' &&
+                    this.config.dataSource !== 'Repository' &&
+                    typeof this.config.dataSource === 'string' &&
+                    this.config.dataSource.match(/^\d+$/)) {
+
+                    // Resolve edition context
+                    const edition = await apiClient.get(`/odp-editions/${this.config.dataSource}`);
+                    const queryParams = {};
+                    if (edition.baseline?.id) {
+                        queryParams.baseline = edition.baseline.id;
+                    }
+                    if (edition.startsFromWave?.id) {
+                        queryParams.fromWave = edition.startsFromWave.id;
+                    }
+
+                    if (Object.keys(queryParams).length > 0) {
+                        const queryString = new URLSearchParams(queryParams).toString();
+                        endpoint = `${endpoint}?${queryString}`;
+                    }
                 }
 
                 const response = await apiClient.get(endpoint);

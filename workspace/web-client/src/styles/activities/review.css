@@ -1,0 +1,234 @@
+/* ODP Web Client - Review Activity Specific Styles */
+/*
+ * This file contains only Review-specific styles.
+ * Common interaction activity styles are in abstract-interaction-activity.css
+ */
+
+/* Review Mode Indicators */
+.review-activity .context-label {
+    background: var(--info-50);
+    color: var(--info-700);
+}
+
+.review-activity .context-label::before {
+    content: '👁️';
+    font-size: var(--font-size-xs);
+    margin-right: var(--space-1);
+}
+
+/* Read-only Indicators */
+.review-activity .collection-table {
+    background: var(--bg-secondary);
+}
+
+.review-activity .collection-row:hover {
+    background-color: rgba(59, 130, 246, 0.05) !important;
+}
+
+.review-activity .collection-row--selected {
+    background-color: var(--info-50) !important;
+    border-left-color: var(--info-500);
+}
+
+/* Review-specific Action Buttons */
+.review-actions .action-export {
+    background: var(--primary-600);
+    color: white;
+    border: none;
+}
+
+.review-actions .action-export:hover {
+    background: var(--primary-700);
+}
+
+.review-actions .action-comment {
+    background: var(--accent-secondary);
+    color: white;
+    border: none;
+}
+
+.review-actions .action-comment:hover {
+    background: var(--accent-secondary-hover);
+}
+
+/* Read-only Form Elements (if any forms appear in review mode) */
+.review-activity .form-control[readonly] {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-secondary);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.review-activity .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Comment Mode Styling (when comment mode is active) */
+.review-activity.comment-mode .collection-row {
+    position: relative;
+}
+
+.review-activity.comment-mode .collection-row::after {
+    content: '💬';
+    position: absolute;
+    right: var(--space-2);
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.3;
+    font-size: var(--font-size-sm);
+}
+
+.review-activity.comment-mode .collection-row:hover::after {
+    opacity: 1;
+}
+
+/* Comment indicators for items with comments */
+.collection-row--has-comments::before {
+    content: '💬';
+    position: absolute;
+    left: var(--space-2);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent-primary);
+    font-size: var(--font-size-sm);
+    z-index: 1;
+}
+
+.collection-row--has-comments .collection-cell:first-child {
+    padding-left: calc(var(--space-6) + var(--space-2));
+}
+
+/* Target Selection Screen (unique to Review activity) */
+.target-selection {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--space-8);
+}
+
+.target-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-6);
+}
+
+.target-option {
+    background: white;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    text-align: center;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+}
+
+.target-option:hover {
+    border-color: var(--accent-primary);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.target-option.selected {
+    border-color: var(--accent-primary);
+    background: var(--accent-50);
+}
+
+.target-icon {
+    font-size: var(--font-size-4xl);
+    margin-bottom: var(--space-4);
+}
+
+.target-option h3 {
+    margin-bottom: var(--space-2);
+    color: var(--text-primary);
+}
+
+.target-option p {
+    color: var(--text-secondary);
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+}
+
+.target-detail {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+.edition-selector {
+    margin-top: var(--space-4);
+}
+
+.edition-selector select {
+    width: 100%;
+    margin-bottom: var(--space-3);
+}
+
+.select-target-btn {
+    width: 100%;
+}
+
+.target-selection-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-secondary);
+}
+
+.target-selection-loading .spinner {
+    margin-bottom: var(--space-4);
+}
+
+/* Edition Context Display */
+.review-activity .edition-context-info {
+    background: var(--info-50);
+    border: 1px solid var(--info-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin-bottom: var(--space-4);
+    font-size: var(--font-size-sm);
+    color: var(--info-700);
+}
+
+.edition-context-info .edition-title {
+    font-weight: var(--font-weight-semibold);
+}
+
+.edition-context-info .edition-details {
+    margin-top: var(--space-1);
+    opacity: 0.8;
+}
+
+/* Review-specific responsive adjustments */
+@media (max-width: 768px) {
+    .target-options {
+        grid-template-columns: 1fr;
+        gap: var(--space-4);
+    }
+
+    .target-option {
+        padding: var(--space-4);
+    }
+
+    .review-actions {
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+}
+
+@media (max-width: 480px) {
+    .target-selection {
+        padding: var(--space-4);
+    }
+
+    .target-option {
+        padding: var(--space-3);
+    }
+
+    .target-icon {
+        font-size: var(--font-size-2xl);
+        margin-bottom: var(--space-3);
+    }
+}

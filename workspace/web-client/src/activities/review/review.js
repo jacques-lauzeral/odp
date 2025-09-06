@@ -20,6 +20,25 @@ export default class ReviewActivity extends AbstractInteractionActivity {
     async render(container, subPath = []) {
         this.container = container;
 
+        // FIXED: Check if we're navigating directly to an edition from URL
+        if (subPath.length >= 2 && subPath[0] === 'edition') {
+            const editionId = subPath[1];
+            this.reviewTarget = editionId;
+            // Load the edition details for proper configuration
+            try {
+                console.log(`Loading edition ${editionId} for direct navigation`);
+                this.selectedEdition = await apiClient.get(`/odp-editions/${editionId}`);
+                console.log('Edition loaded:', this.selectedEdition);
+            } catch (error) {
+                console.warn('Failed to load edition details:', error);
+                this.selectedEdition = { id: editionId, title: `Edition ${editionId}` };
+            }
+        } else if (subPath.length >= 1 && subPath[0] === 'repository') {
+            // Direct navigation to repository review
+            this.reviewTarget = 'repository';
+            this.selectedEdition = null;
+        }
+
         // Check if target is already determined from URL or previous selection
         if (!this.reviewTarget) {
             await this.renderTargetSelection();
