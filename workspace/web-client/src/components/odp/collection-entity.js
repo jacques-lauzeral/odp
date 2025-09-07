@@ -4,6 +4,7 @@ import { apiClient } from '../../shared/api-client.js';
 /**
  * CollectionEntity - Pure table/list rendering engine
  * Business-agnostic collection management with pluggable column types
+ * Enhanced with server-side filtering support
  */
 export default class CollectionEntity {
     constructor(app, entityConfig, options = {}) {
@@ -42,6 +43,12 @@ export default class CollectionEntity {
         // Debounced methods
         this.debouncedFilter = asyncUtils.debounce(
             () => this.applyFilters(),
+            300
+        );
+
+        // NEW: Debounced server-side reload for filtering
+        this.debouncedReload = asyncUtils.debounce(
+            () => this.loadData().then(() => this.renderContent()),
             300
         );
     }
@@ -128,8 +135,9 @@ export default class CollectionEntity {
     async loadData() {
         try {
             let endpoint = this.entityConfig.endpoint;
+            const queryParams = {};
 
-            // FIXED: Check if we have edition context from the current activity
+            // EXISTING: Check if we have edition context from the current activity
             const editionContext = this.app?.currentActivity?.config?.dataSource;
             if (editionContext &&
                 editionContext !== 'repository' &&
@@ -144,25 +152,41 @@ export default class CollectionEntity {
                 console.log('Edition details:', edition);
 
                 // Step 2: Build query parameters from resolved context
-                const queryParams = {};
                 if (edition.baseline?.id) {
                     queryParams.baseline = edition.baseline.id;
                 }
                 if (edition.startsFromWave?.id) {
                     queryParams.fromWave = edition.startsFromWave.id;
                 }
+            }
 
-                // Step 3: Append query parameters if we have any
-                if (Object.keys(queryParams).length > 0) {
-                    const queryString = new URLSearchParams(queryParams).toString();
-                    endpoint = `${endpoint}?${queryString}`;
-                    console.log(`Loading data with edition context - baseline: ${queryParams.baseline}, fromWave: ${queryParams.fromWave}`);
-                }
+            // NEW: Add content filters to query parameters
+            if (this.currentFilters && Object.keys(this.currentFilters).length > 0) {
+                Object.entries(this.currentFilters).forEach(([key, value]) => {
+                    if (value && value !== '') {
+                        // Handle multi-select filters that need comma-separated values
+                        if (Array.isArray(value)) {
+                            queryParams[key] = value.join(',');
+                        } else {
+                            queryParams[key] = value;
+                        }
+                    }
+                });
+            }
+
+            // Build final endpoint with all parameters
+            if (Object.keys(queryParams).length > 0) {
+                const queryString = new URLSearchParams(queryParams).toString();
+                endpoint = `${endpoint}?${queryString}`;
+                console.log(`Loading data with context and filters - params:`, queryParams);
             }
 
             console.log(`Making API call to: ${endpoint}`);
             const response = await apiClient.get(endpoint);
             this.data = Array.isArray(response) ? response : [];
+
+            // NEW: For server-side filtering, filteredData is same as data
+            // since filtering is done on server
             this.filteredData = [...this.data];
 
             console.log(`Loaded ${this.data.length} items for ${this.entityConfig.name}`);
@@ -270,28 +294,52 @@ export default class CollectionEntity {
 
     renderEmptyState() {
         const message = this.getEmptyStateMessage();
+        const hasActiveFilters = Object.keys(this.currentFilters).some(key =>
+            this.currentFilters[key] && this.currentFilters[key] !== ''
+        );
 
-        this.container.innerHTML = `
-            <div class="empty-state">
-                <div class="icon">${message.icon || '📄'}</div>
-                <h3>${message.title || 'No Items'}</h3>
-                <p>${message.description || 'No items to display.'}</p>
-                ${message.showCreateButton !== false ? `
-                    <button class="btn btn-primary" id="createFirstItem">
-                        ${message.createButtonText || 'Create First Item'}
+        // Show different empty state if filters are active
+        if (hasActiveFilters) {
+            this.container.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">🔍</div>
+                    <h3>No Matching Items</h3>
+                    <p>No items match your current filters.</p>
+                    <button class="btn btn-secondary" id="clearFiltersBtn">
+                        Clear All Filters
                     </button>
-                ` : ''}
-            </div>
-        `;
+                </div>
+            `;
 
-        if (message.showCreateButton !== false) {
-            const createBtn = this.container.querySelector('#createFirstItem');
-            if (createBtn) {
-                createBtn.addEventListener('click', () => {
-                    if (this.onCreate) {
-                        this.onCreate();
-                    }
+            const clearBtn = this.container.querySelector('#clearFiltersBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    this.clearFilters();
                 });
+            }
+        } else {
+            this.container.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">${message.icon || '📄'}</div>
+                    <h3>${message.title || 'No Items'}</h3>
+                    <p>${message.description || 'No items to display.'}</p>
+                    ${message.showCreateButton !== false ? `
+                        <button class="btn btn-primary" id="createFirstItem">
+                            ${message.createButtonText || 'Create First Item'}
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+
+            if (message.showCreateButton !== false) {
+                const createBtn = this.container.querySelector('#createFirstItem');
+                if (createBtn) {
+                    createBtn.addEventListener('click', () => {
+                        if (this.onCreate) {
+                            this.onCreate();
+                        }
+                    });
+                }
             }
         }
     }
@@ -309,18 +357,40 @@ export default class CollectionEntity {
     }
 
     // ====================
-    // FILTERING
+    // FILTERING - ENHANCED FOR SERVER-SIDE
     // ====================
 
     handleFilter(filterKey, filterValue) {
         this.currentFilters[filterKey] = filterValue;
-        this.debouncedFilter();
+
+        // NEW: Determine if this filter should use server-side or client-side filtering
+        if (this.isServerSideFilter(filterKey)) {
+            // Server-side filtering: reload data with new filters
+            this.debouncedReload();
+        } else {
+            // Client-side filtering: apply filters locally (for backwards compatibility)
+            this.debouncedFilter();
+        }
+    }
+
+    // NEW: Determine if a filter should use server-side filtering
+    isServerSideFilter(filterKey) {
+        // Server-side filters for operational entities
+        const serverSideFilters = [
+            'type', 'text', 'title', 'visibility',
+            'dataCategory', 'stakeholderCategory', 'service', 'regulatoryAspect'
+        ];
+        return serverSideFilters.includes(filterKey);
     }
 
     applyFilters() {
+        // Client-side filtering (for backward compatibility and non-server filters)
         this.filteredData = this.data.filter(item => {
             for (const [filterKey, filterValue] of Object.entries(this.currentFilters)) {
                 if (!filterValue) continue;
+
+                // Skip server-side filters in client-side filtering
+                if (this.isServerSideFilter(filterKey)) continue;
 
                 const column = this.columnConfig.find(col => col.key === filterKey);
                 if (!column) continue;
@@ -347,8 +417,12 @@ export default class CollectionEntity {
 
     clearFilters() {
         this.currentFilters = {};
-        this.filteredData = [...this.data];
-        this.renderContent();
+
+        // Reload data to clear server-side filters
+        this.loadData().then(() => {
+            this.filteredData = [...this.data];
+            this.renderContent();
+        });
     }
 
     // ====================
