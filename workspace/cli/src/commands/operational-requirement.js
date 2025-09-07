@@ -1,5 +1,6 @@
-// workspace/cli/src/commands/operational-requirement.js - Fixed import path
-import { VersionedCommands } from '../base-commands.js';  // Fixed: was './base-commands.js'
+// workspace/cli/src/commands/operational-requirement.js - Updated with content filtering support
+import { VersionedCommands } from '../base-commands.js';
+import Table from 'cli-table3';
 import fetch from "node-fetch";
 
 class OperationalRequirementCommands extends VersionedCommands {
@@ -10,6 +11,123 @@ class OperationalRequirementCommands extends VersionedCommands {
             'operational requirement',
             config
         );
+    }
+
+    /**
+     * Override addListCommand to add content filtering support for OperationalRequirements
+     */
+    addListCommand(itemCommand) {
+        itemCommand
+            .command('list')
+            .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
+            .option('--baseline <id>', 'Show items as they existed in specified baseline')
+            .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
+            // OperationalRequirement-specific content filters
+            .option('--type <type>', 'Filter by requirement type (ON or OR)')
+            .option('--title <pattern>', 'Filter by title pattern')
+            .option('--text <search>', 'Full-text search across title, statement, rationale, flows, flowExamples, references, and risksAndOpportunities')
+            .option('--data-category <ids>', 'Filter by data category IDs (comma-separated)')
+            .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
+            .option('--service <ids>', 'Filter by service IDs (comma-separated)')
+            .option('--regulatory-aspect <ids>', 'Filter by regulatory aspect IDs (comma-separated)')
+            .action(async (options) => {
+                try {
+                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
+
+                    // Build content filtering query parameters
+                    const filterParams = this.buildContentFilterParams(options);
+                    const finalUrl = this.appendFilterParams(url, filterParams);
+
+                    const response = await fetch(finalUrl, {
+                        headers: this.createHeaders()
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 400) {
+                            const error = await response.json();
+                            throw new Error(`Invalid parameter: ${error.error?.message || 'Bad request'}`);
+                        }
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const items = await response.json();
+
+                    // Build filter display summary
+                    const filterDisplay = this.buildFilterDisplaySummary(options);
+                    const fullContextDisplay = contextDisplay + filterDisplay;
+
+                    if (items.length === 0) {
+                        console.log(`No ${this.displayName}s found${fullContextDisplay}.`);
+                        return;
+                    }
+
+                    const table = new Table({
+                        head: ['Item ID', 'Type', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 8, 35, 10, 20]
+                    });
+
+                    items.forEach(item => {
+                        table.push([
+                            item.itemId,
+                            item.type,
+                            item.title,
+                            item.version,
+                            item.createdBy
+                        ]);
+                    });
+
+                    const displayContext = fullContextDisplay || ' (Latest Versions)';
+                    console.log(`${this.displayName}s${displayContext}:`);
+                    console.log(table.toString());
+                } catch (error) {
+                    console.error(`Error listing ${this.displayName}s:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    /**
+     * Build content filter query parameters for OperationalRequirements
+     */
+    buildContentFilterParams(options) {
+        const params = [];
+
+        if (options.type) params.push(`type=${encodeURIComponent(options.type)}`);
+        if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
+        if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
+        if (options.dataCategory) params.push(`dataCategory=${encodeURIComponent(options.dataCategory)}`);
+        if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
+        if (options.service) params.push(`service=${encodeURIComponent(options.service)}`);
+        if (options.regulatoryAspect) params.push(`regulatoryAspect=${encodeURIComponent(options.regulatoryAspect)}`);
+
+        return params;
+    }
+
+    /**
+     * Append filter parameters to URL
+     */
+    appendFilterParams(url, filterParams) {
+        if (filterParams.length === 0) return url;
+
+        const separator = url.includes('?') ? '&' : '?';
+        return url + separator + filterParams.join('&');
+    }
+
+    /**
+     * Build filter display summary for user feedback
+     */
+    buildFilterDisplaySummary(options) {
+        const filters = [];
+
+        if (options.type) filters.push(`type=${options.type}`);
+        if (options.title) filters.push(`title="${options.title}"`);
+        if (options.text) filters.push(`text="${options.text}"`);
+        if (options.dataCategory) filters.push(`data-categories=[${options.dataCategory}]`);
+        if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
+        if (options.service) filters.push(`services=[${options.service}]`);
+        if (options.regulatoryAspect) filters.push(`regulatory-aspects=[${options.regulatoryAspect}]`);
+
+        return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
 
     /**

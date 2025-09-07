@@ -8,6 +8,7 @@ import {
  * VersionedItemService provides versioned CRUD operations with transaction management and user context.
  * Root class for operational entities (versioned with optimistic locking).
  * Enhanced with multi-context operations for baseline-aware and wave filtering support.
+ * Enhanced with content filtering support for operational entities.
  */
 export class VersionedItemService {
     constructor(storeGetter) {
@@ -141,16 +142,17 @@ export class VersionedItemService {
     }
 
     /**
-     * List all entities (latest versions, baseline context, or wave filtered)
+     * List all entities (latest versions, baseline context, wave filtered, and content filtered)
      * @param {string} userId - User ID
      * @param {number|null} baselineId - Optional baseline ID for historical context
      * @param {number|null} fromWaveId - Optional wave ID for filtering
+     * @param {object} filters - Optional content filtering parameters
      */
-    async getAll(userId, baselineId = null, fromWaveId = null) {
+    async getAll(userId, baselineId = null, fromWaveId = null, filters = {}) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entities = await store.findAll(tx, baselineId, fromWaveId);
+            const entities = await store.findAll(tx, baselineId, fromWaveId, filters);
             await commitTransaction(tx);
             return entities;
         } catch (error) {

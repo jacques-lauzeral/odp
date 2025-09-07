@@ -25,6 +25,18 @@ export class VersionedItemStore extends BaseStore {
         throw new Error('_createRelationshipsFromIds must be implemented by concrete store');
     }
 
+    /**
+     * Build optimized query for findAll with multi-context and content filtering support
+     * @abstract
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
+     * @param {object} filters - Content filtering parameters
+     * @returns {object} Query object with cypher and params
+     */
+    buildFindAllQuery(baselineId, fromWaveId, filters) {
+        throw new Error('buildFindAllQuery must be implemented by concrete store');
+    }
+
     async create(data, transaction) {
         try {
             const { title, ...versionData } = data;
@@ -329,39 +341,25 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    // Override findAll to return latest versions or baseline versions with relationships as Reference objects
-    async findAll(transaction, baselineId = null, fromWaveId = null) {
+    /**
+     * Find all items with multi-context and content filtering support
+     * Uses delegated query building for performance optimization
+     * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
+     * @param {object} filters - Optional content filtering parameters
+     * @returns {Promise<Array<object>>} Array of items with relationships
+     */
+    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
         try {
-            let query;
-            let params = {};
+            // For performance: apply content filtering at database level, wave filtering at application level
+            // This avoids overly complex wave filtering logic in Cypher queries
 
-            if (baselineId === null) {
-                // Latest versions query
-                query = `
-                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
-                    RETURN id(item) as itemId, item.title as title,
-                           id(version) as versionId, version.version as version,
-                           version.createdAt as createdAt, version.createdBy as createdBy,
-                           version { .* } as versionData
-                    ORDER BY item.title
-                `;
-            } else {
-                // Baseline versions query
-                const numericBaselineId = this.normalizeId(baselineId);
-                query = `
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
-                    WHERE id(baseline) = $baselineId
-                    RETURN id(item) as itemId, item.title as title,
-                           id(version) as versionId, version.version as version,
-                           version.createdAt as createdAt, version.createdBy as createdBy,
-                           version { .* } as versionData
-                    ORDER BY item.title
-                `;
-                params = { baselineId: numericBaselineId };
-            }
+            // Step 1: Build and execute query with baseline + content filtering only
+            const queryObj = this.buildFindAllQuery(baselineId, null, filters);
+            const result = await transaction.run(queryObj.cypher, queryObj.params);
 
-            const result = await transaction.run(query, params);
-
+            // Step 2: Transform records and build relationships
             const items = [];
             for (const record of result.records) {
                 const versionData = record.get('versionData');
@@ -386,10 +384,35 @@ export class VersionedItemStore extends BaseStore {
                 items.push({ ...baseItem, ...relationshipReferences });
             }
 
+            // Step 3: Apply wave filtering at application level (existing logic)
+            if (fromWaveId !== null) {
+                const filteredItems = [];
+                for (const item of items) {
+                    const passesFilter = await this._checkWaveFilter(item.itemId, fromWaveId, transaction, baselineId);
+                    if (passesFilter) {
+                        filteredItems.push(item);
+                    }
+                }
+                return filteredItems;
+            }
+
             return items;
         } catch (error) {
             throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
         }
+    }
+
+    /**
+     * Check if item passes wave filter - abstract method for concrete stores to implement
+     * @abstract
+     * @param {number} itemId - Item ID
+     * @param {number} fromWaveId - Wave ID for filtering
+     * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
+     * @returns {Promise<boolean>} True if item passes wave filter
+     */
+    async _checkWaveFilter(itemId, fromWaveId, transaction, baselineId = null) {
+        throw new Error('_checkWaveFilter must be implemented by concrete store');
     }
 
     // Helper methods for concrete stores to use

@@ -4,11 +4,127 @@ import { StoreError } from './transaction.js';
 /**
  * Store for OperationalRequirement items with versioning and relationship management
  * Handles REFINES (to other OperationalRequirements) and IMPACTS (to setup items) relationships
- * Supports baseline and wave filtering for multi-context operations
+ * Supports baseline, wave filtering, and content filtering for multi-context operations
  */
 export class OperationalRequirementStore extends VersionedItemStore {
     constructor(driver) {
         super(driver, 'OperationalRequirement', 'OperationalRequirementVersion');
+    }
+
+    /**
+     * Build optimized query for findAll with multi-context and content filtering support
+     * Wave filtering is handled separately at application level for better maintainability
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering (ignored, handled at app level)
+     * @param {object} filters - Content filtering parameters
+     * @returns {object} Query object with cypher and params
+     */
+    buildFindAllQuery(baselineId, fromWaveId, filters) {
+        try {
+            let cypher, params = {};
+            let whereConditions = [];
+
+            // Base query structure
+            if (baselineId === null) {
+                // Latest versions query
+                cypher = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                `;
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                cypher = `
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                `;
+                params.baselineId = numericBaselineId;
+            }
+
+            // Content filtering conditions
+            if (filters && Object.keys(filters).length > 0) {
+                // Type filtering
+                if (filters.type) {
+                    whereConditions.push('version.type = $type');
+                    params.type = filters.type;
+                }
+
+                // Title pattern filtering
+                if (filters.title) {
+                    whereConditions.push('item.title CONTAINS $title');
+                    params.title = filters.title;
+                }
+
+                // Full-text search across content fields
+                if (filters.text) {
+                    whereConditions.push(`(
+                        item.title CONTAINS $text OR 
+                        version.statement CONTAINS $text OR 
+                        version.rationale CONTAINS $text OR 
+                        version.flows CONTAINS $text OR 
+                        version.flowExamples CONTAINS $text OR 
+                        version.references CONTAINS $text OR 
+                        version.risksAndOpportunities CONTAINS $text
+                    )`);
+                    params.text = filters.text;
+                }
+
+                // Category-based filtering (relationship-based)
+                if (filters.dataCategory && Array.isArray(filters.dataCategory) && filters.dataCategory.length > 0) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:IMPACTS]->(dc:DataCategory) 
+                        WHERE id(dc) IN $dataCategory
+                    }`);
+                    params.dataCategory = filters.dataCategory.map(id => this.normalizeId(id));
+                }
+
+                if (filters.stakeholderCategory && Array.isArray(filters.stakeholderCategory) && filters.stakeholderCategory.length > 0) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:IMPACTS]->(sc:StakeholderCategory) 
+                        WHERE id(sc) IN $stakeholderCategory
+                    }`);
+                    params.stakeholderCategory = filters.stakeholderCategory.map(id => this.normalizeId(id));
+                }
+
+                if (filters.service && Array.isArray(filters.service) && filters.service.length > 0) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:IMPACTS]->(s:Service) 
+                        WHERE id(s) IN $service
+                    }`);
+                    params.service = filters.service.map(id => this.normalizeId(id));
+                }
+
+                if (filters.regulatoryAspect && Array.isArray(filters.regulatoryAspect) && filters.regulatoryAspect.length > 0) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:IMPACTS]->(ra:RegulatoryAspect) 
+                        WHERE id(ra) IN $regulatoryAspect
+                    }`);
+                    params.regulatoryAspect = filters.regulatoryAspect.map(id => this.normalizeId(id));
+                }
+            }
+
+            // Combine WHERE conditions
+            if (whereConditions.length > 0) {
+                const additionalWhereClause = whereConditions.join(' AND ');
+                if (baselineId !== null) {
+                    cypher += ` AND ${additionalWhereClause}`;
+                } else {
+                    cypher += ` WHERE ${additionalWhereClause}`;
+                }
+            }
+
+            // Complete query with return clause
+            cypher += `
+                RETURN id(item) as itemId, item.title as title,
+                       id(version) as versionId, version.version as version,
+                       version.createdAt as createdAt, version.createdBy as createdBy,
+                       version { .* } as versionData
+                ORDER BY item.title
+            `;
+
+            return { cypher, params };
+        } catch (error) {
+            throw new StoreError(`Failed to build find all query: ${error.message}`, error);
+        }
     }
 
     /**
@@ -401,37 +517,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
         }
     }
 
-    /**
-     * Find all OperationalRequirements with multi-context support
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Array of OperationalRequirements with relationships
-     */
-    async findAll(transaction, baselineId = null, fromWaveId = null) {
-        try {
-            // Step 1: Get base result set (current or baseline)
-            const baseResults = await super.findAll(transaction, baselineId);
-
-            // Step 2: Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const filteredResults = [];
-                for (const requirement of baseResults) {
-                    const passesFilter = await this._checkWaveFilter(requirement.itemId, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredResults.push(requirement);
-                    }
-                }
-                return filteredResults;
-            }
-
-            return baseResults;
-        } catch (error) {
-            throw new StoreError(`Failed to find all ${this.nodeLabel}s with multi-context: ${error.message}`, error);
-        }
-    }
-
     // Additional query methods with baseline and wave filtering support
+    // (Previous methods like findChildren, findRequirementsThatImpact, etc. remain unchanged)
 
     /**
      * Find requirements that are children of the given requirement (inverse REFINES)

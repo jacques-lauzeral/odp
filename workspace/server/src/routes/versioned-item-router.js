@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
- * Handles versioned REST operations with user context, optimistic locking, multi-context support, and consistent error handling.
+ * Handles versioned REST operations with user context, optimistic locking, multi-context support, content filtering, and consistent error handling.
  */
 export class VersionedItemRouter {
     constructor(service, entityName, entityDisplayName = null) {
@@ -38,21 +38,35 @@ export class VersionedItemRouter {
         return req.query.fromWave || null;
     }
 
+    /**
+     * Extract content filters from query parameters
+     * Must be implemented by concrete router classes for entity-specific filtering
+     * @param {Object} req - Express request object
+     * @returns {Object} filters object for the specific entity type
+     */
+    getContentFilters(req) {
+        throw new Error('getContentFilters must be implemented by concrete router class');
+    }
+
     setupRoutes() {
-        // List all entities (latest versions, baseline context, or wave filtered)
+        // List all entities (latest versions, baseline context, wave filtered, and content filtered)
         this.router.get('/', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
                 const baselineId = this.getBaselineId(req);
                 const fromWaveId = this.getFromWaveId(req);
-                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
-                const entities = await this.service.getAll(userId, baselineId, fromWaveId);
+                const filters = this.getContentFilters(req);
+
+                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}, filters:`, filters);
+                const entities = await this.service.getAll(userId, baselineId, fromWaveId, filters);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
+                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message.includes('Invalid filter parameter') || error.message.includes('Invalid category ID')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
@@ -80,7 +94,7 @@ export class VersionedItemRouter {
                 console.error(`Error fetching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
+                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

@@ -1,26 +1,79 @@
+import { Router } from 'express';
 import { VersionedItemRouter } from './versioned-item-router.js';
 import OperationalChangeService from '../services/OperationalChangeService.js';
 
-// Create base router using VersionedItemRouter (now with multi-context support)
-const versionedRouter = new VersionedItemRouter(OperationalChangeService, 'operational-change', 'Operational Change');
-const router = versionedRouter.getRouter();
+/**
+ * OperationalChangeRouter extends VersionedItemRouter with change-specific content filtering
+ */
+class OperationalChangeRouter extends VersionedItemRouter {
+    constructor() {
+        super(OperationalChangeService, 'operational-change', 'Operational Change');
+    }
+
+    /**
+     * Extract content filters from query parameters for OperationalChange entities
+     * @param {Object} req - Express request object
+     * @returns {Object} filters object for OperationalChange filtering
+     */
+    getContentFilters(req) {
+        const filters = {};
+
+        // OperationalChange-specific filter
+        if (req.query.visibility) {
+            filters.visibility = req.query.visibility;
+        }
+
+        // Common text filters
+        if (req.query.title) {
+            filters.title = req.query.title;
+        }
+
+        if (req.query.text) {
+            filters.text = req.query.text;
+        }
+
+        // Parse comma-separated category IDs for relationship filtering
+        // Note: OperationalChange filtering works through SATISFIES/SUPERSEDES requirements
+        if (req.query.stakeholderCategory) {
+            filters.stakeholderCategory = req.query.stakeholderCategory.split(',').map(id => parseInt(id));
+        }
+
+        if (req.query.dataCategory) {
+            filters.dataCategory = req.query.dataCategory.split(',').map(id => parseInt(id));
+        }
+
+        if (req.query.service) {
+            filters.service = req.query.service.split(',').map(id => parseInt(id));
+        }
+
+        if (req.query.regulatoryAspect) {
+            filters.regulatoryAspect = req.query.regulatoryAspect.split(',').map(id => parseInt(id));
+        }
+
+        return filters;
+    }
+}
+
+// Create base router using VersionedItemRouter pattern with content filtering
+const operationalChangeRouter = new OperationalChangeRouter();
+const router = operationalChangeRouter.getRouter();
 
 // MILESTONE CRUD ROUTES WITH MULTI-CONTEXT SUPPORT
 
 // GET /operational-changes/:id/milestones - List all milestones (latest version, baseline context, or wave filtered)
 router.get('/:id/milestones', async (req, res) => {
     try {
-        const userId = versionedRouter.getUserId(req);
-        const baselineId = versionedRouter.getBaselineId(req);
-        const fromWaveId = versionedRouter.getFromWaveId(req);
+        const userId = operationalChangeRouter.getUserId(req);
+        const baselineId = operationalChangeRouter.getBaselineId(req);
+        const fromWaveId = operationalChangeRouter.getFromWaveId(req);
         console.log(`OperationalChangeService.getMilestones() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
         const milestones = await OperationalChangeService.getMilestones(req.params.id, userId, baselineId, fromWaveId);
         res.json(milestones);
     } catch (error) {
         console.error('Error fetching milestones:', error);
         if (error.message === 'Operational change not found') {
-            const baselineId = versionedRouter.getBaselineId(req);
-            const fromWaveId = versionedRouter.getFromWaveId(req);
+            const baselineId = operationalChangeRouter.getBaselineId(req);
+            const fromWaveId = operationalChangeRouter.getFromWaveId(req);
             const context = baselineId ? ` in baseline ${baselineId}` : '';
             const waveContext = fromWaveId ? ` (wave filtered)` : '';
             res.status(404).json({ error: { code: 'NOT_FOUND', message: `Operational change not found${context}${waveContext}` } });
@@ -37,17 +90,17 @@ router.get('/:id/milestones', async (req, res) => {
 // GET /operational-changes/:id/milestones/:milestoneKey - Get specific milestone (latest version, baseline context, or wave filtered)
 router.get('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const userId = versionedRouter.getUserId(req);
-        const baselineId = versionedRouter.getBaselineId(req);
-        const fromWaveId = versionedRouter.getFromWaveId(req);
+        const userId = operationalChangeRouter.getUserId(req);
+        const baselineId = operationalChangeRouter.getBaselineId(req);
+        const fromWaveId = operationalChangeRouter.getFromWaveId(req);
         console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
         const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneKey, userId, baselineId, fromWaveId);
         res.json(milestone);
     } catch (error) {
         console.error('Error fetching milestone:', error);
         if (error.message === 'Operational change not found' || error.message === 'Milestone not found') {
-            const baselineId = versionedRouter.getBaselineId(req);
-            const fromWaveId = versionedRouter.getFromWaveId(req);
+            const baselineId = operationalChangeRouter.getBaselineId(req);
+            const fromWaveId = operationalChangeRouter.getFromWaveId(req);
             const context = baselineId ? ` in baseline ${baselineId}` : '';
             const waveContext = fromWaveId ? ` (wave filtered)` : '';
             res.status(404).json({ error: { code: 'NOT_FOUND', message: `${error.message}${context}${waveContext}` } });
@@ -64,7 +117,7 @@ router.get('/:id/milestones/:milestoneKey', async (req, res) => {
 // POST /operational-changes/:id/milestones - Add milestone (current context only)
 router.post('/:id/milestones', async (req, res) => {
     try {
-        const userId = versionedRouter.getUserId(req);
+        const userId = operationalChangeRouter.getUserId(req);
         const expectedVersionId = req.body.expectedVersionId;
         if (!expectedVersionId) {
             return res.status(400).json({
@@ -94,7 +147,7 @@ router.post('/:id/milestones', async (req, res) => {
 // PUT /operational-changes/:id/milestones/:milestoneKey - Update milestone (current context only)
 router.put('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const userId = versionedRouter.getUserId(req);
+        const userId = operationalChangeRouter.getUserId(req);
         const expectedVersionId = req.body.expectedVersionId;
         if (!expectedVersionId) {
             return res.status(400).json({
@@ -124,7 +177,7 @@ router.put('/:id/milestones/:milestoneKey', async (req, res) => {
 // DELETE /operational-changes/:id/milestones/:milestoneKey - Delete milestone (current context only)
 router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const userId = versionedRouter.getUserId(req);
+        const userId = operationalChangeRouter.getUserId(req);
         const expectedVersionId = req.body.expectedVersionId;
         if (!expectedVersionId) {
             return res.status(400).json({

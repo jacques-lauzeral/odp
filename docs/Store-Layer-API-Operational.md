@@ -1,90 +1,33 @@
-# Store Layer API - Operational
+# Store Layer API - Operational Entities
 
 ## Overview
-Operational entity stores provide versioned CRUD operations for deployment planning entities. These stores extend VersionedItemStore and support optimistic locking, baseline-aware operations, and wave filtering for temporal deployment planning.
+API documentation for operational entities supporting versioning, baseline operations, wave filtering, and content filtering. These entities support multi-context queries with optional historical and filtered views.
 
-## VersionedItemStore API
-*Base class for versioned entities with optimistic locking and multi-context support*
+## Common Patterns
 
-### Data Model
+### Multi-Context Parameter Support
+All operational entity queries support optional context and filtering parameters:
+- **baselineId**: Historical context (returns versions captured in baseline)
+- **fromWaveId**: Wave filtering (temporal filtering based on milestones)
+- **filters**: Content filtering (text search, category filtering, type/visibility filtering)
+
+### Enhanced findAll Signature
 ```javascript
-{
-    itemId: number,           // Item node ID
-        title: string,            // Item title
-        versionId: number,        // ItemVersion node ID (for optimistic locking)
-        version: number,          // Sequential version number
-        createdAt: string,        // ISO timestamp
-        createdBy: string,        // User identifier
-    // ... entity-specific fields
-}
+const entities = await store.findAll(transaction, baselineId = null, fromWaveId = null, filters = {})
 ```
 
-### create(data, transaction)
-```javascript
-const entity = await store.create(data, transaction)
-```
-**Parameters**:
-- `data: object` - Entity data (title + version fields + relationships)
-- `transaction: Transaction` - Must have user context
-
-**Returns**: `Promise<object>` - Complete entity with version info  
-**Behavior**: Creates Item + ItemVersion(v1) + relationships  
-**Throws**: `StoreError` - Creation failure
-
-### update(itemId, data, expectedVersionId, transaction)
-```javascript
-const entity = await store.update(itemId, data, expectedVersionId, transaction)
-```
-**Parameters**:
-- `itemId: number` - Item node ID
-- `data: object` - Complete payload (content + relationships)
-- `expectedVersionId: number` - Current version ID for optimistic locking
-- `transaction: Transaction` - Must have user context
-
-**Returns**: `Promise<object>` - New version with complete info  
-**Behavior**: Creates new version, inherits/updates relationships  
-**Throws**:
-- `StoreError('Outdated item version')` - Version conflict
-- `StoreError('Item not found')` - Invalid itemId
-
-### findById(itemId, transaction, baselineId = null, fromWaveId = null)
-```javascript
-const entity = await store.findById(itemId, transaction, baselineId, fromWaveId)
-```
-**Parameters**:
-- `itemId: number` - Item node ID
-- `transaction: Transaction`
-- `baselineId: number|null` - Optional baseline context for historical queries
-- `fromWaveId: number|null` - Optional wave filtering
-
-**Returns**: `Promise<object|null>` - Entity with relationships or null  
 **Multi-Context Behavior**:
-- No context: Returns latest version
-- Baseline only: Returns version captured in baseline
-- Wave only: Returns latest version if passes wave filter
-- Both: Returns baseline version if passes wave filter
-
-### findAll(transaction, baselineId = null, fromWaveId = null)
-```javascript
-const entities = await store.findAll(transaction, baselineId, fromWaveId)
-```
-Similar multi-context behavior as `findById`
-
-### getVersionHistory(itemId, transaction)
-```javascript
-const history = await store.getVersionHistory(itemId, transaction)
-```
-**Returns**: `Promise<Array<object>>` - Version metadata (newest first)
-
-### patch(itemId, patchPayload, expectedVersionId, transaction)
-```javascript
-const entity = await store.patch(itemId, patchPayload, expectedVersionId, transaction)
-```
-**Behavior**: Creates new version with partial updates + relationship inheritance
+- No context: Returns latest versions
+- Baseline only: Returns versions captured in baseline
+- Wave only: Returns latest versions filtered by wave
+- Filters only: Returns latest versions filtered by content
+- Combined: All parameters can be used together for complex queries
 
 **Wave Filtering Context**: For operational entities supporting wave filtering
 - **OperationalChanges**: Include only those with milestones targeting waves at/after the fromWave date
 - **OperationalRequirements**: Include only those referenced by filtered OperationalChanges via SATISFIES/SUPERSEDS, plus all ancestor requirements via REFINES hierarchy (upward cascade)
+
+---
 
 ## OperationalRequirementStore
 **Inheritance**: `VersionedItemStore → BaseStore`
@@ -106,43 +49,83 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
   rationale: string,        // Rich text
   references: string,       // Rich text
   risksAndOpportunities: string, // Rich text
-  flows: string,            // Rich text
-  flowExamples: string,     // Rich text
+  flows: string,           // Rich text
+  flowExamples: string,    // Rich text
   
   // Relationship fields
-  refinesParents: Array<number>,           // Parent requirement Item IDs
+  refinesParents: Array<number>,      // OperationalRequirement Item IDs
   impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs
-  impactsData: Array<number>,              // DataCategory IDs
-  impactsServices: Array<number>,          // Service IDs
-  impactsRegulatoryAspects: Array<number>  // RegulatoryAspect IDs
+  impactsData: Array<number>,         // DataCategory IDs
+  impactsServices: Array<number>,     // Service IDs
+  impactsRegulatoryAspects: Array<number>     // RegulatoryAspect IDs
 }
 ```
 
-### Available Methods
-All VersionedItemStore methods plus:
+### Core Methods
 
-### create(data, transaction)
+### findById(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-const requirement = await store.create({
-  title: "Requirement Title",
-  type: "OR",
-  statement: "Description",
-  rationale: "Rationale", 
-  refinesParents: [123, 456],
-  impactsServices: [789]
-}, transaction)
+const entity = await store.findById(itemId, transaction, baselineId, fromWaveId)
 ```
-**Validation**: Prevents self-references in REFINES, validates all referenced entities exist
+**Parameters**:
+- `itemId: number` - Item node ID
+- `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context for historical queries
+- `fromWaveId: number|null` - Optional wave filtering
 
-### update(itemId, data, expectedVersionId, transaction)
+**Returns**: `Promise<object|null>` - Entity with relationships or null  
+**Multi-Context Behavior**:
+- No context: Returns latest version
+- Baseline only: Returns version captured in baseline
+- Wave only: Returns latest version if passes wave filter
+- Both: Returns baseline version if passes wave filter
+
+### findAll(transaction, baselineId = null, fromWaveId = null, filters = {})
 ```javascript
-const updated = await store.update(itemId, {
-  statement: "Updated statement",
-  impactsServices: [789, 999]  // Replaces previous impactsServices
-  // Other relationships inherited from previous version
-}, expectedVersionId, transaction)
+const entities = await store.findAll(transaction, baselineId, fromWaveId, filters)
 ```
-**Inheritance behavior**: Unspecified relationship arrays copy from previous version, specified arrays replace previous version
+
+**Enhanced Parameters**:
+- `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context
+- `fromWaveId: number|null` - Optional wave filtering
+- `filters: object` - Optional content filtering
+
+**Filters Object Structure**:
+```javascript
+filters = {
+  type: 'OR',                    // 'ON' | 'OR' | null
+  title: 'authentication',      // Title pattern string | null
+  text: 'security',             // Full-text search string | null
+  dataCategory: [123, 456],     // Array of DataCategory IDs | null
+  stakeholderCategory: [789],   // Array of StakeholderCategory IDs | null
+  service: [101, 102],          // Array of Service IDs | null
+  regulatoryAspect: [234]       // Array of RegulatoryAspect IDs | null
+}
+```
+
+**Content Filtering Behavior**:
+- **type**: Filters by requirement type (ON/OR)
+- **title**: Pattern matching against title field
+- **text**: Full-text search across title, statement, rationale, flows, flowExamples, references, risksAndOpportunities
+- **Category filters**: Filters by relationships to setup entities (OR logic within each category)
+
+**Returns**: `Promise<Array<object>>` - Filtered entities with relationships
+**Multi-Context Behavior**: Similar to `findById` with additional content filtering
+
+### getVersionHistory(itemId, transaction)
+```javascript
+const history = await store.getVersionHistory(itemId, transaction)
+```
+**Returns**: `Promise<Array<object>>` - Version metadata (newest first)
+
+### patch(itemId, patchPayload, expectedVersionId, transaction)
+```javascript
+const entity = await store.patch(itemId, patchPayload, expectedVersionId, transaction)
+```
+**Behavior**: Creates new version with partial updates + relationship inheritance
+
+**Patch Payload**: Can include any subset of entity fields. Arrays copy from previous version, specified arrays replace previous version
 
 ### findChildren(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
@@ -159,6 +142,8 @@ const requirements = await store.findRequirementsThatImpact('Service', serviceId
 - `targetId: number` - Target entity ID
 
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements impacting the target
+
+---
 
 ## OperationalChangeStore
 **Inheritance**: `VersionedItemStore → BaseStore`
@@ -189,72 +174,67 @@ const requirements = await store.findRequirementsThatImpact('Service', serviceId
     title: string,
     description: string,
     eventTypes: Array<string>,
-    wave?: {
+    wave?: {               // Wave information (optional)
       id: number,
-      year: number,
-      quarter: number,
-      date: string,
-      name: string
+      name: string,
+      date: string
     }
   }>
 }
 ```
 
-### Available Methods
-All VersionedItemStore methods plus:
+### Core Methods
 
-### create(data, transaction)
+### findById(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-const change = await store.create({
-  title: "Change Title",
-  description: "Change description",
-  visibility: "NETWORK",
-  milestones: [
-    { 
-      title: "M1", 
-      description: "Milestone 1", 
-      eventTypes: ["API_PUBLICATION"],
-      waveId: 123 
-      // milestoneKey will be auto-generated as 'ms_uuid'
-    }
-  ],
-  satisfiesRequirements: [reqId1, reqId2]
-}, transaction)
+const entity = await store.findById(itemId, transaction, baselineId, fromWaveId)
 ```
-**Behavior**: Creates Item + Version + milestones + relationships in single transaction
+**Behavior**: Same multi-context behavior as OperationalRequirementStore
 
-### update(itemId, data, expectedVersionId, transaction)
+### findAll(transaction, baselineId = null, fromWaveId = null, filters = {})
 ```javascript
-const updated = await store.update(itemId, {
-  description: "Updated description",
-  milestones: [
-    { 
-      milestoneKey: "ms_existing_uuid", // Preserve existing milestone
-      title: "M1", 
-      description: "Updated M1", 
-      eventTypes: ["API_PUBLICATION"] 
-    },
-    { 
-      title: "M2", 
-      description: "New M2", 
-      eventTypes: ["SERVICE_ACTIVATION"], 
-      waveId: 456 
-      // New milestone gets auto-generated milestoneKey
-    }
-  ]
-}, expectedVersionId, transaction)
+const entities = await store.findAll(transaction, baselineId, fromWaveId, filters)
 ```
-**Inheritance behavior**:
-- If milestones not provided, copies milestone data from previous version to new version
-- If relationships not provided, copies relationship data from previous version to new version
-- Previous version keeps its own milestones and relationships
-- Milestone keys are preserved when provided, generated when missing
 
-### Milestone Management
-- **Storage**: `(Milestone)-[:BELONGS_TO]->(OperationalChangeVersion)`
-- **Wave targeting**: `(Milestone)-[:TARGETS]->(Wave)` (optional)
-- **Ownership**: Milestones belong to specific versions (not shared)
-- **Stable Identity**: Each milestone has a `milestoneKey` (UUID-based) preserved across versions
+**Enhanced Parameters**: Same as OperationalRequirementStore
+
+**Filters Object Structure**:
+```javascript
+filters = {
+  visibility: 'NETWORK',        // 'NM' | 'NETWORK' | null
+  title: 'database',           // Title pattern string | null
+  text: 'performance',         // Full-text search string | null
+  stakeholderCategory: [123],  // Array of StakeholderCategory IDs | null
+  dataCategory: [456, 789],    // Array of DataCategory IDs | null
+  service: [101],              // Array of Service IDs | null
+  regulatoryAspect: [234]      // Array of RegulatoryAspect IDs | null
+}
+```
+
+**Content Filtering Behavior**:
+- **visibility**: Filters by change visibility (NM/NETWORK)
+- **title**: Pattern matching against title field
+- **text**: Full-text search across title and description fields
+- **Category filters**: Filters by impact through SATISFIES/SUPERSEDES requirements (OR logic within each category)
+
+**Impact Filtering Logic**: Category filters work through requirements the changes satisfy/supersede:
+1. Find requirements that impact the specified categories
+2. Find changes that SATISFY or SUPERSEDE those requirements
+3. Return matching changes
+
+### getVersionHistory(itemId, transaction)
+```javascript
+const history = await store.getVersionHistory(itemId, transaction)
+```
+**Returns**: `Promise<Array<object>>` - Version metadata (newest first)
+
+### patch(itemId, patchPayload, expectedVersionId, transaction)
+```javascript
+const entity = await store.patch(itemId, patchPayload, expectedVersionId, transaction)
+```
+**Behavior**: Creates new version with partial updates + relationship and milestone inheritance
+
+**Milestone Preservation**: Each milestone has a `milestoneKey` (UUID-based) preserved across versions
 
 ### findMilestoneByKey(itemId, milestoneKey, transaction, baselineId = null, fromWaveId = null)
 ```javascript
@@ -292,52 +272,108 @@ const changes = await store.findChangesThatSupersedeRequirement(reqId, transacti
 ```
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Changes superseding the requirement
 
-### findMilestonesByWave(waveId, transaction, baselineId = null, fromWaveId = null)
+### findMilestonesByWave(waveId, transaction, baselineId = null)
 ```javascript
-const milestones = await store.findMilestonesByWave(waveId, transaction, baselineId, fromWaveId)
+const milestones = await store.findMilestonesByWave(waveId, transaction, baselineId)
 ```
-**Returns**: `Promise<Array<object>>` - Milestones targeting the wave with change context
+**Returns**: `Promise<Array<object>>` - All milestones targeting the specified wave
 
-## Milestone Stable Identity
+---
 
-### Design Principles
-- **Stable Keys**: Each milestone gets a UUID-based `milestoneKey` (format: `ms_uuid`)
-- **Version Independence**: Milestone keys are preserved across OperationalChange versions
-- **Technical vs Business ID**: `id` is technical node ID (changes), `milestoneKey` is business identifier (stable)
+## Content Filtering Implementation Notes
 
-### Key Generation
-- **New milestones**: Auto-generated UUID when `milestoneKey` not provided
-- **Existing milestones**: Preserved from previous version when milestone data inherited
-- **Format**: `ms_${uuid}` (e.g., `ms_a1b2c3d4-e5f6-7890-abcd-ef1234567890`)
-
-### Milestone Operations
+### Route Layer Responsibility
+Route layer converts query parameters to filters object:
 ```javascript
-// Find milestone by stable key across versions
-const milestone = await store.findMilestoneByKey(changeId, "ms_uuid", transaction);
-
-// Update uses milestoneKey in milestone data for preservation
-const updatedChange = await store.update(changeId, {
-  milestones: [
-    {
-      milestoneKey: "ms_existing_uuid",  // Preserve identity
-      title: "Updated title",
-      description: "Updated description"
-    }
-  ]
-}, expectedVersionId, transaction);
+const filters = {
+  type: req.query.type || null,
+  text: req.query.text || null,
+  dataCategory: req.query.dataCategory ? 
+    req.query.dataCategory.split(',').map(id => parseInt(id)) : null,
+  stakeholderCategory: req.query.stakeholderCategory ? 
+    req.query.stakeholderCategory.split(',').map(id => parseInt(id)) : null,
+  service: req.query.service ? 
+    req.query.service.split(',').map(id => parseInt(id)) : null,
+  regulatoryAspect: req.query.regulatoryAspect ? 
+    req.query.regulatoryAspect.split(',').map(id => parseInt(id)) : null
+};
 ```
 
-### Migration Support
-Existing milestones without `milestoneKey` can be updated with:
-```cypher
-MATCH (milestone:OperationalChangeMilestone)
-WHERE milestone.milestoneKey IS NULL
-SET milestone.milestoneKey = 'ms_' + randomUUID()
+### Store Layer Implementation
+Store layer applies content filters after baseline/wave filtering:
+```javascript
+async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
+  // Step 1: Get base result set (current or baseline)
+  let versions = baselineId ? 
+    await this._findAllInBaseline(baselineId, transaction) :
+    await this._findAllLatest(transaction);
+  
+  // Step 2: Apply wave filtering
+  if (fromWaveId) {
+    versions = await this._applyWaveFilter(versions, fromWaveId, transaction);
+  }
+  
+  // Step 3: Apply content filtering
+  if (Object.keys(filters).length > 0) {
+    versions = await this._applyContentFilters(versions, filters, transaction);
+  }
+  
+  return versions;
+}
 ```
 
-## Wave Filtering Errors
-Additional error conditions for multi-context operations:
-- `'Wave not found'` - Invalid fromWaveId in wave filtering operations
-- `'No matching milestones'` - Wave filter results in empty OC set
+### Performance Considerations
+- **Database-level filtering**: All content filtering performed at Neo4j level
+- **Efficient queries**: Use EXISTS patterns for relationship-based filtering
+- **Text search optimization**: CONTAINS patterns for text search across multiple fields
+- **Index utilization**: Leverage existing indexes on ID fields for category filtering
 
-*Note: See Store-Layer-API-Core.md for complete error documentation*
+---
+
+## Error Handling
+
+### Content Filter Errors
+- `'Invalid filter parameter'` - Malformed filter object or invalid values
+- `'Invalid category ID'` - Referenced category entity does not exist
+- `'Text search too broad'` - Text search returned excessive results (implementation-dependent)
+
+### Combined Context Errors
+- `'Baseline not found'` - Invalid baselineId parameter
+- `'Wave not found'` - Invalid fromWaveId parameter
+- `'No matching results'` - Combined filtering resulted in empty set
+
+---
+
+## Usage Examples
+
+### Basic Content Filtering
+```javascript
+// Filter requirements by type and text search
+const filters = { type: 'OR', text: 'authentication' };
+const requirements = await operationalRequirementStore().findAll(tx, null, null, filters);
+
+// Filter changes by visibility and impact
+const changeFilters = { visibility: 'NETWORK', service: [123, 456] };
+const changes = await operationalChangeStore().findAll(tx, null, null, changeFilters);
+```
+
+### Combined Multi-Context Queries
+```javascript
+// Historical + filtered requirements
+const filters = { type: 'ON', stakeholderCategory: [789] };
+const historicalRequirements = await operationalRequirementStore().findAll(
+  tx, baselineId, null, filters
+);
+
+// Wave filtered + content filtered changes
+const changeFilters = { text: 'database', service: [101] };
+const futureChanges = await operationalChangeStore().findAll(
+  tx, null, fromWaveId, changeFilters
+);
+
+// All three context types combined
+const complexFilters = { visibility: 'NM', dataCategory: [234, 567] };
+const complexQuery = await operationalChangeStore().findAll(
+  tx, baselineId, fromWaveId, complexFilters
+);
+```
