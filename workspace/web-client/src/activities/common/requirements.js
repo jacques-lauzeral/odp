@@ -42,7 +42,7 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // COLLECTION CONFIGURATION
+    // COLLECTION CONFIGURATION - ENHANCED FOR SERVER-SIDE FILTERING
     // ====================
 
     getFilterConfig() {
@@ -57,32 +57,34 @@ export default class RequirementsEntity {
                     { value: 'OR', label: 'OR (Operational Requirement)' }
                 ]
             },
+            // CHANGED: Replace 'title' pattern matching with server-side 'text' full-text search
             {
-                key: 'title',
-                label: 'Title Pattern',
+                key: 'text',
+                label: 'Full Text Search',
                 type: 'text',
-                placeholder: 'Search in title...'
+                placeholder: 'Search across title, statement, rationale, flows, and more...'
             },
+            // CHANGED: Use server-side parameter names for category filtering
             {
-                key: 'impactsData',
+                key: 'dataCategory',
                 label: 'Data Impact',
                 type: 'select',
                 options: this.buildOptionsFromSetupData('dataCategories', 'Any Data Category')
             },
             {
-                key: 'impactsStakeholderCategories',
+                key: 'stakeholderCategory',
                 label: 'Stakeholder Impact',
                 type: 'select',
                 options: this.buildOptionsFromSetupData('stakeholderCategories', 'Any Stakeholder Category')
             },
             {
-                key: 'impactsRegulatoryAspects',
+                key: 'regulatoryAspect',
                 label: 'Regulatory Impact',
                 type: 'select',
                 options: this.buildOptionsFromSetupData('regulatoryAspects', 'Any Regulatory Aspect')
             },
             {
-                key: 'impactsServices',
+                key: 'service',
                 label: 'Services Impact',
                 type: 'select',
                 options: this.buildOptionsFromSetupData('services', 'Any Service')

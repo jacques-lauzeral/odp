@@ -65,22 +65,17 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // COLLECTION CONFIGURATION
+    // COLLECTION CONFIGURATION - ENHANCED FOR SERVER-SIDE FILTERING
     // ====================
 
     getFilterConfig() {
         return [
+            // CHANGED: Replace 'title' pattern matching with server-side 'text' full-text search
             {
-                key: 'title',
-                label: 'Title Pattern',
+                key: 'text',
+                label: 'Full Text Search',
                 type: 'text',
-                placeholder: 'Search in title...'
-            },
-            {
-                key: 'milestones',
-                label: 'Wave',
-                type: 'select',
-                options: this.buildWaveOptions()
+                placeholder: 'Search across title and description...'
             },
             {
                 key: 'visibility',
@@ -92,17 +87,25 @@ export default class ChangesEntity {
                     { value: 'NM', label: 'NM' }
                 ]
             },
+            // NEW: Add indirect category filtering via requirements
             {
-                key: 'satisfiesRequirements',
-                label: 'Satisfies Requirements',
-                type: 'text',
-                placeholder: 'Requirement ID or title...'
+                key: 'stakeholderCategory',
+                label: 'Stakeholder (via Requirements)',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('stakeholderCategories', 'Any Stakeholder Category')
             },
             {
-                key: 'supersedsRequirements',
-                label: 'Supersedes Requirements',
-                type: 'text',
-                placeholder: 'Requirement ID or title...'
+                key: 'dataCategory',
+                label: 'Data (via Requirements)',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('dataCategories', 'Any Data Category')
+            },
+            // KEEP: Existing wave filter (already working)
+            {
+                key: 'milestones',
+                label: 'Wave',
+                type: 'select',
+                options: this.buildWaveOptions()
             }
         ];
     }
@@ -223,6 +226,23 @@ export default class ChangesEntity {
         }));
 
         return baseOptions.concat(waveOptions);
+    }
+
+    // NEW: Helper method for building setup data options
+    buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
+
+        if (!this.setupData?.[entityName]) {
+            return baseOptions;
+        }
+
+        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
+        const setupOptions = this.setupData[entityName].map(entity => ({
+            value: entity.id,
+            label: entity[labelKey] || entity.name || entity.id
+        }));
+
+        return baseOptions.concat(setupOptions);
     }
 
     // ====================
