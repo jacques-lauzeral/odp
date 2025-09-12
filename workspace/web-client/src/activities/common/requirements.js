@@ -227,6 +227,11 @@ export default class RequirementsEntity {
         this.form.showEditModal(item || this.collection.selectedItem);
     }
 
+    handleReview(item) {
+        // Show read-only modal in review mode
+        this.form.showReadOnlyModal(item || this.collection.selectedItem);
+    }
+
     handleItemSelect(item) {
         // Update details panel
         this.updateDetailsPanel(item);
@@ -241,6 +246,8 @@ export default class RequirementsEntity {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
 
+        const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
+        const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
         const detailsHtml = await this.form.generateReadOnlyView(item);
         detailsContainer.innerHTML = `
         <div class="details-sticky-header">
@@ -249,7 +256,7 @@ export default class RequirementsEntity {
                 <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
             </div>
             <div class="details-actions">
-                <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
+                <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
                 <!-- Placeholder for future Delete button -->
             </div>
         </div>
@@ -258,10 +265,14 @@ export default class RequirementsEntity {
         </div>
         `;
 
-        // Bind edit button
-        const editBtn = detailsContainer.querySelector('#editItemBtn');
-        if (editBtn) {
-            editBtn.addEventListener('click', () => this.handleEdit(item));
+        // Bind details button
+        const detailsBtn = detailsContainer.querySelector('#detailsBtn');
+        if (detailsBtn) {
+            if (isReviewMode) {
+                detailsBtn.addEventListener('click', () => this.handleReview(item));
+            } else {
+                detailsBtn.addEventListener('click', () => this.handleEdit(item));
+            }
         }
 
         // Bind additional action buttons

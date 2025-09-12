@@ -14,24 +14,41 @@ export default class ChangesEntity {
         // Initialize collection with custom column types (unchanged)
         const customColumnTypes = {
             ...odpColumnTypes,
-            'milestone-wave': {
+            'milestone-waves': {  // Renamed
                 render: (value, column, item, context) => {
-                    const wave = this.extractWaveFromMilestones(item);
-                    if (!wave) return '-';
-                    return odpColumnTypes.wave.render(wave, column, item, context);
+                    const waves = this.extractAllWavesFromMilestones(item);
+                    if (!waves || waves.length === 0) return '-';
+
+                    const waveLabels = waves.map(wave => {
+                        if (wave.year && wave.quarter) {
+                            return `${wave.year} Q${wave.quarter}`;
+                        }
+                        return wave.name || 'Unknown';
+                    });
+
+                    return waveLabels.join(', ');
                 },
                 filter: (value, filterValue, column) => {
                     if (!filterValue) return true;
-                    const wave = this.extractWaveFromMilestones({ milestones: value });
-                    if (!wave) return false;
-                    return odpColumnTypes.wave.filter(wave, filterValue, column);
+                    // Client-side filtering - check if any milestone targets the filtered wave
+                    const waves = this.extractAllWavesFromMilestones({ milestones: value });
+                    return waves.some(wave => wave.id.toString() === filterValue.toString());
                 },
-                getFilterOptions: (column, context) => odpColumnTypes.wave.getFilterOptions(column, context),
                 sort: (a, b, column) => {
-                    const waveA = this.extractWaveFromMilestones({ milestones: a });
-                    const waveB = this.extractWaveFromMilestones({ milestones: b });
-                    return odpColumnTypes.wave.sort(waveA, waveB, column);
-                }
+                    const wavesA = this.extractAllWavesFromMilestones({ milestones: a });
+                    const wavesB = this.extractAllWavesFromMilestones({ milestones: b });
+
+                    // Sort by first wave (or empty if no waves)
+                    const firstWaveA = wavesA[0];
+                    const firstWaveB = wavesB[0];
+
+                    if (!firstWaveA && !firstWaveB) return 0;
+                    if (!firstWaveA) return 1;
+                    if (!firstWaveB) return -1;
+
+                    return odpColumnTypes.wave.sort(firstWaveA, firstWaveB, column);
+                },
+                getFilterOptions: (column, context) => odpColumnTypes.wave.getFilterOptions(column, context)
             }
         };
 
@@ -61,6 +78,36 @@ export default class ChangesEntity {
             if (e.detail.entityType === 'Operational Changes') {
                 await this.collection.refresh();
             }
+        });
+    }
+
+    extractAllWavesFromMilestones(item) {
+        if (!item?.milestones || !Array.isArray(item.milestones) || item.milestones.length === 0) {
+            return [];
+        }
+
+        const waves = [];
+        const seenWaveIds = new Set();
+
+        item.milestones.forEach(milestone => {
+            let wave = null;
+
+            if (milestone.wave) {
+                wave = milestone.wave;
+            } else if (milestone.waveId && this.setupData?.waves) {
+                wave = this.setupData.waves.find(w => w.id === milestone.waveId);
+            }
+
+            if (wave && !seenWaveIds.has(wave.id)) {
+                waves.push(wave);
+                seenWaveIds.add(wave.id);
+            }
+        });
+
+        // Sort waves by year/quarter
+        return waves.sort((a, b) => {
+            if (a.year !== b.year) return a.year - b.year;
+            return a.quarter - b.quarter;
         });
     }
 
@@ -128,10 +175,10 @@ export default class ChangesEntity {
             },
             {
                 key: 'milestones',
-                label: 'Wave',
-                width: '100px',
+                label: 'Waves',
+                width: '120px',
                 sortable: true,
-                type: 'milestone-wave'
+                type: 'milestone-waves'
             },
             {
                 key: 'visibility',
@@ -257,6 +304,11 @@ export default class ChangesEntity {
         this.form.showEditModal(item || this.collection.selectedItem);
     }
 
+    handleReview(item) {
+        // Show read-only modal in review mode
+        this.form.showReadOnlyModal(item || this.collection.selectedItem);
+    }
+
     handleItemSelect(item) {
         // Update details panel
         this.updateDetailsPanel(item);
@@ -271,6 +323,8 @@ export default class ChangesEntity {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
 
+        const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
+        const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
         const detailsHtml = await this.form.generateReadOnlyView(item);
         detailsContainer.innerHTML = `
         <div class="details-sticky-header">
@@ -279,7 +333,7 @@ export default class ChangesEntity {
                 <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
             </div>
             <div class="details-actions">
-                <button class="btn btn-primary btn-sm" id="editItemBtn">Edit</button>
+                <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
                 <!-- Placeholder for future Delete button -->
             </div>
         </div>
@@ -288,10 +342,14 @@ export default class ChangesEntity {
         </div>
         `;
 
-        // Bind edit button
-        const editBtn = detailsContainer.querySelector('#editItemBtn');
-        if (editBtn) {
-            editBtn.addEventListener('click', () => this.handleEdit(item));
+        // Bind details button
+        const detailsBtn = detailsContainer.querySelector('#detailsBtn');
+        if (detailsBtn) {
+            if (isReviewMode) {
+                detailsBtn.addEventListener('click', () => this.handleReview(item));
+            } else {
+                detailsBtn.addEventListener('click', () => this.handleEdit(item));
+            }
         }
     }
 
@@ -309,11 +367,6 @@ export default class ChangesEntity {
     }
 
     handleFilter(filterKey, filterValue) {
-        // Special handling for wave filter (filters by milestones)
-        if (filterKey === 'wave') {
-            filterKey = 'milestones';
-        }
-
         // Special handling for requirement reference filters
         if (filterKey === 'satisfiesRequirements' || filterKey === 'supersedsRequirements') {
             // These are entity reference lists, filter will check title/id
