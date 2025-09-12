@@ -265,6 +265,18 @@ export class OperationalChangeService extends VersionedItemService {
         }
     }
 
+    // Milestones are not sent by the client at update time.
+    // They must be loaded from the store layer and added to the payload
+    async _doUpdate(itemId, payload, expectedVersionId, tx) {
+        const jsonPayload = JSON.stringify(payload);
+        console.log(`OperationalChangeService._doUpdate() payload: ${jsonPayload}`);
+        const current = await this.getStore().findById(itemId, tx);
+        payload.milestones = this._convertMilestonesToRawData(current.milestones);
+        const jsonCompletedPayload = JSON.stringify(payload);
+        console.log(`OperationalChangeService._doUpdate() completed payload: ${jsonCompletedPayload}`);
+        return super._doUpdate(itemId, payload, expectedVersionId, tx);
+    }
+
     // Implement validation methods required by VersionedItemService
     async _validateCreatePayload(payload) {
         this._validateRequiredFieldsForCreate(payload);

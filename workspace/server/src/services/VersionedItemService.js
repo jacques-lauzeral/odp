@@ -44,21 +44,24 @@ export class VersionedItemService {
      * Update versioned entity (creates new ItemVersion)
      */
     async update(itemId, payload, expectedVersionId, userId) {
-        await this._validateUpdatePayload(payload);
-
         const tx = createTransaction(userId);
         try {
-            const store = this.getStore();
-            const entity = await store.update(itemId, payload, expectedVersionId, tx);
-            await commitTransaction(tx);
-            return entity;
+            return await this._doUpdate(itemId, payload, expectedVersionId, tx);
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
         }
     }
 
-    /**
+    async _doUpdate(itemId, payload, expectedVersionId, tx) {
+        await this._validateUpdatePayload(payload);
+        const store = this.getStore();
+        const entity = await store.update(itemId, payload, expectedVersionId, tx);
+        await commitTransaction(tx);
+        return entity;
+    }
+
+                 /**
      * Patch versioned entity (partial update with field inheritance)
      */
     async patch(itemId, patchPayload, expectedVersionId, userId) {

@@ -1,8 +1,5 @@
 # Known issues
 - Web Client
-  - Elaboration (server?)
-    - CRITICAL: Save requirement/change ends in error???
-    - CRITICAL: Save a project, e.g. after updating the description) result in lost milestones???
   - Elaboration/Review
     - Requirement filtering
       - MINOR: no filtering by refined requirement(s)
