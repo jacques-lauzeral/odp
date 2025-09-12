@@ -10,4 +10,12 @@ export default class ElaborationActivity extends AbstractInteractionActivity {
             dataSource: 'repository'
         });
     }
+
+    renderActionButtons() {
+        return `
+            <button class="btn btn-primary action-create" id="createEntity">
+                + New ${this.getSingularEntityName(this.currentEntity)}
+            </button>
+        `;
+    }
 }

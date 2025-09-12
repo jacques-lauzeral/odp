@@ -52,7 +52,7 @@ export default class RequirementsEntity {
                 label: 'Type',
                 type: 'select',
                 options: [
-                    { value: '', label: 'All Types' },
+                    { value: '', label: 'Any' },
                     { value: 'ON', label: 'ON (Operational Need)' },
                     { value: 'OR', label: 'OR (Operational Requirement)' }
                 ]
@@ -69,25 +69,25 @@ export default class RequirementsEntity {
                 key: 'dataCategory',
                 label: 'Data Impact',
                 type: 'select',
-                options: this.buildOptionsFromSetupData('dataCategories', 'Any Data Category')
+                options: this.buildOptionsFromSetupData('dataCategories')
             },
             {
                 key: 'stakeholderCategory',
                 label: 'Stakeholder Impact',
                 type: 'select',
-                options: this.buildOptionsFromSetupData('stakeholderCategories', 'Any Stakeholder Category')
+                options: this.buildOptionsFromSetupData('stakeholderCategories')
             },
             {
                 key: 'regulatoryAspect',
                 label: 'Regulatory Impact',
                 type: 'select',
-                options: this.buildOptionsFromSetupData('regulatoryAspects', 'Any Regulatory Aspect')
+                options: this.buildOptionsFromSetupData('regulatoryAspects')
             },
             {
                 key: 'service',
                 label: 'Services Impact',
                 type: 'select',
-                options: this.buildOptionsFromSetupData('services', 'Any Service')
+                options: this.buildOptionsFromSetupData('services')
             }
         ];
     }

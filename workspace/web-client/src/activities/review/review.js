@@ -229,6 +229,11 @@ export default class ReviewActivity extends AbstractInteractionActivity {
         `;
     }
 
+    renderActionButtons() {
+        // Return empty string - no action buttons in review mode
+        return '';
+    }
+
     // Override cleanup to reset target selection
     cleanup() {
         super.cleanup();

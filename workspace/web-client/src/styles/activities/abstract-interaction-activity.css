@@ -171,6 +171,10 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    background: white;
+    border: 1px solid var(--border-primary);
+    margin: var(--space-4);
+    border-radius: var(--radius-lg);
 }
 
 /* Perspective Toggle */

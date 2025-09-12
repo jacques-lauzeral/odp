@@ -197,23 +197,8 @@ export default class AbstractInteractionActivity {
     }
 
     renderActionButtons() {
-        if (this.config.mode === 'edit') {
-            return `
-                <button class="btn btn-primary action-create" id="createEntity">
-                    + New ${this.getSingularEntityName(this.currentEntity)}
-                </button>
-            `;
-        } else if (this.config.mode === 'review') {
-            return `
-                <button class="btn btn-secondary action-export" id="exportContent">
-                    📁 Export
-                </button>
-                <button class="btn btn-secondary action-comment" id="commentMode">
-                    💬 Comment
-                </button>
-            `;
-        }
-        return '';
+        // Force subclasses to implement their own action buttons
+        throw new Error(`renderActionButtons() must be implemented by ${this.constructor.name}`);
     }
 
     getContextLabel() {

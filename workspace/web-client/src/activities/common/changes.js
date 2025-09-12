@@ -82,7 +82,7 @@ export default class ChangesEntity {
                 label: 'Visibility',
                 type: 'select',
                 options: [
-                    { value: '', label: 'All Visibility' },
+                    { value: '', label: 'Any' },
                     { value: 'NETWORK', label: 'NETWORK' },
                     { value: 'NM', label: 'NM' }
                 ]
@@ -92,13 +92,13 @@ export default class ChangesEntity {
                 key: 'stakeholderCategory',
                 label: 'Stakeholder (via Requirements)',
                 type: 'select',
-                options: this.buildOptionsFromSetupData('stakeholderCategories', 'Any Stakeholder Category')
+                options: this.buildOptionsFromSetupData('stakeholderCategories')
             },
             {
                 key: 'dataCategory',
                 label: 'Data (via Requirements)',
                 type: 'select',
-                options: this.buildOptionsFromSetupData('dataCategories', 'Any Data Category')
+                options: this.buildOptionsFromSetupData('dataCategories')
             },
             // KEEP: Existing wave filter (already working)
             {
@@ -213,8 +213,8 @@ export default class ChangesEntity {
         return milestoneWithWave.waveId;
     }
 
-    buildWaveOptions() {
-        const baseOptions = [{ value: '', label: 'All Waves' }];
+    buildWaveOptions(emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
 
         if (!this.setupData?.waves) {
             return baseOptions;
