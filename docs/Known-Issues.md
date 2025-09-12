@@ -1,7 +1,8 @@
 # Known issues
-- Server
-  - Save a project, e.g. after updating the description) result in lost milestones
 - Web Client
+  - Elaboration (server?)
+    - Save requirement/change ends in error???
+    - Save a project, e.g. after updating the description) result in lost milestones???
   - Elaboration/Review
     - Requirement filtering
       - no filtering by refined requirement(s)
