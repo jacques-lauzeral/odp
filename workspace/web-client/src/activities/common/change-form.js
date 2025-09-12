@@ -116,6 +116,14 @@ export default class ChangeForm extends CollectionEntityForm {
                         modes: ['create', 'read', 'edit'],
                         required: false,
                         render: (field, fieldId, value, required) => this.renderMilestonesTable(field, fieldId, value, required),
+                        format: (value) => {
+                            // This handles read-only mode formatting
+                            if (!value || !Array.isArray(value) || value.length === 0) {
+                                return 'No milestones defined';
+                            }
+                            // Return empty string since the custom render will handle the display
+                            return '';
+                        },
                         helpText: 'Manage milestones for this operational change'
                     }
                 ]
@@ -443,12 +451,28 @@ export default class ChangeForm extends CollectionEntityForm {
         return text.substring(0, maxLength - 3) + '...';
     }
 
+    renderReadOnlyField(field, value) {
+        // Handle milestones specially in read-only mode
+        if (field.key === 'milestones') {
+            // Store milestones in the form instance so renderMilestonesTable can access them
+            this.milestones = value || [];
+
+            // Call the same table rendering function but in read-only mode
+            return this.renderMilestonesTable(field, `readonly-${field.key}`, value, false);
+        }
+
+        // For all other fields, use parent's read-only rendering
+        return super.renderReadOnlyField ? super.renderReadOnlyField(field, value) : null;
+    }
+
     // ====================
-    // MILESTONE EVENT HANDLING - INTEGRATED WITH MODAL STACK
+    // MILESTONE EVENT HANDLING - FIXED VERSION
     // ====================
 
     bindMilestoneEvents() {
         console.log('ChangeForm.bindMilestoneEvents - called');
+        console.log('ChangeForm.bindMilestoneEvents - currentModal exists:', !!this.currentModal);
+        console.log('ChangeForm.bindMilestoneEvents - _milestoneEventsBound:', this._milestoneEventsBound);
 
         // PREVENT MULTIPLE BINDINGS
         if (this._milestoneEventsBound) {
@@ -456,22 +480,34 @@ export default class ChangeForm extends CollectionEntityForm {
             return;
         }
 
-        // Add milestone button - use event delegation to avoid multiple bindings
-        const milestonesSection = document.querySelector('.milestones-section');
+        // FIXED: Search within the current modal, not the entire document
+        const milestonesSection = this.currentModal?.querySelector('.milestones-section');
+        console.log('ChangeForm.bindMilestoneEvents - found milestonesSection:', !!milestonesSection);
+
         if (milestonesSection) {
             // Remove any existing listeners first
-            milestonesSection.removeEventListener('click', this._milestoneClickHandler);
+            if (this._milestoneClickHandler) {
+                milestonesSection.removeEventListener('click', this._milestoneClickHandler);
+            }
 
             // Create bound handler
             this._milestoneClickHandler = (e) => {
+                console.log('ChangeForm._milestoneClickHandler - clicked element:', e.target.id, e.target.className);
+
                 if (e.target.id === 'add-milestone-btn') {
                     console.log('Add milestone button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
                     this.handleAddMilestone();
+                    return;
                 }
 
-                // Updated to use milestoneKey instead of milestoneId
                 const milestoneKey = e.target.dataset.milestoneKey;
                 if (milestoneKey) {
+                    console.log('Milestone action clicked:', milestoneKey, e.target.className);
+                    e.preventDefault();
+                    e.stopPropagation();
+
                     if (e.target.classList.contains('edit-milestone')) {
                         this.handleEditMilestone(milestoneKey);
                     } else if (e.target.classList.contains('delete-milestone')) {
@@ -482,12 +518,18 @@ export default class ChangeForm extends CollectionEntityForm {
 
             // Add single event listener
             milestonesSection.addEventListener('click', this._milestoneClickHandler);
+            console.log('ChangeForm.bindMilestoneEvents - event listener attached');
+            this._milestoneEventsBound = true;
+        } else {
+            console.log('ChangeForm.bindMilestoneEvents - no milestones section found in current modal!');
+            if (this.currentModal) {
+                console.log('ChangeForm.bindMilestoneEvents - modal content preview:', this.currentModal.innerHTML.substring(0, 500));
+            }
         }
-        this._milestoneEventsBound = true;
     }
 
     // ====================
-    // NEW: INTEGRATED MILESTONE FORM GENERATION
+    // MILESTONE FORM GENERATION
     // ====================
 
     generateMilestoneForm(mode, milestone = null) {
@@ -595,7 +637,7 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE HANDLERS - USING NESTED MODALS
+    // MILESTONE HANDLERS
     // ====================
 
     async handleAddMilestone() {
@@ -808,8 +850,32 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE REFRESH
+    // MILESTONE REFRESH - FIXED VERSION
     // ====================
+
+    async reloadCurrentItem() {
+        if (!this.currentItem) return;
+
+        try {
+            const itemId = this.currentItem.itemId || this.currentItem.id;
+            console.log('ChangeForm.reloadCurrentItem - reloading item:', itemId);
+
+            // Fetch the latest version of the operational change
+            const updatedItem = await apiClient.get(`${this.entityConfig.endpoint}/${itemId}`);
+
+            // Update our current item with the latest data
+            this.currentItem = updatedItem;
+
+            // Also update milestones from the reloaded item
+            this.milestones = updatedItem.milestones || [];
+
+            console.log('ChangeForm.reloadCurrentItem - reloaded successfully, new version:', this.currentItem.version);
+
+        } catch (error) {
+            console.error('Failed to reload current item:', error);
+            throw error;
+        }
+    }
 
     async refreshMilestones() {
         if (!this.currentItem) return;
@@ -819,7 +885,7 @@ export default class ChangeForm extends CollectionEntityForm {
             this.milestones = await apiClient.getMilestones(changeId);
 
             // Re-render milestone table
-            const tbody = document.getElementById('milestones-tbody');
+            const tbody = this.currentModal?.querySelector('#milestones-tbody');
             if (tbody) {
                 const isReadMode = this.currentMode === 'read';
                 const hasItemId = !!(this.currentItem?.itemId || this.currentItem?.id);
@@ -840,11 +906,10 @@ export default class ChangeForm extends CollectionEntityForm {
                 }
             }
 
-            // Rebind events after milestone list update
-            if (!this._milestoneEventsBound) {
-                this.bindMilestoneEvents();
-                this._milestoneEventsBound = true;
-            }
+            // IMPORTANT: Force rebind events after ANY table update
+            this._milestoneEventsBound = false; // Reset flag
+            this.bindMilestoneEvents(); // Rebind events
+
         } catch (error) {
             console.error('Failed to refresh milestones:', error);
         }
@@ -855,11 +920,18 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
 
     async showEditModal(item) {
+        console.log('ChangeForm.showEditModal - item:', item?.itemId);
         await super.showEditModal(item);
 
-        // Load milestones after modal is shown
+        // Load milestones after modal is shown AND DOM is ready
         if (item && (item.itemId || item.id)) {
             await this.refreshMilestones();
+
+            // Add a small delay to ensure DOM is fully updated
+            setTimeout(() => {
+                this._milestoneEventsBound = false; // Reset flag
+                this.bindMilestoneEvents();
+            }, 100);
         }
     }
 

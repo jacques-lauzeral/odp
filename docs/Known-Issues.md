@@ -1,4 +1,6 @@
 # Known issues
+- Server
+  - Save a project, e.g. after updating the description) result in lost milestones
 - Web Client
   - Elaboration/Review
     - Requirement filtering
@@ -8,7 +10,7 @@
       - filtering by impact not working
     - Requirement / Change grouping - does not work properly, cannot group by more than 2 values
 
-  - grouping does not work properly - it cannot group by more than 2 values
+    - grouping does not work properly - it cannot group by more than 2 values
 - API - no patch milestone method supported
 
 
