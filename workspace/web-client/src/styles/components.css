@@ -923,140 +923,11 @@
     background: white;
 }
 
-.temporal-control-panel {
-    width: 280px;
-    background: var(--bg-secondary, #f8f9fa);
-    border-right: 1px solid var(--border-primary, #e1e5e9);
-    transition: width 0.3s ease;
-    flex-shrink: 0;
-}
-
-.temporal-control-panel.collapsed {
-    width: 60px;
-}
-
 .temporal-timeline-area {
     flex: 1;
     overflow: auto;
     padding: var(--space-4);
     min-width: 0; /* Prevent flex item from overflowing */
-}
-
-/* Timeline Grid Control Panel */
-.timeline-control-panel {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.control-panel-header {
-    display: flex;
-    align-items: center;
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-primary);
-    background: white;
-    flex-shrink: 0;
-}
-
-.collapse-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: var(--space-1);
-    border-radius: var(--radius-base);
-    color: var(--text-secondary);
-    transition: background-color var(--transition-fast);
-}
-
-.collapse-toggle:hover {
-    background: var(--bg-secondary);
-}
-
-.toggle-icon {
-    font-size: var(--font-size-sm);
-}
-
-.active-filters-summary {
-    flex: 1;
-    padding-left: var(--space-3);
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    align-items: center;
-}
-
-.filter-badge {
-    background: var(--accent-primary);
-    color: white;
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-base);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    white-space: nowrap;
-}
-
-.control-panel-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--space-4);
-}
-
-.control-section {
-    margin-bottom: var(--space-6);
-}
-
-.control-section:last-child {
-    margin-bottom: 0;
-}
-
-.control-section-title {
-    margin: 0 0 var(--space-3) 0;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
-}
-
-.control-group {
-    margin-bottom: var(--space-3);
-}
-
-.control-group:last-child {
-    margin-bottom: 0;
-}
-
-.control-group label {
-    display: block;
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    margin-bottom: var(--space-1);
-    color: var(--text-primary);
-}
-
-.milestone-filter-controls .checkbox-label {
-    display: flex;
-    align-items: center;
-    font-size: var(--font-size-xs);
-    margin-bottom: var(--space-2);
-    cursor: pointer;
-    color: var(--text-primary);
-}
-
-.milestone-filter-controls .checkbox-label.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.milestone-filter-controls input[type="checkbox"] {
-    margin-right: var(--space-2);
-    accent-color: var(--accent-primary);
-}
-
-.no-waves-message {
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    font-style: italic;
-    text-align: center;
-    padding: var(--space-4);
 }
 
 /* Timeline Grid */
@@ -1259,6 +1130,23 @@
 
 .pixmap-cell.filled {
     background: var(--accent-primary);
+}
+
+/* Enhanced Pixmap with Column Semantics */
+.pixmap-cell.api-cell.filled {
+    background: #007bff; /* Blue for API */
+}
+
+.pixmap-cell.ui-cell.filled {
+    background: #28a745; /* Green for UI */
+}
+
+.pixmap-cell.service-cell.filled {
+    background: #ffc107; /* Yellow for Service */
+}
+
+.pixmap-cell.api-publication {
+    background: #0056b3; /* Dark blue for Service */
 }
 
 /* Empty State */

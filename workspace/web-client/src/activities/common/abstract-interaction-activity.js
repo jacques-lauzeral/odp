@@ -7,6 +7,7 @@ export default class AbstractInteractionActivity {
         this.container = null;
         this.currentEntity = 'requirements'; // Default to requirements
         this.currentEntityComponent = null;
+        this.currentPerspective = 'collection'; // Track current perspective
         this.setupData = null;
         this.loading = true;
 
@@ -39,6 +40,22 @@ export default class AbstractInteractionActivity {
             'requirements': 0,
             'changes': 0
         };
+
+        // Temporal perspective state
+        this.temporalState = {
+            timeWindow: { start: null, end: null },
+            eventTypeFilters: ['ANY']
+        };
+
+        // Available event types (from API schema)
+        this.availableEventTypes = [
+            'API_PUBLICATION',
+            'API_TEST_DEPLOYMENT',
+            'UI_TEST_DEPLOYMENT',
+            'SERVICE_ACTIVATION',
+            'API_DECOMMISSIONING',
+            'OTHER'
+        ];
     }
 
     async render(container, subPath = []) {
@@ -55,6 +72,9 @@ export default class AbstractInteractionActivity {
 
             // Load setup data
             await this.loadSetupData();
+
+            // Initialize temporal state
+            this.initializeTimeWindow();
 
             // Load entity counts with edition context
             await this.loadEntityCounts();
@@ -130,12 +150,45 @@ export default class AbstractInteractionActivity {
         }
     }
 
+    initializeTimeWindow() {
+        const now = new Date();
+        const threeYearsLater = new Date(now.getFullYear() + 3, now.getMonth(), now.getDate());
+
+        if (this.setupData?.waves && this.setupData.waves.length > 0) {
+            // Find waves in the next 3 years
+            const relevantWaves = this.setupData.waves.filter(wave => {
+                const waveDate = new Date(wave.year, (wave.quarter - 1) * 3, 1);
+                return waveDate >= now && waveDate <= threeYearsLater;
+            });
+
+            if (relevantWaves.length > 0) {
+                // Sort waves by date
+                relevantWaves.sort((a, b) => {
+                    if (a.year !== b.year) return a.year - b.year;
+                    return a.quarter - b.quarter;
+                });
+
+                const firstWave = relevantWaves[0];
+                const lastWave = relevantWaves[relevantWaves.length - 1];
+
+                this.temporalState.timeWindow.start = new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1);
+                this.temporalState.timeWindow.end = new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0);
+            } else {
+                // Fallback if no waves in range
+                this.temporalState.timeWindow.start = now;
+                this.temporalState.timeWindow.end = threeYearsLater;
+            }
+        } else {
+            this.temporalState.timeWindow.start = now;
+            this.temporalState.timeWindow.end = threeYearsLater;
+        }
+    }
+
     renderUI() {
         const activityClass = this.config.activityName.toLowerCase();
         const contextLabel = this.getContextLabel();
 
-        // FIXED: Use consistent tab styling across all interaction activities
-        // Use 'interaction' as base class instead of activity-specific classes
+        // Use consistent tab styling across all interaction activities
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
@@ -159,7 +212,7 @@ export default class AbstractInteractionActivity {
                 </div>
                 
                 <div class="${activityClass}-workspace">
-                    <div class="collection-container">
+                    <div class="collection-container" id="mainContainer">
                         <div class="collection-filters" id="collectionFilters">
                             <!-- Dynamic filters will be rendered here -->
                         </div>
@@ -212,7 +265,6 @@ export default class AbstractInteractionActivity {
     }
 
     bindEvents() {
-        // FIXED: Use consistent interaction-tab class for event binding
         // Entity tab switching
         const tabs = this.container.querySelectorAll('.interaction-tab');
         tabs.forEach(tab => {
@@ -255,6 +307,9 @@ export default class AbstractInteractionActivity {
 
         this.currentEntity = entity;
 
+        // Reset to collection perspective when switching entities
+        this.currentPerspective = 'collection';
+
         // Clear details panel when switching entities
         const detailsContainer = this.container.querySelector('#detailsContent');
         if (detailsContainer) {
@@ -272,7 +327,7 @@ export default class AbstractInteractionActivity {
         const newPath = `/${activityName}/${entity}`;
         window.history.pushState(null, '', newPath);
 
-        // FIXED: Update active tab using consistent class names
+        // Update active tab using consistent class names
         const tabs = this.container.querySelectorAll('.interaction-tab');
         tabs.forEach(tab => {
             if (tab.dataset.entity === entity) {
@@ -319,7 +374,7 @@ export default class AbstractInteractionActivity {
                 // After entity is loaded, render dynamic controls
                 this.renderDynamicControls();
 
-                // FIXED: Update count badge after entity loads its filtered data
+                // Update count badge after entity loads its filtered data
                 await this.updateEntityCountAfterLoad(this.currentEntity);
             }
 
@@ -329,7 +384,6 @@ export default class AbstractInteractionActivity {
         }
     }
 
-    // FIXED: Resolve edition context before loading counts
     async loadEntityCounts() {
         try {
             const promises = Object.entries(this.entities).map(async ([key, entity]) => {
@@ -379,7 +433,6 @@ export default class AbstractInteractionActivity {
         }
     }
 
-    // FIXED: Update individual count with proper edition context resolution
     async updateEntityCountAfterLoad(entityType) {
         try {
             const badge = this.container.querySelector(`#${entityType}-count`);
@@ -446,36 +499,97 @@ export default class AbstractInteractionActivity {
 
         // Render dynamic filter and grouping controls
         filtersContainer.innerHTML = `
-        <div class="group-controls">
-            <label for="groupBy">Group by:</label>
-            <select id="groupBy" class="form-control group-select">
-                ${groupingConfig.map(option => `
-                    <option value="${option.key}">${option.label}</option>
-                `).join('')}
-            </select>
-        </div>
-        
-        <div class="filter-controls">
-            ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
-            <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
-        </div>
-        
-        <div class="perspective-toggle">
-            <button class="perspective-option perspective-option--active" data-perspective="collection">
-                📋 Collection
-            </button>
-            <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
-                📁 Hierarchical
-            </button>
-            <button class="perspective-option" data-perspective="temporal" 
-                    ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
-                📅 Temporal
-            </button>
-        </div>
-    `;
+            <div class="group-controls">
+                <label for="groupBy">Group by:</label>
+                <select id="groupBy" class="form-control group-select">
+                    ${groupingConfig.map(option => `
+                        <option value="${option.key}">${option.label}</option>
+                    `).join('')}
+                </select>
+            </div>
+            
+            <div class="filter-controls">
+                ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
+                <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
+            </div>
+            
+            <div class="perspective-controls">
+                <div class="perspective-toggle">
+                    <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
+                        📋 Collection
+                    </button>
+                    <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
+                        📁 Hierarchical
+                    </button>
+                    <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
+                            ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
+                        📅 Temporal
+                    </button>
+                </div>
+                
+                ${this.renderTemporalControls()}
+            </div>
+        `;
 
         // Bind events for dynamic controls
         this.bindDynamicEvents();
+    }
+
+    renderTemporalControls() {
+        // Only show temporal controls when temporal perspective is active and entity is changes
+        if (this.currentPerspective !== 'temporal' || this.currentEntity !== 'changes') {
+            return '';
+        }
+
+        const availableWaves = this.getAvailableWaves();
+        const startWave = this.findClosestWave(this.temporalState.timeWindow.start, availableWaves);
+        const endWave = this.findClosestWave(this.temporalState.timeWindow.end, availableWaves);
+
+        return `
+            <div class="temporal-controls">
+                <div class="time-window-controls">
+                    <label for="start-wave">From:</label>
+                    <select id="start-wave" class="form-control">
+                        ${availableWaves.map(wave => `
+                            <option value="${wave.id}" ${startWave && startWave.id === wave.id ? 'selected' : ''}>
+                                ${wave.year} Q${wave.quarter}
+                            </option>
+                        `).join('')}
+                    </select>
+                    
+                    <label for="end-wave">To:</label>
+                    <select id="end-wave" class="form-control">
+                        ${availableWaves.map(wave => `
+                            <option value="${wave.id}" ${endWave && endWave.id === wave.id ? 'selected' : ''}>
+                                ${wave.year} Q${wave.quarter}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                
+                <div class="event-type-controls">
+                    <div class="event-type-filters">
+                        ${this.renderEventTypeLabels()}
+                        <button class="btn-icon" id="addEventType" title="Add event type filter">+</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderEventTypeLabels() {
+        const activeTypes = this.temporalState.eventTypeFilters.filter(f => f !== 'ANY');
+
+        if (activeTypes.length === 0 || this.temporalState.eventTypeFilters.includes('ANY')) {
+            return '<span class="event-type-label all-types">All Events</span>';
+        }
+
+        return activeTypes.map(eventType => `
+            <span class="event-type-label" data-event-type="${eventType}">
+                ${this.formatEventTypeName(eventType)}
+                <button class="label-remove" data-event-type="${eventType}" title="Remove filter">×</button>
+            </span>
+        `).join('');
     }
 
     renderFilterControl(filter) {
@@ -560,10 +674,57 @@ export default class AbstractInteractionActivity {
                 this.handlePerspectiveSwitch(perspective);
             });
         });
+
+        // Temporal controls (only when temporal perspective is active)
+        if (this.currentPerspective === 'temporal' && this.currentEntity === 'changes') {
+            this.bindTemporalEvents();
+        }
+    }
+
+    bindTemporalEvents() {
+        // Time window controls
+        const startWaveSelect = this.container.querySelector('#start-wave');
+        const endWaveSelect = this.container.querySelector('#end-wave');
+
+        if (startWaveSelect) {
+            startWaveSelect.addEventListener('change', () => {
+                this.updateTimeWindow();
+            });
+        }
+
+        if (endWaveSelect) {
+            endWaveSelect.addEventListener('change', () => {
+                this.updateTimeWindow();
+            });
+        }
+
+        // Event type controls
+        const addEventTypeBtn = this.container.querySelector('#addEventType');
+        if (addEventTypeBtn) {
+            addEventTypeBtn.addEventListener('click', (e) => {
+                this.showEventTypeDropdown(e.target);
+            });
+        }
+
+        // Event type label removal
+        const removeButtons = this.container.querySelectorAll('.label-remove');
+        removeButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const eventType = e.target.dataset.eventType;
+                this.removeEventTypeFilter(eventType);
+            });
+        });
     }
 
     handlePerspectiveSwitch(perspective) {
         console.log(`Switching to ${perspective} perspective for ${this.currentEntity}`);
+
+        if (perspective === this.currentPerspective) {
+            return; // Already in this perspective
+        }
+
+        this.currentPerspective = perspective;
 
         // Update UI - toggle active perspective button
         const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
@@ -575,11 +736,128 @@ export default class AbstractInteractionActivity {
             }
         });
 
+        // Re-render controls to show/hide temporal controls
+        this.renderDynamicControls();
+
         // Delegate to current entity component if it supports perspective switching
         if (this.currentEntityComponent?.handlePerspectiveSwitch) {
             this.currentEntityComponent.handlePerspectiveSwitch(perspective);
         } else {
             console.log(`${perspective} perspective not yet implemented for ${this.currentEntity}`);
+        }
+    }
+
+    updateTimeWindow() {
+        const startWaveSelect = this.container.querySelector('#start-wave');
+        const endWaveSelect = this.container.querySelector('#end-wave');
+
+        if (!startWaveSelect || !endWaveSelect) return;
+
+        const startWaveId = parseInt(startWaveSelect.value, 10);
+        const endWaveId = parseInt(endWaveSelect.value, 10);
+
+        const availableWaves = this.getAvailableWaves();
+        const startWave = availableWaves.find(w => w.id === startWaveId);
+        const endWave = availableWaves.find(w => w.id === endWaveId);
+
+        if (startWave && endWave) {
+            this.temporalState.timeWindow.start = new Date(startWave.year, (startWave.quarter - 1) * 3, 1);
+            this.temporalState.timeWindow.end = new Date(endWave.year, (endWave.quarter - 1) * 3 + 3, 0);
+
+            // Ensure start is before end
+            if (this.temporalState.timeWindow.start > this.temporalState.timeWindow.end) {
+                [this.temporalState.timeWindow.start, this.temporalState.timeWindow.end] =
+                    [this.temporalState.timeWindow.end, this.temporalState.timeWindow.start];
+            }
+
+            // Notify timeline component
+            if (this.currentEntityComponent?.timelineGrid) {
+                this.currentEntityComponent.timelineGrid.updateTimeWindow(
+                    this.temporalState.timeWindow.start,
+                    this.temporalState.timeWindow.end
+                );
+            }
+        }
+    }
+
+    showEventTypeDropdown(button) {
+        // Get available event types (not currently selected)
+        const currentTypes = this.temporalState.eventTypeFilters.includes('ANY') ?
+            [] : this.temporalState.eventTypeFilters;
+
+        const availableTypes = this.availableEventTypes.filter(type =>
+            !currentTypes.includes(type)
+        );
+
+        if (availableTypes.length === 0) {
+            return; // No more types to add
+        }
+
+        // Create a simple dropdown menu
+        const dropdown = document.createElement('div');
+        dropdown.className = 'event-type-dropdown';
+        dropdown.innerHTML = availableTypes.map(type => `
+            <div class="dropdown-item" data-event-type="${type}">
+                ${this.formatEventTypeName(type)}
+            </div>
+        `).join('');
+
+        // Position dropdown near button
+        const rect = button.getBoundingClientRect();
+        dropdown.style.position = 'absolute';
+        dropdown.style.top = `${rect.bottom + 4}px`;
+        dropdown.style.left = `${rect.left}px`;
+        dropdown.style.zIndex = '1000';
+
+        document.body.appendChild(dropdown);
+
+        // Bind dropdown events
+        dropdown.addEventListener('click', (e) => {
+            if (e.target.classList.contains('dropdown-item')) {
+                const eventType = e.target.dataset.eventType;
+                this.addEventTypeFilter(eventType);
+                dropdown.remove();
+            }
+        });
+
+        // Remove dropdown on outside click
+        const removeDropdown = (e) => {
+            if (!dropdown.contains(e.target) && e.target !== button) {
+                dropdown.remove();
+                document.removeEventListener('click', removeDropdown);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', removeDropdown), 100);
+    }
+
+    addEventTypeFilter(eventType) {
+        // Remove 'ANY' filter when adding specific types
+        if (this.temporalState.eventTypeFilters.includes('ANY')) {
+            this.temporalState.eventTypeFilters = [eventType];
+        } else {
+            this.temporalState.eventTypeFilters.push(eventType);
+        }
+
+        this.notifyEventTypeFilterChange();
+        this.renderDynamicControls(); // Re-render to update labels
+    }
+
+    removeEventTypeFilter(eventType) {
+        this.temporalState.eventTypeFilters = this.temporalState.eventTypeFilters.filter(f => f !== eventType);
+
+        // If no specific types left, default back to ANY
+        if (this.temporalState.eventTypeFilters.length === 0) {
+            this.temporalState.eventTypeFilters = ['ANY'];
+        }
+
+        this.notifyEventTypeFilterChange();
+        this.renderDynamicControls(); // Re-render to update labels
+    }
+
+    notifyEventTypeFilterChange() {
+        // Notify timeline component of filter changes
+        if (this.currentEntityComponent?.timelineGrid) {
+            this.currentEntityComponent.timelineGrid.setMilestoneFilters(this.temporalState.eventTypeFilters);
         }
     }
 
@@ -605,7 +883,6 @@ export default class AbstractInteractionActivity {
         });
     }
 
-    // Event handlers for Collection perspective
     handleFilter(filterText) {
         // Legacy method - now handled by handleSpecificFilter
         if (this.currentEntityComponent?.handleTextFilter) {
@@ -639,6 +916,46 @@ export default class AbstractInteractionActivity {
 
         // TODO: Implement comment mode functionality
         console.log('Comment mode functionality not yet implemented');
+    }
+
+    // Helper methods for temporal controls
+    getAvailableWaves() {
+        if (!this.setupData?.waves) return [];
+
+        // Return all waves sorted by date
+        return [...this.setupData.waves].sort((a, b) => {
+            if (a.year !== b.year) return a.year - b.year;
+            return a.quarter - b.quarter;
+        });
+    }
+
+    findClosestWave(date, waves) {
+        if (!waves || waves.length === 0) return null;
+
+        let closest = waves[0];
+        let closestDiff = Math.abs(date.getTime() - this.getWaveDate(closest).getTime());
+
+        for (const wave of waves) {
+            const waveDate = this.getWaveDate(wave);
+            const diff = Math.abs(date.getTime() - waveDate.getTime());
+
+            if (diff < closestDiff) {
+                closest = wave;
+                closestDiff = diff;
+            }
+        }
+
+        return closest;
+    }
+
+    getWaveDate(wave) {
+        return new Date(wave.year, (wave.quarter - 1) * 3, 1);
+    }
+
+    formatEventTypeName(eventType) {
+        // Convert API enum to display format
+        return eventType.replace(/_/g, ' ').toLowerCase()
+            .replace(/\b\w/g, l => l.toUpperCase());
     }
 
     renderError(error) {

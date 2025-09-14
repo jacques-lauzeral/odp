@@ -11,17 +11,17 @@ The temporal view provides a specialized interface for change deployment plannin
 - **Filter integration**: Temporal view sits below change filters, displays filtered changes only
 - **Future-ready**: Architecture accommodates potential change dependencies
 
-## Layout Architecture (3 Panels)
+## Layout Architecture (2 Panels)
 
-### Left Panel - Collapsible Control Panel
-**Collapsed State:**
-- Compact indicators showing list of captured milestone event types
-- Visual summary of active milestone filters
+### Improved Interaction Activity Panel
+**Perspective Specific Controls**
+The area localised at the right of the perspective switch control shall be used to render perspective specific controls.
 
-**Expanded State:**
-- **Time Bounds Controls**: Lower and upper time window boundary selection
-- **Milestone Event Filter**: ANY or multiple choice selection from available event types
-    - API_PUBLICATION, API_NON_OPS_DEPLOYMENT, UI_NON_OPS_DEPLOYMENT, API_OPS_DEPLOYMENT, etc.
+**Temporal Perspective Specific Controls**
+The temporal perspective exposes the following controls:
+- Time window lower bound: the wave from which the Timeline-Grid starts to display changes and milestones
+- Time window upper bound: the wave to which the Timeline-Grid ends to display changes and milestones
+- Milestone event types: an event type filer - one closable label per selected event type, followed by a "+" button that allows the user to add event types
 
 ### Center Panel - Master Timeline Grid Component
 **Timeline Structure:**
@@ -89,14 +89,6 @@ Examples:
 - ✅ Selection event callbacks
 - ✅ Empty state handling
 
-**Timeline Grid Control** (`timeline-grid-control.js`)
-- ✅ Collapsible left panel with expand/collapse toggle
-- ✅ Time bounds controls with wave dropdown selection
-- ✅ Milestone event type filtering (ANY/specific types)
-- ✅ Compact filter badge display when collapsed
-- ✅ Event callbacks for time window and filter changes
-- ✅ Integration with setup data (waves, event types)
-
 **Integration Layer**
 - ✅ AbstractInteractionActivity perspective switching
 - ✅ ChangesEntity temporal view integration
@@ -112,8 +104,8 @@ Examples:
 
 ### Primary Workflow
 1. **Change filtering** (existing filters above) → reduces timeline grid content
-2. **Time window adjustment** (left panel) → changes timeline scope
-3. **Milestone filtering** (left panel) → affects pixmap visibility
+2. **Time window adjustment** (temporal perspective specific control) → changes timeline scope
+3. **Milestone filtering** (temporal perspective specific control) → affects pixmap visibility
 4. **Selection interaction** (center panel) → updates details panel
 5. **Details exploration** (right panel) → examine change/milestone information
 
@@ -127,9 +119,6 @@ Examples:
 ### Component Hierarchy
 ```
 ChangeTemporalView (parent)
-├── CollapsibleControlPanel (left) ✅ IMPLEMENTED
-│   ├── TimeBoundsControl ✅ IMPLEMENTED
-│   └── MilestoneEventFilter ✅ IMPLEMENTED
 ├── TimelineGridComponent (center) ✅ IMPLEMENTED
 │   ├── WaveLines ✅ IMPLEMENTED
 │   ├── ChangeRows ✅ IMPLEMENTED

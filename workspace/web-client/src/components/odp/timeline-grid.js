@@ -1,6 +1,7 @@
 /**
  * TimelineGrid - Temporal visualization component for operational changes
  * Displays changes as horizontal rows with milestone intersections at wave dates
+ * Now receives controls from parent AbstractInteractionActivity
  */
 export default class TimelineGrid {
     constructor(app, entityConfig, setupData, options = {}) {
@@ -18,6 +19,7 @@ export default class TimelineGrid {
             start: null,
             end: null
         };
+        this.milestoneFilters = ['ANY']; // Default to show all milestone types
 
         // Options and event handlers
         this.onItemSelect = options.onItemSelect || (() => {});
@@ -65,7 +67,7 @@ export default class TimelineGrid {
 
     setData(data) {
         this.data = Array.isArray(data) ? data : [];
-        this.filteredData = [...this.data];
+        this.applyFilters();
         this.renderContent();
     }
 
@@ -78,6 +80,12 @@ export default class TimelineGrid {
     updateTimeWindow(startDate, endDate) {
         this.timeWindow.start = startDate;
         this.timeWindow.end = endDate;
+        this.renderContent();
+    }
+
+    setMilestoneFilters(filters) {
+        this.milestoneFilters = filters || ['ANY'];
+        this.applyFilters();
         this.renderContent();
     }
 
@@ -104,6 +112,35 @@ export default class TimelineGrid {
                 this.onMilestoneSelect(item, milestone);
             }
         }
+    }
+
+    // ====================
+    // FILTERING
+    // ====================
+
+    applyFilters() {
+        this.filteredData = this.data.filter(change => {
+            // Apply milestone filtering if not showing all types
+            if (!this.milestoneFilters.includes('ANY') && this.milestoneFilters.length > 0) {
+                // Check if change has any milestones with the filtered event types
+                const hasMatchingMilestone = change.milestones?.some(milestone => {
+                    if (!milestone.eventTypes || milestone.eventTypes.length === 0) {
+                        return false;
+                    }
+
+                    // Check if any of the milestone's event types match the filter
+                    return milestone.eventTypes.some(eventType =>
+                        this.milestoneFilters.includes(eventType)
+                    );
+                });
+
+                if (!hasMatchingMilestone) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
     }
 
     // ====================
@@ -188,6 +225,11 @@ export default class TimelineGrid {
             const waveIndex = waves.findIndex(w => w.id === wave.id);
             if (waveIndex === -1) return '';
 
+            // Apply milestone filtering - check if this milestone should be visible
+            if (!this.shouldShowMilestone(milestone)) {
+                return '';
+            }
+
             const milestoneKey = milestone.milestoneKey || milestone.id;
             const isSelected = this.selectedMilestone &&
                 (this.selectedMilestone.milestoneKey === milestoneKey || this.selectedMilestone.id === milestoneKey);
@@ -204,13 +246,37 @@ export default class TimelineGrid {
         }).join('');
     }
 
+    shouldShowMilestone(milestone) {
+        // If showing all types, always show milestone
+        if (this.milestoneFilters.includes('ANY')) {
+            return true;
+        }
+
+        // If no event types on milestone, don't show when filtering
+        if (!milestone.eventTypes || milestone.eventTypes.length === 0) {
+            return false;
+        }
+
+        // Show if any of the milestone's event types match the filter
+        return milestone.eventTypes.some(eventType =>
+            this.milestoneFilters.includes(eventType)
+        );
+    }
+
     renderConnectors(change, waves) {
         if (!change.milestones || change.milestones.length <= 1) {
             return '';
         }
 
-        // Sort milestones by wave date
-        const sortedMilestones = change.milestones
+        // Filter milestones based on current milestone filters
+        const visibleMilestones = change.milestones.filter(m => this.shouldShowMilestone(m));
+
+        if (visibleMilestones.length <= 1) {
+            return '';
+        }
+
+        // Sort visible milestones by wave date
+        const sortedMilestones = visibleMilestones
             .map(m => ({ milestone: m, wave: this.findMilestoneWave(m) }))
             .filter(item => item.wave)
             .sort((a, b) => {
@@ -243,29 +309,43 @@ export default class TimelineGrid {
     }
 
     renderPixmap(eventTypes) {
-        // Simple pixmap implementation - 3x3 grid
-        // For now, just show filled squares for any event type
+        // Enhanced pixmap implementation with column semantics
         const hasApiEvents = eventTypes.some(t => t.includes('API'));
         const hasUiEvents = eventTypes.some(t => t.includes('UI'));
-        const hasServiceEvents = eventTypes.some(t => t.includes('SERVICE'));
+        const hasServiceEvents = eventTypes.some(t => t.includes('SERVICE') || t === 'OTHER');
+
+        // API column events
+        const hasApiPublication = eventTypes.includes('API_PUBLICATION');
+        const hasApiTest = eventTypes.includes('API_TEST_DEPLOYMENT');
+        const hasApiDecommission = eventTypes.includes('API_DECOMMISSIONING');
+
+        // UI column events
+        const hasUiTest = eventTypes.includes('UI_TEST_DEPLOYMENT');
+
+        // Service column events
+        const hasServiceActivation = eventTypes.includes('SERVICE_ACTIVATION');
+        const hasOther = eventTypes.includes('OTHER');
 
         return `
             <div class="pixmap">
                 <div class="pixmap-row">
-                    <div class="pixmap-cell ${hasApiEvents ? 'filled' : ''}"></div>
-                    <div class="pixmap-cell ${hasUiEvents ? 'filled' : ''}"></div>
-                    <div class="pixmap-cell ${hasServiceEvents ? 'filled' : ''}"></div>
+                    <div class="pixmap-cell api-cell ${hasApiPublication ? 'filled api-publication' : ''} ${hasApiTest ? 'filled api-test' : ''} ${hasApiDecommission ? 'filled api-decommission' : ''}" title="API Events"></div>
+                    <div class="pixmap-cell ui-cell ${hasUiTest ? 'filled ui-test' : ''}" title="UI Events"></div>
+                    <div class="pixmap-cell service-cell ${hasServiceActivation ? 'filled service-activation' : ''} ${hasOther ? 'filled other' : ''}" title="Service Events"></div>
                 </div>
             </div>
         `;
     }
 
     renderEmptyState() {
+        const hasFilters = !this.milestoneFilters.includes('ANY') && this.milestoneFilters.length > 0;
+
         this.container.innerHTML = `
             <div class="timeline-empty-state">
                 <div class="icon">📅</div>
-                <h3>No Changes to Display</h3>
-                <p>Apply filters to show changes in the timeline view.</p>
+                <h3>${hasFilters ? 'No Matching Changes' : 'No Changes to Display'}</h3>
+                <p>${hasFilters ? 'No changes match the selected milestone filters.' : 'Apply filters to show changes in the timeline view.'}</p>
+                ${hasFilters ? '<p><em>Try adjusting the event type filters or time window.</em></p>' : ''}
             </div>
         `;
     }
