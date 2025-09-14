@@ -908,3 +908,381 @@
         padding: var(--space-1) var(--space-2);
     }
 }
+
+/* Move this section from inside the @media query to BEFORE line 642
+   (before the "/* Responsive Design */" comment) */
+
+/* ========================================
+   TEMPORAL VIEW COMPONENTS
+   ======================================== */
+
+/* Temporal View Layout */
+.temporal-view-container {
+    display: flex;
+    height: 100%;
+    background: white;
+}
+
+.temporal-control-panel {
+    width: 280px;
+    background: var(--bg-secondary, #f8f9fa);
+    border-right: 1px solid var(--border-primary, #e1e5e9);
+    transition: width 0.3s ease;
+    flex-shrink: 0;
+}
+
+.temporal-control-panel.collapsed {
+    width: 60px;
+}
+
+.temporal-timeline-area {
+    flex: 1;
+    overflow: auto;
+    padding: var(--space-4);
+    min-width: 0; /* Prevent flex item from overflowing */
+}
+
+/* Timeline Grid Control Panel */
+.timeline-control-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.control-panel-header {
+    display: flex;
+    align-items: center;
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
+    background: white;
+    flex-shrink: 0;
+}
+
+.collapse-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-1);
+    border-radius: var(--radius-base);
+    color: var(--text-secondary);
+    transition: background-color var(--transition-fast);
+}
+
+.collapse-toggle:hover {
+    background: var(--bg-secondary);
+}
+
+.toggle-icon {
+    font-size: var(--font-size-sm);
+}
+
+.active-filters-summary {
+    flex: 1;
+    padding-left: var(--space-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+}
+
+.filter-badge {
+    background: var(--accent-primary);
+    color: white;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-base);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+}
+
+.control-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4);
+}
+
+.control-section {
+    margin-bottom: var(--space-6);
+}
+
+.control-section:last-child {
+    margin-bottom: 0;
+}
+
+.control-section-title {
+    margin: 0 0 var(--space-3) 0;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+.control-group {
+    margin-bottom: var(--space-3);
+}
+
+.control-group:last-child {
+    margin-bottom: 0;
+}
+
+.control-group label {
+    display: block;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    margin-bottom: var(--space-1);
+    color: var(--text-primary);
+}
+
+.milestone-filter-controls .checkbox-label {
+    display: flex;
+    align-items: center;
+    font-size: var(--font-size-xs);
+    margin-bottom: var(--space-2);
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.milestone-filter-controls .checkbox-label.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.milestone-filter-controls input[type="checkbox"] {
+    margin-right: var(--space-2);
+    accent-color: var(--accent-primary);
+}
+
+.no-waves-message {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+    padding: var(--space-4);
+}
+
+/* Timeline Grid */
+.timeline-grid-container {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: white;
+}
+
+.timeline-header {
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-primary);
+}
+
+.timeline-header-row {
+    display: flex;
+    align-items: stretch;
+    min-height: 60px;
+}
+
+.timeline-label-column {
+    width: 200px;
+    border-right: 1px solid var(--border-primary);
+    background: white;
+    flex-shrink: 0;
+}
+
+.timeline-label-header {
+    padding: var(--space-3) var(--space-4);
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.timeline-waves-container {
+    flex: 1;
+    display: flex;
+    position: relative;
+    min-width: 0;
+}
+
+.timeline-wave-header {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: var(--space-2);
+    transform: translateX(-50%);
+}
+
+.wave-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    padding: var(--space-1) var(--space-2);
+    background: white;
+    border-radius: var(--radius-base);
+    border: 1px solid var(--border-primary);
+    margin-bottom: var(--space-1);
+    white-space: nowrap;
+    box-shadow: var(--shadow-sm);
+}
+
+.wave-line {
+    width: 2px;
+    flex: 1;
+    background: var(--accent-primary);
+    margin: 0 auto;
+    opacity: 0.7;
+}
+
+.timeline-body {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.timeline-change-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-primary);
+    transition: background-color var(--transition-fast);
+    min-height: 60px;
+}
+
+.timeline-change-row:last-child {
+    border-bottom: none;
+}
+
+.timeline-change-row:hover {
+    background: var(--bg-secondary);
+}
+
+.timeline-change-row.selected {
+    background: rgba(14, 165, 233, 0.1);
+    border-left: 3px solid var(--accent-primary);
+}
+
+.timeline-change-label {
+    width: 200px;
+    padding: var(--space-3) var(--space-4);
+    border-right: 1px solid var(--border-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.change-title {
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    line-height: 1.3;
+    margin-bottom: var(--space-1);
+    word-wrap: break-word;
+}
+
+.change-id {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+}
+
+.timeline-change-timeline {
+    flex: 1;
+    position: relative;
+    height: 60px;
+    min-width: 0;
+}
+
+.timeline-base-line {
+    position: absolute;
+    top: 50%;
+    left: 2%;
+    right: 2%;
+    height: 1px;
+    background: var(--border-primary);
+    transform: translateY(-50%);
+    opacity: 0.5;
+}
+
+.timeline-milestone {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    z-index: 10;
+}
+
+.timeline-milestone:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.timeline-milestone.selected {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.timeline-connector {
+    position: absolute;
+    top: 50%;
+    height: 3px;
+    background: var(--accent-primary);
+    transform: translateY(-50%);
+    border-radius: 2px;
+    opacity: 0.8;
+    z-index: 5;
+}
+
+/* Pixmap */
+.pixmap {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    background: white;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.pixmap-row {
+    display: flex;
+    height: 100%;
+}
+
+.pixmap-cell {
+    flex: 1;
+    background: transparent;
+    transition: background-color var(--transition-fast);
+    border-right: 1px solid var(--border-primary);
+}
+
+.pixmap-cell:last-child {
+    border-right: none;
+}
+
+.pixmap-cell.filled {
+    background: var(--accent-primary);
+}
+
+/* Empty State */
+.timeline-empty-state {
+    text-align: center;
+    padding: var(--space-16) var(--space-8);
+    color: var(--text-secondary);
+}
+
+.timeline-empty-state .icon {
+    font-size: 48px;
+    margin-bottom: var(--space-4);
+    opacity: 0.5;
+}
+
+.timeline-empty-state h3 {
+    margin: 0 0 var(--space-2) 0;
+    color: var(--text-primary);
+    font-size: var(--font-size-lg);
+}
+
+.timeline-empty-state p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+/* END OF TEMPORAL VIEW COMPONENTS - PLACE ABOVE @media QUERIES */

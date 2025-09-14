@@ -1,6 +1,8 @@
 import CollectionEntity from '../../components/odp/collection-entity.js';
-import ChangeForm from './change-form.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
+import TimelineGrid from '../../components/odp/timeline-grid.js';
+import TimelineGridControl from '../../components/odp/timeline-grid-control.js';
+import ChangeForm from './change-form.js';
 import { apiClient } from '../../shared/api-client.js';
 import { format } from '../../shared/utils.js';
 
@@ -79,6 +81,11 @@ export default class ChangesEntity {
                 await this.collection.refresh();
             }
         });
+
+        // Temporal perspective components
+        this.currentPerspective = 'collection';
+        this.timelineGrid = null;
+        this.timelineControl = null;
     }
 
     extractAllWavesFromMilestones(item) {
@@ -296,6 +303,22 @@ export default class ChangesEntity {
     // EVENT HANDLERS
     // ====================
 
+    handlePerspectiveSwitch(perspective) {
+        console.log(`ChangesEntity.handlePerspectiveSwitch to ${perspective}`);
+
+        if (perspective === this.currentPerspective) {
+            return; // Already in this perspective
+        }
+
+        this.currentPerspective = perspective;
+
+        if (perspective === 'temporal') {
+            this.renderTemporalView();
+        } else if (perspective === 'collection') {
+            this.renderCollectionView();
+        }
+    }
+
     handleCreate() {
         this.form.showCreateModal();
     }
@@ -317,6 +340,88 @@ export default class ChangesEntity {
     handleRefresh() {
         // Any additional refresh logic
         console.log('Changes refreshed');
+    }
+
+    handleTimelineItemSelect(item) {
+        console.log('Timeline item selected:', item?.itemId || item?.id);
+
+        // Update details panel (reuse existing logic)
+        this.handleItemSelect(item);
+
+        // Sync selection with collection if in collection view
+        if (this.currentPerspective === 'collection' && this.collection) {
+            this.collection.selectedItem = item;
+        }
+    }
+
+    handleTimelineMilestoneSelect(item, milestone) {
+        console.log('Timeline milestone selected:', {
+            change: item?.itemId || item?.id,
+            milestone: milestone?.milestoneKey || milestone?.id
+        });
+
+        // Show change in details panel with milestone emphasized
+        this.handleItemSelect(item);
+
+        // TODO: Highlight the milestone in the details panel
+        // This could be done by storing the selected milestone and
+        // modifying updateDetailsPanel to emphasize it
+    }
+
+    renderTemporalView() {
+        if (!this.container) return;
+
+        console.log('ChangesEntity.renderTemporalView - rendering temporal view');
+
+        // Create temporal layout with left control panel and center timeline
+        this.container.innerHTML = `
+        <div class="temporal-view-container">
+            <div class="temporal-control-panel" id="temporalControlPanel">
+                <!-- TimelineGridControl will render here -->
+            </div>
+            <div class="temporal-timeline-area" id="temporalTimelineArea">
+                <!-- TimelineGrid will render here -->
+            </div>
+        </div>
+    `;
+
+        // Initialize timeline control component
+        const controlContainer = this.container.querySelector('#temporalControlPanel');
+        this.timelineControl = new TimelineGridControl(this.setupData, {
+            onTimeWindowChange: (startDate, endDate) => {
+                console.log('Time window changed:', startDate, endDate);
+                if (this.timelineGrid) {
+                    this.timelineGrid.updateTimeWindow(startDate, endDate);
+                }
+            },
+            onMilestoneFilterChange: (filters) => {
+                console.log('Milestone filters changed:', filters);
+                // TODO: Apply milestone filtering
+            }
+        });
+        this.timelineControl.render(controlContainer);
+
+        // Initialize timeline grid component
+        const timelineContainer = this.container.querySelector('#temporalTimelineArea');
+        this.timelineGrid = new TimelineGrid(this.app, this.entityConfig, this.setupData, {
+            onItemSelect: (item) => this.handleTimelineItemSelect(item),
+            onMilestoneSelect: (item, milestone) => this.handleTimelineMilestoneSelect(item, milestone)
+        });
+        this.timelineGrid.render(timelineContainer);
+
+        // Set data from collection
+        if (this.collection?.data) {
+            this.timelineGrid.setData(this.collection.data);
+        }
+    }
+
+    renderCollectionView() {
+        if (!this.container) return;
+
+        console.log('ChangesEntity.renderCollectionView - rendering collection view');
+
+        // Re-render the collection component
+        this.collection.render(this.container);
     }
 
     async updateDetailsPanel(item) {
@@ -359,20 +464,28 @@ export default class ChangesEntity {
 
     async render(container) {
         this.container = container;
+
+        // Always start with collection view
         await this.collection.render(container);
+        this.currentPerspective = 'collection';
     }
 
     async refresh() {
         await this.collection.refresh();
+
+        // If in temporal view, update timeline data
+        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+            this.timelineGrid.setData(this.collection.data);
+        }
     }
 
     handleFilter(filterKey, filterValue) {
-        // Special handling for requirement reference filters
-        if (filterKey === 'satisfiesRequirements' || filterKey === 'supersedsRequirements') {
-            // These are entity reference lists, filter will check title/id
-            this.collection.handleFilter(filterKey, filterValue);
-        } else {
-            this.collection.handleFilter(filterKey, filterValue);
+        // Apply filter to collection first
+        this.collection.handleFilter(filterKey, filterValue);
+
+        // If in temporal view, update timeline data
+        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+            this.timelineGrid.setData(this.collection.filteredData || this.collection.data);
         }
     }
 
@@ -391,6 +504,18 @@ export default class ChangesEntity {
     }
 
     cleanup() {
+        // Clean up timeline components
+        if (this.timelineGrid) {
+            this.timelineGrid.cleanup();
+            this.timelineGrid = null;
+        }
+
+        if (this.timelineControl) {
+            this.timelineControl.cleanup();
+            this.timelineControl = null;
+        }
+
+        // Existing cleanup
         this.collection.cleanup();
         this.container = null;
     }

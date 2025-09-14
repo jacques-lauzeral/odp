@@ -446,32 +446,33 @@ export default class AbstractInteractionActivity {
 
         // Render dynamic filter and grouping controls
         filtersContainer.innerHTML = `
-            <div class="group-controls">
-                <label for="groupBy">Group by:</label>
-                <select id="groupBy" class="form-control group-select">
-                    ${groupingConfig.map(option => `
-                        <option value="${option.key}">${option.label}</option>
-                    `).join('')}
-                </select>
-            </div>
-            
-            <div class="filter-controls">
-                ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
-                <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
-            </div>
-            
-            <div class="perspective-toggle">
-                <button class="perspective-option perspective-option--active" data-perspective="collection">
-                    📋 Collection
-                </button>
-                <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
-                    📁 Hierarchical
-                </button>
-                <button class="perspective-option" data-perspective="temporal" disabled title="Coming soon">
-                    📅 Temporal
-                </button>
-            </div>
-        `;
+        <div class="group-controls">
+            <label for="groupBy">Group by:</label>
+            <select id="groupBy" class="form-control group-select">
+                ${groupingConfig.map(option => `
+                    <option value="${option.key}">${option.label}</option>
+                `).join('')}
+            </select>
+        </div>
+        
+        <div class="filter-controls">
+            ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
+            <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
+        </div>
+        
+        <div class="perspective-toggle">
+            <button class="perspective-option perspective-option--active" data-perspective="collection">
+                📋 Collection
+            </button>
+            <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
+                📁 Hierarchical
+            </button>
+            <button class="perspective-option" data-perspective="temporal" 
+                    ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
+                📅 Temporal
+            </button>
+        </div>
+    `;
 
         // Bind events for dynamic controls
         this.bindDynamicEvents();
@@ -549,19 +550,37 @@ export default class AbstractInteractionActivity {
             });
         }
 
-        // Perspective toggle (placeholder for future)
+        // Perspective toggle handling
         const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
         perspectiveButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 const perspective = e.currentTarget.dataset.perspective;
-                if (perspective === 'collection') {
-                    // Already active - no action needed
-                    return;
-                }
-                // Future: Handle hierarchical and temporal perspectives
-                console.log(`${perspective} perspective not yet implemented`);
+                if (e.currentTarget.disabled) return;
+
+                this.handlePerspectiveSwitch(perspective);
             });
         });
+    }
+
+    handlePerspectiveSwitch(perspective) {
+        console.log(`Switching to ${perspective} perspective for ${this.currentEntity}`);
+
+        // Update UI - toggle active perspective button
+        const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
+        perspectiveButtons.forEach(button => {
+            if (button.dataset.perspective === perspective) {
+                button.classList.add('perspective-option--active');
+            } else {
+                button.classList.remove('perspective-option--active');
+            }
+        });
+
+        // Delegate to current entity component if it supports perspective switching
+        if (this.currentEntityComponent?.handlePerspectiveSwitch) {
+            this.currentEntityComponent.handlePerspectiveSwitch(perspective);
+        } else {
+            console.log(`${perspective} perspective not yet implemented for ${this.currentEntity}`);
+        }
     }
 
     handleSpecificFilter(filterKey, filterValue) {
