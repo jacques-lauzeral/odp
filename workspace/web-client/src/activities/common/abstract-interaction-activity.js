@@ -676,7 +676,8 @@ export default class AbstractInteractionActivity {
         });
 
         // Temporal controls (only when temporal perspective is active)
-        if (this.currentPerspective === 'temporal' && this.currentEntity === 'changes') {
+        const temporalControls = this.container.querySelector('.temporal-controls');
+        if (temporalControls) {
             this.bindTemporalEvents();
         }
     }
@@ -757,8 +758,8 @@ export default class AbstractInteractionActivity {
         const endWaveId = parseInt(endWaveSelect.value, 10);
 
         const availableWaves = this.getAvailableWaves();
-        const startWave = availableWaves.find(w => w.id === startWaveId);
-        const endWave = availableWaves.find(w => w.id === endWaveId);
+        const startWave = availableWaves.find(w => String(w.id) === String(startWaveId));
+        const endWave = availableWaves.find(w => String(w.id) === String(endWaveId));
 
         if (startWave && endWave) {
             this.temporalState.timeWindow.start = new Date(startWave.year, (startWave.quarter - 1) * 3, 1);

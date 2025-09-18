@@ -187,6 +187,30 @@
     gap: var(--space-1);
 }
 
+.perspective-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.temporal-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.time-window-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.event-type-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
 .perspective-option {
     padding: var(--space-2) var(--space-3);
     border: none;

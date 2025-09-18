@@ -78,6 +78,7 @@ export default class TimelineGrid {
     }
 
     updateTimeWindow(startDate, endDate) {
+        console.log(`TimelineGrid.updateTimeWindow [${startDate}, ${endDate}]`);
         this.timeWindow.start = startDate;
         this.timeWindow.end = endDate;
         this.renderContent();
@@ -213,37 +214,115 @@ export default class TimelineGrid {
 
     renderMilestones(change, waves) {
         if (!change.milestones || change.milestones.length === 0) {
+            console.log(`No milestones for change ${this.getItemId(change)}`);
             return '';
         }
 
         const itemId = this.getItemId(change);
+        console.log(`Rendering ${change.milestones.length} milestones for change ${itemId}`);
 
-        return change.milestones.map(milestone => {
+        const renderedMilestones = change.milestones.map((milestone, index) => {
+            // Find the wave for this milestone
             const wave = this.findMilestoneWave(milestone);
-            if (!wave) return '';
-
-            const waveIndex = waves.findIndex(w => w.id === wave.id);
-            if (waveIndex === -1) return '';
-
-            // Apply milestone filtering - check if this milestone should be visible
-            if (!this.shouldShowMilestone(milestone)) {
+            if (!wave) {
+                console.log(`No wave found for milestone ${index}:`, milestone);
                 return '';
             }
 
-            const milestoneKey = milestone.milestoneKey || milestone.id;
-            const isSelected = this.selectedMilestone &&
-                (this.selectedMilestone.milestoneKey === milestoneKey || this.selectedMilestone.id === milestoneKey);
+            // Find wave position in visible waves
+            const waveIndex = waves.findIndex(w => String(w.id) === String(wave.id));
+            if (waveIndex === -1) {
+                console.log(`Wave ${wave.id} (${wave.year} Q${wave.quarter}) not in visible range for milestone ${index}`);
+                return '';
+            }
 
+            // Apply milestone filtering - check if this milestone should be visible
+            if (!this.shouldShowMilestone(milestone)) {
+                console.log(`Milestone ${index} filtered out by event type filter`);
+                return '';
+            }
+
+            // Calculate position
+            const position = this.calculateWavePosition(waveIndex, waves.length);
+
+            // Get milestone identifiers
+            const milestoneKey = milestone.milestoneKey || milestone.id || `milestone-${index}`;
+            const milestoneTitle = milestone.title || `Milestone ${index + 1}`;
+
+            // Check if this milestone is selected
+            const isSelected = this.selectedMilestone &&
+                (this.selectedMilestone.milestoneKey === milestoneKey ||
+                    this.selectedMilestone.id === milestoneKey ||
+                    this.selectedMilestone === milestone);
+
+            // Generate pixmap HTML
+            const pixmapHtml = this.renderPixmap(milestone.eventTypes || []);
+
+            // Build the complete milestone HTML
+            const milestoneHtml = `
+            <div class="timeline-milestone ${isSelected ? 'selected' : ''}" 
+                 style="left: ${position}%;"
+                 data-item-id="${itemId}"
+                 data-milestone-key="${milestoneKey}"
+                 title="${this.escapeHtml(milestoneTitle)} (${wave.year} Q${wave.quarter})">
+                ${pixmapHtml}
+            </div>
+        `;
+
+            console.log(`Rendered milestone ${index} at ${position}%:`, {
+                milestoneKey,
+                waveId: wave.id,
+                waveLabel: `${wave.year} Q${wave.quarter}`,
+                eventTypes: milestone.eventTypes,
+                position,
+                isSelected
+            });
+
+            return milestoneHtml;
+        });
+
+        const validMilestones = renderedMilestones.filter(html => html !== '');
+        console.log(`Change ${itemId}: ${change.milestones.length} total milestones, ${validMilestones.length} rendered`);
+
+        return validMilestones.join('');
+    }
+
+    renderPixmap(eventTypes) {
+        if (!eventTypes || eventTypes.length === 0) {
+            console.log('No event types for pixmap, rendering empty');
             return `
-                <div class="timeline-milestone ${isSelected ? 'selected' : ''}" 
-                     style="left: ${this.calculateWavePosition(waveIndex, waves.length)}%"
-                     data-item-id="${itemId}"
-                     data-milestone-key="${milestoneKey}"
-                     title="${this.escapeHtml(milestone.title || 'Milestone')}">
-                    ${this.renderPixmap(milestone.eventTypes || [])}
+            <div class="pixmap">
+                <div class="pixmap-row">
+                    <div class="pixmap-cell api-cell" title="API Events"></div>
+                    <div class="pixmap-cell ui-cell" title="UI Events"></div>
+                    <div class="pixmap-cell service-cell" title="Service Events"></div>
                 </div>
-            `;
-        }).join('');
+            </div>
+        `;
+        }
+
+        // Enhanced pixmap implementation with column semantics
+        const hasApiPublication = eventTypes.includes('API_PUBLICATION');
+        const hasApiTest = eventTypes.includes('API_TEST_DEPLOYMENT');
+        const hasApiDecommission = eventTypes.includes('API_DECOMMISSIONING');
+        const hasUiTest = eventTypes.includes('UI_TEST_DEPLOYMENT');
+        const hasServiceActivation = eventTypes.includes('SERVICE_ACTIVATION');
+        const hasOther = eventTypes.includes('OTHER');
+
+        console.log('Rendering pixmap with event types:', eventTypes);
+
+        return `
+        <div class="pixmap">
+            <div class="pixmap-row">
+                <div class="pixmap-cell api-cell ${hasApiPublication ? 'filled api-publication' : ''} ${hasApiTest ? 'filled api-test' : ''} ${hasApiDecommission ? 'filled api-decommission' : ''}" 
+                     title="API Events: ${eventTypes.filter(t => t.includes('API')).join(', ') || 'None'}"></div>
+                <div class="pixmap-cell ui-cell ${hasUiTest ? 'filled ui-test' : ''}" 
+                     title="UI Events: ${eventTypes.filter(t => t.includes('UI')).join(', ') || 'None'}"></div>
+                <div class="pixmap-cell service-cell ${hasServiceActivation ? 'filled service-activation' : ''} ${hasOther ? 'filled other' : ''}" 
+                     title="Service Events: ${eventTypes.filter(t => t.includes('SERVICE') || t === 'OTHER').join(', ') || 'None'}"></div>
+            </div>
+        </div>
+    `;
     }
 
     shouldShowMilestone(milestone) {
@@ -291,8 +370,8 @@ export default class TimelineGrid {
             const currentWave = sortedMilestones[i].wave;
             const nextWave = sortedMilestones[i + 1].wave;
 
-            const currentIndex = waves.findIndex(w => w.id === currentWave.id);
-            const nextIndex = waves.findIndex(w => w.id === nextWave.id);
+            const currentIndex = waves.findIndex(w => String(w.id) === String(currentWave.id));
+            const nextIndex = waves.findIndex(w => String(w.id) === String(nextWave.id));
 
             if (currentIndex !== -1 && nextIndex !== -1) {
                 const startPos = this.calculateWavePosition(currentIndex, waves.length);
@@ -420,7 +499,7 @@ export default class TimelineGrid {
         if (milestone.wave) return milestone.wave;
 
         if (milestone.waveId && this.setupData?.waves) {
-            return this.setupData.waves.find(w => w.id === milestone.waveId);
+            return this.setupData.waves.find(w => String(w.id) === String(milestone.waveId));
         }
 
         return null;
