@@ -16,10 +16,10 @@ export default class ChangesEntity {
         this.currentPerspective = 'collection';
         this.timelineGrid = null;
 
-        // Initialize collection with custom column types (unchanged)
+        // Initialize collection with custom column types
         const customColumnTypes = {
             ...odpColumnTypes,
-            'milestone-waves': {  // Renamed
+            'milestone-waves': {
                 render: (value, column, item, context) => {
                     const waves = this.extractAllWavesFromMilestones(item);
                     if (!waves || waves.length === 0) return '-';
@@ -122,11 +122,68 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // PERSPECTIVE SWITCHING
+    // STATE MANAGEMENT - NEW METHODS FOR CENTRALIZED STATE
     // ====================
 
-    handlePerspectiveSwitch(perspective) {
-        console.log(`ChangesEntity.handlePerspectiveSwitch to ${perspective}`);
+    applySharedState(sharedState) {
+        console.log('ChangesEntity.applySharedState:', sharedState);
+
+        // Apply filters to collection
+        if (sharedState.filters && this.collection) {
+            this.collection.currentFilters = { ...sharedState.filters };
+        }
+
+        // Apply selection
+        if (sharedState.selectedItem && this.collection) {
+            this.collection.selectedItem = sharedState.selectedItem;
+        }
+
+        // Apply grouping
+        if (sharedState.grouping && this.collection) {
+            this.collection.currentGrouping = sharedState.grouping;
+        }
+
+        // Apply temporal state to timeline if in temporal perspective
+        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+            if (sharedState.timeWindow) {
+                this.timelineGrid.updateTimeWindow(
+                    sharedState.timeWindow.start,
+                    sharedState.timeWindow.end
+                );
+            }
+            if (sharedState.eventTypeFilters) {
+                this.timelineGrid.setMilestoneFilters(sharedState.eventTypeFilters);
+            }
+        }
+
+        // Re-render to reflect state
+        if (this.currentPerspective === 'collection') {
+            this.collection.applyFilters();
+        } else if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+            this.timelineGrid.setData(this.collection.data);
+        }
+    }
+
+    syncFilters(filters) {
+        console.log('ChangesEntity.syncFilters:', filters);
+
+        if (this.collection) {
+            this.collection.currentFilters = { ...filters };
+            this.collection.applyFilters();
+
+            // Update timeline data if in temporal view
+            if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+                this.timelineGrid.setData(this.collection.filteredData || this.collection.data);
+            }
+        }
+    }
+
+    // ====================
+    // PERSPECTIVE SWITCHING - UPDATED FOR CENTRALIZED STATE
+    // ====================
+
+    handlePerspectiveSwitch(perspective, sharedState) {
+        console.log(`ChangesEntity.handlePerspectiveSwitch to ${perspective} with shared state:`, sharedState);
 
         if (perspective === this.currentPerspective) {
             return; // Already in this perspective
@@ -135,16 +192,16 @@ export default class ChangesEntity {
         this.currentPerspective = perspective;
 
         if (perspective === 'temporal') {
-            this.renderTemporalView();
+            this.renderTemporalView(sharedState);
         } else if (perspective === 'collection') {
-            this.renderCollectionView();
+            this.renderCollectionView(sharedState);
         }
     }
 
-    renderTemporalView() {
+    renderTemporalView(sharedState) {
         if (!this.container) return;
 
-        console.log('ChangesEntity.renderTemporalView - rendering temporal view');
+        console.log('ChangesEntity.renderTemporalView with shared state:', sharedState);
 
         // Create temporal layout - full width timeline (no left panel)
         this.container.innerHTML = `
@@ -163,30 +220,82 @@ export default class ChangesEntity {
         });
         this.timelineGrid.render(timelineContainer);
 
-        // Set data from collection
-        if (this.collection?.data) {
-            this.timelineGrid.setData(this.collection.data);
+        // Apply shared state to timeline
+        if (sharedState) {
+            if (sharedState.timeWindow) {
+                this.timelineGrid.updateTimeWindow(
+                    sharedState.timeWindow.start,
+                    sharedState.timeWindow.end
+                );
+            }
+            if (sharedState.eventTypeFilters) {
+                this.timelineGrid.setMilestoneFilters(sharedState.eventTypeFilters);
+            }
+        }
+
+        // Set data from collection (filtered or all)
+        const dataToShow = this.collection?.filteredData || this.collection?.data || [];
+        this.timelineGrid.setData(dataToShow);
+
+        // Restore selection if any
+        if (sharedState?.selectedItem) {
+            const itemId = this.getItemId(sharedState.selectedItem);
+            if (itemId) {
+                this.timelineGrid.selectItem(itemId);
+            }
         }
     }
 
-    renderCollectionView() {
+    renderCollectionView(sharedState) {
         if (!this.container) return;
 
-        console.log('ChangesEntity.renderCollectionView - rendering collection view');
+        console.log('ChangesEntity.renderCollectionView with shared state:', sharedState);
+        console.log('Collection current filters before render:', this.collection.currentFilters);
+        console.log('Collection current grouping before render:', this.collection.currentGrouping);
 
-        // Re-render the collection component
+        // Apply shared state FIRST, then render
+        if (sharedState) {
+            // Apply filters before rendering
+            if (sharedState.filters) {
+                this.collection.currentFilters = { ...sharedState.filters };
+            }
+
+            // Apply grouping before rendering
+            if (sharedState.grouping) {
+                this.collection.currentGrouping = sharedState.grouping;
+            }
+        }
+
+        // Now render with state already applied
         this.collection.render(this.container);
+
+        // Restore selection after render with debug logging
+        if (sharedState?.selectedItem) {
+            const itemId = this.getItemId(sharedState.selectedItem);
+            console.log('Attempting to restore selection - itemId:', itemId);
+            console.log('Available items in collection:', this.collection.data.map(d => this.getItemId(d)));
+
+            if (itemId) {
+                this.collection.selectItem(itemId);
+                console.log('Selection restored - selected item:', this.collection.selectedItem);
+            }
+        }
     }
 
     handleTimelineItemSelect(item) {
         console.log('Timeline item selected:', item?.itemId || item?.id);
 
-        // Update details panel (reuse existing logic)
+        // Update details panel
         this.handleItemSelect(item);
 
-        // Sync selection with collection if in collection view
-        if (this.currentPerspective === 'collection' && this.collection) {
+        // Update the collection's selectedItem to keep it in sync
+        if (this.collection) {
             this.collection.selectedItem = item;
+        }
+
+        // Notify parent of selection change
+        if (this.app.currentActivity?.updateSharedSelection) {
+            this.app.currentActivity.updateSharedSelection(item);
         }
     }
 
@@ -201,15 +310,19 @@ export default class ChangesEntity {
 
         // Store selected milestone for potential details panel emphasis
         this.selectedMilestone = milestone;
+
+        // Notify parent of selection change
+        if (this.app.currentActivity?.updateSharedSelection) {
+            this.app.currentActivity.updateSharedSelection(item);
+        }
     }
 
     // ====================
-    // COLLECTION CONFIGURATION - ENHANCED FOR SERVER-SIDE FILTERING
+    // COLLECTION CONFIGURATION
     // ====================
 
     getFilterConfig() {
         return [
-            // Changed: Replace 'title' pattern matching with server-side 'text' full-text search
             {
                 key: 'text',
                 label: 'Full Text Search',
@@ -226,7 +339,6 @@ export default class ChangesEntity {
                     { value: 'NM', label: 'NM' }
                 ]
             },
-            // New: Add indirect category filtering via requirements
             {
                 key: 'stakeholderCategory',
                 label: 'Stakeholder (via Requirements)',
@@ -239,7 +351,6 @@ export default class ChangesEntity {
                 type: 'select',
                 options: this.buildOptionsFromSetupData('dataCategories')
             },
-            // Keep: Existing wave filter (already working)
             {
                 key: 'milestones',
                 label: 'Wave',
@@ -330,28 +441,6 @@ export default class ChangesEntity {
     // HELPER METHODS
     // ====================
 
-    extractWaveFromMilestones(item) {
-        if (!item?.milestones || !Array.isArray(item.milestones) || item.milestones.length === 0) {
-            return null;
-        }
-
-        // Find the first milestone with a wave
-        const milestoneWithWave = item.milestones.find(m => m.wave || m.waveId);
-        if (!milestoneWithWave) return null;
-
-        // Return wave object or ID
-        if (milestoneWithWave.wave) {
-            return milestoneWithWave.wave;
-        }
-
-        // If only waveId, find in setup data
-        if (milestoneWithWave.waveId && this.setupData?.waves) {
-            return this.setupData.waves.find(w => w.id === milestoneWithWave.waveId);
-        }
-
-        return milestoneWithWave.waveId;
-    }
-
     buildWaveOptions(emptyLabel = 'Any') {
         const baseOptions = [{ value: '', label: emptyLabel }];
 
@@ -383,8 +472,12 @@ export default class ChangesEntity {
         return baseOptions.concat(setupOptions);
     }
 
+    getItemId(item) {
+        return item?.itemId || item?.id || null;
+    }
+
     // ====================
-    // EVENT HANDLERS
+    // EVENT HANDLERS - UPDATED TO WORK WITH CENTRALIZED STATE
     // ====================
 
     handleCreate() {
@@ -396,17 +489,20 @@ export default class ChangesEntity {
     }
 
     handleReview(item) {
-        // Show read-only modal in review mode
         this.form.showReadOnlyModal(item || this.collection.selectedItem);
     }
 
     handleItemSelect(item) {
         // Update details panel
         this.updateDetailsPanel(item);
+
+        // Notify parent activity of selection change
+        if (this.app.currentActivity?.updateSharedSelection) {
+            this.app.currentActivity.updateSharedSelection(item);
+        }
     }
 
     handleRefresh() {
-        // Any additional refresh logic
         console.log('Changes refreshed');
     }
 
@@ -417,20 +513,20 @@ export default class ChangesEntity {
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
         const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
         const detailsHtml = await this.form.generateReadOnlyView(item);
+
         detailsContainer.innerHTML = `
-        <div class="details-sticky-header">
-            <div class="item-title-section">
-                <h3 class="item-title">${item.title || `${item.type || 'Item'} ${item.itemId}`}</h3>
-                <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
+            <div class="details-sticky-header">
+                <div class="item-title-section">
+                    <h3 class="item-title">${item.title || `${item.type || 'Item'} ${item.itemId}`}</h3>
+                    <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
+                </div>
+                <div class="details-actions">
+                    <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
+                </div>
             </div>
-            <div class="details-actions">
-                <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
-                <!-- Placeholder for future Delete button -->
+            <div class="details-scrollable-content">
+                ${detailsHtml}
             </div>
-        </div>
-        <div class="details-scrollable-content">
-            ${detailsHtml}
-        </div>
         `;
 
         // Bind details button
@@ -445,7 +541,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // PUBLIC INTERFACE
+    // PUBLIC INTERFACE - UPDATED FOR CENTRALIZED STATE
     // ====================
 
     async render(container) {
@@ -466,10 +562,15 @@ export default class ChangesEntity {
     }
 
     handleFilter(filterKey, filterValue) {
-        // Apply filter to collection first
+        // Apply filter to collection
         this.collection.handleFilter(filterKey, filterValue);
 
-        // If in temporal view, update timeline data
+        // Notify parent activity of filter change
+        if (this.app.currentActivity?.updateSharedFilters) {
+            this.app.currentActivity.updateSharedFilters(this.collection.currentFilters);
+        }
+
+        // If in temporal view, update timeline data with filtered results
         if (this.currentPerspective === 'temporal' && this.timelineGrid) {
             this.timelineGrid.setData(this.collection.filteredData || this.collection.data);
         }
@@ -482,11 +583,11 @@ export default class ChangesEntity {
         }
 
         this.collection.handleGrouping(groupBy);
-    }
 
-    handleEditModeToggle(enabled) {
-        // Future: Handle inline editing mode
-        console.log('Edit mode:', enabled);
+        // Notify parent activity of grouping change
+        if (this.app.currentActivity?.sharedState) {
+            this.app.currentActivity.sharedState.grouping = groupBy;
+        }
     }
 
     cleanup() {

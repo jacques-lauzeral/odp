@@ -34,6 +34,7 @@ export default class CollectionEntity {
         this.onEdit = options.onEdit || (() => {});
         this.onDelete = options.onDelete || (() => {});
         this.onRefresh = options.onRefresh || (() => {});
+        this.onFilterChange = options.onFilterChange || (() => {});
 
         // Cache configurations
         this.filterConfig = this.getFilterConfig();
@@ -363,7 +364,12 @@ export default class CollectionEntity {
     handleFilter(filterKey, filterValue) {
         this.currentFilters[filterKey] = filterValue;
 
-        // NEW: Determine if this filter should use server-side or client-side filtering
+        // Notify parent of filter changes
+        if (this.onFilterChange) {
+            this.onFilterChange(this.currentFilters);
+        }
+
+        // Determine if this filter should use server-side or client-side filtering
         if (this.isServerSideFilter(filterKey)) {
             // Server-side filtering: reload data with new filters
             this.debouncedReload();
@@ -686,5 +692,36 @@ export default class CollectionEntity {
         this.currentFilters = {};
         this.currentGrouping = 'none';
         this.currentSort = null;
+    }
+
+    // ====================
+    // EXTERNAL STATE CONTROL
+    // ====================
+
+    setFilters(filters) {
+        this.currentFilters = { ...filters };
+        this.applyFilters();
+    }
+
+    setSelectedItem(item) {
+        this.selectedItem = item;
+        this.updateSelectionUI();
+    }
+
+    setGrouping(grouping) {
+        this.currentGrouping = grouping;
+        this.renderContent();
+    }
+
+    updateSelectionUI() {
+        if (!this.container) return;
+
+        const rows = this.container.querySelectorAll('.collection-row');
+        rows.forEach(row => {
+            const itemId = row.dataset.itemId;
+            const isSelected = this.selectedItem &&
+                this.getItemId(this.selectedItem).toString() === itemId;
+            row.classList.toggle('collection-row--selected', isSelected);
+        });
     }
 }

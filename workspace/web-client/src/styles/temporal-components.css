@@ -1,0 +1,341 @@
+/* ODP Web Client - Temporal View Components */
+
+/* Temporal View Layout */
+.temporal-view-container {
+    display: flex;
+    height: 100%;
+    background: white;
+}
+
+.temporal-timeline-area {
+    flex: 1;
+    overflow: auto;
+    padding: var(--space-4);
+    min-width: 0; /* Prevent flex item from overflowing */
+}
+
+/* Timeline Grid */
+.timeline-grid-container {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: white;
+}
+
+.timeline-header {
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--border-primary);
+}
+
+.timeline-header-row {
+    display: flex;
+    align-items: stretch;
+    min-height: 60px;
+}
+
+.timeline-label-column {
+    width: 200px;
+    border-right: 1px solid var(--border-primary);
+    background: white;
+    flex-shrink: 0;
+}
+
+.timeline-label-header {
+    padding: var(--space-3) var(--space-4);
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.timeline-waves-container {
+    flex: 1;
+    display: flex;
+    position: relative;
+    min-width: 0;
+}
+
+.timeline-wave-header {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: var(--space-2);
+    transform: translateX(-50%);
+}
+
+.wave-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    padding: var(--space-1) var(--space-2);
+    background: white;
+    border-radius: var(--radius-base);
+    border: 1px solid var(--border-primary);
+    margin-bottom: var(--space-1);
+    white-space: nowrap;
+    box-shadow: var(--shadow-sm);
+}
+
+.wave-line {
+    width: 2px;
+    flex: 1;
+    background: var(--accent-primary);
+    margin: 0 auto;
+    opacity: 0.7;
+}
+
+.timeline-body {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.timeline-change-row {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-primary);
+    transition: background-color var(--transition-fast);
+    min-height: 60px;
+}
+
+.timeline-change-row:last-child {
+    border-bottom: none;
+}
+
+.timeline-change-row:hover {
+    background: var(--bg-secondary);
+}
+
+.timeline-change-row.selected {
+    background: rgba(14, 165, 233, 0.1);
+    border-left: 3px solid var(--accent-primary);
+}
+
+.timeline-change-label {
+    width: 200px;
+    padding: var(--space-3) var(--space-4);
+    border-right: 1px solid var(--border-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.change-title {
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    line-height: 1.3;
+    margin-bottom: var(--space-1);
+    word-wrap: break-word;
+}
+
+.change-id {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+}
+
+.timeline-change-timeline {
+    flex: 1;
+    position: relative;
+    height: 60px;
+    min-width: 0;
+}
+
+.timeline-base-line {
+    position: absolute;
+    top: 50%;
+    left: 2%;
+    right: 2%;
+    height: 1px;
+    background: var(--border-primary);
+    transform: translateY(-50%);
+    opacity: 0.5;
+}
+
+.timeline-milestone {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    z-index: 10;
+}
+
+.timeline-milestone:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.timeline-milestone.selected {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.timeline-connector {
+    position: absolute;
+    top: 50%;
+    height: 3px;
+    background: var(--accent-primary);
+    transform: translateY(-50%);
+    border-radius: 2px;
+    opacity: 0.8;
+    z-index: 5;
+}
+
+/* Pixmap Components */
+.pixmap {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    background: white;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.pixmap-row {
+    display: flex;
+    height: 100%;
+}
+
+.pixmap-cell {
+    flex: 1;
+    background: transparent;
+    transition: background-color var(--transition-fast);
+    border-right: 1px solid var(--border-primary);
+}
+
+.pixmap-cell:last-child {
+    border-right: none;
+}
+
+.pixmap-cell.filled {
+    background: var(--accent-primary);
+}
+
+/* Enhanced Pixmap with Column Semantics */
+.pixmap-cell.api-cell.filled {
+    background: #007bff; /* Blue for API */
+}
+
+.pixmap-cell.ui-cell.filled {
+    background: #28a745; /* Green for UI */
+}
+
+.pixmap-cell.service-cell.filled {
+    background: #ffc107; /* Yellow for Service */
+}
+
+.pixmap-cell.api-publication {
+    background: #0056b3; /* Dark blue for API Publication */
+}
+
+.pixmap-cell.api-test {
+    background: #007bff; /* Standard blue for API Test */
+}
+
+.pixmap-cell.api-decommission {
+    background: #6c757d; /* Grey for API Decommission */
+}
+
+.pixmap-cell.ui-test {
+    background: #28a745; /* Green for UI Test */
+}
+
+.pixmap-cell.service-activation {
+    background: #ffc107; /* Yellow for Service Activation */
+}
+
+.pixmap-cell.other {
+    background: #6f42c1; /* Purple for Other */
+}
+
+/* Empty State */
+.timeline-empty-state {
+    text-align: center;
+    padding: var(--space-16) var(--space-8);
+    color: var(--text-secondary);
+}
+
+.timeline-empty-state .icon {
+    font-size: 48px;
+    margin-bottom: var(--space-4);
+    opacity: 0.5;
+}
+
+.timeline-empty-state h3 {
+    margin: 0 0 var(--space-2) 0;
+    color: var(--text-primary);
+    font-size: var(--font-size-lg);
+}
+
+.timeline-empty-state p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .temporal-timeline-area {
+        padding: var(--space-2);
+    }
+
+    .timeline-label-column {
+        width: 150px;
+    }
+
+    .timeline-change-label {
+        width: 150px;
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .change-title {
+        font-size: var(--font-size-xs);
+        line-height: 1.2;
+    }
+
+    .change-id {
+        font-size: var(--font-size-xs);
+    }
+
+    .timeline-change-timeline {
+        height: 50px;
+    }
+
+    .pixmap {
+        width: 16px;
+        height: 16px;
+    }
+
+    .wave-label {
+        font-size: var(--font-size-xs);
+        padding: 2px var(--space-1);
+    }
+
+    /* Stack timeline vertically on very small screens */
+    @media (max-width: 480px) {
+        .timeline-header-row,
+        .timeline-change-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .timeline-label-column,
+        .timeline-change-label {
+            width: 100%;
+            border-right: none;
+            border-bottom: 1px solid var(--border-primary);
+        }
+
+        .timeline-waves-container {
+            min-height: 40px;
+        }
+
+        .timeline-change-timeline {
+            height: 40px;
+        }
+    }
+}

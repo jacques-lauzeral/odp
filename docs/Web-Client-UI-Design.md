@@ -29,29 +29,55 @@ The ODP Web Client follows a consistent three-layer navigation hierarchy across 
 
 ---
 
-## Shared Styling Architecture
+## CSS Architecture
 
-### CSS File Organization
-The application uses a shared styling approach to ensure consistency across interaction activities:
+### Component-Based CSS Organization
+The application uses a modular CSS architecture for maintainability and clear separation of concerns:
 
-**Shared Base Styles**:
-- `styles/activities/abstract-interaction-activity.css` - Common interaction activity patterns
-- Unified tab styling using `.interaction-tab` classes
-- Consistent collection layouts, filter controls, and action buttons
-- Shared responsive design patterns
+```
+styles/
+├── main.css                          # Base styles, design tokens, CSS variables
+├── base-components.css               # Buttons, form controls, utilities, loading spinner
+├── layout-components.css             # Header navigation, modals, cards, mobile navigation
+├── table-components.css              # Collection tables, row selection, grouping, empty states
+├── temporal-components.css           # Timeline grid, pixmaps, wave visualization, milestone connectors
+├── form-components.css               # Advanced forms (tabs, tags, multi-select), validation, alerts
+├── feedback-components.css           # Status indicators, notifications, error states, progress bars
+├── landing.css                       # Landing page specific styles
+└── activities/
+    ├── abstract-interaction-activity.css  # Shared interaction patterns for collection perspectives
+    ├── setup.css                          # Setup activity TreeEntity/ListEntity specific styles
+    ├── elaboration.css                    # Elaboration activity overrides and customizations
+    └── review.css                         # Review activity read-only indicators and styling
+```
 
-**Activity-Specific Styles**:
-- `styles/activities/elaboration.css` - Elaboration-specific customizations only
-- `styles/activities/review.css` - Review-specific styling (read-only indicators, comment features)
-- `styles/activities/setup.css` - Setup management specific styling
-- `styles/activities/landing.css` - Landing page specific styling
-
-**Import Structure**:
+### CSS Import Structure
+In `src/index.html`:
 ```html
+<link rel="stylesheet" href="styles/main.css">
+<link rel="stylesheet" href="styles/base-components.css">
+<link rel="stylesheet" href="styles/layout-components.css">
+<link rel="stylesheet" href="styles/table-components.css">
+<link rel="stylesheet" href="styles/temporal-components.css">
+<link rel="stylesheet" href="styles/form-components.css">
+<link rel="stylesheet" href="styles/feedback-components.css">
+<link rel="stylesheet" href="styles/landing.css">
+<link rel="stylesheet" href="styles/activities/setup.css">
 <link rel="stylesheet" href="styles/activities/abstract-interaction-activity.css">
 <link rel="stylesheet" href="styles/activities/elaboration.css">
 <link rel="stylesheet" href="styles/activities/review.css">
 ```
+
+**Import Order Critical Notes**:
+1. **Base styles first** (`main.css`) - Design tokens and base elements
+2. **Component CSS by dependency** - Base components before specialized ones
+3. **Activity styles last** - Activity-specific overrides and additions
+
+### Styling Architecture Benefits
+- **Modular organization**: Each file handles one functional area
+- **Conflict resolution**: Proper specificity management prevents CSS conflicts
+- **Selection styling fix**: `table-components.css` resolves collection row selection issues
+- **Maintainability**: Clear separation of concerns for future development
 
 ---
 
@@ -133,6 +159,18 @@ The application uses a shared styling approach to ensure consistency across inte
 - **Content Display**: Full content rendering with formatting
 - **Form Integration**: Inline editing with validation
 - **Related Items**: Cross-references and dependencies
+
+#### Temporal Perspective ✅ IMPLEMENTED
+**Purpose**: Timeline visualization for operational changes with milestone planning
+
+**Layout Pattern**: Two-panel temporal view with timeline grid
+
+**Timeline Components**:
+- **Time Window Controls**: Wave-based date range selection
+- **Event Type Filters**: Milestone event type filtering with visual labels
+- **Timeline Grid**: Horizontal changes with milestone intersections
+- **Pixmap Visualization**: 3x3 grid showing API/UI/Service event types
+- **Selection Coordination**: Synchronized selection between collection and temporal views
 
 ---
 
@@ -223,134 +261,55 @@ The application uses a shared styling approach to ensure consistency across inte
 - **View Controls**: Grouping dropdown and display options
 
 **3. Collection List Area**:
-- **Table Display**: Same columns as Elaboration but read-only
-- **Visual Indicators**: Read-only styling with blue-tinted hover states
-- **Comment Indicators**: Show items with comments or discussions
-- **Grouping Support**: Same grouping options as Elaboration
+- **Table Display**: Dynamic columns showing requirements and changes
+- **Edition Filtering**: Content automatically filtered by selected edition
+- **Row Selection**: Single selection with visual feedback
+- **Grouping Support**: Collapsible groups with item counts
 
 **4. Details Panel**:
-- **Content Display**: Full content rendering with formatting
-- **Version Information**: Edition context and baseline information
-- **Comment Section**: Inline commenting and discussion threads (planned)
-- **Related Items**: Cross-references and dependencies within edition
-
-#### Review-Specific Features
-**Target Selection Interface**:
-- **Card-based Layout**: Visual selection between Repository and Edition options
-- **Edition Dropdown**: Dynamic list of available published editions
-- **Loading States**: Progress indicators during edition loading
-- **Error Handling**: Graceful fallback for unavailable editions
-
-**Read-Only Indicators**:
-- **Visual Distinction**: Blue-tinted interaction states
-- **Context Labels**: Clear "Edition Review" indicators
-- **Action Button Styling**: Export and comment buttons with review-specific styling
-- **Disabled Elements**: Form controls and edit actions appropriately disabled
-
-**Navigation Integration**:
-- **Publication Integration**: "Review Edition" button in Publication activity
-- **Direct Navigation**: Support for `/review/edition/{id}` URLs
-- **Context Preservation**: Maintains edition context across tab switches
-- **SPA Routing**: Internal navigation without page reloads
-
-#### ODP Edition Parameter Resolution
-**Client-Side Resolution Process**:
-1. **Edition Context Detection**: Identify edition ID from URL or navigation
-2. **Edition Details Loading**: Fetch edition metadata including baseline and wave references
-3. **Parameter Resolution**: Resolve edition to `baseline` + `fromWave` API parameters
-4. **Filtered Data Loading**: Load requirements and changes with edition-specific filtering
-5. **Count Updates**: Update entity count badges with edition-filtered totals
-
-**API Integration**:
-- Uses standard `/operational-requirements?baseline={id}&fromWave={id}` endpoints
-- Client-side resolution of ODP Edition to constituent parameters
-- Proper error handling for invalid or missing editions
-- Fallback to repository mode if edition loading fails
+- **Read-Only Display**: Item details in review format
+- **Review Actions**: Context-sensitive review and comment options
+- **Edition Context**: Clear indication of edition being reviewed
+- **Navigation**: Easy switching between items in edition
 
 ---
 
-## Design Patterns and Standards
+## Design System Integration
 
-### Navigation Consistency
-**Application Header**: Persistent across all activities
-- Clear activity identification with active state
-- One-click switching between activities
-- User context and system status
+### Interaction Patterns
+- **Consistent Navigation**: Three-layer hierarchy maintained across all activities
+- **Progressive Disclosure**: Details panels provide contextual information
+- **Responsive Design**: Mobile-first approach with progressive enhancement
+- **Loading States**: Consistent feedback during data operations
 
-**Activity Navigation**: Consistent patterns within activities
-- Tab-based entity switching (Setup, Elaboration, Review)
-- Single entity focus (Publication)
-- Count badges showing live entity counts
-- Shared `.interaction-tab` styling across Review and Elaboration
+### Visual Consistency
+- **Color System**: Semantic color usage for status, actions, and content types
+- **Typography Scale**: Consistent text sizing and hierarchy
+- **Spacing System**: Uniform spacing using CSS custom properties
+- **Component Library**: Reusable UI components across all activities
 
-### Visual Hierarchy Implementation
-**Status Indicators**:
-- **Edition Types**: DRAFT/OFFICIAL badges with distinct styling
-- **Wave References**: Year/quarter badges with consistent formatting
-- **Creation Status**: Timestamps and user attribution display
-- **Read-Only Mode**: Visual indicators for review mode content
-
-**Interactive Feedback**:
-- **Hover States**: Consistent hover styling across all interactive elements
-- **Loading States**: Spinners and progress messaging during operations
-- **Selection States**: Clear visual distinction for selected items
-- **Review Mode**: Blue-tinted interactions to distinguish from edit mode
-
-### Action Organization
-**Toolbar Placement**: Actions positioned above content area
-- **Primary Actions**: Create new items (context-sensitive button text)
-- **View Controls**: Grouping dropdown and filter controls
-- **Secondary Actions**: Edition-specific actions (Review Edition, Export, Comment)
-- **Mode Indicators**: Clear visual distinction between edit and review modes
+### Accessibility Features
+- **Keyboard Navigation**: Full keyboard access to all interactive elements
+- **Screen Reader Support**: Semantic HTML and ARIA labels
+- **Color Contrast**: WCAG AA compliance for text and interactive elements
+- **Focus Management**: Clear focus indicators and logical tab order
 
 ---
 
-## Implementation Status
+## Technical Implementation
 
-### ✅ Completed Features
-- **Landing Page**: Full implementation with user identification and activity tiles
-- **Setup Management**: Complete entity management with hierarchy support
-- **Elaboration Activity**: Collection perspective with dynamic setup data integration
-- **Publication Activity**: Complete ODP Edition management with baseline/wave integration
-- **Review Activity**: Edition review interface with target selection and read-only collection perspective
-- **Responsive Design**: Mobile and desktop layouts tested and functional
-- **Shared CSS Architecture**: Unified styling approach with abstract-interaction-activity.css
+### Component Architecture
+- **Base Components**: TreeEntity, ListEntity, CollectionEntity patterns
+- **Form System**: Inheritance-based form components with validation
+- **State Management**: Activity-level state coordination
+- **API Integration**: Consistent patterns for data loading and manipulation
 
-### Current Capabilities
-- **Five Activity Types**: Landing, Setup, Elaboration, Publication, and Review activities fully operational
-- **Seven Setup + Operational Entities**: Complete CRUD with advanced filtering and grouping
-- **Dynamic Data Integration**: Setup data automatically populates filter options across activities
-- **Edition Management**: Complete ODP Edition lifecycle from creation to review
-- **Context-Aware Navigation**: Seamless transitions between activities with proper context preservation
-- **Edition Filtering**: Client-side resolution of ODP Edition parameters for filtered data views
-- **Real-time Updates**: Live entity counts and connection status monitoring
-- **Consistent UI Patterns**: Shared styling and interaction patterns across all activities
-
-### Technical Achievements
-- **CSS Architecture Refactoring**: Elimination of style duplication through shared base styles
-- **ODP Edition Parameter Resolution**: Proper client-side resolution to baseline + fromWave parameters
-- **SPA Routing Integration**: Support for deep-linking to edition-specific review URLs
-- **Activity Navigation**: Seamless integration between Publication and Review with context preservation
-- **Responsive Design**: Consistent experience across desktop and mobile devices
+### Performance Considerations
+- **Lazy Loading**: Components loaded on demand
+- **Data Caching**: Efficient data management and refresh patterns
+- **Responsive Images**: Optimized assets for different screen sizes
+- **Bundle Optimization**: CSS and JS optimization for production deployment
 
 ---
 
-## Future Enhancements
-
-### Planned Features
-- **Comment System**: Full commenting functionality in Review mode with threading and moderation
-- **Advanced Export**: Enhanced export capabilities with custom formatting options
-- **Hierarchical View**: Alternative perspective for requirement hierarchies
-- **Temporal View**: Timeline-based perspective for milestone and wave visualization
-- **Inline Editing**: Direct editing capabilities in Collection view for Elaboration mode
-- **Version Comparison**: Side-by-side comparison of edition differences
-
-### Technical Improvements
-- **Performance Optimization**: Virtual scrolling for large datasets
-- **Offline Support**: Local caching and offline editing capabilities
-- **Advanced Search**: Full-text search across all content types
-- **Keyboard Navigation**: Complete keyboard accessibility for all interfaces
-
----
-
-*This document reflects the implemented UI patterns for the ODP Web Client, providing comprehensive coverage of all five activities with consistent user experience patterns, shared styling architecture, and seamless navigation integration.*
+This design system provides a comprehensive foundation for the ODP Web Client with proven patterns that scale across all management activities while maintaining consistency and usability.

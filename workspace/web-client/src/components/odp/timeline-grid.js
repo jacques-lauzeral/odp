@@ -24,6 +24,7 @@ export default class TimelineGrid {
         // Options and event handlers
         this.onItemSelect = options.onItemSelect || (() => {});
         this.onMilestoneSelect = options.onMilestoneSelect || (() => {});
+        this.onMilestoneFilterChange = options.onMilestoneFilterChange || (() => {});
 
         // Default time window: 3 years from now
         this.initializeTimeWindow();
@@ -71,6 +72,15 @@ export default class TimelineGrid {
         this.renderContent();
     }
 
+    syncWithCollectionData(collectionData, collectionFilters = {}) {
+        // Apply collection-level filters to timeline data
+        let filteredData = collectionData || [];
+
+        // Apply any additional collection filters that affect timeline
+        // (This allows timeline to stay in sync with collection filtering)
+        this.setData(filteredData);
+    }
+
     setFilters(filters) {
         // Apply filters to data (for now, just copy all data)
         this.filteredData = [...this.data];
@@ -88,6 +98,11 @@ export default class TimelineGrid {
         this.milestoneFilters = filters || ['ANY'];
         this.applyFilters();
         this.renderContent();
+
+        // Notify parent of filter change if callback exists
+        if (this.onMilestoneFilterChange) {
+            this.onMilestoneFilterChange(this.milestoneFilters);
+        }
     }
 
     selectItem(itemId) {
@@ -537,5 +552,29 @@ export default class TimelineGrid {
         this.filteredData = [];
         this.selectedItem = null;
         this.selectedMilestone = null;
+    }
+
+    // ====================
+    // EXTERNAL STATE CONTROL
+    // ====================
+
+    setFiltersFromExternal(filters) {
+        // Apply collection filters to timeline data
+        this.setData(this.data); // Re-filter current data
+    }
+
+    setSelectedItemFromExternal(item) {
+        if (!item) return;
+
+        const itemId = this.getItemId(item);
+        if (itemId) {
+            this.selectItem(itemId);
+        }
+    }
+
+    setMilestoneFiltersFromExternal(eventTypeFilters) {
+        this.milestoneFilters = eventTypeFilters || ['ANY'];
+        this.applyFilters();
+        this.renderContent();
     }
 }

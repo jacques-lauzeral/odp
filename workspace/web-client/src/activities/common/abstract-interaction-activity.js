@@ -41,8 +41,12 @@ export default class AbstractInteractionActivity {
             'changes': 0
         };
 
-        // Temporal perspective state
-        this.temporalState = {
+        // Centralized state management for perspective coordination
+        this.sharedState = {
+            filters: {},
+            selectedItem: null,
+            grouping: 'none',
+            // Temporal-specific state
             timeWindow: { start: null, end: null },
             eventTypeFilters: ['ANY']
         };
@@ -171,16 +175,78 @@ export default class AbstractInteractionActivity {
                 const firstWave = relevantWaves[0];
                 const lastWave = relevantWaves[relevantWaves.length - 1];
 
-                this.temporalState.timeWindow.start = new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1);
-                this.temporalState.timeWindow.end = new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0);
+                this.sharedState.timeWindow.start = new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1);
+                this.sharedState.timeWindow.end = new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0);
             } else {
                 // Fallback if no waves in range
-                this.temporalState.timeWindow.start = now;
-                this.temporalState.timeWindow.end = threeYearsLater;
+                this.sharedState.timeWindow.start = now;
+                this.sharedState.timeWindow.end = threeYearsLater;
             }
         } else {
-            this.temporalState.timeWindow.start = now;
-            this.temporalState.timeWindow.end = threeYearsLater;
+            this.sharedState.timeWindow.start = now;
+            this.sharedState.timeWindow.end = threeYearsLater;
+        }
+    }
+
+    // State preservation methods
+    preserveCurrentState() {
+        // Read current filter values from UI inputs (the actual source of truth)
+        const filterInputs = this.container.querySelectorAll('[data-filter-key]');
+        const currentFilters = {};
+
+        filterInputs.forEach(input => {
+            const filterKey = input.dataset.filterKey;
+            let filterValue = '';
+
+            if (input.type === 'text') {
+                filterValue = input.value;
+            } else if (input.tagName === 'SELECT') {
+                filterValue = input.value;
+            }
+
+            if (filterValue && filterValue !== '') {
+                currentFilters[filterKey] = filterValue;
+            }
+        });
+
+        this.sharedState.filters = currentFilters;
+
+        // Preserve selection and grouping from collection if available
+        if (this.currentEntityComponent?.collection) {
+            this.sharedState.selectedItem = this.currentEntityComponent.collection.selectedItem;
+            this.sharedState.grouping = this.currentEntityComponent.collection.currentGrouping;
+        }
+
+        console.log('Preserved shared state:', this.sharedState);
+        console.log('Preserved filters from UI:', currentFilters);
+    }
+
+    restoreStateToNewPerspective() {
+        if (!this.currentEntityComponent) return;
+
+        // Pass shared state to the entity component
+        if (this.currentEntityComponent.applySharedState) {
+            this.currentEntityComponent.applySharedState(this.sharedState);
+        }
+
+        console.log('Restored shared state to perspective:', this.currentPerspective);
+    }
+
+    updateSharedFilters(filters) {
+        this.sharedState.filters = { ...filters };
+
+        // Notify current perspective of filter changes
+        if (this.currentEntityComponent?.syncFilters) {
+            this.currentEntityComponent.syncFilters(this.sharedState.filters);
+        }
+    }
+
+    updateSharedSelection(selectedItem) {
+        this.sharedState.selectedItem = selectedItem;
+
+        // Update details panel
+        if (this.currentEntityComponent?.updateDetailsPanel) {
+            this.currentEntityComponent.updateDetailsPanel(selectedItem);
         }
     }
 
@@ -499,37 +565,47 @@ export default class AbstractInteractionActivity {
 
         // Render dynamic filter and grouping controls
         filtersContainer.innerHTML = `
-            <div class="group-controls">
-                <label for="groupBy">Group by:</label>
-                <select id="groupBy" class="form-control group-select">
-                    ${groupingConfig.map(option => `
-                        <option value="${option.key}">${option.label}</option>
-                    `).join('')}
-                </select>
+        <div class="group-controls">
+            <label for="groupBy">Group by:</label>
+            <select id="groupBy" class="form-control group-select">
+                ${groupingConfig.map(option => `
+                    <option value="${option.key}" ${option.key === this.sharedState.grouping ? 'selected' : ''}>${option.label}</option>
+                `).join('')}
+            </select>
+        </div>
+        
+        <div class="filter-controls">
+            ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
+            <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
+        </div>
+        
+        <div class="perspective-controls">
+            <div class="perspective-toggle">
+                <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
+                    📋 Collection
+                </button>
+                <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
+                    📁 Hierarchical
+                </button>
+                <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
+                        ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
+                    📅 Temporal
+                </button>
             </div>
             
-            <div class="filter-controls">
-                ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
-                <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
-            </div>
-            
-            <div class="perspective-controls">
-                <div class="perspective-toggle">
-                    <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
-                        📋 Collection
-                    </button>
-                    <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
-                        📁 Hierarchical
-                    </button>
-                    <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
-                            ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
-                        📅 Temporal
-                    </button>
-                </div>
-                
-                ${this.renderTemporalControls()}
-            </div>
-        `;
+            ${this.renderTemporalControls()}
+        </div>
+    `;
+
+        // NEW: Populate filter inputs with preserved values
+        Object.entries(this.sharedState.filters).forEach(([filterKey, filterValue]) => {
+            if (filterValue) {
+                const input = filtersContainer.querySelector(`[data-filter-key="${filterKey}"]`);
+                if (input) {
+                    input.value = filterValue;
+                }
+            }
+        });
 
         // Bind events for dynamic controls
         this.bindDynamicEvents();
@@ -542,54 +618,54 @@ export default class AbstractInteractionActivity {
         }
 
         const availableWaves = this.getAvailableWaves();
-        const startWave = this.findClosestWave(this.temporalState.timeWindow.start, availableWaves);
-        const endWave = this.findClosestWave(this.temporalState.timeWindow.end, availableWaves);
+        const startWave = this.findClosestWave(this.sharedState.timeWindow.start, availableWaves);
+        const endWave = this.findClosestWave(this.sharedState.timeWindow.end, availableWaves);
 
         return `
-            <div class="temporal-controls">
-                <div class="time-window-controls">
-                    <label for="start-wave">From:</label>
-                    <select id="start-wave" class="form-control">
-                        ${availableWaves.map(wave => `
-                            <option value="${wave.id}" ${startWave && startWave.id === wave.id ? 'selected' : ''}>
-                                ${wave.year} Q${wave.quarter}
-                            </option>
-                        `).join('')}
-                    </select>
-                    
-                    <label for="end-wave">To:</label>
-                    <select id="end-wave" class="form-control">
-                        ${availableWaves.map(wave => `
-                            <option value="${wave.id}" ${endWave && endWave.id === wave.id ? 'selected' : ''}>
-                                ${wave.year} Q${wave.quarter}
-                            </option>
-                        `).join('')}
-                    </select>
-                </div>
+        <div class="temporal-controls">
+            <div class="time-window-controls">
+                <label for="start-wave">From:</label>
+                <select id="start-wave" class="form-control">
+                    ${availableWaves.map(wave => `
+                        <option value="${wave.id}" ${startWave && startWave.id === wave.id ? 'selected' : ''}>
+                            ${wave.year} Q${wave.quarter}
+                        </option>
+                    `).join('')}
+                </select>
                 
-                <div class="event-type-controls">
-                    <div class="event-type-filters">
-                        ${this.renderEventTypeLabels()}
-                        <button class="btn-icon" id="addEventType" title="Add event type filter">+</button>
-                    </div>
+                <label for="end-wave">To:</label>
+                <select id="end-wave" class="form-control">
+                    ${availableWaves.map(wave => `
+                        <option value="${wave.id}" ${endWave && endWave.id === wave.id ? 'selected' : ''}>
+                            ${wave.year} Q${wave.quarter}
+                        </option>
+                    `).join('')}
+                </select>
+            </div>
+            
+            <div class="event-type-controls">
+                <div class="event-type-filters">
+                    ${this.renderEventTypeLabels()}
+                    <button class="btn-icon" id="addEventType" title="Add event type filter">+</button>
                 </div>
             </div>
-        `;
+        </div>
+    `;
     }
 
     renderEventTypeLabels() {
-        const activeTypes = this.temporalState.eventTypeFilters.filter(f => f !== 'ANY');
+        const activeTypes = this.sharedState.eventTypeFilters.filter(f => f !== 'ANY');
 
-        if (activeTypes.length === 0 || this.temporalState.eventTypeFilters.includes('ANY')) {
+        if (activeTypes.length === 0 || this.sharedState.eventTypeFilters.includes('ANY')) {
             return '<span class="event-type-label all-types">All Events</span>';
         }
 
         return activeTypes.map(eventType => `
-            <span class="event-type-label" data-event-type="${eventType}">
-                ${this.formatEventTypeName(eventType)}
-                <button class="label-remove" data-event-type="${eventType}" title="Remove filter">×</button>
-            </span>
-        `).join('');
+        <span class="event-type-label" data-event-type="${eventType}">
+            ${this.formatEventTypeName(eventType)}
+            <button class="label-remove" data-event-type="${eventType}" title="Remove filter">×</button>
+        </span>
+    `).join('');
     }
 
     renderFilterControl(filter) {
@@ -725,6 +801,9 @@ export default class AbstractInteractionActivity {
             return; // Already in this perspective
         }
 
+        // Preserve current state before switching
+        this.preserveCurrentState();
+
         this.currentPerspective = perspective;
 
         // Update UI - toggle active perspective button
@@ -740,12 +819,15 @@ export default class AbstractInteractionActivity {
         // Re-render controls to show/hide temporal controls
         this.renderDynamicControls();
 
-        // Delegate to current entity component if it supports perspective switching
+        // Pass shared state to entity component
         if (this.currentEntityComponent?.handlePerspectiveSwitch) {
-            this.currentEntityComponent.handlePerspectiveSwitch(perspective);
+            this.currentEntityComponent.handlePerspectiveSwitch(perspective, this.sharedState);
         } else {
             console.log(`${perspective} perspective not yet implemented for ${this.currentEntity}`);
         }
+
+        // Restore state to new perspective
+        this.restoreStateToNewPerspective();
     }
 
     updateTimeWindow() {
@@ -762,20 +844,20 @@ export default class AbstractInteractionActivity {
         const endWave = availableWaves.find(w => String(w.id) === String(endWaveId));
 
         if (startWave && endWave) {
-            this.temporalState.timeWindow.start = new Date(startWave.year, (startWave.quarter - 1) * 3, 1);
-            this.temporalState.timeWindow.end = new Date(endWave.year, (endWave.quarter - 1) * 3 + 3, 0);
+            this.sharedState.timeWindow.start = new Date(startWave.year, (startWave.quarter - 1) * 3, 1);
+            this.sharedState.timeWindow.end = new Date(endWave.year, (endWave.quarter - 1) * 3 + 3, 0);
 
             // Ensure start is before end
-            if (this.temporalState.timeWindow.start > this.temporalState.timeWindow.end) {
-                [this.temporalState.timeWindow.start, this.temporalState.timeWindow.end] =
-                    [this.temporalState.timeWindow.end, this.temporalState.timeWindow.start];
+            if (this.sharedState.timeWindow.start > this.sharedState.timeWindow.end) {
+                [this.sharedState.timeWindow.start, this.sharedState.timeWindow.end] =
+                    [this.sharedState.timeWindow.end, this.sharedState.timeWindow.start];
             }
 
             // Notify timeline component
             if (this.currentEntityComponent?.timelineGrid) {
                 this.currentEntityComponent.timelineGrid.updateTimeWindow(
-                    this.temporalState.timeWindow.start,
-                    this.temporalState.timeWindow.end
+                    this.sharedState.timeWindow.start,
+                    this.sharedState.timeWindow.end
                 );
             }
         }
@@ -783,8 +865,8 @@ export default class AbstractInteractionActivity {
 
     showEventTypeDropdown(button) {
         // Get available event types (not currently selected)
-        const currentTypes = this.temporalState.eventTypeFilters.includes('ANY') ?
-            [] : this.temporalState.eventTypeFilters;
+        const currentTypes = this.sharedState.eventTypeFilters.includes('ANY') ?
+            [] : this.sharedState.eventTypeFilters;
 
         const availableTypes = this.availableEventTypes.filter(type =>
             !currentTypes.includes(type)
@@ -833,10 +915,10 @@ export default class AbstractInteractionActivity {
 
     addEventTypeFilter(eventType) {
         // Remove 'ANY' filter when adding specific types
-        if (this.temporalState.eventTypeFilters.includes('ANY')) {
-            this.temporalState.eventTypeFilters = [eventType];
+        if (this.sharedState.eventTypeFilters.includes('ANY')) {
+            this.sharedState.eventTypeFilters = [eventType];
         } else {
-            this.temporalState.eventTypeFilters.push(eventType);
+            this.sharedState.eventTypeFilters.push(eventType);
         }
 
         this.notifyEventTypeFilterChange();
@@ -844,11 +926,11 @@ export default class AbstractInteractionActivity {
     }
 
     removeEventTypeFilter(eventType) {
-        this.temporalState.eventTypeFilters = this.temporalState.eventTypeFilters.filter(f => f !== eventType);
+        this.sharedState.eventTypeFilters = this.sharedState.eventTypeFilters.filter(f => f !== eventType);
 
         // If no specific types left, default back to ANY
-        if (this.temporalState.eventTypeFilters.length === 0) {
-            this.temporalState.eventTypeFilters = ['ANY'];
+        if (this.sharedState.eventTypeFilters.length === 0) {
+            this.sharedState.eventTypeFilters = ['ANY'];
         }
 
         this.notifyEventTypeFilterChange();
@@ -858,11 +940,14 @@ export default class AbstractInteractionActivity {
     notifyEventTypeFilterChange() {
         // Notify timeline component of filter changes
         if (this.currentEntityComponent?.timelineGrid) {
-            this.currentEntityComponent.timelineGrid.setMilestoneFilters(this.temporalState.eventTypeFilters);
+            this.currentEntityComponent.timelineGrid.setMilestoneFilters(this.sharedState.eventTypeFilters);
         }
     }
 
     handleSpecificFilter(filterKey, filterValue) {
+        // Update shared state
+        this.sharedState.filters[filterKey] = filterValue;
+
         if (this.currentEntityComponent?.handleFilter) {
             this.currentEntityComponent.handleFilter(filterKey, filterValue);
         }

@@ -1,0 +1,268 @@
+/* ODP Web Client - Table Components */
+
+/* Base Table Styles */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+.table th,
+.table td {
+    padding: var(--space-3);
+    text-align: left;
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.table th {
+    background-color: var(--bg-secondary);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+.table tr:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* Table Striping - Fixed to avoid selection conflicts */
+.table-striped tr:nth-child(even):not(.collection-row--selected) {
+    background-color: var(--bg-secondary);
+}
+
+.table-striped tr:nth-child(odd):not(.collection-row--selected) {
+    background-color: white;
+}
+
+/* Collection Row Styles */
+.collection-row {
+    transition: background-color var(--transition-fast);
+    cursor: pointer;
+}
+
+.collection-row:hover:not(.collection-row--selected) {
+    background-color: rgba(14, 165, 233, 0.05) !important;
+}
+
+/* Collection Row Selection - Fixed with proper specificity */
+.collection-row--selected,
+.table .collection-row--selected,
+.table-striped .collection-row--selected {
+    background-color: rgba(14, 165, 233, 0.1) !important;
+    border-left: 3px solid var(--accent-primary) !important;
+}
+
+/* Collection Table Container */
+.collection-table-container {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: white;
+}
+
+.collection-table-wrapper {
+    overflow-x: auto;
+}
+
+.collection-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+.collection-table th {
+    background-color: var(--bg-secondary);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    padding: var(--space-3);
+    text-align: left;
+    border-bottom: 1px solid var(--border-primary);
+    white-space: nowrap;
+}
+
+.collection-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.collection-table th.sortable:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.sort-indicator {
+    margin-left: var(--space-2);
+    opacity: 0.5;
+}
+
+.collection-table th.sortable[data-sort="asc"] .sort-indicator::before {
+    content: "↑";
+    opacity: 1;
+}
+
+.collection-table th.sortable[data-sort="desc"] .sort-indicator::before {
+    content: "↓";
+    opacity: 1;
+}
+
+.collection-table td {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
+    vertical-align: top;
+}
+
+.collection-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Collection Cell Types */
+.collection-cell {
+    word-wrap: break-word;
+}
+
+.collection-cell--itemId {
+    font-family: var(--font-mono, monospace);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+.collection-cell--title {
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+}
+
+.collection-cell--date {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* Collection Grouping */
+.collection-group {
+    margin-bottom: var(--space-4);
+}
+
+.group-header {
+    background-color: var(--bg-secondary);
+    border-bottom: 2px solid var(--accent-primary);
+    padding: var(--space-3) var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+}
+
+.group-title {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.group-count {
+    background-color: var(--accent-primary);
+    color: white;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-base);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    min-width: 24px;
+    text-align: center;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: var(--space-16) var(--space-8);
+    color: var(--text-secondary);
+}
+
+.empty-state .icon {
+    font-size: 48px;
+    margin-bottom: var(--space-4);
+    opacity: 0.5;
+}
+
+.empty-state h3 {
+    margin: 0 0 var(--space-2) 0;
+    color: var(--text-primary);
+    font-size: var(--font-size-lg);
+}
+
+.empty-state p {
+    margin: 0 0 var(--space-4) 0;
+    font-size: var(--font-size-sm);
+}
+
+.empty-state td {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-style: italic;
+    padding: var(--space-6);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .collection-table-wrapper {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .collection-table th,
+    .collection-table td {
+        padding: var(--space-2);
+        font-size: var(--font-size-xs);
+    }
+
+    .group-header {
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .group-title {
+        font-size: var(--font-size-sm);
+    }
+
+    /* Stack table cells vertically on very small screens */
+    @media (max-width: 480px) {
+        .collection-table,
+        .collection-table thead,
+        .collection-table tbody,
+        .collection-table th,
+        .collection-table td,
+        .collection-table tr {
+            display: block;
+        }
+
+        .collection-table thead tr {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+        }
+
+        .collection-table tr {
+            border: 1px solid var(--border-primary);
+            margin-bottom: var(--space-2);
+            border-radius: var(--radius-md);
+            background: white;
+            padding: var(--space-3);
+        }
+
+        .collection-table td {
+            border: none;
+            position: relative;
+            padding: var(--space-2) 0;
+            padding-left: 120px;
+        }
+
+        .collection-table td:before {
+            content: attr(data-label);
+            position: absolute;
+            left: 0;
+            width: 110px;
+            padding-right: var(--space-2);
+            white-space: nowrap;
+            font-weight: var(--font-weight-medium);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+        }
+    }
+}
