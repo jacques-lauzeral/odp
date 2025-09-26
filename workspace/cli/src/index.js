@@ -12,6 +12,7 @@ import { baselineCommands } from './commands/baseline.js';
 import { editionCommands } from './commands/odp-edition.js';  // Added ODP Edition commands
 import { operationalRequirementCommands } from './commands/operational-requirement.js';
 import { operationalChangeCommands } from './commands/operational-change.js';
+import { importCommands } from './commands/import.js';
 
 const program = new Command();
 
@@ -52,6 +53,7 @@ baselineCommands(program, config);
 editionCommands(program, config);
 operationalRequirementCommands(program, config);
 operationalChangeCommands(program, config);
+importCommands(program, config);
 
 // Parse command line arguments
 program.parse();

@@ -1,5 +1,19 @@
-// workspace/cli/src/commands/operational-change.js - Updated with content filtering support
+// workspace/cli/src/commands/operational-change.js - Updated with Phase 8 model evolution support
 import { VersionedCommands } from '../base-commands.js';
+import {
+    DraftingGroup,
+    DraftingGroupKeys,
+    isDraftingGroupValid,
+    getDraftingGroupDisplay,
+    Visibility,
+    VisibilityKeys,
+    isVisibilityValid,
+    getVisibilityDisplay,
+    MilestoneEventType,
+    MilestoneEventKeys,
+    isMilestoneEventValid,
+    getMilestoneEventDisplay
+} from '@odp/shared';
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 
@@ -23,15 +37,30 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
             // OperationalChange-specific content filters
-            .option('--visibility <visibility>', 'Filter by change visibility (NM or NETWORK)')
+            .option('--visibility <visibility>', `Filter by change visibility (${VisibilityKeys.join(', ')})`)
+            .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
-            .option('--text <search>', 'Full-text search across title and description fields')
+            .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, and details fields')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
             .option('--data-category <ids>', 'Filter by data category IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
             .option('--service <ids>', 'Filter by service IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
             .option('--regulatory-aspect <ids>', 'Filter by regulatory aspect IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
             .action(async (options) => {
                 try {
+                    // Validate visibility if provided
+                    if (options.visibility && !isVisibilityValid(options.visibility)) {
+                        console.error(`Invalid visibility value: ${options.visibility}`);
+                        console.error(`Valid values: ${VisibilityKeys.join(', ')}`);
+                        process.exit(1);
+                    }
+
+                    // Validate DRG if provided
+                    if (options.drg && !isDraftingGroupValid(options.drg)) {
+                        console.error(`Invalid DRG value: ${options.drg}`);
+                        console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+                        process.exit(1);
+                    }
+
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
                     // Build content filtering query parameters
@@ -62,14 +91,17 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Visibility', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 12, 30, 10, 20]
+                        head: ['Item ID', 'Visibility', 'DRG', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 12, 12, 25, 10, 20]
                     });
 
                     items.forEach(item => {
+                        const visibilityDisplay = item.visibility ? getVisibilityDisplay(item.visibility) : '-';
+                        const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
                         table.push([
                             item.itemId,
-                            item.visibility,
+                            visibilityDisplay,
+                            drgDisplay,
                             item.title,
                             item.version,
                             item.createdBy
@@ -93,6 +125,7 @@ class OperationalChangeCommands extends VersionedCommands {
         const params = [];
 
         if (options.visibility) params.push(`visibility=${encodeURIComponent(options.visibility)}`);
+        if (options.drg) params.push(`drg=${encodeURIComponent(options.drg)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
@@ -120,6 +153,7 @@ class OperationalChangeCommands extends VersionedCommands {
         const filters = [];
 
         if (options.visibility) filters.push(`visibility=${options.visibility}`);
+        if (options.drg) filters.push(`drg=${options.drg}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
@@ -136,8 +170,12 @@ class OperationalChangeCommands extends VersionedCommands {
     displayItemDetails(item) {
         super.displayItemDetails(item);
 
-        console.log(`Description: ${item.description}`);
-        console.log(`Visibility: ${item.visibility}`);
+        console.log(`Purpose: ${item.purpose || item.description || ''}`); // Handle both new and old field names
+        console.log(`Visibility: ${item.visibility ? getVisibilityDisplay(item.visibility) : 'Not set'}`);
+        console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
+        console.log(`Initial State: ${item.initialState || 'Not specified'}`);
+        console.log(`Final State: ${item.finalState || 'Not specified'}`);
+        console.log(`Details: ${item.details || 'Not specified'}`);
 
         // Display SATISFIES relationships
         if (item.satisfiesRequirements && item.satisfiesRequirements.length > 0) {
@@ -147,7 +185,7 @@ class OperationalChangeCommands extends VersionedCommands {
             });
         }
 
-        // Display SUPERSEDS relationships
+        // Display SUPERSEDES relationships
         if (item.supersedsRequirements && item.supersedsRequirements.length > 0) {
             console.log(`\nSupersedes Requirements:`);
             item.supersedsRequirements.forEach(req => {
@@ -160,22 +198,20 @@ class OperationalChangeCommands extends VersionedCommands {
             console.log(`\nMilestones:`);
 
             const table = new Table({
-                head: ['Milestone Key', 'Title', 'Description', 'Event Types', 'Wave'],
-                colWidths: [25, 20, 30, 25, 15]
+                head: ['Event Type', 'Wave', 'Version'],
+                colWidths: [25, 15, 10]
             });
 
             item.milestones.forEach(milestone => {
-                const eventTypes = milestone.eventTypes?.join(', ') || '';
+                const eventTypeDisplay = milestone.eventType ? getMilestoneEventDisplay(milestone.eventType) : 'Not specified';
                 const wave = milestone.wave ?
                     `${milestone.wave.year}.${milestone.wave.quarter}` :
                     'Not targeted';
 
                 table.push([
-                    milestone.milestoneKey,
-                    milestone.title,
-                    milestone.description,
-                    eventTypes,
-                    wave
+                    eventTypeDisplay,
+                    wave,
+                    milestone.version || 'Latest'
                 ]);
             });
 
@@ -184,28 +220,60 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Implement create command with minimal required fields
+     * Helper method to validate visibility
+     */
+    validateVisibility(visibility) {
+        if (!visibility) return null;
+
+        if (!isVisibilityValid(visibility)) {
+            console.error(`Invalid visibility value: ${visibility}`);
+            console.error(`Valid values: ${VisibilityKeys.join(', ')}`);
+            process.exit(1);
+        }
+
+        return visibility;
+    }
+
+    /**
+     * Helper method to validate DRG
+     */
+    validateDRG(drg) {
+        if (!drg) return null;
+
+        if (!isDraftingGroupValid(drg)) {
+            console.error(`Invalid DRG value: ${drg}`);
+            console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+            process.exit(1);
+        }
+
+        return drg;
+    }
+
+    /**
+     * Implement create command with updated field structure
      */
     _addCreateCommand(itemCommand) {
         itemCommand
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
-            .option('--description <description>', 'Description of the change', '')
-            .option('--visibility <visibility>', 'Visibility (NM or NETWORK)', 'NETWORK')
+            .option('--purpose <purpose>', 'Purpose of the change (replaces description)', '')
+            .option('--visibility <visibility>', `Visibility (${VisibilityKeys.join(', ')})`, 'NETWORK')
+            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('--initial-state <state>', 'Initial state description', '')
+            .option('--final-state <state>', 'Final state description', '')
+            .option('--details <details>', 'Additional details', '')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies (space-separated)')
             .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes (space-separated)')
             .action(async (title, options) => {
                 try {
-                    // Validate visibility
-                    if (!['NM', 'NETWORK'].includes(options.visibility)) {
-                        console.error('Visibility must be either "NM" or "NETWORK"');
-                        process.exit(1);
-                    }
-
                     const data = {
                         title,
-                        description: options.description,
-                        visibility: options.visibility,
+                        purpose: options.purpose,
+                        visibility: this.validateVisibility(options.visibility) || 'NETWORK',
+                        drg: this.validateDRG(options.drg),
+                        initialState: options.initialState || '',
+                        finalState: options.finalState || '',
+                        details: options.details || '',
                         satisfiesRequirements: options.satisfies || [],
                         supersedsRequirements: options.supersedes || [],
                         milestones: [] // Start with empty milestones
@@ -225,6 +293,12 @@ class OperationalChangeCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Created ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`Version: ${entity.version} (Version ID: ${entity.versionId})`);
+                    if (entity.visibility) {
+                        console.log(`Visibility: ${getVisibilityDisplay(entity.visibility)}`);
+                    }
+                    if (entity.drg) {
+                        console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
+                    }
                 } catch (error) {
                     console.error(`Error creating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -233,30 +307,32 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Implement update command with version handling
+     * Implement update command with updated field structure
      */
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version with complete replacement)`)
-            .option('--description <description>', 'New description')
-            .option('--visibility <visibility>', 'New visibility (NM or NETWORK)')
+            .option('--purpose <purpose>', 'New purpose (replaces description)')
+            .option('--visibility <visibility>', `New visibility (${VisibilityKeys.join(', ')})`)
+            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('--initial-state <state>', 'Initial state description')
+            .option('--final-state <state>', 'Final state description')
+            .option('--details <details>', 'Additional details')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
             .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
-                    // Validate visibility if provided
-                    if (options.visibility && !['NM', 'NETWORK'].includes(options.visibility)) {
-                        console.error('Visibility must be either "NM" or "NETWORK"');
-                        process.exit(1);
-                    }
-
                     // Build complete update payload
                     const data = {
                         expectedVersionId,
                         title,
-                        description: options.description || '',
-                        visibility: options.visibility || 'NETWORK',
+                        purpose: options.purpose || '',
+                        visibility: this.validateVisibility(options.visibility) || 'NETWORK',
+                        drg: this.validateDRG(options.drg),
+                        initialState: options.initialState || '',
+                        finalState: options.finalState || '',
+                        details: options.details || '',
                         satisfiesRequirements: options.satisfies || [],
                         supersedsRequirements: options.supersedes || [],
                         milestones: [] // Reset milestones in full update
@@ -288,6 +364,12 @@ class OperationalChangeCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Updated ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`New version: ${entity.version} (Version ID: ${entity.versionId})`);
+                    if (entity.visibility) {
+                        console.log(`Visibility: ${getVisibilityDisplay(entity.visibility)}`);
+                    }
+                    if (entity.drg) {
+                        console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
+                    }
                 } catch (error) {
                     console.error(`Error updating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -296,31 +378,33 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Implement patch command with partial updates
+     * Implement patch command with updated field structure
      */
     _addPatchCommand(itemCommand) {
         itemCommand
             .command('patch <itemId> <expectedVersionId>')
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
-            .option('--description <description>', 'New description')
-            .option('--visibility <visibility>', 'New visibility (NM or NETWORK)')
+            .option('--purpose <purpose>', 'New purpose (replaces description)')
+            .option('--visibility <visibility>', `New visibility (${VisibilityKeys.join(', ')})`)
+            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('--initial-state <state>', 'Initial state description')
+            .option('--final-state <state>', 'Final state description')
+            .option('--details <details>', 'Additional details')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
             .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
-                    // Validate visibility if provided
-                    if (options.visibility && !['NM', 'NETWORK'].includes(options.visibility)) {
-                        console.error('Visibility must be either "NM" or "NETWORK"');
-                        process.exit(1);
-                    }
-
                     // Build patch payload with only provided fields
                     const data = { expectedVersionId };
 
                     if (options.title) data.title = options.title;
-                    if (options.description) data.description = options.description;
-                    if (options.visibility) data.visibility = options.visibility;
+                    if (options.purpose) data.purpose = options.purpose;
+                    if (options.visibility !== undefined) data.visibility = this.validateVisibility(options.visibility);
+                    if (options.drg !== undefined) data.drg = this.validateDRG(options.drg);
+                    if (options.initialState) data.initialState = options.initialState;
+                    if (options.finalState) data.finalState = options.finalState;
+                    if (options.details) data.details = options.details;
                     if (options.satisfies) data.satisfiesRequirements = options.satisfies;
                     if (options.supersedes) data.supersedsRequirements = options.supersedes;
 
@@ -350,6 +434,12 @@ class OperationalChangeCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Patched ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`New version: ${entity.version} (Version ID: ${entity.versionId})`);
+                    if (entity.visibility) {
+                        console.log(`Visibility: ${getVisibilityDisplay(entity.visibility)}`);
+                    }
+                    if (entity.drg) {
+                        console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
+                    }
                 } catch (error) {
                     console.error(`Error patching ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -358,7 +448,7 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Add milestone commands specific to operational changes with edition support
+     * Add milestone commands with updated 5-event system
      */
     _addMilestoneCommands(itemCommand) {
         // Milestone list command with baseline and edition support
@@ -399,22 +489,20 @@ class OperationalChangeCommands extends VersionedCommands {
                 }
 
                 const table = new Table({
-                    head: ['Milestone Key', 'Title', 'Description', 'Event Types', 'Wave'],
-                    colWidths: [25, 20, 30, 25, 15]
+                    head: ['Event Type', 'Wave', 'Version'],
+                    colWidths: [25, 15, 10]
                 });
 
                 milestones.forEach(milestone => {
-                    const eventTypes = milestone.eventTypes?.join(', ') || '';
+                    const eventTypeDisplay = milestone.eventType ? getMilestoneEventDisplay(milestone.eventType) : 'Not specified';
                     const wave = milestone.wave ?
                         `${milestone.wave.year}.${milestone.wave.quarter}` :
                         'Not targeted';
 
                     table.push([
-                        milestone.milestoneKey,
-                        milestone.title,
-                        milestone.description,
-                        eventTypes,
-                        wave
+                        eventTypeDisplay,
+                        wave,
+                        milestone.version || 'Latest'
                     ]);
                 });
 
@@ -427,61 +515,112 @@ class OperationalChangeCommands extends VersionedCommands {
             }
         });
 
-        // Milestone show command with baseline and edition support
-        const milestoneShowCommand = itemCommand
-            .command('milestone-show <itemId> <milestoneKey>')
-            .description(`Show specific milestone by milestone key`);
+        // Milestone add command with new 5-event system
+        itemCommand
+            .command('milestone-add <itemId> <eventType> <waveId>')
+            .description(`Add milestone for ${this.displayName} with specific event type`)
+            .option('--event-type <type>', `Event type (${MilestoneEventKeys.join(', ')})`)
+            .action(async (itemId, eventType, waveId, options) => {
+                try {
+                    // Validate event type
+                    if (!isMilestoneEventValid(eventType)) {
+                        console.error(`Invalid event type: ${eventType}`);
+                        console.error(`Valid values: ${MilestoneEventKeys.join(', ')}`);
+                        process.exit(1);
+                    }
 
-        this.addEditionSupportToMilestoneCommand(milestoneShowCommand);
+                    const data = {
+                        eventType: eventType,
+                        waveId: waveId
+                    };
 
-        milestoneShowCommand.action(async (itemId, milestoneKey, options) => {
-            try {
-                const { url, contextDisplay } = await this.buildMilestoneContextUrl(
-                    `${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneKey}`,
-                    options
-                );
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones`, {
+                        method: 'POST',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
 
-                const response = await fetch(url, {
-                    headers: this.createHeaders()
-                });
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
 
-                if (response.status === 404) {
-                    const error = await response.json();
-                    console.error(`Error: ${error.error?.message || 'Not found'}`);
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const milestone = await response.json();
+                    console.log(`Added milestone: ${getMilestoneEventDisplay(milestone.eventType)}`);
+                    console.log(`Wave: ${milestone.wave.year}.${milestone.wave.quarter}`);
+                    console.log(`Milestone ID: ${milestone.id}`);
+                } catch (error) {
+                    console.error(`Error adding milestone:`, error.message);
                     process.exit(1);
                 }
+            });
 
-                if (!response.ok) {
-                    if (response.status === 400) {
-                        throw new Error(`Invalid baseline or wave ID in context`);
+        // Milestone update command
+        itemCommand
+            .command('milestone-update <itemId> <milestoneId> <waveId>')
+            .description(`Update milestone wave assignment`)
+            .action(async (itemId, milestoneId, waveId) => {
+                try {
+                    const data = { waveId: waveId };
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                        method: 'PUT',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(`Error: ${error.error?.message || 'Not found'}`);
+                        process.exit(1);
                     }
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const milestone = await response.json();
+                    console.log(`Updated milestone: ${getMilestoneEventDisplay(milestone.eventType)}`);
+                    console.log(`New wave: ${milestone.wave.year}.${milestone.wave.quarter}`);
+                } catch (error) {
+                    console.error(`Error updating milestone:`, error.message);
+                    process.exit(1);
                 }
+            });
 
-                const milestone = await response.json();
+        // Milestone delete command
+        itemCommand
+            .command('milestone-delete <itemId> <milestoneId>')
+            .description(`Delete milestone`)
+            .action(async (itemId, milestoneId) => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/milestones/${milestoneId}`, {
+                        method: 'DELETE',
+                        headers: this.createHeaders()
+                    });
 
-                if (contextDisplay) {
-                    console.log(`=== MILESTONE${contextDisplay.toUpperCase()} ===`);
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(`Error: ${error.error?.message || 'Not found'}`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    console.log(`Deleted milestone with ID: ${milestoneId}`);
+                } catch (error) {
+                    console.error(`Error deleting milestone:`, error.message);
+                    process.exit(1);
                 }
-
-                console.log(`Milestone Key: ${milestone.milestoneKey}`);
-                console.log(`Technical ID: ${milestone.id}`);
-                console.log(`Title: ${milestone.title}`);
-                console.log(`Description: ${milestone.description}`);
-                console.log(`Event Types: ${milestone.eventTypes?.join(', ') || 'None'}`);
-                if (milestone.wave) {
-                    console.log(`Target Wave: ${milestone.wave.year}.${milestone.wave.quarter} (${milestone.wave.date})`);
-                } else {
-                    console.log(`Target Wave: Not specified`);
-                }
-            } catch (error) {
-                console.error(`Error fetching milestone:`, error.message);
-                process.exit(1);
-            }
-        });
-
-        // Milestone add, update, delete commands (existing implementation preserved)
-        // ... (keeping all existing milestone CRUD commands unchanged)
+            });
     }
 
     /**

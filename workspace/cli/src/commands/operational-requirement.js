@@ -1,5 +1,6 @@
-// workspace/cli/src/commands/operational-requirement.js - Updated with content filtering support
+// workspace/cli/src/commands/operational-requirement.js - Updated with Phase 8 model evolution support
 import { VersionedCommands } from '../base-commands.js';
+import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '@odp/shared';
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 
@@ -24,6 +25,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
             // OperationalRequirement-specific content filters
             .option('--type <type>', 'Filter by requirement type (ON or OR)')
+            .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, flowExamples, references, and risksAndOpportunities')
             .option('--data-category <ids>', 'Filter by data category IDs (comma-separated)')
@@ -32,6 +34,13 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--regulatory-aspect <ids>', 'Filter by regulatory aspect IDs (comma-separated)')
             .action(async (options) => {
                 try {
+                    // Validate DRG if provided
+                    if (options.drg && !isDraftingGroupValid(options.drg)) {
+                        console.error(`Invalid DRG value: ${options.drg}`);
+                        console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+                        process.exit(1);
+                    }
+
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
                     // Build content filtering query parameters
@@ -62,14 +71,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Type', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 8, 35, 10, 20]
+                        head: ['Item ID', 'Type', 'DRG', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 8, 12, 30, 10, 20]
                     });
 
                     items.forEach(item => {
+                        const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
                         table.push([
                             item.itemId,
                             item.type,
+                            drgDisplay,
                             item.title,
                             item.version,
                             item.createdBy
@@ -93,6 +104,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         const params = [];
 
         if (options.type) params.push(`type=${encodeURIComponent(options.type)}`);
+        if (options.drg) params.push(`drg=${encodeURIComponent(options.drg)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
         if (options.dataCategory) params.push(`dataCategory=${encodeURIComponent(options.dataCategory)}`);
@@ -120,6 +132,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         const filters = [];
 
         if (options.type) filters.push(`type=${options.type}`);
+        if (options.drg) filters.push(`drg=${options.drg}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
         if (options.dataCategory) filters.push(`data-categories=[${options.dataCategory}]`);
@@ -137,6 +150,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         super.displayItemDetails(item);
 
         console.log(`Type: ${item.type}`);
+        console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
         console.log(`Statement: ${item.statement}`);
         console.log(`Rationale: ${item.rationale}`);
         console.log(`References: ${item.references}`);
@@ -149,6 +163,14 @@ class OperationalRequirementCommands extends VersionedCommands {
             console.log(`\nRefines:`);
             item.refinesParents.forEach(parent => {
                 console.log(`  - ${parent.title} (${parent.type}) [ID: ${parent.id}]`);
+            });
+        }
+
+        // Display implementedONs relationships
+        if (item.implementedONs && item.implementedONs.length > 0) {
+            console.log(`\nImplemented ONs:`);
+            item.implementedONs.forEach(on => {
+                console.log(`  - ${on.title} (${on.type}) [ID: ${on.id}]`);
             });
         }
 
@@ -181,11 +203,38 @@ class OperationalRequirementCommands extends VersionedCommands {
         }
     }
 
+    /**
+     * Helper method to validate and prompt for DRG
+     */
+    validateDRG(drg) {
+        if (!drg) return null;
+
+        if (!isDraftingGroupValid(drg)) {
+            console.error(`Invalid DRG value: ${drg}`);
+            console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+            process.exit(1);
+        }
+
+        return drg;
+    }
+
+    /**
+     * Helper method to parse implementedONs input
+     */
+    parseImplementedONs(input) {
+        if (!input) return [];
+
+        // Handle both comma-separated and space-separated input
+        const ids = Array.isArray(input) ? input : input.split(/[,\s]+/).filter(id => id.trim());
+        return ids.map(id => id.trim());
+    }
+
     _addCreateCommand(itemCommand) {
         itemCommand
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
             .option('--type <type>', `ON | OR (default)`)
+            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--references <references>', `References`)
@@ -193,6 +242,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--flows <flows>', `Flows`)
             .option('--flow-examples <examples>', `Flow examples`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
+            .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
             .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
             .option('--impacts-regulatory <regulatory-aspect-ids...>', `Impacted regulatory aspect IDs`)
@@ -202,6 +252,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const data = {
                         title,
                         type: options.type || 'OR',
+                        drg: this.validateDRG(options.drg),
                         statement: options.statement || '',
                         rationale: options.rationale || '',
                         references: options.references || '',
@@ -209,6 +260,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                         flows: options.flows || '',
                         flowExamples: options.flowExamples || '',
                         refinesParents: options.parent ? [options.parent] : [],
+                        implementedONs: this.parseImplementedONs(options.implementedOns),
                         impactsData: options.impactsData || [],
                         impactsStakeholderCategories: options.impactsStakeholders || [],
                         impactsRegulatoryAspects: options.impactsRegulatory || [],
@@ -229,6 +281,9 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Created ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`Version: ${entity.version} (Version ID: ${entity.versionId})`);
+                    if (entity.drg) {
+                        console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
+                    }
                 } catch (error) {
                     console.error(`Error creating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -241,6 +296,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version)`)
             .option('--type <type>', `ON | OR`)
+            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--references <references>', `References`)
@@ -248,6 +304,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--flows <flows>', `Flows`)
             .option('--flow-examples <examples>', `Flow examples`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
+            .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
             .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
             .option('--impacts-regulatory <regulatory-aspect-ids...>', `Impacted regulatory aspect IDs`)
@@ -258,6 +315,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                         expectedVersionId,
                         title,
                         type: options.type || 'OR',
+                        drg: this.validateDRG(options.drg),
                         statement: options.statement || '',
                         rationale: options.rationale || '',
                         references: options.references || '',
@@ -265,6 +323,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                         flows: options.flows || '',
                         flowExamples: options.flowExamples || '',
                         refinesParents: options.parent ? [options.parent] : [],
+                        implementedONs: this.parseImplementedONs(options.implementedOns),
                         impactsData: options.impactsData || [],
                         impactsStakeholderCategories: options.impactsStakeholders || [],
                         impactsRegulatoryAspects: options.impactsRegulatory || [],
@@ -297,6 +356,9 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const item = await response.json();
                     console.log(`Updated ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
                     console.log(`New version: ${item.version} (Version ID: ${item.versionId})`);
+                    if (item.drg) {
+                        console.log(`DRG: ${getDraftingGroupDisplay(item.drg)}`);
+                    }
                 } catch (error) {
                     console.error(`Error updating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -310,6 +372,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
             .option('--type <type>', 'ON | OR')
+            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', 'New statement')
             .option('--rationale <rationale>', 'New rationale')
             .option('--references <references>', 'New references')
@@ -317,6 +380,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--flows <flows>', 'New flows')
             .option('--flow-examples <examples>', 'New flow examples')
             .option('--parent <requirement-id>', 'Parent requirement ID')
+            .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
             .option('--impacts-data <data-category-ids...>', 'Impacted data category IDs')
             .option('--impacts-stakeholders <stakeholder-category-ids...>', 'Impacted stakeholder category IDs')
             .option('--impacts-regulatory <regulatory-aspect-ids...>', 'Impacted regulatory aspect IDs')
@@ -328,6 +392,7 @@ class OperationalRequirementCommands extends VersionedCommands {
 
                     if (options.title) data.title = options.title;
                     if (options.type) data.type = options.type;
+                    if (options.drg !== undefined) data.drg = this.validateDRG(options.drg);
                     if (options.statement) data.statement = options.statement;
                     if (options.rationale) data.rationale = options.rationale;
                     if (options.references) data.references = options.references;
@@ -335,6 +400,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.flows) data.flows = options.flows;
                     if (options.flowExamples) data.flowExamples = options.flowExamples;
                     if (options.parent) data.refinesParents = [options.parent];
+                    if (options.implementedOns !== undefined) data.implementedONs = this.parseImplementedONs(options.implementedOns);
                     if (options.impactsData) data.impactsData = options.impactsData;
                     if (options.impactsStakeholders) data.impactsStakeholderCategories = options.impactsStakeholders;
                     if (options.impactsRegulatory) data.impactsRegulatoryAspects = options.impactsRegulatory;
@@ -366,6 +432,9 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const item = await response.json();
                     console.log(`Patched ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
                     console.log(`New version: ${item.version} (Version ID: ${item.versionId})`);
+                    if (item.drg) {
+                        console.log(`DRG: ${getDraftingGroupDisplay(item.drg)}`);
+                    }
                 } catch (error) {
                     console.error(`Error patching ${this.displayName}:`, error.message);
                     process.exit(1);
