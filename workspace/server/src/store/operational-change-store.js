@@ -51,6 +51,12 @@ export class OperationalChangeStore extends VersionedItemStore {
                     params.visibility = filters.visibility;
                 }
 
+                // DRG filtering support in buildFindAllQuery
+                if (filters.drg) {
+                    whereConditions.push('version.drg = $drg');
+                    params.drg = filters.drg;
+                }
+
                 // Title pattern filtering
                 if (filters.title) {
                     whereConditions.push('item.title CONTAINS $title');
@@ -61,7 +67,10 @@ export class OperationalChangeStore extends VersionedItemStore {
                 if (filters.text) {
                     whereConditions.push(`(
                         item.title CONTAINS $text OR 
-                        version.description CONTAINS $text
+                        version.purpose CONTAINS $text OR 
+                        version.initialState CONTAINS $text OR 
+                        version.finalState CONTAINS $text OR 
+                        version.details CONTAINS $text
                     )`);
                     params.text = filters.text;
                 }
@@ -121,9 +130,9 @@ export class OperationalChangeStore extends VersionedItemStore {
             // Complete query with return clause
             cypher += `
                 RETURN id(item) as itemId, item.title as title,
-                       id(version) as versionId, version.version as version,
-                       version.createdAt as createdAt, version.createdBy as createdBy,
-                       version { .* } as versionData
+                        id(version) as versionId, version.version as version,
+                        version.createdAt as createdAt, version.createdBy as createdBy,
+                        version { .*, purpose, initialState, finalState, details, drg } as versionData
                 ORDER BY item.title
             `;
 

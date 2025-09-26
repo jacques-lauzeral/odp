@@ -228,9 +228,6 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
     title: string,
     description: string,
     eventType: string,      // 'API_PUBLICATION'|'API_TEST_DEPLOYMENT'|'UI_TEST_DEPLOYMENT'|'OPS_DEPLOYMENT'|'API_DECOMMISSIONING'
-    status: string,         // 'PLANNED'|'IN_PROGRESS'|'COMPLETED'|'CANCELLED'
-    targetDate: string,     // ISO date (optional)
-    actualDate: string,     // ISO date (optional)
     waveId?: number,        // Wave ID (optional)
     wave?: object           // Wave object with year, quarter, date (populated in queries)
   }>
@@ -254,16 +251,12 @@ const change = await store.create({
       title: "API Publication",
       description: "Publish authentication API specification",
       eventType: "API_PUBLICATION",
-      status: "PLANNED",
-      targetDate: "2025-03-31",
       waveId: 101
     },
     {
       title: "Test Deployment",
       description: "Deploy to test environment",
       eventType: "API_TEST_DEPLOYMENT", 
-      status: "PLANNED",
-      targetDate: "2025-04-15",
       waveId: 102
     }
   ]

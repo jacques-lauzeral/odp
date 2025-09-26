@@ -28,7 +28,7 @@ paths:
             type: string
           description: "Optional wave ID for filtering (requirements referenced by changes with milestones at/after this wave)"
 
-        # New content filtering parameters
+        # Content filtering parameters - UPDATED
         - name: type
           in: query
           required: false
@@ -37,6 +37,14 @@ paths:
             enum: [ON, OR]
           description: "Filter by requirement type. Omit for all types."
           example: "OR"
+        - name: drg
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          description: "Filter by Drafting Group. Omit for all DRG values."
+          example: "4DT"
         - name: title
           in: query
           required: false
@@ -112,7 +120,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '400':
-          description: Validation Error
+          description: Validation Error - Invalid DRG value, implementedONs type mismatch, or missing required fields
           content:
             application/json:
               schema:
@@ -189,6 +197,12 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid DRG value or implementedONs type constraint violation
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
     patch:
       summary: Patch operational requirement (creates new version with partial updates)
@@ -214,6 +228,12 @@ paths:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '409':
           description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid DRG value or implementedONs type constraint violation
           content:
             application/json:
               schema:
@@ -295,7 +315,7 @@ paths:
             type: string
           description: "Optional wave ID for filtering (changes with milestones at/after this wave)"
 
-        # New content filtering parameters
+        # Content filtering parameters - UPDATED
         - name: visibility
           in: query
           required: false
@@ -304,6 +324,14 @@ paths:
             enum: [NM, NETWORK]
           description: "Filter by change visibility. Omit for all visibility types."
           example: "NETWORK"
+        - name: drg
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          description: "Filter by Drafting Group. Omit for all DRG values."
+          example: "FLOW"
         - name: title
           in: query
           required: false
@@ -316,7 +344,7 @@ paths:
           required: false
           schema:
             type: string
-          description: "Full-text search across title and description fields"
+          description: "Full-text search across title, purpose, initialState, finalState, and details rich text fields"
           example: "performance optimization"
         - name: stakeholderCategory
           in: query
@@ -378,6 +406,12 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
+        '400':
+          description: Validation Error - Invalid DRG value, milestone eventType, or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
   /operational-changes/{id}:
     get:
@@ -450,6 +484,12 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid DRG value or milestone eventType
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
     patch:
       summary: Patch operational change (creates new version with partial updates)
@@ -475,6 +515,12 @@ paths:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '409':
           description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid DRG value or milestone eventType
           content:
             application/json:
               schema:

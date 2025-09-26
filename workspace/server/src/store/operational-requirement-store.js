@@ -140,6 +140,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             impactsData,
             impactsServices,
             impactsRegulatoryAspects,
+            implementedONs,
             ...contentData
         } = data;
 
@@ -149,7 +150,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsStakeholderCategories: impactsStakeholderCategories || [],
                 impactsData: impactsData || [],
                 impactsServices: impactsServices || [],
-                impactsRegulatoryAspects: impactsRegulatoryAspects || []
+                impactsRegulatoryAspects: impactsRegulatoryAspects || [],
+                implementedONs: implementedONs || []
             },
             ...contentData
         };
@@ -214,12 +216,24 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const impactsRegulatoryAspects = regulatoryResult.records.map(record => this._buildReference(record));
 
+            // Get implementedONs relationships (to OperationalRequirement Items with type ON)
+            const implementedONsResult = await transaction.run(`
+            MATCH (version:${this.versionLabel})-[:IMPLEMENTS]->(target:OperationalRequirement)-[:LATEST_VERSION]->(targetVersion:OperationalRequirementVersion)
+            WHERE id(version) = $versionId AND targetVersion.type = 'ON'
+            RETURN id(target) as id, target.title as title, targetVersion.type as type
+            ORDER BY target.title
+        `, { versionId });
+
+            const implementedONs = implementedONsResult.records.map(record => this._buildReference(record));
+
+
             return {
                 refinesParents,
                 impactsStakeholderCategories,
                 impactsData,
                 impactsServices,
-                impactsRegulatoryAspects
+                impactsRegulatoryAspects,
+                implementedONs
             };
         } catch (error) {
             throw new StoreError(`Failed to build relationship references: ${error.message}`, error);
@@ -257,8 +271,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 
                 // Get IMPACTS relationships to RegulatoryAspect
                 OPTIONAL MATCH (version)-[:IMPACTS]->(ra:RegulatoryAspect)
+
+                // Get implementedONs relationships
+                OPTIONAL MATCH (version)-[:IMPLEMENTS]->(ion:OperationalRequirement)
                 
-                RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, collect(id(ra)) as impactsRegulatoryAspects
+                RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, collect(id(ra)) as impactsRegulatoryAspects, collect(id(ion)) as implementedONs
             `, { versionId });
 
             if (result.records.length === 0) {
@@ -268,7 +285,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     impactsStakeholderCategories: [],
                     impactsData: [],
                     impactsServices: [],
-                    impactsRegulatoryAspects: []
+                    impactsRegulatoryAspects: [],
+                    implementedONs: []
                 };
             }
 
@@ -278,7 +296,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => this.normalizeId(id)),
                 impactsData: record.get('impactsData').map(id => this.normalizeId(id)),
                 impactsServices: record.get('impactsServices').map(id => this.normalizeId(id)),
-                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => this.normalizeId(id))
+                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => this.normalizeId(id)),
+                implementedONs: record.get('implementedONs').map(id => this.normalizeId(id))
             };
         } catch (error) {
             throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
@@ -299,7 +318,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsStakeholderCategories = [],
                 impactsData = [],
                 impactsServices = [],
-                impactsRegulatoryAspects = []
+                impactsRegulatoryAspects = [],
+                implementedONs = []
             } = relationshipIds;
 
             // Validate that version exists and get its parent item for self-reference checks
@@ -345,6 +365,24 @@ export class OperationalRequirementStore extends VersionedItemStore {
             await this._createImpactsRelationshipsFromIds(versionId, 'DataCategory', impactsData, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'Service', impactsServices, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'RegulatoryAspect', impactsRegulatoryAspects, transaction);
+
+            if (implementedONs.length > 0) {
+                const normalizedONIds = implementedONs.map(id => this.normalizeId(id));
+
+                // Validate all ON items exist (type validation will be done at service layer)
+                await this._validateReferences('OperationalRequirement', normalizedONIds, transaction);
+
+                // Create IMPLEMENTS relationships
+                await transaction.run(`
+                    MATCH (version:${this.versionLabel})
+                    WHERE id(version) = $versionId
+                
+                    UNWIND $onIds as onId
+                    MATCH (on:OperationalRequirement)
+                    WHERE id(on) = onId
+                    CREATE (version)-[:IMPLEMENTS]->(on)
+                `, { versionId, onIds: normalizedONIds });
+            }
 
         } catch (error) {
             if (error instanceof StoreError) throw error;
@@ -634,6 +672,64 @@ export class OperationalRequirementStore extends VersionedItemStore {
             return requirements;
         } catch (error) {
             throw new StoreError(`Failed to find requirements that impact ${targetLabel}: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find requirements that implement a specific ON-type requirement
+     * @param {number} onItemId - ON-type requirement Item ID
+     * @param {Transaction} transaction - Transaction instance
+     * @param {number|null} baselineId - Optional baseline context
+     * @param {number|null} fromWaveId - Optional wave filtering
+     * @returns {Promise<Array<object>>} Requirements that implement the ON with Reference structure
+     */
+    async findRequirementsThatImplement(onItemId, transaction, baselineId = null, fromWaveId = null) {
+        try {
+            const normalizedOnId = this.normalizeId(onItemId);
+            let query, params;
+
+            if (baselineId === null) {
+                // Latest versions query
+                query = `
+                MATCH (on:OperationalRequirement)<-[:IMPLEMENTS]-(version:OperationalRequirementVersion)
+                MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
+                MATCH (item)-[:LATEST_VERSION]->(version)
+                WHERE id(on) = $onItemId
+                RETURN id(item) as id, item.title as title, version.type as type
+                ORDER BY item.title
+            `;
+                params = { onItemId: normalizedOnId };
+            } else {
+                // Baseline versions query
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalRequirementVersion)-[:IMPLEMENTS]->(on:OperationalRequirement)
+                MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
+                WHERE id(baseline) = $baselineId AND id(on) = $onItemId
+                RETURN id(item) as id, item.title as title, version.type as type
+                ORDER BY item.title
+            `;
+                params = { baselineId: numericBaselineId, onItemId: normalizedOnId };
+            }
+
+            const result = await transaction.run(query, params);
+            const requirements = result.records.map(record => this._buildReference(record));
+
+            // Apply wave filtering if specified
+            if (fromWaveId !== null) {
+                const filteredRequirements = [];
+                for (const requirement of requirements) {
+                    const passesFilter = await this._checkWaveFilter(requirement.id, fromWaveId, transaction, baselineId);
+                    if (passesFilter) {
+                        filteredRequirements.push(requirement);
+                    }
+                }
+                return filteredRequirements;
+            }
+
+            return requirements;
+        } catch (error) {
+            throw new StoreError(`Failed to find requirements that implement ON: ${error.message}`, error);
         }
     }
 

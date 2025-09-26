@@ -36,6 +36,51 @@ components:
           type: string
           enum: [ON, OR]
 
+    # Enums
+    DraftingGroup:
+      type: string
+      enum:
+        - 4DT
+        - AIRPORT
+        - ASM_ATFCM
+        - CRISIS_FAAS
+        - FLOW
+        - IDL
+        - NM_B2B
+        - NMUI
+        - PERF
+        - RRT
+        - TCF
+      description: |
+        Drafting Group values:
+        - 4DT: 4D-Trajectory
+        - AIRPORT: Airport
+        - ASM_ATFCM: ASM / ATFCM Integration
+        - CRISIS_FAAS: Crisis and FAAS
+        - FLOW: Flow
+        - IDL: iDL
+        - NM_B2B: NM B2B
+        - NMUI: NMUI
+        - PERF: Performance
+        - RRT: Rerouting
+        - TCF: TCF
+
+    MilestoneEventType:
+      type: string
+      enum:
+        - API_PUBLICATION
+        - API_TEST_DEPLOYMENT
+        - UI_TEST_DEPLOYMENT
+        - OPS_DEPLOYMENT
+        - API_DECOMMISSIONING
+      description: |
+        Milestone event types (independent, no sequencing):
+        - API_PUBLICATION: API Publication milestone
+        - API_TEST_DEPLOYMENT: API Test Deployment milestone
+        - UI_TEST_DEPLOYMENT: UI Test Deployment milestone
+        - OPS_DEPLOYMENT: Operations Deployment milestone
+        - API_DECOMMISSIONING: API Decommissioning milestone
+
     # Setup Entity Schemas
     StakeholderCategory:
       type: object
@@ -163,7 +208,7 @@ components:
           type: string
           format: date
 
-    # Operational Entity Schemas
+    # Operational Entity Schemas - UPDATED
     OperationalRequirement:
       type: object
       properties:
@@ -185,16 +230,29 @@ components:
           enum: [ON, OR]
         statement:
           type: string
+          description: "Rich text content"
         rationale:
           type: string
+          description: "Rich text content"
         references:
           type: string
+          description: "Rich text content"
         risksAndOpportunities:
           type: string
+          description: "Rich text content"
         flows:
           type: string
+          description: "Rich text content"
         flowExamples:
           type: string
+          description: "Rich text content"
+        drg:
+          $ref: '#/components/schemas/DraftingGroup'
+        implementedONs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalRequirementReference'
+          description: "Array of ON-type operational requirements implemented by this OR-type requirement"
         refinesParents:
           type: array
           items:
@@ -218,7 +276,7 @@ components:
 
     OperationalRequirementRequest:
       type: object
-      required: [title, type, statement, rationale, references, risksAndOpportunities, flows, flowExamples, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, impactsRegulatoryAspects]
+      required: [title, type, statement, rationale, references, risksAndOpportunities, flows, flowExamples, drg, implementedONs, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, impactsRegulatoryAspects]
       properties:
         title:
           type: string
@@ -227,16 +285,29 @@ components:
           enum: [ON, OR]
         statement:
           type: string
+          description: "Rich text content"
         rationale:
           type: string
+          description: "Rich text content"
         references:
           type: string
+          description: "Rich text content"
         risksAndOpportunities:
           type: string
+          description: "Rich text content"
         flows:
           type: string
+          description: "Rich text content"
         flowExamples:
           type: string
+          description: "Rich text content"
+        drg:
+          $ref: '#/components/schemas/DraftingGroup'
+        implementedONs:
+          type: array
+          items:
+            type: string
+          description: "Array of ON-type operational requirement IDs (validation: must be ON type)"
         refinesParents:
           type: array
           items:
@@ -276,6 +347,7 @@ components:
             expectedVersionId:
               type: string
 
+    # Milestone Schema - UPDATED
     Milestone:
       type: object
       properties:
@@ -289,11 +361,8 @@ components:
           type: string
         description:
           type: string
-        eventTypes:
-          type: array
-          items:
-            type: string
-            enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, API_DECOMMISSIONING, OTHER]
+        eventType:
+          $ref: '#/components/schemas/MilestoneEventType'
         wave:
           type: object
           nullable: true
@@ -306,17 +375,14 @@ components:
 
     MilestoneRequest:
       type: object
-      required: [title, description, eventTypes]
+      required: [title, description, eventType]
       properties:
         title:
           type: string
         description:
           type: string
-        eventTypes:
-          type: array
-          items:
-            type: string
-            enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, API_DECOMMISSIONING, OTHER]
+        eventType:
+          $ref: '#/components/schemas/MilestoneEventType'
         waveId:
           type: string
           nullable: true
@@ -361,6 +427,7 @@ components:
             version:
               type: integer
 
+    # OperationalChange Schema - UPDATED
     OperationalChange:
       type: object
       properties:
@@ -377,11 +444,23 @@ components:
           format: date-time
         createdBy:
           type: string
-        description:
+        purpose:
           type: string
+          description: "Rich text content (renamed from description)"
+        initialState:
+          type: string
+          description: "Rich text content (multiline)"
+        finalState:
+          type: string
+          description: "Rich text content (multiline)"
+        details:
+          type: string
+          description: "Rich text content (multiline)"
         visibility:
           type: string
           enum: [NM, NETWORK]
+        drg:
+          $ref: '#/components/schemas/DraftingGroup'
         satisfiesRequirements:
           type: array
           items:
@@ -397,15 +476,27 @@ components:
 
     OperationalChangeRequest:
       type: object
-      required: [title, description, visibility, satisfiesRequirements, supersedsRequirements, milestones]
+      required: [title, purpose, initialState, finalState, details, visibility, drg, satisfiesRequirements, supersedsRequirements, milestones]
       properties:
         title:
           type: string
-        description:
+        purpose:
           type: string
+          description: "Rich text content (renamed from description)"
+        initialState:
+          type: string
+          description: "Rich text content (multiline)"
+        finalState:
+          type: string
+          description: "Rich text content (multiline)"
+        details:
+          type: string
+          description: "Rich text content (multiline)"
         visibility:
           type: string
           enum: [NM, NETWORK]
+        drg:
+          $ref: '#/components/schemas/DraftingGroup'
         satisfiesRequirements:
           type: array
           items:
@@ -436,11 +527,23 @@ components:
           type: string
         title:
           type: string
-        description:
+        purpose:
           type: string
+          description: "Rich text content (renamed from description)"
+        initialState:
+          type: string
+          description: "Rich text content (multiline)"
+        finalState:
+          type: string
+          description: "Rich text content (multiline)"
+        details:
+          type: string
+          description: "Rich text content (multiline)"
         visibility:
           type: string
           enum: [NM, NETWORK]
+        drg:
+          $ref: '#/components/schemas/DraftingGroup'
         satisfiesRequirements:
           type: array
           items:
