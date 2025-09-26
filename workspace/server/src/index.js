@@ -9,6 +9,7 @@ import operationalRequirementRoutes from './routes/operational-requirement.js';
 import operationalChangeRoutes from './routes/operational-change.js';
 import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
+import importRoutes from './routes/import.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -16,6 +17,9 @@ const PORT = process.env.PORT || 80;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Add raw body parser for YAML content
+app.use('/import', express.raw({ type: ['application/yaml', 'text/yaml'], limit: '10mb' }));
 
 // CORS middleware - Add this BEFORE routes
 app.use((req, res, next) => {
@@ -36,6 +40,9 @@ app.use((req, res, next) => {
 app.get('/hello', (req, res) => {
     res.json({ status: 'ok', message: 'ODP Server running', timestamp: new Date().toISOString() });
 });
+
+// Import API Routes (before other routes for proper middleware precedence)
+app.use('/import', importRoutes);
 
 // Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
@@ -82,6 +89,9 @@ async function startServer() {
             console.log(`ODP Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/hello`);
             console.log(`API endpoints:`);
+            console.log(`Import Operations:`);
+            console.log(`  - POST http://localhost:${PORT}/import/setup (Content-Type: application/yaml)`);
+            console.log(`  - POST http://localhost:${PORT}/import/requirements?drg=<DRG> (Content-Type: application/yaml)`);
             console.log(`Setup Entities:`);
             console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
             console.log(`  - http://localhost:${PORT}/regulatory-aspects`);

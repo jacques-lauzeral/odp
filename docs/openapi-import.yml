@@ -1,0 +1,62 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Import
+  description: Bulk import operations for setup and operational data
+  version: 1.0.0
+
+paths:
+  /import/setup:
+    post:
+      summary: Bulk import setup entities
+      tags: [Import]
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/SetupImportRequest'
+      responses:
+        '200':
+          description: Import completed with summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportSummary'
+
+  /import/requirements:
+    post:
+      summary: Bulk import operational requirements
+      tags: [Import]
+      parameters:
+        - name: drg
+          in: query
+          required: true
+          schema:
+            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/RequirementsImportRequest'
+      responses:
+        '200':
+          description: Import completed with summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportSummary'
+
+components:
+  schemas:
+    ImportSummary:
+      type: object
+      properties:
+        stakeholderCategories: { type: integer }
+        services: { type: integer }
+        dataCategories: { type: integer }
+        requirements: { type: integer }
+        errors:
+          type: array
+          items: { type: string }

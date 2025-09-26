@@ -45,6 +45,12 @@ paths:
   /waves/{id}:
     $ref: 'openapi-setup.yml#/paths/~1waves~1{id}'
 
+  # Import endpoints
+  /import/setup:
+    $ref: 'openapi-import.yml#/paths/~1import~1setup'
+  /import/requirements:
+    $ref: 'openapi-import.yml#/paths/~1import~1requirements'
+
   # Operational entity endpoints
   /operational-requirements:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements'
@@ -87,6 +93,8 @@ tags:
     description: Regulatory aspect management
   - name: Waves
     description: Waves management for deployment timelines
+  - name: Import
+    description: Bulk import operations for setup and operational data
   - name: Operational Requirements
     description: Operational requirement management with versioning
   - name: Operational Changes
