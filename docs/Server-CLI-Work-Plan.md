@@ -1,207 +1,82 @@
-# Server Work Plan - COMPLETED + PHASE 5 COMPLETED
+# Server Work Plan - PHASE 6: MODEL EVOLUTION
 
 ## Overview
-This document tracks the completed server-side implementation phases of the ODP system. All phases are complete and the backend provides a production-ready foundation for web client development.
+This document tracks server-side implementation phases of the ODP system. Phases 1-5 are complete, providing a production-ready foundation. Phase 6 addresses model evolution with empty database restart.
 
-**Status**: ✅ ALL PHASES COMPLETE INCLUDING PHASE 5  
-**Backend Progress**: 100% complete with content filtering enhancement  
-**Next Milestone**: Web client development
-
----
-
-## ✅ Phase 1: Foundation Setup (COMPLETED)
-**Scope**: Basic infrastructure and development environment
-
-### Infrastructure ✅ COMPLETED
-- ✅ Ultra minimal Server, Web Client and CLI structure
-- ✅ Source code organisation with workspace structure
-- ✅ Artefact packaging with npm workspaces
-- ✅ Deployment with Docker Compose
-- ✅ Initial development environment
-
-### Server Foundation ✅ COMPLETED
-- ✅ Storage layer with BaseStore pattern and Neo4j integration
-- ✅ Manual Express routes with clean separation (Routes → Services → Store → Neo4j)
-- ✅ Bootstrap, error handling, and Docker containerization with live reload
-
-### CLI Foundation ✅ COMPLETED
-- ✅ CLI technical solution setup with Commander.js
-- ✅ Direct HTTP client integration and ASCII table formatting
-- ✅ Manual routes architecture validation
+**Status**: ✅ PHASES 1-5 COMPLETE + 🚧 PHASE 6 IN PROGRESS  
+**Current Focus**: Model evolution with shared module integration
 
 ---
 
-## ✅ Phase 2: Setup Entities (COMPLETED)
-**Scope**: Core reference data entities with hierarchy support
+## ✅ PHASES 1-5: COMPLETE
 
-### Entities Implemented ✅ COMPLETED
-- ✅ **StakeholderCategory**: Name, description with REFINES hierarchy
-- ✅ **RegulatoryAspect**: Title, description for compliance tracking
-- ✅ **DataCategory**: Name, description for data classification
-- ✅ **Service**: Name, description for service definitions
+### Core System ✅ COMPLETED
+- ✅ **Infrastructure**: Docker environment, workspace structure, manual Express routes
+- ✅ **4 Setup entities**: StakeholderCategory, RegulatoryAspect, DataCategory, Service with REFINES hierarchy
+- ✅ **2 Operational entities**: OperationalRequirement, OperationalChange with versioning system
+- ✅ **3 Management entities**: Wave, Baseline, ODPEdition with timeline management
+- ✅ **Content filtering**: Server-side filtering for operational entities
 
-### Architecture Achievement ✅ COMPLETED
-- ✅ **Factorized architecture**: 95% code reduction through base pattern extraction
-- ✅ **REFINES hierarchy support**: Parent/child relationships for all entities
-- ✅ **Store pattern**: RefinableEntityStore extending BaseStore
-- ✅ **Service pattern**: TreeItemService for hierarchy management
-- ✅ **Routes pattern**: Consistent CRUD operations across all entities
-
-### CLI Integration ✅ COMPLETED
-- ✅ **Setup entity commands**: Full CRUD for all 4 entities
-- ✅ **Hierarchy management**: Parent selection and validation
-- ✅ **Consistent interface**: Standardized command patterns
-
----
-
-## ✅ Phase 3: Operational Entities (COMPLETED)
-**Scope**: Versioned content entities with milestone management
-
-### Core Versioning System ✅ COMPLETED
-- ✅ **Item/ItemVersion pattern**: Dual-node versioning with latest pointers
-- ✅ **Optimistic locking**: Expected version validation for updates
-- ✅ **Version history**: Complete version tracking and retrieval
-- ✅ **PATCH operations**: Partial updates with version progression
-
-### Entities Implemented ✅ COMPLETED
-- ✅ **OperationalRequirement**: Versioned requirements with rich content
-- ✅ **OperationalChange**: Versioned change management
-
-### Advanced Features ✅ COMPLETED
-- ✅ **Milestone management**: 5 operations (list, add, update, delete, show)
-- ✅ **ID normalization**: Consistent entity comparison across operations
-- ✅ **Relationship management**: Complex entity relationship handling
-- ✅ **Transaction integrity**: Proper rollback and error handling
-
-### CLI Enhancement ✅ COMPLETED
-- ✅ **Advanced CLI**: 15+ commands for operational entity management
-- ✅ **Version commands**: History display and version-specific operations
-- ✅ **Milestone commands**: Complete milestone lifecycle management
-
----
-
-## ✅ Phase 4: Management Entities (COMPLETED)
-**Scope**: Deployment planning with baseline and timeline management
-
-### Timeline Management ✅ COMPLETED
-- ✅ **Wave entity**: Quarterly timeline management
-- ✅ **Baseline entity**: Immutable snapshot creation
-- ✅ **ODP Edition entity**: Complete deployment edition management
-
-### Multi-Context Operations ✅ COMPLETED
-- ✅ **Baseline filtering**: Historical queries across all operational entities
-- ✅ **Wave filtering**: Timeline-based content filtering
-- ✅ **Combined filtering**: Baseline + wave for deployment snapshots
-- ✅ **Store layer enhancement**: Milestone-based cascade filtering
-
-### Advanced CLI ✅ COMPLETED
-- ✅ **Management entity commands**: Wave, baseline, edition CRUD
-- ✅ **Multi-context flags**: --baseline and --edition support
-- ✅ **Enhanced operational CLI**: Contextual historical queries
-- ✅ **Edition workflow**: Complete edition creation and management
-
----
-
-## ✅ Phase 5: Server-Side Filtering for Operational Entities (COMPLETED)
-**Scope**: Content filtering enhancement for large dataset performance
-
-### Store Layer Enhancement ✅ COMPLETED
-- ✅ **Enhanced findAll methods**: Added filtering parameter support to OperationalRequirementStore and OperationalChangeStore
-- ✅ **Text search filtering**: Content-based search implementation across multiple fields
-- ✅ **Category filtering**: Setup entity relationship filtering with OR logic
-- ✅ **Backward compatibility**: Maintained existing API signatures with optional filters parameter
-
-### Service Layer Updates ✅ COMPLETED
-- ✅ **VersionedItemService enhancement**: Updated getAll() method with filters parameter
-- ✅ **Filter parameter handling**: Seamless integration with store layer filtering
-- ✅ **Inheritance support**: OperationalRequirementService and OperationalChangeService automatically inherit filtering
-
-### Route Integration ✅ COMPLETED
-- ✅ **Entity-specific filtering**: Concrete implementations in OperationalRequirementRouter and OperationalChangeRouter
-- ✅ **Query parameter parsing**: Automated conversion from HTTP query params to filters object
-- ✅ **Type-safe filtering**: Only valid parameters accepted for each entity type
-- ✅ **Enhanced error handling**: Filter-specific validation and error responses
-
-### CLI Validation ✅ COMPLETED
-- ✅ **Filtering flags**: Enhanced list commands with entity-specific filter options
-- ✅ **OperationalRequirement filters**: --type, --title, --text, category filtering
-- ✅ **OperationalChange filters**: --visibility, --title, --text, category filtering via requirements
-- ✅ **Combined operations**: Multi-parameter filtering with baseline/edition support
-- ✅ **User feedback**: Filter display in command output showing active filters
-
-### Content Filtering Features ✅ COMPLETED
-- ✅ **OperationalRequirement filtering**: Type (ON/OR), text search, direct relationship filtering
-- ✅ **OperationalChange filtering**: Visibility (NM/NETWORK), text search, indirect requirement-based filtering
-- ✅ **Multi-context support**: Filtering combined with baseline and wave contexts
-- ✅ **Performance optimization**: Database-level filtering using Neo4j patterns
-
----
-
-## System Capabilities Summary
-
-### Complete Entity System ✅ COMPLETED
-- **7 entities** with full CRUD operations
-- **4 setup entities** with hierarchy management
-- **2 operational entities** with versioning and milestone management
-- **3 management entities** for deployment planning
-
-### Advanced CLI Interface ✅ COMPLETED + CONTENT FILTERING
-- **35+ commands** across all entity types
-- **Multi-context operations** with baseline and wave filtering
-- **Historical queries** for deployment planning
-- **Complete workflow support** from setup to deployment
-- **Content filtering** for operational entities with entity-specific options
-
-### Deployment Planning Foundation ✅ COMPLETED
-- **Baseline snapshots** for immutable state capture
-- **Wave timeline management** for quarterly planning
-- **Edition-based filtering** for deployment views
-- **Multi-context queries** for historical analysis
-
----
-
-## Backend Status: COMPLETE WITH CONTENT FILTERING
-
-**✅ All server phases completed successfully including Phase 5**
-
-The manual routes architecture with factorized patterns provides a complete, production-ready foundation. All entities support:
-- Full CRUD operations with proper error handling
-- Versioning and baseline management for operational entities
-- Multi-context queries with baseline and wave filtering
-- **Content filtering for operational entities** with type-safe, entity-specific parameters
-- Comprehensive CLI interface for all operations including filtering
-- Transaction integrity and optimistic locking
-
-**Ready for Web Client Development**: The backend provides all necessary capabilities for sophisticated web-based interfaces with complete deployment planning support and advanced content filtering.
-
----
-
-## Technical Achievements
-
-### Architecture Excellence ✅ COMPLETED
-- ✅ **Scalable manual routes**: Supporting unlimited entity expansion
-- ✅ **Factorized patterns**: Base classes eliminating code duplication
-- ✅ **Clean separation**: Routes → Services → Store → Neo4j layers
-- ✅ **Transaction management**: Explicit boundaries with proper error handling
-
-### Production-Ready Features ✅ COMPLETED
-- ✅ **Optimistic locking**: Concurrent edit conflict prevention
-- ✅ **Comprehensive error handling**: User-friendly error responses
-- ✅ **Audit trails**: Complete change tracking and user attribution
-- ✅ **Data integrity**: Referential integrity and validation
-- ✅ **Content filtering**: High-performance database-level filtering
-
-### Development Excellence ✅ COMPLETED
-- ✅ **Consistent patterns**: Reproducible development approach
-- ✅ **CLI validation**: All API functionality validated through CLI including filtering
+### Technical Excellence ✅ COMPLETED
+- ✅ **Architecture**: Scalable manual routes, factorized patterns, clean separation
+- ✅ **Production features**: Optimistic locking, audit trails, content filtering
+- ✅ **CLI validation**: 35+ commands with filtering support
 - ✅ **Documentation**: Complete API documentation and implementation guides
-- ✅ **Integration testing**: End-to-end workflow validation
 
 ---
 
-## Reference Documentation
-- **Store Layer**: [Store-Layer-Design-Implementation.md](Store-Layer-Design-Implementation.md)
-- **API Design**: [REST-API-Core-Design.md](REST-API-Core-Design.md)
-- **Content Filtering**: [Store-Layer-API-Operational.md](Store-Layer-API-Operational.md)
-- **Architecture**: [Project-Architecture-and-Technology-Stack.md](Project-Architecture-and-Technology-Stack.md)
-- **Setup Guide**: [Project-Setup-Summary.md](Project-Setup-Summary.md)
+## 🚧 PHASE 6: Model Evolution (IN PROGRESS)
+
+### Shared Module Foundation ✅ COMPLETED
+- ✅ **@odp/shared structure**: Organized enum and model definitions
+- ✅ **Enum centralization**: DRG, MilestoneEvents, Visibility, OR/OC types
+- ✅ **Validation helpers**: Consistent validation pattern across all enums
+- ✅ **Model definitions**: Complete entity models with updated schema
+- ✅ **Documentation**: Shared-Model.md with usage patterns
+
+### Model Schema Updates 🚧 IN PROGRESS
+- ✅ **Storage-Model.md**: Updated with new fields and enum definitions
+- ✅ **Store-Layer-API-Operational.md**: Updated entity models and field specifications
+- 🚧 **OperationalChange fields**: `description` → `purpose`, add `initialState`, `finalState`, `details`, `drg`
+- 🚧 **OperationalRequirement fields**: Add `drg`, `implementedONs` relationship
+- 🚧 **Milestone system**: Replace with 5 specific events (API_PUBLICATION, API_TEST_DEPLOYMENT, etc.)
+
+### Implementation Order 🚧 PLANNED
+1. **Storage Layer**: Update Neo4j schemas and store classes
+2. **Service Layer**: Modify services for new field handling
+3. **OpenAPI Contracts**: Update request/response schemas
+4. **CLI Layer**: Update commands for new fields and milestone system
+5. **Integration**: Shared module usage across all layers
+
+### Key Changes
+- **DRG enum**: 11 values (4DT, AIRPORT, ASM_ATFCM, etc.) for both OR and OC
+- **Enhanced OC**: Rich text fields for better change documentation
+- **ON/OR relationships**: `implementedONs` linking ON-type to OR-type requirements
+- **Simplified milestones**: 5 independent milestone events replace flexible system
+- **Versioning preservation**: All existing patterns maintained
+
+---
+
+## Next Steps
+
+### Phase 6 Completion
+1. **Store layer updates**: New field support, enum validation
+2. **Service integration**: Shared module imports, field handling
+3. **OpenAPI updates**: Schema alignment with new model
+4. **CLI enhancement**: New field commands, simplified milestone operations
+
+### Quality Gates
+- [ ] All CRUD operations work with new fields
+- [ ] DRG enum validation across all layers
+- [ ] Milestone system operates with 5 events only
+- [ ] `implementedONs` relationship validation
+- [ ] Shared module integration complete
+
+---
+
+## System Status
+
+**Backend Foundation**: Production-ready with comprehensive features  
+**Current Phase**: Model evolution for enhanced operational planning  
+**Architecture**: Proven scalable patterns supporting unlimited expansion  
+**Ready For**: Web client development with enhanced model support

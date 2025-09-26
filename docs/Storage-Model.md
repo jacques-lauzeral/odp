@@ -30,13 +30,13 @@ The abstract node types and relationships that support the versioning.
 
 The node types and relationships related to the global application data. As a simplification, we propose to not version these data.
 
-### 2.1 StakeholderCategories
+### 2.1 StakeholderCategory
 **Properties:**
 - `name`
 - `description`
 
 **Relationships:**
-- `REFINES -> StakeholderCategories`
+- `REFINES -> StakeholderCategory`
 - `HAS_ATTACHMENT -> Document`
 
 ### 2.2 Data
@@ -48,25 +48,25 @@ The node types and relationships related to the global application data. As a si
 - `REFINES -> Data`
 - `HAS_ATTACHMENT -> Document`
 
-### 2.3 Services
+### 2.3 Service
 **Properties:**
 - `name`
 - `description`
 
 **Relationships:**
-- `REFINES -> Services`
+- `REFINES -> Service`
 - `HAS_ATTACHMENT -> Document`
 
-### 2.4 RegulatoryAspects
+### 2.4 RegulatoryAspect
 **Properties:**
 - `name`
 - `description`
 
 **Relationships:**
-- `REFINES -> RegulatoryAspects`
+- `REFINES -> RegulatoryAspect`
 - `HAS_ATTACHMENT -> Document`
 
-### 2.5 Waves
+### 2.5 Wave
 **Properties:**
 - `year`: YYYY
 - `quarter`: a digit between 1 and 4
@@ -101,22 +101,28 @@ The node types required to the management of operational needs, requirements, an
 - `references`: a rich text
 - `risksAndOpportunities`: a rich text
 - `flows`: a rich text
-- `flow examples`: a rich text
+- `flowExamples`: a rich text
+- `drg`: Drafting Group enum (4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF)
 
 **Item relationships:**
 - `IS_LOCATED_IN -> Folder`
 
 **Item version relationships:**
 - `REFINES -> OperationalRequirement` (to Item, not ItemVersion)
-- `IMPACTS -> RegulatoryAspects`
-- `IMPACTS -> StakeholderCategories`
+- `IMPACTS -> RegulatoryAspect`
+- `IMPACTS -> StakeholderCategory`
 - `IMPACTS -> Data`
-- `IMPACTS -> Services`
+- `IMPACTS -> Service`
+- `IMPLEMENTED_BY -> OperationalRequirement` (to Item, not ItemVersion - ON type requirements only, references to OR type requirements)
 
 ### 4.2 OperationalChange(Version): Item(Version)
 **Version properties:**
-- `description`: a rich text
+- `purpose`: a rich text (renamed from description)
+- `initialState`: a rich text (multiline)
+- `finalState`: a rich text (multiline)
+- `details`: a rich text (multiline)
 - `visibility`: NM or NETWORK
+- `drg`: Drafting Group enum (4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF)
 
 **Item relationships:**
 - `IS_LOCATED_IN -> Folder`
@@ -127,13 +133,17 @@ The node types required to the management of operational needs, requirements, an
 
 ### 4.3 OperationalChangeMilestone
 **Properties:**
+- `milestoneKey`: stable UUID identifier preserved across versions
+- `eventType`: one of API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, OPS_DEPLOYMENT, API_DECOMMISSIONING (5 specific milestone events only)
 - `title`: a short humanly readable unique identifier
 - `description`: a rich text
-- `eventTypes`: one or more of API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, SERVICE_ACTIVATION, etc. (to be completed)
+- `status`: completion status (PLANNED, IN_PROGRESS, COMPLETED, CANCELLED)
+- `targetDate`: planned completion date
+- `actualDate`: actual completion date (optional)
 
 **Relationships:**
 - `BELONGS_TO -> OperationalChangeVersion` (to ItemVersion)
-- `TARGETS -> Waves`
+- `TARGETS -> Wave`
 - `HAS_ATTACHMENT -> Document`
 
 ## 5. Operational Deployment Plan Management
@@ -160,10 +170,10 @@ The node types and relationships required to the management of operational plan 
 - `createdAt`: the ODP Edition creation datetime
 - `createdBy`: the ODP Edition creator
 - `title`: a short humanly readable unique identifier
-- `type`: DRAFT or OFFICIAL
+- `type`: ALPHA, BETA, RELEASE
 
 **Relationships:**
-- `STARTS_FROM -> Waves`
+- `STARTS_FROM -> Wave`
 - `EXPOSES -> Baseline`
 - `HAS_ATTACHMENT -> Document`
 
@@ -207,46 +217,49 @@ The node types required to the management of user reviews.
 - `HAS_ATTACHMENT -> Document`
 - `COMMENTS_ON -> Baseline`
 
+## 8. Enumeration Values
+
+### 8.1 Drafting Group (DRG)
+Common enum for OperationalRequirement and OperationalChange entities:
+
+| Value | Display |
+|-------|---------|
+| 4DT | 4D-Trajectory |
+| AIRPORT | Airport |
+| ASM_ATFCM | ASM / ATFCM Integration |
+| CRISIS_FAAS | Crisis and FAAS |
+| FLOW | Flow |
+| IDL | iDL |
+| NM_B2B | NM B2B |
+| NMUI | NMUI |
+| PERF | Performance |
+| RRT | Rerouting |
+| TCF | TCF |
+
+### 8.2 Milestone Event Types
+Specific milestone events for OperationalChange entities (replaces previous flexible milestone system):
+
+| Value | Description |
+|-------|-------------|
+| API_PUBLICATION | API Publication milestone |
+| API_TEST_DEPLOYMENT | API Test Deployment milestone |
+| UI_TEST_DEPLOYMENT | UI Test Deployment milestone |
+| OPS_DEPLOYMENT | Operations Deployment milestone |
+| API_DECOMMISSIONING | API Decommissioning milestone |
+
 ## Design Notes
 
 ### Versioning Strategy
-The system implements a sequential versioning pattern using root nodes (Item) + version nodes (ItemVersion) for content, combined with relationship audit trails for relationship history. This approach provides:
-- Content versioning through ItemVersion creation (field changes)
-- Version increment when item data or item relations are updated
-- Historical consistency through baseline snapshots
-- Concurrency control via optimistic locking (first commit wins)
+The system implements a sequential versioning pattern using root nodes (Item) + version nodes (ItemVersion) for content, combined with relationship audit trails for relationship history.
 
-### Relationship Patterns
-- **Cross-domain relationships**: Point from ItemVersion to Item (e.g., requirement REFINES requirement Item)
-- **Hierarchical relationships**: Use `REFINES` for same-type hierarchies within setup entities
-- **Attachment relationships**: Centralized through `HAS_ATTACHMENT -> Document`
-- **Audit trail**: All relationship changes logged with timestamp and user context
+### Milestone System Evolution
+The milestone system has been replaced with a specific set of 5 milestone events. These events are independent (no sequencing/dependencies) and support standard project lifecycle phases from API publication through decommissioning.
 
-### Transaction Boundaries
-- **Field updates**: Create new ItemVersion in single transaction (content versioning)
-- **Relationship changes**: Create/delete relationships + audit log in single transaction (relationship audit)
-- **Baseline creation**: Capture all current state in single transaction (snapshot consistency)
+### New Relationship Types
+- `IMPLEMENTED_BY`: Links ON-type OperationalRequirements to OR-type OperationalRequirements that implement them
+- Enhanced relationship validation ensures `implementedONs` references are valid and type-appropriate
 
-### Historical Reconstruction
-- **Content at time T**: Use specific ItemVersion created before or at time T
-- **Relationships at time T**: Apply audit trail chronologically up to time T
-- **Baseline state**: Use HAS_ITEMS relationships to retrieve exact versions captured at baseline time
-
-### Simplified Baseline Design
-The baseline system uses a simplified approach:
-- **Direct relationships**: Baseline connects directly to ItemVersion nodes via HAS_ITEMS
-- **No intermediate nodes**: Eliminates BaselineItem complexity
-- **Atomic snapshots**: Single transaction captures all latest versions at creation time
-- **Simple queries**: Direct traversal from baseline to captured versions
-
-### ODPEdition Design
-The ODPEdition system provides filtered views of baselines:
-- **Waves-based filtering**: Uses STARTS_FROM wave to filter operational content
-- **Cascade filtering**: OCs filtered by milestone timing, ORs filtered by OC references
-- **Saved query pattern**: ODPEdition acts as bookmark for baseline + wave combinations
-- **Immutable references**: ODPEdition preserves specific baseline + wave combination
-
-### Prototype Considerations
-- Presence constraints are not specified for this prototype phase
-- Setup Management entities are not versioned for simplicity
-- Folder Management entities are not versioned for simplicity
+### Field Evolution
+- OperationalChange: `description` field renamed to `purpose` for clarity
+- Added rich text fields: `initialState`, `finalState`, `details` for better change documentation
+- Added `drg` enum to both OR and OC for organizational categorization
