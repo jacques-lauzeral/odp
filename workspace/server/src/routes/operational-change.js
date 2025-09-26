@@ -1,3 +1,5 @@
+
+// OperationalChangeRouter.js
 import { Router } from 'express';
 import { VersionedItemRouter } from './versioned-item-router.js';
 import OperationalChangeService from '../services/OperationalChangeService.js';
@@ -18,9 +20,13 @@ class OperationalChangeRouter extends VersionedItemRouter {
     getContentFilters(req) {
         const filters = {};
 
-        // OperationalChange-specific filter
+        // OperationalChange-specific filters
         if (req.query.visibility) {
             filters.visibility = req.query.visibility;
+        }
+
+        if (req.query.drg) {
+            filters.drg = req.query.drg;
         }
 
         // Common text filters

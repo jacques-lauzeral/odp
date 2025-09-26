@@ -1,5 +1,11 @@
 import { VersionedItemService } from './VersionedItemService.js';
 import {
+    DraftingGroup,
+    isDraftingGroupValid,
+    ORTypes,
+    isORTypeValid
+} from '@odp/shared';
+import {
     operationalRequirementStore,
     stakeholderCategoryStore,
     dataCategoryStore,
@@ -30,8 +36,10 @@ export class OperationalRequirementService extends VersionedItemService {
         console.log(`OperationalRequirementService._validateCreatePayload() payload: ${jsonPayload}`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
+        this._validateDRG(payload.drg);
         this._validateRelationshipArrays(payload);
         await this._validateRefinementRules(payload.type, payload.refinesParents);
+        await this._validateImplementedONs(payload.implementedONs, payload.type);
         await this._validateReferencedEntities(payload);
     }
 
@@ -45,6 +53,8 @@ export class OperationalRequirementService extends VersionedItemService {
             risksAndOpportunities: patchPayload.risksAndOpportunities !== undefined ? patchPayload.risksAndOpportunities : current.risksAndOpportunities,
             flows: patchPayload.flows !== undefined ? patchPayload.flows : current.flows,
             flowExamples: patchPayload.flowExamples !== undefined ? patchPayload.flowExamples : current.flowExamples,
+            drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
+            implementedONs: patchPayload.implementedONs !== undefined ? patchPayload.implementedONs : current.implementedONs.map(ref => ref.id),
             refinesParents: patchPayload.refinesParents !== undefined ? patchPayload.refinesParents : current.refinesParents.map(ref => ref.id),
             impactsStakeholderCategories: patchPayload.impactsStakeholderCategories !== undefined ? patchPayload.impactsStakeholderCategories : current.impactsStakeholderCategories.map(ref => ref.id),
             impactsData: patchPayload.impactsData !== undefined ? patchPayload.impactsData : current.impactsData.map(ref => ref.id),
@@ -58,8 +68,10 @@ export class OperationalRequirementService extends VersionedItemService {
         console.log(`OperationalRequirementService._validateUpdatePayload() payload: ${jsonPayload}`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
+        this._validateDRG(payload.drg);
         this._validateRelationshipArrays(payload);
         await this._validateRefinementRules(payload.type, payload.refinesParents);
+        await this._validateImplementedONs(payload.implementedONs, payload.type);
         await this._validateReferencedEntities(payload);
     }
 
@@ -77,19 +89,27 @@ export class OperationalRequirementService extends VersionedItemService {
     }
 
     _validateType(type) {
-        if (!['ON', 'OR'].includes(type)) {
-            throw new Error('Validation failed: type must be ON or OR');
+        if (!isORTypeValid(type)) {
+            throw new Error(`Validation failed: type must be one of: ${Object.keys(ORTypes).join(', ')}`);
+        }
+    }
+
+    _validateDRG(drg) {
+        // DRG field is optional, but if provided must be valid
+        if (drg !== undefined && drg !== null && !isDraftingGroupValid(drg)) {
+            throw new Error(`Validation failed: drg must be one of: ${Object.keys(DraftingGroup).join(', ')}`);
         }
     }
 
     _validateRelationshipArrays(payload) {
         const relationshipFields = [
             'refinesParents', 'impactsStakeholderCategories',
-            'impactsData', 'impactsServices', 'impactsRegulatoryAspects'
+            'impactsData', 'impactsServices', 'impactsRegulatoryAspects',
+            'implementedONs'
         ];
 
         for (const field of relationshipFields) {
-            if (!Array.isArray(payload[field])) {
+            if (payload[field] !== undefined && !Array.isArray(payload[field])) {
                 throw new Error(`Validation failed: ${field} must be an array`);
             }
         }
@@ -122,11 +142,44 @@ export class OperationalRequirementService extends VersionedItemService {
         }
     }
 
+    async _validateImplementedONs(implementedONs, currentType) {
+        // implementedONs field is optional
+        if (!implementedONs || implementedONs.length === 0) {
+            return;
+        }
+
+        // Business rule: Only OR-type requirements can have implementedONs
+        if (currentType !== 'OR') {
+            throw new Error('Validation failed: only OR-type requirements can have implementedONs relationships');
+        }
+
+        const tx = createTransaction('system');
+        try {
+            // Validate that all referenced requirements exist and are ON-type
+            for (const onId of implementedONs) {
+                const onRequirement = await operationalRequirementStore().findById(onId, tx);
+                if (!onRequirement) {
+                    throw new Error(`Validation failed: implementedON requirement ${onId} not found`);
+                }
+
+                // Business rule: implementedONs must reference ON-type requirements only
+                if (onRequirement.type !== 'ON') {
+                    throw new Error(`Validation failed: implementedONs must reference ON-type requirements only. Requirement ${onId} is ${onRequirement.type}-type`);
+                }
+            }
+
+            await commitTransaction(tx);
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
     async _validateReferencedEntities(payload) {
         const tx = createTransaction('system');
         try {
             // Validate stakeholder categories
-            if (payload.impactsStakeholderCategories.length > 0) {
+            if (payload.impactsStakeholderCategories && payload.impactsStakeholderCategories.length > 0) {
                 await this._validateEntityIds(
                     payload.impactsStakeholderCategories,
                     stakeholderCategoryStore(),
@@ -136,7 +189,7 @@ export class OperationalRequirementService extends VersionedItemService {
             }
 
             // Validate data categories
-            if (payload.impactsData.length > 0) {
+            if (payload.impactsData && payload.impactsData.length > 0) {
                 await this._validateEntityIds(
                     payload.impactsData,
                     dataCategoryStore(),
@@ -146,7 +199,7 @@ export class OperationalRequirementService extends VersionedItemService {
             }
 
             // Validate services
-            if (payload.impactsServices.length > 0) {
+            if (payload.impactsServices && payload.impactsServices.length > 0) {
                 await this._validateEntityIds(
                     payload.impactsServices,
                     serviceStore(),
@@ -156,7 +209,7 @@ export class OperationalRequirementService extends VersionedItemService {
             }
 
             // Validate regulatory aspects
-            if (payload.impactsRegulatoryAspects.length > 0) {
+            if (payload.impactsRegulatoryAspects && payload.impactsRegulatoryAspects.length > 0) {
                 await this._validateEntityIds(
                     payload.impactsRegulatoryAspects,
                     regulatoryAspectStore(),

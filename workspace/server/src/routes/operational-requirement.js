@@ -18,9 +18,13 @@ class OperationalRequirementRouter extends VersionedItemRouter {
     getContentFilters(req) {
         const filters = {};
 
-        // OperationalRequirement-specific filter
+        // OperationalRequirement-specific filters
         if (req.query.type) {
             filters.type = req.query.type;
+        }
+
+        if (req.query.drg) {
+            filters.drg = req.query.drg;
         }
 
         // Common text filters
@@ -52,6 +56,7 @@ class OperationalRequirementRouter extends VersionedItemRouter {
         return filters;
     }
 }
+
 
 // Create router using VersionedItemRouter pattern with content filtering
 const operationalRequirementRouter = new OperationalRequirementRouter();

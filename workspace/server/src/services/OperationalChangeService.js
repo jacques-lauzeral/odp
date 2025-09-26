@@ -1,5 +1,11 @@
 import { VersionedItemService } from './VersionedItemService.js';
-import { MilestoneEventTypes } from '@odp/shared';
+import {
+    MilestoneEventTypes,
+    DraftingGroup,
+    isDraftingGroupValid,
+    Visibility,
+    isVisibilityValid
+} from '@odp/shared';
 import {
     operationalChangeStore,
     operationalRequirementStore,
@@ -116,7 +122,11 @@ export class OperationalChangeService extends VersionedItemService {
             // Create complete payload for update
             const completePayload = {
                 title: current.title,
-                description: current.description,
+                purpose: current.purpose,
+                initialState: current.initialState,
+                finalState: current.finalState,
+                details: current.details,
+                drg: current.drg,
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
@@ -187,7 +197,11 @@ export class OperationalChangeService extends VersionedItemService {
             // Create complete payload for update
             const completePayload = {
                 title: current.title,
-                description: current.description,
+                purpose: current.purpose,
+                initialState: current.initialState,
+                finalState: current.finalState,
+                details: current.details,
+                drg: current.drg,
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
@@ -247,7 +261,11 @@ export class OperationalChangeService extends VersionedItemService {
             // Create complete payload for update
             const completePayload = {
                 title: current.title,
-                description: current.description,
+                purpose: current.purpose,
+                initialState: current.initialState,
+                finalState: current.finalState,
+                details: current.details,
+                drg: current.drg,
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
@@ -293,7 +311,11 @@ export class OperationalChangeService extends VersionedItemService {
     async _computePatchedPayload(current, patchPayload) {
         return {
             title: patchPayload.title !== undefined ? patchPayload.title : current.title,
-            description: patchPayload.description !== undefined ? patchPayload.description : current.description,
+            purpose: patchPayload.purpose !== undefined ? patchPayload.purpose : current.purpose,
+            initialState: patchPayload.initialState !== undefined ? patchPayload.initialState : current.initialState,
+            finalState: patchPayload.finalState !== undefined ? patchPayload.finalState : current.finalState,
+            details: patchPayload.details !== undefined ? patchPayload.details : current.details,
+            drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             visibility: patchPayload.visibility !== undefined ? patchPayload.visibility : current.visibility,
             satisfiesRequirements: patchPayload.satisfiesRequirements !== undefined ? patchPayload.satisfiesRequirements : current.satisfiesRequirements.map(ref => ref.id),
             supersedsRequirements: patchPayload.supersedsRequirements !== undefined ? patchPayload.supersedsRequirements : current.supersedsRequirements.map(ref => ref.id),
@@ -303,7 +325,7 @@ export class OperationalChangeService extends VersionedItemService {
 
     // Validation helper methods
     _validateRequiredFieldsForCreate(payload) {
-        const requiredFields = ['title', 'description', 'visibility'];
+        const requiredFields = ['title', 'purpose', 'visibility'];
 
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {
@@ -325,6 +347,10 @@ export class OperationalChangeService extends VersionedItemService {
             this._validateVisibility(payload.visibility);
         }
 
+        if (payload.drg !== undefined && payload.drg !== null) {
+            this._validateDRG(payload.drg);
+        }
+
         if (payload.satisfiesRequirements !== undefined) {
             this._validateRelationshipArray(payload.satisfiesRequirements, 'satisfiesRequirements');
         }
@@ -339,8 +365,14 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     _validateVisibility(visibility) {
-        if (!['NM', 'NETWORK'].includes(visibility)) {
-            throw new Error('Validation failed: visibility must be NM or NETWORK');
+        if (!isVisibilityValid(visibility)) {
+            throw new Error(`Validation failed: visibility must be one of: ${Object.keys(Visibility).join(', ')}`);
+        }
+    }
+
+    _validateDRG(drg) {
+        if (!isDraftingGroupValid(drg)) {
+            throw new Error(`Validation failed: drg must be one of: ${Object.keys(DraftingGroup).join(', ')}`);
         }
     }
 
@@ -364,7 +396,7 @@ export class OperationalChangeService extends VersionedItemService {
 
                 for (const eventType of milestone.eventTypes) {
                     if (!MilestoneEventTypes.includes(eventType)) {
-                        throw new Error(`Validation failed: invalid event type: ${eventType}`);
+                        throw new Error(`Validation failed: invalid event type: ${eventType}. Must be one of: ${MilestoneEventTypes.join(', ')}`);
                     }
                 }
             }
