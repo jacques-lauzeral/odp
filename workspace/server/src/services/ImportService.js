@@ -6,11 +6,6 @@ import OperationalRequirementService from './OperationalRequirementService.js';
 
 class ImportService {
     constructor() {
-        this.stakeholderCategoryService = new StakeholderCategoryService();
-        this.serviceService = new ServiceService();
-        this.dataCategoryService = new DataCategoryService();
-        this.regulatoryAspectService = new RegulatoryAspectService();
-        this.operationalRequirementService = new OperationalRequirementService();
 
         // Track external ID mappings during import
         this.externalIdMap = new Map();
@@ -152,7 +147,7 @@ class ImportService {
                     parentCategoryId: parentId
                 };
 
-                const created = await this.stakeholderCategoryService.createStakeholderCategory(
+                const created = await StakeholderCategoryService.createStakeholderCategory(
                     createRequest,
                     userId
                 );
@@ -183,7 +178,7 @@ class ImportService {
                     parentServiceId: parentId
                 };
 
-                const created = await this.serviceService.createService(createRequest, userId);
+                const created = await ServiceService.createService(createRequest, userId);
                 this.externalIdMap.set(serviceData.externalId, created.id);
                 count++;
 
@@ -210,7 +205,7 @@ class ImportService {
                     parentCategoryId: parentId
                 };
 
-                const created = await this.dataCategoryService.createDataCategory(
+                const created = await DataCategoryService.createDataCategory(
                     createRequest,
                     userId
                 );
@@ -236,7 +231,7 @@ class ImportService {
                     description: aspectData.description
                 };
 
-                const created = await this.regulatoryAspectService.createRegulatoryAspect(
+                const created = await RegulatoryAspectService.createRegulatoryAspect(
                     createRequest,
                     userId
                 );
@@ -276,7 +271,7 @@ class ImportService {
             createRequest.implementedONs = this._resolveExternalIds(reqData.implementedONs);
         }
 
-        return await this.operationalRequirementService.createOperationalRequirement(
+        return await OperationalRequirementService.create(
             createRequest,
             userId
         );
@@ -289,7 +284,7 @@ class ImportService {
         }
 
         // Get current requirement to get version for update
-        const current = await this.operationalRequirementService.getOperationalRequirement(requirementId);
+        const current = await OperationalRequirementService.getById(requirementId, userId);
 
         const updateRequest = {
             title: reqData.title,
@@ -310,7 +305,7 @@ class ImportService {
             expectedVersionId: current.versionId
         };
 
-        return await this.operationalRequirementService.updateOperationalRequirement(
+        return await OperationalRequirementService.updateOperationalRequirement(
             requirementId,
             updateRequest,
             userId

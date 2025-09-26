@@ -13,7 +13,7 @@ import {
     MilestoneEventKeys,
     isMilestoneEventValid,
     getMilestoneEventDisplay
-} from '@odp/shared';
+} from '../../../shared/src/index.js';
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 

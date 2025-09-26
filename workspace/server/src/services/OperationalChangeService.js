@@ -1,11 +1,11 @@
 import { VersionedItemService } from './VersionedItemService.js';
 import {
-    MilestoneEventTypes,
+    MilestoneEventType,
     DraftingGroup,
     isDraftingGroupValid,
     Visibility,
     isVisibilityValid
-} from '@odp/shared';
+} from '../../../shared/src/index.js';
 import {
     operationalChangeStore,
     operationalRequirementStore,
@@ -395,8 +395,8 @@ export class OperationalChangeService extends VersionedItemService {
                 }
 
                 for (const eventType of milestone.eventTypes) {
-                    if (!MilestoneEventTypes.includes(eventType)) {
-                        throw new Error(`Validation failed: invalid event type: ${eventType}. Must be one of: ${MilestoneEventTypes.join(', ')}`);
+                    if (!MilestoneEventType.includes(eventType)) {
+                        throw new Error(`Validation failed: invalid event type: ${eventType}. Must be one of: ${MilestoneEventType.join(', ')}`);
                     }
                 }
             }

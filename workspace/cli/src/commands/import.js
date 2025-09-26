@@ -1,6 +1,6 @@
 // workspace/cli/src/commands/import.js - Phase 8.2 Import Commands
 import { Command } from 'commander';
-import { DraftingGroupKeys, isDraftingGroupValid } from '@odp/shared';
+import { DraftingGroupKeys, isDraftingGroupValid } from '../../../shared/src/index.js';
 import fs from 'fs';
 import fetch from 'node-fetch';
 
@@ -34,7 +34,7 @@ export class ImportCommands {
     createHeaders() {
         const userId = this.getUserId();
         return {
-            'Content-Type': 'application/x-yaml',
+            'Content-Type': 'application/yaml',
             'x-user-id': userId
         };
     }

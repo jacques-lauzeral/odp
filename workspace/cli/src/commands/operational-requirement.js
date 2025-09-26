@@ -1,6 +1,6 @@
 // workspace/cli/src/commands/operational-requirement.js - Updated with Phase 8 model evolution support
 import { VersionedCommands } from '../base-commands.js';
-import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '@odp/shared';
+import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '../../../shared/src/index.js';
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 

@@ -1,5 +1,5 @@
-import { OperationalRequirement, OperationalChange } from './odp-elements.js';
-import { StakeholderCategory, DataCategory, Service, RegulatoryAspect, Wave } from './setup-elements.js';
+import { OperationalRequirement, OperationalChange } from '../model/odp-elements.js';
+import { StakeholderCategory, DataCategory, Service, RegulatoryAspect, Wave } from '../model/setup-elements.js';
 
 // Request Models
 export const OperationalRequirementRequests = {

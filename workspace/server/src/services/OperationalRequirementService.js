@@ -2,9 +2,9 @@ import { VersionedItemService } from './VersionedItemService.js';
 import {
     DraftingGroup,
     isDraftingGroupValid,
-    ORTypes,
-    isORTypeValid
-} from '@odp/shared';
+    OperationalRequirementType,
+    isOperationalRequirementTypeValid
+} from '../../../shared/src/index.js';
 import {
     operationalRequirementStore,
     stakeholderCategoryStore,
@@ -89,8 +89,8 @@ export class OperationalRequirementService extends VersionedItemService {
     }
 
     _validateType(type) {
-        if (!isORTypeValid(type)) {
-            throw new Error(`Validation failed: type must be one of: ${Object.keys(ORTypes).join(', ')}`);
+        if (!isOperationalRequirementTypeValid(type)) {
+            throw new Error(`Validation failed: type must be one of: ${Object.keys(OperationalRequirementType).join(', ')}`);
         }
     }
 
