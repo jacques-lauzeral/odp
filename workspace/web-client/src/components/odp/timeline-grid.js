@@ -1,7 +1,12 @@
+import {
+    MilestoneEventType,
+    getMilestoneEventTypeDisplay
+} from '@odp/shared';
+
 /**
  * TimelineGrid - Temporal visualization component for operational changes
  * Displays changes as horizontal rows with milestone intersections at wave dates
- * Now receives controls from parent AbstractInteractionActivity
+ * Updated for model evolution: uses shared MilestoneEventType enum with 5 specific events
  */
 export default class TimelineGrid {
     constructor(app, entityConfig, setupData, options = {}) {
@@ -25,6 +30,9 @@ export default class TimelineGrid {
         this.onItemSelect = options.onItemSelect || (() => {});
         this.onMilestoneSelect = options.onMilestoneSelect || (() => {});
         this.onMilestoneFilterChange = options.onMilestoneFilterChange || (() => {});
+
+        // Available event types from shared enum (5 specific milestone events)
+        this.availableEventTypes = Object.keys(MilestoneEventType);
 
         // Default time window: 3 years from now
         this.initializeTimeWindow();
@@ -95,7 +103,12 @@ export default class TimelineGrid {
     }
 
     setMilestoneFilters(filters) {
-        this.milestoneFilters = filters || ['ANY'];
+        // Validate filters against available event types
+        const validFilters = filters?.filter(filter =>
+            filter === 'ANY' || this.availableEventTypes.includes(filter)
+        ) || ['ANY'];
+
+        this.milestoneFilters = validFilters.length > 0 ? validFilters : ['ANY'];
         this.applyFilters();
         this.renderContent();
 
@@ -144,8 +157,12 @@ export default class TimelineGrid {
                         return false;
                     }
 
-                    // Check if any of the milestone's event types match the filter
-                    return milestone.eventTypes.some(eventType =>
+                    // Validate event types and check if any match the filter
+                    const validEventTypes = milestone.eventTypes.filter(eventType =>
+                        this.availableEventTypes.includes(eventType)
+                    );
+
+                    return validEventTypes.some(eventType =>
                         this.milestoneFilters.includes(eventType)
                     );
                 });
@@ -316,25 +333,34 @@ export default class TimelineGrid {
         `;
         }
 
-        // Enhanced pixmap implementation with column semantics
-        const hasApiPublication = eventTypes.includes('API_PUBLICATION');
-        const hasApiTest = eventTypes.includes('API_TEST_DEPLOYMENT');
-        const hasApiDecommission = eventTypes.includes('API_DECOMMISSIONING');
-        const hasUiTest = eventTypes.includes('UI_TEST_DEPLOYMENT');
-        const hasServiceActivation = eventTypes.includes('SERVICE_ACTIVATION');
-        const hasOther = eventTypes.includes('OTHER');
+        // Validate event types against shared enum and filter out invalid ones
+        const validEventTypes = eventTypes.filter(eventType =>
+            this.availableEventTypes.includes(eventType)
+        );
 
-        console.log('Rendering pixmap with event types:', eventTypes);
+        // Enhanced pixmap implementation with column semantics for the 5 specific event types
+        const hasApiPublication = validEventTypes.includes('API_PUBLICATION');
+        const hasApiTest = validEventTypes.includes('API_TEST_DEPLOYMENT');
+        const hasApiDecommission = validEventTypes.includes('API_DECOMMISSIONING');
+        const hasUiTest = validEventTypes.includes('UI_TEST_DEPLOYMENT');
+        const hasOpsDeployment = validEventTypes.includes('OPS_DEPLOYMENT');
+
+        console.log('Rendering pixmap with valid event types:', validEventTypes);
+
+        // Build tooltip content using shared display function
+        const apiEvents = validEventTypes.filter(t => t.includes('API')).map(t => getMilestoneEventTypeDisplay(t));
+        const uiEvents = validEventTypes.filter(t => t.includes('UI')).map(t => getMilestoneEventTypeDisplay(t));
+        const opsEvents = validEventTypes.filter(t => t.includes('OPS')).map(t => getMilestoneEventTypeDisplay(t));
 
         return `
         <div class="pixmap">
             <div class="pixmap-row">
                 <div class="pixmap-cell api-cell ${hasApiPublication ? 'filled api-publication' : ''} ${hasApiTest ? 'filled api-test' : ''} ${hasApiDecommission ? 'filled api-decommission' : ''}" 
-                     title="API Events: ${eventTypes.filter(t => t.includes('API')).join(', ') || 'None'}"></div>
+                     title="API Events: ${apiEvents.join(', ') || 'None'}"></div>
                 <div class="pixmap-cell ui-cell ${hasUiTest ? 'filled ui-test' : ''}" 
-                     title="UI Events: ${eventTypes.filter(t => t.includes('UI')).join(', ') || 'None'}"></div>
-                <div class="pixmap-cell service-cell ${hasServiceActivation ? 'filled service-activation' : ''} ${hasOther ? 'filled other' : ''}" 
-                     title="Service Events: ${eventTypes.filter(t => t.includes('SERVICE') || t === 'OTHER').join(', ') || 'None'}"></div>
+                     title="UI Events: ${uiEvents.join(', ') || 'None'}"></div>
+                <div class="pixmap-cell ops-cell ${hasOpsDeployment ? 'filled ops-deployment' : ''}" 
+                     title="Operations Events: ${opsEvents.join(', ') || 'None'}"></div>
             </div>
         </div>
     `;
@@ -351,8 +377,12 @@ export default class TimelineGrid {
             return false;
         }
 
-        // Show if any of the milestone's event types match the filter
-        return milestone.eventTypes.some(eventType =>
+        // Validate event types and show if any valid event types match the filter
+        const validEventTypes = milestone.eventTypes.filter(eventType =>
+            this.availableEventTypes.includes(eventType)
+        );
+
+        return validEventTypes.some(eventType =>
             this.milestoneFilters.includes(eventType)
         );
     }
@@ -400,35 +430,6 @@ export default class TimelineGrid {
         }
 
         return connectors.join('');
-    }
-
-    renderPixmap(eventTypes) {
-        // Enhanced pixmap implementation with column semantics
-        const hasApiEvents = eventTypes.some(t => t.includes('API'));
-        const hasUiEvents = eventTypes.some(t => t.includes('UI'));
-        const hasServiceEvents = eventTypes.some(t => t.includes('SERVICE') || t === 'OTHER');
-
-        // API column events
-        const hasApiPublication = eventTypes.includes('API_PUBLICATION');
-        const hasApiTest = eventTypes.includes('API_TEST_DEPLOYMENT');
-        const hasApiDecommission = eventTypes.includes('API_DECOMMISSIONING');
-
-        // UI column events
-        const hasUiTest = eventTypes.includes('UI_TEST_DEPLOYMENT');
-
-        // Service column events
-        const hasServiceActivation = eventTypes.includes('SERVICE_ACTIVATION');
-        const hasOther = eventTypes.includes('OTHER');
-
-        return `
-            <div class="pixmap">
-                <div class="pixmap-row">
-                    <div class="pixmap-cell api-cell ${hasApiPublication ? 'filled api-publication' : ''} ${hasApiTest ? 'filled api-test' : ''} ${hasApiDecommission ? 'filled api-decommission' : ''}" title="API Events"></div>
-                    <div class="pixmap-cell ui-cell ${hasUiTest ? 'filled ui-test' : ''}" title="UI Events"></div>
-                    <div class="pixmap-cell service-cell ${hasServiceActivation ? 'filled service-activation' : ''} ${hasOther ? 'filled other' : ''}" title="Service Events"></div>
-                </div>
-            </div>
-        `;
     }
 
     renderEmptyState() {
@@ -573,8 +574,39 @@ export default class TimelineGrid {
     }
 
     setMilestoneFiltersFromExternal(eventTypeFilters) {
-        this.milestoneFilters = eventTypeFilters || ['ANY'];
-        this.applyFilters();
-        this.renderContent();
+        this.setMilestoneFilters(eventTypeFilters);
+    }
+
+    // ====================
+    // EVENT TYPE VALIDATION (NEW)
+    // ====================
+
+    /**
+     * Check if an event type is valid according to shared enum
+     */
+    isValidEventType(eventType) {
+        return this.availableEventTypes.includes(eventType);
+    }
+
+    /**
+     * Filter out invalid event types from an array
+     */
+    filterValidEventTypes(eventTypes) {
+        if (!Array.isArray(eventTypes)) return [];
+        return eventTypes.filter(eventType => this.isValidEventType(eventType));
+    }
+
+    /**
+     * Get display name for event type using shared enum
+     */
+    getEventTypeDisplay(eventType) {
+        return getMilestoneEventTypeDisplay(eventType);
+    }
+
+    /**
+     * Get all available event types for UI purposes
+     */
+    getAllEventTypes() {
+        return [...this.availableEventTypes];
     }
 }

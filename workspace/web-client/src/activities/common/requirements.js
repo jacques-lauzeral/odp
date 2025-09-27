@@ -3,6 +3,12 @@ import RequirementForm from './requirement-form.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
 import { apiClient } from '../../shared/api-client.js';
 import { format } from '../../shared/utils.js';
+import {
+    RequirementType,
+    getRequirementTypeDisplay,
+    DraftingGroup,
+    getDraftingGroupDisplay
+} from '@odp/shared';
 
 export default class RequirementsEntity {
     constructor(app, entityConfig, setupData) {
@@ -11,7 +17,7 @@ export default class RequirementsEntity {
         this.setupData = setupData;
         this.container = null;
 
-        // Initialize collection with ODP column types (unchanged)
+        // Initialize collection with ODP column types
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
             context: { setupData },
@@ -30,7 +36,7 @@ export default class RequirementsEntity {
             })
         });
 
-        // CHANGED: Initialize form using new inheritance pattern
+        // Initialize form using new inheritance pattern
         this.form = new RequirementForm(entityConfig, setupData);
 
         // Listen for save events
@@ -42,7 +48,7 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // COLLECTION CONFIGURATION - ENHANCED FOR SERVER-SIDE FILTERING
+    // COLLECTION CONFIGURATION (Updated for model evolution)
     // ====================
 
     getFilterConfig() {
@@ -53,18 +59,22 @@ export default class RequirementsEntity {
                 type: 'select',
                 options: [
                     { value: '', label: 'Any' },
-                    { value: 'ON', label: 'ON (Operational Need)' },
-                    { value: 'OR', label: 'OR (Operational Requirement)' }
+                    { value: 'ON', label: getRequirementTypeDisplay('ON') },
+                    { value: 'OR', label: getRequirementTypeDisplay('OR') }
                 ]
             },
-            // CHANGED: Replace 'title' pattern matching with server-side 'text' full-text search
             {
                 key: 'text',
                 label: 'Full Text Search',
                 type: 'text',
                 placeholder: 'Search across title, statement, rationale, flows, and more...'
             },
-            // CHANGED: Use server-side parameter names for category filtering
+            {
+                key: 'drg',  // NEW FILTER
+                label: 'Drafting Group',
+                type: 'select',
+                options: this.buildDraftingGroupOptions()
+            },
             {
                 key: 'dataCategory',
                 label: 'Data Impact',
@@ -117,6 +127,13 @@ export default class RequirementsEntity {
                 type: 'text'
             },
             {
+                key: 'drg',  // NEW COLUMN
+                label: 'DRG',
+                width: '120px',
+                sortable: true,
+                type: 'drafting-group'
+            },
+            {
                 key: 'refinesParents',
                 label: 'Refines',
                 width: '150px',
@@ -125,6 +142,16 @@ export default class RequirementsEntity {
                 maxDisplay: 1,
                 noneLabel: 'No Refinement',
                 groupPrefix: 'Refines'
+            },
+            {
+                key: 'implementedONs',  // NEW COLUMN for OR-type requirements
+                label: 'Implements',
+                width: '150px',
+                sortable: false,
+                type: 'implemented-ons',
+                maxDisplay: 1,
+                noneLabel: 'No Implementation',
+                groupPrefix: 'Implements'
             },
             {
                 key: 'impactsData',
@@ -187,7 +214,9 @@ export default class RequirementsEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
+            { key: 'drg', label: 'Drafting Group' },  // NEW GROUPING OPTION
             { key: 'refinesParents', label: 'Refines' },
+            { key: 'implementedONs', label: 'Implements' },  // NEW GROUPING OPTION
             { key: 'impactsData', label: 'Data Impact' },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact' },
             { key: 'impactsRegulatoryAspects', label: 'Regulatory Impact' },
@@ -196,8 +225,20 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // HELPER METHODS
+    // HELPER METHODS (Updated with new options)
     // ====================
+
+    buildDraftingGroupOptions(emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
+
+        // Build options from shared DraftingGroup enum
+        const drgOptions = Object.keys(DraftingGroup).map(key => ({
+            value: key,
+            label: getDraftingGroupDisplay(key)
+        }));
+
+        return baseOptions.concat(drgOptions);
+    }
 
     buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {
         const baseOptions = [{ value: '', label: emptyLabel }];
@@ -249,6 +290,7 @@ export default class RequirementsEntity {
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
         const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
         const detailsHtml = await this.form.generateReadOnlyView(item);
+
         detailsContainer.innerHTML = `
         <div class="details-sticky-header">
             <div class="item-title-section">
@@ -257,7 +299,7 @@ export default class RequirementsEntity {
             </div>
             <div class="details-actions">
                 <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
-                <!-- Placeholder for future Delete button -->
+                ${this.renderAdditionalActions(item)}
             </div>
         </div>
         <div class="details-scrollable-content">
@@ -300,6 +342,16 @@ export default class RequirementsEntity {
             `);
         }
 
+        // Show "View Implementers" for ON-type requirements if there are OR requirements that implement it
+        if (item.type === 'ON' && this.hasImplementingRequirements(item)) {
+            const implementerCount = this.getImplementingRequirementsCount(item);
+            actions.push(`
+                <button class="btn btn-secondary btn-sm" id="viewImplementersBtn">
+                    View Implementers (${implementerCount})
+                </button>
+            `);
+        }
+
         // Show "View Changes" if there are changes that satisfy this requirement
         if (item.satisfiedByChanges && item.satisfiedByChanges.length > 0) {
             actions.push(`
@@ -329,6 +381,14 @@ export default class RequirementsEntity {
             });
         }
 
+        // View Implementers button (NEW)
+        const viewImplementersBtn = document.querySelector('#viewImplementersBtn');
+        if (viewImplementersBtn) {
+            viewImplementersBtn.addEventListener('click', () => {
+                this.handleViewImplementers(item);
+            });
+        }
+
         // View Changes button
         const viewChangesBtn = document.querySelector('#viewChangesBtn');
         if (viewChangesBtn) {
@@ -347,6 +407,34 @@ export default class RequirementsEntity {
                 return parentId === (item.itemId || item.id);
             });
         });
+    }
+
+    // NEW METHODS for implementedONs relationship
+    hasImplementingRequirements(item) {
+        if (item.type !== 'ON') return false;
+
+        // Check if any OR-type requirements implement this ON
+        return this.collection.data.some(req => {
+            if (req.type !== 'OR') return false;
+            const implementedONs = req.implementedONs || [];
+            return implementedONs.some(on => {
+                const onId = on.itemId || on.id || on;
+                return onId === (item.itemId || item.id);
+            });
+        });
+    }
+
+    getImplementingRequirementsCount(item) {
+        if (item.type !== 'ON') return 0;
+
+        return this.collection.data.filter(req => {
+            if (req.type !== 'OR') return false;
+            const implementedONs = req.implementedONs || [];
+            return implementedONs.some(on => {
+                const onId = on.itemId || on.id || on;
+                return onId === (item.itemId || item.id);
+            });
+        }).length;
     }
 
     handleCreateChild(parentItem) {
@@ -369,6 +457,18 @@ export default class RequirementsEntity {
         console.log('View children of:', item);
     }
 
+    handleViewImplementers(item) {
+        // Filter the collection to show only OR requirements that implement this ON
+        console.log('View implementers of ON:', item);
+
+        // Apply filter to show OR-type requirements that implement this ON
+        const itemId = item.itemId || item.id;
+
+        // This would need enhancement in the collection entity to support
+        // filtering by implementedONs relationship
+        console.log('Filter by implementedONs containing:', itemId);
+    }
+
     handleViewChanges(item) {
         // Navigate to changes view filtered by this requirement
         // This would need coordination with the app router
@@ -387,9 +487,12 @@ export default class RequirementsEntity {
     async refresh() {
         await this.collection.refresh();
 
-        // After refresh, reload form's parent cache if needed
+        // After refresh, reload form's caches if needed
         if (this.form.parentRequirementsCache) {
             this.form.parentRequirementsCache = null;
+        }
+        if (this.form.onRequirementsCache) {
+            this.form.onRequirementsCache = null;
         }
     }
 
@@ -412,7 +515,7 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // REQUIREMENT-SPECIFIC OPERATIONS
+    // REQUIREMENT-SPECIFIC OPERATIONS (Enhanced for implementedONs)
     // ====================
 
     async getRequirementHierarchy(rootId = null) {
@@ -427,10 +530,10 @@ export default class RequirementsEntity {
             // Index by ID
             allRequirements.forEach(req => {
                 const id = req.itemId || req.id;
-                requirementsById[id] = { ...req, children: [] };
+                requirementsById[id] = { ...req, children: [], implementers: [] };
             });
 
-            // Build tree
+            // Build refinement tree
             allRequirements.forEach(req => {
                 const refinesParents = req.refinesParents || [];
                 if (refinesParents.length === 0) {
@@ -447,12 +550,75 @@ export default class RequirementsEntity {
                         }
                     });
                 }
+
+                // Build implementation relationships
+                if (req.type === 'OR' && req.implementedONs) {
+                    req.implementedONs.forEach(on => {
+                        const onId = on.itemId || on.id || on;
+                        if (requirementsById[onId]) {
+                            requirementsById[onId].implementers.push(requirementsById[req.itemId || req.id]);
+                        }
+                    });
+                }
             });
 
             return hierarchy;
         } catch (error) {
             console.error('Failed to build requirement hierarchy:', error);
             return [];
+        }
+    }
+
+    async getImplementationSummary() {
+        try {
+            const summary = {
+                totalONs: 0,
+                totalORs: 0,
+                implementedONs: 0,
+                unimplementedONs: 0,
+                implementationsByDRG: {}
+            };
+
+            const allRequirements = this.collection.data;
+
+            // Count by type
+            allRequirements.forEach(req => {
+                if (req.type === 'ON') {
+                    summary.totalONs++;
+                } else if (req.type === 'OR') {
+                    summary.totalORs++;
+                }
+            });
+
+            // Count implemented ONs
+            const implementedONIds = new Set();
+            allRequirements.forEach(req => {
+                if (req.type === 'OR' && req.implementedONs) {
+                    req.implementedONs.forEach(on => {
+                        const onId = on.itemId || on.id || on;
+                        implementedONIds.add(onId);
+                    });
+                }
+            });
+
+            summary.implementedONs = implementedONIds.size;
+            summary.unimplementedONs = summary.totalONs - summary.implementedONs;
+
+            // Count implementations by DRG
+            allRequirements.forEach(req => {
+                if (req.type === 'OR' && req.implementedONs && req.implementedONs.length > 0) {
+                    const drg = req.drg || 'Unassigned';
+                    if (!summary.implementationsByDRG[drg]) {
+                        summary.implementationsByDRG[drg] = 0;
+                    }
+                    summary.implementationsByDRG[drg] += req.implementedONs.length;
+                }
+            });
+
+            return summary;
+        } catch (error) {
+            console.error('Failed to calculate implementation summary:', error);
+            return null;
         }
     }
 

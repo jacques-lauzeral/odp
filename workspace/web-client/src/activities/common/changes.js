@@ -4,6 +4,12 @@ import TimelineGrid from '../../components/odp/timeline-grid.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
 import { apiClient } from '../../shared/api-client.js';
 import { format } from '../../shared/utils.js';
+import {
+    Visibility,
+    getVisibilityDisplay,
+    DraftingGroup,
+    getDraftingGroupDisplay
+} from '@odp/shared';
 
 export default class ChangesEntity {
     constructor(app, entityConfig, setupData) {
@@ -318,7 +324,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // COLLECTION CONFIGURATION
+    // COLLECTION CONFIGURATION (Updated for new fields)
     // ====================
 
     getFilterConfig() {
@@ -327,7 +333,7 @@ export default class ChangesEntity {
                 key: 'text',
                 label: 'Full Text Search',
                 type: 'text',
-                placeholder: 'Search across title and description...'
+                placeholder: 'Search across title, purpose, and implementation details...'  // Updated placeholder
             },
             {
                 key: 'visibility',
@@ -335,9 +341,15 @@ export default class ChangesEntity {
                 type: 'select',
                 options: [
                     { value: '', label: 'Any' },
-                    { value: 'NETWORK', label: 'NETWORK' },
-                    { value: 'NM', label: 'NM' }
+                    { value: 'NETWORK', label: getVisibilityDisplay('NETWORK') },
+                    { value: 'NM', label: getVisibilityDisplay('NM') }
                 ]
+            },
+            {
+                key: 'drg',  // NEW FILTER
+                label: 'Drafting Group',
+                type: 'select',
+                options: this.buildDraftingGroupOptions()
             },
             {
                 key: 'stakeholderCategory',
@@ -375,6 +387,13 @@ export default class ChangesEntity {
                 width: 'auto',
                 sortable: true,
                 type: 'text'
+            },
+            {
+                key: 'drg',  // NEW COLUMN
+                label: 'DRG',
+                width: '120px',
+                sortable: true,
+                type: 'drafting-group'
             },
             {
                 key: 'milestones',
@@ -430,6 +449,7 @@ export default class ChangesEntity {
     getGroupingConfig() {
         return [
             { key: 'none', label: 'No grouping' },
+            { key: 'drg', label: 'Drafting Group' },  // NEW GROUPING OPTION
             { key: 'milestones', label: 'Wave' },
             { key: 'visibility', label: 'Visibility' },
             { key: 'satisfiesRequirements', label: 'Satisfies Requirements' },
@@ -438,8 +458,20 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // HELPER METHODS
+    // HELPER METHODS (Updated with new options)
     // ====================
+
+    buildDraftingGroupOptions(emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
+
+        // Build options from shared DraftingGroup enum
+        const drgOptions = Object.keys(DraftingGroup).map(key => ({
+            value: key,
+            label: getDraftingGroupDisplay(key)
+        }));
+
+        return baseOptions.concat(drgOptions);
+    }
 
     buildWaveOptions(emptyLabel = 'Any') {
         const baseOptions = [{ value: '', label: emptyLabel }];

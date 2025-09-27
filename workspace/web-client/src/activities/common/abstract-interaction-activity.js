@@ -1,5 +1,9 @@
 import { async as asyncUtils } from '../../shared/utils.js';
 import { apiClient } from '../../shared/api-client.js';
+import {
+    MilestoneEventType,
+    getMilestoneEventTypeDisplay
+} from '@odp/shared';
 
 export default class AbstractInteractionActivity {
     constructor(app, config) {
@@ -51,15 +55,8 @@ export default class AbstractInteractionActivity {
             eventTypeFilters: ['ANY']
         };
 
-        // Available event types (from API schema)
-        this.availableEventTypes = [
-            'API_PUBLICATION',
-            'API_TEST_DEPLOYMENT',
-            'UI_TEST_DEPLOYMENT',
-            'SERVICE_ACTIVATION',
-            'API_DECOMMISSIONING',
-            'OTHER'
-        ];
+        // Available event types from shared enum (5 specific milestone events)
+        this.availableEventTypes = Object.keys(MilestoneEventType);
     }
 
     async render(container, subPath = []) {
@@ -914,6 +911,12 @@ export default class AbstractInteractionActivity {
     }
 
     addEventTypeFilter(eventType) {
+        // Validate event type is one of the 5 allowed types
+        if (!this.availableEventTypes.includes(eventType)) {
+            console.warn('Invalid event type:', eventType);
+            return;
+        }
+
         // Remove 'ANY' filter when adding specific types
         if (this.sharedState.eventTypeFilters.includes('ANY')) {
             this.sharedState.eventTypeFilters = [eventType];
@@ -1039,9 +1042,8 @@ export default class AbstractInteractionActivity {
     }
 
     formatEventTypeName(eventType) {
-        // Convert API enum to display format
-        return eventType.replace(/_/g, ' ').toLowerCase()
-            .replace(/\b\w/g, l => l.toUpperCase());
+        // Use shared enum display function
+        return getMilestoneEventTypeDisplay(eventType);
     }
 
     renderError(error) {
