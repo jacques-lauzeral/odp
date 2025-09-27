@@ -214,6 +214,11 @@ export default class CollectionEntity {
     // ====================
 
     renderContent() {
+        if (!this.container) {
+            console.warn('CollectionEntity: Container not available for rendering');
+            return;
+        }
+
         if (this.data.length === 0) {
             this.renderEmptyState();
             return;
@@ -298,6 +303,11 @@ export default class CollectionEntity {
         const hasActiveFilters = Object.keys(this.currentFilters).some(key =>
             this.currentFilters[key] && this.currentFilters[key] !== ''
         );
+
+        if (!this.container) {
+            console.warn('CollectionEntity: Container not available for rendering');
+            return;
+        }
 
         // Show different empty state if filters are active
         if (hasActiveFilters) {

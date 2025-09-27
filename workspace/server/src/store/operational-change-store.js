@@ -132,7 +132,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 RETURN id(item) as itemId, item.title as title,
                         id(version) as versionId, version.version as version,
                         version.createdAt as createdAt, version.createdBy as createdBy,
-                        version { .*, purpose, initialState, finalState, details, drg } as versionData
+                        version { .* } as versionData
                 ORDER BY item.title
             `;
 

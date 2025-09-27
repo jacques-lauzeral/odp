@@ -1,7 +1,7 @@
 import {
     MilestoneEventType,
-    getMilestoneEventTypeDisplay
-} from '../../../../shared/src/index.js';
+    getMilestoneEventDisplay
+} from '/shared/src/index.js';
 
 /**
  * TimelineGrid - Temporal visualization component for operational changes
@@ -348,9 +348,9 @@ export default class TimelineGrid {
         console.log('Rendering pixmap with valid event types:', validEventTypes);
 
         // Build tooltip content using shared display function
-        const apiEvents = validEventTypes.filter(t => t.includes('API')).map(t => getMilestoneEventTypeDisplay(t));
-        const uiEvents = validEventTypes.filter(t => t.includes('UI')).map(t => getMilestoneEventTypeDisplay(t));
-        const opsEvents = validEventTypes.filter(t => t.includes('OPS')).map(t => getMilestoneEventTypeDisplay(t));
+        const apiEvents = validEventTypes.filter(t => t.includes('API')).map(t => getMilestoneEventDisplay(t));
+        const uiEvents = validEventTypes.filter(t => t.includes('UI')).map(t => getMilestoneEventDisplay(t));
+        const opsEvents = validEventTypes.filter(t => t.includes('OPS')).map(t => getMilestoneEventDisplay(t));
 
         return `
         <div class="pixmap">

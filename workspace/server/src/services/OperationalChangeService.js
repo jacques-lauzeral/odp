@@ -4,7 +4,7 @@ import {
     DraftingGroup,
     isDraftingGroupValid,
     Visibility,
-    isVisibilityValid
+    isVisibilityValid, isMilestoneEventValid
 } from '../../../shared/src/index.js';
 import {
     operationalChangeStore,
@@ -395,7 +395,7 @@ export class OperationalChangeService extends VersionedItemService {
                 }
 
                 for (const eventType of milestone.eventTypes) {
-                    if (!MilestoneEventType.includes(eventType)) {
+                    if (!isMilestoneEventValid(eventType)) {
                         throw new Error(`Validation failed: invalid event type: ${eventType}. Must be one of: ${MilestoneEventType.join(', ')}`);
                     }
                 }

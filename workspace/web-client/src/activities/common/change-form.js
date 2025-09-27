@@ -6,7 +6,7 @@ import {
     Visibility,
     getVisibilityDisplay,
     MilestoneEventType,
-    getMilestoneEventTypeDisplay
+    getMilestoneEventDisplay
 } from '/shared/src/index.js';
 
 /**
@@ -66,8 +66,8 @@ export default class ChangeForm extends CollectionEntityForm {
                         required: true,
                         placeholder: 'Enter a clear, concise title for this change',
                         validate: (value) => {
-                            if (!value || value.length < 4) {
-                                return { valid: false, message: 'Title must be at least 4 characters long' };
+                            if (!value || value.length < 3) {
+                                return { valid: false, message: 'Title must be at least 3 characters long' };
                             }
                             if (value.length > 200) {
                                 return { valid: false, message: 'Title must be less than 200 characters' };
@@ -85,8 +85,8 @@ export default class ChangeForm extends CollectionEntityForm {
                         placeholder: 'Describe the purpose of this operational change...',
                         helpText: 'Explain what this change aims to achieve and why it is needed',
                         validate: (value) => {
-                            if (!value || value.length < 8) {
-                                return { valid: false, message: 'Purpose must be at least 8 characters long' };
+                            if (!value || value.length < 3) {
+                                return { valid: false, message: 'Purpose must be at least 3 characters long' };
                             }
                             return { valid: true };
                         }
@@ -560,7 +560,7 @@ export default class ChangeForm extends CollectionEntityForm {
 
         // Use shared enum display function
         const formatted = eventTypes.map(type =>
-            getMilestoneEventTypeDisplay(type)
+            getMilestoneEventDisplay(type)
         );
 
         const joined = formatted.join(', ');
@@ -746,7 +746,7 @@ export default class ChangeForm extends CollectionEntityForm {
 
     formatEventType(eventType) {
         // Use shared enum display function
-        return getMilestoneEventTypeDisplay(eventType);
+        return getMilestoneEventDisplay(eventType);
     }
 
     // ====================
@@ -820,6 +820,7 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
 
     async handleSave() {
+        console.log('ChangeForm.handleSave - called');
         // Check if this is a milestone save
         if (this.currentMode === 'create-milestone' || this.currentMode === 'edit-milestone') {
             return await this.handleMilestoneSave();
