@@ -2,7 +2,7 @@ import { apiClient } from '../../shared/api-client.js';
 import {
     MilestoneEventType,
     getMilestoneEventTypeDisplay
-} from '@odp/shared';
+} from '/shared/src/index.js';
 
 /**
  * MilestoneEditorModal - Pure utility class for milestone form generation and API operations

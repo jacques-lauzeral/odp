@@ -7,7 +7,7 @@ import {
     getVisibilityDisplay,
     MilestoneEventType,
     getMilestoneEventTypeDisplay
-} from '@odp/shared';
+} from '/shared/src/index.js';
 
 /**
  * ChangeForm - Operational Change form configuration and handling

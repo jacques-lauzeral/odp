@@ -2,8 +2,8 @@ import { async as asyncUtils } from '../../shared/utils.js';
 import { apiClient } from '../../shared/api-client.js';
 import {
     MilestoneEventType,
-    getMilestoneEventTypeDisplay
-} from '@odp/shared';
+    getMilestoneEventDisplay
+} from '/shared/src/index.js';
 
 export default class AbstractInteractionActivity {
     constructor(app, config) {
@@ -1043,7 +1043,7 @@ export default class AbstractInteractionActivity {
 
     formatEventTypeName(eventType) {
         // Use shared enum display function
-        return getMilestoneEventTypeDisplay(eventType);
+        return getMilestoneEventDisplay(eventType);
     }
 
     renderError(error) {

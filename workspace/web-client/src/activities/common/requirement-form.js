@@ -3,9 +3,9 @@ import { apiClient } from '../../shared/api-client.js';
 import {
     DraftingGroup,
     getDraftingGroupDisplay,
-    RequirementType,
-    getRequirementTypeDisplay
-} from '@odp/shared';
+    OperationalRequirementType,
+    getOperationalRequirementTypeDisplay
+} from '/shared/src/index.js';
 
 /**
  * RequirementForm - Operational Requirement form configuration and handling
@@ -59,8 +59,8 @@ export default class RequirementForm extends CollectionEntityForm {
                         required: true,
                         editableOnlyOnCreate: true,
                         options: [
-                            { value: 'ON', label: getRequirementTypeDisplay('ON') },
-                            { value: 'OR', label: getRequirementTypeDisplay('OR') }
+                            { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
+                            { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
                         ],
                         helpTextAbove: 'Select ON for high-level operational needs, OR for specific requirements'
                     },

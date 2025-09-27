@@ -4,11 +4,11 @@ import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
 import { apiClient } from '../../shared/api-client.js';
 import { format } from '../../shared/utils.js';
 import {
-    RequirementType,
-    getRequirementTypeDisplay,
+    OperationalRequirementType,
+    getOperationalRequirementTypeDisplay,
     DraftingGroup,
     getDraftingGroupDisplay
-} from '@odp/shared';
+} from '/shared/src/index.js';
 
 export default class RequirementsEntity {
     constructor(app, entityConfig, setupData) {
@@ -59,8 +59,8 @@ export default class RequirementsEntity {
                 type: 'select',
                 options: [
                     { value: '', label: 'Any' },
-                    { value: 'ON', label: getRequirementTypeDisplay('ON') },
-                    { value: 'OR', label: getRequirementTypeDisplay('OR') }
+                    { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
+                    { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
                 ]
             },
             {

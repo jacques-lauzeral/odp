@@ -35,7 +35,7 @@ services:
     volumes:
       - .:/app  # Mount entire odp root
       - /app/workspace/web-client/node_modules  # Prevent overwriting web-client node_modules
-    command: ["sh", "-c", "cd workspace/web-client && npm install && npm run dev"]
+    command: ["sh", "-c", "cd workspace/web-client && npm install && mkdir -p src/shared/src && cp -r ../shared/src/* src/shared/src/ && npm run dev"]
     environment:
       NODE_ENV: development
 

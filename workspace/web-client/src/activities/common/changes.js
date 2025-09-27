@@ -9,7 +9,7 @@ import {
     getVisibilityDisplay,
     DraftingGroup,
     getDraftingGroupDisplay
-} from '@odp/shared';
+} from '/shared/src/index.js';
 
 export default class ChangesEntity {
     constructor(app, entityConfig, setupData) {

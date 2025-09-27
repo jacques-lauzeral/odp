@@ -1,7 +1,7 @@
 import {
     MilestoneEventType,
     getMilestoneEventTypeDisplay
-} from '@odp/shared';
+} from '../../../../shared/src/index.js';
 
 /**
  * TimelineGrid - Temporal visualization component for operational changes

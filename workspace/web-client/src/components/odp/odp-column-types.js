@@ -9,12 +9,12 @@ import {
     DraftingGroup,
     getDraftingGroupDisplay,
     MilestoneEventType,
-    getMilestoneEventTypeDisplay,
+    getMilestoneEventDisplay,
     Visibility,
     getVisibilityDisplay,
-    RequirementType,
-    getRequirementTypeDisplay
-} from '@odp/shared';
+    OperationalRequirementType,
+    getOperationalRequirementTypeDisplay
+} from '/shared/src/index.js';
 
 // ====================
 // SETUP DATA REFERENCE (Single)
@@ -530,7 +530,7 @@ export const requirementTypeColumn = {
     render: (value, column, item, context) => {
         if (!value) return '-';
 
-        const displayValue = getRequirementTypeDisplay(value);
+        const displayValue = getOperationalRequirementTypeDisplay(value);
         const typeClass = value === 'ON' ? 'req-type-on' : value === 'OR' ? 'req-type-or' : 'req-type-other';
 
         return `<span class="item-badge ${typeClass}">${escapeHtml(displayValue)}</span>`;
@@ -541,8 +541,8 @@ export const requirementTypeColumn = {
      */
     getFilterOptions: (column, context) => [
         { value: '', label: 'All Types' },
-        { value: 'ON', label: getRequirementTypeDisplay('ON') },
-        { value: 'OR', label: getRequirementTypeDisplay('OR') }
+        { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
+        { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
     ],
 
     /**
@@ -551,7 +551,7 @@ export const requirementTypeColumn = {
     getGroupTitle: (value, column, context) => {
         if (!value) return 'Unknown Type';
 
-        const displayValue = getRequirementTypeDisplay(value);
+        const displayValue = getOperationalRequirementTypeDisplay(value);
         return value === 'ON' ? 'Operational Needs' :
             value === 'OR' ? 'Operational Requirements' :
                 displayValue;
