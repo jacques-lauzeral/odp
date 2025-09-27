@@ -1,10 +1,19 @@
 import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
 import { apiClient } from '../../shared/api-client.js';
+import {
+    DraftingGroup,
+    getDraftingGroupDisplay,
+    Visibility,
+    getVisibilityDisplay,
+    MilestoneEventType,
+    getMilestoneEventTypeDisplay
+} from '@odp/shared';
 
 /**
  * ChangeForm - Operational Change form configuration and handling
  * Extends CollectionEntityForm using inheritance pattern
- * Matches the API schema exactly for OperationalChangeRequest
+ * Updated for model evolution: field rename (description → purpose), new rich text fields,
+ * DRG field, and simplified milestone system with 5 specific event types
  */
 export default class ChangeForm extends CollectionEntityForm {
     constructor(entityConfig, setupData) {
@@ -21,15 +30,8 @@ export default class ChangeForm extends CollectionEntityForm {
         // Milestone management
         this.milestones = [];
 
-        // Available event types from API schema
-        this.availableEventTypes = [
-            'API_PUBLICATION',
-            'API_TEST_DEPLOYMENT',
-            'UI_TEST_DEPLOYMENT',
-            'SERVICE_ACTIVATION',
-            'API_DECOMMISSIONING',
-            'OTHER'
-        ];
+        // Available event types from shared enum (5 specific milestone events)
+        this.availableEventTypes = Object.keys(MilestoneEventType);
     }
 
     // ====================
@@ -38,7 +40,7 @@ export default class ChangeForm extends CollectionEntityForm {
 
     getFieldDefinitions() {
         return [
-            // Basic Information Section
+            // Basic Information Section (Updated fields)
             {
                 title: 'Basic Information',
                 fields: [
@@ -74,17 +76,17 @@ export default class ChangeForm extends CollectionEntityForm {
                         }
                     },
                     {
-                        key: 'description',
-                        label: 'Description',
+                        key: 'purpose',  // RENAMED from 'description'
+                        label: 'Purpose',
                         type: 'textarea',
                         modes: ['create', 'read', 'edit'],
                         required: true,
                         rows: 6,
-                        placeholder: 'Describe the operational change in detail...',
-                        helpText: 'Provide a complete description of what will change and how',
+                        placeholder: 'Describe the purpose of this operational change...',
+                        helpText: 'Explain what this change aims to achieve and why it is needed',
                         validate: (value) => {
                             if (!value || value.length < 8) {
-                                return { valid: false, message: 'Description must be at least 8 characters long' };
+                                return { valid: false, message: 'Purpose must be at least 8 characters long' };
                             }
                             return { valid: true };
                         }
@@ -96,16 +98,63 @@ export default class ChangeForm extends CollectionEntityForm {
                         modes: ['create', 'read', 'edit'],
                         required: true,
                         options: [
-                            { value: 'NM', label: 'NM - Network Manager internal' },
-                            { value: 'NETWORK', label: 'NETWORK - Visible to network' }
+                            { value: 'NM', label: getVisibilityDisplay('NM') },
+                            { value: 'NETWORK', label: getVisibilityDisplay('NETWORK') }
                         ],
                         defaultValue: 'NETWORK',
                         helpTextAbove: 'Control who can see this change'
+                    },
+                    {
+                        key: 'drg',  // NEW FIELD
+                        label: 'Drafting Group',
+                        type: 'select',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        options: () => this.getDraftingGroupOptions(),
+                        helpText: 'Select the drafting group responsible for this change',
+                        format: (value) => value ? getDraftingGroupDisplay(value) : 'Not assigned'
                     }
                 ]
             },
 
-            // Milestones Section
+            // Change Details Section (NEW RICH TEXT FIELDS)
+            {
+                title: 'Change Details',
+                fields: [
+                    {
+                        key: 'initialState',  // NEW FIELD
+                        label: 'Initial State',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        rows: 5,
+                        placeholder: 'Describe the current state before implementing this change...',
+                        helpText: 'Detail the existing situation, processes, or systems that will be changed'
+                    },
+                    {
+                        key: 'finalState',  // NEW FIELD
+                        label: 'Final State',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        rows: 5,
+                        placeholder: 'Describe the expected state after implementing this change...',
+                        helpText: 'Detail the target situation, processes, or systems after the change is complete'
+                    },
+                    {
+                        key: 'details',  // NEW FIELD
+                        label: 'Implementation Details',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: false,
+                        rows: 6,
+                        placeholder: 'Provide detailed information about how this change will be implemented...',
+                        helpText: 'Include technical details, dependencies, constraints, and implementation approach'
+                    }
+                ]
+            },
+
+            // Milestones Section (Updated for 5 specific event types)
             {
                 title: 'Milestones',
                 fields: [
@@ -124,7 +173,7 @@ export default class ChangeForm extends CollectionEntityForm {
                             // Return empty string since the custom render will handle the display
                             return '';
                         },
-                        helpText: 'Manage milestones for this operational change'
+                        helpText: 'Manage milestones using the 5 standard milestone event types'
                     }
                 ]
             },
@@ -220,13 +269,21 @@ export default class ChangeForm extends CollectionEntityForm {
         });
 
         // Ensure all required text fields are present
-        const requiredTextFields = ['title', 'description', 'visibility'];
+        const requiredTextFields = ['title', 'purpose', 'visibility'];
+        const optionalTextFields = ['initialState', 'finalState', 'details'];
 
-        requiredTextFields.forEach(key => {
+        [...requiredTextFields, ...optionalTextFields].forEach(key => {
             if (transformed[key] === undefined || transformed[key] === null) {
                 transformed[key] = '';
             }
         });
+
+        // Handle DRG field - ensure it's either a valid DRG key or null
+        if (transformed.drg !== undefined) {
+            if (transformed.drg === '' || transformed.drg === null) {
+                transformed.drg = null;
+            }
+        }
 
         // Set default visibility if not set
         if (!transformed.visibility) {
@@ -297,7 +354,23 @@ export default class ChangeForm extends CollectionEntityForm {
 
     async onValidate(data, mode, item) {
         const errors = [];
-        // No milestone validation here since they're managed independently
+
+        // Validate DRG field if provided
+        if (data.drg && !Object.keys(DraftingGroup).includes(data.drg)) {
+            errors.push({
+                field: 'drg',
+                message: 'Invalid drafting group selected'
+            });
+        }
+
+        // Validate visibility field
+        if (data.visibility && !Object.keys(Visibility).includes(data.visibility)) {
+            errors.push({
+                field: 'visibility',
+                message: 'Invalid visibility option selected'
+            });
+        }
+
         return {
             valid: errors.length === 0,
             errors
@@ -310,7 +383,54 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE TABLE RENDERING
+    // DATA OPTIONS HELPERS
+    // ====================
+
+    getDraftingGroupOptions() {
+        // Build options from shared DraftingGroup enum
+        const options = [{ value: '', label: 'Not assigned' }];
+
+        Object.keys(DraftingGroup).forEach(key => {
+            options.push({
+                value: key,
+                label: getDraftingGroupDisplay(key)
+            });
+        });
+
+        return options;
+    }
+
+    async getRequirementOptions() {
+        try {
+            // Use cache if available
+            const now = Date.now();
+            if (this.requirementsCache && (now - this.requirementsCacheTime) < this.cacheTimeout) {
+                return this.requirementsCache;
+            }
+
+            // Load all requirements
+            const response = await apiClient.get('/operational-requirements');
+            const requirements = Array.isArray(response) ? response : [];
+
+            const options = requirements.map(req => ({
+                value: parseInt(req.itemId || req.id, 10),  // Convert to number
+                label: `[${req.type}] ${req.itemId}: ${req.title}`
+            }));
+
+            // Cache the results
+            this.requirementsCache = options;
+            this.requirementsCacheTime = now;
+
+            return options;
+
+        } catch (error) {
+            console.error('Failed to load requirements:', error);
+            return [];
+        }
+    }
+
+    // ====================
+    // MILESTONE TABLE RENDERING (Updated for 5 specific event types)
     // ====================
 
     renderMilestonesTable(field, fieldId, value, required) {
@@ -438,8 +558,9 @@ export default class ChangeForm extends CollectionEntityForm {
             return '-';
         }
 
+        // Use shared enum display function
         const formatted = eventTypes.map(type =>
-            type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
+            getMilestoneEventTypeDisplay(type)
         );
 
         const joined = formatted.join(', ');
@@ -466,13 +587,11 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE EVENT HANDLING - FIXED VERSION
+    // MILESTONE EVENT HANDLING
     // ====================
 
     bindMilestoneEvents() {
         console.log('ChangeForm.bindMilestoneEvents - called');
-        console.log('ChangeForm.bindMilestoneEvents - currentModal exists:', !!this.currentModal);
-        console.log('ChangeForm.bindMilestoneEvents - _milestoneEventsBound:', this._milestoneEventsBound);
 
         // PREVENT MULTIPLE BINDINGS
         if (this._milestoneEventsBound) {
@@ -480,7 +599,7 @@ export default class ChangeForm extends CollectionEntityForm {
             return;
         }
 
-        // FIXED: Search within the current modal, not the entire document
+        // Search within the current modal, not the entire document
         const milestonesSection = this.currentModal?.querySelector('.milestones-section');
         console.log('ChangeForm.bindMilestoneEvents - found milestonesSection:', !!milestonesSection);
 
@@ -520,16 +639,11 @@ export default class ChangeForm extends CollectionEntityForm {
             milestonesSection.addEventListener('click', this._milestoneClickHandler);
             console.log('ChangeForm.bindMilestoneEvents - event listener attached');
             this._milestoneEventsBound = true;
-        } else {
-            console.log('ChangeForm.bindMilestoneEvents - no milestones section found in current modal!');
-            if (this.currentModal) {
-                console.log('ChangeForm.bindMilestoneEvents - modal content preview:', this.currentModal.innerHTML.substring(0, 500));
-            }
         }
     }
 
     // ====================
-    // MILESTONE FORM GENERATION
+    // MILESTONE FORM GENERATION (Updated for 5 specific event types)
     // ====================
 
     generateMilestoneForm(mode, milestone = null) {
@@ -577,7 +691,7 @@ export default class ChangeForm extends CollectionEntityForm {
                     <div class="validation-message"></div>
                 </div>
 
-                <!-- Event Types with Tag/Label Pattern -->
+                <!-- Event Types with Tag/Label Pattern (Updated for 5 specific events) -->
                 <div class="form-group" data-field="eventTypes">
                     <label>Event Types</label>
                     <div class="tag-selector" id="event-types-selector" data-selected='${JSON.stringify(selectedEventTypes)}'>
@@ -591,7 +705,7 @@ export default class ChangeForm extends CollectionEntityForm {
                             </select>
                         </div>
                     </div>
-                    <small class="form-text">Select one or more event types for this milestone</small>
+                    <small class="form-text">Select from the 5 standard milestone event types</small>
                     <div class="validation-message"></div>
                 </div>
             </div>
@@ -613,7 +727,7 @@ export default class ChangeForm extends CollectionEntityForm {
 
     renderSelectedEventTypes(selectedEventTypes) {
         return selectedEventTypes.map(eventType => `
-            <span class="tag" data-event-type="${eventType}">
+            <span class="tag milestone-event-tag" data-event-type="${eventType}">
                 ${this.formatEventType(eventType)}
                 <button type="button" class="tag-remove" data-event-type="${eventType}" title="Remove">×</button>
             </span>
@@ -631,9 +745,8 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     formatEventType(eventType) {
-        // Convert API enum to display format
-        return eventType.replace(/_/g, ' ').toLowerCase()
-            .replace(/\b\w/g, l => l.toUpperCase());
+        // Use shared enum display function
+        return getMilestoneEventTypeDisplay(eventType);
     }
 
     // ====================
@@ -826,6 +939,20 @@ export default class ChangeForm extends CollectionEntityForm {
             });
         }
 
+        // Validate event types are from the 5 allowed types
+        if (data.eventTypes && Array.isArray(data.eventTypes)) {
+            const invalidEventTypes = data.eventTypes.filter(eventType =>
+                !this.availableEventTypes.includes(eventType)
+            );
+
+            if (invalidEventTypes.length > 0) {
+                errors.push({
+                    field: 'eventTypes',
+                    message: `Invalid event types: ${invalidEventTypes.join(', ')}`
+                });
+            }
+        }
+
         return {
             valid: errors.length === 0,
             errors
@@ -840,6 +967,11 @@ export default class ChangeForm extends CollectionEntityForm {
             waveId: formData.waveId ? parseInt(formData.waveId, 10) : null
         };
 
+        // Filter out invalid event types
+        data.eventTypes = data.eventTypes.filter(eventType =>
+            this.availableEventTypes.includes(eventType)
+        );
+
         // Add expected version ID for updates (optimistic locking)
         const currentItem = this.currentItem;
         if (currentItem?.versionId) {
@@ -850,7 +982,7 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     // ====================
-    // MILESTONE REFRESH - FIXED VERSION
+    // MILESTONE REFRESH
     // ====================
 
     async reloadCurrentItem() {
@@ -982,6 +1114,12 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     addEventType(eventType) {
+        // Validate event type is one of the 5 allowed types
+        if (!this.availableEventTypes.includes(eventType)) {
+            console.warn('Invalid event type:', eventType);
+            return;
+        }
+
         const eventTypesSelector = document.querySelector('#event-types-selector');
         if (!eventTypesSelector) return;
 
@@ -1021,39 +1159,6 @@ export default class ChangeForm extends CollectionEntityForm {
             const currentValue = dropdown.value;
             dropdown.innerHTML = `<option value="">+ Add Event Type</option>${this.renderAvailableEventTypes(currentTypes)}`;
             dropdown.value = currentValue;
-        }
-    }
-
-    // ====================
-    // DATA OPTIONS HELPERS
-    // ====================
-
-    async getRequirementOptions() {
-        try {
-            // Use cache if available
-            const now = Date.now();
-            if (this.requirementsCache && (now - this.requirementsCacheTime) < this.cacheTimeout) {
-                return this.requirementsCache;
-            }
-
-            // Load all requirements
-            const response = await apiClient.get('/operational-requirements');
-            const requirements = Array.isArray(response) ? response : [];
-
-            const options = requirements.map(req => ({
-                value: parseInt(req.itemId || req.id, 10),  // Convert to number
-                label: `[${req.type}] ${req.itemId}: ${req.title}`
-            }));
-
-            // Cache the results
-            this.requirementsCache = options;
-            this.requirementsCacheTime = now;
-
-            return options;
-
-        } catch (error) {
-            console.error('Failed to load requirements:', error);
-            return [];
         }
     }
 

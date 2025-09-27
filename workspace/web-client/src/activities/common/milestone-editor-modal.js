@@ -1,11 +1,15 @@
 import { apiClient } from '../../shared/api-client.js';
+import {
+    MilestoneEventType,
+    getMilestoneEventTypeDisplay
+} from '@odp/shared';
 
 /**
  * MilestoneEditorModal - Pure utility class for milestone form generation and API operations
  * NO LONGER MANAGES MODALS - that's handled by ChangeForm using the modal stack
  * This class only provides form content generation and data operations
  *
- * Updated to support milestone UUID-based keys (milestoneKey) and enhanced API responses
+ * Updated for model evolution: uses shared MilestoneEventType enum with 5 specific events
  */
 export class MilestoneEditorModal {
     constructor(changeId, setupData, parentForm) {
@@ -13,15 +17,8 @@ export class MilestoneEditorModal {
         this.setupData = setupData;
         this.parentForm = parentForm; // Reference to parent ChangeForm
 
-        // Available event types from API schema
-        this.availableEventTypes = [
-            'API_PUBLICATION',
-            'API_TEST_DEPLOYMENT',
-            'UI_TEST_DEPLOYMENT',
-            'SERVICE_ACTIVATION',
-            'API_DECOMMISSIONING',
-            'OTHER'
-        ];
+        // Available event types from shared enum (5 specific milestone events)
+        this.availableEventTypes = Object.keys(MilestoneEventType);
     }
 
     // ====================
@@ -73,7 +70,7 @@ export class MilestoneEditorModal {
                     <div class="validation-message"></div>
                 </div>
 
-                <!-- Event Types with Tag/Label Pattern -->
+                <!-- Event Types with Tag/Label Pattern (Updated for 5 specific events) -->
                 <div class="form-group" data-field="eventTypes">
                     <label>Event Types</label>
                     <div class="tag-selector" id="event-types-selector" data-selected='${JSON.stringify(selectedEventTypes)}'>
@@ -87,7 +84,7 @@ export class MilestoneEditorModal {
                             </select>
                         </div>
                     </div>
-                    <small class="form-text">Select one or more event types for this milestone</small>
+                    <small class="form-text">Select one or more from the 5 standard milestone event types</small>
                     <div class="validation-message"></div>
                 </div>
             </div>
@@ -109,7 +106,7 @@ export class MilestoneEditorModal {
 
     renderSelectedEventTypes(selectedEventTypes) {
         return selectedEventTypes.map(eventType => `
-            <span class="tag" data-event-type="${eventType}">
+            <span class="tag milestone-event-tag" data-event-type="${eventType}">
                 ${this.formatEventType(eventType)}
                 <button type="button" class="tag-remove" data-event-type="${eventType}" title="Remove">×</button>
             </span>
@@ -127,9 +124,8 @@ export class MilestoneEditorModal {
     }
 
     formatEventType(eventType) {
-        // Convert API enum to display format
-        return eventType.replace(/_/g, ' ').toLowerCase()
-            .replace(/\b\w/g, l => l.toUpperCase());
+        // Use shared enum display function
+        return getMilestoneEventTypeDisplay(eventType);
     }
 
     // ====================
@@ -175,8 +171,21 @@ export class MilestoneEditorModal {
             });
         }
 
-        // Description can be empty (no validation needed)
-        // Event types are optional (no validation needed)
+        // Validate event types if provided (must be from the 5 specific types)
+        if (data.eventTypes && Array.isArray(data.eventTypes)) {
+            const invalidEventTypes = data.eventTypes.filter(eventType =>
+                !this.availableEventTypes.includes(eventType)
+            );
+
+            if (invalidEventTypes.length > 0) {
+                errors.push({
+                    field: 'eventTypes',
+                    message: `Invalid event types: ${invalidEventTypes.join(', ')}`
+                });
+            }
+        }
+
+        // Description and wave are optional (no validation needed)
 
         return {
             valid: errors.length === 0,
@@ -192,6 +201,13 @@ export class MilestoneEditorModal {
             waveId: formData.waveId ? parseInt(formData.waveId, 10) : null
         };
 
+        // Validate eventTypes array contains only valid milestone event types
+        if (data.eventTypes.length > 0) {
+            data.eventTypes = data.eventTypes.filter(eventType =>
+                this.availableEventTypes.includes(eventType)
+            );
+        }
+
         // Add expected version ID for updates (optimistic locking)
         // Get current OC version from parent form
         const currentItem = this.parentForm?.currentItem;
@@ -203,7 +219,7 @@ export class MilestoneEditorModal {
     }
 
     // ====================
-    // API OPERATIONS (updated for UUID-based keys and enhanced responses)
+    // API OPERATIONS (updated for enhanced responses)
     // ====================
 
     async createMilestone(milestoneData) {
@@ -213,7 +229,7 @@ export class MilestoneEditorModal {
             const result = await apiClient.createMilestone(this.changeId, milestoneData);
             console.log('MilestoneEditorModal.createMilestone - API result:', result);
 
-            // API now returns both milestone and operationalChange info
+            // API returns both milestone and operationalChange info
             if (result && result.operationalChange) {
                 console.log('MilestoneEditorModal.createMilestone - updating parent form version info:', {
                     versionId: result.operationalChange.versionId,
@@ -241,7 +257,7 @@ export class MilestoneEditorModal {
             const result = await apiClient.updateMilestone(this.changeId, milestoneKey, milestoneData);
             console.log('MilestoneEditorModal.updateMilestone - API result:', result);
 
-            // API now returns both milestone and operationalChange info
+            // API returns both milestone and operationalChange info
             if (result && result.operationalChange) {
                 console.log('MilestoneEditorModal.updateMilestone - updating parent form version info:', {
                     versionId: result.operationalChange.versionId,
@@ -293,7 +309,7 @@ export class MilestoneEditorModal {
     }
 
     // ====================
-    // MILESTONE KEY UTILITIES (new)
+    // MILESTONE KEY UTILITIES
     // ====================
 
     /**
@@ -328,11 +344,17 @@ export class MilestoneEditorModal {
     }
 
     // ====================
-    // EVENT TYPE MANAGEMENT UTILITIES
+    // EVENT TYPE MANAGEMENT UTILITIES (Updated for 5 specific events)
     // ====================
 
     addEventTypeToSelector(eventType, selectorElement) {
         if (!selectorElement) return false;
+
+        // Validate event type is one of the 5 allowed types
+        if (!this.availableEventTypes.includes(eventType)) {
+            console.warn('Invalid event type:', eventType);
+            return false;
+        }
 
         const currentTypes = JSON.parse(selectorElement.dataset.selected || '[]');
         if (!currentTypes.includes(eventType)) {
@@ -374,6 +396,30 @@ export class MilestoneEditorModal {
         }
     }
 
+    /**
+     * Get all available milestone event types (the 5 specific types)
+     */
+    getAllEventTypes() {
+        return [...this.availableEventTypes];
+    }
+
+    /**
+     * Check if an event type is valid
+     */
+    isValidEventType(eventType) {
+        return this.availableEventTypes.includes(eventType);
+    }
+
+    /**
+     * Get display-friendly list of all event types
+     */
+    getEventTypeDisplayList() {
+        return this.availableEventTypes.map(eventType => ({
+            key: eventType,
+            display: this.formatEventType(eventType)
+        }));
+    }
+
     // ====================
     // CONVENIENCE METHODS FOR PARENT FORM
     // ====================
@@ -404,7 +450,7 @@ export class MilestoneEditorModal {
     }
 
     // ====================
-    // VERSION TRACKING HELPERS (new)
+    // VERSION TRACKING HELPERS
     // ====================
 
     /**
@@ -452,6 +498,83 @@ export class MilestoneEditorModal {
     }
 
     // ====================
+    // MILESTONE VALIDATION HELPERS (New)
+    // ====================
+
+    /**
+     * Validate milestone data against current business rules
+     */
+    validateMilestoneBusinessRules(milestoneData) {
+        const errors = [];
+
+        // Ensure event types are from the allowed set
+        if (milestoneData.eventTypes && milestoneData.eventTypes.length > 0) {
+            const invalidTypes = milestoneData.eventTypes.filter(type =>
+                !this.isValidEventType(type)
+            );
+
+            if (invalidTypes.length > 0) {
+                errors.push({
+                    field: 'eventTypes',
+                    message: `Invalid milestone event types: ${invalidTypes.join(', ')}. Must be one of: ${this.availableEventTypes.join(', ')}`
+                });
+            }
+        }
+
+        // Title length validation
+        if (milestoneData.title && milestoneData.title.length > 200) {
+            errors.push({
+                field: 'title',
+                message: 'Milestone title must be less than 200 characters'
+            });
+        }
+
+        // Description length validation (optional but if provided, should be reasonable)
+        if (milestoneData.description && milestoneData.description.length > 2000) {
+            errors.push({
+                field: 'description',
+                message: 'Milestone description must be less than 2000 characters'
+            });
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors
+        };
+    }
+
+    /**
+     * Sanitize milestone data for API submission
+     */
+    sanitizeMilestoneData(milestoneData) {
+        const sanitized = { ...milestoneData };
+
+        // Ensure eventTypes contains only valid types
+        if (sanitized.eventTypes && Array.isArray(sanitized.eventTypes)) {
+            sanitized.eventTypes = sanitized.eventTypes.filter(type =>
+                this.isValidEventType(type)
+            );
+        }
+
+        // Trim and clean text fields
+        if (sanitized.title) {
+            sanitized.title = sanitized.title.trim();
+        }
+
+        if (sanitized.description) {
+            sanitized.description = sanitized.description.trim();
+        }
+
+        // Ensure waveId is proper integer or null
+        if (sanitized.waveId !== null && sanitized.waveId !== undefined) {
+            const waveIdInt = parseInt(sanitized.waveId, 10);
+            sanitized.waveId = isNaN(waveIdInt) ? null : waveIdInt;
+        }
+
+        return sanitized;
+    }
+
+    // ====================
     // UTILITIES
     // ====================
 
@@ -461,19 +584,4 @@ export class MilestoneEditorModal {
         div.textContent = text;
         return div.innerHTML;
     }
-
-    // ====================
-    // DEPRECATED METHODS - NO LONGER USED
-    // These methods have been removed as they were part of the independent modal system:
-    // - showModal()
-    // - showCreateModal()
-    // - showEditModal()
-    // - attachEvents()
-    // - handleSave()
-    // - handleCancel()
-    // - closeMilestoneModal()
-    // - bindEventTypeSelector()
-    //
-    // Modal management is now handled entirely by ChangeForm using the CollectionEntityForm modal stack
-    // ====================
 }

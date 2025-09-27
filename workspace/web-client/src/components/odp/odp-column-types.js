@@ -1,7 +1,20 @@
 /**
  * ODP Column Types - Column type implementations for ODP-specific data
  * Handles setup data references, entity references, and ODP-specific formatting
+ * Updated for model evolution: DRG enum, new milestone events, and enhanced field structure
  */
+
+// Import shared enums and utilities from @odp/shared
+import {
+    DraftingGroup,
+    getDraftingGroupDisplay,
+    MilestoneEventType,
+    getMilestoneEventTypeDisplay,
+    Visibility,
+    getVisibilityDisplay,
+    RequirementType,
+    getRequirementTypeDisplay
+} from '@odp/shared';
 
 // ====================
 // SETUP DATA REFERENCE (Single)
@@ -507,78 +520,311 @@ export const waveColumn = {
 };
 
 // ====================
-// REQUIREMENT TYPE
+// REQUIREMENT TYPE (Updated with shared enum)
 // ====================
 
 export const requirementTypeColumn = {
     /**
-     * Render requirement type (ON/OR) with badges
+     * Render requirement type (ON/OR) with badges using shared enum
      */
     render: (value, column, item, context) => {
         if (!value) return '-';
 
-        const typeMap = {
-            'ON': { label: 'ON', class: 'req-type-on' },
-            'OR': { label: 'OR', class: 'req-type-or' }
-        };
+        const displayValue = getRequirementTypeDisplay(value);
+        const typeClass = value === 'ON' ? 'req-type-on' : value === 'OR' ? 'req-type-or' : 'req-type-other';
 
-        const type = typeMap[value] || { label: value, class: 'req-type-other' };
-        return `<span class="item-badge ${type.class}">${escapeHtml(type.label)}</span>`;
+        return `<span class="item-badge ${typeClass}">${escapeHtml(displayValue)}</span>`;
     },
 
     /**
-     * Filter options for requirement type
+     * Filter options for requirement type using shared enum
      */
     getFilterOptions: (column, context) => [
         { value: '', label: 'All Types' },
-        { value: 'ON', label: 'ON (Operational Need)' },
-        { value: 'OR', label: 'OR (Operational Requirement)' }
+        { value: 'ON', label: getRequirementTypeDisplay('ON') },
+        { value: 'OR', label: getRequirementTypeDisplay('OR') }
     ],
 
     /**
-     * Group title for requirement type
+     * Group title for requirement type using shared enum
      */
     getGroupTitle: (value, column, context) => {
-        const titles = {
-            'ON': 'Operational Needs',
-            'OR': 'Operational Requirements'
-        };
-        return titles[value] || 'Unknown Type';
+        if (!value) return 'Unknown Type';
+
+        const displayValue = getRequirementTypeDisplay(value);
+        return value === 'ON' ? 'Operational Needs' :
+            value === 'OR' ? 'Operational Requirements' :
+                displayValue;
     }
 };
 
 // ====================
-// VISIBILITY
+// VISIBILITY (Updated with shared enum)
 // ====================
 
 export const visibilityColumn = {
     /**
-     * Render visibility with status badges
+     * Render visibility with status badges using shared enum
      */
     render: (value, column, item, context) => {
         if (!value) return '-';
 
-        const visibilityMap = {
-            'public': { label: 'Public', class: 'visibility-public' },
-            'internal': { label: 'Internal', class: 'visibility-internal' },
-            'restricted': { label: 'Restricted', class: 'visibility-restricted' },
-            'NM': { label: 'NM', class: 'visibility-nm' },
-            'NETWORK': { label: 'Network', class: 'visibility-network' }
-        };
+        const displayValue = getVisibilityDisplay(value);
+        const visibilityClass = value === 'NM' ? 'visibility-nm' :
+            value === 'NETWORK' ? 'visibility-network' :
+                'visibility-other';
 
-        const vis = visibilityMap[value] || { label: value, class: 'visibility-other' };
-        return `<span class="item-status ${vis.class}">${escapeHtml(vis.label)}</span>`;
+        return `<span class="item-status ${visibilityClass}">${escapeHtml(displayValue)}</span>`;
     },
 
     /**
-     * Filter options
+     * Filter options using shared enum
      */
     getFilterOptions: (column, context) => [
         { value: '', label: 'All Visibility' },
-        { value: 'public', label: 'Public' },
-        { value: 'internal', label: 'Internal' },
-        { value: 'restricted', label: 'Restricted' }
-    ]
+        { value: 'NM', label: getVisibilityDisplay('NM') },
+        { value: 'NETWORK', label: getVisibilityDisplay('NETWORK') }
+    ],
+
+    /**
+     * Group title using shared enum
+     */
+    getGroupTitle: (value, column, context) => {
+        if (!value) return 'Unknown Visibility';
+        return getVisibilityDisplay(value);
+    }
+};
+
+// ====================
+// DRAFTING GROUP (NEW - using shared enum)
+// ====================
+
+export const draftingGroupColumn = {
+    /**
+     * Render drafting group with badges using shared enum
+     */
+    render: (value, column, item, context) => {
+        if (!value) return column.noneLabel || '-';
+
+        const displayValue = getDraftingGroupDisplay(value);
+        return `<span class="item-badge drg-badge">${escapeHtml(displayValue)}</span>`;
+    },
+
+    /**
+     * Filter by drafting group
+     */
+    filter: (value, filterValue, column) => {
+        if (!filterValue) return true;
+        if (!value) return false;
+
+        // Direct value match or display name match
+        if (value === filterValue) return true;
+
+        const displayValue = getDraftingGroupDisplay(value);
+        return displayValue.toLowerCase().includes(filterValue.toLowerCase());
+    },
+
+    /**
+     * Get filter options using shared enum
+     */
+    getFilterOptions: (column, context) => {
+        const options = Object.keys(DraftingGroup).map(key => ({
+            value: key,
+            label: getDraftingGroupDisplay(key)
+        }));
+
+        return [{ value: '', label: 'All DRGs' }, ...options];
+    },
+
+    /**
+     * Sort by display name
+     */
+    sort: (a, b, column) => {
+        const displayA = a ? getDraftingGroupDisplay(a) : '';
+        const displayB = b ? getDraftingGroupDisplay(b) : '';
+        return displayA.localeCompare(displayB);
+    },
+
+    /**
+     * Get group title using shared enum
+     */
+    getGroupTitle: (value, column, context) => {
+        if (!value) return column.noneLabel || 'No DRG';
+        return getDraftingGroupDisplay(value);
+    }
+};
+
+// ====================
+// MILESTONE EVENTS (NEW - using shared enum)
+// ====================
+
+export const milestoneEventsColumn = {
+    /**
+     * Render milestone events using shared enum
+     */
+    render: (value, column, item, context) => {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return '-';
+        }
+
+        const maxDisplay = column.maxDisplay || 2;
+        const displayEvents = value.slice(0, maxDisplay);
+        const remainingCount = value.length - displayEvents.length;
+
+        let html = displayEvents.map(eventType => {
+            const displayValue = getMilestoneEventTypeDisplay(eventType);
+            return `<span class="milestone-event-badge">${escapeHtml(displayValue)}</span>`;
+        }).join(' ');
+
+        if (remainingCount > 0) {
+            html += ` <span class="milestone-more">+${remainingCount} more</span>`;
+        }
+
+        return html;
+    },
+
+    /**
+     * Filter by milestone event types
+     */
+    filter: (value, filterValue, column) => {
+        if (!filterValue) return true;
+        if (!value || !Array.isArray(value) || value.length === 0) return false;
+
+        const lowerFilter = filterValue.toLowerCase();
+
+        return value.some(eventType => {
+            if (eventType === filterValue) return true;
+
+            const displayValue = getMilestoneEventTypeDisplay(eventType);
+            return displayValue.toLowerCase().includes(lowerFilter);
+        });
+    },
+
+    /**
+     * Get filter options using shared enum
+     */
+    getFilterOptions: (column, context) => {
+        const options = Object.keys(MilestoneEventType).map(key => ({
+            value: key,
+            label: getMilestoneEventTypeDisplay(key)
+        }));
+
+        return [{ value: '', label: 'All Event Types' }, ...options];
+    },
+
+    /**
+     * Sort by first event type
+     */
+    sort: (a, b, column) => {
+        const firstA = Array.isArray(a) && a.length > 0 ? a[0] : '';
+        const firstB = Array.isArray(b) && b.length > 0 ? b[0] : '';
+
+        const displayA = firstA ? getMilestoneEventTypeDisplay(firstA) : '';
+        const displayB = firstB ? getMilestoneEventTypeDisplay(firstB) : '';
+
+        return displayA.localeCompare(displayB);
+    },
+
+    /**
+     * Get group title using shared enum
+     */
+    getGroupTitle: (value, column, context) => {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return 'No Events';
+        }
+
+        const firstEvent = value[0];
+        const firstDisplay = getMilestoneEventTypeDisplay(firstEvent);
+
+        if (value.length > 1) {
+            return `${firstDisplay} (+${value.length - 1} more)`;
+        }
+
+        return firstDisplay;
+    }
+};
+
+// ====================
+// IMPLEMENTED ONs (NEW - for OR-type requirements)
+// ====================
+
+export const implementedONsColumn = {
+    /**
+     * Render list of implemented ON references
+     */
+    render: (value, column, item, context) => {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return column.noneLabel || '-';
+        }
+
+        const maxDisplay = column.maxDisplay || 1;
+        const displayItems = value.slice(0, maxDisplay);
+        const remainingCount = value.length - displayItems.length;
+
+        let html = displayItems.map(ref => {
+            const displayValue = `[ON] ${ref?.title || ref?.name || ref?.id || 'Unknown'}`;
+            return `<span class="on-reference-item">${escapeHtml(displayValue)}</span>`;
+        }).join(', ');
+
+        if (remainingCount > 0) {
+            html += `, <span class="reference-more">+${remainingCount} more ONs</span>`;
+        }
+
+        return html;
+    },
+
+    /**
+     * Filter by implemented ON references
+     */
+    filter: (value, filterValue, column) => {
+        if (!filterValue) return true;
+        if (!value || !Array.isArray(value) || value.length === 0) return false;
+
+        const lowerFilter = filterValue.toLowerCase();
+
+        return value.some(ref => {
+            if (!ref) return false;
+
+            const id = ref.id?.toString().toLowerCase();
+            const title = ref.title?.toLowerCase();
+            const name = ref.name?.toLowerCase();
+
+            return (id && id.includes(lowerFilter)) ||
+                (title && title.includes(lowerFilter)) ||
+                (name && name.includes(lowerFilter));
+        });
+    },
+
+    /**
+     * Sort by first implemented ON
+     */
+    sort: (a, b, column) => {
+        const getFirst = (value) => {
+            if (!value || !Array.isArray(value) || value.length === 0) return '';
+            const first = value[0];
+            return first?.title || first?.name || first?.id || '';
+        };
+
+        return getFirst(a).localeCompare(getFirst(b));
+    },
+
+    /**
+     * Get group title for implemented ONs
+     */
+    getGroupTitle: (value, column, context) => {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return column.noneLabel || 'No Implemented ONs';
+        }
+
+        const first = value[0];
+        const firstDisplay = `[ON] ${first?.title || first?.name || first?.id || 'Unknown'}`;
+
+        if (value.length > 1) {
+            return `${firstDisplay} (+${value.length - 1} more)`;
+        }
+
+        return firstDisplay;
+    }
 };
 
 // ====================
@@ -603,5 +849,10 @@ export const odpColumnTypes = {
     'entity-reference-list': entityReferenceListColumn,
     'wave': waveColumn,
     'requirement-type': requirementTypeColumn,
-    'visibility': visibilityColumn
+    'visibility': visibilityColumn,
+    'drafting-group': draftingGroupColumn,
+    'milestone-events': milestoneEventsColumn,
+    'implemented-ons': implementedONsColumn,
+    // Preserve existing milestone-waves column for backward compatibility
+    'milestone-waves': waveColumn
 };
