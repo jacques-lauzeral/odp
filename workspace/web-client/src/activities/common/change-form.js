@@ -298,6 +298,34 @@ export default class ChangeForm extends CollectionEntityForm {
         return transformed;
     }
 
+    transformDataForRead(item) {
+        if (!item) return {};
+
+        const transformed = { ...item };
+
+        // Extract IDs from object references
+        const referenceFields = [
+            'satisfiesRequirements',
+            'supersedsRequirements'
+        ];
+
+        referenceFields.forEach(field => {
+            if (transformed[field] && Array.isArray(transformed[field])) {
+                transformed[field] = transformed[field].map(ref => {
+                    if (typeof ref === 'object' && ref !== null) {
+                        return ref.itemTitle || ref.title || ref;
+                    }
+                    return typeof ref === 'string' && /^\d+$/.test(ref) ? parseInt(ref, 10) : ref;
+                });
+            }
+        });
+
+        // Store milestones separately (not part of form data)
+        this.milestones = transformed.milestones || [];
+
+        return transformed;
+    }
+
     transformDataForEdit(item) {
         if (!item) return {};
 

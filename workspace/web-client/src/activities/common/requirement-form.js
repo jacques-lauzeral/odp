@@ -299,6 +299,13 @@ export default class RequirementForm extends CollectionEntityForm {
         console.log('RequirementForm.transformDataForSave in');
         const transformed = { ...data };
 
+        // Add version ID for optimistic locking on edit (only if item exists)
+        if (mode === 'edit' && item) {
+            transformed.type = item.type; // Type cannot be changed on edit
+            transformed.expectedVersionId = item.versionId || item.expectedVersionId;
+        }
+
+        console.log('RequirementForm.transformDataForSave data: ', JSON.stringify(transformed));
         // Ensure all required array fields are present (even if empty)
         const requiredArrayFields = [
             'refinesParents',
@@ -344,11 +351,34 @@ export default class RequirementForm extends CollectionEntityForm {
             transformed.implementedONs = [];
         }
 
-        // Add version ID for optimistic locking on edit (only if item exists)
-        if (mode === 'edit' && item) {
-            transformed.type = item.type; // Type cannot be changed on edit
-            transformed.expectedVersionId = item.versionId || item.expectedVersionId;
-        }
+        return transformed;
+    }
+
+    transformDataForRead(item) {
+        if (!item) return {};
+
+        const transformed = { ...item };
+
+        // Extract IDs from object references if needed
+        const arrayFields = [
+            'impactsStakeholderCategories',
+            'impactsData',
+            'impactsRegulatoryAspects',
+            'impactsServices',
+            'refinesParents',
+            'implementedONs'
+        ];
+
+        arrayFields.forEach(field => {
+            if (transformed[field] && Array.isArray(transformed[field])) {
+                transformed[field] = transformed[field].map(value => {
+                    if (typeof value === 'object' && value !== null) {
+                        return value.itemTitle || value.title || value;
+                    }
+                    return typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value, 10) : value;
+                });
+            }
+        });
 
         return transformed;
     }

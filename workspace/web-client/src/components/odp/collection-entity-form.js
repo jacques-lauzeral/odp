@@ -78,6 +78,11 @@ export class CollectionEntityForm {
         return data;
     }
 
+    transformDataForRead(item) {
+        // Override in subclasses for custom data transformation
+        return item || {};
+    }
+
     transformDataForEdit(item) {
         // Override in subclasses for custom data transformation
         return item || {};
@@ -130,13 +135,13 @@ export class CollectionEntityForm {
 
         this.currentMode = 'read';
         this.currentItem = item;
-        const transformedItem = this.transformDataForEdit(item);
+        const transformedItem = this.transformDataForRead(item);
         const form = await this.generateForm('read', transformedItem);
         this.showModal(form, 'read');
     }
 
     async generateReadOnlyView(item) {
-        const transformedItem = this.transformDataForEdit(item);
+        const transformedItem = this.transformDataForRead(item);
         return await this.generateForm('read', transformedItem);
     }
 
