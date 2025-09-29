@@ -485,6 +485,12 @@ export class CollectionEntityForm {
             }
         }
 
+        // Handle textareas - preserve line breaks
+        if (field.type === 'textarea') {
+            const escaped = this.escapeHtml(value.toString());
+            return escaped.replace(/\n/g, '<br>');
+        }
+
         // Default
         return this.escapeHtml(value.toString());
     }

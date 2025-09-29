@@ -158,17 +158,29 @@ class ImportService {
             // Clear and rebuild global reference map
             context.globalRefMap.clear();
 
-            // Map setup entities by name
-            stakeholders.forEach(entity => context.globalRefMap.set(entity.name, entity.id));
-            services.forEach(entity => context.globalRefMap.set(entity.name, entity.id));
-            dataCategories.forEach(entity => context.globalRefMap.set(entity.name, entity.id));
-            regulatory.forEach(entity => context.globalRefMap.set(entity.name, entity.id));
+            // Map setup entities by name (case-insensitive)
+            stakeholders.forEach(entity =>
+                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
+            );
+            services.forEach(entity =>
+                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
+            );
+            dataCategories.forEach(entity =>
+                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
+            );
+            regulatory.forEach(entity =>
+                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
+            );
 
             // Build title paths for existing ON/ORs and map them
+            console.log(`Global reference map - building title paths`);
             const titlePaths = this._buildTitlePaths(allRequirements, context);
-            titlePaths.forEach((id, titlePath) => context.globalRefMap.set(titlePath, id));
+            console.log(`Global reference map - built title paths`);
+            titlePaths.forEach((id, titlePath) =>
+                context.globalRefMap.set(titlePath.toLowerCase(), id)
+            );
 
-            console.log(`Global reference map built: ${context.globalRefMap.size} entries`);
+            console.log(`Global reference map build - completed: ${context.globalRefMap.size} entries`);
 
         } catch (error) {
             throw new Error(`Failed to build global reference maps: ${error.message}`);
@@ -184,20 +196,24 @@ class ImportService {
         const parentMap = new Map();
         const reqById = new Map();
 
+        console.log(`Global reference map - build title paths`);
+
         // Build lookup maps
         allRequirements.forEach(req => {
-            reqById.set(req.id, req);
+            console.log(`Global reference map - build requirement map - set itemId: ${req.itemId}`);
+            reqById.set(req.itemId, req);
             if (req.refinesParents && req.refinesParents.length > 0) {
                 if (req.refinesParents.length > 1) {
                     context.warnings.push(
                         `Requirement ${req.title} has multiple parents, using first one only`
                     );
                 }
-                parentMap.set(req.id, req.refinesParents[0].id);
+                parentMap.set(req.itemId, req.refinesParents[0].id);
             }
         });
 
         // Check for circular references
+        console.log(`Global reference map - check for circular references`);
         const detectCircular = (reqId, visited = new Set()) => {
             if (visited.has(reqId)) {
                 return reqId; // Found circular reference
@@ -211,6 +227,7 @@ class ImportService {
         };
 
         // Check all requirements for circular references
+        console.log(`Global reference map - check all requirements for circular references`);
         for (const req of allRequirements) {
             const circularNode = detectCircular(req.id);
             if (circularNode) {
@@ -222,6 +239,7 @@ class ImportService {
         }
 
         // Recursive path building function
+        console.log(`Global reference map - recursive path building function`);
         const buildPath = (reqId) => {
             if (visitedPaths.has(reqId)) {
                 return visitedPaths.get(reqId);
@@ -248,7 +266,8 @@ class ImportService {
         };
 
         // Build paths for all requirements
-        allRequirements.forEach(req => buildPath(req.id));
+        console.log(`Global reference map - build paths for all requirements`);
+        allRequirements.forEach(req => buildPath(req.itemId));
 
         return pathMap;
     }
@@ -284,8 +303,8 @@ class ImportService {
 
                 const created = await OperationalRequirementService.create(createRequest, userId);
 
-                // Add to global reference map immediately
-                context.globalRefMap.set(reqData.externalId, created.itemId);
+                // Add to global reference map immediately (case-insensitive)
+                context.globalRefMap.set(reqData.externalId.toLowerCase(), created.itemId);
                 createdCount++;
 
                 console.log(`Created requirement: ${reqData.externalId}`);
@@ -321,7 +340,7 @@ class ImportService {
      * Resolve and update all references for a single requirement
      */
     async _resolveEntityReferences(reqData, userId, context) {
-        const requirementId = context.globalRefMap.get(reqData.externalId);
+        const requirementId = context.globalRefMap.get(reqData.externalId.toLowerCase());
         if (!requirementId) {
             throw new Error(`Requirement ${reqData.externalId} not found in global map`);
         }
@@ -399,7 +418,7 @@ class ImportService {
         for (const categoryData of sorted) {
             try {
                 const parentId = categoryData.parentExternalId ?
-                    context.setupIdMap.get(categoryData.parentExternalId) : null;
+                    context.setupIdMap.get(categoryData.parentExternalId.toLowerCase()) : null;
 
                 const createRequest = {
                     name: categoryData.name,
@@ -412,7 +431,8 @@ class ImportService {
                     userId
                 );
 
-                context.setupIdMap.set(categoryData.externalId, created.id);
+                // Store with lowercase key
+                context.setupIdMap.set(categoryData.externalId.toLowerCase(), created.id);
                 count++;
 
             } catch (error) {
@@ -430,7 +450,7 @@ class ImportService {
         for (const serviceData of sorted) {
             try {
                 const parentId = serviceData.parentExternalId ?
-                    context.setupIdMap.get(serviceData.parentExternalId) : null;
+                    context.setupIdMap.get(serviceData.parentExternalId.toLowerCase()) : null;
 
                 const createRequest = {
                     name: serviceData.name,
@@ -439,7 +459,8 @@ class ImportService {
                 };
 
                 const created = await ServiceService.createService(createRequest, userId);
-                context.setupIdMap.set(serviceData.externalId, created.id);
+                // Store with lowercase key
+                context.setupIdMap.set(serviceData.externalId.toLowerCase(), created.id);
                 count++;
 
             } catch (error) {
@@ -457,7 +478,7 @@ class ImportService {
         for (const categoryData of sorted) {
             try {
                 const parentId = categoryData.parentExternalId ?
-                    context.setupIdMap.get(categoryData.parentExternalId) : null;
+                    context.setupIdMap.get(categoryData.parentExternalId.toLowerCase()) : null;
 
                 const createRequest = {
                     name: categoryData.name,
@@ -470,7 +491,8 @@ class ImportService {
                     userId
                 );
 
-                context.setupIdMap.set(categoryData.externalId, created.id);
+                // Store with lowercase key
+                context.setupIdMap.set(categoryData.externalId.toLowerCase(), created.id);
                 count++;
 
             } catch (error) {
@@ -496,7 +518,8 @@ class ImportService {
                     userId
                 );
 
-                context.setupIdMap.set(aspectData.externalId, created.id);
+                // Store with lowercase key
+                context.setupIdMap.set(aspectData.externalId.toLowerCase(), created.id);
                 count++;
 
             } catch (error) {
@@ -548,7 +571,7 @@ class ImportService {
     }
 
     /**
-     * Resolve external IDs to internal IDs using global reference map
+     * Resolve external IDs to internal IDs using global reference map (case-insensitive)
      */
     _resolveExternalIds(externalIds, context) {
         if (!Array.isArray(externalIds)) {
@@ -559,7 +582,8 @@ class ImportService {
         const missing = [];
 
         for (const extId of externalIds) {
-            const internalId = context.globalRefMap.get(extId);
+            // Use lowercase for lookup
+            const internalId = context.globalRefMap.get(extId.toLowerCase());
             if (internalId !== undefined) {
                 resolved.push(internalId);
             } else {
