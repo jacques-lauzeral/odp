@@ -39,6 +39,16 @@ class EditionCommands {
     }
 
     /**
+     * Create headers for export (no Content-Type needed)
+     */
+    createExportHeaders() {
+        const userId = this.getUserId();
+        return {
+            'x-user-id': userId
+        };
+    }
+
+    /**
      * Creates and returns the odp command with all subcommands
      */
     createCommands(program) {
@@ -48,6 +58,8 @@ class EditionCommands {
         this.addListCommand(editionCommand);
         this.addShowCommand(editionCommand);
         this.addCreateCommand(editionCommand);
+        this.addExportCommand(editionCommand);
+        this.addExportAllCommand(editionCommand);
 
         program.addCommand(editionCommand);
     }
@@ -200,6 +212,63 @@ class EditionCommands {
                     }
                 } catch (error) {
                     console.error('Error creating ODP edition:', error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    addExportCommand(editionCommand) {
+        editionCommand
+            .command('export <id>')
+            .description('Export a specific ODP edition as AsciiDoc')
+            .action(async (id) => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/odp-editions/${id}/export`, {
+                        headers: this.createExportHeaders()
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`ODP edition with ID ${id} not found.`);
+                        process.exit(1);
+                    }
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const asciiDoc = await response.text();
+
+                    // Output to stdout - let shell handle redirection
+                    process.stdout.write(asciiDoc);
+                } catch (error) {
+                    console.error('Error exporting ODP edition:', error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    addExportAllCommand(editionCommand) {
+        editionCommand
+            .command('export-all')
+            .description('Export entire ODP repository as AsciiDoc')
+            .action(async () => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/odp-editions/export`, {
+                        headers: this.createExportHeaders()
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const asciiDoc = await response.text();
+
+                    // Output to stdout - let shell handle redirection
+                    process.stdout.write(asciiDoc);
+                } catch (error) {
+                    console.error('Error exporting ODP repository:', error.message);
                     process.exit(1);
                 }
             });

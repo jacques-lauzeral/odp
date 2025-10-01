@@ -40,14 +40,14 @@ The purpose of this project is to elaborate a high quality prototype with modern
 - **Programming language:** JavaScript (ES modules)
 - **Framework:** Express.js with manual routing
 - **Node.js application layers:**
-  - **Express routes**: Entity-specific route files (routes/stakeholder-category-store.js)
-  - **Services layer**: Business logic and transaction management (services/StakeholderCategoryService.js)
+  - **Express routes**: Entity-specific route files (routes/stakeholder-category.js)
+  - **Service layer**: Business logic and transaction management (services/StakeholderCategoryService.js)
   - **Store layer**: Encapsulated data access with JavaScript API, manages transactions, supports node and edge operations
   - **Database layer**: Neo4j with official driver
 
 ### 3.3 Clean Architecture Pattern
 ```
-HTTP Requests → Express Routes → Services Layer → Store Layer → Neo4j Database
+HTTP Requests → Express Routes → Service Layer → Store Layer → Neo4j Database
                      ↓              ↓              ↓
              Route Handlers → Business Logic → Data Access
 ```
@@ -55,7 +55,7 @@ HTTP Requests → Express Routes → Services Layer → Store Layer → Neo4j Da
 **Design Decision:**
 - **Manual routes:** Direct Express route definitions for maximum clarity and control
 - **Entity separation:** One route file per entity type for clean organization
-- **Services abstraction:** Business logic isolated from HTTP concerns
+- **Service abstraction:** Business logic isolated from HTTP concerns
 - **Store abstraction:** Database operations encapsulated with transaction management
 
 ### 3.4 Store Layer Design
@@ -64,6 +64,16 @@ HTTP Requests → Express Routes → Services Layer → Store Layer → Neo4j Da
 - **Error handling:** Consistent StoreError hierarchy
 - **Base patterns:** BaseStore for common CRUD operations
 - **Entity stores:** Specialized stores extending base functionality
+
+### 3.5 Server Backend Dependencies
+- **Express.js**: Web framework for REST API
+- **Neo4j driver**: Official JavaScript driver for database connectivity
+- **node-fetch**: HTTP client for external API calls
+- **cors**: Cross-origin resource sharing middleware
+- **nodemon**: Development auto-reload on code changes
+- **commander**: CLI framework for command-line interface
+- **cli-table3**: ASCII table formatting for CLI output
+- **mustache**: Template engine for AsciiDoc document generation
 
 ## 4 Web Client
 
@@ -105,7 +115,8 @@ odp/                          # Git repository root
 │   │   ├── src/             # Manual server implementation
 │   │   │   ├── routes/      # Entity route files
 │   │   │   ├── services/    # Business logic layer
-│   │   │   └── store/       # Data access layer
+│   │   │   ├── store/       # Data access layer
+│   │   │   └── templates/   # Mustache templates for exports
 │   │   └── package.json     # Server dependencies
 │   ├── shared/              # Common models and utilities
 │   ├── web-client/          # Frontend application
@@ -141,7 +152,7 @@ odp/                          # Git repository root
 - **Versioning pattern:** Root nodes + version nodes (for operational entities)
 - **Relationship handling:** Store layer abstraction over Cypher queries
 - **Transaction management:** Explicit boundaries with proper error handling
-- **Current entities:** StakeholderCategories with hierarchy support (REFINES relationships)
+- **Current entities:** StakeholderCategory with hierarchy support (REFINES relationships)
 
 ## 8 API Architecture
 
@@ -153,7 +164,7 @@ odp/                          # Git repository root
 
 ### 8.2 Current API Endpoints
 - **Health check:** `GET /hello`
-- **StakeholderCategories CRUD:**
+- **StakeholderCategory CRUD:**
   - `GET /stakeholder-categories` - List all categories
   - `GET /stakeholder-categories/:id` - Get category by ID
   - `POST /stakeholder-categories` - Create new category
@@ -176,11 +187,11 @@ odp/                          # Git repository root
 ### 9.2 Development Environment
 - **Containerization:** Full development stack in Docker
 - **Live reload:** Immediate reflection of code changes via nodemon
-- **Services coordination:** Automated startup and dependency management
+- **Service coordination:** Automated startup and dependency management
 - **Port management:** Clear port allocation for different services
 
 ### 9.3 Extensibility Patterns
-- **New entities:** Follow established Store → Services → Routes → CLI pattern
+- **New entities:** Follow established Store → Service → Routes → CLI pattern
 - **Relationship types:** Extend store methods for entity-specific relationships
 - **Business logic:** Add service methods for complex operations
 

@@ -64,7 +64,8 @@ workspace/
 ├── server/src/               # Manual server implementation
 │   ├── routes/              # Entity route files
 │   ├── services/            # Business logic layer
-│   └── store/               # Data access layer
+│   ├── store/               # Data access layer
+│   └── templates/           # Mustache templates for exports
 ├── shared/src/               # Shared models and types
 └── [other-workspaces]/src/   # Additional manual code
 ```
@@ -105,6 +106,45 @@ cp workspace/server/src/routes/stakeholder-category-store.js workspace/server/sr
 
 # 6. Add CLI commands
 cp workspace/cli/src/commands/stakeholder-category-store.js workspace/cli/src/commands/new-entity.js
+```
+
+## Template Development
+
+### Mustache Templates
+- **Template engine:** Mustache for logic-less document generation
+- **Location:** `workspace/server/src/templates/`
+- **Current templates:**
+  - `odp-edition.mustache` - AsciiDoc export for ODP editions
+
+### Template Development Workflow
+```bash
+# Edit template
+vi workspace/server/src/templates/odp-edition.mustache
+
+# Test via CLI (once implemented)
+npm run dev export edition <id> > test-output.adoc
+npm run dev export > repository-output.adoc
+
+# Validate AsciiDoc output
+asciidoctor test-output.adoc -o test-output.html
+```
+
+### Template Data Flow
+1. ODPEditionService fetches data via existing services
+2. Data passed as OpenAPI DTOs to template renderer
+3. Mustache processes template with data context
+4. AsciiDoc output streamed to STDOUT
+
+### Template Testing
+```bash
+# Test with sample data (development)
+node scripts/test-template.js workspace/server/src/templates/odp-edition.mustache sample-data.json
+
+# Verify AsciiDoc syntax
+asciidoctor --syntax-check test-output.adoc
+
+# Preview HTML output
+asciidoctor test-output.adoc && open test-output.html
 ```
 
 ## Quality Assurance Tools

@@ -1,0 +1,142 @@
+= ODP Edition {{title}}
+NM
+:doctype: book
+:encoding: utf-8
+:lang: en
+:toc: left
+:numbered:
+
+== Waves
+{{#waves}}
+[#wave-{{id}}]
+=== {{name}} ({{date}})
+
+{{#eventTypeGroups}}
+==== {{eventTypeLabel}}
+
+[width="100%",options="header",cols="1,2"]
+|====================
+| Operational Change | Purpose
+{{#milestones}}
+| <<oc-{{operationalChange.id}}, {{operationalChange.title}}>> | {{operationalChange.purpose}}
+{{/milestones}}
+|====================
+
+{{/eventTypeGroups}}
+{{/waves}}
+
+== Operational Changes
+{{#operationalChanges}}
+[#oc-{{itemId}}]
+=== {{title}}
+Purpose::
++
+--
+{{purpose}}
+--
+Initial State::
++
+--
+{{initialState}}
+--
+Final State::
++
+--
+{{finalState}}
+--
+Details::
++
+--
+{{details}}
+--
+Milestones::
++
+[width="100%",options="header"]
+|====================
+| Wave | Milestone | Events | Description
+{{#milestones}}
+| <<wave-{{wave.id}},{{wave.name}}>> | {{title}} | {{#eventTypes}}{{.}}{{^last}}, {{/last}}{{/eventTypes}} | {{description}}
+{{/milestones}}
+|====================
+
+Satisfied Requirements::
++
+--
+{{#satisfiesRequirements}}
+* <<or-{{id}}, {{title}}>>
+{{/satisfiesRequirements}}
+--
+
+{{/operationalChanges}}
+
+== Operational Needs
+{{#operationalNeeds}}
+
+[#on-{{itemId}}]
+=== {{title}}
+Statement::
++
+--
+{{statement}}
+--
+Rationale::
++
+--
+{{rationale}}
+--
+
+Implemented by::
++
+--
+{{#implementingORs}}
+* <<or-{{id}}, {{title}}>>
+{{/implementingORs}}
+--
+
+Impact::
++
+--
+TO BE COMPLETED
+--
+{{/operationalNeeds}}
+
+== Operational Requirements
+{{#operationalRequirements}}
+
+[#or-{{itemId}}]
+=== {{title}}
+Statement::
++
+--
+{{statement}}
+--
+Rationale::
++
+--
+{{rationale}}
+--
+
+{{#satisfiedByChange}}
+Satisfied by::
++
+--
+<<oc-{{id}}, {{title}}>>
+--
+{{/satisfiedByChange}}
+
+{{#implementedONs}}
+Implements::
++
+--
+{{#implementedONs}}
+* <<on-{{id}}, {{title}}>>
+{{/implementedONs}}
+--
+{{/implementedONs}}
+Impact::
++
+--
+TO BE COMPLETED
+--
+{{/operationalRequirements}}
+

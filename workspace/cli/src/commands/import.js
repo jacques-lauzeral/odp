@@ -88,7 +88,7 @@ export class ImportCommands {
                 'stakeholderCategories',
                 'services',
                 'dataCategories',
-                'regulatoryAspects',
+                'waves',
                 'requirements',
                 'changes'
             ];

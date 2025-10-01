@@ -86,3 +86,62 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /odp-editions/{id}/export:
+    get:
+      summary: Export ODP edition as AsciiDoc
+      tags: [ODP]
+      description: |
+        Exports a specific ODP Edition as an AsciiDoc document. The export includes
+        all waves, milestones, and deliverables associated with the edition, formatted
+        as a structured AsciiDoc document suitable for documentation generation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ODP Edition ID
+      responses:
+        '200':
+          description: Success - AsciiDoc document
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: AsciiDoc formatted document
+        '404':
+          description: ODP Edition not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /odp-editions/export:
+    get:
+      summary: Export entire repository as AsciiDoc
+      tags: [ODP]
+      description: |
+        Exports the entire ODP repository as an AsciiDoc document. This includes
+        all editions with their associated waves, milestones, and deliverables,
+        organized in a comprehensive document structure.
+      responses:
+        '200':
+          description: Success - AsciiDoc document
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: AsciiDoc formatted document containing all editions
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'

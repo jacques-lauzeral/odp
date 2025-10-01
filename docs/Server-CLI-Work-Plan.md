@@ -143,27 +143,34 @@ Strategic implementation plan for server backend and CLI development, tracking p
 ### 🚧 PHASE 10: Export Capability (PLANNED)
 
 #### Export Service 🚧 PLANNED
-- 🚧 **Export methods**: Mirror import with setup, requirements, changes
-- 🚧 **Format generation**: Convert internal data to YAML format
-- 🚧 **Reference mapping**: Internal IDs to external IDs
-- 🚧 **Filtering options**: Export by DRG, date range, or entity selection
+- 🚧 **Export methods**: AsciiDoc generation for editions and repository
+- 🚧 **ODPEditionService.exportAsAsciiDoc**: Method accepting optional edition ID
+- 🚧 **Template rendering**: Mustache templates for document generation
+- 🚧 **Data aggregation**: Collect waves, milestones, deliverables via services
 
 #### API Endpoints 🚧 PLANNED
-- 🚧 **GET /export/setup**: Export all setup entities
-- 🚧 **GET /export/requirements**: Export requirements with optional DRG filter
-- 🚧 **GET /export/changes**: Export changes with optional DRG filter
-- 🚧 **Query parameters**: Filtering and format options
+- 🚧 **GET /odp-editions/{id}/export**: Export specific edition as AsciiDoc
+- 🚧 **GET /odp-editions/export**: Export entire repository as AsciiDoc
+- 🚧 **Response format**: text/plain with AsciiDoc content
+- 🚧 **STDOUT delivery**: Direct output stream for CLI consumption
 
 #### CLI Commands 🚧 PLANNED
-- 🚧 **Export commands**: `odp export setup/requirements/changes`
-- 🚧 **Output options**: File path or stdout
-- 🚧 **Filtering flags**: DRG, date range, entity types
+- 🚧 **Export edition**: `odp export edition <id>` - specific edition to STDOUT
+- 🚧 **Export repository**: `odp export` - entire repository to STDOUT
+- 🚧 **Output redirection**: User handles file output via shell redirection
+- 🚧 **Progress logging**: Status messages to STDERR during generation
+
+#### Template Management 🚧 PLANNED
+- 🚧 **Template location**: `server/src/templates/edition-export.mustache`
+- 🚧 **Template engine**: Mustache for logic-less templating
+- 🚧 **Conditional sections**: Different rendering for edition vs repository
+- 🚧 **Data model**: Direct use of OpenAPI DTOs without mapping
 
 #### Testing 🚧 PLANNED
-- 🚧 **Round-trip testing**: Export then re-import validation
-- 🚧 **Large dataset handling**: Performance with full database export
-- 🚧 **Format validation**: Ensure exported YAML matches import format
-
+- 🚧 **Template validation**: Ensure valid AsciiDoc generation
+- 🚧 **Large dataset handling**: Performance with full repository export
+- 🚧 **CLI integration**: End-to-end export via CLI commands
+- 🚧 **Document rendering**: Validate AsciiDoc renders correctly???
 ---
 
 ## System Status Summary

@@ -31,6 +31,29 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Export entire repository as AsciiDoc
+router.get('/export', async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        console.log(`ODPEditionService.exportAsAsciiDoc() repository export, userId: ${userId}`);
+
+        // Export entire repository (no edition ID)
+        const asciiDoc = await ODPEditionService.exportAsAsciiDoc(null, userId);
+
+        // Set content type to plain text for AsciiDoc
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', 'inline; filename="odp-repository.adoc"');
+        res.send(asciiDoc);
+    } catch (error) {
+        console.error('Error exporting ODP repository:', error);
+        if (error.message.includes('x-user-id')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+        }
+    }
+});
+
 // Get ODP edition by ID
 router.get('/:id', async (req, res) => {
     try {
@@ -47,6 +70,32 @@ router.get('/:id', async (req, res) => {
         console.error('Error fetching ODP edition:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+        }
+    }
+});
+
+// Export specific ODP edition as AsciiDoc
+router.get('/:id/export', async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const editionId = req.params.id;
+        console.log(`ODPEditionService.exportAsAsciiDoc() edition export, id: ${editionId}, userId: ${userId}`);
+
+        // Export specific edition
+        const asciiDoc = await ODPEditionService.exportAsAsciiDoc(editionId, userId);
+
+        // Set content type to plain text for AsciiDoc
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `inline; filename="odp-edition-${editionId}.adoc"`);
+        res.send(asciiDoc);
+    } catch (error) {
+        console.error('Error exporting ODP edition:', error);
+        if (error.message.includes('x-user-id')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.message.includes('not found')) {
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }

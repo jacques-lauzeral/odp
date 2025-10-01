@@ -1,3 +1,4 @@
+import ODPEditionTemplateRenderer from './ODPEditionTemplateRenderer.js';
 import {
     createTransaction,
     commitTransaction,
@@ -156,6 +157,24 @@ export class ODPEditionService {
         }
     }
 
+    /**
+     * Export ODP Edition or entire repository as AsciiDoc
+     * @param {string|null} editionId - Edition ID for specific edition, null for entire repository
+     * @param {string} userId - User ID for transaction
+     * @returns {string} - AsciiDoc formatted content
+     */
+    async exportAsAsciiDoc(editionId, userId) {
+        const ODPEditionAggregator = (await import('./ODPEditionAggregator.js')).default;
+        const aggregator = new ODPEditionAggregator();
+        const { default: ODPEditionTemplateRenderer } = await import('./ODPEditionTemplateRenderer.js');
+        const renderer = new ODPEditionTemplateRenderer();
+
+        const data = editionId
+            ? await aggregator.buildEditionExportData(editionId, userId)
+            : await aggregator.buildRepositoryExportData(userId);
+
+        return renderer.render(data);
+    }
 }
 
 // Export instance for route handlers
