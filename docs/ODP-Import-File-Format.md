@@ -105,7 +105,7 @@ changes:
     milestones:
       - title: "Milestone Title"
         description: "Milestone description"  # Optional
-        eventType: "OPS_DEPLOYMENT"
+        eventTypes: ["OPS_DEPLOYMENT"]
         wave: "2027-Q2"  # External ID of the wave
 ```
 
@@ -127,7 +127,7 @@ changes:
 #### Milestone Fields
 - **title**: Milestone name
 - **description**: Optional detailed description
-- **eventType**: Type of milestone event:
+- **eventTypes**: Types of milestone events:
     - `API_PUBLICATION`
     - `API_TEST_DEPLOYMENT`
     - `UI_TEST_DEPLOYMENT`
@@ -138,7 +138,7 @@ changes:
 ### Constraints
 - No `parentExternalId` field (changes don't support REFINES relationships)
 - Milestone keys are automatically generated during import (not specified in file)
-- `eventType` is a single value per milestone
+- `eventTypes` is an array per milestone
 - Impact references are derived from satisfied/superseded requirements
 
 ### Example
@@ -156,7 +156,7 @@ changes:
     milestones:
       - title: "Production Deployment"
         description: "Deploy enhanced routing to production environment"
-        eventType: "OPS_DEPLOYMENT"
+        eventTypes: ["OPS_DEPLOYMENT"]
         wave: "2027-Q2"
 ```
 

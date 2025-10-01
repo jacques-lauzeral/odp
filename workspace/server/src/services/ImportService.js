@@ -1,13 +1,13 @@
 import StakeholderCategoryService from './StakeholderCategoryService.js';
 import ServiceService from './ServiceService.js';
 import DataCategoryService from './DataCategoryService.js';
-import RegulatoryAspectService from './RegulatoryAspectService.js';
+import WaveService from './WaveService.js';
 import OperationalRequirementService from './OperationalRequirementService.js';
 
 class ImportService {
     /**
      * Import setup data from YAML structure
-     * @param {Object} setupData - Parsed YAML with stakeholderCategories, services, dataCategories, regulatoryAspects
+     * @param {Object} setupData - Parsed YAML with stakeholderCategories, services, dataCategories, waves
      * @param {string} userId - User performing the import
      * @returns {Object} Summary with counts and errors
      */
@@ -23,7 +23,7 @@ class ImportService {
             stakeholderCategories: 0,
             services: 0,
             dataCategories: 0,
-            regulatoryAspects: 0,
+            waves: 0,
             errors: [],
             warnings: []
         };
@@ -54,9 +54,9 @@ class ImportService {
                 );
             }
 
-            if (setupData.regulatoryAspects) {
-                summary.regulatoryAspects = await this._importRegulatoryAspects(
-                    setupData.regulatoryAspects,
+            if (setupData.waves) {
+                summary.waves = await this._importWaves(
+                    setupData.waves,
                     userId,
                     context
                 );
@@ -203,15 +203,12 @@ class ImportService {
      */
     async _buildGlobalReferenceMaps(userId, context) {
         try {
-            const WaveService = (await import('./WaveService.js')).default;
-
             // Load all existing entities from database
-            const [stakeholders, services, dataCategories, regulatory, allRequirements, waves] =
+            const [stakeholders, services, dataCategories, allRequirements, waves] =
                 await Promise.all([
                     StakeholderCategoryService.listItems(userId),
                     ServiceService.listItems(userId),
                     DataCategoryService.listItems(userId),
-                    RegulatoryAspectService.listItems(userId),
                     OperationalRequirementService.getAll(userId),
                     WaveService.listItems(userId)
                 ]);
@@ -235,9 +232,6 @@ class ImportService {
             dataCategories.forEach(entity =>
                 context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
             );
-            regulatory.forEach(entity =>
-                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
-            );
 
             // Build title paths for existing ON/ORs and map them
             console.log(`Global reference map - building title paths`);
@@ -257,6 +251,10 @@ class ImportService {
                 // Also support "year-Qquarter" format for flexibility
                 const altKey = `${wave.year}-Q${wave.quarter}`;
                 context.waveIdMap.set(altKey, wave.id);
+
+                // Also support "year-quarter" format (without Q)
+                const altKey2 = `${wave.year}-${wave.quarter}`;
+                context.waveIdMap.set(altKey2, wave.id);
             });
 
             console.log(`Global reference map build - completed: ${context.globalRefMap.size} entries`);
@@ -375,7 +373,6 @@ class ImportService {
                     impactsStakeholderCategories: [],
                     impactsData: [],
                     impactsServices: [],
-                    impactsRegulatoryAspects: [],
                     implementedONs: []
                 };
 
@@ -400,7 +397,7 @@ class ImportService {
     // Phase 2: Create changes with references (simplified for changes)
 
     /**
-     * Create all changes with resolved references and milestones
+     * Create all changes with resolved references and milestones in one step
      */
     async _createChangesWithReferences(changes, drg, userId, context) {
         const OperationalChangeService = (await import('./OperationalChangeService.js')).default;
@@ -419,7 +416,52 @@ class ImportService {
                     context
                 );
 
-                // Create the change with resolved references
+                // Process milestones BEFORE creating the change
+                const processedMilestones = [];
+                if (changeData.milestones && changeData.milestones.length > 0) {
+                    let milestoneIndex = 1;
+
+                    for (const milestoneData of changeData.milestones) {
+                        try {
+                            // Generate milestone key
+                            const milestoneKey = `${changeData.externalId}-M${milestoneIndex}`;
+
+                            // Resolve wave reference
+                            let waveId = null;
+                            if (milestoneData.wave) {
+                                // Try multiple formats for wave lookup
+                                waveId = context.waveIdMap.get(milestoneData.wave) ||
+                                    context.waveIdMap.get(milestoneData.wave.toLowerCase());
+
+                                if (!waveId) {
+                                    context.warnings.push(
+                                        `Wave '${milestoneData.wave}' not found for milestone ${milestoneIndex} in ${changeData.externalId}`
+                                    );
+                                }
+                            }
+
+                            // Build milestone object for creation
+                            const milestone = {
+                                milestoneKey: milestoneKey,
+                                title: milestoneData.title || `Milestone ${milestoneIndex}`,
+                                description: milestoneData.description || '',
+                                eventTypes: milestoneData.eventTypes || [], // Already an array in YAML
+                                waveId: waveId
+                            };
+
+                            console.log(`Prepared milestone for ${changeData.externalId}: ${JSON.stringify(milestone)}`);
+                            processedMilestones.push(milestone);
+                            milestoneIndex++;
+
+                        } catch (error) {
+                            context.errors.push(
+                                `Failed to process milestone for ${changeData.externalId}: ${error.message}`
+                            );
+                        }
+                    }
+                }
+
+                // Create the change WITH milestones included
                 const createRequest = {
                     title: changeData.title,
                     purpose: changeData.purpose || '',
@@ -430,30 +472,21 @@ class ImportService {
                     drg: drg,
                     satisfiesRequirements: satisfiedORs,
                     supersedsRequirements: supersededORs,
-                    milestones: [] // Create without milestones initially
+                    milestones: processedMilestones  // Include processed milestones directly
                 };
+
+                console.log(`Creating change ${changeData.externalId} with request: ${JSON.stringify(createRequest)}`);
 
                 const created = await OperationalChangeService.create(createRequest, userId);
 
                 // Store in map for potential future reference
                 context.changeIdMap.set(changeData.externalId.toLowerCase(), created.itemId);
 
-                // Add milestones separately
-                if (changeData.milestones && changeData.milestones.length > 0) {
-                    await this._addMilestonesToChange(
-                        created.itemId,
-                        created.versionId,
-                        changeData.externalId,
-                        changeData.milestones,
-                        userId,
-                        context
-                    );
-                }
-
                 createdCount++;
-                console.log(`Created change: ${changeData.externalId}`);
+                console.log(`Successfully created change: ${changeData.externalId} with ${processedMilestones.length} milestones`);
 
             } catch (error) {
+                console.error(`Failed to create change ${changeData.externalId}:`, error);
                 context.errors.push(
                     `Failed to create change ${changeData.externalId}: ${error.message}`
                 );
@@ -461,84 +494,6 @@ class ImportService {
         }
 
         return createdCount;
-    }
-
-    /**
-     * Add milestones to an existing change
-     */
-    async _addMilestonesToChange(changeId, versionId, changeExternalId, milestones, userId, context) {
-        const OperationalChangeService = (await import('./OperationalChangeService.js')).default;
-
-        // Get current change for update
-        const current = await OperationalChangeService.getById(changeId, userId);
-
-        const processedMilestones = [];
-        let milestoneIndex = 1;
-
-        for (const milestoneData of milestones) {
-            try {
-                // Generate milestone key
-                const milestoneKey = `${changeExternalId}-M${milestoneIndex}`;
-
-                // Resolve wave reference
-                let waveId = null;
-                if (milestoneData.wave) {
-                    waveId = context.waveIdMap.get(milestoneData.wave);
-                    if (!waveId) {
-                        context.warnings.push(
-                            `Wave '${milestoneData.wave}' not found for milestone in ${changeExternalId}`
-                        );
-                    }
-                }
-
-                processedMilestones.push({
-                    milestoneKey: milestoneKey,
-                    title: milestoneData.title,
-                    description: milestoneData.description || '',
-                    eventType: milestoneData.eventType,
-                    waveId: waveId
-                });
-
-                milestoneIndex++;
-
-            } catch (error) {
-                context.errors.push(
-                    `Failed to process milestone for ${changeExternalId}: ${error.message}`
-                );
-            }
-        }
-
-        // Update change with milestones if any were successfully processed
-        if (processedMilestones.length > 0) {
-            try {
-                const updateRequest = {
-                    title: current.title,
-                    purpose: current.purpose,
-                    initialState: current.initialState,
-                    finalState: current.finalState,
-                    details: current.details,
-                    visibility: current.visibility,
-                    drg: current.drg,
-                    satisfiesRequirements: current.satisfiesRequirements?.map(r => r.id) || [],
-                    supersedsRequirements: current.supersedsRequirements?.map(r => r.id) || [],
-                    milestones: processedMilestones
-                };
-
-                await OperationalChangeService.update(
-                    changeId,
-                    updateRequest,
-                    versionId,
-                    userId
-                );
-
-                console.log(`Added ${processedMilestones.length} milestones to ${changeExternalId}`);
-
-            } catch (error) {
-                context.errors.push(
-                    `Failed to add milestones to ${changeExternalId}: ${error.message}`
-                );
-            }
-        }
     }
 
     // Phase 3: Reference resolution (for requirements)
@@ -717,27 +672,31 @@ class ImportService {
         return count;
     }
 
-    async _importRegulatoryAspects(aspects, userId, context) {
+    async _importWaves(waves, userId, context) {
         let count = 0;
 
-        for (const aspectData of aspects) {
+        for (const waveData of waves) {
             try {
                 const createRequest = {
-                    name: aspectData.name,
-                    description: aspectData.description
+                    name: waveData.name,
+                    year: waveData.year,
+                    quarter: waveData.quarter,
+                    date: waveData.date
                 };
 
-                const created = await RegulatoryAspectService.createRegulatoryAspect(
+                const created = await WaveService.createWave(
                     createRequest,
                     userId
                 );
 
-                // Store with lowercase key
-                context.setupIdMap.set(aspectData.externalId.toLowerCase(), created.id);
+                // Store with lowercase key for externalId
+                context.setupIdMap.set(waveData.externalId.toLowerCase(), created.id);
                 count++;
 
+                console.log(`Created wave: ${waveData.externalId} (${waveData.name})`);
+
             } catch (error) {
-                context.errors.push(`Failed to create regulatory aspect ${aspectData.externalId}: ${error.message}`);
+                context.errors.push(`Failed to create wave ${waveData.externalId}: ${error.message}`);
             }
         }
 
