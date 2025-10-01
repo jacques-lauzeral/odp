@@ -456,14 +456,22 @@ export class VersionedItemStore extends BaseStore {
         const normalizedIds = ids.map(id => this.normalizeId(id));
 
         const result = await transaction.run(`
-            MATCH (item:${label}) 
-            WHERE id(item) IN $ids
-            RETURN count(item) as found
-        `, { ids: normalizedIds });
+        MATCH (item:${label}) 
+        WHERE id(item) IN $ids
+        RETURN id(item) as foundId
+    `, { ids: normalizedIds });
 
-        const found = this.normalizeId(result.records[0].get('found'));
-        if (found !== normalizedIds.length) {
-            throw new StoreError(`One or more ${label} items do not exist`);
+        const foundIds = new Set(
+            result.records.map(record => this.normalizeId(record.get('foundId')))
+        );
+
+        const missingIds = normalizedIds.filter(id => !foundIds.has(id));
+
+        if (missingIds.length > 0) {
+            throw new StoreError(
+                `${label} validation failed: ${missingIds.length} item(s) not found. ` +
+                `Missing IDs: [${missingIds.join(', ')}]`
+            );
         }
     }
 }
