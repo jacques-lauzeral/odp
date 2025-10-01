@@ -48,6 +48,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/ImportSummary'
 
+  /import/changes:
+    post:
+      summary: Bulk import operational changes
+      tags: [Import]
+      parameters:
+        - name: drg
+          in: query
+          required: true
+          schema:
+            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/ChangesImportRequest'
+      responses:
+        '200':
+          description: Import completed with summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportSummary'
+
 components:
   schemas:
     ImportSummary:
@@ -57,6 +81,19 @@ components:
         services: { type: integer }
         dataCategories: { type: integer }
         requirements: { type: integer }
+        changes: { type: integer }
         errors:
           type: array
           items: { type: string }
+
+    SetupImportRequest:
+      type: object
+      description: YAML structure for setup entities import
+
+    RequirementsImportRequest:
+      type: object
+      description: YAML structure for requirements import
+
+    ChangesImportRequest:
+      type: object
+      description: YAML structure for operational changes import

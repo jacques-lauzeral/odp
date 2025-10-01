@@ -72,12 +72,35 @@ export class ImportCommands {
     displayImportSummary(response, operationType) {
         console.log(`\n=== ${operationType.toUpperCase()} IMPORT SUMMARY ===`);
 
-        // Display creation counts
+        // Display creation counts for different response formats
+        let hasCreations = false;
+
+        // Handle different response formats
         if (response.created && Object.keys(response.created).length > 0) {
             console.log('\nCreated entities:');
             Object.entries(response.created).forEach(([entityType, count]) => {
                 console.log(`  ${entityType}: ${count}`);
             });
+            hasCreations = true;
+        } else {
+            // Handle direct count properties
+            const countProperties = [
+                'stakeholderCategories',
+                'services',
+                'dataCategories',
+                'regulatoryAspects',
+                'requirements',
+                'changes'
+            ];
+
+            const counts = countProperties.filter(prop => response[prop] > 0);
+            if (counts.length > 0) {
+                console.log('\nCreated entities:');
+                counts.forEach(prop => {
+                    console.log(`  ${prop}: ${response[prop]}`);
+                });
+                hasCreations = true;
+            }
         }
 
         // Display total processed
@@ -89,9 +112,14 @@ export class ImportCommands {
         if (response.errors && response.errors.length > 0) {
             console.log(`\nErrors encountered (${response.errors.length}):`);
             response.errors.forEach((error, index) => {
-                console.log(`  ${index + 1}. ${error.entity || 'Unknown'}: ${error.message}`);
-                if (error.details) {
-                    console.log(`     Details: ${error.details}`);
+                // Handle both object and string error formats
+                if (typeof error === 'string') {
+                    console.log(`  ${index + 1}. ${error}`);
+                } else {
+                    console.log(`  ${index + 1}. ${error.entity || 'Unknown'}: ${error.message}`);
+                    if (error.details) {
+                        console.log(`     Details: ${error.details}`);
+                    }
                 }
             });
         }
@@ -100,18 +128,24 @@ export class ImportCommands {
         if (response.warnings && response.warnings.length > 0) {
             console.log(`\nWarnings (${response.warnings.length}):`);
             response.warnings.forEach((warning, index) => {
-                console.log(`  ${index + 1}. ${warning.entity || 'Unknown'}: ${warning.message}`);
+                // Handle both object and string warning formats
+                if (typeof warning === 'string') {
+                    console.log(`  ${index + 1}. ${warning}`);
+                } else {
+                    console.log(`  ${index + 1}. ${warning.entity || 'Unknown'}: ${warning.message}`);
+                }
             });
         }
 
         // Display success/failure summary
         const hasErrors = response.errors && response.errors.length > 0;
-        const successCount = response.totalProcessed - (hasErrors ? response.errors.length : 0);
 
-        console.log(`\nResult: ${successCount} successful, ${hasErrors ? response.errors.length : 0} failed`);
-
-        if (hasErrors) {
+        if (!hasCreations && !hasErrors) {
+            console.log('\nNo entities were imported.');
+        } else if (hasErrors) {
             console.log('\nNote: Import used greedy processing - successful entities were created despite errors.');
+        } else {
+            console.log('\nImport completed successfully.');
         }
     }
 
@@ -125,7 +159,7 @@ export class ImportCommands {
         // Setup import command
         importCommand
             .command('setup')
-            .description('Import setup entities (StakeholderCategory, RegulatoryAspect, DataCategory, Service) from YAML file')
+            .description('Import setup entities (StakeholderCategory, DataCategory, Service, Wave) from YAML file')
             .requiredOption('-f, --file <path>', 'Path to YAML file containing setup entities')
             .action(async (options) => {
                 try {
@@ -194,6 +228,47 @@ export class ImportCommands {
                 }
             });
 
+        // Changes import command
+        importCommand
+            .command('changes')
+            .description('Import operational changes from YAML file')
+            .requiredOption('-f, --file <path>', 'Path to YAML file containing operational changes')
+            .requiredOption('-d, --drg <drg>', `Drafting group for all changes (${DraftingGroupKeys.join(', ')})`)
+            .action(async (options) => {
+                try {
+                    // Validate DRG parameter
+                    if (!isDraftingGroupValid(options.drg)) {
+                        console.error(`Invalid DRG value: ${options.drg}`);
+                        console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+                        process.exit(1);
+                    }
+
+                    console.log(`Reading changes data from: ${options.file}`);
+                    console.log(`Target DRG: ${options.drg}`);
+                    const yamlContent = this.readYamlFile(options.file);
+
+                    console.log('Uploading to server for processing...');
+                    const url = `${this.baseUrl}/import/changes?drg=${encodeURIComponent(options.drg)}`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: this.createHeaders(),
+                        body: yamlContent
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    this.displayImportSummary(result, 'changes');
+
+                } catch (error) {
+                    console.error('Error importing changes:', error.message);
+                    process.exit(1);
+                }
+            });
+
         // Add examples/help command
         importCommand
             .command('examples')
@@ -211,45 +286,67 @@ stakeholderCategories:
   - externalId: "airlines"
     name: "Airlines"
     description: "Commercial airline operators"
-    parentExternalId: "govt-agencies"
-
-regulatoryAspects:
-  - externalId: "safety-reqs"
-    name: "Safety Requirements"
-    description: "Aviation safety regulations"
+    parentExternalId: null
 
 dataCategories:
   - externalId: "flight-data"
     name: "Flight Data"
     description: "Aircraft flight information"
+    parentExternalId: null
 
 services:
   - externalId: "atm-service"
     name: "ATM Service"
     description: "Air Traffic Management service"
+    visibility: "NETWORK"
     parentExternalId: null
+
+waves:
+  - externalId: "wave-2027-q2"
+    name: "2027.2"
+    year: 2027
+    quarter: 2
+    date: "2027-06-30"
 `);
 
                 console.log('\n=== REQUIREMENTS IMPORT EXAMPLE ===');
                 console.log(`
 Example requirements.yml format:
 
-operationalRequirements:
+requirements:
   - externalId: "req-001"
     title: "Flight Plan Processing"
     type: "OR"
     statement: "The system shall process flight plans"
     rationale: "Required for air traffic management"
     references: "ICAO Doc 4444"
-    risksAndOpportunities: "Risk: Processing delays"
     flows: "Flight plan submission flow"
-    flowExamples: "Example: FPL message processing"
     parentExternalId: null
-    implementedONExternalIds: ["on-001", "on-002"]
-    impactsDataExternalIds: ["flight-data"]
-    impactsStakeholderCategoryExternalIds: ["airlines"]
-    impactsRegulatoryAspectExternalIds: ["safety-reqs"]
-    impactsServiceExternalIds: ["atm-service"]
+    implementedONs: ["on-001", "on-002"]
+    impactedDataCategories: ["flight-data"]
+    impactedStakeholderCategories: ["airlines"]
+    impactedServices: ["atm-service"]
+`);
+
+                console.log('\n=== CHANGES IMPORT EXAMPLE ===');
+                console.log(`
+Example changes.yml format:
+
+changes:
+  - externalId: "RR-OC-1-1"
+    title: "RR Tools - Rerouting calculation improvements"
+    purpose: "Empower the system to compute more meaningful routing options"
+    initialState: "Current routing engine uses limited sources"
+    finalState: "Enhanced routing with multiple sources and dynamic updates"
+    details: "This OC aims to improve the rerouting engine..."
+    visibility: "NETWORK"
+    satisfiedORs: ["RR-OR-1-01", "RR-OR-1-07"]
+    supersededORs: []
+    milestones:
+      - title: "Production Deployment"
+        description: "Deploy to production environment"
+        eventType: "OPS_DEPLOYMENT"
+        wave: "2027.2"
 `);
 
                 console.log('\n=== USAGE EXAMPLES ===');
@@ -259,6 +356,9 @@ odp import setup --file setup.yml
 
 # Import requirements with specific DRG
 odp import requirements --drg IDL --file requirements.yml
+
+# Import changes with specific DRG
+odp import changes --drg RRT --file changes.yml
 
 # Available DRG values: ${DraftingGroupKeys.join(', ')}
 `);

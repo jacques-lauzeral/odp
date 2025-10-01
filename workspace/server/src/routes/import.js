@@ -132,4 +132,63 @@ router.post('/requirements', async (req, res) => {
     }
 });
 
+// Import operational changes
+router.post('/changes', async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const drg = req.query.drg;
+
+        // Validate DRG parameter
+        if (!drg) {
+            return res.status(400).json({
+                error: {
+                    code: 'MISSING_PARAMETER',
+                    message: 'Query parameter "drg" is required for changes import'
+                }
+            });
+        }
+
+        console.log(`ImportService.importChanges() userId: ${userId}, drg: ${drg}`);
+
+        const changesData = parseYamlContent(req);
+
+        // Validate required structure
+        if (!changesData || typeof changesData !== 'object') {
+            return res.status(400).json({
+                error: {
+                    code: 'INVALID_FORMAT',
+                    message: 'Invalid YAML structure: expected object with changes array'
+                }
+            });
+        }
+
+        if (!changesData.changes || !Array.isArray(changesData.changes)) {
+            return res.status(400).json({
+                error: {
+                    code: 'INVALID_FORMAT',
+                    message: 'Missing or invalid "changes" array in YAML data'
+                }
+            });
+        }
+
+        const summary = await importService.importChanges(changesData, drg, userId);
+
+        console.log(`Changes import completed: ${JSON.stringify(summary)}`);
+        res.json(summary);
+
+    } catch (error) {
+        console.error('Error importing changes:', error);
+
+        if (error.message.includes('x-user-id')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.message.includes('Content-Type') || error.message.includes('YAML')) {
+            res.status(400).json({ error: { code: 'INVALID_FORMAT', message: error.message } });
+        } else if (error.message.includes('DRG') || error.message.includes('Drafting Group')) {
+            res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+        } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+        }
+    }
+});
+
 export default router;

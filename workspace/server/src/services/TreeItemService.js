@@ -52,7 +52,7 @@ export class TreeItemService extends SimpleItemService {
      * Validate required fields are present
      */
     _validateRequiredFields(data) {
-        const requiredFields = ['name', 'description'];
+        const requiredFields = ['name'];
 
         for (const field of requiredFields) {
             if (data[field] === undefined || data[field] === null) {
@@ -71,7 +71,7 @@ export class TreeItemService extends SimpleItemService {
             throw new Error('Validation failed: name must be a string');
         }
 
-        if (typeof description !== 'string') {
+        if (description && typeof description !== 'string') {
             throw new Error('Validation failed: description must be a string');
         }
     }
@@ -91,12 +91,7 @@ export class TreeItemService extends SimpleItemService {
             throw new Error('Validation failed: name cannot exceed 255 characters');
         }
 
-        // Description validation
-        if (description.trim() === '') {
-            throw new Error('Validation failed: description cannot be empty');
-        }
-
-        if (description.trim().length > 2000) {
+        if (description && description.trim().length > 2000) {
             throw new Error('Validation failed: description cannot exceed 2000 characters');
         }
     }

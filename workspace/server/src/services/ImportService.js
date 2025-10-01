@@ -85,6 +85,7 @@ class ImportService {
         // Create import context for this operation
         const context = {
             globalRefMap: new Map(),
+            waveIdMap: new Map(),
             errors: [],
             warnings: []
         };
@@ -138,25 +139,91 @@ class ImportService {
         }
     }
 
+    /**
+     * Import operational changes from YAML structure
+     * @param {Object} changesData - Parsed YAML with changes array
+     * @param {string} drg - Drafting Group to assign to all changes
+     * @param {string} userId - User performing the import
+     * @returns {Object} Summary with counts and errors
+     */
+    async importChanges(changesData, drg, userId) {
+        // Create import context for this operation
+        const context = {
+            globalRefMap: new Map(),
+            waveIdMap: new Map(),
+            changeIdMap: new Map(),
+            errors: [],
+            warnings: []
+        };
+
+        const summary = {
+            changes: 0,
+            errors: [],
+            warnings: []
+        };
+
+        if (!changesData.changes || !Array.isArray(changesData.changes)) {
+            context.errors.push('No changes array found in import data');
+            summary.errors = context.errors;
+            return summary;
+        }
+
+        try {
+            // Phase 1: Build reference maps from existing DB (including waves)
+            console.log('Phase 1: Building reference maps...');
+            await this._buildGlobalReferenceMaps(userId, context);
+
+            // Phase 2: Create all changes with resolved references and milestones
+            console.log('Phase 2: Creating changes with references and milestones...');
+            const createdCount = await this._createChangesWithReferences(
+                changesData.changes,
+                drg,
+                userId,
+                context
+            );
+            summary.changes = createdCount;
+
+            summary.errors = context.errors;
+            summary.warnings = context.warnings;
+            return summary;
+
+        } catch (error) {
+            context.errors.push(`Changes import failed: ${error.message}`);
+            summary.errors = context.errors;
+            summary.warnings = context.warnings;
+            return summary;
+        }
+    }
+
     // Phase 1: Global reference map building
 
     /**
      * Build comprehensive reference maps from existing database entities
+     * Loads ALL entities for use by any import operation
      */
     async _buildGlobalReferenceMaps(userId, context) {
         try {
+            const WaveService = (await import('./WaveService.js')).default;
+
             // Load all existing entities from database
-            const [stakeholders, services, dataCategories, regulatory, allRequirements] =
+            const [stakeholders, services, dataCategories, regulatory, allRequirements, waves] =
                 await Promise.all([
                     StakeholderCategoryService.listItems(userId),
                     ServiceService.listItems(userId),
                     DataCategoryService.listItems(userId),
                     RegulatoryAspectService.listItems(userId),
-                    OperationalRequirementService.getAll(userId)
+                    OperationalRequirementService.getAll(userId),
+                    WaveService.listItems(userId)
                 ]);
 
             // Clear and rebuild global reference map
             context.globalRefMap.clear();
+
+            // Initialize wave map if not exists
+            if (!context.waveIdMap) {
+                context.waveIdMap = new Map();
+            }
+            context.waveIdMap.clear();
 
             // Map setup entities by name (case-insensitive)
             stakeholders.forEach(entity =>
@@ -180,7 +247,20 @@ class ImportService {
                 context.globalRefMap.set(titlePath.toLowerCase(), id)
             );
 
+            // Build wave reference map
+            console.log('Building wave reference map...');
+            waves.forEach(wave => {
+                // Primary key: "year.quarter" format
+                const waveKey = wave.name; // e.g., "2027.2"
+                context.waveIdMap.set(waveKey, wave.id);
+
+                // Also support "year-Qquarter" format for flexibility
+                const altKey = `${wave.year}-Q${wave.quarter}`;
+                context.waveIdMap.set(altKey, wave.id);
+            });
+
             console.log(`Global reference map build - completed: ${context.globalRefMap.size} entries`);
+            console.log(`Wave map build - completed: ${context.waveIdMap.size} entries`);
 
         } catch (error) {
             throw new Error(`Failed to build global reference maps: ${error.message}`);
@@ -272,7 +352,7 @@ class ImportService {
         return pathMap;
     }
 
-    // Phase 2: Entity creation without references
+    // Phase 2: Entity creation without references (for requirements)
 
     /**
      * Create all ON/ORs without any references, adding them to global map
@@ -286,11 +366,9 @@ class ImportService {
                     title: reqData.title,
                     type: reqData.type,
                     statement: reqData.statement,
-                    rationale: reqData.rationale,
-                    references: reqData.references,
-                    risksAndOpportunities: reqData.risksAndOpportunities,
-                    flows: reqData.flows,
-                    flowExamples: reqData.flowExamples,
+                    rationale: reqData.rationale || '',
+                    references: reqData.references || '',
+                    flows: reqData.flows || '',
                     drg: drg,
                     // All reference fields empty initially
                     refinesParents: [],
@@ -319,7 +397,151 @@ class ImportService {
         return createdCount;
     }
 
-    // Phase 3: Reference resolution
+    // Phase 2: Create changes with references (simplified for changes)
+
+    /**
+     * Create all changes with resolved references and milestones
+     */
+    async _createChangesWithReferences(changes, drg, userId, context) {
+        const OperationalChangeService = (await import('./OperationalChangeService.js')).default;
+        let createdCount = 0;
+
+        for (const changeData of changes) {
+            try {
+                // Resolve OR references immediately (using globalRefMap)
+                const satisfiedORs = this._resolveExternalIds(
+                    changeData.satisfiedORs || [],
+                    context
+                );
+
+                const supersededORs = this._resolveExternalIds(
+                    changeData.supersededORs || [],
+                    context
+                );
+
+                // Create the change with resolved references
+                const createRequest = {
+                    title: changeData.title,
+                    purpose: changeData.purpose || '',
+                    initialState: changeData.initialState || '',
+                    finalState: changeData.finalState || '',
+                    details: changeData.details || '',
+                    visibility: changeData.visibility || 'NETWORK',
+                    drg: drg,
+                    satisfiesRequirements: satisfiedORs,
+                    supersedsRequirements: supersededORs,
+                    milestones: [] // Create without milestones initially
+                };
+
+                const created = await OperationalChangeService.create(createRequest, userId);
+
+                // Store in map for potential future reference
+                context.changeIdMap.set(changeData.externalId.toLowerCase(), created.itemId);
+
+                // Add milestones separately
+                if (changeData.milestones && changeData.milestones.length > 0) {
+                    await this._addMilestonesToChange(
+                        created.itemId,
+                        created.versionId,
+                        changeData.externalId,
+                        changeData.milestones,
+                        userId,
+                        context
+                    );
+                }
+
+                createdCount++;
+                console.log(`Created change: ${changeData.externalId}`);
+
+            } catch (error) {
+                context.errors.push(
+                    `Failed to create change ${changeData.externalId}: ${error.message}`
+                );
+            }
+        }
+
+        return createdCount;
+    }
+
+    /**
+     * Add milestones to an existing change
+     */
+    async _addMilestonesToChange(changeId, versionId, changeExternalId, milestones, userId, context) {
+        const OperationalChangeService = (await import('./OperationalChangeService.js')).default;
+
+        // Get current change for update
+        const current = await OperationalChangeService.getById(changeId, userId);
+
+        const processedMilestones = [];
+        let milestoneIndex = 1;
+
+        for (const milestoneData of milestones) {
+            try {
+                // Generate milestone key
+                const milestoneKey = `${changeExternalId}-M${milestoneIndex}`;
+
+                // Resolve wave reference
+                let waveId = null;
+                if (milestoneData.wave) {
+                    waveId = context.waveIdMap.get(milestoneData.wave);
+                    if (!waveId) {
+                        context.warnings.push(
+                            `Wave '${milestoneData.wave}' not found for milestone in ${changeExternalId}`
+                        );
+                    }
+                }
+
+                processedMilestones.push({
+                    milestoneKey: milestoneKey,
+                    title: milestoneData.title,
+                    description: milestoneData.description || '',
+                    eventType: milestoneData.eventType,
+                    waveId: waveId
+                });
+
+                milestoneIndex++;
+
+            } catch (error) {
+                context.errors.push(
+                    `Failed to process milestone for ${changeExternalId}: ${error.message}`
+                );
+            }
+        }
+
+        // Update change with milestones if any were successfully processed
+        if (processedMilestones.length > 0) {
+            try {
+                const updateRequest = {
+                    title: current.title,
+                    purpose: current.purpose,
+                    initialState: current.initialState,
+                    finalState: current.finalState,
+                    details: current.details,
+                    visibility: current.visibility,
+                    drg: current.drg,
+                    satisfiesRequirements: current.satisfiesRequirements?.map(r => r.id) || [],
+                    supersedsRequirements: current.supersedsRequirements?.map(r => r.id) || [],
+                    milestones: processedMilestones
+                };
+
+                await OperationalChangeService.update(
+                    changeId,
+                    updateRequest,
+                    versionId,
+                    userId
+                );
+
+                console.log(`Added ${processedMilestones.length} milestones to ${changeExternalId}`);
+
+            } catch (error) {
+                context.errors.push(
+                    `Failed to add milestones to ${changeExternalId}: ${error.message}`
+                );
+            }
+        }
+    }
+
+    // Phase 3: Reference resolution (for requirements)
 
     /**
      * Resolve all references for each requirement in individual transactions
@@ -369,11 +591,6 @@ class ImportService {
             context
         );
 
-        const impactsRegulatoryAspects = this._resolveExternalIds(
-            reqData.impactedRegulatoryAspects || [],
-            context
-        );
-
         const implementedONs = this._resolveExternalIds(
             reqData.implementedONs || [],
             context
@@ -386,15 +603,12 @@ class ImportService {
             statement: current.statement,
             rationale: current.rationale,
             references: current.references,
-            risksAndOpportunities: current.risksAndOpportunities,
             flows: current.flows,
-            flowExamples: current.flowExamples,
             drg: current.drg,
             refinesParents: refinesParents,
             impactsStakeholderCategories: impactsStakeholderCategories,
             impactsData: impactsData,
             impactsServices: impactsServices,
-            impactsRegulatoryAspects: impactsRegulatoryAspects,
             implementedONs: implementedONs
         };
 
