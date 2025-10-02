@@ -4,6 +4,7 @@ import {
     rollbackTransaction,
     odpEditionStore
 } from '../store/index.js';
+import {DraftingGroupKeys, getDraftingGroupDisplay} from "../../../shared/src/index.js";
 
 /**
  * ODPEditionAggregator handles complex data assembly for ODP Edition exports.
@@ -11,6 +12,38 @@ import {
  * needed for AsciiDoc rendering.
  */
 export class ODPEditionAggregator {
+
+    /**
+     * Group items by their DRG (Drafting Group) field
+     */
+    _groupByDRG(items) {
+        const drgOrder = DraftingGroupKeys;
+        const groups = {};
+
+        // Initialize groups in order
+        drgOrder.forEach(drg => {
+            groups[getDraftingGroupDisplay(drg)] = [];
+        });
+        groups['UNASSIGNED'] = [];
+
+        // Distribute items to groups
+        items.forEach(item => {
+            const drg = item.drg || 'UNASSIGNED';
+            if (groups[getDraftingGroupDisplay(drg)]) {
+                groups[getDraftingGroupDisplay(drg)].push(item);
+            } else {
+                groups['UNASSIGNED'].push(item);
+            }
+        });
+
+        // Convert to array format for Mustache
+        return Object.entries(groups)
+            .filter(([_, items]) => items.length > 0)
+            .map(([drg, items]) => ({
+                drg,
+                items
+            }));
+    }
 
     async buildEditionExportData(editionId, userId) {
         // Get the edition first
@@ -95,23 +128,28 @@ export class ODPEditionAggregator {
                 }
             });
 
+        // Process requirements with relationships
+        const processedORs = allRequirements
+            .filter(req => req.type === 'OR')
+            .map(or => ({
+                ...or,
+                satisfiedByChange: reqToChangeMap.get(or.itemId) || null
+            }));
+
+        const processedONs = allRequirements
+            .filter(req => req.type === 'ON')
+            .map(on => ({
+                ...on,
+                implementingORs: onToORsMap.get(on.itemId) || [],
+                satisfiedByChange: reqToChangeMap.get(on.itemId) || null
+            }));
+
         return {
             title: edition.title,
             waves: enrichedWaves,
-            operationalChanges: enrichedChanges,
-            operationalRequirements: allRequirements
-                .filter(req => req.type === 'OR')
-                .map(or => ({
-                    ...or,
-                    satisfiedByChange: reqToChangeMap.get(or.itemId) || null
-                })),
-            operationalNeeds: allRequirements
-                .filter(req => req.type === 'ON')
-                .map(on => ({
-                    ...on,
-                    implementingORs: onToORsMap.get(on.itemId) || [],
-                    satisfiedByChange: reqToChangeMap.get(on.itemId) || null
-                }))
+            operationalChanges: this._groupByDRG(enrichedChanges),
+            operationalRequirements: this._groupByDRG(processedORs),
+            operationalNeeds: this._groupByDRG(processedONs)
         };
     }
 
@@ -168,23 +206,28 @@ export class ODPEditionAggregator {
                 }
             });
 
+        // Process requirements with relationships
+        const processedORs = allRequirements
+            .filter(req => req.type === 'OR')
+            .map(or => ({
+                ...or,
+                satisfiedByChange: reqToChangeMap.get(or.itemId) || null
+            }));
+
+        const processedONs = allRequirements
+            .filter(req => req.type === 'ON')
+            .map(on => ({
+                ...on,
+                implementingORs: onToORsMap.get(on.itemId) || [],
+                satisfiedByChange: reqToChangeMap.get(on.itemId) || null
+            }));
+
         return {
             title: 'ODP Repository',
             waves: enrichedWaves,
-            operationalChanges: enrichedChanges,
-            operationalRequirements: allRequirements
-                .filter(req => req.type === 'OR')
-                .map(or => ({
-                    ...or,
-                    satisfiedByChange: reqToChangeMap.get(or.itemId) || null
-                })),
-            operationalNeeds: allRequirements
-                .filter(req => req.type === 'ON')
-                .map(on => ({
-                    ...on,
-                    implementingORs: onToORsMap.get(on.itemId) || [],
-                    satisfiedByChange: reqToChangeMap.get(on.itemId) || null
-                }))
+            operationalChangeGroups: this._groupByDRG(enrichedChanges),
+            operationalRequirementGroups: this._groupByDRG(processedORs),
+            operationalNeedGroups: this._groupByDRG(processedONs)
         };
     }
 
@@ -230,6 +273,7 @@ export class ODPEditionAggregator {
                         ...milestone,
                         operationalChange: {
                             id: change.itemId,
+                            drg: change.drg,
                             title: change.title,
                             purpose: change.purpose
                         }

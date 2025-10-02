@@ -4,6 +4,7 @@ NM
 :encoding: utf-8
 :lang: en
 :toc: left
+:toclevels: 5
 :numbered:
 
 == Waves
@@ -12,13 +13,14 @@ NM
 === {{name}} ({{date}})
 
 {{#eventTypeGroups}}
-==== {{eventTypeLabel}}
 
-[width="100%",options="header",cols="1,2"]
+{{eventTypeLabel}}::
+
+[width="100%",options="header",cols="1,2,4"]
 |====================
-| Operational Change | Purpose
+| DrG | Operational Change | Purpose
 {{#milestones}}
-| <<oc-{{operationalChange.id}}, {{operationalChange.title}}>> | {{operationalChange.purpose}}
+| {{operationalChange.drg}} | <<oc-{{operationalChange.id}}, {{operationalChange.title}}>> | {{operationalChange.purpose}}
 {{/milestones}}
 |====================
 
@@ -26,9 +28,15 @@ NM
 {{/waves}}
 
 == Operational Changes
+
 {{#operationalChanges}}
+
+=== {{drg}}
+
+{{#items}}
+
 [#oc-{{itemId}}]
-=== {{title}}
+==== OC - {{title}}
 Purpose::
 +
 --
@@ -67,13 +75,19 @@ Satisfied Requirements::
 {{/satisfiesRequirements}}
 --
 
+{{/items}}
+
 {{/operationalChanges}}
 
 == Operational Needs
 {{#operationalNeeds}}
 
+=== {{drg}}
+
+{{#items}}
+
 [#on-{{itemId}}]
-=== {{title}}
+==== ON - {{title}}
 Statement::
 +
 --
@@ -98,13 +112,20 @@ Impact::
 --
 TO BE COMPLETED
 --
+
+{{/items}}
+
 {{/operationalNeeds}}
 
 == Operational Requirements
 {{#operationalRequirements}}
 
+=== {{drg}}
+
+{{#items}}
+
 [#or-{{itemId}}]
-=== {{title}}
+==== OR - {{title}}
 Statement::
 +
 --
@@ -138,5 +159,8 @@ Impact::
 --
 TO BE COMPLETED
 --
+
+{{/items}}
+
 {{/operationalRequirements}}
 
