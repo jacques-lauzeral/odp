@@ -1,4 +1,4 @@
-= ODP Edition {{title}}
+= {{title}}
 NM
 :doctype: book
 :encoding: utf-8
@@ -71,7 +71,7 @@ Satisfied Requirements::
 +
 --
 {{#satisfiesRequirements}}
-* <<or-{{id}}, {{title}}>>
+* <<or-{{id}}, OR - {{title}}>>
 {{/satisfiesRequirements}}
 --
 
@@ -88,6 +88,13 @@ Satisfied Requirements::
 
 [#on-{{itemId}}]
 ==== ON - {{title}}
+
+{{#refinesParents}}
+{{#refinesParents}}
+_Refines:_ <<on-{{id}}, _ON - {{title}}_>>
+{{/refinesParents}}
+{{/refinesParents}}
+
 Statement::
 +
 --
@@ -103,7 +110,7 @@ Implemented by::
 +
 --
 {{#implementingORs}}
-* <<or-{{id}}, {{title}}>>
+* <<or-{{id}}, OR - {{title}}>>
 {{/implementingORs}}
 --
 
@@ -126,6 +133,13 @@ TO BE COMPLETED
 
 [#or-{{itemId}}]
 ==== OR - {{title}}
+
+{{#refinesParents}}
+{{#refinesParents}}
+_Refines:_ <<or-{{id}}, _OR - {{title}}_>>
+{{/refinesParents}}
+{{/refinesParents}}
+
 Statement::
 +
 --
@@ -141,19 +155,18 @@ Rationale::
 Satisfied by::
 +
 --
-<<oc-{{id}}, {{title}}>>
+<<oc-{{id}}, OC - {{title}}>>
 --
 {{/satisfiedByChange}}
 
-{{#implementedONs}}
 Implements::
 +
 --
 {{#implementedONs}}
-* <<on-{{id}}, {{title}}>>
+* <<on-{{id}}, ON - {{title}}>>
 {{/implementedONs}}
 --
-{{/implementedONs}}
+
 Impact::
 +
 --

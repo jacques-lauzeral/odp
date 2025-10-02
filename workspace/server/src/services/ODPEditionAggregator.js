@@ -4,7 +4,7 @@ import {
     rollbackTransaction,
     odpEditionStore
 } from '../store/index.js';
-import {DraftingGroupKeys, getDraftingGroupDisplay} from "../../../shared/src/index.js";
+import {DraftingGroupKeys, getDraftingGroupDisplay, MilestoneEventOrder} from "../../../shared/src/index.js";
 
 /**
  * ODPEditionAggregator handles complex data assembly for ODP Edition exports.
@@ -43,6 +43,74 @@ export class ODPEditionAggregator {
                 drg,
                 items
             }));
+    }
+
+    async _buildExportData(waves, changes, requirements, title, userId) {
+        // Enrich waves with milestones grouped by wave
+        const enrichedWaves = await this._enrichWavesWithMilestones(waves, changes, userId);
+
+        // Enrich operational changes with their milestones
+        const enrichedChanges = await this._enrichChangesWithMilestones(changes, userId);
+
+        // Build reverse lookup: requirement -> satisfying change
+        const reqToChangeMap = new Map();
+
+        changes.forEach(change => {
+            if (change.satisfiesRequirements) {
+                change.satisfiesRequirements.forEach(reqRef => {
+                    reqToChangeMap.set(reqRef.id, {
+                        id: change.itemId,
+                        title: change.title
+                    });
+                });
+            }
+        });
+
+        // Build reverse lookup: ON -> implementing ORs
+        const onToORsMap = new Map();
+
+        requirements
+            .filter(req => req.type === 'ON')
+            .forEach(on => onToORsMap.set(on.itemId, []));
+
+        requirements
+            .filter(req => req.type === 'OR')
+            .forEach(or => {
+                if (or.implementedONs) {
+                    or.implementedONs.forEach(onRef => {
+                        if (onToORsMap.has(onRef.id)) {
+                            onToORsMap.get(onRef.id).push({
+                                id: or.itemId,
+                                title: or.title
+                            });
+                        }
+                    });
+                }
+            });
+
+        // Process requirements with relationships
+        const processedORs = requirements
+            .filter(req => req.type === 'OR')
+            .map(or => ({
+                ...or,
+                satisfiedByChange: reqToChangeMap.get(or.itemId) || null
+            }));
+
+        const processedONs = requirements
+            .filter(req => req.type === 'ON')
+            .map(on => ({
+                ...on,
+                implementingORs: onToORsMap.get(on.itemId) || [],
+                satisfiedByChange: reqToChangeMap.get(on.itemId) || null
+            }));
+
+        return {
+            title: title,
+            waves: enrichedWaves,
+            operationalChanges: this._groupByDRG(enrichedChanges),
+            operationalRequirements: this._groupByDRG(processedORs),
+            operationalNeeds: this._groupByDRG(processedONs)
+        };
     }
 
     async buildEditionExportData(editionId, userId) {
@@ -86,71 +154,7 @@ export class ODPEditionAggregator {
         const allChanges = await operationalChangeService.getAll(userId);
         const allRequirements = await operationalRequirementService.getAll(userId);
 
-        // Enrich waves with milestones grouped by wave
-        const enrichedWaves = await this._enrichWavesWithMilestones(editionWaves, allChanges, userId);
-
-        // Enrich operational changes with their milestones
-        const enrichedChanges = await this._enrichChangesWithMilestones(allChanges, userId);
-
-        // Build reverse lookup: requirement -> satisfying change
-        const reqToChangeMap = new Map();
-
-        allChanges.forEach(change => {
-            if (change.satisfiesRequirements) {
-                change.satisfiesRequirements.forEach(reqRef => {
-                    reqToChangeMap.set(reqRef.id, {
-                        id: change.itemId,
-                        title: change.title
-                    });
-                });
-            }
-        });
-
-        // Build reverse lookup: ON -> implementing ORs
-        const onToORsMap = new Map();
-
-        allRequirements
-            .filter(req => req.type === 'ON')
-            .forEach(on => onToORsMap.set(on.itemId, []));
-
-        allRequirements
-            .filter(req => req.type === 'OR')
-            .forEach(or => {
-                if (or.implementedONs) {
-                    or.implementedONs.forEach(onRef => {
-                        if (onToORsMap.has(onRef.id)) {
-                            onToORsMap.get(onRef.id).push({
-                                id: or.itemId,
-                                title: or.title
-                            });
-                        }
-                    });
-                }
-            });
-
-        // Process requirements with relationships
-        const processedORs = allRequirements
-            .filter(req => req.type === 'OR')
-            .map(or => ({
-                ...or,
-                satisfiedByChange: reqToChangeMap.get(or.itemId) || null
-            }));
-
-        const processedONs = allRequirements
-            .filter(req => req.type === 'ON')
-            .map(on => ({
-                ...on,
-                implementingORs: onToORsMap.get(on.itemId) || [],
-                satisfiedByChange: reqToChangeMap.get(on.itemId) || null
-            }));
-
-        return {
-            title: edition.title,
-            waves: enrichedWaves,
-            operationalChanges: this._groupByDRG(enrichedChanges),
-            operationalRequirements: this._groupByDRG(processedORs),
-            operationalNeeds: this._groupByDRG(processedONs)
-        };
+        return this._buildExportData(allWaves, allChanges, allRequirements, `ODP Edition ${edition.title}`, userId);
     }
 
     async buildRepositoryExportData(userId) {
@@ -164,71 +168,7 @@ export class ODPEditionAggregator {
         const allChanges = await operationalChangeService.getAll(userId);
         const allRequirements = await operationalRequirementService.getAll(userId);
 
-        // Enrich waves with milestones
-        const enrichedWaves = await this._enrichWavesWithMilestones(allWaves, allChanges, userId);
-
-        // Enrich changes with milestones
-        const enrichedChanges = await this._enrichChangesWithMilestones(allChanges, userId);
-
-        // Build reverse lookup: requirement -> satisfying change
-        const reqToChangeMap = new Map();
-
-        allChanges.forEach(change => {
-            if (change.satisfiesRequirements) {
-                change.satisfiesRequirements.forEach(reqRef => {
-                    reqToChangeMap.set(reqRef.id, {
-                        id: change.itemId,
-                        title: change.title
-                    });
-                });
-            }
-        });
-
-        // Build reverse lookup: ON -> implementing ORs
-        const onToORsMap = new Map();
-
-        allRequirements
-            .filter(req => req.type === 'ON')
-            .forEach(on => onToORsMap.set(on.itemId, []));
-
-        allRequirements
-            .filter(req => req.type === 'OR')
-            .forEach(or => {
-                if (or.implementedONs) {
-                    or.implementedONs.forEach(onRef => {
-                        if (onToORsMap.has(onRef.id)) {
-                            onToORsMap.get(onRef.id).push({
-                                id: or.itemId,
-                                title: or.title
-                            });
-                        }
-                    });
-                }
-            });
-
-        // Process requirements with relationships
-        const processedORs = allRequirements
-            .filter(req => req.type === 'OR')
-            .map(or => ({
-                ...or,
-                satisfiedByChange: reqToChangeMap.get(or.itemId) || null
-            }));
-
-        const processedONs = allRequirements
-            .filter(req => req.type === 'ON')
-            .map(on => ({
-                ...on,
-                implementingORs: onToORsMap.get(on.itemId) || [],
-                satisfiedByChange: reqToChangeMap.get(on.itemId) || null
-            }));
-
-        return {
-            title: 'ODP Repository',
-            waves: enrichedWaves,
-            operationalChangeGroups: this._groupByDRG(enrichedChanges),
-            operationalRequirementGroups: this._groupByDRG(processedORs),
-            operationalNeedGroups: this._groupByDRG(processedONs)
-        };
+        return this._buildExportData(allWaves, allChanges, allRequirements, 'ODP Repository', userId);
     }
 
     /**
@@ -240,16 +180,7 @@ export class ODPEditionAggregator {
         const { idsEqual } = await import('../../../shared/src/model/utils.js');
 
         // Define the event type order you want
-        const eventTypeOrder = [
-            'OPS_DEPLOYMENT',
-            'API_PREOPS_DEPLOYMENT',
-            'API_PUBLICATION',
-            'API_DECOMMISSIONING',
-            'API_TEST_DEPLOYMENT',
-            'UI_TEST_DEPLOYMENT',
-            'SERVICE_ACTIVATION',
-            'OTHER'
-        ];
+        const eventTypeOrder = MilestoneEventOrder;
 
         for (const wave of waves) {
             // Initialize groups for each event type
