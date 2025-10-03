@@ -48,11 +48,18 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     params.type = filters.type;
                 }
 
+                // DrG  filtering
+                if (filters.drg) {
+                    whereConditions.push('version.drg = $drg');
+                    params.drg = filters.drg;
+                }
+
                 // Title pattern filtering
                 if (filters.title) {
                     whereConditions.push('item.title CONTAINS $title');
                     params.title = filters.title;
                 }
+
 
                 // Full-text search across content fields
                 if (filters.text) {

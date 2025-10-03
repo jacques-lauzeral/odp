@@ -5,6 +5,7 @@ import {
     odpEditionStore
 } from '../store/index.js';
 import {DraftingGroupKeys, getDraftingGroupDisplay, MilestoneEventOrder} from "../../../shared/src/index.js";
+import baseline from "../routes/baseline.js";
 
 /**
  * ODPEditionAggregator handles complex data assembly for ODP Edition exports.
@@ -151,10 +152,10 @@ export class ODPEditionAggregator {
         });
 
         // Get all operational changes and requirements
-        const allChanges = await operationalChangeService.getAll(userId);
-        const allRequirements = await operationalRequirementService.getAll(userId);
+        const editionChanges = await operationalChangeService.getAll(userId, edition.baseline.id, edition.startsFromWave.id);
+        const editionRequirements = await operationalRequirementService.getAll(userId, edition.baseline.id, edition.startsFromWave.id);
 
-        return this._buildExportData(allWaves, allChanges, allRequirements, `ODP Edition ${edition.title}`, userId);
+        return this._buildExportData(allWaves, editionChanges, editionRequirements, `ODP Edition ${edition.title}`, userId);
     }
 
     async buildRepositoryExportData(userId) {

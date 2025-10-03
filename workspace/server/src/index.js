@@ -10,6 +10,7 @@ import operationalChangeRoutes from './routes/operational-change.js';
 import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
+import docxExportRoutes from './routes/docx-export.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -43,6 +44,7 @@ app.get('/hello', (req, res) => {
 
 // Import API Routes (before other routes for proper middleware precedence)
 app.use('/import', importRoutes);
+app.use('/docx', docxExportRoutes);
 
 // Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);

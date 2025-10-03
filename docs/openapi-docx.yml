@@ -1,0 +1,40 @@
+# workspace/server/src/api/openapi-docx.yml
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / DocX Export
+  description: Word document export operations for operational requirements
+  version: 1.0.0
+
+paths:
+  /docx/export/requirements:
+    get:
+      summary: Export operational requirements as Word document
+      tags: [Export]
+      parameters:
+        - name: drg
+          in: query
+          required: true
+          schema:
+            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
+          description: "Drafting Group to export requirements for"
+      responses:
+        '200':
+          description: Word document generated successfully
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Bad Request - Invalid or missing DRG parameter
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'

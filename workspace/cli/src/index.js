@@ -13,6 +13,7 @@ import { editionCommands } from './commands/odp-edition.js';  // Added ODP Editi
 import { operationalRequirementCommands } from './commands/operational-requirement.js';
 import { operationalChangeCommands } from './commands/operational-change.js';
 import { importCommands } from './commands/import.js';
+import { docxCommands } from './commands/docx.js';
 
 const program = new Command();
 
@@ -54,6 +55,7 @@ editionCommands(program, config);
 operationalRequirementCommands(program, config);
 operationalChangeCommands(program, config);
 importCommands(program, config);
+docxCommands(program, config);
 
 // Parse command line arguments
 program.parse();

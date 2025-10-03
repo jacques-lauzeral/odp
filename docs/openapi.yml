@@ -45,6 +45,10 @@ paths:
   /waves/{id}:
     $ref: 'openapi-setup.yml#/paths/~1waves~1{id}'
 
+  # DocX Export endpoints
+  /docx/export/requirements:
+    $ref: 'openapi-docx.yml#/paths/~1docx~1export~1requirements'
+
   # Import endpoints
   /import/setup:
     $ref: 'openapi-import.yml#/paths/~1import~1setup'
