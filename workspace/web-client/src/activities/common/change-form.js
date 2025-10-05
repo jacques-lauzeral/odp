@@ -76,22 +76,6 @@ export default class ChangeForm extends CollectionEntityForm {
                         }
                     },
                     {
-                        key: 'purpose',  // RENAMED from 'description'
-                        label: 'Purpose',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: true,
-                        rows: 6,
-                        placeholder: 'Describe the purpose of this operational change...',
-                        helpText: 'Explain what this change aims to achieve and why it is needed',
-                        validate: (value) => {
-                            if (!value || value.length < 3) {
-                                return { valid: false, message: 'Purpose must be at least 3 characters long' };
-                            }
-                            return { valid: true };
-                        }
-                    },
-                    {
                         key: 'visibility',
                         label: 'Visibility',
                         type: 'radio',
@@ -121,6 +105,22 @@ export default class ChangeForm extends CollectionEntityForm {
             {
                 title: 'Change Details',
                 fields: [
+                    {
+                        key: 'purpose',  // RENAMED from 'description'
+                        label: 'Purpose',
+                        type: 'textarea',
+                        modes: ['create', 'read', 'edit'],
+                        required: true,
+                        rows: 6,
+                        placeholder: 'Describe the purpose of this operational change...',
+                        helpText: 'Explain what this change aims to achieve and why it is needed',
+                        validate: (value) => {
+                            if (!value || value.length < 3) {
+                                return { valid: false, message: 'Purpose must be at least 3 characters long' };
+                            }
+                            return { valid: true };
+                        }
+                    },
                     {
                         key: 'initialState',  // NEW FIELD
                         label: 'Initial State',
@@ -1217,8 +1217,8 @@ export default class ChangeForm extends CollectionEntityForm {
         await super.showCreateModal();
     }
 
-    async generateReadOnlyView(item) {
-        return await super.generateReadOnlyView(item);
+    async generateReadOnlyView(item, preserveTabIndex = false) {
+        return await super.generateReadOnlyView(item, preserveTabIndex);
     }
 
     // ====================

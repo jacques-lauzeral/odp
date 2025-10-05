@@ -14,6 +14,9 @@ export class CollectionEntityForm {
         this.currentMode = null;
         this.currentItem = null;
 
+        // Tab state tracking
+        this.currentTabIndex = 0; // Track the currently selected tab
+
         // Initialize tab delegation once
         this.initTabDelegation();
     }
@@ -32,6 +35,8 @@ export class CollectionEntityForm {
 
                 if (container && tabIndex !== undefined) {
                     this.switchTabInContainer(container, tabIndex);
+                    // Update tracked tab index when user clicks a tab
+                    this.currentTabIndex = parseInt(tabIndex, 10);
                 }
             }
         });
@@ -50,6 +55,7 @@ export class CollectionEntityForm {
             panel.classList.toggle('active', panel.dataset.tab === tabIndex);
         });
     }
+
     // ====================
     // VIRTUAL METHODS - Override in subclasses
     // ====================
@@ -140,55 +146,62 @@ export class CollectionEntityForm {
         this.showModal(form, 'read');
     }
 
-    async generateReadOnlyView(item) {
+    async generateReadOnlyView(item, preserveTabIndex = false) {
         const transformedItem = this.transformDataForRead(item);
-        return await this.generateForm('read', transformedItem);
+        return await this.generateForm('read', transformedItem, preserveTabIndex);
     }
 
     // ====================
     // FORM GENERATION
     // ====================
 
-    async generateForm(mode, item = null) {
+    async generateForm(mode, item = null, preserveTabIndex = false) {
         const fields = this.getFieldDefinitions();
         const sections = this.groupFieldsIntoSections(fields);
 
-        // NEW: Tab structure instead of vertical
+        // Determine which tab should be active
+        const activeTabIndex = preserveTabIndex ? this.currentTabIndex : 0;
+
+        // Tab structure
         let html = `
         <div class="form-tabs">
             <div class="tab-headers">
     `;
 
         // Generate tab headers
+        let visibleTabIndex = 0;
         sections.forEach((section, index) => {
             const visibleFields = this.getVisibleFields(section.fields || [section], mode);
             if (visibleFields.length === 0) return;
 
+            const isActive = visibleTabIndex === activeTabIndex;
             html += `
-            <button type="button" class="tab-header ${index === 0 ? 'active' : ''}" 
-                    data-tab="${index}">
+            <button type="button" class="tab-header ${isActive ? 'active' : ''}" 
+                    data-tab="${visibleTabIndex}">
                 ${this.escapeHtml(section.title)}
             </button>
         `;
+            visibleTabIndex++;
         });
 
         html += `</div><div class="tab-contents">`;
 
         // Generate tab content panels
+        visibleTabIndex = 0;
         for (const section of sections) {
-            const index = sections.indexOf(section);
             const visibleFields = this.getVisibleFields(section.fields || [section], mode);
             if (visibleFields.length === 0) continue;
 
-            html += `<div class="tab-panel ${index === 0 ? 'active' : ''}" data-tab="${index}">`;
+            const isActive = visibleTabIndex === activeTabIndex;
+            html += `<div class="tab-panel ${isActive ? 'active' : ''}" data-tab="${visibleTabIndex}">`;
 
             for (const field of visibleFields) {
                 console.log('generateForm ' + mode + '/' + section.title + '/' + field.key);
-
                 html += await this.renderField(field, this.getFieldValue(item, field), mode);
             }
 
             html += `</div>`;
+            visibleTabIndex++;
         }
 
         html += `</div></div>`;
@@ -505,6 +518,9 @@ export class CollectionEntityForm {
         this.currentModal.querySelectorAll('.tab-panel').forEach(panel => {
             panel.classList.toggle('active', panel.dataset.tab === tabIndex);
         });
+
+        // Update tracked tab index
+        this.currentTabIndex = parseInt(tabIndex, 10);
     }
 
     // ====================
@@ -618,13 +634,7 @@ export class CollectionEntityForm {
             });
         }
 
-        // Tab switching
-        this.currentModal.addEventListener('click', (e) => {
-            if (e.target.classList.contains('tab-header')) {
-                const tabIndex = e.target.dataset.tab;
-                this.switchTab(tabIndex);
-            }
-        });
+        // Tab switching is now handled by global delegation
     }
 
     closeModal() {

@@ -96,7 +96,7 @@ export default class RequirementForm extends CollectionEntityForm {
 
             // Content Section
             {
-                title: 'Requirement Content',
+                title: 'Requirement Details',
                 fields: [
                     {
                         key: 'statement',
@@ -672,7 +672,7 @@ export default class RequirementForm extends CollectionEntityForm {
         await super.showReadOnlyModal(item);
     }
 
-    async generateReadOnlyView(item) {
-        return await super.generateReadOnlyView(item);
+    async generateReadOnlyView(item, preserveTabIndex = false) {
+        return await super.generateReadOnlyView(item, preserveTabIndex);
     }
 }

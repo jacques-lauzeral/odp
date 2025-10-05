@@ -544,7 +544,7 @@ export default class ChangesEntity {
 
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
         const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
-        const detailsHtml = await this.form.generateReadOnlyView(item);
+        const detailsHtml = await this.form.generateReadOnlyView(item, true);
 
         detailsContainer.innerHTML = `
             <div class="details-sticky-header">
