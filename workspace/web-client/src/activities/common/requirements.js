@@ -17,6 +17,14 @@ export default class RequirementsEntity {
         this.setupData = setupData;
         this.container = null;
 
+        // NEW: Local shared state for this entity
+        this.sharedState = {
+            filters: {},
+            selectedItem: null,
+            grouping: 'none',
+            currentTabIndex: 0
+        };
+
         // Initialize collection with ODP column types
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
@@ -36,8 +44,14 @@ export default class RequirementsEntity {
             })
         });
 
-        // Initialize form using new inheritance pattern
-        this.form = new RequirementForm(entityConfig, setupData);
+        // Initialize form using new inheritance pattern with tab change callback
+        this.form = new RequirementForm(entityConfig, {
+            setupData,
+            currentTabIndex: 0,
+            onTabChange: (index) => {
+                this.sharedState.currentTabIndex = index;
+            }
+        });
 
         // Listen for save events
         document.addEventListener('entitySaved', async(e) => {
@@ -45,6 +59,47 @@ export default class RequirementsEntity {
                 await this.collection.refresh();
             }
         });
+    }
+
+    // ====================
+    // STATE MANAGEMENT - CENTRALIZED STATE
+    // ====================
+
+    applySharedState(sharedState) {
+        console.log('RequirementsEntity.applySharedState:', sharedState);
+
+        // Apply filters to collection
+        if (sharedState.filters && this.collection) {
+            this.collection.currentFilters = { ...sharedState.filters };
+        }
+
+        // Apply selection
+        if (sharedState.selectedItem && this.collection) {
+            this.collection.selectedItem = sharedState.selectedItem;
+        }
+
+        // Apply grouping
+        if (sharedState.grouping && this.collection) {
+            this.collection.currentGrouping = sharedState.grouping;
+        }
+
+        // NEW: Apply tab index to form context
+        if (sharedState.currentTabIndex !== undefined && this.form) {
+            this.sharedState.currentTabIndex = sharedState.currentTabIndex;
+            this.form.context.currentTabIndex = sharedState.currentTabIndex;
+        }
+
+        // Re-render to reflect state
+        this.collection.applyFilters();
+    }
+
+    syncFilters(filters) {
+        console.log('RequirementsEntity.syncFilters:', filters);
+
+        if (this.collection) {
+            this.collection.currentFilters = { ...filters };
+            this.collection.applyFilters();
+        }
     }
 
     // ====================
@@ -70,7 +125,7 @@ export default class RequirementsEntity {
                 placeholder: 'Search across title, statement, rationale, flows, and more...'
             },
             {
-                key: 'drg',  // NEW FILTER
+                key: 'drg',
                 label: 'Drafting Group',
                 type: 'select',
                 options: this.buildDraftingGroupOptions()
@@ -127,7 +182,7 @@ export default class RequirementsEntity {
                 type: 'text'
             },
             {
-                key: 'drg',  // NEW COLUMN
+                key: 'drg',
                 label: 'DRG',
                 width: '120px',
                 sortable: true,
@@ -144,7 +199,7 @@ export default class RequirementsEntity {
                 groupPrefix: 'Refines'
             },
             {
-                key: 'implementedONs',  // NEW COLUMN for OR-type requirements
+                key: 'implementedONs',
                 label: 'Implements',
                 width: '150px',
                 sortable: false,
@@ -214,9 +269,9 @@ export default class RequirementsEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
-            { key: 'drg', label: 'Drafting Group' },  // NEW GROUPING OPTION
+            { key: 'drg', label: 'Drafting Group' },
             { key: 'refinesParents', label: 'Refines' },
-            { key: 'implementedONs', label: 'Implements' },  // NEW GROUPING OPTION
+            { key: 'implementedONs', label: 'Implements' },
             { key: 'impactsData', label: 'Data Impact' },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact' },
             { key: 'impactsRegulatoryAspects', label: 'Regulatory Impact' },
@@ -231,7 +286,6 @@ export default class RequirementsEntity {
     buildDraftingGroupOptions(emptyLabel = 'Any') {
         const baseOptions = [{ value: '', label: emptyLabel }];
 
-        // Build options from shared DraftingGroup enum
         const drgOptions = Object.keys(DraftingGroup).map(key => ({
             value: key,
             label: getDraftingGroupDisplay(key)
@@ -276,6 +330,9 @@ export default class RequirementsEntity {
     handleItemSelect(item) {
         // Update details panel
         this.updateDetailsPanel(item);
+
+        // Update shared state
+        this.sharedState.selectedItem = item;
     }
 
     handleRefresh() {
@@ -283,9 +340,28 @@ export default class RequirementsEntity {
         console.log('Requirements refreshed');
     }
 
+    getCurrentTabInPanel(container) {
+        const activeTab = container.querySelector('.tab-header.active');
+        return activeTab ? parseInt(activeTab.dataset.tab, 10) : 0;
+    }
+
+    switchTabInPanel(container, tabIndex) {
+        container.querySelectorAll('.tab-header').forEach(h =>
+            h.classList.toggle('active', h.dataset.tab === tabIndex.toString()));
+        container.querySelectorAll('.tab-panel').forEach(p =>
+            p.classList.toggle('active', p.dataset.tab === tabIndex.toString()));
+
+        // Also update form context and shared state
+        this.form.context.currentTabIndex = tabIndex;
+        this.sharedState.currentTabIndex = tabIndex;
+    }
+
     async updateDetailsPanel(item) {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
+
+        // Preserve current tab before re-rendering
+        const currentTab = this.getCurrentTabInPanel(detailsContainer);
 
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
         const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
@@ -305,7 +381,12 @@ export default class RequirementsEntity {
         <div class="details-scrollable-content">
             ${detailsHtml}
         </div>
-        `;
+    `;
+
+        // Restore tab after rendering
+        if (currentTab !== null && currentTab !== 0) {
+            this.switchTabInPanel(detailsContainer, currentTab);
+        }
 
         // Bind details button
         const detailsBtn = detailsContainer.querySelector('#detailsBtn');
@@ -325,13 +406,13 @@ export default class RequirementsEntity {
         const actions = [];
 
         // Show "Create Child Requirement" for ONs
-        if (item.type === 'ON') {
-            actions.push(`
-                <button class="btn btn-secondary btn-sm" id="createChildBtn">
-                    Create Child OR
-                </button>
-            `);
-        }
+        // if (item.type === 'ON') {
+        //     actions.push(`
+        //         <button class="btn btn-secondary btn-sm" id="createChildBtn">
+        //             Create Child OR
+        //         </button>
+        //     `);
+        // }
 
         // Show "View Children" if this requirement has children
         if (this.hasChildRequirements(item)) {
@@ -381,7 +462,7 @@ export default class RequirementsEntity {
             });
         }
 
-        // View Implementers button (NEW)
+        // View Implementers button
         const viewImplementersBtn = document.querySelector('#viewImplementersBtn');
         if (viewImplementersBtn) {
             viewImplementersBtn.addEventListener('click', () => {
@@ -409,7 +490,6 @@ export default class RequirementsEntity {
         });
     }
 
-    // NEW METHODS for implementedONs relationship
     hasImplementingRequirements(item) {
         if (item.type !== 'ON') return false;
 
@@ -439,39 +519,26 @@ export default class RequirementsEntity {
 
     handleCreateChild(parentItem) {
         // Create a new OR that refines this ON
-        // This would need to be implemented in RequirementForm to pre-select the parent
         console.log('Create child OR for:', parentItem);
-        // TODO: Pass parent context to form
         this.form.showCreateModal();
     }
 
     handleViewChildren(item) {
         // Filter the collection to show only children of this requirement
         const itemId = item.itemId || item.id;
-
-        // Clear other filters first
         this.collection.clearFilters();
-
-        // Apply a custom filter for children
-        // This would need enhancement in the collection entity
         console.log('View children of:', item);
     }
 
     handleViewImplementers(item) {
         // Filter the collection to show only OR requirements that implement this ON
         console.log('View implementers of ON:', item);
-
-        // Apply filter to show OR-type requirements that implement this ON
         const itemId = item.itemId || item.id;
-
-        // This would need enhancement in the collection entity to support
-        // filtering by implementedONs relationship
         console.log('Filter by implementedONs containing:', itemId);
     }
 
     handleViewChanges(item) {
         // Navigate to changes view filtered by this requirement
-        // This would need coordination with the app router
         console.log('View changes satisfying:', item);
     }
 
@@ -498,10 +565,16 @@ export default class RequirementsEntity {
 
     handleFilter(filterKey, filterValue) {
         this.collection.handleFilter(filterKey, filterValue);
+
+        // Update shared state
+        this.sharedState.filters = { ...this.collection.currentFilters };
     }
 
     handleGrouping(groupBy) {
         this.collection.handleGrouping(groupBy);
+
+        // Update shared state
+        this.sharedState.grouping = groupBy;
     }
 
     handleEditModeToggle(enabled) {

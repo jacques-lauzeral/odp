@@ -22,6 +22,16 @@ export default class ChangesEntity {
         this.currentPerspective = 'collection';
         this.timelineGrid = null;
 
+        // NEW: Local shared state for this entity
+        this.sharedState = {
+            filters: {},
+            selectedItem: null,
+            grouping: 'none',
+            timeWindow: null,
+            eventTypeFilters: ['ANY'],
+            currentTabIndex: 0
+        };
+
         // Initialize collection with custom column types
         const customColumnTypes = {
             ...odpColumnTypes,
@@ -81,8 +91,14 @@ export default class ChangesEntity {
             })
         });
 
-        // Initialize form using new inheritance pattern
-        this.form = new ChangeForm(entityConfig, setupData);
+        // Initialize form using new inheritance pattern with tab change callback
+        this.form = new ChangeForm(entityConfig, {
+            setupData,
+            currentTabIndex: 0,
+            onTabChange: (index) => {
+                this.sharedState.currentTabIndex = index;
+            }
+        });
 
         // Listen for save events
         document.addEventListener('entitySaved', async(e) => {
@@ -128,7 +144,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // STATE MANAGEMENT - NEW METHODS FOR CENTRALIZED STATE
+    // STATE MANAGEMENT - CENTRALIZED STATE
     // ====================
 
     applySharedState(sharedState) {
@@ -147,6 +163,12 @@ export default class ChangesEntity {
         // Apply grouping
         if (sharedState.grouping && this.collection) {
             this.collection.currentGrouping = sharedState.grouping;
+        }
+
+        // NEW: Apply tab index to form context
+        if (sharedState.currentTabIndex !== undefined && this.form) {
+            this.sharedState.currentTabIndex = sharedState.currentTabIndex;
+            this.form.context.currentTabIndex = sharedState.currentTabIndex;
         }
 
         // Apply temporal state to timeline if in temporal perspective
@@ -191,6 +213,11 @@ export default class ChangesEntity {
     handlePerspectiveSwitch(perspective, sharedState) {
         console.log(`ChangesEntity.handlePerspectiveSwitch to ${perspective} with shared state:`, sharedState);
 
+        // Merge incoming state
+        if (sharedState) {
+            this.sharedState = { ...this.sharedState, ...sharedState };
+        }
+
         if (perspective === this.currentPerspective) {
             return; // Already in this perspective
         }
@@ -198,9 +225,9 @@ export default class ChangesEntity {
         this.currentPerspective = perspective;
 
         if (perspective === 'temporal') {
-            this.renderTemporalView(sharedState);
+            this.renderTemporalView(this.sharedState);
         } else if (perspective === 'collection') {
-            this.renderCollectionView(sharedState);
+            this.renderCollectionView(this.sharedState);
         }
     }
 
@@ -270,6 +297,11 @@ export default class ChangesEntity {
             if (sharedState.grouping) {
                 this.collection.currentGrouping = sharedState.grouping;
             }
+
+            // NEW: Apply tab index before rendering
+            if (sharedState.currentTabIndex !== undefined) {
+                this.form.context.currentTabIndex = sharedState.currentTabIndex;
+            }
         }
 
         // Now render with state already applied
@@ -299,7 +331,10 @@ export default class ChangesEntity {
             this.collection.selectedItem = item;
         }
 
-        // Notify parent of selection change
+        // Update shared state
+        this.sharedState.selectedItem = item;
+
+        // Notify parent of selection change if needed
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
@@ -317,7 +352,10 @@ export default class ChangesEntity {
         // Store selected milestone for potential details panel emphasis
         this.selectedMilestone = milestone;
 
-        // Notify parent of selection change
+        // Update shared state
+        this.sharedState.selectedItem = item;
+
+        // Notify parent of selection change if needed
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
@@ -333,7 +371,7 @@ export default class ChangesEntity {
                 key: 'text',
                 label: 'Full Text Search',
                 type: 'text',
-                placeholder: 'Search across title, purpose, and implementation details...'  // Updated placeholder
+                placeholder: 'Search across title, purpose, and implementation details...'
             },
             {
                 key: 'visibility',
@@ -346,7 +384,7 @@ export default class ChangesEntity {
                 ]
             },
             {
-                key: 'drg',  // NEW FILTER
+                key: 'drg',
                 label: 'Drafting Group',
                 type: 'select',
                 options: this.buildDraftingGroupOptions()
@@ -389,7 +427,7 @@ export default class ChangesEntity {
                 type: 'text'
             },
             {
-                key: 'drg',  // NEW COLUMN
+                key: 'drg',
                 label: 'DRG',
                 width: '120px',
                 sortable: true,
@@ -449,7 +487,7 @@ export default class ChangesEntity {
     getGroupingConfig() {
         return [
             { key: 'none', label: 'No grouping' },
-            { key: 'drg', label: 'Drafting Group' },  // NEW GROUPING OPTION
+            { key: 'drg', label: 'Drafting Group' },
             { key: 'milestones', label: 'Wave' },
             { key: 'visibility', label: 'Visibility' },
             { key: 'satisfiesRequirements', label: 'Satisfies Requirements' },
@@ -458,13 +496,12 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // HELPER METHODS (Updated with new options)
+    // HELPER METHODS
     // ====================
 
     buildDraftingGroupOptions(emptyLabel = 'Any') {
         const baseOptions = [{ value: '', label: emptyLabel }];
 
-        // Build options from shared DraftingGroup enum
         const drgOptions = Object.keys(DraftingGroup).map(key => ({
             value: key,
             label: getDraftingGroupDisplay(key)
@@ -509,7 +546,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // EVENT HANDLERS - UPDATED TO WORK WITH CENTRALIZED STATE
+    // EVENT HANDLERS
     // ====================
 
     handleCreate() {
@@ -528,7 +565,10 @@ export default class ChangesEntity {
         // Update details panel
         this.updateDetailsPanel(item);
 
-        // Notify parent activity of selection change
+        // Update shared state
+        this.sharedState.selectedItem = item;
+
+        // Notify parent activity of selection change if needed
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
@@ -538,28 +578,52 @@ export default class ChangesEntity {
         console.log('Changes refreshed');
     }
 
+    getCurrentTabInPanel(container) {
+        const activeTab = container.querySelector('.tab-header.active');
+        return activeTab ? parseInt(activeTab.dataset.tab, 10) : 0;
+    }
+
+    switchTabInPanel(container, tabIndex) {
+        container.querySelectorAll('.tab-header').forEach(h =>
+            h.classList.toggle('active', h.dataset.tab === tabIndex.toString()));
+        container.querySelectorAll('.tab-panel').forEach(p =>
+            p.classList.toggle('active', p.dataset.tab === tabIndex.toString()));
+
+        // Also update form context and shared state
+        this.form.context.currentTabIndex = tabIndex;
+        this.sharedState.currentTabIndex = tabIndex;
+    }
+
     async updateDetailsPanel(item) {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
+
+        // Preserve current tab before re-rendering
+        const currentTab = this.getCurrentTabInPanel(detailsContainer);
 
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
         const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
         const detailsHtml = await this.form.generateReadOnlyView(item, true);
 
         detailsContainer.innerHTML = `
-            <div class="details-sticky-header">
-                <div class="item-title-section">
-                    <h3 class="item-title">${item.title || `${item.type || 'Item'} ${item.itemId}`}</h3>
-                    <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
-                </div>
-                <div class="details-actions">
-                    <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
-                </div>
+        <div class="details-sticky-header">
+            <div class="item-title-section">
+                <h3 class="item-title">${item.title || `${item.type || 'Item'} ${item.itemId}`}</h3>
+                <span class="item-id">${item.type ? `[${item.type}] ` : ''}${item.itemId}</span>
             </div>
-            <div class="details-scrollable-content">
-                ${detailsHtml}
+            <div class="details-actions">
+                <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
             </div>
-        `;
+        </div>
+        <div class="details-scrollable-content">
+            ${detailsHtml}
+        </div>
+    `;
+
+        // Restore tab after rendering
+        if (currentTab !== null && currentTab !== 0) {
+            this.switchTabInPanel(detailsContainer, currentTab);
+        }
 
         // Bind details button
         const detailsBtn = detailsContainer.querySelector('#detailsBtn');
@@ -573,7 +637,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // PUBLIC INTERFACE - UPDATED FOR CENTRALIZED STATE
+    // PUBLIC INTERFACE
     // ====================
 
     async render(container) {
@@ -597,7 +661,10 @@ export default class ChangesEntity {
         // Apply filter to collection
         this.collection.handleFilter(filterKey, filterValue);
 
-        // Notify parent activity of filter change
+        // Update shared state
+        this.sharedState.filters = { ...this.collection.currentFilters };
+
+        // Notify parent activity of filter change if needed
         if (this.app.currentActivity?.updateSharedFilters) {
             this.app.currentActivity.updateSharedFilters(this.collection.currentFilters);
         }
@@ -616,10 +683,8 @@ export default class ChangesEntity {
 
         this.collection.handleGrouping(groupBy);
 
-        // Notify parent activity of grouping change
-        if (this.app.currentActivity?.sharedState) {
-            this.app.currentActivity.sharedState.grouping = groupBy;
-        }
+        // Update shared state
+        this.sharedState.grouping = groupBy;
     }
 
     cleanup() {

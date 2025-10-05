@@ -1,3 +1,5 @@
+import { async as asyncUtils } from '../../shared/utils.js';
+
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
  * Base class for entity-specific forms using inheritance
@@ -37,6 +39,11 @@ export class CollectionEntityForm {
                     this.switchTabInContainer(container, tabIndex);
                     // Update tracked tab index when user clicks a tab
                     this.currentTabIndex = parseInt(tabIndex, 10);
+
+                    // NEW: Notify parent of tab change
+                    if (this.context?.onTabChange) {
+                        this.context.onTabChange(this.currentTabIndex);
+                    }
                 }
             }
         });
@@ -159,8 +166,10 @@ export class CollectionEntityForm {
         const fields = this.getFieldDefinitions();
         const sections = this.groupFieldsIntoSections(fields);
 
-        // Determine which tab should be active
-        const activeTabIndex = preserveTabIndex ? this.currentTabIndex : 0;
+        // NEW: Read from context first, then fall back to instance state
+        const activeTabIndex = preserveTabIndex
+            ? (this.context?.currentTabIndex ?? this.currentTabIndex)
+            : 0;
 
         // Tab structure
         let html = `
@@ -521,6 +530,11 @@ export class CollectionEntityForm {
 
         // Update tracked tab index
         this.currentTabIndex = parseInt(tabIndex, 10);
+
+        // NEW: Notify parent of tab change
+        if (this.context?.onTabChange) {
+            this.context.onTabChange(this.currentTabIndex);
+        }
     }
 
     // ====================
