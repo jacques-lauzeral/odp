@@ -431,106 +431,122 @@ export class OperationalRequirementStore extends VersionedItemStore {
         }
     }
 
-    /**
-     * Check if OperationalRequirement passes wave filter (referenced by filtered OCs + REFINES cascade)
-     * @private
-     * @param {number} itemId - OperationalRequirement Item ID
-     * @param {number} fromWaveId - Waves ID for filtering
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @returns {Promise<boolean>} True if requirement is referenced by filtered OCs or ancestors are
-     */
-    async _checkWaveFilter(itemId, fromWaveId, transaction, baselineId = null) {
+    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
         try {
-            // Step 1: Find OperationalChanges that pass wave filter
-            let filteredOCQuery, ocParams;
+            // Step 1: Get base results with baseline + content filtering
+            const queryObj = this.buildFindAllQuery(baselineId, null, filters);
+            const result = await transaction.run(queryObj.cypher, queryObj.params);
 
-            if (baselineId === null) {
-                // Latest versions - find OCs with milestones at/after fromWave
-                filteredOCQuery = `
-                    MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-                    MATCH (change:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
-                    WHERE EXISTS {
-                        MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                        WHERE date(targetWave.date) >= date(fromWave.date)
-                    }
-                    RETURN collect(id(change)) as filteredChangeIds
-                `;
-                ocParams = { fromWaveId: this.normalizeId(fromWaveId) };
-            } else {
-                // Baseline versions - find OCs in baseline with milestones at/after fromWave
-                const numericBaselineId = this.normalizeId(baselineId);
-                filteredOCQuery = `
-                    MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:VERSION_OF]->(change:OperationalChange)
-                    WHERE id(baseline) = $baselineId
-                    AND EXISTS {
-                        MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                        WHERE date(targetWave.date) >= date(fromWave.date)
-                    }
-                    RETURN collect(id(change)) as filteredChangeIds
-                `;
-                ocParams = { fromWaveId: this.normalizeId(fromWaveId), baselineId: numericBaselineId };
+            // Step 2: Build items with relationships
+            const items = [];
+            for (const record of result.records) {
+                const versionData = record.get('versionData');
+                delete versionData.version;
+                delete versionData.createdAt;
+                delete versionData.createdBy;
+
+                const baseItem = {
+                    itemId: this.normalizeId(record.get('itemId')),
+                    title: record.get('title'),
+                    versionId: this.normalizeId(record.get('versionId')),
+                    version: this.normalizeId(record.get('version')),
+                    createdAt: record.get('createdAt'),
+                    createdBy: record.get('createdBy'),
+                    ...versionData
+                };
+
+                const relationshipReferences = await this._buildRelationshipReferences(
+                    baseItem.versionId,
+                    transaction
+                );
+                items.push({ ...baseItem, ...relationshipReferences });
             }
 
-            const ocResult = await transaction.run(filteredOCQuery, ocParams);
-            const filteredChangeIds = ocResult.records[0]?.get('filteredChangeIds') || [];
-
-            if (filteredChangeIds.length === 0) {
-                return false; // No filtered OCs, so no requirements pass
+            // Step 3: Apply wave filtering efficiently
+            if (fromWaveId !== null) {
+                const acceptedReqIds = await this._computeWaveFilteredRequirements(
+                    fromWaveId,
+                    transaction,
+                    baselineId
+                );
+                return items.filter(item => acceptedReqIds.has(item.itemId));
             }
 
-            // Step 2: Check if this requirement (or any ancestor via REFINES) is referenced by filtered OCs
-            const normalizedItemId = this.normalizeId(itemId);
-            const normalizedChangeIds = filteredChangeIds.map(id => this.normalizeId(id));
-
-            let reqFilterQuery, reqParams;
-
-            if (baselineId === null) {
-                // Latest versions - check if requirement or ancestors are referenced
-                reqFilterQuery = `
-                    MATCH (req:OperationalRequirement) WHERE id(req) = $itemId
-                    
-                    // Get all ancestors via REFINES (including self)
-                    MATCH path = (req)<-[:REFINES*0..]-(descendant:OperationalRequirement)
-                    WITH collect(DISTINCT descendant) as allDescendants
-                    
-                    // Check if any descendant is referenced by filtered OCs
-                    UNWIND allDescendants as descendant
-                    MATCH (descendant)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                    MATCH (changeVersion:OperationalChangeVersion)-[:SATISFIES|SUPERSEDS]->(descendant)
-                    MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
-                    WHERE id(change) IN $filteredChangeIds
-                    RETURN count(*) > 0 as isReferenced
-                `;
-                reqParams = { itemId: normalizedItemId, filteredChangeIds: normalizedChangeIds };
-            } else {
-                // Baseline versions - check with baseline context
-                const numericBaselineId = this.normalizeId(baselineId);
-                reqFilterQuery = `
-                    MATCH (req:OperationalRequirement) WHERE id(req) = $itemId
-                    
-                    // Get all ancestors via REFINES (including self) in baseline context
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(reqVersion:OperationalRequirementVersion)-[:VERSION_OF]->(descendant:OperationalRequirement)
-                    WHERE id(baseline) = $baselineId
-                    MATCH path = (req)<-[:REFINES*0..]-(descendant)
-                    WITH collect(DISTINCT descendant) as allDescendants
-                    
-                    // Check if any descendant is referenced by filtered OCs in baseline
-                    UNWIND allDescendants as descendant
-                    MATCH (baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SATISFIES|SUPERSEDS]->(descendant)
-                    MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
-                    WHERE id(change) IN $filteredChangeIds
-                    RETURN count(*) > 0 as isReferenced
-                `;
-                reqParams = { itemId: normalizedItemId, filteredChangeIds: normalizedChangeIds, baselineId: numericBaselineId };
-            }
-
-            const reqResult = await transaction.run(reqFilterQuery, reqParams);
-            return reqResult.records[0]?.get('isReferenced') || false;
-
+            return items;
         } catch (error) {
-            throw new StoreError(`Failed to check wave filter for requirement: ${error.message}`, error);
+            throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Compute set of requirement IDs that pass wave filter
+     * Optimized: runs complex queries once instead of per-requirement
+     */
+    async _computeWaveFilteredRequirements(fromWaveId, transaction, baselineId = null) {
+        try {
+            const normalizedFromWaveId = this.normalizeId(fromWaveId);
+            let query, params;
+
+            if (baselineId === null) {
+                query = `
+                MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
+                
+                // Step 1: Find OCs with milestones at/after fromWave
+                MATCH (change:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
+                WHERE EXISTS {
+                    MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
+                    WHERE date(targetWave.date) >= date(fromWave.date)
+                }
+                
+                // Step 2: Find requirements directly satisfied/superseded by these OCs
+                MATCH (changeVersion)-[:SATISFIES|SUPERSEDS]->(directReq:OperationalRequirement)
+                
+                // Step 3: Expand via incoming REFINES and IMPLEMENTS
+                // directReq is refined by OR implements something → follow those paths
+                MATCH path = (reachableReq:OperationalRequirement)-[:REFINES|IMPLEMENTS*0..]->(directReq)
+                
+                RETURN collect(DISTINCT id(reachableReq)) as acceptedReqIds
+            `;
+                params = { fromWaveId: normalizedFromWaveId };
+            } else {
+                const numericBaselineId = this.normalizeId(baselineId);
+                query = `
+                MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
+                MATCH (baseline:Baseline) WHERE id(baseline) = $baselineId
+                
+                // Step 1: Find OCs in baseline with milestones at/after fromWave
+                MATCH (baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)
+                WHERE EXISTS {
+                    MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
+                    WHERE date(targetWave.date) >= date(fromWave.date)
+                }
+                
+                // Step 2: Find requirements satisfied/superseded by these OCs
+                MATCH (changeVersion)-[:SATISFIES|SUPERSEDS]->(directReq:OperationalRequirement)
+                
+                // Step 3: Expand via incoming REFINES and IMPLEMENTS
+                MATCH path = (reachableReq:OperationalRequirement)-[:REFINES|IMPLEMENTS*0..]->(directReq)
+                
+                // Step 4: Ensure reachable requirement is in baseline
+                WHERE EXISTS {
+                    MATCH (baseline)-[:HAS_ITEMS]->(:OperationalRequirementVersion)
+                        -[:VERSION_OF]->(reachableReq)
+                }
+                
+                RETURN collect(DISTINCT id(reachableReq)) as acceptedReqIds
+            `;
+                params = { fromWaveId: normalizedFromWaveId, baselineId: numericBaselineId };
+            }
+
+            const result = await transaction.run(query, params);
+            const reqIds = result.records[0]?.get('acceptedReqIds') || [];
+
+            return new Set(reqIds.map(id => this.normalizeId(id)));
+        } catch (error) {
+            throw new StoreError(
+                `Failed to compute wave-filtered requirements: ${error.message}`,
+                error
+            );
         }
     }
 
