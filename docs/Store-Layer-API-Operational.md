@@ -53,12 +53,12 @@ const entities = await store.findAll(transaction, baselineId = null, fromWaveId 
         drg: string,              // Enum: '4DT'|'AIRPORT'|'ASM_ATFCM'|'CRISIS_FAAS'|'FLOW'|'IDL'|'NM_B2B'|'NMUI'|'PERF'|'RRT'|'TCF'
 
         // Relationship fields
-        refinesParents: Array<number>,        // OperationalRequirement Item IDs
-        impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs  
-        impactsData: Array<number>,          // DataCategory IDs
-        impactsServices: Array<number>,      // Service IDs
-        implementedONs: Array<number>,       // OperationalRequirement Item IDs (OR type only, references ON type)
-        dependsOnRequirements: Array<number>, // OperationalRequirement Version IDs (version-to-version dependencies)
+        refinesParents: Array<number>,              // OperationalRequirement Item IDs
+        impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs
+        impactsData: Array<number>,                 // DataCategory IDs
+        impactsServices: Array<number>,             // Service IDs
+        implementedONs: Array<number>,              // OperationalRequirement Item IDs (OR type only, references ON type)
+        dependsOnRequirements: Array<number>,       // OperationalRequirement Item IDs (follows latest version automatically)
 
         // Document references
         documentReferences: Array<{
@@ -84,7 +84,7 @@ const requirement = await store.create({
   impactsData: [789],
   impactsServices: [101],
   implementedONs: [345],  // Only valid for OR type
-  dependsOnRequirements: [567],  // Version IDs
+  dependsOnRequirements: [567],  // Item IDs
   documentReferences: [
     { documentId: 201, note: "Section 3.2" },
     { documentId: 202, note: "Annex A" }
@@ -100,7 +100,7 @@ const requirement = await store.create({
 
 **Relationship Validation**:
 - `implementedONs` only valid for type='OR', references must be type='ON'
-- `dependsOnRequirements` references version IDs (version-to-version)
+- `dependsOnRequirements` references Item IDs (follows latest version automatically)
 - All relationship arrays are optional (default: empty arrays)
 
 ### findById(itemId, transaction, baselineId = null, fromWaveId = null)
@@ -203,25 +203,33 @@ const documents = await store.findDocumentReferences(versionId, transaction)
 
 **Returns**: `Promise<Array<{documentId: number, name: string, version: string, note: string}>>` - Documents referenced by this version with notes
 
-### findDependentVersions(versionId, transaction)
+### findDependencies(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-const dependents = await store.findDependentVersions(versionId, transaction)
+const dependencies = await store.findDependencies(itemId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `versionId: number` - OperationalRequirement Version ID
+- `itemId: number` - OperationalRequirement Item ID
 - `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context
+- `fromWaveId: number|null` - Optional wave filtering
 
-**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Requirement versions that depend on this version
+**Returns**: `Promise<Array<{itemId: number, title: string, versionId: number, version: number}>>` - Requirement Items that this requirement depends on (follows latest version in context)
 
-### findDependencyVersions(versionId, transaction)
+**Description**: Returns the Items that this requirement depends on. In current context, returns latest versions. In baseline context, returns the versions that were latest at baseline time.
+
+### findDependents(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-const dependencies = await store.findDependencyVersions(versionId, transaction)
+const dependents = await store.findDependents(itemId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `versionId: number` - OperationalRequirement Version ID
+- `itemId: number` - OperationalRequirement Item ID
 - `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context
+- `fromWaveId: number|null` - Optional wave filtering
 
-**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Requirement versions that this version depends on
+**Returns**: `Promise<Array<{itemId: number, title: string, versionId: number, version: number}>>` - Requirement Items that depend on this requirement (follows latest version in context)
+
+**Description**: Returns the Items that depend on this requirement. In current context, returns latest versions. In baseline context, returns the versions that were latest at baseline time.
 
 ### getVersionHistory(itemId, transaction)
 ```javascript
@@ -264,7 +272,7 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
   // Relationship fields
   satisfiesRequirements: Array<number>,  // OperationalRequirement Item IDs
   supersedsRequirements: Array<number>,  // OperationalRequirement Item IDs
-  dependsOnChanges: Array<number>,       // OperationalChange Version IDs (version-to-version dependencies)
+  dependsOnChanges: Array<number>,       // OperationalChange Item IDs (follows latest version automatically)
   
   // Document references
   documentReferences: Array<{
@@ -282,7 +290,13 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
     targetDate: string,     // ISO date string
     actualDate: string,     // ISO date string (optional)
     waveId?: number,        // Wave ID (optional)
-    wave?: object           // Wave object with year, quarter, date (populated in queries)
+    wave?: {               // Wave details (populated)
+      id: number,
+      year: number,
+      quarter: number,
+      date: string,
+      name: string
+    }
   }>
 }
 ```
@@ -290,46 +304,54 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
 ### create(data, transaction)
 ```javascript
 const change = await store.create({
-  title: "Implement Authentication API",
-  purpose: "Provide secure authentication endpoints",
-  initialState: "No authentication system exists",
-  finalState: "Full OAuth2 authentication implemented",
-  details: "Implementation includes login, logout, token refresh",
-  privateNotes: "Internal technical considerations",
-  path: ["API", "Security"],
+  title: "Authentication Enhancement",
+  purpose: "Improve system security",
+  initialState: "Basic authentication",
+  finalState: "Multi-factor authentication",
+  details: "Implementation details...",
+  privateNotes: "Internal notes...",
+  path: ["Security", "Authentication"],
   visibility: "NETWORK",
-  drg: "NM_B2B",
+  drg: "PERF",
   satisfiesRequirements: [123, 456],
   supersedsRequirements: [789],
-  dependsOnChanges: [890],  // Version IDs
+  dependsOnChanges: [234],  // Item IDs
   documentReferences: [
-    { documentId: 301, note: "Design spec - Section 2" }
+    { documentId: 301, note: "Design Document - Section 2" }
   ],
   milestones: [
     {
+      milestoneKey: "uuid-generated-key",
       title: "API Publication",
-      description: "Publish authentication API specification",
+      description: "Publish new API version",
       eventType: "API_PUBLICATION",
-      targetDate: "2025-06-15",
-      waveId: 101
-    },
-    {
-      title: "Test Deployment",
-      description: "Deploy to test environment",
-      eventType: "API_TEST_DEPLOYMENT",
-      targetDate: "2025-09-01",
-      waveId: 102
+      targetDate: "2025-03-15",
+      actualDate: null,
+      waveId: 10
     }
   ]
 }, transaction)
 ```
 
-**Milestone Event Types** (5 specific types only):
-- `API_PUBLICATION`
-- `API_TEST_DEPLOYMENT`
-- `UI_TEST_DEPLOYMENT`
-- `OPS_DEPLOYMENT`
-- `API_DECOMMISSIONING`
+**Parameters**:
+- `data: object` - Complete entity data including relationships and milestones
+- `transaction: Transaction` - Must have user context
+
+**Returns**: `Promise<object>` - Created entity with version 1
+
+**Relationship Validation**:
+- `dependsOnChanges` references Item IDs (follows latest version automatically)
+- All relationship arrays are optional (default: empty arrays)
+- Milestones array is optional (default: empty array)
+
+### findById(itemId, transaction, baselineId = null, fromWaveId = null)
+```javascript
+const change = await store.findById(itemId, transaction, baselineId, fromWaveId)
+```
+**Multi-Context Behavior**:
+- Latest version: Returns current version with populated relationships and milestones
+- Baseline context: Returns version captured in baseline
+- Wave filtering: Returns latest version if has milestones at/after wave, null otherwise
 
 ### findAll(transaction, baselineId = null, fromWaveId = null, filters = {})
 ```javascript
@@ -339,30 +361,53 @@ const changes = await store.findAll(transaction, baselineId, fromWaveId, filters
 **Filters Object Structure**:
 ```javascript
 filters = {
-  title: 'authentication',        // Title pattern string | null
-  text: 'security',              // Full-text search string | null
   visibility: 'NETWORK',         // 'NM' | 'NETWORK' | null
-  drg: 'NM_B2B',                 // DRG enum value | null
-  satisfiesRequirement: [123],   // Array of OperationalRequirement IDs | null
-  supersedsRequirement: [456],   // Array of OperationalRequirement IDs | null
+  title: 'authentication',       // Title pattern string | null
+  text: 'security',              // Full-text search string | null
+  drg: 'PERF',                   // DRG enum value | null
+  dataCategory: [123, 456],      // Array of DataCategory IDs | null
   stakeholderCategory: [789],    // Array of StakeholderCategory IDs | null
-  dataCategory: [101],           // Array of DataCategory IDs | null
-  service: [102]                 // Array of Service IDs | null
+  service: [101, 102]            // Array of Service IDs | null
 }
 ```
 
 **Content Filtering Behavior**:
+- **visibility**: Filters by visibility level (NM/NETWORK)
 - **title**: Pattern matching against title field
 - **text**: Full-text search across title, purpose, initialState, finalState, details, privateNotes
-- **visibility**: Filters by visibility enum
 - **drg**: Filters by Drafting Group enum value
-- **Requirement filters**: Filters by SATISFIES/SUPERSEDS relationships
-- **Category filters**: Indirect filtering via requirements that impact categories
+- **Category filters**: Filters by relationships to requirements that impact those categories
+    1. Find requirements that impact the specified categories
+    2. Find changes that SATISFY or SUPERSEDE those requirements
+    3. Return matching changes
 
-**Category Filtering Logic**:
-1. Find requirements that impact the specified categories
-2. Find changes that SATISFY or SUPERSEDE those requirements
-3. Return matching changes
+**Returns**: `Promise<Array<object>>` - Filtered entities with relationships and milestones
+
+### update(itemId, updatePayload, expectedVersionId, transaction)
+```javascript
+const change = await store.update(itemId, {
+  title: "Updated Authentication Enhancement",
+  purpose: "Enhanced security implementation",
+  dependsOnChanges: [234, 567],
+  documentReferences: [
+    { documentId: 301, note: "Updated Design - Section 3" }
+  ],
+  milestones: [
+    {
+      milestoneKey: "existing-uuid-key",  // Preserved from previous version
+      title: "API Publication",
+      description: "Updated description",
+      eventType: "API_PUBLICATION",
+      targetDate: "2025-04-01",  // Updated date
+      actualDate: "2025-03-28",  // Actual completion
+      waveId: 10
+    }
+  ]
+}, "version_uuid", transaction)
+```
+
+**Relationship Inheritance**: Unspecified relationship arrays copy from previous version  
+**Milestone Inheritance**: Milestones matched by `milestoneKey` preserve stable identity across versions
 
 ### findMilestoneByKey(itemId, milestoneKey, transaction, baselineId = null, fromWaveId = null)
 ```javascript
@@ -411,25 +456,33 @@ const documents = await store.findDocumentReferences(versionId, transaction)
 
 **Returns**: `Promise<Array<{documentId: number, name: string, version: string, note: string}>>` - Documents referenced by this version with notes
 
-### findDependentVersions(versionId, transaction)
+### findDependencies(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-const dependents = await store.findDependentVersions(versionId, transaction)
+const dependencies = await store.findDependencies(itemId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `versionId: number` - OperationalChange Version ID
+- `itemId: number` - OperationalChange Item ID
 - `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context
+- `fromWaveId: number|null` - Optional wave filtering
 
-**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Change versions that depend on this version
+**Returns**: `Promise<Array<{itemId: number, title: string, versionId: number, version: number}>>` - Change Items that this change depends on (follows latest version in context)
 
-### findDependencyVersions(versionId, transaction)
+**Description**: Returns the Items that this change depends on. In current context, returns latest versions. In baseline context, returns the versions that were latest at baseline time.
+
+### findDependents(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-const dependencies = await store.findDependencyVersions(versionId, transaction)
+const dependents = await store.findDependents(itemId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `versionId: number` - OperationalChange Version ID
+- `itemId: number` - OperationalChange Item ID
 - `transaction: Transaction`
+- `baselineId: number|null` - Optional baseline context
+- `fromWaveId: number|null` - Optional wave filtering
 
-**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Change versions that this version depends on
+**Returns**: `Promise<Array<{itemId: number, title: string, versionId: number, version: number}>>` - Change Items that depend on this change (follows latest version in context)
+
+**Description**: Returns the Items that depend on this change. In current context, returns latest versions. In baseline context, returns the versions that were latest at baseline time.
 
 ### getVersionHistory(itemId, transaction)
 ```javascript
@@ -471,3 +524,19 @@ Store layer receives filters object and constructs appropriate Cypher WHERE clau
 - Category filtering uses efficient relationship traversal
 - Combined filters use AND logic across filter types
 - Multiple values within a category use OR logic
+
+## Dependency Relationship Pattern
+
+### Key Design Decision
+Dependencies use the Item-to-Version pattern :
+- **Storage**: `(VersionA)-[:DEPENDS_ON]->(ItemB)` - Version points to Item
+- **API**: Arrays contain Item IDs: `dependsOnRequirements: [itemId1, itemId2]`
+- **Behavior**: Relationships automatically follow latest version via LATEST_VERSION
+- **Historical Context**: When querying with baselineId, returns versions that were latest at baseline time
+- **Query Methods**: `findDependencies()` and `findDependents()` resolve to appropriate versions based on context
+
+This pattern ensures:
+1. Dependencies stay current automatically as new versions are created
+2. Historical accuracy is preserved through baseline context
+3. Consistent relationship patterns across all entity relationships
+4. Simplified dependency management without explicit version tracking

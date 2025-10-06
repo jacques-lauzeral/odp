@@ -68,6 +68,19 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 ### Overview
 Remove deprecated RegulatoryAspect entity, introduce Document entity with structured references, add version dependencies (DEPENDS_ON), update operational entity fields, remove deprecated relationships. Empty database restart - no migration scripts required.
 
+**Documentation Status:** ✅ **COMPLETE**
+- ✅ Storage-Model.md updated
+- ✅ Store-Layer-Design-Overview.md updated
+- ✅ Store-Layer-API-Setup.md updated
+- ✅ Store-Layer-API-Operational.md updated
+- ✅ Store-Layer-API.md updated
+- ✅ Store-Layer-API-Core.md updated
+- ✅ Store-Layer-Design-Implementation.md updated
+- ✅ openapi-base.yml updated
+- ✅ openapi-setup.yml updated
+
+**Implementation Status:** ⬜ **PENDING** - No code changes implemented yet
+
 ### Model Changes Summary
 
 **Removed:**
@@ -82,11 +95,37 @@ Remove deprecated RegulatoryAspect entity, introduce Document entity with struct
 - Document references via REFERENCES edge with optional note property
 - OR/OC fields: `privateNotes`, `path` (array of strings)
 - OC fields: `initialState`, `finalState`, `details`
-- Version dependencies: DEPENDS_ON relationships (version-to-version)
+- Version dependencies: DEPENDS_ON relationships (version-to-item, follows latest version automatically)
 
 **Updated:**
 - OC: `description` → `purpose`
 - Document reference pattern: Direct edge with note property (no intermediate entity)
+
+---
+
+### Layer 0: Shared Module (@odp/shared)
+
+#### Remove
+- ❌ RegulatoryAspect type definitions (if any exist)
+- ❌ RegulatoryAspect-related validation helpers
+
+#### Add
+- ⬜ Document type definition: `{ id: string, name: string, version?: string, description?: string, url?: string }`
+- ⬜ DocumentRequest type definition: `{ name: string, version?: string, description?: string, url?: string }`
+- ⬜ DocumentReference type definition: `{ documentId: string, note?: string }`
+
+#### Update
+- ⬜ OperationalRequirement type: remove `references`, `flowExamples`, `risksAndOpportunities`, `impactsRegulatoryAspects`
+- ⬜ OperationalRequirement type: add `privateNotes`, `path`, `documentReferences`, `dependsOnRequirements`
+- ⬜ OperationalRequirementRequest type: update to match new fields
+- ⬜ OperationalChange type: rename `description` → `purpose`
+- ⬜ OperationalChange type: add `initialState`, `finalState`, `details`, `privateNotes`, `path`, `documentReferences`, `dependsOnChanges`
+- ⬜ OperationalChangeRequest type: update to match new fields
+- ⬜ Milestone type: remove `status` field
+- ⬜ MilestoneRequest type: remove `status` field
+- ⬜ Validation helpers: update for new field structures
+
+**Testing:** Type checking compilation, validation helper unit tests
 
 ---
 
@@ -110,7 +149,7 @@ Remove deprecated RegulatoryAspect entity, introduce Document entity with struct
 - ⬜ Add method: `findDocumentReferences(versionId, transaction)` - returns `{documentId, name, version, note}[]`
 - ⬜ Add method: `findDependentVersions(versionId, transaction)` - returns versions depending on this one
 - ⬜ Add method: `findDependencyVersions(versionId, transaction)` - returns versions this depends on
-- ⬜ Add relationship handling: DEPENDS_ON to OperationalRequirementVersion (version-to-version)
+- ⬜ Add relationship handling: DEPENDS_ON to OperationalRequirementVersion (version-to-item, follows latest version automatically)
 - ⬜ Update `create()` and `update()` methods to handle document references and dependencies
 
 #### Update OperationalChangeStore
@@ -121,7 +160,7 @@ Remove deprecated RegulatoryAspect entity, introduce Document entity with struct
 - ⬜ Add method: `findDocumentReferences(versionId, transaction)`
 - ⬜ Add method: `findDependentVersions(versionId, transaction)`
 - ⬜ Add method: `findDependencyVersions(versionId, transaction)`
-- ⬜ Add relationship handling: DEPENDS_ON to OperationalChangeVersion (version-to-version)
+- ⬜ Add relationship handling: DEPENDS_ON to OperationalChangeVersion (version-to-item, follows latest version automatically)
 - ⬜ Update `create()` and `update()` methods to handle document references and dependencies
 
 **Testing:** Manual verification via Neo4j browser - verify node/relationship structure, test CRUD operations
@@ -322,7 +361,7 @@ Remove deprecated RegulatoryAspect entity, introduce Document entity with struct
 - ✓ DocumentStore CRUD operations work
 - ✓ OR/OC updated fields persist correctly in Neo4j
 - ✓ Document references created with notes on REFERENCES edges
-- ✓ DEPENDS_ON relationships created between versions
+- ✓ DEPENDS_ON relationships created (version-to-item, follows latest version automatically)
 - ✓ API endpoints respond correctly with new schemas
 - ✓ Filters work without regulatory aspects
 - ✓ Content search includes new fields

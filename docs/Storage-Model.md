@@ -97,7 +97,7 @@ None - path field provides hierarchy information
 - `IMPACTS -> Service`
 - `IMPLEMENTED_BY -> OperationalRequirement` (to Item, not ItemVersion - ON type requirements only, references to OR type requirements)
 - `REFERENCES {note} -> Document` (relationship carries optional note property for context like section numbers)
-- `DEPENDS_ON -> OperationalRequirementVersion` (to ItemVersion, not Item - version-to-version dependencies)
+- `DEPENDS_ON -> OperationalRequirement` (to Item, not ItemVersion - follows latest version automatically)
 
 ### 3.2 OperationalChange(Version): Item(Version)
 **Version properties:**
@@ -117,7 +117,7 @@ None - path field provides hierarchy information
 - `SATISFIES -> OperationalRequirement` (to Item, not ItemVersion)
 - `SUPERSEDS -> OperationalRequirement` (to Item, not ItemVersion)
 - `REFERENCES {note} -> Document` (relationship carries optional note property for context like section numbers)
-- `DEPENDS_ON -> OperationalChangeVersion` (to ItemVersion, not Item - version-to-version dependencies)
+- `DEPENDS_ON -> OperationalChange` (to Item, not ItemVersion - follows latest version automatically)
 
 ### 3.3 OperationalChangeMilestone
 **Properties:**
@@ -225,8 +225,8 @@ The milestone system has been replaced with a specific set of 5 milestone events
 ### Relationship Types Evolution
 - **Removed**: `IMPACTS -> RegulatoryAspect` (RegulatoryAspect entity deprecated)
 - **Added**: `REFERENCES {note} -> Document` on both OperationalRequirement and OperationalChange versions (direct edge with optional note property)
-- **Added**: `DEPENDS_ON -> OperationalRequirementVersion` for OR version dependencies (version-to-version)
-- **Added**: `DEPENDS_ON -> OperationalChangeVersion` for OC version dependencies (version-to-version)
+- **Added**: `DEPENDS_ON -> OperationalRequirement` for OR dependencies (Item-to-Item, follows latest version automatically)
+- **Added**: `DEPENDS_ON -> OperationalChange` for OC dependencies (Item-to-Item, follows latest version automatically)
 - **Existing**: `IMPLEMENTED_BY` links ON-type OperationalRequirements to OR-type OperationalRequirements that implement them
 
 ### Field Evolution
@@ -252,9 +252,9 @@ The new direct REFERENCES relationship replaces the previous `references` rich t
 - Both OperationalRequirement and OperationalChange versions can reference documents
 
 ### Dependency Management
-The new `DEPENDS_ON` relationship enables formal declaration of dependencies between versions:
-- OperationalRequirementVersion can depend on other OperationalRequirementVersions
-- OperationalChangeVersion can depend on other OperationalChangeVersions
-- Dependencies are version-to-version (not Item-to-Item), capturing the specific version dependency
-- Dependencies are validated at service level (warning/prevention of conflicting OC definitions)
+The new `DEPENDS_ON` relationship enables formal declaration of dependencies:
+- OperationalRequirement versions can depend on other OperationalRequirements (Item-to-Item)
+- OperationalChange versions can depend on other OperationalChanges (Item-to-Item)
+- Dependencies point to Item nodes, automatically following the latest version
+- Dependencies are validated at service level (warning/prevention of conflicting definitions)
 - Supports better deployment planning and sequencing

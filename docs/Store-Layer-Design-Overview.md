@@ -127,11 +127,11 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 (RequirementVersion)-[:REFINES]->(RequirementItem)
 (RequirementVersion)-[:IMPACTS]->(SetupEntity)
 (RequirementVersion)-[:REFERENCES {note}]->(Document)
-(RequirementVersion)-[:DEPENDS_ON]->(RequirementVersion)
+(RequirementVersion)-[:DEPENDS_ON]->(Requirement)
 (ChangeVersion)-[:SATISFIES]->(RequirementItem)
 (ChangeVersion)-[:SUPERSEDS]->(RequirementItem)
 (ChangeVersion)-[:REFERENCES {note}]->(Document)
-(ChangeVersion)-[:DEPENDS_ON]->(ChangeVersion)
+(ChangeVersion)-[:DEPENDS_ON]->(Change)
 ```
 
 **Milestone Ownership**:

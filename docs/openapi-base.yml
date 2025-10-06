@@ -255,7 +255,7 @@ components:
           type: array
           items:
             type: string
-          description: "Requirement version IDs this requirement depends on"
+          description: "Requirement item IDs (follows latest version automatically) this requirement depends on"
         documentReferences:
           type: array
           items:
@@ -316,7 +316,7 @@ components:
           items:
             type: string
           default: []
-          description: "Requirement version IDs"
+          description: "Requirement item IDs (follows latest version automatically)"
         documentReferences:
           type: array
           items:
@@ -481,7 +481,7 @@ components:
           type: array
           items:
             type: string
-          description: "Change version IDs this change depends on"
+          description: "Change item IDs (follows latest version automatically) this change depends on"
         documentReferences:
           type: array
           items:
@@ -532,7 +532,7 @@ components:
           items:
             type: string
           default: []
-          description: "Change version IDs"
+          description: "Change item IDs (follows latest version automatically)"
         documentReferences:
           type: array
           items:
