@@ -1,7 +1,7 @@
 # Store Layer API - Core
 
 ## Overview
-Foundation APIs for the ODP Store Layer providing initialization, transaction management, store access, and common CRUD operations. These APIs form the base for all entity-specific store operations.
+Core APIs for store initialization, transaction management, and base CRUD operations. These APIs provide the foundation for all store operations.
 
 ## Initialization & Connection
 
@@ -56,13 +56,6 @@ const store = stakeholderCategoryStore()
 **Returns**: `StakeholderCategoryStore`  
 **Throws**: `Error` - Store not initialized
 
-### regulatoryAspectStore()
-```javascript
-const store = regulatoryAspectStore()
-```
-**Returns**: `RegulatoryAspectStore`  
-**Throws**: `Error` - Store not initialized
-
 ### dataCategoryStore()
 ```javascript
 const store = dataCategoryStore()
@@ -82,6 +75,13 @@ const store = serviceStore()
 const store = waveStore()
 ```
 **Returns**: `WaveStore`  
+**Throws**: `Error` - Store not initialized
+
+### documentStore()
+```javascript
+const store = documentStore()
+```
+**Returns**: `DocumentStore`  
 **Throws**: `Error` - Store not initialized
 
 ### operationalRequirementStore()
@@ -121,7 +121,9 @@ const normalizedId = store.normalizeId(id)
 ```
 **Parameters**: `id: any` - ID value to normalize (string, number, or Neo4j Integer object)  
 **Returns**: `number` - Normalized integer ID  
-**Description**: Ensures consistent ID comparison across all layers. Handles Neo4j Integer objects, strings, and numbers.
+**Description**: Ensures consistent ID comparison across all layers.
+
+Handles Neo4j Integer objects, strings, and numbers.
 
 **Usage Examples**:
 ```javascript
@@ -187,187 +189,102 @@ const deleted = await store.delete(id, transaction)
 - `id: number` - Neo4j internal node ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<boolean>` - True if deleted  
+**Returns**: `Promise<boolean>` - true if deleted, false if not found  
 **Throws**: `StoreError` - Delete failure
 
-### exists(id, transaction)
-```javascript
-const exists = await store.exists(id, transaction)
-```
-**Parameters**:
-- `id: number` - Neo4j internal node ID
-- `transaction: Transaction`
-
-**Returns**: `Promise<boolean>` - True if exists  
-**Throws**: `StoreError` - Query failure
-
 ## RefinableEntityStore API
-*Extends BaseStore with REFINES hierarchy operations*
+*Hierarchy management for setup entities*
+
+Extends BaseStore with REFINES relationship support for tree structures.
 
 ### createRefinesRelation(childId, parentId, transaction)
 ```javascript
-const created = await store.createRefinesRelation(childId, parentId, transaction)
+await store.createRefinesRelation(childId, parentId, transaction)
 ```
 **Parameters**:
 - `childId: number` - Child entity ID
 - `parentId: number` - Parent entity ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<boolean>` - True if created  
-**Behavior**: Enforces tree structure by replacing existing parent  
-**Throws**:
-- `StoreError('Referenced nodes do not exist')` - Invalid IDs
-- `StoreError('Node cannot refine itself')` - Self-reference prevention
+**Returns**: `Promise<boolean>` - true if created  
+**Throws**: `StoreError` - Relationship creation failure  
+**Validation**:
+- Prevents self-reference
+- Enforces tree structure (single parent)
+- Replaces existing parent relationship
 
-### deleteRefinesRelation(childId, parentId, transaction)
+### deleteRefinesRelation(childId, transaction)
 ```javascript
-const deleted = await store.deleteRefinesRelation(childId, parentId, transaction)
+await store.deleteRefinesRelation(childId, transaction)
 ```
 **Parameters**:
 - `childId: number` - Child entity ID
-- `parentId: number` - Parent entity ID
 - `transaction: Transaction`
 
-**Returns**: `Promise<boolean>` - True if deleted  
-**Throws**: `StoreError` - Delete failure
-
-### findChildren(parentId, transaction)
-```javascript
-const children = await store.findChildren(parentId, transaction)
-```
-**Parameters**:
-- `parentId: number` - Parent entity ID
-- `transaction: Transaction`
-
-**Returns**: `Promise<Array<{id: number, name: string, description: string}>>` - Child entities sorted by name  
-**Throws**: `StoreError` - Query failure
+**Returns**: `Promise<boolean>` - true if deleted  
+**Throws**: `StoreError` - Relationship deletion failure
 
 ### findParent(childId, transaction)
 ```javascript
 const parent = await store.findParent(childId, transaction)
 ```
-**Parameters**:
-- `childId: number` - Child entity ID
-- `transaction: Transaction`
+**Returns**: `Promise<object|null>` - Parent entity or null
 
-**Returns**: `Promise<object|null>` - Parent entity or null if no parent  
-**Throws**: `StoreError` - Query failure
+### findChildren(parentId, transaction)
+```javascript
+const children = await store.findChildren(parentId, transaction)
+```
+**Returns**: `Promise<Array<object>>` - Array of child entities
 
 ### findRoots(transaction)
 ```javascript
 const roots = await store.findRoots(transaction)
 ```
-**Parameters**: `transaction: Transaction`  
-**Returns**: `Promise<Array<object>>` - Root entities (no parent) sorted by name  
-**Throws**: `StoreError` - Query failure
+**Returns**: `Promise<Array<object>>` - Entities without parents (tree roots)
 
-## Error Handling
+## VersionedItemStore API
+*Version lifecycle management*
 
-### Error Types
+Extends BaseStore with dual-node versioning pattern (Item + ItemVersion).
 
-#### StoreError
+### create(data, transaction)
 ```javascript
-{
-  name: 'StoreError',
-  message: string,
-  cause?: Error
-}
+const entity = await store.create(data, transaction)
 ```
-**Base error** for all store operations
+**Behavior**: Creates both Item node and ItemVersion (v1) with all content and relationships
 
-#### TransactionError
+### update(itemId, data, expectedVersionId, transaction)
 ```javascript
-{
-  name: 'TransactionError', 
-  message: string,
-  cause?: Error
-}
+const entity = await store.update(itemId, data, expectedVersionId, transaction)
 ```
-**Transaction-specific** errors
+**Parameters**:
+- `itemId: number` - Item node ID
+- `data: object` - New version content
+- `expectedVersionId: string` - Optimistic lock check
+- `transaction: Transaction`
 
-### Common Error Messages
+**Behavior**: Creates new ItemVersion, updates Item LATEST_VERSION relationship
 
-#### Version Conflicts
-- `'Outdated item version'` - Optimistic locking failure, client must refresh and retry
-- `'Item not found'` - Invalid itemId for versioned operations
-- `'Data integrity error'` - Version/Item consistency violation
-
-#### Validation Errors
-- `'Referenced nodes do not exist'` - Invalid entity IDs in relationships
-- `'Node cannot refine itself'` - Self-reference prevention in REFINES
-- `'One or more [EntityType] entities do not exist'` - Batch validation failure
-
-#### Baseline Errors
-- `'Baseline not found'` - Invalid baselineId in baseline-aware operations
-- `'No items captured in baseline'` - Baseline created but no OR/OC existed
-
-#### Milestone Errors
-- `'Waves with ID [waveId] does not exist'` - Invalid wave reference
-
-#### ODPEdition Errors
-- `'ODPEdition not found'` - Invalid odpEditionId in context resolution
-- `'Invalid baseline reference'` - Baseline doesn't exist when creating ODPEdition
-- `'Invalid wave reference'` - Waves doesn't exist when creating ODPEdition
-
-#### Waves Filtering Errors
-- `'Waves not found'` - Invalid fromWaveId in wave filtering operations
-- `'No matching milestones'` - Waves filter results in empty OC set
-
-## Configuration
-
-Database configuration in `server/config.json`:
-```json
-{
-  "database": {
-    "uri": "bolt://localhost:7687",
-    "username": "neo4j", 
-    "password": "password",
-    "connection": {
-      "maxConnectionPoolSize": 10,
-      "connectionTimeout": 5000
-    }
-  },
-  "retry": {
-    "maxAttempts": 10,
-    "intervalMs": 2000
-  }
-}
-```
-
-## Usage Notes
-
-### Initialization Pattern
+### findById(itemId, transaction, baselineId = null, fromWaveId = null)
 ```javascript
-import { initializeStores, closeStores } from './store/index.js';
-
-// Application startup
-await initializeStores();
-
-// Application shutdown
-process.on('SIGTERM', async () => {
-  await closeStores();
-  process.exit(0);
-});
+const entity = await store.findById(itemId, transaction, baselineId, fromWaveId)
 ```
+**Multi-Context Support**: Returns version based on context parameters
 
-### Transaction Pattern
+### findByIdAndVersion(itemId, versionNumber, transaction)
 ```javascript
-import { createTransaction, commitTransaction, rollbackTransaction } from './store/index.js';
-
-const tx = createTransaction('user123');
-try {
-  // Perform operations
-  await commitTransaction(tx);
-} catch (error) {
-  await rollbackTransaction(tx);
-  throw error;
-}
+const entity = await store.findByIdAndVersion(itemId, 2, transaction)
 ```
+**Returns**: Specific version by number
 
-### ID Normalization Best Practice
+### findVersionHistory(itemId, transaction)
 ```javascript
-// Always normalize IDs when comparing
-const store = someStore();
-const targetId = store.normalizeId(inputId);
-const found = items.find(item => store.normalizeId(item.id) === targetId);
+const history = await store.findVersionHistory(itemId, transaction)
 ```
+**Returns**: `Promise<Array<object>>` - Version metadata (newest first)
+
+### patch(itemId, patchData, expectedVersionId, transaction)
+```javascript
+const entity = await store.patch(itemId, patchData, expectedVersionId, transaction)
+```
+**Behavior**: Partial update - creates new version with specified fields updated, others inherited

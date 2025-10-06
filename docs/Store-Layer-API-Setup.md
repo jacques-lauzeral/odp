@@ -1,7 +1,7 @@
 # Store Layer API - Setup
 
 ## Overview
-Setup entity stores provide CRUD operations for system configuration entities. These are non-versioned entities that support hierarchical organization through REFINES relationships (except Waves). All setup entities extend either BaseStore or RefinableEntityStore from the Core APIs.
+Setup entity stores provide CRUD operations for system configuration entities. These are non-versioned entities that support hierarchical organization through REFINES relationships (except Wave and Document). All setup entities extend either BaseStore or RefinableEntityStore from the Core APIs.
 
 ## StakeholderCategoryStore
 **Inheritance**: `RefinableEntityStore → BaseStore`  
@@ -29,37 +29,6 @@ try {
   
   // Establish hierarchy
   await stakeholderCategoryStore().createRefinesRelation(federal.id, government.id, tx);
-  
-  await commitTransaction(tx);
-} catch (error) {
-  await rollbackTransaction(tx);
-  throw error;
-}
-```
-
-## RegulatoryAspectStore
-**Inheritance**: `RefinableEntityStore → BaseStore`  
-**Entity Model**: `{id: number, name: string, description: string}`  
-**Relationships**: REFINES hierarchy (tree structure)
-
-### Available Methods
-All BaseStore + RefinableEntityStore methods
-
-### Usage Example
-```javascript
-const tx = createTransaction('user123');
-try {
-  const compliance = await regulatoryAspectStore().create({
-    name: "Data Protection",
-    description: "Data protection and privacy regulations"
-  }, tx);
-  
-  const gdpr = await regulatoryAspectStore().create({
-    name: "GDPR", 
-    description: "General Data Protection Regulation"
-  }, tx);
-  
-  await regulatoryAspectStore().createRefinesRelation(gdpr.id, compliance.id, tx);
   
   await commitTransaction(tx);
 } catch (error) {
@@ -154,7 +123,7 @@ try {
         date: "2025-03-31"
     }, tx);
 
-    // Waves.name is automatically derived as "2025.1"
+    // Wave.name is automatically derived as "2025.1"
     console.log(wave.name); // "2025.1"
 
     // Query waves by year
@@ -167,3 +136,57 @@ try {
     throw error;
 }
 ```
+
+## DocumentStore
+**Inheritance**: `BaseStore`  
+**Entity Model**: `{id: number, name: string, version: string, description: string, url: string}`  
+**Relationships**: None (standalone entity - referenced via REFERENCES relationships from operational entity versions)
+
+### Available Methods
+All BaseStore methods only (no hierarchy support)
+
+### Business Rules
+- **Name**: Mandatory document name
+- **Version**: Optional version string
+- **Description**: Optional description text
+- **URL**: Optional URL link to external document
+
+### Usage Example
+```javascript
+const tx = createTransaction('user123');
+try {
+    // Create document reference
+    const conops = await documentStore().create({
+        name: "Network Manager ConOPS",
+        version: "2.0",
+        description: "Concept of Operations for Network Manager",
+        url: "https://docs.example.com/conops-v2.pdf"
+    }, tx);
+
+    // Create document without URL (internal reference)
+    const regulation = await documentStore().create({
+        name: "EU Regulation 2025/123",
+        version: null,
+        description: "European aviation safety regulation",
+        url: null
+    }, tx);
+
+    // Query all documents
+    const allDocs = await documentStore().findAll(tx);
+
+    await commitTransaction(tx);
+} catch (error) {
+    await rollbackTransaction(tx);
+    throw error;
+}
+```
+
+### Document Reference Pattern
+Documents are referenced by OperationalRequirement and OperationalChange versions through direct REFERENCES relationships:
+
+```cypher
+(OperationalRequirementVersion)-[:REFERENCES {note: "Section 3.2"}]->(Document)
+(OperationalChangeVersion)-[:REFERENCES {note: "Annex A"}]->(Document)
+```
+
+The `note` property on the relationship provides brief context (e.g., section numbers, brief annotations) and is simple text, not rich text.

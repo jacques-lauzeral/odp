@@ -47,19 +47,24 @@ const entities = await store.findAll(transaction, baselineId = null, fromWaveId 
         type: string,             // 'ON' | 'OR'
         statement: string,        // Rich text
         rationale: string,        // Rich text
-        references: string,       // Rich text
-        risksAndOpportunities: string, // Rich text
-        flows: string,           // Rich text
-        flowExamples: string,    // Rich text
-        drg: string,             // Enum: '4DT'|'AIRPORT'|'ASM_ATFCM'|'CRISIS_FAAS'|'FLOW'|'IDL'|'NM_B2B'|'NMUI'|'PERF'|'RRT'|'TCF'
+        flows: string,            // Rich text
+        privateNotes: string,     // Rich text
+        path: Array<string>,      // Folder hierarchy path
+        drg: string,              // Enum: '4DT'|'AIRPORT'|'ASM_ATFCM'|'CRISIS_FAAS'|'FLOW'|'IDL'|'NM_B2B'|'NMUI'|'PERF'|'RRT'|'TCF'
 
         // Relationship fields
         refinesParents: Array<number>,        // OperationalRequirement Item IDs
         impactsStakeholderCategories: Array<number>, // StakeholderCategory IDs  
         impactsData: Array<number>,          // DataCategory IDs
         impactsServices: Array<number>,      // Service IDs
-        impactsRegulatoryAspects: Array<number>, // RegulatoryAspect IDs
-        implementedONs: Array<number>        // OperationalRequirement Item IDs (OR type only, references ON type)
+        implementedONs: Array<number>,       // OperationalRequirement Item IDs (OR type only, references ON type)
+        dependsOnRequirements: Array<number>, // OperationalRequirement Version IDs (version-to-version dependencies)
+
+        // Document references
+        documentReferences: Array<{
+        documentId: number,     // Document ID
+        note: string           // Optional context note (e.g., "Section 3.2")
+    }>
 }
 ```
 
@@ -70,17 +75,20 @@ const requirement = await store.create({
   type: "OR",
   statement: "System shall provide secure authentication",
   rationale: "Security compliance required",
-  references: "GDPR Article 32",
-  risksAndOpportunities: "Risk of unauthorized access",
   flows: "Authentication flow description",
-  flowExamples: "Login, logout, password reset",
+  privateNotes: "Internal implementation notes",
+  path: ["Security", "Authentication"],
   drg: "PERF",
   refinesParents: [123],
   impactsStakeholderCategories: [456],
   impactsData: [789],
   impactsServices: [101],
-  impactsRegulatoryAspects: [112],
-  implementedONs: [345]  // Only valid for OR type
+  implementedONs: [345],  // Only valid for OR type
+  dependsOnRequirements: [567],  // Version IDs
+  documentReferences: [
+    { documentId: 201, note: "Section 3.2" },
+    { documentId: 202, note: "Annex A" }
+  ]
 }, transaction)
 ```
 
@@ -92,6 +100,7 @@ const requirement = await store.create({
 
 **Relationship Validation**:
 - `implementedONs` only valid for type='OR', references must be type='ON'
+- `dependsOnRequirements` references version IDs (version-to-version)
 - All relationship arrays are optional (default: empty arrays)
 
 ### findById(itemId, transaction, baselineId = null, fromWaveId = null)
@@ -118,20 +127,19 @@ const requirements = await store.findAll(transaction, baselineId, fromWaveId, fi
 ```javascript
 filters = {
   type: 'OR',                    // 'ON' | 'OR' | null
-  title: 'authentication',      // Title pattern string | null
-  text: 'security',             // Full-text search string | null
-  drg: 'PERF',                  // DRG enum value | null
-  dataCategory: [123, 456],     // Array of DataCategory IDs | null
-  stakeholderCategory: [789],   // Array of StakeholderCategory IDs | null
-  service: [101, 102],          // Array of Service IDs | null
-  regulatoryAspect: [234]       // Array of RegulatoryAspect IDs | null
+  title: 'authentication',       // Title pattern string | null
+  text: 'security',              // Full-text search string | null
+  drg: 'PERF',                   // DRG enum value | null
+  dataCategory: [123, 456],      // Array of DataCategory IDs | null
+  stakeholderCategory: [789],    // Array of StakeholderCategory IDs | null
+  service: [101, 102]            // Array of Service IDs | null
 }
 ```
 
 **Content Filtering Behavior**:
 - **type**: Filters by requirement type (ON/OR)
 - **title**: Pattern matching against title field
-- **text**: Full-text search across title, statement, rationale, flows, flowExamples, references, risksAndOpportunities
+- **text**: Full-text search across title, statement, rationale, flows, privateNotes
 - **drg**: Filters by Drafting Group enum value
 - **Category filters**: Filters by relationships to setup entities (OR logic within each category)
 
@@ -144,7 +152,11 @@ const requirement = await store.update(itemId, {
   type: "OR",
   statement: "Updated statement",
   drg: "NM_B2B",
-  implementedONs: [345, 567]
+  implementedONs: [345, 567],
+  dependsOnRequirements: [890],
+  documentReferences: [
+    { documentId: 201, note: "Updated - Section 4.1" }
+  ]
 }, "version_uuid", transaction)
 ```
 
@@ -167,7 +179,7 @@ const children = await store.findChildren(itemId, transaction, baselineId, fromW
 const requirements = await store.findRequirementsThatImpact('Service', serviceId, transaction, baselineId, fromWaveId)
 ```
 **Parameters**:
-- `targetLabel: string` - 'StakeholderCategory'|'DataCategory'|'Service'|'RegulatoryAspect'
+- `targetLabel: string` - 'StakeholderCategory'|'DataCategory'|'Service'
 - `targetId: number` - Target entity ID
 
 **Returns**: `Promise<Array<{id: number, title: string}>>` - Requirements impacting the target
@@ -180,6 +192,36 @@ const implementers = await store.findImplementingRequirements(onItemId, transact
 - `onItemId: number` - OperationalRequirement Item ID (type ON)
 
 **Returns**: `Promise<Array<{id: number, title: string}>>` - OR-type requirements that implement this ON
+
+### findDocumentReferences(versionId, transaction)
+```javascript
+const documents = await store.findDocumentReferences(versionId, transaction)
+```
+**Parameters**:
+- `versionId: number` - OperationalRequirement Version ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<{documentId: number, name: string, version: string, note: string}>>` - Documents referenced by this version with notes
+
+### findDependentVersions(versionId, transaction)
+```javascript
+const dependents = await store.findDependentVersions(versionId, transaction)
+```
+**Parameters**:
+- `versionId: number` - OperationalRequirement Version ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Requirement versions that depend on this version
+
+### findDependencyVersions(versionId, transaction)
+```javascript
+const dependencies = await store.findDependencyVersions(versionId, transaction)
+```
+**Parameters**:
+- `versionId: number` - OperationalRequirement Version ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Requirement versions that this version depends on
 
 ### getVersionHistory(itemId, transaction)
 ```javascript
@@ -214,12 +256,21 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
   initialState: string,     // Rich text (multiline)
   finalState: string,       // Rich text (multiline)
   details: string,          // Rich text (multiline)
+  privateNotes: string,     // Rich text
+  path: Array<string>,      // Folder hierarchy path
   visibility: string,       // 'NM' | 'NETWORK'
-  drg: string,             // Enum: '4DT'|'AIRPORT'|'ASM_ATFCM'|'CRISIS_FAAS'|'FLOW'|'IDL'|'NM_B2B'|'NMUI'|'PERF'|'RRT'|'TCF'
+  drg: string,              // Enum: '4DT'|'AIRPORT'|'ASM_ATFCM'|'CRISIS_FAAS'|'FLOW'|'IDL'|'NM_B2B'|'NMUI'|'PERF'|'RRT'|'TCF'
   
   // Relationship fields
   satisfiesRequirements: Array<number>,  // OperationalRequirement Item IDs
   supersedsRequirements: Array<number>,  // OperationalRequirement Item IDs
+  dependsOnChanges: Array<number>,       // OperationalChange Version IDs (version-to-version dependencies)
+  
+  // Document references
+  documentReferences: Array<{
+    documentId: number,     // Document ID
+    note: string           // Optional context note (e.g., "Section 3.2")
+  }>,
   
   // Milestone fields
   milestones: Array<{
@@ -228,6 +279,8 @@ const entity = await store.patch(itemId, patchPayload, expectedVersionId, transa
     title: string,
     description: string,
     eventType: string,      // 'API_PUBLICATION'|'API_TEST_DEPLOYMENT'|'UI_TEST_DEPLOYMENT'|'OPS_DEPLOYMENT'|'API_DECOMMISSIONING'
+    targetDate: string,     // ISO date string
+    actualDate: string,     // ISO date string (optional)
     waveId?: number,        // Wave ID (optional)
     wave?: object           // Wave object with year, quarter, date (populated in queries)
   }>
@@ -242,21 +295,29 @@ const change = await store.create({
   initialState: "No authentication system exists",
   finalState: "Full OAuth2 authentication implemented",
   details: "Implementation includes login, logout, token refresh",
+  privateNotes: "Internal technical considerations",
+  path: ["API", "Security"],
   visibility: "NETWORK",
   drg: "NM_B2B",
   satisfiesRequirements: [123, 456],
   supersedsRequirements: [789],
+  dependsOnChanges: [890],  // Version IDs
+  documentReferences: [
+    { documentId: 301, note: "Design spec - Section 2" }
+  ],
   milestones: [
     {
       title: "API Publication",
       description: "Publish authentication API specification",
       eventType: "API_PUBLICATION",
+      targetDate: "2025-06-15",
       waveId: 101
     },
     {
       title: "Test Deployment",
       description: "Deploy to test environment",
-      eventType: "API_TEST_DEPLOYMENT", 
+      eventType: "API_TEST_DEPLOYMENT",
+      targetDate: "2025-09-01",
       waveId: 102
     }
   ]
@@ -286,14 +347,13 @@ filters = {
   supersedsRequirement: [456],   // Array of OperationalRequirement IDs | null
   stakeholderCategory: [789],    // Array of StakeholderCategory IDs | null
   dataCategory: [101],           // Array of DataCategory IDs | null
-  service: [102],                // Array of Service IDs | null
-  regulatoryAspect: [103]        // Array of RegulatoryAspect IDs | null
+  service: [102]                 // Array of Service IDs | null
 }
 ```
 
 **Content Filtering Behavior**:
 - **title**: Pattern matching against title field
-- **text**: Full-text search across title, purpose, initialState, finalState, details
+- **text**: Full-text search across title, purpose, initialState, finalState, details, privateNotes
 - **visibility**: Filters by visibility enum
 - **drg**: Filters by Drafting Group enum value
 - **Requirement filters**: Filters by SATISFIES/SUPERSEDS relationships
@@ -341,6 +401,36 @@ const milestones = await store.findMilestonesByWave(waveId, transaction, baselin
 ```
 **Returns**: `Promise<Array<object>>` - All milestones targeting the specified wave
 
+### findDocumentReferences(versionId, transaction)
+```javascript
+const documents = await store.findDocumentReferences(versionId, transaction)
+```
+**Parameters**:
+- `versionId: number` - OperationalChange Version ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<{documentId: number, name: string, version: string, note: string}>>` - Documents referenced by this version with notes
+
+### findDependentVersions(versionId, transaction)
+```javascript
+const dependents = await store.findDependentVersions(versionId, transaction)
+```
+**Parameters**:
+- `versionId: number` - OperationalChange Version ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Change versions that depend on this version
+
+### findDependencyVersions(versionId, transaction)
+```javascript
+const dependencies = await store.findDependencyVersions(versionId, transaction)
+```
+**Parameters**:
+- `versionId: number` - OperationalChange Version ID
+- `transaction: Transaction`
+
+**Returns**: `Promise<Array<{versionId: number, itemId: number, title: string, version: number}>>` - Change versions that this version depends on
+
 ### getVersionHistory(itemId, transaction)
 ```javascript
 const history = await store.getVersionHistory(itemId, transaction)
@@ -367,9 +457,17 @@ const filters = {
   text: req.query.text || null,
   drg: req.query.drg || null,
   dataCategory: req.query.dataCategory ? 
-    req.query.dataCategory.split(',').map(Number) : null
+    req.query.dataCategory.split(',').map(Number) : null,
+  stakeholderCategory: req.query.stakeholderCategory ? 
+    req.query.stakeholderCategory.split(',').map(Number) : null,
+  service: req.query.service ? 
+    req.query.service.split(',').map(Number) : null
 };
 ```
 
-### Store Layer Responsibility
-Store layer builds Cypher queries with dynamic WHERE clauses for content filtering while maintaining multi-context parameter support.
+### Store Layer Processing
+Store layer receives filters object and constructs appropriate Cypher WHERE clauses:
+- Text search uses full-text indexing for performance
+- Category filtering uses efficient relationship traversal
+- Combined filters use AND logic across filter types
+- Multiple values within a category use OR logic

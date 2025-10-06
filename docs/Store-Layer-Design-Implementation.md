@@ -15,31 +15,31 @@ This document describes the implementation patterns, transaction design, perform
 **Key Implementation**:
 ```javascript
 class BaseStore {
-  constructor(driver, label) {
-    this.driver = driver;
-    this.label = label;
-  }
+    constructor(driver, label) {
+        this.driver = driver;
+        this.label = label;
+    }
 
-  normalizeId(id) {
-    if (typeof id === 'string') return parseInt(id, 10);
-    if (typeof id === 'number') return id;
-    if (id && typeof id.toNumber === 'function') return id.toNumber(); // Neo4j Integer
-    throw new Error('Invalid ID format');
-  }
+    normalizeId(id) {
+        if (typeof id === 'string') return parseInt(id, 10);
+        if (typeof id === 'number') return id;
+        if (id && typeof id.toNumber === 'function') return id.toNumber(); // Neo4j Integer
+        throw new Error('Invalid ID format');
+    }
 
-  async create(data, transaction) {
-    const query = `CREATE (n:${this.label} $data) RETURN n`;
-    const result = await transaction.run(query, { data });
-    return this._transformRecord(result.records[0]);
-  }
+    async create(data, transaction) {
+        const query = `CREATE (n:${this.label} $data) RETURN n`;
+        const result = await transaction.run(query, { data });
+        return this._transformRecord(result.records[0]);
+    }
 
-  _transformRecord(record) {
-    const node = record.get('n');
-    return {
-      id: this.normalizeId(node.identity),
-      ...node.properties
-    };
-  }
+    _transformRecord(record) {
+        const node = record.get('n');
+        return {
+            id: this.normalizeId(node.identity),
+            ...node.properties
+        };
+    }
 }
 ```
 
@@ -52,38 +52,38 @@ class BaseStore {
 **Key Implementation**:
 ```javascript
 class RefinableEntityStore extends BaseStore {
-  async createRefinesRelation(childId, parentId, transaction) {
-    // Prevent self-reference
-    if (this.normalizeId(childId) === this.normalizeId(parentId)) {
-      throw new StoreError('Node cannot refine itself');
-    }
+    async createRefinesRelation(childId, parentId, transaction) {
+        // Prevent self-reference
+        if (this.normalizeId(childId) === this.normalizeId(parentId)) {
+            throw new StoreError('Node cannot refine itself');
+        }
 
-    // Replace existing parent (tree structure enforcement)
-    await transaction.run(`
+        // Replace existing parent (tree structure enforcement)
+        await transaction.run(`
       MATCH (child:${this.label}) WHERE id(child) = $childId
       OPTIONAL MATCH (child)-[oldRel:REFINES]->()
       DELETE oldRel
     `, { childId });
 
-    // Create new parent relationship
-    const result = await transaction.run(`
+        // Create new parent relationship
+        const result = await transaction.run(`
       MATCH (child:${this.label}), (parent:${this.label})
       WHERE id(child) = $childId AND id(parent) = $parentId
       CREATE (child)-[:REFINES]->(parent)
       RETURN count(*) as created
     `, { childId, parentId });
 
-    return result.records[0].get('created').toNumber() > 0;
-  }
+        return result.records[0].get('created').toNumber() > 0;
+    }
 }
 ```
 
 ### VersionedItemStore Pattern
 **Additional Responsibilities**:
-- Dual-node lifecycle management (Item + ItemVersion)
-- Optimistic locking with version conflict detection
-- Multi-context query resolution (baseline + wave filtering)
+- Dual-node creation and management (Item + ItemVersion)
+- Optimistic locking with expectedVersionId
 - Relationship inheritance and override logic
+- Multi-context query support
 
 **Key Implementation**:
 ```javascript
@@ -94,318 +94,136 @@ class VersionedItemStore extends BaseStore {
   }
 
   async create(data, transaction) {
-    const userId = transaction.getUserId();
-    const timestamp = new Date().toISOString();
-    
     // Create Item node
     const itemResult = await transaction.run(`
       CREATE (item:${this.itemLabel} {
         title: $title,
-        createdAt: $timestamp,
+        createdAt: datetime(),
         createdBy: $userId,
         latest_version: 1
       })
       RETURN item
-    `, { title: data.title, timestamp, userId });
+    `, { title: data.title, userId: transaction.userId });
 
     const itemId = this.normalizeId(itemResult.records[0].get('item').identity);
 
-    // Create ItemVersion node
-    const versionResult = await this._createVersion(itemId, 1, data, transaction);
-    
-    return this._buildCompleteEntity(itemId, versionResult.versionId, data);
+    // Create ItemVersion node (version 1)
+    const versionResult = await transaction.run(`
+      MATCH (item:${this.itemLabel}) WHERE id(item) = $itemId
+      CREATE (version:${this.versionLabel} {
+        version: 1,
+        createdAt: datetime(),
+        createdBy: $userId,
+        ...content
+      })
+      CREATE (item)-[:LATEST_VERSION]->(version)
+      CREATE (version)-[:VERSION_OF]->(item)
+      RETURN version
+    `, { itemId, userId: transaction.userId, ...data });
+
+    // Create relationships
+    await this._createRelationships(versionId, data, transaction);
+
+    return this._buildEntityResponse(itemId, versionId, data);
   }
 
   async update(itemId, data, expectedVersionId, transaction) {
-    // Validate optimistic lock
+    // Optimistic locking check
     const currentVersion = await this._getCurrentVersion(itemId, transaction);
-    if (this.normalizeId(currentVersion.versionId) !== this.normalizeId(expectedVersionId)) {
-      throw new StoreError('Outdated item version');
+    if (currentVersion.id !== expectedVersionId) {
+      throw new OptimisticLockError('Version mismatch');
     }
 
     // Create new version
-    const newVersionNumber = currentVersion.version + 1;
-    const newVersionResult = await this._createVersion(itemId, newVersionNumber, data, transaction);
-
-    // Update Item metadata
-    await this._updateItemMetadata(itemId, data.title, newVersionNumber, transaction);
-
-    return this._buildCompleteEntity(itemId, newVersionResult.versionId, data);
+    const newVersion = currentVersion.version + 1;
+    // ... implementation
   }
 }
 ```
 
-## Transaction Design
+## Relationship Management Patterns
 
-### Transaction Lifecycle
+### Relationship Creation
 ```javascript
-class Transaction {
-  constructor(neo4jTransaction, userId) {
-    this.neo4jTransaction = neo4jTransaction;
-    this.userId = userId;
-    this.startTime = new Date();
-  }
+async _createRelationships(versionId, data, transaction) {
+  const relationshipTypes = {
+    refinesParents: 'REFINES',
+    impactsServices: 'IMPACTS',
+    satisfiesRequirements: 'SATISFIES'
+  };
 
-  getUserId() {
-    return this.userId;
-  }
-
-  async run(query, parameters = {}) {
-    try {
-      return await this.neo4jTransaction.run(query, parameters);
-    } catch (error) {
-      throw new StoreError(`Query failed: ${error.message}`, error);
+  for (const [field, relationshipType] of Object.entries(relationshipTypes)) {
+    if (data[field] && data[field].length > 0) {
+      await this._createRelationshipBatch(
+        versionId,
+        data[field],
+        relationshipType,
+        transaction
+      );
     }
   }
 }
-```
 
-### Transaction Management Functions
-```javascript
-export function createTransaction(userId) {
-  if (!userId) {
-    throw new TransactionError('User ID required for transaction context');
-  }
-  
-  const neo4jTx = driver.session().beginTransaction();
-  return new Transaction(neo4jTx, userId);
-}
-
-export async function commitTransaction(transaction) {
-  try {
-    await transaction.neo4jTransaction.commit();
-  } catch (error) {
-    throw new TransactionError(`Commit failed: ${error.message}`, error);
-  } finally {
-    await transaction.neo4jTransaction.close();
-  }
-}
-
-export async function rollbackTransaction(transaction) {
-  try {
-    await transaction.neo4jTransaction.rollback();
-  } catch (error) {
-    console.error('Rollback failed:', error);
-  } finally {
-    await transaction.neo4jTransaction.close();
-  }
-}
-```
-
-### Single Transaction per Operation
-```javascript
-// Services layer pattern - one transaction per user action
-async updateOperationalRequirement(itemId, data, expectedVersionId, userId) {
-  const tx = createTransaction(userId);
-  try {
-    // Complete operation: content + relationships
-    const result = await operationalRequirementStore().update(
-      itemId, 
-      data, 
-      expectedVersionId, 
-      tx
-    );
-    await commitTransaction(tx);
-    return result;
-  } catch (error) {
-    await rollbackTransaction(tx);
-    throw error;
-  }
-}
-```
-
-## Performance Considerations
-
-### Connection Management
-```javascript
-// Singleton driver pattern
-let driver = null;
-
-export async function initializeStores() {
-  if (driver) return;
-  
-  const config = await loadConfig();
-  driver = neo4j.driver(
-    config.database.uri,
-    neo4j.auth.basic(config.database.username, config.database.password),
-    {
-      maxConnectionPoolSize: config.database.connection.maxConnectionPoolSize || 10,
-      connectionTimeout: config.database.connection.connectionTimeout || 5000
-    }
-  );
-
-  // Test connection
-  await driver.verifyConnectivity();
-}
-```
-
-### Query Optimization Patterns
-**Indexed Lookups**:
-```cypher
-// Use node ID for direct lookups (most efficient)
-MATCH (n:EntityType) WHERE id(n) = $id RETURN n
-
-// Use indexed properties when available
-MATCH (n:Waves) WHERE n.year = $year AND n.quarter = $quarter RETURN n
-```
-
-**Efficient Relationship Traversal**:
-```cypher
-// Latest version access (single hop)
-MATCH (item)-[:LATEST_VERSION]->(version)
-WHERE id(item) = $itemId
-RETURN item, version
-
-// Batch relationship queries
-UNWIND $itemIds as itemId
-MATCH (item)-[:LATEST_VERSION]->(version)-[:IMPACTS]->(target)
-WHERE id(item) = itemId
-RETURN itemId, collect(target) as targets
-```
-
-**Baseline Query Optimization**:
-```cypher
-// Direct baseline item access
-MATCH (baseline)-[:HAS_ITEMS]->(version)
-WHERE id(baseline) = $baselineId
-RETURN version
-
-// Baseline with filtering
-MATCH (baseline)-[:HAS_ITEMS]->(version)
-WHERE id(baseline) = $baselineId
-  AND version:OperationalChangeVersion
-  AND EXISTS {
-    MATCH (version)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(wave)
-    WHERE wave.date >= $fromWaveDate
-  }
-RETURN version
-```
-
-### Batch Operations
-```javascript
-// Efficient relationship creation
-async _createRelationshipsBatch(versionId, relationshipType, targetIds, transaction) {
-  if (targetIds.length === 0) return;
-  
+async _createRelationshipBatch(sourceId, targetIds, relationshipType, transaction) {
   await transaction.run(`
-    MATCH (version) WHERE id(version) = $versionId
+    MATCH (source) WHERE id(source) = $sourceId
     UNWIND $targetIds as targetId
     MATCH (target) WHERE id(target) = targetId
-    CREATE (version)-[:${relationshipType}]->(target)
-  `, { versionId, targetIds });
+    CREATE (source)-[:${relationshipType}]->(target)
+  `, { sourceId, targetIds });
+}
+```
+
+### Document Reference Relationships
+```javascript
+async _createDocumentReferences(versionId, documentReferences, transaction) {
+  if (!documentReferences || documentReferences.length === 0) return;
+
+  for (const ref of documentReferences) {
+    await transaction.run(`
+      MATCH (version) WHERE id(version) = $versionId
+      MATCH (doc:Document) WHERE id(doc) = $documentId
+      CREATE (version)-[:REFERENCES {note: $note}]->(doc)
+    `, {
+      versionId,
+      documentId: ref.documentId,
+      note: ref.note || ''
+    });
+  }
+}
+```
+
+### Relationship Validation
+```javascript
+async _validateRelationships(data, transaction) {
+  // Validate entity existence
+  const allIds = [
+    ...(data.refinesParents || []),
+    ...(data.impactsServices || []),
+    ...(data.documentReferences?.map(r => r.documentId) || [])
+  ];
+
+  if (allIds.length > 0) {
+    await this._validateEntitiesExist(allIds, transaction);
+  }
+
+  // Validate relationship constraints
+  if (data.implementedONs) {
+    await this._validateImplementedONsTypes(data.implementedONs, transaction);
+  }
 }
 
-// Efficient validation
-async _validateEntitiesExist(entityLabel, entityIds, transaction) {
+async _validateEntitiesExist(ids, transaction) {
   const result = await transaction.run(`
-    UNWIND $entityIds as entityId
-    MATCH (entity:${entityLabel}) WHERE id(entity) = entityId
-    RETURN count(entity) as found
-  `, { entityIds });
-  
-  const found = result.records[0].get('found').toNumber();
-  if (found !== entityIds.length) {
-    throw new StoreError(`One or more ${entityLabel} entities do not exist`);
+    UNWIND $ids as id
+    OPTIONAL MATCH (n) WHERE id(n) = id
+    RETURN count(n) as found, count(*) as expected
+  `, { ids });
+
+  const record = result.records[0];
+  if (record.get('found') !== record.get('expected')) {
+    throw new ValidationError('One or more referenced entities not found');
   }
-}
-```
-
-## Error Handling Strategy
-
-### Error Hierarchy
-```javascript
-export class StoreError extends Error {
-  constructor(message, cause = null) {
-    super(message);
-    this.name = 'StoreError';
-    this.cause = cause;
-  }
-}
-
-export class TransactionError extends Error {
-  constructor(message, cause = null) {
-    super(message);
-    this.name = 'TransactionError';
-    this.cause = cause;
-  }
-}
-
-export class ValidationError extends StoreError {
-  constructor(message, field = null) {
-    super(message);
-    this.name = 'ValidationError';
-    this.field = field;
-  }
-}
-```
-
-### Error Wrapping Pattern
-```javascript
-async findById(id, transaction) {
-  try {
-    const result = await transaction.run(`
-      MATCH (n:${this.label}) WHERE id(n) = $id RETURN n
-    `, { id });
-    
-    if (result.records.length === 0) {
-      return null;
-    }
-    
-    return this._transformRecord(result.records[0]);
-  } catch (error) {
-    if (error instanceof StoreError) {
-      throw error;
-    }
-    throw new StoreError(`Failed to find ${this.label}: ${error.message}`, error);
-  }
-}
-```
-
-### Specific Error Scenarios
-```javascript
-// Version conflict detection
-if (currentVersionId !== expectedVersionId) {
-  throw new StoreError('Outdated item version');
-}
-
-// Entity validation
-if (!await this._entityExists(parentId, transaction)) {
-  throw new ValidationError('Referenced parent entity does not exist', 'parentId');
-}
-
-// Self-reference prevention
-if (this.normalizeId(childId) === this.normalizeId(parentId)) {
-  throw new ValidationError('Node cannot refine itself', 'parentId');
-}
-
-// Baseline validation
-if (baselineId && !await this._baselineExists(baselineId, transaction)) {
-  throw new StoreError('Baseline not found');
-}
-```
-
-## Data Validation Patterns
-
-### Entity Existence Validation
-```javascript
-async _validateReferencedEntities(relationships, transaction) {
-  for (const [relationshipType, entityIds] of Object.entries(relationships)) {
-    if (entityIds.length === 0) continue;
-    
-    const entityLabel = this._getEntityLabel(relationshipType);
-    await this._validateEntitiesExist(entityLabel, entityIds, transaction);
-  }
-}
-
-_getEntityLabel(relationshipType) {
-  const labelMap = {
-    'refinesParents': this.itemLabel,
-    'impactsStakeholderCategories': 'StakeholderCategory',
-    'impactsData': 'DataCategory',
-    'impactsServices': 'Service',
-    'impactsRegulatoryAspects': 'RegulatoryAspect'
-  };
-  return labelMap[relationshipType];
 }
 ```
 
@@ -449,10 +267,10 @@ export async function initializeStores() {
   
   storeInstances = {
     stakeholderCategory: new StakeholderCategoryStore(driver),
-    regulatoryAspect: new RegulatoryAspectStore(driver),
     dataCategory: new DataCategoryStore(driver),
     service: new ServiceStore(driver),
     wave: new WaveStore(driver),
+    document: new DocumentStore(driver),
     operationalRequirement: new OperationalRequirementStore(driver),
     operationalChange: new OperationalChangeStore(driver),
     baseline: new BaselineStore(driver),
@@ -467,6 +285,15 @@ export function stakeholderCategoryStore() {
   }
   return storeInstances.stakeholderCategory;
 }
+
+export function documentStore() {
+  if (!storeInstances.document) {
+    throw new Error('Stores not initialized - call initializeStores() first');
+  }
+  return storeInstances.document;
+}
+
+// ... similar accessor functions for all stores
 ```
 
 ### Cleanup Pattern
@@ -507,69 +334,157 @@ storeInstances.newEntity = new NewEntityStore(driver);
 
 // 3. Add accessor function
 export function newEntityStore() {
+  if (!storeInstances.newEntity) {
+    throw new Error('Stores not initialized - call initializeStores() first');
+  }
   return storeInstances.newEntity;
 }
 ```
 
-### Adding New Relationship Types
+## Transaction Patterns
+
+### Standard Transaction Flow
 ```javascript
-// Extend relationship validation
-_getEntityLabel(relationshipType) {
-  const labelMap = {
-    // Existing mappings...
-    'newRelationshipType': 'TargetEntityLabel'
-  };
-  return labelMap[relationshipType];
-}
-
-// Add relationship creation logic
-async _createNewRelationships(versionId, targetIds, transaction) {
-  await this._createRelationshipsBatch(versionId, 'NEW_RELATIONSHIP', targetIds, transaction);
-}
-```
-
-## Monitoring and Debugging
-
-### Query Performance Monitoring
-```javascript
-class PerformanceMonitor {
-  static async executeWithTiming(operation, context) {
-    const start = process.hrtime.bigint();
-    try {
-      const result = await operation();
-      const end = process.hrtime.bigint();
-      const duration = Number(end - start) / 1000000; // Convert to milliseconds
-      
-      if (duration > 1000) { // Log slow queries
-        console.warn(`Slow query detected: ${context} took ${duration}ms`);
-      }
-      
-      return result;
-    } catch (error) {
-      const end = process.hrtime.bigint();
-      const duration = Number(end - start) / 1000000;
-      console.error(`Query failed: ${context} after ${duration}ms`, error);
-      throw error;
-    }
-  }
-}
-```
-
-### Connection Health Monitoring
-```javascript
-export async function checkStoreHealth() {
+export async function createEntity(data, userId) {
+  const tx = createTransaction(userId);
   try {
-    await driver.verifyConnectivity();
-    const session = driver.session();
-    await session.run('RETURN 1');
-    await session.close();
-    return { status: 'healthy', timestamp: new Date().toISOString() };
+    const entity = await entityStore().create(data, tx);
+    await commitTransaction(tx);
+    return entity;
   } catch (error) {
-    return { 
-      status: 'unhealthy', 
-      error: error.message, 
-      timestamp: new Date().toISOString() 
-    };
+    await rollbackTransaction(tx);
+    throw error;
   }
 }
+```
+
+### Multi-Operation Transaction
+```javascript
+export async function createHierarchy(parentData, childData, userId) {
+  const tx = createTransaction(userId);
+  try {
+    const parent = await entityStore().create(parentData, tx);
+    const child = await entityStore().create(childData, tx);
+    await entityStore().createRefinesRelation(child.id, parent.id, tx);
+    await commitTransaction(tx);
+    return { parent, child };
+  } catch (error) {
+    await rollbackTransaction(tx);
+    throw error;
+  }
+}
+```
+
+## Error Handling Patterns
+
+### Store-Level Error Handling
+```javascript
+class StoreError extends Error {
+  constructor(message, code, details) {
+    super(message);
+    this.name = 'StoreError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+async create(data, transaction) {
+  try {
+    // Implementation
+  } catch (error) {
+    throw new StoreError(
+      'Failed to create entity',
+      'CREATE_FAILED',
+      { originalError: error.message, data }
+    );
+  }
+}
+```
+
+### Validation Error Handling
+```javascript
+class ValidationError extends StoreError {
+  constructor(message, details) {
+    super(message, 'VALIDATION_ERROR', details);
+  }
+}
+
+class OptimisticLockError extends StoreError {
+  constructor(message) {
+    super(message, 'OPTIMISTIC_LOCK_FAILED');
+  }
+}
+```
+
+## Performance Considerations
+
+### Efficient Queries
+```javascript
+// Use UNWIND for batch operations
+async createMultipleRelationships(sourceId, targetIds, type, transaction) {
+  await transaction.run(`
+    MATCH (source) WHERE id(source) = $sourceId
+    UNWIND $targetIds as targetId
+    MATCH (target) WHERE id(target) = targetId
+    CREATE (source)-[:${type}]->(target)
+  `, { sourceId, targetIds });
+}
+
+// Use EXISTS for conditional checks
+async hasRelationship(sourceId, targetId, type, transaction) {
+  const result = await transaction.run(`
+    MATCH (source), (target)
+    WHERE id(source) = $sourceId AND id(target) = $targetId
+    RETURN EXISTS((source)-[:${type}]->(target)) as exists
+  `, { sourceId, targetId });
+  
+  return result.records[0].get('exists');
+}
+```
+
+### Index Usage
+```javascript
+// Ensure indexes exist for frequent queries
+export async function createIndexes(driver) {
+  const session = driver.session();
+  try {
+    await session.run('CREATE INDEX IF NOT EXISTS FOR (n:OperationalRequirement) ON (n.title)');
+    await session.run('CREATE INDEX IF NOT EXISTS FOR (n:OperationalChange) ON (n.title)');
+    await session.run('CREATE INDEX IF NOT EXISTS FOR (n:Wave) ON (n.year, n.quarter)');
+  } finally {
+    await session.close();
+  }
+}
+```
+
+## Testing Patterns
+
+### Store Unit Tests
+```javascript
+describe('DocumentStore', () => {
+  let store;
+  let transaction;
+
+  beforeEach(async () => {
+    await initializeStores();
+    store = documentStore();
+    transaction = createTransaction('test-user');
+  });
+
+  afterEach(async () => {
+    await rollbackTransaction(transaction);
+  });
+
+  it('should create document', async () => {
+    const doc = await store.create({
+      name: 'Test Document',
+      version: '1.0',
+      description: 'Test description',
+      url: 'https://example.com/doc.pdf'
+    }, transaction);
+
+    expect(doc.id).toBeDefined();
+    expect(doc.name).toBe('Test Document');
+  });
+});
 ```

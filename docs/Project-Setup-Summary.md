@@ -342,6 +342,6 @@ docker-compose up --build
 1. **Explore the web interface**: Test user identification and activity navigation
 2. **Experiment with CLI**: Try entity management commands
 3. **Review the architecture**: See [Web-Client-Technical-Solution.md](Web-Client-Technical-Solution.md)
-4. **Follow development**: See [Web-Client-Work-Plan.md](Web-Client-Work-Plan.md) for current progress
+4. **Follow development**: See [Web-Client-Work-Plan.md](deprecated-Web-Client-Work-Plan) for current progress
 
 *For detailed implementation and architecture information, see the specialized documentation files.*

@@ -36,15 +36,15 @@ The ODP Storage Layer provides a clean abstraction over Neo4j graph database ope
 BaseStore (CRUD operations + normalizeId)
 ├── RefinableEntityStore (+ REFINES hierarchy)
 │   ├── StakeholderCategoryStore
-│   ├── RegulatoryAspectStore
 │   ├── DataCategoryStore
 │   └── ServiceStore
 ├── WaveStore (simple entity)
+├── DocumentStore (simple entity)
 ├── BaselineStore (baseline management)
 ├── ODPEditionStore (edition management + context resolution)
 └── VersionedItemStore (+ versioning + multi-context)
-    ├── OperationalRequirementStore (+ REFINES + IMPACTS)
-    └── OperationalChangeStore (+ SATISFIES + SUPERSEDS + milestones)
+    ├── OperationalRequirementStore (+ REFINES + IMPACTS + REFERENCES + DEPENDS_ON)
+    └── OperationalChangeStore (+ SATISFIES + SUPERSEDS + REFERENCES + DEPENDS_ON + milestones)
 ```
 
 ### Data Flow Pattern
@@ -57,10 +57,10 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 ## Entity Categories
 
 ### 1. Setup Entities (Non-Versioned)
-**Entities**: StakeholderCategories, RegulatoryAspects, DataCategories, Services, Waves
+**Entities**: StakeholderCategory, DataCategory, Service, Wave, Document
 
 **Characteristics**:
-- Extend `BaseStore` (Waves) or `RefinableEntityStore` (others)
+- Extend `BaseStore` (Wave, Document) or `RefinableEntityStore` (others)
 - Simple CRUD operations with immediate updates
 - REFINES hierarchy support (tree structure) for refinable entities
 - No versioning complexity
@@ -71,6 +71,8 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 (Entity:EntityType {id, name, description})
 (Child:EntityType)-[:REFINES]->(Parent:EntityType)  // For refinable entities
 ```
+
+**Note**: RegulatoryAspect has been removed from the model
 
 ### 2. Operational Entities (Versioned)
 **Entities**: OperationalRequirement, OperationalChange
@@ -109,7 +111,7 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 
 (ODPEdition:ODPEdition {id, title, type, createdAt, createdBy})
 (ODPEdition)-[:EXPOSES]->(Baseline)
-(ODPEdition)-[:STARTS_FROM]->(Waves)
+(ODPEdition)-[:STARTS_FROM]->(Wave)
 ```
 
 ## Relationship Management
@@ -124,14 +126,18 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 ```cypher
 (RequirementVersion)-[:REFINES]->(RequirementItem)
 (RequirementVersion)-[:IMPACTS]->(SetupEntity)
+(RequirementVersion)-[:REFERENCES {note}]->(Document)
+(RequirementVersion)-[:DEPENDS_ON]->(RequirementVersion)
 (ChangeVersion)-[:SATISFIES]->(RequirementItem)
 (ChangeVersion)-[:SUPERSEDS]->(RequirementItem)
+(ChangeVersion)-[:REFERENCES {note}]->(Document)
+(ChangeVersion)-[:DEPENDS_ON]->(ChangeVersion)
 ```
 
 **Milestone Ownership**:
 ```cypher
 (Milestone)-[:BELONGS_TO]->(ChangeVersion)
-(Milestone)-[:TARGETS]->(Waves)
+(Milestone)-[:TARGETS]->(Wave)
 ```
 
 **Management References**:
@@ -139,7 +145,7 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 (Baseline)-[:HAS_ITEMS]->(OperationalRequirementVersion)
 (Baseline)-[:HAS_ITEMS]->(OperationalChangeVersion)
 (ODPEdition)-[:EXPOSES]->(Baseline)
-(ODPEdition)-[:STARTS_FROM]->(Waves)
+(ODPEdition)-[:STARTS_FROM]->(Wave)
 ```
 
 ### Validation Patterns
@@ -147,19 +153,20 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 - **Self-reference prevention**: Entities cannot refine themselves
 - **Tree structure enforcement**: Single parent in REFINES hierarchies
 - **Batch validation**: Multiple entity references validated together
+- **Relationship properties**: REFERENCES relationship carries optional `note` property (simple text)
 
 ## Multi-Context Design
 
 ### Context Parameters
 All operational entity queries support optional context parameters:
 - **baselineId**: Historical context (returns versions captured in baseline)
-- **fromWaveId**: Waves filtering (OCs with milestones at/after wave, ORs referenced by filtered OCs)
+- **fromWaveId**: Wave filtering (OCs with milestones at/after wave, ORs referenced by filtered OCs)
 - **Combined**: Both parameters can be used together for historical + filtered views
 
 ### Parameter Resolution
 - **ODPEdition**: Route layer resolves `odpEdition` parameter to `baselineId + fromWaveId`
 - **Store layer**: Always receives resolved `baseline + fromWave` parameters
-- **Services layer**: Uses resolved parameters for consistent query logic
+- **Service layer**: Uses resolved parameters for consistent query logic
 
 ### Query Contexts
 1. **Current state**: No context parameters

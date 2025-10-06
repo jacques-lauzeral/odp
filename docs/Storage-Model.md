@@ -15,7 +15,6 @@ The abstract node types and relationships that support the versioning.
 
 **Relationships:**
 - `LATEST_VERSION -> ItemVersion`
-- `HAS_ATTACHMENT -> Document`
 
 ### 1.2 ItemVersion (abstract)
 **Properties:**
@@ -37,7 +36,6 @@ The node types and relationships related to the global application data. As a si
 
 **Relationships:**
 - `REFINES -> StakeholderCategory`
-- `HAS_ATTACHMENT -> Document`
 
 ### 2.2 Data
 **Properties:**
@@ -46,7 +44,6 @@ The node types and relationships related to the global application data. As a si
 
 **Relationships:**
 - `REFINES -> Data`
-- `HAS_ATTACHMENT -> Document`
 
 ### 2.3 Service
 **Properties:**
@@ -55,16 +52,16 @@ The node types and relationships related to the global application data. As a si
 
 **Relationships:**
 - `REFINES -> Service`
-- `HAS_ATTACHMENT -> Document`
 
-### 2.4 RegulatoryAspect
+### 2.4 Document
 **Properties:**
-- `name`
-- `description`
+- `name`: document name (mandatory)
+- `version`: optional version string
+- `description`: optional description text
+- `url`: optional URL (link to external document)
 
 **Relationships:**
-- `REFINES -> RegulatoryAspect`
-- `HAS_ATTACHMENT -> Document`
+None - Documents are directly referenced via REFERENCES relationships from operational entity versions
 
 ### 2.5 Wave
 **Properties:**
@@ -74,83 +71,72 @@ The node types and relationships related to the global application data. As a si
 - `name (derived)`: year.quarter
 
 **Relationships:**
-- `HAS_ATTACHMENT -> Document`
+None
 
-## 3. Folder Management
-
-The node types related to the organisation of the operational needs and requirements. As a simplification, we propose to not version these data.
-
-### 3.1 Folder
-**Properties:**
-- `name`
-- `description`
-
-**Relationships:**
-- `HAS_PARENT -> Folder`
-- `HAS_ATTACHMENT -> Document`
-
-## 4. Operational Deployment Plan Items
+## 3. Operational Deployment Plan Items
 
 The node types required to the management of operational needs, requirements, and changes.
 
-### 4.1 OperationalRequirement(Version): Item(Version)
+### 3.1 OperationalRequirement(Version): Item(Version)
 **Version properties:**
 - `type`: ON (Operational Need) or OR (Operational Requirement)
 - `statement`: a rich text
 - `rationale`: a rich text
-- `references`: a rich text
-- `risksAndOpportunities`: a rich text
 - `flows`: a rich text
-- `flowExamples`: a rich text
+- `privateNotes`: a rich text
+- `path`: array of strings (folder path hierarchy)
 - `drg`: Drafting Group enum (4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF)
 
 **Item relationships:**
-- `IS_LOCATED_IN -> Folder`
+None - path field provides hierarchy information
 
 **Item version relationships:**
 - `REFINES -> OperationalRequirement` (to Item, not ItemVersion)
-- `IMPACTS -> RegulatoryAspect`
 - `IMPACTS -> StakeholderCategory`
 - `IMPACTS -> Data`
 - `IMPACTS -> Service`
 - `IMPLEMENTED_BY -> OperationalRequirement` (to Item, not ItemVersion - ON type requirements only, references to OR type requirements)
+- `REFERENCES {note} -> Document` (relationship carries optional note property for context like section numbers)
+- `DEPENDS_ON -> OperationalRequirementVersion` (to ItemVersion, not Item - version-to-version dependencies)
 
-### 4.2 OperationalChange(Version): Item(Version)
+### 3.2 OperationalChange(Version): Item(Version)
 **Version properties:**
 - `purpose`: a rich text (renamed from description)
 - `initialState`: a rich text (multiline)
 - `finalState`: a rich text (multiline)
 - `details`: a rich text (multiline)
+- `privateNotes`: a rich text
+- `path`: array of strings (folder path hierarchy)
 - `visibility`: NM or NETWORK
 - `drg`: Drafting Group enum (4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF)
 
 **Item relationships:**
-- `IS_LOCATED_IN -> Folder`
+None - path field provides hierarchy information
 
 **Item version relationships:**
 - `SATISFIES -> OperationalRequirement` (to Item, not ItemVersion)
 - `SUPERSEDS -> OperationalRequirement` (to Item, not ItemVersion)
+- `REFERENCES {note} -> Document` (relationship carries optional note property for context like section numbers)
+- `DEPENDS_ON -> OperationalChangeVersion` (to ItemVersion, not Item - version-to-version dependencies)
 
-### 4.3 OperationalChangeMilestone
+### 3.3 OperationalChangeMilestone
 **Properties:**
 - `milestoneKey`: stable UUID identifier preserved across versions
 - `eventType`: one of API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, OPS_DEPLOYMENT, API_DECOMMISSIONING (5 specific milestone events only)
 - `title`: a short humanly readable unique identifier
 - `description`: a rich text
-- `status`: completion status (PLANNED, IN_PROGRESS, COMPLETED, CANCELLED)
 - `targetDate`: planned completion date
 - `actualDate`: actual completion date (optional)
 
 **Relationships:**
 - `BELONGS_TO -> OperationalChangeVersion` (to ItemVersion)
 - `TARGETS -> Wave`
-- `HAS_ATTACHMENT -> Document`
 
-## 5. Operational Deployment Plan Management
+## 4. Operational Deployment Plan Management
 
 The node types and relationships required to the management of operational plan baselines management.
 
-### 5.1 Baseline
+### 4.1 Baseline
 **Properties:**
 - `createdAt`: the baseline creation datetime
 - `createdBy`: the baseline creator
@@ -165,7 +151,7 @@ The node types and relationships required to the management of operational plan 
 - HAS_ITEMS relationships point directly to specific ItemVersion nodes that were latest at baseline time
 - Historical navigation uses HAS_ITEMS for accurate reconstruction of system state at baseline time
 
-### 5.2 ODPEdition
+### 4.2 ODPEdition
 **Properties:**
 - `createdAt`: the ODP Edition creation datetime
 - `createdBy`: the ODP Edition creator
@@ -175,7 +161,6 @@ The node types and relationships required to the management of operational plan 
 **Relationships:**
 - `STARTS_FROM -> Wave`
 - `EXPOSES -> Baseline`
-- `HAS_ATTACHMENT -> Document`
 
 **Usage Pattern:**
 - ODPEdition references a baseline and specifies a starting wave
@@ -185,28 +170,11 @@ The node types and relationships required to the management of operational plan 
 - Acts as a "saved query" for specific baseline + wave combinations
 - Used as reference for review processes and deployment planning
 
-## 6. Digital Asset Management
-
-The node types and relationships required to the management of digital assets.
-
-### 6.1 Document
-**Properties:**
-- `name`: filename
-- `description`: optional description
-- `mimeType`: content type (PDF, DOCX, etc.)
-- `size`: file size in bytes
-- `uploadedAt`: timestamp
-- `uploadedBy`
-- `path`: storage path or identifier
-
-**Relationships:**
-None - Documents are referenced by other entities via `HAS_ATTACHMENT` relationships.
-
-## 7. Review Management
+## 5. Review Management
 
 The node types required to the management of user reviews.
 
-### 7.1 Comment
+### 5.1 Comment
 **Properties:**
 - `postedAt`: the time stamp of the comment post
 - `postedBy`: the author of the comment
@@ -214,12 +182,11 @@ The node types required to the management of user reviews.
 - `text`: the text of the comment
 
 **Relationships:**
-- `HAS_ATTACHMENT -> Document`
 - `COMMENTS_ON -> Baseline`
 
-## 8. Enumeration Values
+## 6. Enumeration Values
 
-### 8.1 Drafting Group (DRG)
+### 6.1 Drafting Group (DRG)
 Common enum for OperationalRequirement and OperationalChange entities:
 
 | Value | Display |
@@ -236,7 +203,7 @@ Common enum for OperationalRequirement and OperationalChange entities:
 | RRT | Rerouting |
 | TCF | TCF |
 
-### 8.2 Milestone Event Types
+### 6.2 Milestone Event Types
 Specific milestone events for OperationalChange entities (replaces previous flexible milestone system):
 
 | Value | Description |
@@ -255,11 +222,39 @@ The system implements a sequential versioning pattern using root nodes (Item) + 
 ### Milestone System Evolution
 The milestone system has been replaced with a specific set of 5 milestone events. These events are independent (no sequencing/dependencies) and support standard project lifecycle phases from API publication through decommissioning.
 
-### New Relationship Types
-- `IMPLEMENTED_BY`: Links ON-type OperationalRequirements to OR-type OperationalRequirements that implement them
-- Enhanced relationship validation ensures `implementedONs` references are valid and type-appropriate
+### Relationship Types Evolution
+- **Removed**: `IMPACTS -> RegulatoryAspect` (RegulatoryAspect entity deprecated)
+- **Added**: `REFERENCES {note} -> Document` on both OperationalRequirement and OperationalChange versions (direct edge with optional note property)
+- **Added**: `DEPENDS_ON -> OperationalRequirementVersion` for OR version dependencies (version-to-version)
+- **Added**: `DEPENDS_ON -> OperationalChangeVersion` for OC version dependencies (version-to-version)
+- **Existing**: `IMPLEMENTED_BY` links ON-type OperationalRequirements to OR-type OperationalRequirements that implement them
 
 ### Field Evolution
-- OperationalChange: `description` field renamed to `purpose` for clarity
-- Added rich text fields: `initialState`, `finalState`, `details` for better change documentation
-- Added `drg` enum to both OR and OC for organizational categorization
+- **OperationalRequirement**:
+    - Removed: `references`, `flowExamples`, `risksAndOpportunities` (rich text fields)
+    - Added: `privateNotes` (rich text field for internal notes)
+    - Added: `path` (array of strings for folder hierarchy navigation)
+    - Retained: `statement`, `rationale`, `flows`, `drg`
+
+- **OperationalChange**:
+    - Renamed: `description` → `purpose` for clarity
+    - Added: `initialState`, `finalState`, `details` (rich text fields for better change documentation)
+    - Added: `privateNotes` (rich text field for internal notes)
+    - Added: `path` (array of strings for folder hierarchy navigation)
+    - Retained: `visibility`, `drg`
+
+### Document Reference System
+The new direct REFERENCES relationship replaces the previous `references` rich text field with a structured approach:
+- Direct relationship from version nodes to Document entities (ConOPS, regulations, strategic plans, etc.)
+- Optional `note` property on the relationship provides brief context (e.g., section numbers, brief annotations)
+- Note is simple text, not rich text - designed for short references like "Section 3.2" or "Annex A"
+- Enables better traceability and document management
+- Both OperationalRequirement and OperationalChange versions can reference documents
+
+### Dependency Management
+The new `DEPENDS_ON` relationship enables formal declaration of dependencies between versions:
+- OperationalRequirementVersion can depend on other OperationalRequirementVersions
+- OperationalChangeVersion can depend on other OperationalChangeVersions
+- Dependencies are version-to-version (not Item-to-Item), capturing the specific version dependency
+- Dependencies are validated at service level (warning/prevention of conflicting OC definitions)
+- Supports better deployment planning and sequencing
