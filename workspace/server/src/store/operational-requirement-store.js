@@ -479,8 +479,20 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Compute set of requirement IDs that pass wave filter
+     * Compute set of requirement IDs that pass wave filter (multi-hop expansion)
      * Optimized: runs complex queries once instead of per-requirement
+     *
+     * Logic:
+     * 1. Find OCs with milestones at/after fromWave
+     * 2. Find requirements directly satisfied/superseded by those OCs
+     * 3. Climb up the hierarchy via REFINES/IMPLEMENTS relationships (up to 3 levels)
+     *
+     * LIMITATIONS:
+     * - Fixed depth of 3 hops (directReq -> parent -> grandparent -> great-grandparent)
+     * - Cannot use variable-length patterns [:REFINES|IMPLEMENTS*0..] because the path
+     *   alternates between Item and Version nodes (Version -> Item -> Version -> Item)
+     * - Deeper hierarchies (>3 levels) will be truncated
+     * - If your requirement hierarchies exceed 3 levels, increase the hop count below
      */
     async _computeWaveFilteredRequirements(fromWaveId, transaction, baselineId = null) {
         try {
@@ -500,40 +512,66 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 
                 // Step 2: Find requirements directly satisfied/superseded by these OCs
                 MATCH (changeVersion)-[:SATISFIES|SUPERSEDS]->(directReq:OperationalRequirement)
+                MATCH (directReq)-[:LATEST_VERSION]->(directReqVersion:OperationalRequirementVersion)
                 
-                // Step 3: Expand via incoming REFINES and IMPLEMENTS
-                // directReq is refined by OR implements something → follow those paths
-                MATCH path = (reachableReq:OperationalRequirement)-[:REFINES|IMPLEMENTS*0..]->(directReq)
+                // Step 3: Multi-hop expansion (3 levels)
                 
-                RETURN collect(DISTINCT id(reachableReq)) as acceptedReqIds
+                // Hop 1: Direct parents/ONs
+                OPTIONAL MATCH (reachable1:OperationalRequirement)-[:LATEST_VERSION]->(reachable1Version:OperationalRequirementVersion)
+                WHERE (directReqVersion)-[:REFINES|IMPLEMENTS]->(reachable1)
+                
+                // Hop 2: Grandparents/parent ONs
+                OPTIONAL MATCH (reachable2:OperationalRequirement)-[:LATEST_VERSION]->(reachable2Version:OperationalRequirementVersion)
+                WHERE (reachable1Version)-[:REFINES|IMPLEMENTS]->(reachable2)
+                
+                // Hop 3: Great-grandparents/grandparent ONs
+                OPTIONAL MATCH (reachable3:OperationalRequirement)-[:LATEST_VERSION]->(reachable3Version:OperationalRequirementVersion)
+                WHERE (reachable2Version)-[:REFINES|IMPLEMENTS]->(reachable3)
+                
+                RETURN collect(DISTINCT id(directReq)) + 
+                       collect(DISTINCT id(reachable1)) + 
+                       collect(DISTINCT id(reachable2)) + 
+                       collect(DISTINCT id(reachable3)) as acceptedReqIds
             `;
                 params = { fromWaveId: normalizedFromWaveId };
             } else {
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
                 MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-                MATCH (baseline:Baseline) WHERE id(baseline) = $baselineId
-                
-                // Step 1: Find OCs in baseline with milestones at/after fromWave
-                MATCH (baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)
-                WHERE EXISTS {
+                MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)
+                      -[:VERSION_OF]->(change:OperationalChange)
+                WHERE id(baseline) = $baselineId
+                AND EXISTS {
                     MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
                     WHERE date(targetWave.date) >= date(fromWave.date)
                 }
                 
                 // Step 2: Find requirements satisfied/superseded by these OCs
                 MATCH (changeVersion)-[:SATISFIES|SUPERSEDS]->(directReq:OperationalRequirement)
+                MATCH (baseline)-[:HAS_ITEMS]->(directReqVersion:OperationalRequirementVersion)
+                      -[:VERSION_OF]->(directReq)
                 
-                // Step 3: Expand via incoming REFINES and IMPLEMENTS
-                MATCH path = (reachableReq:OperationalRequirement)-[:REFINES|IMPLEMENTS*0..]->(directReq)
+                // Step 3: Multi-hop expansion (3 levels) within baseline
                 
-                // Step 4: Ensure reachable requirement is in baseline
-                WHERE EXISTS {
-                    MATCH (baseline)-[:HAS_ITEMS]->(:OperationalRequirementVersion)
-                        -[:VERSION_OF]->(reachableReq)
-                }
+                // Hop 1: Direct parents/ONs
+                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(reachable1Version:OperationalRequirementVersion)
+                              -[:VERSION_OF]->(reachable1:OperationalRequirement)
+                WHERE (directReqVersion)-[:REFINES|IMPLEMENTS]->(reachable1)
                 
-                RETURN collect(DISTINCT id(reachableReq)) as acceptedReqIds
+                // Hop 2: Grandparents/parent ONs
+                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(reachable2Version:OperationalRequirementVersion)
+                              -[:VERSION_OF]->(reachable2:OperationalRequirement)
+                WHERE (reachable1Version)-[:REFINES|IMPLEMENTS]->(reachable2)
+                
+                // Hop 3: Great-grandparents/grandparent ONs
+                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(reachable3Version:OperationalRequirementVersion)
+                              -[:VERSION_OF]->(reachable3:OperationalRequirement)
+                WHERE (reachable2Version)-[:REFINES|IMPLEMENTS]->(reachable3)
+                
+                RETURN collect(DISTINCT id(directReq)) + 
+                       collect(DISTINCT id(reachable1)) + 
+                       collect(DISTINCT id(reachable2)) + 
+                       collect(DISTINCT id(reachable3)) as acceptedReqIds
             `;
                 params = { fromWaveId: normalizedFromWaveId, baselineId: numericBaselineId };
             }
@@ -541,7 +579,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const result = await transaction.run(query, params);
             const reqIds = result.records[0]?.get('acceptedReqIds') || [];
 
-            return new Set(reqIds.map(id => this.normalizeId(id)));
+            // Filter out null values that may come from optional matches
+            return new Set(reqIds.filter(id => id !== null).map(id => this.normalizeId(id)));
         } catch (error) {
             throw new StoreError(
                 `Failed to compute wave-filtered requirements: ${error.message}`,
