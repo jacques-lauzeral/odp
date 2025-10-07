@@ -6,24 +6,32 @@ import {
     OperationalRequirementType,
     getOperationalRequirementTypeDisplay
 } from '/shared/src/index.js';
+import {
+    requirementFieldDefinitions,
+    requirementFormTitles,
+    requiredArrayFields,
+    requiredTextFields,
+    requirementDefaults
+} from './requirement-form-fields.js';
 
 /**
  * RequirementForm - Operational Requirement form configuration and handling
  * Extends CollectionEntityForm using inheritance pattern
- * Updated for model evolution: DRG field and implementedONs relationships
+ * Field definitions extracted to requirement-form-fields.js for better separation
  */
 export default class RequirementForm extends CollectionEntityForm {
     constructor(entityConfig, setupData) {
-        // Call parent constructor with appropriate context
         super(entityConfig, { setupData });
 
         this.setupData = setupData;
 
-        // Cache for parent requirements and ON requirements
+        // Cache for parent requirements, ON requirements, and all requirements
         this.parentRequirementsCache = null;
         this.parentRequirementsCacheTime = 0;
         this.onRequirementsCache = null;
         this.onRequirementsCacheTime = 0;
+        this.dependencyRequirementsCache = null;
+        this.dependencyRequirementsCacheTime = 0;
         this.cacheTimeout = 60000; // 1 minute cache
     }
 
@@ -32,267 +40,39 @@ export default class RequirementForm extends CollectionEntityForm {
     // ====================
 
     getFieldDefinitions() {
-        return [
-            // Basic Information Section
-            {
-                title: 'Basic Information',
-                fields: [
-                    {
-                        key: 'itemId',
-                        label: 'ID',
-                        type: 'text',
-                        modes: ['read', 'edit'],
-                        readOnly: true
-                    },
-                    {
-                        key: 'version',
-                        label: 'Version',
-                        type: 'text',
-                        modes: ['read', 'edit'],
-                        readOnly: true
-                    },
-                    {
-                        key: 'type',
-                        label: 'Type',
-                        type: 'radio',
-                        modes: ['create', 'read', 'edit'],
-                        required: true,
-                        editableOnlyOnCreate: true,
-                        options: [
-                            { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
-                            { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
-                        ],
-                        helpTextAbove: 'Select ON for high-level operational needs, OR for specific requirements'
-                    },
-                    {
-                        key: 'title',
-                        label: 'Title',
-                        type: 'text',
-                        modes: ['create', 'read', 'edit'],
-                        required: true,
-                        placeholder: 'Enter a clear, concise title for this requirement',
-                        validate: (value) => {
-                            if (!value || value.length < 4) {
-                                return { valid: false, message: 'Title must be at least 4 characters long' };
-                            }
-                            if (value.length > 200) {
-                                return { valid: false, message: 'Title must be less than 200 characters' };
-                            }
-                            return { valid: true };
-                        }
-                    },
-                    {
-                        key: 'drg',
-                        label: 'Drafting Group',
-                        type: 'select',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        options: () => this.getDraftingGroupOptions(),
-                        helpText: 'Select the drafting group responsible for this requirement',
-                        format: (value) => value ? getDraftingGroupDisplay(value) : 'Not assigned'
-                    }
-                ]
-            },
+        // Hydrate configuration with runtime logic
+        return requirementFieldDefinitions.map(section => ({
+            ...section,
+            fields: section.fields.map(field => this.hydrateField(field))
+        }));
+    }
 
-            // Content Section
-            {
-                title: 'Requirement Details',
-                fields: [
-                    {
-                        key: 'statement',
-                        label: 'Statement',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: true,
-                        rows: 6,
-                        placeholder: 'Describe the operational need or requirement in detail...',
-                        helpText: 'Provide a complete description of what is needed',
-                        validate: (value) => {
-                            if (!value || value.length < 8) {
-                                return { valid: false, message: 'Statement must be at least 8 characters long' };
-                            }
-                            return { valid: true };
-                        }
-                    },
-                    {
-                        key: 'rationale',
-                        label: 'Rationale',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: true,
-                        rows: 4,
-                        placeholder: 'Explain the reasoning behind this requirement...',
-                        helpText: 'Why is this requirement necessary? What problem does it solve?'
-                    },
-                    {
-                        key: 'references',
-                        label: 'References',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        rows: 3,
-                        placeholder: 'External references, documents, standards, or links...',
-                        helpText: 'Include any relevant external documentation or standards'
-                    },
-                    {
-                        key: 'risksAndOpportunities',
-                        label: 'Risks and Opportunities',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        rows: 4,
-                        placeholder: 'Describe potential risks and opportunities associated with this requirement...',
-                        helpText: 'What risks does this address? What opportunities does it create?'
-                    }
-                ]
-            },
+    /**
+     * Hydrate a field configuration with runtime functions
+     * Converts optionsKey/formatKey references to actual functions
+     */
+    hydrateField(field) {
+        const hydrated = { ...field };
 
-            // Flows Section
-            {
-                title: 'Flows',
-                fields: [
-                    {
-                        key: 'flows',
-                        label: 'Flows',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        rows: 4,
-                        placeholder: 'Describe the operational flows or processes...',
-                        helpText: 'How does this requirement affect operational flows?'
-                    },
-                    {
-                        key: 'flowExamples',
-                        label: 'Flow Examples',
-                        type: 'textarea',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        rows: 4,
-                        placeholder: 'Provide specific examples of the flows described above...',
-                        helpText: 'Concrete examples help clarify the requirement'
-                    }
-                ]
-            },
+        // Bind options function if specified by key
+        if (field.optionsKey && this[field.optionsKey]) {
+            hydrated.options = async () => await this[field.optionsKey]();
+        }
 
-            // Impact Section
-            {
-                title: 'Impact',
-                fields: [
-                    {
-                        key: 'impactsStakeholderCategories',
-                        label: 'Stakeholder Categories',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        size: 4,
-                        options: () => this.getSetupDataOptions('stakeholderCategories'),
-                        helpText: 'Select all stakeholder categories affected by this requirement',
-                        format: (value) => this.formatMultiSetupData(value, 'stakeholderCategories')
-                    },
-                    {
-                        key: 'impactsData',
-                        label: 'Data Categories',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        size: 4,
-                        options: () => this.getSetupDataOptions('dataCategories'),
-                        helpText: 'Select all data categories impacted by this requirement',
-                        format: (value) => this.formatMultiSetupData(value, 'dataCategories')
-                    },
-                    {
-                        key: 'impactsRegulatoryAspects',
-                        label: 'Regulatory Aspects',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        size: 4,
-                        options: () => this.getSetupDataOptions('regulatoryAspects'),
-                        helpText: 'Select all regulatory aspects relevant to this requirement',
-                        format: (value) => this.formatMultiSetupData(value, 'regulatoryAspects')
-                    },
-                    {
-                        key: 'impactsServices',
-                        label: 'Services',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        size: 4,
-                        options: () => this.getSetupDataOptions('services'),
-                        helpText: 'Select all services affected by this requirement',
-                        format: (value) => this.formatMultiSetupData(value, 'services')
-                    }
-                ]
-            },
-
-            // Relationships Section (Enhanced with implementedONs)
-            {
-                title: 'Relationships',
-                fields: [
-                    {
-                        key: 'refinesParents',
-                        label: 'Refines (Parent Requirements)',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        size: 5,
-                        options: async () => await this.getParentRequirementOptions(),
-                        helpText: 'Select parent requirements that this requirement refines (use empty array if none)',
-                        format: (value) => this.formatEntityReferences(value)
-                    },
-                    {
-                        key: 'implementedONs',
-                        label: 'Implements (ON Requirements)',
-                        type: 'multiselect',
-                        modes: ['create', 'read', 'edit'],
-                        required: false,
-                        size: 5,
-                        visibleWhen: (data) => data.type === 'OR', // Only show for OR-type requirements
-                        options: async () => await this.getONRequirementOptions(),
-                        helpText: 'Select ON-type requirements that this OR requirement implements',
-                        format: (value) => this.formatEntityReferences(value, 'ON')
-                    }
-                ]
-            },
-
-            // Metadata Section (read-only)
-            {
-                title: 'Metadata',
-                fields: [
-                    {
-                        key: 'createdBy',
-                        label: 'Created By',
-                        type: 'text',
-                        modes: ['read', 'edit'],
-                        readOnly: true
-                    },
-                    {
-                        key: 'createdAt',
-                        label: 'Created',
-                        type: 'date',
-                        modes: ['read', 'edit'],
-                        readOnly: true,
-                        format: (value) => {
-                            if (!value) return '-';
-                            return new Date(value).toLocaleString();
-                        }
-                    }
-                ]
+        // Bind format function if specified by key
+        if (field.formatKey && this[field.formatKey]) {
+            if (field.formatArgs) {
+                hydrated.format = (value) => this[field.formatKey](value, ...field.formatArgs);
+            } else {
+                hydrated.format = (value) => this[field.formatKey](value);
             }
-        ];
+        }
+
+        return hydrated;
     }
 
     getFormTitle(mode) {
-        switch (mode) {
-            case 'create':
-                return 'Create Operational Requirement';
-            case 'edit':
-                return 'Edit Operational Requirement';
-            case 'read':
-                return 'Operational Requirement Details';
-            default:
-                return 'Operational Requirement';
-        }
+        return requirementFormTitles[mode] || requirementFormTitles.default;
     }
 
     transformDataForSave(data, mode, item) {
@@ -305,34 +85,25 @@ export default class RequirementForm extends CollectionEntityForm {
             transformed.expectedVersionId = item.versionId || item.expectedVersionId;
         }
 
-        console.log('RequirementForm.transformDataForSave data: ', JSON.stringify(transformed));
         // Ensure all required array fields are present (even if empty)
-        const requiredArrayFields = [
-            'refinesParents',
-            'implementedONs',
-            'impactsStakeholderCategories',
-            'impactsData',
-            'impactsRegulatoryAspects',
-            'impactsServices'
-        ];
-
         requiredArrayFields.forEach(key => {
-            // If field is undefined or null, set to empty array
             if (transformed[key] === undefined || transformed[key] === null) {
                 transformed[key] = [];
             }
-            // Ensure it's an array
             if (!Array.isArray(transformed[key])) {
                 transformed[key] = [];
             }
         });
 
-        // Ensure all required text fields are present (even if empty)
-        const requiredTextFields = [
-            'title', 'type', 'statement', 'rationale',
-            'references', 'risksAndOpportunities', 'flows', 'flowExamples'
-        ];
+        // Handle path field - convert from textarea input to array
+        if (typeof transformed.path === 'string') {
+            transformed.path = transformed.path
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+        }
 
+        // Ensure all required text fields are present (even if empty)
         requiredTextFields.forEach(key => {
             if (transformed[key] === undefined || transformed[key] === null) {
                 transformed[key] = '';
@@ -351,6 +122,8 @@ export default class RequirementForm extends CollectionEntityForm {
             transformed.implementedONs = [];
         }
 
+        console.log('RequirementForm.transformDataForSave data: ', JSON.stringify(transformed));
+
         return transformed;
     }
 
@@ -359,14 +132,17 @@ export default class RequirementForm extends CollectionEntityForm {
 
         const transformed = { ...item };
 
+        // Handle path display - keep as array for format function
+        // No transformation needed for read mode
+
         // Extract IDs from object references if needed
         const arrayFields = [
             'impactsStakeholderCategories',
             'impactsData',
-            'impactsRegulatoryAspects',
             'impactsServices',
             'refinesParents',
-            'implementedONs'
+            'implementedONs',
+            'dependsOnRequirements'
         ];
 
         arrayFields.forEach(field => {
@@ -380,6 +156,9 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
+        // documentReferences - keep full structure for annotated-multiselect
+        // No transformation needed, keep {id, title, note} structure
+
         return transformed;
     }
 
@@ -388,14 +167,19 @@ export default class RequirementForm extends CollectionEntityForm {
 
         const transformed = { ...item };
 
-        // Extract IDs from object references if needed
+        // Handle path - convert array to comma-separated string for textarea editing
+        if (transformed.path && Array.isArray(transformed.path)) {
+            transformed.path = transformed.path.join(', ');
+        }
+
+        // Extract IDs from object references for multiselect fields
         const arrayFields = [
             'impactsStakeholderCategories',
             'impactsData',
-            'impactsRegulatoryAspects',
             'impactsServices',
             'refinesParents',
-            'implementedONs'
+            'implementedONs',
+            'dependsOnRequirements'
         ];
 
         arrayFields.forEach(field => {
@@ -410,6 +194,9 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
+        // documentReferences - keep full {id, title, note} structure for annotated-multiselect
+        // The annotated-multiselect manager expects this format
+
         return transformed;
     }
 
@@ -419,6 +206,7 @@ export default class RequirementForm extends CollectionEntityForm {
         // Clear caches when saving as it might affect relationship options
         this.parentRequirementsCache = null;
         this.onRequirementsCache = null;
+        this.dependencyRequirementsCache = null;
 
         if (mode === 'create') {
             return await apiClient.post(this.entityConfig.endpoint, data);
@@ -446,7 +234,6 @@ export default class RequirementForm extends CollectionEntityForm {
         // Validate implementedONs - should only be present for OR-type requirements
         if (data.type === 'OR' && data.implementedONs && Array.isArray(data.implementedONs)) {
             // Additional validation could be added here to ensure referenced ONs exist
-            // This would require an API call to validate the references
         } else if (data.type === 'ON' && data.implementedONs && data.implementedONs.length > 0) {
             errors.push({
                 field: 'implementedONs',
@@ -463,16 +250,21 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     onCancel() {
-        // Custom cancel logic if needed
         console.log('RequirementForm cancelled');
     }
 
     // ====================
-    // DATA OPTIONS HELPERS
+    // OPTIONS GENERATORS (Referenced by field config)
     // ====================
 
+    getTypeOptions() {
+        return [
+            { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
+            { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
+        ];
+    }
+
     getDraftingGroupOptions() {
-        // Build options from shared DraftingGroup enum
         const options = [{ value: '', label: 'Not assigned' }];
 
         Object.keys(DraftingGroup).forEach(key => {
@@ -485,16 +277,37 @@ export default class RequirementForm extends CollectionEntityForm {
         return options;
     }
 
+    getStakeholderCategoryOptions() {
+        return this.getSetupDataOptions('stakeholderCategories');
+    }
+
+    getDataCategoryOptions() {
+        return this.getSetupDataOptions('dataCategories');
+    }
+
+    getServiceOptions() {
+        return this.getSetupDataOptions('services');
+    }
+
     getSetupDataOptions(entityName) {
         if (!this.setupData?.[entityName]) {
             return [];
         }
 
-        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
-
         return this.setupData[entityName].map(entity => ({
-            value: parseInt(entity.id, 10),  // Convert to number
-            label: entity[labelKey] || entity.name || entity.id
+            value: parseInt(entity.id, 10),
+            label: entity.name || entity.title || entity.id
+        }));
+    }
+
+    async getDocumentOptions() {
+        if (!this.setupData?.documents) {
+            return [];
+        }
+
+        return this.setupData.documents.map(doc => ({
+            value: doc.id,
+            label: doc.name || doc.title || doc.id
         }));
     }
 
@@ -512,7 +325,7 @@ export default class RequirementForm extends CollectionEntityForm {
             // Build options - allow any requirement as parent
             const options = requirements
                 .map(req => ({
-                    value: parseInt(req.itemId || req.id, 10),  // Convert to number
+                    value: parseInt(req.itemId || req.id, 10),
                     label: `[${req.type}] ${req.itemId}: ${req.title}`,
                     group: req.type
                 }))
@@ -551,7 +364,7 @@ export default class RequirementForm extends CollectionEntityForm {
             // Build options for ON-type requirements
             const options = onRequirements
                 .map(req => ({
-                    value: parseInt(req.itemId || req.id, 10),  // Convert to number
+                    value: parseInt(req.itemId || req.id, 10),
                     label: `[ON] ${req.itemId}: ${req.title}`
                 }))
                 .sort((a, b) => a.label.localeCompare(b.label));
@@ -568,9 +381,51 @@ export default class RequirementForm extends CollectionEntityForm {
         }
     }
 
+    async getDependencyRequirementOptions() {
+        try {
+            // Use cache if available and not expired
+            const now = Date.now();
+            if (this.dependencyRequirementsCache && (now - this.dependencyRequirementsCacheTime) < this.cacheTimeout) {
+                return this.dependencyRequirementsCache;
+            }
+
+            // Load all requirements for dependency selection
+            const requirements = await apiClient.get(this.entityConfig.endpoint);
+
+            // Build options - any requirement can be a dependency
+            const options = requirements
+                .map(req => ({
+                    value: parseInt(req.itemId || req.id, 10),
+                    label: `[${req.type}] ${req.itemId}: ${req.title}`,
+                    group: req.type
+                }))
+                .sort((a, b) => {
+                    // Sort ONs first, then by ID
+                    if (a.group !== b.group) {
+                        return a.group === 'ON' ? -1 : 1;
+                    }
+                    return a.label.localeCompare(b.label);
+                });
+
+            // Cache the results
+            this.dependencyRequirementsCache = options;
+            this.dependencyRequirementsCacheTime = now;
+
+            return options;
+
+        } catch (error) {
+            console.error('Failed to load dependency requirements:', error);
+            return [];
+        }
+    }
+
     // ====================
-    // FORMAT HELPERS
+    // FORMAT HELPERS (Referenced by field config)
     // ====================
+
+    formatDraftingGroup(value) {
+        return value ? getDraftingGroupDisplay(value) : 'Not assigned';
+    }
 
     formatMultiSetupData(values, entityName) {
         if (!values || !Array.isArray(values) || values.length === 0) {
@@ -578,11 +433,10 @@ export default class RequirementForm extends CollectionEntityForm {
         }
 
         const entities = this.setupData?.[entityName] || [];
-        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
 
         const names = values.map(id => {
             const entity = entities.find(e => e.id === id);
-            return entity ? (entity[labelKey] || entity.name) : id;
+            return entity ? (entity.name || entity.title) : id;
         });
 
         return names.join(', ');
@@ -600,6 +454,18 @@ export default class RequirementForm extends CollectionEntityForm {
                 return `${type}${title}`;
             }
             return ref;
+        }).join(', ');
+    }
+
+    formatAnnotatedReferences(values) {
+        if (!values || !Array.isArray(values) || values.length === 0) {
+            return 'None';
+        }
+
+        return values.map(ref => {
+            const title = ref.title || ref.name || ref.id || 'Unknown';
+            const note = ref.note ? ` (${ref.note})` : '';
+            return `${title}${note}`;
         }).join(', ');
     }
 
@@ -627,7 +493,10 @@ export default class RequirementForm extends CollectionEntityForm {
         }
     }
 
-    // Override to handle conditional field updates
+    // ====================
+    // ENHANCED MODAL METHODS
+    // ====================
+
     async showCreateModal() {
         await super.showCreateModal();
 
@@ -643,7 +512,7 @@ export default class RequirementForm extends CollectionEntityForm {
         }
 
         // Set initial visibility based on default type
-        this.updateFieldVisibility({ type: 'ON' }); // Default to ON
+        this.updateFieldVisibility({ type: requirementDefaults.type });
     }
 
     async showEditModal(item) {
@@ -661,11 +530,11 @@ export default class RequirementForm extends CollectionEntityForm {
         }
 
         // Set initial visibility based on item type
-        this.updateFieldVisibility({ type: item?.type || 'ON' });
+        this.updateFieldVisibility({ type: item?.type || requirementDefaults.type });
     }
 
     // ====================
-    // PUBLIC API (convenience methods)
+    // PUBLIC API
     // ====================
 
     async showReadOnlyModal(item) {

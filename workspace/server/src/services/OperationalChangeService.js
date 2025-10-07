@@ -4,7 +4,9 @@ import {
     DraftingGroup,
     isDraftingGroupValid,
     Visibility,
-    isVisibilityValid, isMilestoneEventValid, MilestoneEventKeys
+    isVisibilityValid,
+    isMilestoneEventValid,
+    MilestoneEventKeys
 } from '../../../shared/src/index.js';
 import {
     operationalChangeStore,
@@ -133,7 +135,7 @@ export class OperationalChangeService extends VersionedItemService {
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
-                referencesDocuments: current.referencesDocuments,
+                documentReferences: current.documentReferences.map(ref => ({id: ref.id, note: ref.note})),
                 dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
                 milestones: newMilestones
             };
@@ -212,7 +214,7 @@ export class OperationalChangeService extends VersionedItemService {
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
-                referencesDocuments: current.referencesDocuments,
+                documentReferences: current.documentReferences.map(ref => ({id: ref.id, note: ref.note})),
                 dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
                 milestones: newMilestones
             };
@@ -280,7 +282,7 @@ export class OperationalChangeService extends VersionedItemService {
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
-                referencesDocuments: current.referencesDocuments,
+                documentReferences: current.documentReferences.map(ref => ({id: ref.id, note: ref.note})),
                 dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
                 milestones: newMilestones
             };
@@ -334,7 +336,7 @@ export class OperationalChangeService extends VersionedItemService {
             visibility: patchPayload.visibility !== undefined ? patchPayload.visibility : current.visibility,
             satisfiesRequirements: patchPayload.satisfiesRequirements !== undefined ? patchPayload.satisfiesRequirements : current.satisfiesRequirements.map(ref => ref.id),
             supersedsRequirements: patchPayload.supersedsRequirements !== undefined ? patchPayload.supersedsRequirements : current.supersedsRequirements.map(ref => ref.id),
-            referencesDocuments: patchPayload.referencesDocuments !== undefined ? patchPayload.referencesDocuments : current.referencesDocuments,
+            documentReferences: patchPayload.documentReferences !== undefined ? patchPayload.documentReferences : current.documentReferences.map(ref => ({id: ref.id, note: ref.note})),
             dependsOnChanges: patchPayload.dependsOnChanges !== undefined ? patchPayload.dependsOnChanges : current.dependsOnChanges.map(ref => ref.itemId),
             milestones: patchPayload.milestones !== undefined ? patchPayload.milestones : this._convertMilestonesToRawData(current.milestones)
         };
@@ -376,8 +378,8 @@ export class OperationalChangeService extends VersionedItemService {
             this._validateRelationshipArray(payload.supersedsRequirements, 'supersedsRequirements');
         }
 
-        if (payload.referencesDocuments !== undefined) {
-            this._validateDocumentReferences(payload.referencesDocuments);
+        if (payload.documentReferences !== undefined) {
+            this._validateDocumentReferences(payload.documentReferences);
         }
 
         if (payload.dependsOnChanges !== undefined) {
@@ -411,17 +413,17 @@ export class OperationalChangeService extends VersionedItemService {
         }
     }
 
-    _validateDocumentReferences(referencesDocuments) {
-        if (!Array.isArray(referencesDocuments)) {
-            throw new Error('Validation failed: referencesDocuments must be an array');
+    _validateDocumentReferences(documentReferences) {
+        if (!Array.isArray(documentReferences)) {
+            throw new Error('Validation failed: documentReferences must be an array');
         }
 
-        for (const ref of referencesDocuments) {
+        for (const ref of documentReferences) {
             if (typeof ref !== 'object' || ref === null) {
                 throw new Error('Validation failed: each document reference must be an object');
             }
-            if (!ref.documentId) {
-                throw new Error('Validation failed: document reference must have documentId');
+            if (!ref.id) {
+                throw new Error('Validation failed: document reference must have id');
             }
             if (ref.note !== undefined && typeof ref.note !== 'string') {
                 throw new Error('Validation failed: document reference note must be a string');
@@ -478,8 +480,8 @@ export class OperationalChangeService extends VersionedItemService {
             );
         }
 
-        if (payload.referencesDocuments !== undefined && payload.referencesDocuments.length > 0) {
-            const documentIds = payload.referencesDocuments.map(ref => ref.documentId);
+        if (payload.documentReferences !== undefined && payload.documentReferences.length > 0) {
+            const documentIds = payload.documentReferences.map(ref => ref.id);
             validationPromises.push(
                 this._validateDocumentIds(documentIds)
             );

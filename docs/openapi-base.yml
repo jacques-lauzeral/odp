@@ -24,6 +24,8 @@ components:
           type: string
         title:
           type: string
+        note:
+          type: string
 
     OperationalRequirementReference:
       type: object
@@ -35,15 +37,6 @@ components:
         type:
           type: string
           enum: [ON, OR]
-
-    DocumentReference:
-      type: object
-      properties:
-        documentId:
-          type: string
-        note:
-          type: string
-          description: "Optional context note (e.g., 'Section 3.2', 'Annex A')"
 
     # Setup Entity Schemas
     StakeholderCategory:
@@ -259,7 +252,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/DocumentReference'
+            $ref: '#/components/schemas/EntityReference'
 
     OperationalRequirementRequest:
       type: object
@@ -320,7 +313,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/DocumentReference'
+            $ref: '#/components/schemas/EntityReference'
           default: []
 
     OperationalRequirementUpdateRequest:
@@ -385,7 +378,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/DocumentReference'
+            $ref: '#/components/schemas/EntityReference'
 
     Milestone:
       type: object
@@ -485,7 +478,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/DocumentReference'
+            $ref: '#/components/schemas/EntityReference'
         milestones:
           type: array
           items:
@@ -536,7 +529,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/DocumentReference'
+            $ref: '#/components/schemas/EntityReference'
           default: []
         milestones:
           type: array
@@ -596,7 +589,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/DocumentReference'
+            $ref: '#/components/schemas/EntityReference'
         milestones:
           type: array
           items:

@@ -1,8 +1,11 @@
 import { async as asyncUtils } from '../../shared/utils.js';
+import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
  * Base class for entity-specific forms using inheritance
+ *
+ * Updated to support annotated-multiselect field type for document references
  */
 export class CollectionEntityForm {
     constructor(entityConfig, context = {}) {
@@ -18,6 +21,9 @@ export class CollectionEntityForm {
 
         // Tab state tracking
         this.currentTabIndex = 0; // Track the currently selected tab
+
+        // NEW: Annotated multiselect managers storage
+        this.annotatedMultiselectManagers = {};
 
         // Initialize tab delegation once
         this.initTabDelegation();
@@ -124,6 +130,9 @@ export class CollectionEntityForm {
         this.currentItem = null;
         const form = await this.generateForm('create', null);
         this.showModal(form, 'create');
+
+        // NEW: Initialize annotated multiselect managers after modal is shown
+        this.initializeAnnotatedMultiselects();
     }
 
     async showEditModal(item) {
@@ -138,6 +147,9 @@ export class CollectionEntityForm {
         const transformedItem = this.transformDataForEdit(item);
         const form = await this.generateForm('edit', transformedItem);
         this.showModal(form, 'edit');
+
+        // NEW: Initialize annotated multiselect managers after modal is shown
+        this.initializeAnnotatedMultiselects();
     }
 
     async showReadOnlyModal(item) {
@@ -151,6 +163,9 @@ export class CollectionEntityForm {
         const transformedItem = this.transformDataForRead(item);
         const form = await this.generateForm('read', transformedItem);
         this.showModal(form, 'read');
+
+        // NEW: Initialize annotated multiselect managers for read-only mode (if needed)
+        this.initializeAnnotatedMultiselects();
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
@@ -284,6 +299,11 @@ export class CollectionEntityForm {
     }
 
     renderReadOnlyField(field, value) {
+        // NEW: Special handling for annotated-multiselect
+        if (field.type === 'annotated-multiselect') {
+            return this.renderAnnotatedMultiselectReadOnly(field, value);
+        }
+
         // Skip empty optional fields
         if (!field.required && !value) {
             return '';
@@ -450,6 +470,10 @@ export class CollectionEntityForm {
             case 'hidden':
                 return `<input type="hidden" name="${field.key}" value="${this.escapeHtml(value || '')}">`;
 
+            case 'annotated-multiselect':
+                // NEW: Render placeholder for annotated-multiselect
+                return this.renderAnnotatedMultiselectField(field, fieldId, value, required);
+
             case 'custom':
                 // Allow field to render itself
                 if (field.render) {
@@ -467,6 +491,116 @@ export class CollectionEntityForm {
                     ${required}>`;
         }
     }
+
+    // ====================
+    // NEW: ANNOTATED MULTISELECT SUPPORT
+    // ====================
+
+    renderAnnotatedMultiselectField(field, fieldId, value, required) {
+        // Render placeholder container - actual manager will be instantiated after DOM insertion
+        return `
+            <div id="${fieldId}-container" 
+                 class="annotated-multiselect-placeholder" 
+                 data-field-key="${field.key}"
+                 data-field-id="${fieldId}">
+                <!-- AnnotatedMultiselectManager will be inserted here -->
+            </div>
+        `;
+    }
+
+    renderAnnotatedMultiselectReadOnly(field, value) {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    <div class="detail-value">None</div>
+                </div>
+            `;
+        }
+
+        const formatted = value.map(ref => {
+            const title = this.escapeHtml(ref.title || ref.name || ref.id);
+            const note = ref.note ? ` <span class="note-badge" title="${this.escapeHtml(ref.note)}">[${this.truncate(ref.note, 16)}]</span>` : '';
+            return `<div class="ref-item">${title}${note}</div>`;
+        }).join('');
+
+        return `
+            <div class="detail-field">
+                <label>${this.escapeHtml(field.label)}</label>
+                <div class="detail-value">${formatted}</div>
+            </div>
+        `;
+    }
+
+    initializeAnnotatedMultiselects() {
+        if (!this.currentModal) return;
+
+        // Find all annotated-multiselect placeholders
+        const placeholders = this.currentModal.querySelectorAll('.annotated-multiselect-placeholder');
+
+        placeholders.forEach(placeholder => {
+            const fieldKey = placeholder.dataset.fieldKey;
+            const fieldId = placeholder.dataset.fieldId;
+
+            // Find field definition
+            const fields = this.getFieldDefinitions();
+            const allFields = [];
+            for (const section of fields) {
+                if (section.fields) {
+                    allFields.push(...section.fields);
+                } else {
+                    allFields.push(section);
+                }
+            }
+
+            const field = allFields.find(f => f.key === fieldKey);
+            if (!field || field.type !== 'annotated-multiselect') return;
+
+            // Get current value
+            const value = this.getFieldValue(this.currentItem, field);
+
+            // Get options (resolve async if needed)
+            this.getFieldOptions(field).then(options => {
+                // Create manager
+                const manager = new AnnotatedMultiselectManager({
+                    fieldId: fieldId,
+                    options: options,
+                    initialValue: value || [],
+                    maxNoteLength: field.maxNoteLength || 200,
+                    placeholder: field.placeholder || 'Select items...',
+                    noteLabel: field.noteLabel || 'Note (optional)',
+                    helpText: field.helpText || '',
+                    readOnly: this.currentMode === 'read',
+                    onChange: (newValue) => {
+                        // Optional: handle changes
+                        console.log(`${fieldKey} changed:`, newValue);
+                    }
+                });
+
+                // Render manager into placeholder
+                manager.render(placeholder);
+
+                // Store manager instance
+                this.annotatedMultiselectManagers[fieldKey] = manager;
+            });
+        });
+    }
+
+    cleanupAnnotatedMultiselects() {
+        // Destroy all manager instances
+        Object.values(this.annotatedMultiselectManagers).forEach(manager => {
+            if (manager && typeof manager.destroy === 'function') {
+                manager.destroy();
+            }
+        });
+
+        // Clear storage
+        this.annotatedMultiselectManagers = {};
+    }
+
+    // ====================
+    // FIELD OPTIONS & FORMATTING
+    // ====================
 
     async getFieldOptions(field) {
         if (typeof field.options === 'function') {
@@ -655,6 +789,9 @@ export class CollectionEntityForm {
         console.log("CollectionEntityForm.closeModal - called");
         console.log("CollectionEntityForm.closeModal - stack length:", this.modalStack.length);
 
+        // NEW: Cleanup annotated multiselects before closing
+        this.cleanupAnnotatedMultiselects();
+
         if (this.currentModal) {
             console.log("CollectionEntityForm.closeModal - removing current modal:", this.currentModal.id);
             this.currentModal.remove();
@@ -774,6 +911,16 @@ export class CollectionEntityForm {
             // Skip computed and read-only fields
             if (field.computed) continue;
             if (this.currentMode === 'edit' && field.editableOnlyOnCreate) continue;
+
+            // NEW: Special handling for annotated-multiselect
+            if (field.type === 'annotated-multiselect') {
+                const manager = this.annotatedMultiselectManagers[field.key];
+                if (manager) {
+                    data[field.key] = manager.getValue();
+                    console.log("CollectionEntityForm.collectFormData %s (annotated): %s", field.key, JSON.stringify(data[field.key]));
+                }
+                continue;
+            }
 
             if (field.type === 'multiselect') {
                 // Collect all selected options
@@ -921,7 +1068,7 @@ export class CollectionEntityForm {
             const messageEl = group.querySelector('.validation-message');
             if (messageEl) {
                 messageEl.textContent = '';
-                messageEl.style.display = 'none';
+                messageEl.style = 'none';
             }
         });
 
@@ -956,6 +1103,11 @@ export class CollectionEntityForm {
     // ====================
     // UTILITIES
     // ====================
+
+    truncate(text, maxLength) {
+        if (!text || text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
+    }
 
     escapeHtml(text) {
         if (!text) return '';

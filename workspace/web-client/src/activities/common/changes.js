@@ -11,6 +11,14 @@ import {
     getDraftingGroupDisplay
 } from '/shared/src/index.js';
 
+/**
+ * ChangesEntity - Operational Changes collection management
+ * Updated for Phase 19:
+ * - Text search includes new fields (purpose, initialState, finalState, details, privateNotes)
+ * - Added document filter
+ * - Added dependencies column and grouping
+ * - Removed regulatory aspects references
+ */
 export default class ChangesEntity {
     constructor(app, entityConfig, setupData) {
         this.app = app;
@@ -22,7 +30,7 @@ export default class ChangesEntity {
         this.currentPerspective = 'collection';
         this.timelineGrid = null;
 
-        // NEW: Local shared state for this entity
+        // Local shared state for this entity
         this.sharedState = {
             filters: {},
             selectedItem: null,
@@ -165,7 +173,7 @@ export default class ChangesEntity {
             this.collection.currentGrouping = sharedState.grouping;
         }
 
-        // NEW: Apply tab index to form context
+        // Apply tab index to form context
         if (sharedState.currentTabIndex !== undefined && this.form) {
             this.sharedState.currentTabIndex = sharedState.currentTabIndex;
             this.form.context.currentTabIndex = sharedState.currentTabIndex;
@@ -298,7 +306,7 @@ export default class ChangesEntity {
                 this.collection.currentGrouping = sharedState.grouping;
             }
 
-            // NEW: Apply tab index before rendering
+            // Apply tab index before rendering
             if (sharedState.currentTabIndex !== undefined) {
                 this.form.context.currentTabIndex = sharedState.currentTabIndex;
             }
@@ -362,7 +370,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // COLLECTION CONFIGURATION (Updated for new fields)
+    // COLLECTION CONFIGURATION (Updated for Phase 19)
     // ====================
 
     getFilterConfig() {
@@ -371,7 +379,7 @@ export default class ChangesEntity {
                 key: 'text',
                 label: 'Full Text Search',
                 type: 'text',
-                placeholder: 'Search across title, purpose, and implementation details...'
+                placeholder: 'Search across title, purpose, states, details...'
             },
             {
                 key: 'visibility',
@@ -388,6 +396,12 @@ export default class ChangesEntity {
                 label: 'Drafting Group',
                 type: 'select',
                 options: this.buildDraftingGroupOptions()
+            },
+            {
+                key: 'document',
+                label: 'Document',
+                type: 'select',
+                options: this.buildDocumentOptions()
             },
             {
                 key: 'stakeholderCategory',
@@ -468,6 +482,16 @@ export default class ChangesEntity {
                 groupPrefix: 'Supersedes'
             },
             {
+                key: 'dependsOnChanges',
+                label: 'Dependencies',
+                width: '150px',
+                sortable: false,
+                type: 'entity-reference-list',
+                maxDisplay: 2,
+                noneLabel: 'No Dependencies',
+                groupPrefix: 'Depends On'
+            },
+            {
                 key: 'createdBy',
                 label: 'Updated By',
                 width: '130px',
@@ -491,12 +515,14 @@ export default class ChangesEntity {
             { key: 'milestones', label: 'Wave' },
             { key: 'visibility', label: 'Visibility' },
             { key: 'satisfiesRequirements', label: 'Satisfies Requirements' },
-            { key: 'supersedsRequirements', label: 'Supersedes Requirements' }
+            { key: 'supersedsRequirements', label: 'Supersedes Requirements' },
+            { key: 'dependsOnChanges', label: 'Dependencies' },
+            { key: 'documentReferences', label: 'Documents' }
         ];
     }
 
     // ====================
-    // HELPER METHODS
+    // HELPER METHODS (Updated for Phase 19)
     // ====================
 
     buildDraftingGroupOptions(emptyLabel = 'Any') {
@@ -523,6 +549,21 @@ export default class ChangesEntity {
         }));
 
         return baseOptions.concat(waveOptions);
+    }
+
+    buildDocumentOptions(emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
+
+        if (!this.setupData?.documents) {
+            return baseOptions;
+        }
+
+        const docOptions = this.setupData.documents.map(doc => ({
+            value: doc.id,
+            label: doc.name || doc.title || doc.id
+        }));
+
+        return baseOptions.concat(docOptions);
     }
 
     buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {

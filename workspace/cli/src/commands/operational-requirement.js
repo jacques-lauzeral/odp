@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-requirement.js - Updated with Phase 19 model evolution support
+// workspace/cli/src/commands/operational-requirement.js - Updated for EntityReference with notes
 import { VersionedCommands } from '../base-commands.js';
 import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '../../../shared/src/index.js';
 import Table from 'cli-table3';
@@ -148,6 +148,7 @@ class OperationalRequirementCommands extends VersionedCommands {
 
     /**
      * Override displayItemDetails for operational requirements
+     * UPDATED: Display notes for IMPACTS and documentReferences
      */
     displayItemDetails(item) {
         super.displayItemDetails(item);
@@ -179,32 +180,39 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
         }
 
+        // UPDATED: Display stakeholder categories with notes
         if (item.impactsStakeholderCategories && item.impactsStakeholderCategories.length > 0) {
             console.log(`\nImpacts Stakeholder Categories:`);
             item.impactsStakeholderCategories.forEach(cat => {
-                console.log(`  - ${cat.title} [ID: ${cat.id}]`);
+                const note = cat.note ? ` - Note: "${cat.note}"` : '';
+                console.log(`  - ${cat.title} [ID: ${cat.id}]${note}`);
             });
         }
 
+        // UPDATED: Display data categories with notes
         if (item.impactsData && item.impactsData.length > 0) {
             console.log(`\nImpacts Data:`);
             item.impactsData.forEach(data => {
-                console.log(`  - ${data.title} [ID: ${data.id}]`);
+                const note = data.note ? ` - Note: "${data.note}"` : '';
+                console.log(`  - ${data.title} [ID: ${data.id}]${note}`);
             });
         }
 
+        // UPDATED: Display services with notes
         if (item.impactsServices && item.impactsServices.length > 0) {
             console.log(`\nImpacts Services:`);
             item.impactsServices.forEach(service => {
-                console.log(`  - ${service.title} [ID: ${service.id}]`);
+                const note = service.note ? ` - Note: "${service.note}"` : '';
+                console.log(`  - ${service.title} [ID: ${service.id}]${note}`);
             });
         }
 
-        if (item.referencesDocuments && item.referencesDocuments.length > 0) {
+        // UPDATED: Display document references with EntityReference format
+        if (item.documentReferences && item.documentReferences.length > 0) {
             console.log(`\nReferences Documents:`);
-            item.referencesDocuments.forEach(ref => {
-                const note = ref.note ? ` (${ref.note})` : '';
-                console.log(`  - ${ref.name} v${ref.version || 'N/A'}${note} [ID: ${ref.documentId}]`);
+            item.documentReferences.forEach(ref => {
+                const note = ref.note ? ` - Note: "${ref.note}"` : '';
+                console.log(`  - ${ref.title} [ID: ${ref.id}]${note}`);
             });
         }
 
@@ -242,6 +250,10 @@ class OperationalRequirementCommands extends VersionedCommands {
         return ids.map(id => id.trim());
     }
 
+    /**
+     * UPDATED: create command now sends EntityReference format for IMPACTS
+     * Note: CLI doesn't support adding notes - web UI required for that
+     */
     _addCreateCommand(itemCommand) {
         itemCommand
             .command('create <title>')
@@ -267,14 +279,15 @@ class OperationalRequirementCommands extends VersionedCommands {
                         rationale: options.rationale || '',
                         flows: options.flows || '',
                         privateNotes: options.privateNotes || '',
-                        path: [], // Path not supported in CLI for simplicity
+                        path: [],
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseImplementedONs(options.implementedOns),
-                        impactsData: options.impactsData || [],
-                        impactsStakeholderCategories: options.impactsStakeholders || [],
-                        impactsServices: options.impactsServices || [],
-                        referencesDocuments: [], // Document references not supported in CLI for simplicity
-                        dependsOnRequirements: [] // Dependencies not supported in CLI for simplicity
+                        // UPDATED: Send EntityReference format (CLI doesn't add notes)
+                        impactsData: (options.impactsData || []).map(id => ({ id, note: '' })),
+                        impactsStakeholderCategories: (options.impactsStakeholders || []).map(id => ({ id, note: '' })),
+                        impactsServices: (options.impactsServices || []).map(id => ({ id, note: '' })),
+                        documentReferences: [],
+                        dependsOnRequirements: []
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
@@ -301,6 +314,9 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
     }
 
+    /**
+     * UPDATED: update command now sends EntityReference format for IMPACTS
+     */
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId> <title>')
@@ -327,14 +343,15 @@ class OperationalRequirementCommands extends VersionedCommands {
                         rationale: options.rationale || '',
                         flows: options.flows || '',
                         privateNotes: options.privateNotes || '',
-                        path: [], // Path not supported in CLI for simplicity
+                        path: [],
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseImplementedONs(options.implementedOns),
-                        impactsData: options.impactsData || [],
-                        impactsStakeholderCategories: options.impactsStakeholders || [],
-                        impactsServices: options.impactsServices || [],
-                        referencesDocuments: [], // Document references not supported in CLI for simplicity
-                        dependsOnRequirements: [] // Dependencies not supported in CLI for simplicity
+                        // UPDATED: Send EntityReference format (CLI doesn't add notes)
+                        impactsData: (options.impactsData || []).map(id => ({ id, note: '' })),
+                        impactsStakeholderCategories: (options.impactsStakeholders || []).map(id => ({ id, note: '' })),
+                        impactsServices: (options.impactsServices || []).map(id => ({ id, note: '' })),
+                        documentReferences: [],
+                        dependsOnRequirements: []
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
@@ -373,6 +390,10 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
     }
 
+    /**
+     * UPDATED: patch command - CLI doesn't support patching notes
+     * If user provides IMPACTS IDs, they're sent as EntityReference with empty notes
+     */
     _addPatchCommand(itemCommand) {
         itemCommand
             .command('patch <itemId> <expectedVersionId>')
@@ -403,9 +424,11 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.privateNotes) data.privateNotes = options.privateNotes;
                     if (options.parent) data.refinesParents = [options.parent];
                     if (options.implementedOns !== undefined) data.implementedONs = this.parseImplementedONs(options.implementedOns);
-                    if (options.impactsData) data.impactsData = options.impactsData;
-                    if (options.impactsStakeholders) data.impactsStakeholderCategories = options.impactsStakeholders;
-                    if (options.impactsServices) data.impactsServices = options.impactsServices;
+
+                    // UPDATED: Send EntityReference format when provided
+                    if (options.impactsData) data.impactsData = options.impactsData.map(id => ({ id, note: '' }));
+                    if (options.impactsStakeholders) data.impactsStakeholderCategories = options.impactsStakeholders.map(id => ({ id, note: '' }));
+                    if (options.impactsServices) data.impactsServices = options.impactsServices.map(id => ({ id, note: '' }));
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PATCH',

@@ -254,7 +254,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             satisfiesRequirements,
             supersedsRequirements,
             milestones,
-            referencesDocuments,
+            documentReferences,
             dependsOnChanges,
             ...contentData
         } = data;
@@ -264,7 +264,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 satisfiesRequirements: satisfiesRequirements || [],
                 supersedsRequirements: supersedsRequirements || [],
                 milestones: milestones || [],  // Milestone data (not IDs)
-                referencesDocuments: referencesDocuments || [], // Array of {documentId, note}
+                documentReferences: documentReferences || [], // Array of EntityReference {id, note?}
                 dependsOnChanges: dependsOnChanges || [] // Array of item IDs
             },
             ...contentData
@@ -282,46 +282,45 @@ export class OperationalChangeStore extends VersionedItemStore {
         try {
             // Get SATISFIES relationships (to OperationalRequirement Items)
             const satisfiesResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:SATISFIES]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                WHERE id(version) = $versionId
-                RETURN id(req) as id, req.title as title, reqVersion.type as type
-                ORDER BY req.title
-            `, { versionId });
+            MATCH (version:${this.versionLabel})-[:SATISFIES]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
+            WHERE id(version) = $versionId
+            RETURN id(req) as id, req.title as title, reqVersion.type as type
+            ORDER BY req.title
+        `, { versionId });
 
             const satisfiesRequirements = satisfiesResult.records.map(record => this._buildReference(record));
 
             // Get SUPERSEDS relationships (to OperationalRequirement Items)
             const supersedsResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:SUPERSEDS]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                WHERE id(version) = $versionId
-                RETURN id(req) as id, req.title as title, reqVersion.type as type
-                ORDER BY req.title
-            `, { versionId });
+            MATCH (version:${this.versionLabel})-[:SUPERSEDS]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
+            WHERE id(version) = $versionId
+            RETURN id(req) as id, req.title as title, reqVersion.type as type
+            ORDER BY req.title
+        `, { versionId });
 
             const supersedsRequirements = supersedsResult.records.map(record => this._buildReference(record));
 
-            // Get REFERENCES relationships to Documents
+            // Get REFERENCES relationships to Documents (with note)
             const referencesResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[ref:REFERENCES]->(doc:Document)
-                WHERE id(version) = $versionId
-                RETURN id(doc) as documentId, doc.name as name, doc.version as version, ref.note as note
-                ORDER BY doc.name
-            `, { versionId });
+            MATCH (version:${this.versionLabel})-[ref:REFERENCES]->(doc:Document)
+            WHERE id(version) = $versionId
+            RETURN id(doc) as id, doc.name as title, ref.note as note
+            ORDER BY doc.name
+        `, { versionId });
 
-            const referencesDocuments = referencesResult.records.map(record => ({
-                documentId: this.normalizeId(record.get('documentId')),
-                name: record.get('name'),
-                version: record.get('version'),
+            const documentReferences = referencesResult.records.map(record => ({
+                id: this.normalizeId(record.get('id')),
+                title: record.get('title'),
                 note: record.get('note') || ''
             }));
 
             // Get DEPENDS_ON relationships (Version -> Item, resolve to current context version)
             const dependsOnResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(changeItem:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
-                WHERE id(version) = $versionId
-                RETURN id(changeItem) as itemId, changeItem.title as title, id(changeVersion) as versionId, changeVersion.version as version
-                ORDER BY changeItem.title
-            `, { versionId });
+            MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(changeItem:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
+            WHERE id(version) = $versionId
+            RETURN id(changeItem) as itemId, changeItem.title as title, id(changeVersion) as versionId, changeVersion.version as version
+            ORDER BY changeItem.title
+        `, { versionId });
 
             const dependsOnChanges = dependsOnResult.records.map(record => ({
                 itemId: this.normalizeId(record.get('itemId')),
@@ -336,7 +335,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             return {
                 satisfiesRequirements,
                 supersedsRequirements,
-                referencesDocuments,
+                documentReferences,
                 dependsOnChanges,
                 milestones
             };
@@ -356,32 +355,32 @@ export class OperationalChangeStore extends VersionedItemStore {
         try {
             // Get relationships as ID arrays
             const relationshipsResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})
-                WHERE id(version) = $versionId
-                
-                // Get SATISFIES relationships
-                OPTIONAL MATCH (version)-[:SATISFIES]->(satisfiedReq:OperationalRequirement)
-                WITH version, collect(id(satisfiedReq)) as satisfiesRequirements
-                
-                // Get SUPERSEDS relationships
-                OPTIONAL MATCH (version)-[:SUPERSEDS]->(supersededReq:OperationalRequirement)
-                WITH version, satisfiesRequirements, collect(id(supersededReq)) as supersedsRequirements
-                
-                // Get REFERENCES relationships with note property
-                OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
-                WITH version, satisfiesRequirements, supersedsRequirements,
-                     collect({documentId: id(doc), note: ref.note}) as referencesDocuments
-                
-                // Get DEPENDS_ON relationships (Version -> Item)
-                OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depChange:OperationalChange)
-                
-                RETURN satisfiesRequirements, supersedsRequirements, referencesDocuments, collect(id(depChange)) as dependsOnChanges
-            `, { versionId });
+            MATCH (version:${this.versionLabel})
+            WHERE id(version) = $versionId
+            
+            // Get SATISFIES relationships
+            OPTIONAL MATCH (version)-[:SATISFIES]->(satisfiedReq:OperationalRequirement)
+            WITH version, collect(id(satisfiedReq)) as satisfiesRequirements
+            
+            // Get SUPERSEDS relationships
+            OPTIONAL MATCH (version)-[:SUPERSEDS]->(supersededReq:OperationalRequirement)
+            WITH version, satisfiesRequirements, collect(id(supersededReq)) as supersedsRequirements
+            
+            // Get REFERENCES relationships with note property
+            OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
+            WITH version, satisfiesRequirements, supersedsRequirements,
+                 collect({id: id(doc), note: ref.note}) as documentReferences
+            
+            // Get DEPENDS_ON relationships (Version -> Item)
+            OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depChange:OperationalChange)
+            
+            RETURN satisfiesRequirements, supersedsRequirements, documentReferences, collect(id(depChange)) as dependsOnChanges
+        `, { versionId });
 
             let relationships = {
                 satisfiesRequirements: [],
                 supersedsRequirements: [],
-                referencesDocuments: [],
+                documentReferences: [],
                 dependsOnChanges: []
             };
 
@@ -390,8 +389,8 @@ export class OperationalChangeStore extends VersionedItemStore {
                 relationships = {
                     satisfiesRequirements: record.get('satisfiesRequirements').map(id => this.normalizeId(id)),
                     supersedsRequirements: record.get('supersedsRequirements').map(id => this.normalizeId(id)),
-                    referencesDocuments: record.get('referencesDocuments').map(ref => ({
-                        documentId: this.normalizeId(ref.documentId),
+                    documentReferences: record.get('documentReferences').map(ref => ({
+                        id: this.normalizeId(ref.id),
                         note: ref.note || ''
                     })),
                     dependsOnChanges: record.get('dependsOnChanges').map(id => this.normalizeId(id))
@@ -423,7 +422,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 satisfiesRequirements = [],
                 supersedsRequirements = [],
                 milestones = [],
-                referencesDocuments = [],
+                documentReferences = [],
                 dependsOnChanges = []
             } = relationshipIds;
 
@@ -431,21 +430,21 @@ export class OperationalChangeStore extends VersionedItemStore {
             await this._createRequirementRelationshipsFromIds(versionId, satisfiesRequirements, supersedsRequirements, transaction);
 
             // Create REFERENCES relationships with note property
-            if (referencesDocuments.length > 0) {
-                const documentIds = referencesDocuments.map(ref => this.normalizeId(ref.documentId));
+            if (documentReferences.length > 0) {
+                const documentIds = documentReferences.map(ref => this.normalizeId(ref.id));
 
                 // Validate all documents exist
                 await this._validateReferences('Document', documentIds, transaction);
 
                 // Create REFERENCES relationships with notes
-                for (const ref of referencesDocuments) {
+                for (const ref of documentReferences) {
                     await transaction.run(`
-                        MATCH (version:${this.versionLabel}), (doc:Document)
-                        WHERE id(version) = $versionId AND id(doc) = $documentId
-                        CREATE (version)-[:REFERENCES {note: $note}]->(doc)
-                    `, {
+                    MATCH (version:${this.versionLabel}), (doc:Document)
+                    WHERE id(version) = $versionId AND id(doc) = $documentId
+                    CREATE (version)-[:REFERENCES {note: $note}]->(doc)
+                `, {
                         versionId,
-                        documentId: this.normalizeId(ref.documentId),
+                        documentId: this.normalizeId(ref.id),
                         note: ref.note || ''
                     });
                 }
@@ -455,10 +454,10 @@ export class OperationalChangeStore extends VersionedItemStore {
             if (dependsOnChanges.length > 0) {
                 // Get parent item for self-reference check
                 const versionCheck = await transaction.run(`
-                    MATCH (version:${this.versionLabel})-[:VERSION_OF]->(item:OperationalChange)
-                    WHERE id(version) = $versionId
-                    RETURN id(item) as itemId
-                `, { versionId });
+                MATCH (version:${this.versionLabel})-[:VERSION_OF]->(item:OperationalChange)
+                WHERE id(version) = $versionId
+                RETURN id(item) as itemId
+            `, { versionId });
 
                 if (versionCheck.records.length === 0) {
                     throw new StoreError('Version not found');
@@ -477,14 +476,14 @@ export class OperationalChangeStore extends VersionedItemStore {
 
                 // Create DEPENDS_ON relationships
                 await transaction.run(`
-                    MATCH (version:${this.versionLabel})
-                    WHERE id(version) = $versionId
-                    
-                    UNWIND $depIds as depId
-                    MATCH (depChange:OperationalChange)
-                    WHERE id(depChange) = depId
-                    CREATE (version)-[:DEPENDS_ON]->(depChange)
-                `, { versionId, depIds: normalizedDepIds });
+                MATCH (version:${this.versionLabel})
+                WHERE id(version) = $versionId
+                
+                UNWIND $depIds as depId
+                MATCH (depChange:OperationalChange)
+                WHERE id(depChange) = depId
+                CREATE (version)-[:DEPENDS_ON]->(depChange)
+            `, { versionId, depIds: normalizedDepIds });
             }
 
             // Delegate milestone creation to milestoneStore

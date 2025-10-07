@@ -190,35 +190,47 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const refinesParents = refinesResult.records.map(record => this._buildReference(record));
 
-            // Get IMPACTS relationships to StakeholderCategories
+            // Get IMPACTS relationships to StakeholderCategories (with note)
             const stakeholderResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:StakeholderCategory)
+                MATCH (version:${this.versionLabel})-[rel:IMPACTS]->(target:StakeholderCategory)
                 WHERE id(version) = $versionId
-                RETURN id(target) as id, target.name as title
+                RETURN id(target) as id, target.name as title, rel.note as note
                 ORDER BY target.name
             `, { versionId });
 
-            const impactsStakeholderCategories = stakeholderResult.records.map(record => this._buildReference(record));
+            const impactsStakeholderCategories = stakeholderResult.records.map(record => ({
+                id: this.normalizeId(record.get('id')),
+                title: record.get('title'),
+                note: record.get('note') || ''
+            }));
 
-            // Get IMPACTS relationships to Data
+            // Get IMPACTS relationships to Data (with note)
             const dataResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:DataCategory)
+                MATCH (version:${this.versionLabel})-[rel:IMPACTS]->(target:DataCategory)
                 WHERE id(version) = $versionId
-                RETURN id(target) as id, target.name as title
+                RETURN id(target) as id, target.name as title, rel.note as note
                 ORDER BY target.name
             `, { versionId });
 
-            const impactsData = dataResult.records.map(record => this._buildReference(record));
+            const impactsData = dataResult.records.map(record => ({
+                id: this.normalizeId(record.get('id')),
+                title: record.get('title'),
+                note: record.get('note') || ''
+            }));
 
-            // Get IMPACTS relationships to Services
+            // Get IMPACTS relationships to Services (with note)
             const serviceResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:Service)
+                MATCH (version:${this.versionLabel})-[rel:IMPACTS]->(target:Service)
                 WHERE id(version) = $versionId
-                RETURN id(target) as id, target.name as title
+                RETURN id(target) as id, target.name as title, rel.note as note
                 ORDER BY target.name
             `, { versionId });
 
-            const impactsServices = serviceResult.records.map(record => this._buildReference(record));
+            const impactsServices = serviceResult.records.map(record => ({
+                id: this.normalizeId(record.get('id')),
+                title: record.get('title'),
+                note: record.get('note') || ''
+            }));
 
             // Get implementedONs relationships (to OperationalRequirement Items with type ON)
             const implementedONsResult = await transaction.run(`
@@ -284,40 +296,40 @@ export class OperationalRequirementStore extends VersionedItemStore {
     async _extractRelationshipIdsFromVersion(versionId, transaction) {
         try {
             const result = await transaction.run(`
-                MATCH (version:${this.versionLabel})
-                WHERE id(version) = $versionId
-                
-                // Get REFINES relationships
-                OPTIONAL MATCH (version)-[:REFINES]->(parent:OperationalRequirement)
-                WITH version, collect(id(parent)) as refinesParents
-                
-                // Get IMPACTS relationships to StakeholderCategory
-                OPTIONAL MATCH (version)-[:IMPACTS]->(sc:StakeholderCategory)
-                WITH version, refinesParents, collect(id(sc)) as impactsStakeholderCategories
-                
-                // Get IMPACTS relationships to Data
-                OPTIONAL MATCH (version)-[:IMPACTS]->(d:DataCategory)
-                WITH version, refinesParents, impactsStakeholderCategories, collect(id(d)) as impactsData
-                
-                // Get IMPACTS relationships to Service
-                OPTIONAL MATCH (version)-[:IMPACTS]->(s:Service)
-                WITH version, refinesParents, impactsStakeholderCategories, impactsData, collect(id(s)) as impactsServices
-                
-                // Get implementedONs relationships
-                OPTIONAL MATCH (version)-[:IMPLEMENTS]->(ion:OperationalRequirement)
-                WITH version, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, collect(id(ion)) as implementedONs
-                
-                // Get REFERENCES relationships with note property
-                OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
-                WITH version, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
-                     collect({documentId: id(doc), note: ref.note}) as referencesDocuments
-                
-                // Get DEPENDS_ON relationships (Version -> Item)
-                OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depReq:OperationalRequirement)
-                
-                RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
-                       referencesDocuments, collect(id(depReq)) as dependsOnRequirements
-            `, { versionId });
+            MATCH (version:${this.versionLabel})
+            WHERE id(version) = $versionId
+            
+            // Get REFINES relationships
+            OPTIONAL MATCH (version)-[:REFINES]->(parent:OperationalRequirement)
+            WITH version, collect(id(parent)) as refinesParents
+            
+            // Get IMPACTS relationships to StakeholderCategory (with note)
+            OPTIONAL MATCH (version)-[scRel:IMPACTS]->(sc:StakeholderCategory)
+            WITH version, refinesParents, collect({id: id(sc), note: scRel.note}) as impactsStakeholderCategories
+            
+            // Get IMPACTS relationships to Data (with note)
+            OPTIONAL MATCH (version)-[dRel:IMPACTS]->(d:DataCategory)
+            WITH version, refinesParents, impactsStakeholderCategories, collect({id: id(d), note: dRel.note}) as impactsData
+            
+            // Get IMPACTS relationships to Service (with note)
+            OPTIONAL MATCH (version)-[sRel:IMPACTS]->(s:Service)
+            WITH version, refinesParents, impactsStakeholderCategories, impactsData, collect({id: id(s), note: sRel.note}) as impactsServices
+            
+            // Get implementedONs relationships
+            OPTIONAL MATCH (version)-[:IMPLEMENTS]->(ion:OperationalRequirement)
+            WITH version, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, collect(id(ion)) as implementedONs
+            
+            // Get REFERENCES relationships with note property
+            OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
+            WITH version, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
+                 collect({id: id(doc), note: ref.note}) as documentReferences
+            
+            // Get DEPENDS_ON relationships (Version -> Item)
+            OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depReq:OperationalRequirement)
+            
+            RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
+                   documentReferences, collect(id(depReq)) as dependsOnRequirements
+        `, { versionId });
 
             if (result.records.length === 0) {
                 // Version doesn't exist - return empty relationships
@@ -327,7 +339,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     impactsData: [],
                     impactsServices: [],
                     implementedONs: [],
-                    referencesDocuments: [],
+                    documentReferences: [],
                     dependsOnRequirements: []
                 };
             }
@@ -335,12 +347,21 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const record = result.records[0];
             return {
                 refinesParents: record.get('refinesParents').map(id => this.normalizeId(id)),
-                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => this.normalizeId(id)),
-                impactsData: record.get('impactsData').map(id => this.normalizeId(id)),
-                impactsServices: record.get('impactsServices').map(id => this.normalizeId(id)),
+                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(ref => ({
+                    id: this.normalizeId(ref.id),
+                    note: ref.note || ''
+                })),
+                impactsData: record.get('impactsData').map(ref => ({
+                    id: this.normalizeId(ref.id),
+                    note: ref.note || ''
+                })),
+                impactsServices: record.get('impactsServices').map(ref => ({
+                    id: this.normalizeId(ref.id),
+                    note: ref.note || ''
+                })),
                 implementedONs: record.get('implementedONs').map(id => this.normalizeId(id)),
-                referencesDocuments: record.get('referencesDocuments').map(ref => ({
-                    documentId: this.normalizeId(ref.documentId),
+                documentReferences: record.get('documentReferences').map(ref => ({
+                    id: this.normalizeId(ref.id),
                     note: ref.note || ''
                 })),
                 dependsOnRequirements: record.get('dependsOnRequirements').map(id => this.normalizeId(id))
@@ -483,33 +504,167 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Create IMPACTS relationships to a specific item type from ID arrays
+     * Create fresh relationships for a version from ID arrays
      * @private
      * @param {number} versionId - ItemVersion node ID
-     * @param {string} targetLabel - Target item label
-     * @param {Array<number>} targetIds - Target item IDs
+     * @param {object} relationshipIds - Relationship data with ID arrays
      * @param {Transaction} transaction - Transaction instance
      */
-    async _createImpactsRelationshipsFromIds(versionId, targetLabel, targetIds, transaction) {
-        if (targetIds.length === 0) return;
-
+    async _createRelationshipsFromIds(versionId, relationshipIds, transaction) {
         try {
-            // Normalize target IDs
-            const normalizedTargetIds = targetIds.map(id => this.normalizeId(id));
+            const {
+                refinesParents = [],
+                impactsStakeholderCategories = [],
+                impactsData = [],
+                impactsServices = [],
+                implementedONs = [],
+                documentReferences = [],
+                dependsOnRequirements = []
+            } = relationshipIds;
 
-            // Validate all target items exist
-            await this._validateReferences(targetLabel, normalizedTargetIds, transaction);
+            // Validate that version exists and get its parent item for self-reference checks
+            const versionCheck = await transaction.run(`
+            MATCH (version:${this.versionLabel})-[:VERSION_OF]->(item:OperationalRequirement)
+            WHERE id(version) = $versionId
+            RETURN id(item) as itemId
+        `, { versionId });
 
-            // Create IMPACTS relationships
-            await transaction.run(`
+            if (versionCheck.records.length === 0) {
+                throw new StoreError('Version not found');
+            }
+
+            const itemId = this.normalizeId(versionCheck.records[0].get('itemId'));
+
+            // Create REFINES relationships
+            if (refinesParents.length > 0) {
+                // Normalize parent IDs
+                const normalizedParentIds = refinesParents.map(id => this.normalizeId(id));
+
+                // Validate no self-references
+                if (normalizedParentIds.includes(itemId)) {
+                    throw new StoreError('Cannot create self-referencing REFINES relationship');
+                }
+
+                // Validate all parent items exist
+                await this._validateReferences('OperationalRequirement', normalizedParentIds, transaction);
+
+                // Create REFINES relationships
+                await transaction.run(`
                 MATCH (version:${this.versionLabel})
                 WHERE id(version) = $versionId
                 
-                UNWIND $targetIds as targetId
-                MATCH (target:${targetLabel})
-                WHERE id(target) = targetId
-                CREATE (version)-[:IMPACTS]->(target)
-            `, { versionId, targetIds: normalizedTargetIds });
+                UNWIND $parentIds as parentId
+                MATCH (parent:OperationalRequirement)
+                WHERE id(parent) = parentId
+                CREATE (version)-[:REFINES]->(parent)
+            `, { versionId, parentIds: normalizedParentIds });
+            }
+
+            // Create IMPACTS relationships (with notes)
+            await this._createImpactsRelationshipsFromIds(versionId, 'StakeholderCategory', impactsStakeholderCategories, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'DataCategory', impactsData, transaction);
+            await this._createImpactsRelationshipsFromIds(versionId, 'Service', impactsServices, transaction);
+
+            // Create IMPLEMENTS relationships
+            if (implementedONs.length > 0) {
+                const normalizedONIds = implementedONs.map(id => this.normalizeId(id));
+
+                // Validate all ON items exist (type validation will be done at service layer)
+                await this._validateReferences('OperationalRequirement', normalizedONIds, transaction);
+
+                // Create IMPLEMENTS relationships
+                await transaction.run(`
+                MATCH (version:${this.versionLabel})
+                WHERE id(version) = $versionId
+            
+                UNWIND $onIds as onId
+                MATCH (on:OperationalRequirement)
+                WHERE id(on) = onId
+                CREATE (version)-[:IMPLEMENTS]->(on)
+            `, { versionId, onIds: normalizedONIds });
+            }
+
+            // Create REFERENCES relationships with note property
+            if (documentReferences.length > 0) {
+                const documentIds = documentReferences.map(ref => this.normalizeId(ref.id));
+
+                // Validate all documents exist
+                await this._validateReferences('Document', documentIds, transaction);
+
+                // Create REFERENCES relationships with notes
+                for (const ref of documentReferences) {
+                    await transaction.run(`
+                    MATCH (version:${this.versionLabel}), (doc:Document)
+                    WHERE id(version) = $versionId AND id(doc) = $documentId
+                    CREATE (version)-[:REFERENCES {note: $note}]->(doc)
+                `, {
+                        versionId,
+                        documentId: this.normalizeId(ref.id),
+                        note: ref.note || ''
+                    });
+                }
+            }
+
+            // Create DEPENDS_ON relationships (Version -> Item)
+            if (dependsOnRequirements.length > 0) {
+                const normalizedDepIds = dependsOnRequirements.map(id => this.normalizeId(id));
+
+                // Validate no self-dependencies
+                if (normalizedDepIds.includes(itemId)) {
+                    throw new StoreError('Cannot create self-referencing DEPENDS_ON relationship');
+                }
+
+                // Validate all dependency items exist
+                await this._validateReferences('OperationalRequirement', normalizedDepIds, transaction);
+
+                // Create DEPENDS_ON relationships
+                await transaction.run(`
+                MATCH (version:${this.versionLabel})
+                WHERE id(version) = $versionId
+                
+                UNWIND $depIds as depId
+                MATCH (depReq:OperationalRequirement)
+                WHERE id(depReq) = depId
+                CREATE (version)-[:DEPENDS_ON]->(depReq)
+            `, { versionId, depIds: normalizedDepIds });
+            }
+
+        } catch (error) {
+            if (error instanceof StoreError) throw error;
+            throw new StoreError(`Failed to create relationships from IDs: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Create IMPACTS relationships to a specific item type from EntityReference arrays
+     * @private
+     * @param {number} versionId - ItemVersion node ID
+     * @param {string} targetLabel - Target item label
+     * @param {Array<object>} targetRefs - Target EntityReference objects with {id, note?}
+     * @param {Transaction} transaction - Transaction instance
+     */
+    async _createImpactsRelationshipsFromIds(versionId, targetLabel, targetRefs, transaction) {
+        if (targetRefs.length === 0) return;
+
+        try {
+            // Extract IDs for validation
+            const targetIds = targetRefs.map(ref => this.normalizeId(ref.id));
+
+            // Validate all target items exist
+            await this._validateReferences(targetLabel, targetIds, transaction);
+
+            // Create IMPACTS relationships with note property
+            for (const ref of targetRefs) {
+                await transaction.run(`
+                MATCH (version:${this.versionLabel}), (target:${targetLabel})
+                WHERE id(version) = $versionId AND id(target) = $targetId
+                CREATE (version)-[:IMPACTS {note: $note}]->(target)
+            `, {
+                    versionId,
+                    targetId: this.normalizeId(ref.id),
+                    note: ref.note || ''
+                });
+            }
 
         } catch (error) {
             throw new StoreError(`Failed to create IMPACTS relationships to ${targetLabel}: ${error.message}`, error);

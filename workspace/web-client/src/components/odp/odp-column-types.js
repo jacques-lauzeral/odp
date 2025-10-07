@@ -1,7 +1,8 @@
 /**
  * ODP Column Types - Column type implementations for ODP-specific data
  * Handles setup data references, entity references, and ODP-specific formatting
- * Updated for model evolution: DRG enum, new milestone events, and enhanced field structure
+ * Updated for model evolution: DRG enum, new milestone events, enhanced field structure,
+ * and annotated references for document references with notes
  */
 
 // Import shared enums and utilities from @odp/shared
@@ -416,6 +417,118 @@ export const entityReferenceListColumn = {
 };
 
 // ====================
+// ANNOTATED REFERENCE LIST (NEW - for document references with notes)
+// ====================
+
+export const annotatedReferenceListColumn = {
+    /**
+     * Render a list of annotated references (EntityReference with optional notes)
+     * Format: {id, title, note}
+     * Display: "Title[Note text]" with full note in tooltip
+     */
+    render: (value, column, item, context) => {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return column.noneLabel || '-';
+        }
+
+        // Show first few items with overflow indicator
+        const maxDisplay = column.maxDisplay || 2;
+        const displayItems = value.slice(0, maxDisplay);
+        const remainingCount = value.length - displayItems.length;
+
+        let html = displayItems.map(ref => {
+            const title = escapeHtml(ref?.title || ref?.name || ref?.id || 'Unknown');
+            const note = ref?.note;
+
+            if (note && note.trim() !== '') {
+                const truncatedNote = truncate(note, 16);
+                const fullNote = escapeHtml(note);
+                return `<span class="ref-with-note" title="${fullNote}">${title}[${escapeHtml(truncatedNote)}]</span>`;
+            }
+
+            return `<span class="reference-item">${title}</span>`;
+        }).join(', ');
+
+        if (remainingCount > 0) {
+            html += `, <span class="reference-more">+${remainingCount} more</span>`;
+        }
+
+        return html;
+    },
+
+    /**
+     * Filter by reference title/name/id or note content
+     */
+    filter: (value, filterValue, column) => {
+        if (!filterValue) return true;
+        if (!value || !Array.isArray(value) || value.length === 0) return false;
+
+        const lowerFilter = filterValue.toLowerCase();
+
+        return value.some(ref => {
+            if (!ref) return false;
+
+            const id = ref.id?.toString().toLowerCase();
+            const title = ref.title?.toLowerCase();
+            const name = ref.name?.toLowerCase();
+            const note = ref.note?.toLowerCase();
+
+            return (id && id.includes(lowerFilter)) ||
+                (title && title.includes(lowerFilter)) ||
+                (name && name.includes(lowerFilter)) ||
+                (note && note.includes(lowerFilter));
+        });
+    },
+
+    /**
+     * Get filter options from documents in setupData
+     */
+    getFilterOptions: (column, context) => {
+        if (!context.setupData?.documents) {
+            return [{ value: '', label: column.anyLabel || 'Any' }];
+        }
+
+        const options = context.setupData.documents.map(doc => ({
+            value: doc.id,
+            label: doc.name || doc.title || doc.id
+        }));
+
+        return [{ value: '', label: column.anyLabel || 'Any' }, ...options];
+    },
+
+    /**
+     * Sort by first reference title
+     */
+    sort: (a, b, column) => {
+        const getFirst = (value) => {
+            if (!value || !Array.isArray(value) || value.length === 0) return '';
+            const first = value[0];
+            return first?.title || first?.name || first?.id || '';
+        };
+
+        return getFirst(a).localeCompare(getFirst(b));
+    },
+
+    /**
+     * Get group title for grouping by document references
+     */
+    getGroupTitle: (value, column, context) => {
+        if (!value || !Array.isArray(value) || value.length === 0) {
+            return column.noneLabel || 'No Document References';
+        }
+
+        const first = value[0];
+        const firstDisplay = first?.title || first?.name || first?.id || 'Unknown';
+
+        if (value.length > 1) {
+            return `${firstDisplay} (+${value.length - 1} more)`;
+        }
+
+        return firstDisplay;
+    }
+};
+
+// ====================
 // WAVE REFERENCE
 // ====================
 
@@ -672,7 +785,7 @@ export const milestoneEventsColumn = {
         const remainingCount = value.length - displayEvents.length;
 
         let html = displayEvents.map(eventType => {
-            const displayValue = getMilestoneEventTypeDisplay(eventType);
+            const displayValue = getMilestoneEventDisplay(eventType);
             return `<span class="milestone-event-badge">${escapeHtml(displayValue)}</span>`;
         }).join(' ');
 
@@ -695,7 +808,7 @@ export const milestoneEventsColumn = {
         return value.some(eventType => {
             if (eventType === filterValue) return true;
 
-            const displayValue = getMilestoneEventTypeDisplay(eventType);
+            const displayValue = getMilestoneEventDisplay(eventType);
             return displayValue.toLowerCase().includes(lowerFilter);
         });
     },
@@ -706,7 +819,7 @@ export const milestoneEventsColumn = {
     getFilterOptions: (column, context) => {
         const options = Object.keys(MilestoneEventType).map(key => ({
             value: key,
-            label: getMilestoneEventTypeDisplay(key)
+            label: getMilestoneEventDisplay(key)
         }));
 
         return [{ value: '', label: 'All Event Types' }, ...options];
@@ -719,8 +832,8 @@ export const milestoneEventsColumn = {
         const firstA = Array.isArray(a) && a.length > 0 ? a[0] : '';
         const firstB = Array.isArray(b) && b.length > 0 ? b[0] : '';
 
-        const displayA = firstA ? getMilestoneEventTypeDisplay(firstA) : '';
-        const displayB = firstB ? getMilestoneEventTypeDisplay(firstB) : '';
+        const displayA = firstA ? getMilestoneEventDisplay(firstA) : '';
+        const displayB = firstB ? getMilestoneEventDisplay(firstB) : '';
 
         return displayA.localeCompare(displayB);
     },
@@ -734,7 +847,7 @@ export const milestoneEventsColumn = {
         }
 
         const firstEvent = value[0];
-        const firstDisplay = getMilestoneEventTypeDisplay(firstEvent);
+        const firstDisplay = getMilestoneEventDisplay(firstEvent);
 
         if (value.length > 1) {
             return `${firstDisplay} (+${value.length - 1} more)`;
@@ -838,6 +951,11 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function truncate(text, maxLength) {
+    if (!text || text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 3) + '...';
+}
+
 // ====================
 // EXPORT ALL COLUMN TYPES
 // ====================
@@ -847,6 +965,7 @@ export const odpColumnTypes = {
     'multi-setup-reference': multiSetupDataColumn,
     'entity-reference': entityReferenceColumn,
     'entity-reference-list': entityReferenceListColumn,
+    'annotated-reference-list': annotatedReferenceListColumn,  // NEW
     'wave': waveColumn,
     'requirement-type': requirementTypeColumn,
     'visibility': visibilityColumn,

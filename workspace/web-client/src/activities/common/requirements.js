@@ -10,6 +10,12 @@ import {
     getDraftingGroupDisplay
 } from '/shared/src/index.js';
 
+/**
+ * RequirementsEntity - Requirements collection management
+ * Updated for Phase 19 model evolution:
+ * - Removed: regulatoryAspect filter/column/grouping
+ * - Added: document filter/column/grouping, dependencies column/grouping
+ */
 export default class RequirementsEntity {
     constructor(app, entityConfig, setupData) {
         this.app = app;
@@ -103,7 +109,7 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // COLLECTION CONFIGURATION (Updated for model evolution)
+    // COLLECTION CONFIGURATION (Updated for Phase 19)
     // ====================
 
     getFilterConfig() {
@@ -122,7 +128,7 @@ export default class RequirementsEntity {
                 key: 'text',
                 label: 'Full Text Search',
                 type: 'text',
-                placeholder: 'Search across title, statement, rationale, flows, and more...'
+                placeholder: 'Search across title, statement, rationale...'
             },
             {
                 key: 'drg',
@@ -143,16 +149,16 @@ export default class RequirementsEntity {
                 options: this.buildOptionsFromSetupData('stakeholderCategories')
             },
             {
-                key: 'regulatoryAspect',
-                label: 'Regulatory Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('regulatoryAspects')
-            },
-            {
                 key: 'service',
                 label: 'Services Impact',
                 type: 'select',
                 options: this.buildOptionsFromSetupData('services')
+            },
+            {
+                key: 'document',
+                label: 'Document Reference',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('documents')
             }
         ];
     }
@@ -209,6 +215,25 @@ export default class RequirementsEntity {
                 groupPrefix: 'Implements'
             },
             {
+                key: 'dependsOnRequirements',
+                label: 'Depends On',
+                width: '150px',
+                sortable: false,
+                type: 'entity-reference-list',
+                maxDisplay: 1,
+                noneLabel: 'No Dependencies',
+                groupPrefix: 'Depends On'
+            },
+            {
+                key: 'documentReferences',
+                label: 'Documents',
+                width: '150px',
+                sortable: false,
+                type: 'annotated-reference-list',
+                maxDisplay: 2,
+                noneLabel: 'No Documents'
+            },
+            {
                 key: 'impactsData',
                 label: 'Data',
                 width: '120px',
@@ -227,16 +252,6 @@ export default class RequirementsEntity {
                 setupEntity: 'stakeholderCategories',
                 renderMode: 'inline',
                 noneLabel: 'No Stakeholder Impact'
-            },
-            {
-                key: 'impactsRegulatoryAspects',
-                label: 'Regulatory',
-                width: '120px',
-                sortable: true,
-                type: 'multi-setup-reference',
-                setupEntity: 'regulatoryAspects',
-                renderMode: 'inline',
-                noneLabel: 'No Regulatory Impact'
             },
             {
                 key: 'impactsServices',
@@ -272,15 +287,16 @@ export default class RequirementsEntity {
             { key: 'drg', label: 'Drafting Group' },
             { key: 'refinesParents', label: 'Refines' },
             { key: 'implementedONs', label: 'Implements' },
+            { key: 'dependsOnRequirements', label: 'Dependencies' },
+            { key: 'documentReferences', label: 'Document References' },
             { key: 'impactsData', label: 'Data Impact' },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact' },
-            { key: 'impactsRegulatoryAspects', label: 'Regulatory Impact' },
             { key: 'impactsServices', label: 'Services Impact' }
         ];
     }
 
     // ====================
-    // HELPER METHODS (Updated with new options)
+    // HELPER METHODS (Updated for Phase 19)
     // ====================
 
     buildDraftingGroupOptions(emptyLabel = 'Any') {
@@ -301,10 +317,9 @@ export default class RequirementsEntity {
             return baseOptions;
         }
 
-        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
         const setupOptions = this.setupData[entityName].map(entity => ({
             value: entity.id,
-            label: entity[labelKey] || entity.name || entity.id
+            label: entity.name || entity.title || entity.id
         }));
 
         return baseOptions.concat(setupOptions);
@@ -561,6 +576,9 @@ export default class RequirementsEntity {
         if (this.form.onRequirementsCache) {
             this.form.onRequirementsCache = null;
         }
+        if (this.form.dependencyRequirementsCache) {
+            this.form.dependencyRequirementsCache = null;
+        }
     }
 
     handleFilter(filterKey, filterValue) {
@@ -700,7 +718,6 @@ export default class RequirementsEntity {
             const summary = {
                 stakeholder: {},
                 data: {},
-                regulatory: {},
                 services: {}
             };
 
@@ -713,11 +730,6 @@ export default class RequirementsEntity {
                 // Count data impacts
                 (req.impactsData || []).forEach(id => {
                     summary.data[id] = (summary.data[id] || 0) + 1;
-                });
-
-                // Count regulatory impacts
-                (req.impactsRegulatoryAspects || []).forEach(id => {
-                    summary.regulatory[id] = (summary.regulatory[id] || 0) + 1;
                 });
 
                 // Count services impacts

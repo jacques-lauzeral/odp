@@ -55,10 +55,10 @@ export class OperationalRequirementService extends VersionedItemService {
             drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             implementedONs: patchPayload.implementedONs !== undefined ? patchPayload.implementedONs : current.implementedONs.map(ref => ref.id),
             refinesParents: patchPayload.refinesParents !== undefined ? patchPayload.refinesParents : current.refinesParents.map(ref => ref.id),
-            impactsStakeholderCategories: patchPayload.impactsStakeholderCategories !== undefined ? patchPayload.impactsStakeholderCategories : current.impactsStakeholderCategories.map(ref => ref.id),
-            impactsData: patchPayload.impactsData !== undefined ? patchPayload.impactsData : current.impactsData.map(ref => ref.id),
-            impactsServices: patchPayload.impactsServices !== undefined ? patchPayload.impactsServices : current.impactsServices.map(ref => ref.id),
-            referencesDocuments: patchPayload.referencesDocuments !== undefined ? patchPayload.referencesDocuments : current.referencesDocuments,
+            impactsStakeholderCategories: patchPayload.impactsStakeholderCategories !== undefined ? patchPayload.impactsStakeholderCategories : current.impactsStakeholderCategories.map(ref => ({id: ref.id, note: ref.note})),
+            impactsData: patchPayload.impactsData !== undefined ? patchPayload.impactsData : current.impactsData.map(ref => ({id: ref.id, note: ref.note})),
+            impactsServices: patchPayload.impactsServices !== undefined ? patchPayload.impactsServices : current.impactsServices.map(ref => ({id: ref.id, note: ref.note})),
+            documentReferences: patchPayload.documentReferences !== undefined ? patchPayload.documentReferences : current.documentReferences.map(ref => ({id: ref.id, note: ref.note})),
             dependsOnRequirements: patchPayload.dependsOnRequirements !== undefined ? patchPayload.dependsOnRequirements : current.dependsOnRequirements.map(ref => ref.itemId)
         };
     }
@@ -105,7 +105,7 @@ export class OperationalRequirementService extends VersionedItemService {
         const relationshipFields = [
             'refinesParents', 'impactsStakeholderCategories',
             'impactsData', 'impactsServices',
-            'implementedONs', 'referencesDocuments', 'dependsOnRequirements'
+            'implementedONs', 'documentReferences', 'dependsOnRequirements'
         ];
 
         for (const field of relationshipFields) {
@@ -114,17 +114,20 @@ export class OperationalRequirementService extends VersionedItemService {
             }
         }
 
-        // Additional validation for referencesDocuments structure
-        if (payload.referencesDocuments) {
-            for (const ref of payload.referencesDocuments) {
-                if (typeof ref !== 'object' || ref === null) {
-                    throw new Error('Validation failed: each document reference must be an object');
-                }
-                if (!ref.documentId) {
-                    throw new Error('Validation failed: document reference must have documentId');
-                }
-                if (ref.note !== undefined && typeof ref.note !== 'string') {
-                    throw new Error('Validation failed: document reference note must be a string');
+        // Validate EntityReference structure for IMPACTS and documentReferences
+        const entityRefFields = ['impactsStakeholderCategories', 'impactsData', 'impactsServices', 'documentReferences'];
+        for (const field of entityRefFields) {
+            if (payload[field]) {
+                for (const ref of payload[field]) {
+                    if (typeof ref !== 'object' || ref === null) {
+                        throw new Error(`Validation failed: each ${field} item must be an object`);
+                    }
+                    if (!ref.id) {
+                        throw new Error(`Validation failed: ${field} item must have id property`);
+                    }
+                    if (ref.note !== undefined && typeof ref.note !== 'string') {
+                        throw new Error(`Validation failed: ${field} note must be a string`);
+                    }
                 }
             }
         }
@@ -202,39 +205,42 @@ export class OperationalRequirementService extends VersionedItemService {
     async _validateReferencedEntities(payload) {
         const tx = createTransaction('system');
         try {
-            // Validate stakeholder categories
+            // Validate stakeholder categories (EntityReference format)
             if (payload.impactsStakeholderCategories && payload.impactsStakeholderCategories.length > 0) {
+                const ids = payload.impactsStakeholderCategories.map(ref => ref.id);
                 await this._validateEntityIds(
-                    payload.impactsStakeholderCategories,
+                    ids,
                     stakeholderCategoryStore(),
                     'stakeholder category',
                     tx
                 );
             }
 
-            // Validate data categories
+            // Validate data categories (EntityReference format)
             if (payload.impactsData && payload.impactsData.length > 0) {
+                const ids = payload.impactsData.map(ref => ref.id);
                 await this._validateEntityIds(
-                    payload.impactsData,
+                    ids,
                     dataCategoryStore(),
                     'data category',
                     tx
                 );
             }
 
-            // Validate services
+            // Validate services (EntityReference format)
             if (payload.impactsServices && payload.impactsServices.length > 0) {
+                const ids = payload.impactsServices.map(ref => ref.id);
                 await this._validateEntityIds(
-                    payload.impactsServices,
+                    ids,
                     serviceStore(),
                     'service',
                     tx
                 );
             }
 
-            // Validate document references
-            if (payload.referencesDocuments && payload.referencesDocuments.length > 0) {
-                const documentIds = payload.referencesDocuments.map(ref => ref.documentId);
+            // Validate document references (EntityReference format)
+            if (payload.documentReferences && payload.documentReferences.length > 0) {
+                const documentIds = payload.documentReferences.map(ref => ref.id);
                 await this._validateEntityIds(
                     documentIds,
                     documentStore(),
