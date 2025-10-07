@@ -1,13 +1,14 @@
 import StakeholderCategoryService from './StakeholderCategoryService.js';
 import ServiceService from './ServiceService.js';
 import DataCategoryService from './DataCategoryService.js';
+import DocumentService from './DocumentService.js';
 import WaveService from './WaveService.js';
 import OperationalRequirementService from './OperationalRequirementService.js';
 
 class ImportService {
     /**
      * Import setup data from YAML structure
-     * @param {Object} setupData - Parsed YAML with stakeholderCategories, services, dataCategories, waves
+     * @param {Object} setupData - Parsed YAML with stakeholderCategories, services, dataCategories, documents, waves
      * @param {string} userId - User performing the import
      * @returns {Object} Summary with counts and errors
      */
@@ -23,6 +24,7 @@ class ImportService {
             stakeholderCategories: 0,
             services: 0,
             dataCategories: 0,
+            documents: 0,
             waves: 0,
             errors: [],
             warnings: []
@@ -49,6 +51,14 @@ class ImportService {
             if (setupData.dataCategories) {
                 summary.dataCategories = await this._importDataCategories(
                     setupData.dataCategories,
+                    userId,
+                    context
+                );
+            }
+
+            if (setupData.documents) {
+                summary.documents = await this._importDocuments(
+                    setupData.documents,
                     userId,
                     context
                 );
@@ -85,6 +95,7 @@ class ImportService {
         // Create import context for this operation
         const context = {
             globalRefMap: new Map(),
+            documentIdMap: new Map(),
             waveIdMap: new Map(),
             errors: [],
             warnings: []
@@ -150,6 +161,7 @@ class ImportService {
         // Create import context for this operation
         const context = {
             globalRefMap: new Map(),
+            documentIdMap: new Map(),
             waveIdMap: new Map(),
             changeIdMap: new Map(),
             errors: [],
@@ -169,7 +181,7 @@ class ImportService {
         }
 
         try {
-            // Phase 1: Build reference maps from existing DB (including waves)
+            // Phase 1: Build reference maps from existing DB (including waves and documents)
             console.log('Phase 1: Building reference maps...');
             await this._buildGlobalReferenceMaps(userId, context);
 
@@ -204,17 +216,24 @@ class ImportService {
     async _buildGlobalReferenceMaps(userId, context) {
         try {
             // Load all existing entities from database
-            const [stakeholders, services, dataCategories, allRequirements, waves] =
+            const [stakeholders, services, dataCategories, documents, allRequirements, waves] =
                 await Promise.all([
                     StakeholderCategoryService.listItems(userId),
                     ServiceService.listItems(userId),
                     DataCategoryService.listItems(userId),
+                    DocumentService.listItems(userId),
                     OperationalRequirementService.getAll(userId),
                     WaveService.listItems(userId)
                 ]);
 
             // Clear and rebuild global reference map
             context.globalRefMap.clear();
+
+            // Initialize document map if not exists
+            if (!context.documentIdMap) {
+                context.documentIdMap = new Map();
+            }
+            context.documentIdMap.clear();
 
             // Initialize wave map if not exists
             if (!context.waveIdMap) {
@@ -232,6 +251,13 @@ class ImportService {
             dataCategories.forEach(entity =>
                 context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
             );
+
+            // Build document reference map by external ID (case-insensitive)
+            console.log('Building document reference map...');
+            documents.forEach(doc => {
+                // Documents are stored with external ID as their identifier
+                context.documentIdMap.set(doc.name.toLowerCase(), doc.id);
+            });
 
             // Build title paths for existing ON/ORs and map them
             console.log(`Global reference map - building title paths`);
@@ -258,6 +284,7 @@ class ImportService {
             });
 
             console.log(`Global reference map build - completed: ${context.globalRefMap.size} entries`);
+            console.log(`Document map build - completed: ${context.documentIdMap.size} entries`);
             console.log(`Wave map build - completed: ${context.waveIdMap.size} entries`);
 
         } catch (error) {
@@ -365,15 +392,18 @@ class ImportService {
                     type: reqData.type,
                     statement: reqData.statement,
                     rationale: reqData.rationale || '',
-                    references: reqData.references || '',
                     flows: reqData.flows || '',
+                    privateNotes: reqData.privateNotes || '',
+                    path: reqData.path || [],
                     drg: drg,
                     // All reference fields empty initially
                     refinesParents: [],
                     impactsStakeholderCategories: [],
                     impactsData: [],
                     impactsServices: [],
-                    implementedONs: []
+                    implementedONs: [],
+                    referencesDocuments: [],
+                    dependsOnRequirements: []
                 };
 
                 const created = await OperationalRequirementService.create(createRequest, userId);
@@ -416,6 +446,18 @@ class ImportService {
                     context
                 );
 
+                // Resolve document references
+                const documentReferences = this._resolveDocumentReferences(
+                    changeData.referencesDocuments || [],
+                    context
+                );
+
+                // Resolve change dependencies
+                const dependsOnChanges = this._resolveExternalIds(
+                    changeData.dependsOnChanges || [],
+                    context
+                );
+
                 // Process milestones BEFORE creating the change
                 const processedMilestones = [];
                 if (changeData.milestones && changeData.milestones.length > 0) {
@@ -441,11 +483,10 @@ class ImportService {
                             }
 
                             // Build milestone object for creation
+                            // Note: eventType is now a single value, not an array
                             const milestone = {
                                 milestoneKey: milestoneKey,
-                                title: milestoneData.title || `Milestone ${milestoneIndex}`,
-                                description: milestoneData.description || '',
-                                eventTypes: milestoneData.eventTypes || [], // Already an array in YAML
+                                eventType: milestoneData.eventType || 'OPS_DEPLOYMENT',
                                 waveId: waveId
                             };
 
@@ -468,10 +509,14 @@ class ImportService {
                     initialState: changeData.initialState || '',
                     finalState: changeData.finalState || '',
                     details: changeData.details || '',
+                    privateNotes: changeData.privateNotes || '',
+                    path: changeData.path || [],
                     visibility: changeData.visibility || 'NETWORK',
                     drg: drg,
                     satisfiesRequirements: satisfiedORs,
                     supersedsRequirements: supersededORs,
+                    referencesDocuments: documentReferences,
+                    dependsOnChanges: dependsOnChanges,
                     milestones: processedMilestones  // Include processed milestones directly
                 };
 
@@ -551,20 +596,33 @@ class ImportService {
             context
         );
 
+        const referencesDocuments = this._resolveDocumentReferences(
+            reqData.referencesDocuments || [],
+            context
+        );
+
+        const dependsOnRequirements = this._resolveExternalIds(
+            reqData.dependsOnRequirements || [],
+            context
+        );
+
         // Build update request with all resolved references
         const updateRequest = {
             title: current.title,
             type: current.type,
             statement: current.statement,
             rationale: current.rationale,
-            references: current.references,
             flows: current.flows,
+            privateNotes: current.privateNotes,
+            path: current.path,
             drg: current.drg,
             refinesParents: refinesParents,
             impactsStakeholderCategories: impactsStakeholderCategories,
             impactsData: impactsData,
             impactsServices: impactsServices,
-            implementedONs: implementedONs
+            implementedONs: implementedONs,
+            referencesDocuments: referencesDocuments,
+            dependsOnRequirements: dependsOnRequirements
         };
 
         // Update in single transaction
@@ -672,6 +730,37 @@ class ImportService {
         return count;
     }
 
+    async _importDocuments(documents, userId, context) {
+        let count = 0;
+
+        for (const docData of documents) {
+            try {
+                const createRequest = {
+                    name: docData.name,
+                    version: docData.version || '',
+                    description: docData.description || '',
+                    url: docData.url || ''
+                };
+
+                const created = await DocumentService.createDocument(
+                    createRequest,
+                    userId
+                );
+
+                // Store with lowercase key
+                context.setupIdMap.set(docData.externalId.toLowerCase(), created.id);
+                count++;
+
+                console.log(`Created document: ${docData.externalId} (${docData.name})`);
+
+            } catch (error) {
+                context.errors.push(`Failed to create document ${docData.externalId}: ${error.message}`);
+            }
+        }
+
+        return count;
+    }
+
     async _importWaves(waves, userId, context) {
         let count = 0;
 
@@ -764,9 +853,50 @@ class ImportService {
             }
         }
 
-        // Log missing references as errors
+        // Log missing references as warnings (not errors, as they may be external documents)
         if (missing.length > 0) {
-            context.errors.push(`Missing external references: ${missing.join(', ')}`);
+            context.warnings.push(`Missing external references: ${missing.join(', ')}`);
+        }
+
+        return resolved;
+    }
+
+    /**
+     * Resolve document references from YAML format to internal format
+     * @param {Array} documentRefs - Array of {documentExternalId, note} objects
+     * @param {Object} context - Import context with documentIdMap
+     * @returns {Array} Array of {documentId, note} objects
+     */
+    _resolveDocumentReferences(documentRefs, context) {
+        if (!Array.isArray(documentRefs)) {
+            return [];
+        }
+
+        const resolved = [];
+        const missing = [];
+
+        for (const ref of documentRefs) {
+            if (!ref.documentExternalId) {
+                context.warnings.push('Document reference missing documentExternalId');
+                continue;
+            }
+
+            // Look up document ID (case-insensitive)
+            const documentId = context.documentIdMap.get(ref.documentExternalId.toLowerCase());
+
+            if (documentId !== undefined) {
+                resolved.push({
+                    documentId: documentId,
+                    note: ref.note || ''
+                });
+            } else {
+                missing.push(ref.documentExternalId);
+            }
+        }
+
+        // Log missing document references as warnings
+        if (missing.length > 0) {
+            context.warnings.push(`Missing document references: ${missing.join(', ')}`);
         }
 
         return resolved;

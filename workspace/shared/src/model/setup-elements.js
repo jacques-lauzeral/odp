@@ -1,3 +1,5 @@
+// Setup Elements
+
 export const StakeholderCategory = {
     id: 0,
     name: '',
@@ -16,10 +18,12 @@ export const Service = {
     description: ''
 };
 
-export const RegulatoryAspect = {
+export const Document = {
     id: 0,
     name: '',
-    description: ''
+    version: '',
+    description: '',
+    url: ''
 };
 
 export const Wave = {

@@ -1,7 +1,7 @@
 import express from 'express';
 import { initializeStores, closeStores } from './store/index.js';
 import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
-import regulatoryAspectRoutes from './routes/regulatory-aspect.js';
+import documentRoutes from './routes/document.js';
 import dataCategoryRoutes from './routes/data-category.js';
 import serviceRoutes from './routes/service.js';
 import waveRoutes from './routes/wave.js';
@@ -48,7 +48,7 @@ app.use('/docx', docxExportRoutes);
 
 // Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
-app.use('/regulatory-aspects', regulatoryAspectRoutes);
+app.use('/documents', documentRoutes);
 app.use('/data-categories', dataCategoryRoutes);
 app.use('/services', serviceRoutes);
 app.use('/waves', waveRoutes);
@@ -96,7 +96,7 @@ async function startServer() {
             console.log(`  - POST http://localhost:${PORT}/import/requirements?drg=<DRG> (Content-Type: application/yaml)`);
             console.log(`Setup Entities:`);
             console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
-            console.log(`  - http://localhost:${PORT}/regulatory-aspects`);
+            console.log(`  - http://localhost:${PORT}/documents`);
             console.log(`  - http://localhost:${PORT}/data-categories`);
             console.log(`  - http://localhost:${PORT}/services`);
             console.log(`  - http://localhost:${PORT}/waves`);

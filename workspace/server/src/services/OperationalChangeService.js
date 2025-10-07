@@ -10,6 +10,7 @@ import {
     operationalChangeStore,
     operationalRequirementStore,
     waveStore,
+    documentStore,
     createTransaction,
     commitTransaction,
     rollbackTransaction
@@ -126,10 +127,14 @@ export class OperationalChangeService extends VersionedItemService {
                 initialState: current.initialState,
                 finalState: current.finalState,
                 details: current.details,
+                privateNotes: current.privateNotes,
+                path: current.path,
                 drg: current.drg,
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
+                referencesDocuments: current.referencesDocuments,
+                dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
                 milestones: newMilestones
             };
 
@@ -201,10 +206,14 @@ export class OperationalChangeService extends VersionedItemService {
                 initialState: current.initialState,
                 finalState: current.finalState,
                 details: current.details,
+                privateNotes: current.privateNotes,
+                path: current.path,
                 drg: current.drg,
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
+                referencesDocuments: current.referencesDocuments,
+                dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
                 milestones: newMilestones
             };
 
@@ -265,10 +274,14 @@ export class OperationalChangeService extends VersionedItemService {
                 initialState: current.initialState,
                 finalState: current.finalState,
                 details: current.details,
+                privateNotes: current.privateNotes,
+                path: current.path,
                 drg: current.drg,
                 visibility: current.visibility,
                 satisfiesRequirements: current.satisfiesRequirements.map(ref => ref.id),
                 supersedsRequirements: current.supersedsRequirements.map(ref => ref.id),
+                referencesDocuments: current.referencesDocuments,
+                dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
                 milestones: newMilestones
             };
 
@@ -315,10 +328,14 @@ export class OperationalChangeService extends VersionedItemService {
             initialState: patchPayload.initialState !== undefined ? patchPayload.initialState : current.initialState,
             finalState: patchPayload.finalState !== undefined ? patchPayload.finalState : current.finalState,
             details: patchPayload.details !== undefined ? patchPayload.details : current.details,
+            privateNotes: patchPayload.privateNotes !== undefined ? patchPayload.privateNotes : current.privateNotes,
+            path: patchPayload.path !== undefined ? patchPayload.path : current.path,
             drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             visibility: patchPayload.visibility !== undefined ? patchPayload.visibility : current.visibility,
             satisfiesRequirements: patchPayload.satisfiesRequirements !== undefined ? patchPayload.satisfiesRequirements : current.satisfiesRequirements.map(ref => ref.id),
             supersedsRequirements: patchPayload.supersedsRequirements !== undefined ? patchPayload.supersedsRequirements : current.supersedsRequirements.map(ref => ref.id),
+            referencesDocuments: patchPayload.referencesDocuments !== undefined ? patchPayload.referencesDocuments : current.referencesDocuments,
+            dependsOnChanges: patchPayload.dependsOnChanges !== undefined ? patchPayload.dependsOnChanges : current.dependsOnChanges.map(ref => ref.itemId),
             milestones: patchPayload.milestones !== undefined ? patchPayload.milestones : this._convertMilestonesToRawData(current.milestones)
         };
     }
@@ -359,6 +376,18 @@ export class OperationalChangeService extends VersionedItemService {
             this._validateRelationshipArray(payload.supersedsRequirements, 'supersedsRequirements');
         }
 
+        if (payload.referencesDocuments !== undefined) {
+            this._validateDocumentReferences(payload.referencesDocuments);
+        }
+
+        if (payload.dependsOnChanges !== undefined) {
+            this._validateRelationshipArray(payload.dependsOnChanges, 'dependsOnChanges');
+        }
+
+        if (payload.path !== undefined) {
+            this._validatePath(payload.path);
+        }
+
         if (payload.milestones !== undefined) {
             this._validateMilestones(payload.milestones);
         }
@@ -379,6 +408,36 @@ export class OperationalChangeService extends VersionedItemService {
     _validateRelationshipArray(array, fieldName) {
         if (!Array.isArray(array)) {
             throw new Error(`Validation failed: ${fieldName} must be an array`);
+        }
+    }
+
+    _validateDocumentReferences(referencesDocuments) {
+        if (!Array.isArray(referencesDocuments)) {
+            throw new Error('Validation failed: referencesDocuments must be an array');
+        }
+
+        for (const ref of referencesDocuments) {
+            if (typeof ref !== 'object' || ref === null) {
+                throw new Error('Validation failed: each document reference must be an object');
+            }
+            if (!ref.documentId) {
+                throw new Error('Validation failed: document reference must have documentId');
+            }
+            if (ref.note !== undefined && typeof ref.note !== 'string') {
+                throw new Error('Validation failed: document reference note must be a string');
+            }
+        }
+    }
+
+    _validatePath(path) {
+        if (!Array.isArray(path)) {
+            throw new Error('Validation failed: path must be an array');
+        }
+
+        for (const pathElement of path) {
+            if (typeof pathElement !== 'string') {
+                throw new Error('Validation failed: path elements must be strings');
+            }
         }
     }
 
@@ -419,6 +478,19 @@ export class OperationalChangeService extends VersionedItemService {
             );
         }
 
+        if (payload.referencesDocuments !== undefined && payload.referencesDocuments.length > 0) {
+            const documentIds = payload.referencesDocuments.map(ref => ref.documentId);
+            validationPromises.push(
+                this._validateDocumentIds(documentIds)
+            );
+        }
+
+        if (payload.dependsOnChanges !== undefined && payload.dependsOnChanges.length > 0) {
+            validationPromises.push(
+                this._validateDependencies(payload.dependsOnChanges, null) // itemId not available during create
+            );
+        }
+
         if (payload.milestones !== undefined && payload.milestones.length > 0) {
             validationPromises.push(
                 this._validateMilestoneWaves(payload.milestones)
@@ -443,6 +515,58 @@ export class OperationalChangeService extends VersionedItemService {
 
             if (invalidIds.length > 0) {
                 throw new Error(`Validation failed: invalid operational requirement IDs for ${relationshipType}: [${invalidIds.join(', ')}]`);
+            }
+
+            await commitTransaction(tx);
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    async _validateDocumentIds(documentIds) {
+        const tx = createTransaction('system');
+        try {
+            const invalidIds = [];
+
+            for (const id of documentIds) {
+                const exists = await documentStore().exists(id, tx);
+                if (!exists) {
+                    invalidIds.push(id);
+                }
+            }
+
+            if (invalidIds.length > 0) {
+                throw new Error(`Validation failed: invalid document IDs: [${invalidIds.join(', ')}]`);
+            }
+
+            await commitTransaction(tx);
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    async _validateDependencies(dependencyIds, currentItemId) {
+        const tx = createTransaction('system');
+        try {
+            const invalidIds = [];
+
+            for (const id of dependencyIds) {
+                // Check for self-dependency
+                if (currentItemId !== null && id === currentItemId) {
+                    throw new Error('Validation failed: change cannot depend on itself');
+                }
+
+                // Check if dependency exists
+                const exists = await operationalChangeStore().exists(id, tx);
+                if (!exists) {
+                    invalidIds.push(id);
+                }
+            }
+
+            if (invalidIds.length > 0) {
+                throw new Error(`Validation failed: invalid change dependency IDs: [${invalidIds.join(', ')}]`);
             }
 
             await commitTransaction(tx);

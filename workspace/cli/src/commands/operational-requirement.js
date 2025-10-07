@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-requirement.js - Updated with Phase 8 model evolution support
+// workspace/cli/src/commands/operational-requirement.js - Updated with Phase 19 model evolution support
 import { VersionedCommands } from '../base-commands.js';
 import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '../../../shared/src/index.js';
 import Table from 'cli-table3';
@@ -27,11 +27,12 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--type <type>', 'Filter by requirement type (ON or OR)')
             .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
-            .option('--text <search>', 'Full-text search across title, statement, rationale, flows, flowExamples, references, and risksAndOpportunities')
+            .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
+            .option('--path <path>', 'Filter by path element')
             .option('--data-category <ids>', 'Filter by data category IDs (comma-separated)')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
             .option('--service <ids>', 'Filter by service IDs (comma-separated)')
-            .option('--regulatory-aspect <ids>', 'Filter by regulatory aspect IDs (comma-separated)')
+            .option('--document <ids>', 'Filter by document IDs (comma-separated)')
             .action(async (options) => {
                 try {
                     // Validate DRG if provided
@@ -107,10 +108,11 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (options.drg) params.push(`drg=${encodeURIComponent(options.drg)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
+        if (options.path) params.push(`path=${encodeURIComponent(options.path)}`);
         if (options.dataCategory) params.push(`dataCategory=${encodeURIComponent(options.dataCategory)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
         if (options.service) params.push(`service=${encodeURIComponent(options.service)}`);
-        if (options.regulatoryAspect) params.push(`regulatoryAspect=${encodeURIComponent(options.regulatoryAspect)}`);
+        if (options.document) params.push(`document=${encodeURIComponent(options.document)}`);
 
         return params;
     }
@@ -135,10 +137,11 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (options.drg) filters.push(`drg=${options.drg}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
+        if (options.path) filters.push(`path="${options.path}"`);
         if (options.dataCategory) filters.push(`data-categories=[${options.dataCategory}]`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
         if (options.service) filters.push(`services=[${options.service}]`);
-        if (options.regulatoryAspect) filters.push(`regulatory-aspects=[${options.regulatoryAspect}]`);
+        if (options.document) filters.push(`documents=[${options.document}]`);
 
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
@@ -153,10 +156,12 @@ class OperationalRequirementCommands extends VersionedCommands {
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
         console.log(`Statement: ${item.statement}`);
         console.log(`Rationale: ${item.rationale}`);
-        console.log(`References: ${item.references}`);
-        console.log(`Risks & Opportunities: ${item.risksAndOpportunities}`);
         console.log(`Flows: ${item.flows}`);
-        console.log(`Flow Examples: ${item.flowExamples}`);
+        console.log(`Private Notes: ${item.privateNotes || 'None'}`);
+
+        if (item.path && item.path.length > 0) {
+            console.log(`Path: ${item.path.join(' > ')}`);
+        }
 
         // Display relationships
         if (item.refinesParents && item.refinesParents.length > 0) {
@@ -195,10 +200,18 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
         }
 
-        if (item.impactsRegulatoryAspects && item.impactsRegulatoryAspects.length > 0) {
-            console.log(`\nImpacts Regulatory Aspects:`);
-            item.impactsRegulatoryAspects.forEach(aspect => {
-                console.log(`  - ${aspect.title} [ID: ${aspect.id}]`);
+        if (item.referencesDocuments && item.referencesDocuments.length > 0) {
+            console.log(`\nReferences Documents:`);
+            item.referencesDocuments.forEach(ref => {
+                const note = ref.note ? ` (${ref.note})` : '';
+                console.log(`  - ${ref.name} v${ref.version || 'N/A'}${note} [ID: ${ref.documentId}]`);
+            });
+        }
+
+        if (item.dependsOnRequirements && item.dependsOnRequirements.length > 0) {
+            console.log(`\nDepends On Requirements:`);
+            item.dependsOnRequirements.forEach(dep => {
+                console.log(`  - ${dep.title} [ID: ${dep.itemId}, Version: ${dep.version}]`);
             });
         }
     }
@@ -237,15 +250,12 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
-            .option('--references <references>', `References`)
-            .option('--risks <risks>', `Risks and opportunities`)
             .option('--flows <flows>', `Flows`)
-            .option('--flow-examples <examples>', `Flow examples`)
+            .option('--private-notes <notes>', `Private notes`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
             .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
-            .option('--impacts-regulatory <regulatory-aspect-ids...>', `Impacted regulatory aspect IDs`)
             .option('--impacts-services <service-ids...>', `Impacted service IDs`)
             .action(async (title, options) => {
                 try {
@@ -255,16 +265,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                         drg: this.validateDRG(options.drg),
                         statement: options.statement || '',
                         rationale: options.rationale || '',
-                        references: options.references || '',
-                        risksAndOpportunities: options.risks || '',
                         flows: options.flows || '',
-                        flowExamples: options.flowExamples || '',
+                        privateNotes: options.privateNotes || '',
+                        path: [], // Path not supported in CLI for simplicity
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseImplementedONs(options.implementedOns),
                         impactsData: options.impactsData || [],
                         impactsStakeholderCategories: options.impactsStakeholders || [],
-                        impactsRegulatoryAspects: options.impactsRegulatory || [],
-                        impactsServices: options.impactsServices || []
+                        impactsServices: options.impactsServices || [],
+                        referencesDocuments: [], // Document references not supported in CLI for simplicity
+                        dependsOnRequirements: [] // Dependencies not supported in CLI for simplicity
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
@@ -299,15 +309,12 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
-            .option('--references <references>', `References`)
-            .option('--risks <risks>', `Risks and opportunities`)
             .option('--flows <flows>', `Flows`)
-            .option('--flow-examples <examples>', `Flow examples`)
+            .option('--private-notes <notes>', `Private notes`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
             .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
-            .option('--impacts-regulatory <regulatory-aspect-ids...>', `Impacted regulatory aspect IDs`)
             .option('--impacts-services <service-ids...>', `Impacted service IDs`)
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
@@ -318,16 +325,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                         drg: this.validateDRG(options.drg),
                         statement: options.statement || '',
                         rationale: options.rationale || '',
-                        references: options.references || '',
-                        risksAndOpportunities: options.risks || '',
                         flows: options.flows || '',
-                        flowExamples: options.flowExamples || '',
+                        privateNotes: options.privateNotes || '',
+                        path: [], // Path not supported in CLI for simplicity
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseImplementedONs(options.implementedOns),
                         impactsData: options.impactsData || [],
                         impactsStakeholderCategories: options.impactsStakeholders || [],
-                        impactsRegulatoryAspects: options.impactsRegulatory || [],
-                        impactsServices: options.impactsServices || []
+                        impactsServices: options.impactsServices || [],
+                        referencesDocuments: [], // Document references not supported in CLI for simplicity
+                        dependsOnRequirements: [] // Dependencies not supported in CLI for simplicity
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
@@ -375,15 +382,12 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', 'New statement')
             .option('--rationale <rationale>', 'New rationale')
-            .option('--references <references>', 'New references')
-            .option('--risks <risks>', 'New risks and opportunities')
             .option('--flows <flows>', 'New flows')
-            .option('--flow-examples <examples>', 'New flow examples')
+            .option('--private-notes <notes>', 'New private notes')
             .option('--parent <requirement-id>', 'Parent requirement ID')
             .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
             .option('--impacts-data <data-category-ids...>', 'Impacted data category IDs')
             .option('--impacts-stakeholders <stakeholder-category-ids...>', 'Impacted stakeholder category IDs')
-            .option('--impacts-regulatory <regulatory-aspect-ids...>', 'Impacted regulatory aspect IDs')
             .option('--impacts-services <service-ids...>', 'Impacted service IDs')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
@@ -395,15 +399,12 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.drg !== undefined) data.drg = this.validateDRG(options.drg);
                     if (options.statement) data.statement = options.statement;
                     if (options.rationale) data.rationale = options.rationale;
-                    if (options.references) data.references = options.references;
-                    if (options.risks) data.risksAndOpportunities = options.risks;
                     if (options.flows) data.flows = options.flows;
-                    if (options.flowExamples) data.flowExamples = options.flowExamples;
+                    if (options.privateNotes) data.privateNotes = options.privateNotes;
                     if (options.parent) data.refinesParents = [options.parent];
                     if (options.implementedOns !== undefined) data.implementedONs = this.parseImplementedONs(options.implementedOns);
                     if (options.impactsData) data.impactsData = options.impactsData;
                     if (options.impactsStakeholders) data.impactsStakeholderCategories = options.impactsStakeholders;
-                    if (options.impactsRegulatory) data.impactsRegulatoryAspects = options.impactsRegulatory;
                     if (options.impactsServices) data.impactsServices = options.impactsServices;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {

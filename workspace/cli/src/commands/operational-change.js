@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-change.js - Updated with Phase 8 model evolution support
+// workspace/cli/src/commands/operational-change.js - Updated with Phase 19 model evolution support
 import { VersionedCommands } from '../base-commands.js';
 import {
     DraftingGroup,
@@ -40,11 +40,12 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--visibility <visibility>', `Filter by change visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
-            .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, and details fields')
+            .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
+            .option('--path <path>', 'Filter by path element')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
             .option('--data-category <ids>', 'Filter by data category IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
             .option('--service <ids>', 'Filter by service IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
-            .option('--regulatory-aspect <ids>', 'Filter by regulatory aspect IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
+            .option('--document <ids>', 'Filter by document IDs (comma-separated)')
             .action(async (options) => {
                 try {
                     // Validate visibility if provided
@@ -128,10 +129,11 @@ class OperationalChangeCommands extends VersionedCommands {
         if (options.drg) params.push(`drg=${encodeURIComponent(options.drg)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
+        if (options.path) params.push(`path=${encodeURIComponent(options.path)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
         if (options.dataCategory) params.push(`dataCategory=${encodeURIComponent(options.dataCategory)}`);
         if (options.service) params.push(`service=${encodeURIComponent(options.service)}`);
-        if (options.regulatoryAspect) params.push(`regulatoryAspect=${encodeURIComponent(options.regulatoryAspect)}`);
+        if (options.document) params.push(`document=${encodeURIComponent(options.document)}`);
 
         return params;
     }
@@ -156,10 +158,11 @@ class OperationalChangeCommands extends VersionedCommands {
         if (options.drg) filters.push(`drg=${options.drg}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
+        if (options.path) filters.push(`path="${options.path}"`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
         if (options.dataCategory) filters.push(`data-categories=[${options.dataCategory}]`);
         if (options.service) filters.push(`services=[${options.service}]`);
-        if (options.regulatoryAspect) filters.push(`regulatory-aspects=[${options.regulatoryAspect}]`);
+        if (options.document) filters.push(`documents=[${options.document}]`);
 
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
@@ -176,6 +179,11 @@ class OperationalChangeCommands extends VersionedCommands {
         console.log(`Initial State: ${item.initialState || 'Not specified'}`);
         console.log(`Final State: ${item.finalState || 'Not specified'}`);
         console.log(`Details: ${item.details || 'Not specified'}`);
+        console.log(`Private Notes: ${item.privateNotes || 'None'}`);
+
+        if (item.path && item.path.length > 0) {
+            console.log(`Path: ${item.path.join(' > ')}`);
+        }
 
         // Display SATISFIES relationships
         if (item.satisfiesRequirements && item.satisfiesRequirements.length > 0) {
@@ -190,6 +198,23 @@ class OperationalChangeCommands extends VersionedCommands {
             console.log(`\nSupersedes Requirements:`);
             item.supersedsRequirements.forEach(req => {
                 console.log(`  - ${req.title} (${req.type}) [ID: ${req.id}]`);
+            });
+        }
+
+        // Display document references
+        if (item.referencesDocuments && item.referencesDocuments.length > 0) {
+            console.log(`\nReferences Documents:`);
+            item.referencesDocuments.forEach(ref => {
+                const note = ref.note ? ` (${ref.note})` : '';
+                console.log(`  - ${ref.name} v${ref.version || 'N/A'}${note} [ID: ${ref.documentId}]`);
+            });
+        }
+
+        // Display dependencies
+        if (item.dependsOnChanges && item.dependsOnChanges.length > 0) {
+            console.log(`\nDepends On Changes:`);
+            item.dependsOnChanges.forEach(dep => {
+                console.log(`  - ${dep.title} [ID: ${dep.itemId}, Version: ${dep.version}]`);
             });
         }
 
@@ -262,6 +287,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--initial-state <state>', 'Initial state description', '')
             .option('--final-state <state>', 'Final state description', '')
             .option('--details <details>', 'Additional details', '')
+            .option('--private-notes <notes>', 'Private notes', '')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies (space-separated)')
             .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes (space-separated)')
             .action(async (title, options) => {
@@ -274,8 +300,12 @@ class OperationalChangeCommands extends VersionedCommands {
                         initialState: options.initialState || '',
                         finalState: options.finalState || '',
                         details: options.details || '',
+                        privateNotes: options.privateNotes || '',
+                        path: [], // Path not supported in CLI for simplicity
                         satisfiesRequirements: options.satisfies || [],
                         supersedsRequirements: options.supersedes || [],
+                        referencesDocuments: [], // Document references not supported in CLI for simplicity
+                        dependsOnChanges: [], // Dependencies not supported in CLI for simplicity
                         milestones: [] // Start with empty milestones
                     };
 
@@ -319,6 +349,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
             .option('--details <details>', 'Additional details')
+            .option('--private-notes <notes>', 'Private notes')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
             .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
             .action(async (itemId, expectedVersionId, title, options) => {
@@ -333,8 +364,12 @@ class OperationalChangeCommands extends VersionedCommands {
                         initialState: options.initialState || '',
                         finalState: options.finalState || '',
                         details: options.details || '',
+                        privateNotes: options.privateNotes || '',
+                        path: [], // Path not supported in CLI for simplicity
                         satisfiesRequirements: options.satisfies || [],
                         supersedsRequirements: options.supersedes || [],
+                        referencesDocuments: [], // Document references not supported in CLI for simplicity
+                        dependsOnChanges: [], // Dependencies not supported in CLI for simplicity
                         milestones: [] // Reset milestones in full update
                     };
 
@@ -391,6 +426,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
             .option('--details <details>', 'Additional details')
+            .option('--private-notes <notes>', 'Private notes')
             .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
             .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
             .action(async (itemId, expectedVersionId, options) => {
@@ -405,6 +441,7 @@ class OperationalChangeCommands extends VersionedCommands {
                     if (options.initialState) data.initialState = options.initialState;
                     if (options.finalState) data.finalState = options.finalState;
                     if (options.details) data.details = options.details;
+                    if (options.privateNotes) data.privateNotes = options.privateNotes;
                     if (options.satisfies) data.satisfiesRequirements = options.satisfies;
                     if (options.supersedes) data.supersedsRequirements = options.supersedes;
 

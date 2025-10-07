@@ -36,7 +36,16 @@ class OperationalRequirementRouter extends VersionedItemRouter {
             filters.text = req.query.text;
         }
 
+        // Path filter
+        if (req.query.path) {
+            filters.path = req.query.path;
+        }
+
         // Parse comma-separated category IDs for relationship filtering
+        if (req.query.document) {
+            filters.document = req.query.document.split(',').map(id => parseInt(id));
+        }
+
         if (req.query.dataCategory) {
             filters.dataCategory = req.query.dataCategory.split(',').map(id => parseInt(id));
         }
@@ -47,10 +56,6 @@ class OperationalRequirementRouter extends VersionedItemRouter {
 
         if (req.query.service) {
             filters.service = req.query.service.split(',').map(id => parseInt(id));
-        }
-
-        if (req.query.regulatoryAspect) {
-            filters.regulatoryAspect = req.query.regulatoryAspect.split(',').map(id => parseInt(id));
         }
 
         return filters;

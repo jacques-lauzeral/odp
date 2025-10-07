@@ -4,7 +4,8 @@ import { StoreError } from './transaction.js';
 
 /**
  * Store for OperationalChange items with versioning and relationship management
- * Handles SATISFIES/SUPERSEDS relationships to OperationalRequirements
+ * Handles SATISFIES/SUPERSEDS relationships to OperationalRequirements,
+ * REFERENCES relationships to Documents, and DEPENDS_ON relationships to OperationalChanges
  * Delegates milestone operations to OperationalChangeMilestoneStore
  * Supports baseline, wave filtering, and content filtering for multi-context operations
  */
@@ -51,7 +52,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     params.visibility = filters.visibility;
                 }
 
-                // DRG filtering support in buildFindAllQuery
+                // DRG filtering
                 if (filters.drg) {
                     whereConditions.push('version.drg = $drg');
                     params.drg = filters.drg;
@@ -63,6 +64,12 @@ export class OperationalChangeStore extends VersionedItemStore {
                     params.title = filters.title;
                 }
 
+                // Path filtering (array contains)
+                if (filters.path) {
+                    whereConditions.push('$path IN version.path');
+                    params.path = filters.path;
+                }
+
                 // Full-text search across content fields
                 if (filters.text) {
                     whereConditions.push(`(
@@ -70,11 +77,20 @@ export class OperationalChangeStore extends VersionedItemStore {
                         version.purpose CONTAINS $text OR 
                         version.initialState CONTAINS $text OR 
                         version.finalState CONTAINS $text OR 
-                        version.details CONTAINS $text
+                        version.details CONTAINS $text OR 
+                        version.privateNotes CONTAINS $text
                     )`);
                     params.text = filters.text;
                 }
 
+                // Document-based filtering (relationship-based)
+                if (filters.document && Array.isArray(filters.document) && filters.document.length > 0) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:REFERENCES]->(doc:Document) 
+                        WHERE id(doc) IN $document
+                    }`);
+                    params.document = filters.document.map(id => this.normalizeId(id));
+                }
                 // Impact-based filtering (via SATISFIES/SUPERSEDES requirements)
                 if (filters.stakeholderCategory && Array.isArray(filters.stakeholderCategory) && filters.stakeholderCategory.length > 0) {
                     whereConditions.push(`EXISTS {
@@ -105,16 +121,6 @@ export class OperationalChangeStore extends VersionedItemStore {
                     }`);
                     params.service = filters.service.map(id => this.normalizeId(id));
                 }
-
-                if (filters.regulatoryAspect && Array.isArray(filters.regulatoryAspect) && filters.regulatoryAspect.length > 0) {
-                    whereConditions.push(`EXISTS {
-                        MATCH (version)-[:SATISFIES|SUPERSEDS]->(req:OperationalRequirement)
-                        MATCH (req)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                        MATCH (reqVersion)-[:IMPACTS]->(ra:RegulatoryAspect)
-                        WHERE id(ra) IN $regulatoryAspect
-                    }`);
-                    params.regulatoryAspect = filters.regulatoryAspect.map(id => this.normalizeId(id));
-                }
             }
 
             // Combine WHERE conditions
@@ -142,7 +148,6 @@ export class OperationalChangeStore extends VersionedItemStore {
         }
     }
 
-// In OperationalChangeStore
     async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
         try {
             // Step 1: Get base results with baseline + content filtering
@@ -249,6 +254,8 @@ export class OperationalChangeStore extends VersionedItemStore {
             satisfiesRequirements,
             supersedsRequirements,
             milestones,
+            referencesDocuments,
+            dependsOnChanges,
             ...contentData
         } = data;
 
@@ -256,7 +263,9 @@ export class OperationalChangeStore extends VersionedItemStore {
             relationshipIds: {
                 satisfiesRequirements: satisfiesRequirements || [],
                 supersedsRequirements: supersedsRequirements || [],
-                milestones: milestones || []  // Milestone data (not IDs)
+                milestones: milestones || [],  // Milestone data (not IDs)
+                referencesDocuments: referencesDocuments || [], // Array of {documentId, note}
+                dependsOnChanges: dependsOnChanges || [] // Array of item IDs
             },
             ...contentData
         };
@@ -291,12 +300,44 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             const supersedsRequirements = supersedsResult.records.map(record => this._buildReference(record));
 
+            // Get REFERENCES relationships to Documents
+            const referencesResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[ref:REFERENCES]->(doc:Document)
+                WHERE id(version) = $versionId
+                RETURN id(doc) as documentId, doc.name as name, doc.version as version, ref.note as note
+                ORDER BY doc.name
+            `, { versionId });
+
+            const referencesDocuments = referencesResult.records.map(record => ({
+                documentId: this.normalizeId(record.get('documentId')),
+                name: record.get('name'),
+                version: record.get('version'),
+                note: record.get('note') || ''
+            }));
+
+            // Get DEPENDS_ON relationships (Version -> Item, resolve to current context version)
+            const dependsOnResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(changeItem:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
+                WHERE id(version) = $versionId
+                RETURN id(changeItem) as itemId, changeItem.title as title, id(changeVersion) as versionId, changeVersion.version as version
+                ORDER BY changeItem.title
+            `, { versionId });
+
+            const dependsOnChanges = dependsOnResult.records.map(record => ({
+                itemId: this.normalizeId(record.get('itemId')),
+                title: record.get('title'),
+                versionId: this.normalizeId(record.get('versionId')),
+                version: this.normalizeId(record.get('version'))
+            }));
+
             // Delegate milestone building to milestoneStore
             const milestones = await this.milestoneStore.getMilestonesWithReferences(versionId, transaction);
 
             return {
                 satisfiesRequirements,
                 supersedsRequirements,
+                referencesDocuments,
+                dependsOnChanges,
                 milestones
             };
         } catch (error) {
@@ -324,20 +365,36 @@ export class OperationalChangeStore extends VersionedItemStore {
                 
                 // Get SUPERSEDS relationships
                 OPTIONAL MATCH (version)-[:SUPERSEDS]->(supersededReq:OperationalRequirement)
+                WITH version, satisfiesRequirements, collect(id(supersededReq)) as supersedsRequirements
                 
-                RETURN satisfiesRequirements, collect(id(supersededReq)) as supersedsRequirements
+                // Get REFERENCES relationships with note property
+                OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
+                WITH version, satisfiesRequirements, supersedsRequirements,
+                     collect({documentId: id(doc), note: ref.note}) as referencesDocuments
+                
+                // Get DEPENDS_ON relationships (Version -> Item)
+                OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depChange:OperationalChange)
+                
+                RETURN satisfiesRequirements, supersedsRequirements, referencesDocuments, collect(id(depChange)) as dependsOnChanges
             `, { versionId });
 
             let relationships = {
                 satisfiesRequirements: [],
-                supersedsRequirements: []
+                supersedsRequirements: [],
+                referencesDocuments: [],
+                dependsOnChanges: []
             };
 
             if (relationshipsResult.records.length > 0) {
                 const record = relationshipsResult.records[0];
                 relationships = {
                     satisfiesRequirements: record.get('satisfiesRequirements').map(id => this.normalizeId(id)),
-                    supersedsRequirements: record.get('supersedsRequirements').map(id => this.normalizeId(id))
+                    supersedsRequirements: record.get('supersedsRequirements').map(id => this.normalizeId(id)),
+                    referencesDocuments: record.get('referencesDocuments').map(ref => ({
+                        documentId: this.normalizeId(ref.documentId),
+                        note: ref.note || ''
+                    })),
+                    dependsOnChanges: record.get('dependsOnChanges').map(id => this.normalizeId(id))
                 };
             }
 
@@ -365,11 +422,70 @@ export class OperationalChangeStore extends VersionedItemStore {
             const {
                 satisfiesRequirements = [],
                 supersedsRequirements = [],
-                milestones = []
+                milestones = [],
+                referencesDocuments = [],
+                dependsOnChanges = []
             } = relationshipIds;
 
             // Create requirement relationships
             await this._createRequirementRelationshipsFromIds(versionId, satisfiesRequirements, supersedsRequirements, transaction);
+
+            // Create REFERENCES relationships with note property
+            if (referencesDocuments.length > 0) {
+                const documentIds = referencesDocuments.map(ref => this.normalizeId(ref.documentId));
+
+                // Validate all documents exist
+                await this._validateReferences('Document', documentIds, transaction);
+
+                // Create REFERENCES relationships with notes
+                for (const ref of referencesDocuments) {
+                    await transaction.run(`
+                        MATCH (version:${this.versionLabel}), (doc:Document)
+                        WHERE id(version) = $versionId AND id(doc) = $documentId
+                        CREATE (version)-[:REFERENCES {note: $note}]->(doc)
+                    `, {
+                        versionId,
+                        documentId: this.normalizeId(ref.documentId),
+                        note: ref.note || ''
+                    });
+                }
+            }
+
+            // Create DEPENDS_ON relationships (Version -> Item)
+            if (dependsOnChanges.length > 0) {
+                // Get parent item for self-reference check
+                const versionCheck = await transaction.run(`
+                    MATCH (version:${this.versionLabel})-[:VERSION_OF]->(item:OperationalChange)
+                    WHERE id(version) = $versionId
+                    RETURN id(item) as itemId
+                `, { versionId });
+
+                if (versionCheck.records.length === 0) {
+                    throw new StoreError('Version not found');
+                }
+
+                const itemId = this.normalizeId(versionCheck.records[0].get('itemId'));
+                const normalizedDepIds = dependsOnChanges.map(id => this.normalizeId(id));
+
+                // Validate no self-dependencies
+                if (normalizedDepIds.includes(itemId)) {
+                    throw new StoreError('Cannot create self-referencing DEPENDS_ON relationship');
+                }
+
+                // Validate all dependency items exist
+                await this._validateReferences('OperationalChange', normalizedDepIds, transaction);
+
+                // Create DEPENDS_ON relationships
+                await transaction.run(`
+                    MATCH (version:${this.versionLabel})
+                    WHERE id(version) = $versionId
+                    
+                    UNWIND $depIds as depId
+                    MATCH (depChange:OperationalChange)
+                    WHERE id(depChange) = depId
+                    CREATE (version)-[:DEPENDS_ON]->(depChange)
+                `, { versionId, depIds: normalizedDepIds });
+            }
 
             // Delegate milestone creation to milestoneStore
             await this.milestoneStore.createFreshMilestones(versionId, milestones, transaction);

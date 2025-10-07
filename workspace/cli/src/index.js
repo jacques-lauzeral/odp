@@ -4,7 +4,7 @@ import config from '../config.json' assert { type: 'json' };
 
 // Import entity command functions
 import { stakeholderCategoryCommands } from './commands/stakeholder-category.js';
-import { regulatoryAspectCommands } from './commands/regulatory-aspect.js';
+import { documentCommands } from './commands/document.js';
 import { dataCategoryCommands } from './commands/data-category.js';
 import { serviceCommands } from './commands/service.js';
 import { waveCommands } from './commands/wave.js';
@@ -46,7 +46,7 @@ global.program = program;
 
 // Register all entity commands
 stakeholderCategoryCommands(program, config);
-regulatoryAspectCommands(program, config);
+documentCommands(program, config);
 dataCategoryCommands(program, config);
 serviceCommands(program, config);
 waveCommands(program, config);

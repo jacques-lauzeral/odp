@@ -3,7 +3,8 @@ import { StoreError } from './transaction.js';
 
 /**
  * Store for OperationalRequirement items with versioning and relationship management
- * Handles REFINES (to other OperationalRequirements) and IMPACTS (to setup items) relationships
+ * Handles REFINES (to other OperationalRequirements), IMPACTS (to setup items),
+ * REFERENCES (to Documents), and DEPENDS_ON (to OperationalRequirements) relationships
  * Supports baseline, wave filtering, and content filtering for multi-context operations
  */
 export class OperationalRequirementStore extends VersionedItemStore {
@@ -48,7 +49,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     params.type = filters.type;
                 }
 
-                // DrG  filtering
+                // DrG filtering
                 if (filters.drg) {
                     whereConditions.push('version.drg = $drg');
                     params.drg = filters.drg;
@@ -60,6 +61,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     params.title = filters.title;
                 }
 
+                // Path filtering (array contains)
+                if (filters.path) {
+                    whereConditions.push('$path IN version.path');
+                    params.path = filters.path;
+                }
 
                 // Full-text search across content fields
                 if (filters.text) {
@@ -68,11 +74,18 @@ export class OperationalRequirementStore extends VersionedItemStore {
                         version.statement CONTAINS $text OR 
                         version.rationale CONTAINS $text OR 
                         version.flows CONTAINS $text OR 
-                        version.flowExamples CONTAINS $text OR 
-                        version.references CONTAINS $text OR 
-                        version.risksAndOpportunities CONTAINS $text
+                        version.privateNotes CONTAINS $text
                     )`);
                     params.text = filters.text;
+                }
+
+                // Document-based filtering (relationship-based)
+                if (filters.document && Array.isArray(filters.document) && filters.document.length > 0) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:REFERENCES]->(doc:Document) 
+                        WHERE id(doc) IN $document
+                    }`);
+                    params.document = filters.document.map(id => this.normalizeId(id));
                 }
 
                 // Category-based filtering (relationship-based)
@@ -98,14 +111,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                         WHERE id(s) IN $service
                     }`);
                     params.service = filters.service.map(id => this.normalizeId(id));
-                }
-
-                if (filters.regulatoryAspect && Array.isArray(filters.regulatoryAspect) && filters.regulatoryAspect.length > 0) {
-                    whereConditions.push(`EXISTS {
-                        MATCH (version)-[:IMPACTS]->(ra:RegulatoryAspect) 
-                        WHERE id(ra) IN $regulatoryAspect
-                    }`);
-                    params.regulatoryAspect = filters.regulatoryAspect.map(id => this.normalizeId(id));
                 }
             }
 
@@ -146,8 +151,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
             impactsStakeholderCategories,
             impactsData,
             impactsServices,
-            impactsRegulatoryAspects,
             implementedONs,
+            referencesDocuments,
+            dependsOnRequirements,
             ...contentData
         } = data;
 
@@ -157,8 +163,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsStakeholderCategories: impactsStakeholderCategories || [],
                 impactsData: impactsData || [],
                 impactsServices: impactsServices || [],
-                impactsRegulatoryAspects: impactsRegulatoryAspects || [],
-                implementedONs: implementedONs || []
+                implementedONs: implementedONs || [],
+                referencesDocuments: referencesDocuments || [], // Array of {documentId, note}
+                dependsOnRequirements: dependsOnRequirements || [] // Array of item IDs
             },
             ...contentData
         };
@@ -213,34 +220,54 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const impactsServices = serviceResult.records.map(record => this._buildReference(record));
 
-            // Get IMPACTS relationships to RegulatoryAspects
-            const regulatoryResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[:IMPACTS]->(target:RegulatoryAspect)
-                WHERE id(version) = $versionId
-                RETURN id(target) as id, target.name as title
-                ORDER BY target.name
-            `, { versionId });
-
-            const impactsRegulatoryAspects = regulatoryResult.records.map(record => this._buildReference(record));
-
             // Get implementedONs relationships (to OperationalRequirement Items with type ON)
             const implementedONsResult = await transaction.run(`
-            MATCH (version:${this.versionLabel})-[:IMPLEMENTS]->(target:OperationalRequirement)-[:LATEST_VERSION]->(targetVersion:OperationalRequirementVersion)
-            WHERE id(version) = $versionId AND targetVersion.type = 'ON'
-            RETURN id(target) as id, target.title as title, targetVersion.type as type
-            ORDER BY target.title
-        `, { versionId });
+                MATCH (version:${this.versionLabel})-[:IMPLEMENTS]->(target:OperationalRequirement)-[:LATEST_VERSION]->(targetVersion:OperationalRequirementVersion)
+                WHERE id(version) = $versionId AND targetVersion.type = 'ON'
+                RETURN id(target) as id, target.title as title, targetVersion.type as type
+                ORDER BY target.title
+            `, { versionId });
 
             const implementedONs = implementedONsResult.records.map(record => this._buildReference(record));
 
+            // Get REFERENCES relationships to Documents
+            const referencesResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[ref:REFERENCES]->(doc:Document)
+                WHERE id(version) = $versionId
+                RETURN id(doc) as documentId, doc.name as name, doc.version as version, ref.note as note
+                ORDER BY doc.name
+            `, { versionId });
+
+            const referencesDocuments = referencesResult.records.map(record => ({
+                documentId: this.normalizeId(record.get('documentId')),
+                name: record.get('name'),
+                version: record.get('version'),
+                note: record.get('note') || ''
+            }));
+
+            // Get DEPENDS_ON relationships (Version -> Item, resolve to current context version)
+            const dependsOnResult = await transaction.run(`
+                MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(reqItem:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
+                WHERE id(version) = $versionId
+                RETURN id(reqItem) as itemId, reqItem.title as title, id(reqVersion) as versionId, reqVersion.version as version
+                ORDER BY reqItem.title
+            `, { versionId });
+
+            const dependsOnRequirements = dependsOnResult.records.map(record => ({
+                itemId: this.normalizeId(record.get('itemId')),
+                title: record.get('title'),
+                versionId: this.normalizeId(record.get('versionId')),
+                version: this.normalizeId(record.get('version'))
+            }));
 
             return {
                 refinesParents,
                 impactsStakeholderCategories,
                 impactsData,
                 impactsServices,
-                impactsRegulatoryAspects,
-                implementedONs
+                implementedONs,
+                referencesDocuments,
+                dependsOnRequirements
             };
         } catch (error) {
             throw new StoreError(`Failed to build relationship references: ${error.message}`, error);
@@ -269,20 +296,27 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 WITH version, refinesParents, collect(id(sc)) as impactsStakeholderCategories
                 
                 // Get IMPACTS relationships to Data
-                OPTIONAL MATCH (version)-[:IMPACTS]->(d:Data)
+                OPTIONAL MATCH (version)-[:IMPACTS]->(d:DataCategory)
                 WITH version, refinesParents, impactsStakeholderCategories, collect(id(d)) as impactsData
                 
                 // Get IMPACTS relationships to Service
                 OPTIONAL MATCH (version)-[:IMPACTS]->(s:Service)
                 WITH version, refinesParents, impactsStakeholderCategories, impactsData, collect(id(s)) as impactsServices
                 
-                // Get IMPACTS relationships to RegulatoryAspect
-                OPTIONAL MATCH (version)-[:IMPACTS]->(ra:RegulatoryAspect)
-
                 // Get implementedONs relationships
                 OPTIONAL MATCH (version)-[:IMPLEMENTS]->(ion:OperationalRequirement)
+                WITH version, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, collect(id(ion)) as implementedONs
                 
-                RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, collect(id(ra)) as impactsRegulatoryAspects, collect(id(ion)) as implementedONs
+                // Get REFERENCES relationships with note property
+                OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
+                WITH version, refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
+                     collect({documentId: id(doc), note: ref.note}) as referencesDocuments
+                
+                // Get DEPENDS_ON relationships (Version -> Item)
+                OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depReq:OperationalRequirement)
+                
+                RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
+                       referencesDocuments, collect(id(depReq)) as dependsOnRequirements
             `, { versionId });
 
             if (result.records.length === 0) {
@@ -292,8 +326,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     impactsStakeholderCategories: [],
                     impactsData: [],
                     impactsServices: [],
-                    impactsRegulatoryAspects: [],
-                    implementedONs: []
+                    implementedONs: [],
+                    referencesDocuments: [],
+                    dependsOnRequirements: []
                 };
             }
 
@@ -303,8 +338,12 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(id => this.normalizeId(id)),
                 impactsData: record.get('impactsData').map(id => this.normalizeId(id)),
                 impactsServices: record.get('impactsServices').map(id => this.normalizeId(id)),
-                impactsRegulatoryAspects: record.get('impactsRegulatoryAspects').map(id => this.normalizeId(id)),
-                implementedONs: record.get('implementedONs').map(id => this.normalizeId(id))
+                implementedONs: record.get('implementedONs').map(id => this.normalizeId(id)),
+                referencesDocuments: record.get('referencesDocuments').map(ref => ({
+                    documentId: this.normalizeId(ref.documentId),
+                    note: ref.note || ''
+                })),
+                dependsOnRequirements: record.get('dependsOnRequirements').map(id => this.normalizeId(id))
             };
         } catch (error) {
             throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
@@ -325,8 +364,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsStakeholderCategories = [],
                 impactsData = [],
                 impactsServices = [],
-                impactsRegulatoryAspects = [],
-                implementedONs = []
+                implementedONs = [],
+                referencesDocuments = [],
+                dependsOnRequirements = []
             } = relationshipIds;
 
             // Validate that version exists and get its parent item for self-reference checks
@@ -371,8 +411,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
             await this._createImpactsRelationshipsFromIds(versionId, 'StakeholderCategory', impactsStakeholderCategories, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'DataCategory', impactsData, transaction);
             await this._createImpactsRelationshipsFromIds(versionId, 'Service', impactsServices, transaction);
-            await this._createImpactsRelationshipsFromIds(versionId, 'RegulatoryAspect', impactsRegulatoryAspects, transaction);
 
+            // Create IMPLEMENTS relationships
             if (implementedONs.length > 0) {
                 const normalizedONIds = implementedONs.map(id => this.normalizeId(id));
 
@@ -389,6 +429,51 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     WHERE id(on) = onId
                     CREATE (version)-[:IMPLEMENTS]->(on)
                 `, { versionId, onIds: normalizedONIds });
+            }
+
+            // Create REFERENCES relationships with note property
+            if (referencesDocuments.length > 0) {
+                const documentIds = referencesDocuments.map(ref => this.normalizeId(ref.documentId));
+
+                // Validate all documents exist
+                await this._validateReferences('Document', documentIds, transaction);
+
+                // Create REFERENCES relationships with notes
+                for (const ref of referencesDocuments) {
+                    await transaction.run(`
+                        MATCH (version:${this.versionLabel}), (doc:Document)
+                        WHERE id(version) = $versionId AND id(doc) = $documentId
+                        CREATE (version)-[:REFERENCES {note: $note}]->(doc)
+                    `, {
+                        versionId,
+                        documentId: this.normalizeId(ref.documentId),
+                        note: ref.note || ''
+                    });
+                }
+            }
+
+            // Create DEPENDS_ON relationships (Version -> Item)
+            if (dependsOnRequirements.length > 0) {
+                const normalizedDepIds = dependsOnRequirements.map(id => this.normalizeId(id));
+
+                // Validate no self-dependencies
+                if (normalizedDepIds.includes(itemId)) {
+                    throw new StoreError('Cannot create self-referencing DEPENDS_ON relationship');
+                }
+
+                // Validate all dependency items exist
+                await this._validateReferences('OperationalRequirement', normalizedDepIds, transaction);
+
+                // Create DEPENDS_ON relationships
+                await transaction.run(`
+                    MATCH (version:${this.versionLabel})
+                    WHERE id(version) = $versionId
+                    
+                    UNWIND $depIds as depId
+                    MATCH (depReq:OperationalRequirement)
+                    WHERE id(depReq) = depId
+                    CREATE (version)-[:DEPENDS_ON]->(depReq)
+                `, { versionId, depIds: normalizedDepIds });
             }
 
         } catch (error) {
@@ -618,7 +703,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     // Additional query methods with baseline and wave filtering support
-    // (Previous methods like findChildren, findRequirementsThatImpact, etc. remain unchanged)
 
     /**
      * Find requirements that are children of the given requirement (inverse REFINES)
@@ -680,7 +764,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Find requirements that impact a specific item
-     * @param {string} targetLabel - Target item label ('StakeholderCategories', 'Data', 'Services', 'RegulatoryAspects')
+     * @param {string} targetLabel - Target item label ('StakeholderCategories', 'Data', 'Services')
      * @param {number} targetId - Target item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context

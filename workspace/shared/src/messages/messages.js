@@ -1,5 +1,7 @@
+// Messages
+
 import { OperationalRequirement, OperationalChange } from '../model/odp-elements.js';
-import { StakeholderCategory, DataCategory, Service, RegulatoryAspect, Wave } from '../model/setup-elements.js';
+import { StakeholderCategory, DataCategory, Service, Document, Wave } from '../model/setup-elements.js';
 
 // Request Models
 export const OperationalRequirementRequests = {
@@ -56,7 +58,6 @@ export const StakeholderCategoryRequests = {
     }
 };
 
-// Complete the pattern for other setup entities
 export const DataCategoryRequests = {
     create: {
         ...DataCategory,
@@ -91,20 +92,19 @@ export const ServiceRequests = {
     }
 };
 
-export const RegulatoryAspectRequests = {
+export const DocumentRequests = {
     create: {
-        ...RegulatoryAspect,
-        id: undefined,
-        parentId: null
+        ...Document,
+        id: undefined
     },
 
     update: {
-        ...RegulatoryAspect,
-        parentId: null
+        ...Document
     },
 
     query: {
-        parentId: null
+        name: null,
+        version: null
     }
 };
 

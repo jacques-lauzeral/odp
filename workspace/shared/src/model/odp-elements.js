@@ -1,3 +1,5 @@
+// ODP Elements
+
 export const OperationalRequirement = {
     itemId: 0,
     title: '',
@@ -8,17 +10,17 @@ export const OperationalRequirement = {
     type: '', // ON | OR
     statement: '',
     rationale: '',
-    references: '',
-    risksAndOpportunities: '',
     flows: '',
-    flowExamples: '',
+    privateNotes: '',
+    path: [], // array of strings
     drg: '', // DraftingGroup enum
     refinesParents: [],
     impactsStakeholderCategories: [],
     impactsData: [],
     impactsServices: [],
-    impactsRegulatoryAspects: [],
-    implementedONs: [] // OR type only
+    implementedONs: [], // OR type only
+    referencesDocuments: [], // array of { documentId, note }
+    dependsOnRequirements: [] // array of versionIds
 };
 
 export const OperationalChange = {
@@ -32,11 +34,15 @@ export const OperationalChange = {
     initialState: '',
     finalState: '',
     details: '',
+    privateNotes: '',
+    path: [], // array of strings
     visibility: '', // NM | NETWORK
     drg: '', // DraftingGroup enum
     satisfiesRequirements: [],
     supersedsRequirements: [],
-    milestones: []
+    milestones: [],
+    referencesDocuments: [], // array of { documentId, note }
+    dependsOnChanges: [] // array of versionIds
 };
 
 export const OperationalChangeMilestone = {

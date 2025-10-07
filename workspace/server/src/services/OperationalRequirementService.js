@@ -10,7 +10,7 @@ import {
     stakeholderCategoryStore,
     dataCategoryStore,
     serviceStore,
-    regulatoryAspectStore,
+    documentStore,
     createTransaction,
     commitTransaction,
     rollbackTransaction
@@ -49,17 +49,17 @@ export class OperationalRequirementService extends VersionedItemService {
             type: patchPayload.type !== undefined ? patchPayload.type : current.type,
             statement: patchPayload.statement !== undefined ? patchPayload.statement : current.statement,
             rationale: patchPayload.rationale !== undefined ? patchPayload.rationale : current.rationale,
-            references: patchPayload.references !== undefined ? patchPayload.references : current.references,
-            risksAndOpportunities: patchPayload.risksAndOpportunities !== undefined ? patchPayload.risksAndOpportunities : current.risksAndOpportunities,
             flows: patchPayload.flows !== undefined ? patchPayload.flows : current.flows,
-            flowExamples: patchPayload.flowExamples !== undefined ? patchPayload.flowExamples : current.flowExamples,
+            privateNotes: patchPayload.privateNotes !== undefined ? patchPayload.privateNotes : current.privateNotes,
+            path: patchPayload.path !== undefined ? patchPayload.path : current.path,
             drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             implementedONs: patchPayload.implementedONs !== undefined ? patchPayload.implementedONs : current.implementedONs.map(ref => ref.id),
             refinesParents: patchPayload.refinesParents !== undefined ? patchPayload.refinesParents : current.refinesParents.map(ref => ref.id),
             impactsStakeholderCategories: patchPayload.impactsStakeholderCategories !== undefined ? patchPayload.impactsStakeholderCategories : current.impactsStakeholderCategories.map(ref => ref.id),
             impactsData: patchPayload.impactsData !== undefined ? patchPayload.impactsData : current.impactsData.map(ref => ref.id),
             impactsServices: patchPayload.impactsServices !== undefined ? patchPayload.impactsServices : current.impactsServices.map(ref => ref.id),
-            impactsRegulatoryAspects: patchPayload.impactsRegulatoryAspects !== undefined ? patchPayload.impactsRegulatoryAspects : current.impactsRegulatoryAspects.map(ref => ref.id)
+            referencesDocuments: patchPayload.referencesDocuments !== undefined ? patchPayload.referencesDocuments : current.referencesDocuments,
+            dependsOnRequirements: patchPayload.dependsOnRequirements !== undefined ? patchPayload.dependsOnRequirements : current.dependsOnRequirements.map(ref => ref.itemId)
         };
     }
 
@@ -104,13 +104,37 @@ export class OperationalRequirementService extends VersionedItemService {
     _validateRelationshipArrays(payload) {
         const relationshipFields = [
             'refinesParents', 'impactsStakeholderCategories',
-            'impactsData', 'impactsServices', 'impactsRegulatoryAspects',
-            'implementedONs'
+            'impactsData', 'impactsServices',
+            'implementedONs', 'referencesDocuments', 'dependsOnRequirements'
         ];
 
         for (const field of relationshipFields) {
             if (payload[field] !== undefined && !Array.isArray(payload[field])) {
                 throw new Error(`Validation failed: ${field} must be an array`);
+            }
+        }
+
+        // Additional validation for referencesDocuments structure
+        if (payload.referencesDocuments) {
+            for (const ref of payload.referencesDocuments) {
+                if (typeof ref !== 'object' || ref === null) {
+                    throw new Error('Validation failed: each document reference must be an object');
+                }
+                if (!ref.documentId) {
+                    throw new Error('Validation failed: document reference must have documentId');
+                }
+                if (ref.note !== undefined && typeof ref.note !== 'string') {
+                    throw new Error('Validation failed: document reference note must be a string');
+                }
+            }
+        }
+
+        // Additional validation for path array
+        if (payload.path) {
+            for (const pathElement of payload.path) {
+                if (typeof pathElement !== 'string') {
+                    throw new Error('Validation failed: path elements must be strings');
+                }
             }
         }
     }
@@ -208,12 +232,22 @@ export class OperationalRequirementService extends VersionedItemService {
                 );
             }
 
-            // Validate regulatory aspects
-            if (payload.impactsRegulatoryAspects && payload.impactsRegulatoryAspects.length > 0) {
+            // Validate document references
+            if (payload.referencesDocuments && payload.referencesDocuments.length > 0) {
+                const documentIds = payload.referencesDocuments.map(ref => ref.documentId);
                 await this._validateEntityIds(
-                    payload.impactsRegulatoryAspects,
-                    regulatoryAspectStore(),
-                    'regulatory aspect',
+                    documentIds,
+                    documentStore(),
+                    'document',
+                    tx
+                );
+            }
+
+            // Validate dependencies (no self-dependencies)
+            if (payload.dependsOnRequirements && payload.dependsOnRequirements.length > 0) {
+                await this._validateDependencies(
+                    payload.dependsOnRequirements,
+                    null, // itemId not available during create
                     tx
                 );
             }
@@ -237,6 +271,27 @@ export class OperationalRequirementService extends VersionedItemService {
 
         if (invalidIds.length > 0) {
             throw new Error(`Validation failed: invalid ${entityType} IDs: [${invalidIds.join(', ')}]`);
+        }
+    }
+
+    async _validateDependencies(dependencyIds, currentItemId, transaction) {
+        const invalidIds = [];
+
+        for (const id of dependencyIds) {
+            // Check for self-dependency
+            if (currentItemId !== null && id === currentItemId) {
+                throw new Error('Validation failed: requirement cannot depend on itself');
+            }
+
+            // Check if dependency exists
+            const exists = await operationalRequirementStore().exists(id, transaction);
+            if (!exists) {
+                invalidIds.push(id);
+            }
+        }
+
+        if (invalidIds.length > 0) {
+            throw new Error(`Validation failed: invalid requirement dependency IDs: [${invalidIds.join(', ')}]`);
         }
     }
 }

@@ -253,8 +253,8 @@ The new direct REFERENCES relationship replaces the previous `references` rich t
 
 ### Dependency Management
 The new `DEPENDS_ON` relationship enables formal declaration of dependencies:
-- OperationalRequirement versions can depend on other OperationalRequirements (Item-to-Item)
-- OperationalChange versions can depend on other OperationalChanges (Item-to-Item)
+- OperationalRequirement versions can depend on other OperationalRequirements (Version-to-Item)
+- OperationalChange versions can depend on other OperationalChanges (Version-to-Item)
 - Dependencies point to Item nodes, automatically following the latest version
 - Dependencies are validated at service level (warning/prevention of conflicting definitions)
 - Supports better deployment planning and sequencing

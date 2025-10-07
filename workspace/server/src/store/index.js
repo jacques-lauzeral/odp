@@ -3,7 +3,7 @@ import { createTransaction, commitTransaction, rollbackTransaction } from './tra
 
 // Import store classes
 import { StakeholderCategoryStore } from './stakeholder-category-store.js';
-import { RegulatoryAspectStore } from './regulatory-aspect-store.js';
+import { DocumentStore } from './document-store.js';
 import { DataCategoryStore } from './data-category-store.js';
 import { ServiceStore } from './service-store.js';
 import { WaveStore } from './wave-store.js';
@@ -14,7 +14,7 @@ import { ODPEditionStore } from './odp-edition-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
-let regulatoryAspectStore = null;
+let documentStore = null;
 let dataCategoryStore = null;
 let serviceStore = null;
 let waveStore = null;
@@ -41,7 +41,7 @@ export async function initializeStores() {
 
         // Create store instances with shared driver
         stakeholderCategoryStore = new StakeholderCategoryStore(driver);
-        regulatoryAspectStore = new RegulatoryAspectStore(driver);
+        documentStore = new DocumentStore(driver);
         dataCategoryStore = new DataCategoryStore(driver);
         serviceStore = new ServiceStore(driver);
         waveStore = new WaveStore(driver);
@@ -53,7 +53,7 @@ export async function initializeStores() {
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
             stakeholderCategory: '✓',
-            regulatoryAspect: '✓',
+            document: '✓',
             dataCategory: '✓',
             service: '✓',
             wave: '✓',
@@ -80,7 +80,7 @@ export async function closeStores() {
 
         // Reset store instances
         stakeholderCategoryStore = null;
-        regulatoryAspectStore = null;
+        documentStore = null;
         dataCategoryStore = null;
         serviceStore = null;
         waveStore = null;
@@ -117,15 +117,15 @@ function getStakeholderCategoryStore() {
 }
 
 /**
- * Get RegulatoryAspects store instance
- * @returns {RegulatoryAspectStore} Store instance
+ * Get Documents store instance
+ * @returns {DocumentStore} Store instance
  * @throws {Error} If store layer not initialized
  */
-function getRegulatoryAspectStore() {
-    if (!regulatoryAspectStore) {
+function getDocumentStore() {
+    if (!documentStore) {
         throw new Error('Store layer not initialized. Call initializeStores() first.');
     }
-    return regulatoryAspectStore;
+    return documentStore;
 }
 
 /**
@@ -215,7 +215,7 @@ function getODPEditionStore() {
 // Export store access functions with consistent naming
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
-    getRegulatoryAspectStore as regulatoryAspectStore,
+    getDocumentStore as documentStore,
     getDataCategoryStore as dataCategoryStore,
     getServiceStore as serviceStore,
     getWaveStore as waveStore,
@@ -233,7 +233,7 @@ export {
 export function getAllStores() {
     return {
         stakeholderCategory: getStakeholderCategoryStore(),
-        regulatoryAspect: getRegulatoryAspectStore(),
+        document: getDocumentStore(),
         dataCategory: getDataCategoryStore(),
         service: getServiceStore(),
         wave: getWaveStore(),
@@ -251,7 +251,7 @@ export function getAllStores() {
 export function isStoreLayerInitialized() {
     return !!(
         stakeholderCategoryStore &&
-        regulatoryAspectStore &&
+        documentStore &&
         dataCategoryStore &&
         serviceStore &&
         waveStore &&
@@ -269,7 +269,7 @@ export function isStoreLayerInitialized() {
 export function getStoreLayerStatus() {
     const stores = {
         stakeholderCategory: !!stakeholderCategoryStore,
-        regulatoryAspect: !!regulatoryAspectStore,
+        document: !!documentStore,
         dataCategory: !!dataCategoryStore,
         service: !!serviceStore,
         wave: !!waveStore,
