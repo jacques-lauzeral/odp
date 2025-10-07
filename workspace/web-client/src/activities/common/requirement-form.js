@@ -20,10 +20,11 @@ import {
  * Field definitions extracted to requirement-form-fields.js for better separation
  */
 export default class RequirementForm extends CollectionEntityForm {
-    constructor(entityConfig, setupData) {
-        super(entityConfig, { setupData });
+    constructor(entityConfig, context) {
+        super(entityConfig, context);
 
-        this.setupData = setupData;
+        // Extract setupData from context (which contains setupData, currentTabIndex, onTabChange)
+        this.setupData = context?.setupData || context;
 
         // Cache for parent requirements, ON requirements, and all requirements
         this.parentRequirementsCache = null;
@@ -51,12 +52,17 @@ export default class RequirementForm extends CollectionEntityForm {
      * Hydrate a field configuration with runtime functions
      * Converts optionsKey/formatKey references to actual functions
      */
+    /**
+     * Hydrate a field configuration with runtime functions
+     * Converts optionsKey/formatKey references to actual functions
+     */
     hydrateField(field) {
         const hydrated = { ...field };
 
         // Bind options function if specified by key
         if (field.optionsKey && this[field.optionsKey]) {
-            hydrated.options = async () => await this[field.optionsKey]();
+            // Bind the method directly - no wrapping needed
+            hydrated.options = this[field.optionsKey].bind(this);
         }
 
         // Bind format function if specified by key
@@ -494,43 +500,44 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     // ====================
+    // EVENT BINDING HELPERS
+    // ====================
+
+    bindTypeChangeEvents() {
+        const typeInputs = this.currentModal?.querySelectorAll('input[name="type"]');
+        if (typeInputs) {
+            typeInputs.forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const form = this.currentModal.querySelector('form');
+                    const formData = this.collectFormData(form);
+                    this.updateFieldVisibility(formData);
+                });
+            });
+        }
+    }
+
+    // ====================
     // ENHANCED MODAL METHODS
     // ====================
 
     async showCreateModal() {
+        // Set up the callback to execute after modal is fully initialized
+        this.context.onModalReady = () => {
+            this.bindTypeChangeEvents();
+            this.updateFieldVisibility({ type: requirementDefaults.type });
+        };
+
         await super.showCreateModal();
-
-        // Bind type change event to update field visibility
-        const typeInputs = this.currentModal?.querySelectorAll('input[name="type"]');
-        if (typeInputs) {
-            typeInputs.forEach(input => {
-                input.addEventListener('change', (e) => {
-                    const formData = this.collectFormData();
-                    this.updateFieldVisibility(formData);
-                });
-            });
-        }
-
-        // Set initial visibility based on default type
-        this.updateFieldVisibility({ type: requirementDefaults.type });
     }
 
     async showEditModal(item) {
+        // Set up the callback to execute after modal is fully initialized
+        this.context.onModalReady = () => {
+            this.bindTypeChangeEvents();
+            this.updateFieldVisibility({ type: item?.type || requirementDefaults.type });
+        };
+
         await super.showEditModal(item);
-
-        // Bind type change event to update field visibility
-        const typeInputs = this.currentModal?.querySelectorAll('input[name="type"]');
-        if (typeInputs) {
-            typeInputs.forEach(input => {
-                input.addEventListener('change', (e) => {
-                    const formData = this.collectFormData();
-                    this.updateFieldVisibility(formData);
-                });
-            });
-        }
-
-        // Set initial visibility based on item type
-        this.updateFieldVisibility({ type: item?.type || requirementDefaults.type });
     }
 
     // ====================

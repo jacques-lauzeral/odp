@@ -152,7 +152,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             impactsData,
             impactsServices,
             implementedONs,
-            referencesDocuments,
+            documentReferences,
             dependsOnRequirements,
             ...contentData
         } = data;
@@ -164,7 +164,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsData: impactsData || [],
                 impactsServices: impactsServices || [],
                 implementedONs: implementedONs || [],
-                referencesDocuments: referencesDocuments || [], // Array of {documentId, note}
+                documentReferences: documentReferences || [], // Array of {documentId, note}
                 dependsOnRequirements: dependsOnRequirements || [] // Array of item IDs
             },
             ...contentData
@@ -250,8 +250,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 ORDER BY doc.name
             `, { versionId });
 
-            const referencesDocuments = referencesResult.records.map(record => ({
-                documentId: this.normalizeId(record.get('documentId')),
+            const documentReferences = referencesResult.records.map(record => ({
+                id: this.normalizeId(record.get('documentId')),
                 name: record.get('name'),
                 version: record.get('version'),
                 note: record.get('note') || ''
@@ -278,7 +278,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsData,
                 impactsServices,
                 implementedONs,
-                referencesDocuments,
+                documentReferences,
                 dependsOnRequirements
             };
         } catch (error) {
@@ -329,7 +329,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             
             RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
                    documentReferences, collect(id(depReq)) as dependsOnRequirements
-        `, { versionId });
+        `, { versionId });refer
 
             if (result.records.length === 0) {
                 // Version doesn't exist - return empty relationships
@@ -386,7 +386,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 impactsData = [],
                 impactsServices = [],
                 implementedONs = [],
-                referencesDocuments = [],
+                documentReferences = [],
                 dependsOnRequirements = []
             } = relationshipIds;
 
@@ -453,14 +453,14 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             // Create REFERENCES relationships with note property
-            if (referencesDocuments.length > 0) {
-                const documentIds = referencesDocuments.map(ref => this.normalizeId(ref.documentId));
+            if (documentReferences.length > 0) {
+                const documentIds = documentReferences.map(ref => this.normalizeId(ref.documentId));
 
                 // Validate all documents exist
                 await this._validateReferences('Document', documentIds, transaction);
 
                 // Create REFERENCES relationships with notes
-                for (const ref of referencesDocuments) {
+                for (const ref of documentReferences) {
                     await transaction.run(`
                         MATCH (version:${this.versionLabel}), (doc:Document)
                         WHERE id(version) = $versionId AND id(doc) = $documentId

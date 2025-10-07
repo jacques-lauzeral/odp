@@ -1,3 +1,18 @@
+// Type declarations
+export const EntityReference = {
+    id: 0,
+    title: '',
+    note: '' // optional
+};
+
+export const OperationalRequirementReference = {
+    id: 0,
+    title: '',
+    type: '' // ON | OR
+};
+
+// ODP Elements
+
 export const OperationalRequirement = {
     itemId: 0,
     title: '',
@@ -8,17 +23,17 @@ export const OperationalRequirement = {
     type: '', // ON | OR
     statement: '',
     rationale: '',
-    references: '',
-    risksAndOpportunities: '',
     flows: '',
-    flowExamples: '',
+    privateNotes: '',
+    path: [], // array of strings
     drg: '', // DraftingGroup enum
-    refinesParents: [],
-    impactsStakeholderCategories: [],
-    impactsData: [],
-    impactsServices: [],
-    impactsRegulatoryAspects: [],
-    implementedONs: [] // OR type only
+    refinesParents: [], // array of OperationalRequirementReference
+    impactsStakeholderCategories: [], // array of EntityReference
+    impactsData: [], // array of EntityReference
+    impactsServices: [], // array of EntityReference
+    implementedONs: [], // array of OperationalRequirementReference (OR type only)
+    documentReferences: [], // array of EntityReference
+    dependsOnRequirements: [] // array of itemIds (strings)
 };
 
 export const OperationalChange = {
@@ -28,44 +43,17 @@ export const OperationalChange = {
     version: 0,
     createdAt: '',
     createdBy: '',
-    purpose: '', // renamed from description
+    purpose: '',
     initialState: '',
     finalState: '',
     details: '',
+    privateNotes: '',
+    path: [], // array of strings
     visibility: '', // NM | NETWORK
     drg: '', // DraftingGroup enum
-    satisfiesRequirements: [],
-    supersedsRequirements: [],
-    milestones: []
-};
-
-export const OperationalChangeMilestone = {
-    id: 0,
-    milestoneKey: '',
-    title: '',
-    description: '',
-    eventType: '', // MilestoneEventType enum
-    targetDate: '',
-    actualDate: '',
-    waveId: 0,
-    wave: null
-};
-
-// Management Entities
-export const Baseline = {
-    id: 0,
-    title: '',
-    createdAt: '',
-    createdBy: '',
-    capturedItemCount: 0
-};
-
-export const ODPEdition = {
-    id: 0,
-    title: '',
-    type: '', // DRAFT | OFFICIAL
-    createdAt: '',
-    createdBy: '',
-    baselineId: 0,
-    startsFromWaveId: 0
+    satisfiesRequirements: [], // array of OperationalRequirementReference
+    supersedsRequirements: [], // array of OperationalRequirementReference
+    milestones: [],
+    documentReferences: [], // array of EntityReference
+    dependsOnChanges: [] // array of itemIds (strings)
 };

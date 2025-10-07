@@ -44,7 +44,7 @@
     display: none;
     height: 100%;
     overflow-y: auto;
-    padding-right: var(--space-2, 0.5rem); /* For scrollbar space */
+    padding-right: var(--space-2, 0.5rem);
 }
 
 .tab-panel.active {
@@ -316,6 +316,132 @@
     color: var(--accent-primary);
 }
 
+/* Annotated Multiselect Component - Table Layout with Footer Controls */
+.annotated-multiselect {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3, 0.75rem);
+}
+
+/* Table Container */
+.annotated-table-container {
+    border: 1px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-md, 0.375rem);
+    overflow: hidden;
+    background-color: white;
+}
+
+.annotated-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm, 0.875rem);
+}
+
+.annotated-table thead {
+    background-color: var(--bg-secondary, #f9fafb);
+    border-bottom: 1px solid var(--border-primary, #e5e7eb);
+}
+
+.annotated-table th {
+    padding: var(--space-3, 0.75rem);
+    text-align: left;
+    font-weight: var(--font-weight-semibold, 600);
+    color: var(--text-secondary, #6b7280);
+    font-size: var(--font-size-xs, 0.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.annotated-table tbody tr {
+    border-bottom: 1px solid var(--border-primary, #e5e7eb);
+}
+
+.annotated-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.annotated-table td {
+    padding: var(--space-3, 0.75rem);
+    vertical-align: middle;
+}
+
+/* Empty State */
+.empty-row .empty-state {
+    text-align: center;
+    color: var(--text-tertiary, #9ca3af);
+    font-style: italic;
+    padding: var(--space-6, 1.5rem);
+}
+
+/* Table Cells */
+.cell-document {
+    width: 35%;
+}
+
+.cell-note {
+    width: 45%;
+}
+
+.cell-actions {
+    width: 20%;
+    white-space: nowrap;
+}
+
+.document-title {
+    font-weight: var(--font-weight-medium, 500);
+    color: var(--text-primary, #111827);
+}
+
+.note-text {
+    color: var(--text-secondary, #6b7280);
+}
+
+.note-empty {
+    color: var(--text-tertiary, #9ca3af);
+    font-style: italic;
+}
+
+/* Editing Row */
+.table-row.editing {
+    background-color: rgba(59, 130, 246, 0.05);
+}
+
+.edit-note-input {
+    width: 100%;
+}
+
+.cell-actions {
+    display: flex;
+    gap: var(--space-2, 0.5rem);
+}
+
+/* Footer Controls */
+.annotated-footer {
+    display: grid;
+    grid-template-columns: 2fr 3fr auto;
+    gap: var(--space-3, 0.75rem);
+    padding: var(--space-3, 0.75rem);
+    background-color: var(--bg-secondary, #f9fafb);
+    border: 1px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-md, 0.375rem);
+    align-items: center;
+}
+
+.footer-selector,
+.footer-note {
+    display: flex;
+}
+
+.footer-selector .form-control,
+.footer-note .form-control {
+    width: 100%;
+}
+
+.footer-action {
+    display: flex;
+    justify-content: flex-end;
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
     .tag-selector {
@@ -368,5 +494,36 @@
 
     .milestone-events {
         max-width: 150px;
+    }
+
+    /* Annotated multiselect responsive */
+    .annotated-footer {
+        grid-template-columns: 1fr;
+        gap: var(--space-2, 0.5rem);
+    }
+
+    .footer-action {
+        justify-content: stretch;
+    }
+
+    .footer-action .btn {
+        width: 100%;
+    }
+
+    .annotated-table {
+        font-size: var(--font-size-xs, 0.75rem);
+    }
+
+    .annotated-table th,
+    .annotated-table td {
+        padding: var(--space-2, 0.5rem);
+    }
+
+    .cell-actions {
+        flex-direction: column;
+    }
+
+    .cell-actions .btn {
+        width: 100%;
     }
 }

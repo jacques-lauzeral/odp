@@ -119,10 +119,11 @@ export class OperationalRequirementService extends VersionedItemService {
         for (const field of entityRefFields) {
             if (payload[field]) {
                 for (const ref of payload[field]) {
+                    console.log(`OperationalRequirementService._validateRelationshipArrays() payload ref: ${JSON.stringify(ref)}`);
                     if (typeof ref !== 'object' || ref === null) {
                         throw new Error(`Validation failed: each ${field} item must be an object`);
                     }
-                    if (!ref.id) {
+                    if (ref.id === undefined || ref.id === null) {
                         throw new Error(`Validation failed: ${field} item must have id property`);
                     }
                     if (ref.note !== undefined && typeof ref.note !== 'string') {

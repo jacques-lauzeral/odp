@@ -12,9 +12,6 @@ import {
 
 /**
  * RequirementsEntity - Requirements collection management
- * Updated for Phase 19 model evolution:
- * - Removed: regulatoryAspect filter/column/grouping
- * - Added: document filter/column/grouping, dependencies column/grouping
  */
 export default class RequirementsEntity {
     constructor(app, entityConfig, setupData) {

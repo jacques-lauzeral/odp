@@ -443,7 +443,7 @@ export const annotatedReferenceListColumn = {
             if (note && note.trim() !== '') {
                 const truncatedNote = truncate(note, 16);
                 const fullNote = escapeHtml(note);
-                return `<span class="ref-with-note" title="${fullNote}">${title}[${escapeHtml(truncatedNote)}]</span>`;
+                return `<span class="ref-with-note" title="${fullNote}">${title} [${escapeHtml(truncatedNote)}]</span>`;
             }
 
             return `<span class="reference-item">${title}</span>`;

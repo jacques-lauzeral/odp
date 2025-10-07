@@ -394,7 +394,7 @@ export default class CollectionEntity {
         // Server-side filters for operational entities
         const serverSideFilters = [
             'type', 'text', 'title', 'visibility',
-            'dataCategory', 'stakeholderCategory', 'service', 'regulatoryAspect'
+            'dataCategory', 'stakeholderCategory', 'service', 'document'
         ];
         return serverSideFilters.includes(filterKey);
     }

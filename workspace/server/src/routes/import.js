@@ -37,7 +37,7 @@ function parseYamlContent(req) {
     }
 }
 
-// Import setup entities (stakeholder categories, services, data categories, regulatory aspects)
+// Import setup entities (stakeholder categories, services, data categories, documents, waves)
 router.post('/setup', async (req, res) => {
     try {
         const userId = getUserId(req);

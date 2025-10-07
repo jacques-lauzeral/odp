@@ -19,7 +19,7 @@ export const endpoints = {
     stakeholderCategories: '/stakeholder-categories',
     dataCategories: '/data-categories',
     services: '/services',
-    regulatoryAspects: '/regulatory-aspects',
+    documents: '/documents',
     waves: '/waves',
 
     // Operational entities

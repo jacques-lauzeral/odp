@@ -13,11 +13,6 @@ import {
 
 /**
  * ChangesEntity - Operational Changes collection management
- * Updated for Phase 19:
- * - Text search includes new fields (purpose, initialState, finalState, details, privateNotes)
- * - Added document filter
- * - Added dependencies column and grouping
- * - Removed regulatory aspects references
  */
 export default class ChangesEntity {
     constructor(app, entityConfig, setupData) {
@@ -573,7 +568,7 @@ export default class ChangesEntity {
             return baseOptions;
         }
 
-        const labelKey = entityName === 'regulatoryAspects' ? 'title' : 'name';
+        const labelKey = 'name';
         const setupOptions = this.setupData[entityName].map(entity => ({
             value: entity.id,
             label: entity[labelKey] || entity.name || entity.id

@@ -688,32 +688,32 @@ export class CollectionEntityForm {
         console.log("CollectionEntityForm.showModal - zIndex:", zIndex, "stack depth:", this.modalStack.length);
 
         const modalHtml = `
-            <div class="modal-overlay" id="${modalId}" style="z-index: ${zIndex}">
-                <div class="modal modal-large">
-                    <div class="modal-header">
-                        <h3 class="modal-title">${this.escapeHtml(title)}</h3>
-                        <button class="modal-close" data-action="close">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="${mode}-form-${Date.now()}" novalidate>
-                            ${formContent}
-                        </form>
-                    </div>
-                    ${showFooter ? `
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                            <button type="button" class="btn btn-primary" data-action="save">
-                                ${mode === 'create' ? 'Create' : 'Save Changes'}
-                            </button>
-                        </div>
-                    ` : `
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-primary" data-action="close">Close</button>
-                        </div>
-                    `}
+        <div class="modal-overlay" id="${modalId}" style="z-index: ${zIndex}">
+            <div class="modal modal-large">
+                <div class="modal-header">
+                    <h3 class="modal-title">${this.escapeHtml(title)}</h3>
+                    <button class="modal-close" data-action="close">&times;</button>
                 </div>
+                <div class="modal-body">
+                    <form id="${mode}-form-${Date.now()}" novalidate>
+                        ${formContent}
+                    </form>
+                </div>
+                ${showFooter ? `
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
+                        <button type="button" class="btn btn-primary" data-action="save">
+                            ${mode === 'create' ? 'Create' : 'Save Changes'}
+                        </button>
+                    </div>
+                ` : `
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-action="close">Close</button>
+                    </div>
+                `}
             </div>
-        `;
+        </div>
+    `;
 
         // Add new modal
         document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -742,6 +742,11 @@ export class CollectionEntityForm {
         // Focus first input
         if (mode !== 'read') {
             this.focusFirstInput();
+        }
+
+        // NEW: Signal that modal is fully initialized and ready
+        if (this.context?.onModalReady) {
+            this.context.onModalReady();
         }
     }
 

@@ -1,62 +1,44 @@
+import { normalizeId, idsEqual } from '../../../../shared/src/index.js';
+
 /**
  * AnnotatedMultiselectManager
  *
  * Manages a multiselect field where each selected item can have an optional note/annotation.
  * Used for document references and other annotated relationships.
  *
- * Data Structure: Array of {id: string, title: string, note: string|null}
+ * Data Structure: Array of {id: string|number, title: string, note: string|null}
  *
  * Features:
- * - Dropdown selector for adding items
- * - Selected items displayed as tags with note indicators
- * - Modal popup for editing notes (max 200 chars)
- * - Visual distinction between items with/without notes
+ * - Table view with inline editing per row
+ * - Footer controls for adding new items
+ * - Each row independently editable
  */
 
 export default class AnnotatedMultiselectManager {
     constructor(config) {
-        // Validate required config
         if (!config.fieldId) {
             throw new Error('AnnotatedMultiselectManager requires fieldId');
         }
 
         this.config = {
             fieldId: config.fieldId,
-            options: config.options || [],              // {value, label}[]
-            initialValue: config.initialValue || [],    // {id, title, note}[]
+            options: config.options || [],
+            initialValue: config.initialValue || [],
             maxNoteLength: config.maxNoteLength || 200,
             placeholder: config.placeholder || 'Select items...',
             noteLabel: config.noteLabel || 'Note (optional)',
-            helpText: config.helpText || '',
             onChange: config.onChange || (() => {}),
             readOnly: config.readOnly || false
         };
 
-        // Internal state
         this.selectedItems = this.normalizeInitialValue(config.initialValue);
         this.container = null;
-        this.modal = null;
-        this.editingItemId = null;
-
-        // Bound event handlers for cleanup
-        this.boundHandlers = {
-            dropdownChange: null,
-            removeClick: null,
-            noteClick: null,
-            modalCancel: null,
-            modalSave: null,
-            modalClose: null,
-            noteInput: null
-        };
+        this.editingRowId = null;
+        this.boundHandlers = {};
     }
-
-    // ====================
-    // INITIALIZATION
-    // ====================
 
     normalizeInitialValue(value) {
         if (!value || !Array.isArray(value)) return [];
-
         return value.map(item => ({
             id: item.id,
             title: item.title || item.name || item.id,
@@ -70,105 +52,157 @@ export default class AnnotatedMultiselectManager {
         return trimmed === '' ? null : trimmed;
     }
 
-    // ====================
-    // RENDERING
-    // ====================
-
     render(container) {
         this.container = container;
 
         const html = `
             <div class="annotated-multiselect" id="${this.config.fieldId}">
-                ${this.renderDropdown()}
-                ${this.renderSelectedItems()}
+                ${this.renderTable()}
+                ${this.renderFooter()}
                 ${this.renderHiddenInput()}
             </div>
         `;
 
         container.innerHTML = html;
         this.bindEvents();
-
         return container;
     }
 
-    renderDropdown() {
+    renderTable() {
+        return `
+            <div class="annotated-table-container">
+                <table class="annotated-table">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            <th>Note</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="${this.config.fieldId}-tbody">
+                        ${this.selectedItems.length === 0 ?
+            this.renderEmptyRow() :
+            this.selectedItems.map(item => this.renderTableRow(item)).join('')
+        }
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    renderEmptyRow() {
+        return `
+            <tr class="empty-row">
+                <td colspan="3" class="empty-state">No documents selected</td>
+            </tr>
+        `;
+    }
+
+    renderTableRow(item) {
+        const isEditing = this.editingRowId !== null && idsEqual(this.editingRowId, item.id);
+
+        if (isEditing) {
+            return `
+                <tr class="table-row editing" data-item-id="${item.id}">
+                    <td class="cell-document">
+                        <span class="document-title">${this.escapeHtml(item.title)}</span>
+                    </td>
+                    <td class="cell-note">
+                        <input 
+                            type="text" 
+                            class="form-control form-control-sm edit-note-input" 
+                            data-item-id="${item.id}"
+                            value="${this.escapeHtml(item.note || '')}"
+                            maxlength="${this.config.maxNoteLength}">
+                    </td>
+                    <td class="cell-actions">
+                        <button 
+                            type="button" 
+                            class="btn btn-sm btn-primary btn-save" 
+                            data-item-id="${item.id}">
+                            Save
+                        </button>
+                        <button 
+                            type="button" 
+                            class="btn btn-sm btn-secondary btn-cancel" 
+                            data-item-id="${item.id}">
+                            Cancel
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        return `
+            <tr class="table-row" data-item-id="${item.id}">
+                <td class="cell-document">
+                    <span class="document-title">${this.escapeHtml(item.title)}</span>
+                </td>
+                <td class="cell-note">
+                    ${item.note ?
+            `<span class="note-text">${this.escapeHtml(item.note)}</span>` :
+            `<span class="note-empty">No note</span>`
+        }
+                </td>
+                <td class="cell-actions">
+                    ${!this.config.readOnly ? `
+                        <button 
+                            type="button" 
+                            class="btn btn-sm btn-secondary btn-edit" 
+                            data-item-id="${item.id}">
+                            Edit
+                        </button>
+                        <button 
+                            type="button" 
+                            class="btn btn-sm btn-danger btn-remove" 
+                            data-item-id="${item.id}">
+                            Remove
+                        </button>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }
+
+    renderFooter() {
         if (this.config.readOnly) return '';
 
         const availableOptions = this.getAvailableOptions();
 
         return `
-            <div class="multiselect-dropdown">
-                <select 
-                    class="form-control" 
-                    id="${this.config.fieldId}-dropdown"
-                    ${availableOptions.length === 0 ? 'disabled' : ''}>
-                    <option value="">${this.config.placeholder}</option>
-                    ${availableOptions.map(opt => `
-                        <option value="${opt.value}">${this.escapeHtml(opt.label)}</option>
-                    `).join('')}
-                </select>
-                ${this.config.helpText ? `
-                    <small class="form-text text-muted">${this.escapeHtml(this.config.helpText)}</small>
-                ` : ''}
-            </div>
-        `;
-    }
-
-    renderSelectedItems() {
-        if (this.selectedItems.length === 0) {
-            return `
-                <div class="selected-items-container" id="${this.config.fieldId}-selected">
-                    <div class="empty-state-inline">
-                        <span class="text-muted">No items selected</span>
-                    </div>
+            <div class="annotated-footer">
+                <div class="footer-selector">
+                    <select 
+                        class="form-control form-control-sm" 
+                        id="${this.config.fieldId}-dropdown"
+                        ${availableOptions.length === 0 ? 'disabled' : ''}>
+                        <option value="">${this.config.placeholder}</option>
+                        ${availableOptions.map(opt => `
+                            <option value="${opt.value}">${this.escapeHtml(opt.label)}</option>
+                        `).join('')}
+                    </select>
                 </div>
-            `;
-        }
-
-        return `
-            <div class="selected-items-container" id="${this.config.fieldId}-selected">
-                <div class="selected-items-label">Selected Items:</div>
-                <div class="selected-items-list">
-                    ${this.selectedItems.map(item => this.renderSelectedItem(item)).join('')}
+                <div class="footer-note">
+                    <input 
+                        type="text" 
+                        class="form-control form-control-sm" 
+                        id="${this.config.fieldId}-note"
+                        placeholder="${this.config.noteLabel}"
+                        maxlength="${this.config.maxNoteLength}">
                 </div>
-            </div>
-        `;
-    }
-
-    renderSelectedItem(item) {
-        const hasNote = item.note !== null && item.note !== '';
-        const noteIconClass = hasNote ? 'has-note' : 'no-note';
-        const noteTitle = hasNote ? `Note: ${item.note}` : 'Add note';
-
-        return `
-            <div class="selected-item-tag" data-item-id="${item.id}">
-                <span class="item-title" title="${this.escapeHtml(item.title)}">
-                    ${this.escapeHtml(this.truncate(item.title, 40))}
-                </span>
-                ${!this.config.readOnly ? `
+                <div class="footer-action">
                     <button 
                         type="button" 
-                        class="btn-note ${noteIconClass}" 
-                        data-item-id="${item.id}"
-                        title="${this.escapeHtml(noteTitle)}">
-                        📝
+                        class="btn btn-sm btn-primary" 
+                        id="${this.config.fieldId}-add">
+                        Add
                     </button>
-                    <button 
-                        type="button" 
-                        class="btn-remove" 
-                        data-item-id="${item.id}"
-                        title="Remove">
-                        ×
-                    </button>
-                ` : hasNote ? `
-                    <span class="note-indicator" title="${this.escapeHtml(item.note)}">📝</span>
-                ` : ''}
+                </div>
             </div>
         `;
     }
 
     renderHiddenInput() {
-        // Store the actual data in a hidden input for form submission
         const jsonValue = JSON.stringify(this.selectedItems);
         return `
             <input 
@@ -179,305 +213,145 @@ export default class AnnotatedMultiselectManager {
         `;
     }
 
-    // ====================
-    // EVENT HANDLING
-    // ====================
-
     bindEvents() {
         if (this.config.readOnly) return;
 
-        // Dropdown change - add item
-        const dropdown = this.container.querySelector(`#${this.config.fieldId}-dropdown`);
-        if (dropdown) {
-            this.boundHandlers.dropdownChange = (e) => this.handleAddItem(e);
-            dropdown.addEventListener('change', this.boundHandlers.dropdownChange);
+        // Footer add button
+        const addBtn = this.container.querySelector(`#${this.config.fieldId}-add`);
+        if (addBtn) {
+            this.boundHandlers.addClick = () => this.handleAdd();
+            addBtn.addEventListener('click', this.boundHandlers.addClick);
         }
 
-        // Delegate events for dynamic buttons
-        const selectedContainer = this.container.querySelector(`#${this.config.fieldId}-selected`);
-        if (selectedContainer) {
-            this.boundHandlers.removeClick = (e) => {
-                if (e.target.classList.contains('btn-remove')) {
-                    const itemId = e.target.dataset.itemId;
-                    this.handleRemoveItem(itemId);
-                }
-            };
-
-            this.boundHandlers.noteClick = (e) => {
-                if (e.target.classList.contains('btn-note')) {
-                    const itemId = e.target.dataset.itemId;
-                    this.handleEditNote(itemId);
-                }
-            };
-
-            selectedContainer.addEventListener('click', this.boundHandlers.removeClick);
-            selectedContainer.addEventListener('click', this.boundHandlers.noteClick);
+        // Delegate table events
+        const tbody = this.container.querySelector(`#${this.config.fieldId}-tbody`);
+        if (tbody) {
+            this.boundHandlers.tableClick = (e) => this.handleTableClick(e);
+            tbody.addEventListener('click', this.boundHandlers.tableClick);
         }
     }
 
-    handleAddItem(event) {
-        const dropdown = event.target;
+    handleTableClick(e) {
+        const target = e.target;
+        const itemIdStr = target.dataset.itemId;
+
+        if (!itemIdStr) return;
+
+        // Normalize ID using shared utility
+        const itemId = normalizeId(itemIdStr);
+
+        if (target.classList.contains('btn-edit')) {
+            this.handleEditRow(itemId);
+        } else if (target.classList.contains('btn-save')) {
+            this.handleSaveRow(itemId);
+        } else if (target.classList.contains('btn-cancel')) {
+            this.handleCancelEdit(itemId);
+        } else if (target.classList.contains('btn-remove')) {
+            this.handleRemoveRow(itemId);
+        }
+    }
+
+    handleAdd() {
+        const dropdown = this.container.querySelector(`#${this.config.fieldId}-dropdown`);
+        const noteInput = this.container.querySelector(`#${this.config.fieldId}-note`);
+
+        if (!dropdown || !noteInput) return;
+
         const selectedValue = dropdown.value;
-
-        if (!selectedValue) return;
-
-        // Find option details
-        const option = this.config.options.find(opt => opt.value === selectedValue);
-        if (!option) return;
-
-        // Check if already selected
-        if (this.selectedItems.some(item => item.id === selectedValue)) {
-            dropdown.value = '';
+        if (!selectedValue) {
+            alert('Please select a document');
             return;
         }
 
-        // Add new item
+        const option = this.config.options.find(opt => opt.value == selectedValue);
+        if (!option) return;
+
+        if (this.selectedItems.some(item => idsEqual(item.id, selectedValue))) {
+            alert('This document is already selected');
+            return;
+        }
+
         this.selectedItems.push({
-            id: selectedValue,
+            id: option.value,
             title: option.label,
-            note: null
+            note: this.normalizeNote(noteInput.value)
         });
 
-        // Reset dropdown
         dropdown.value = '';
+        noteInput.value = '';
 
-        // Refresh display
         this.refresh();
-
-        // Trigger change callback
         this.config.onChange(this.getValue());
     }
 
-    handleRemoveItem(itemId) {
-        this.selectedItems = this.selectedItems.filter(item => item.id !== itemId);
-
-        // Refresh display
-        this.refresh();
-
-        // Trigger change callback
-        this.config.onChange(this.getValue());
+    handleEditRow(itemId) {
+        this.editingRowId = itemId;
+        this.refreshTable();
     }
 
-    handleEditNote(itemId) {
-        const item = this.selectedItems.find(i => i.id === itemId);
-        if (!item) return;
+    handleSaveRow(itemId) {
+        const input = this.container.querySelector(`.edit-note-input[data-item-id="${itemId}"]`);
+        if (!input) return;
 
-        this.showNoteModal(item);
-    }
-
-    // ====================
-    // MODAL HANDLING
-    // ====================
-
-    showNoteModal(item) {
-        this.editingItemId = item.id;
-
-        const modalHtml = this.renderNoteModal(item);
-
-        // Create modal element
-        const modalDiv = document.createElement('div');
-        modalDiv.innerHTML = modalHtml;
-        this.modal = modalDiv.firstElementChild;
-
-        // Append to body
-        document.body.appendChild(this.modal);
-
-        // Bind modal events
-        this.bindModalEvents();
-
-        // Focus textarea
-        setTimeout(() => {
-            const textarea = this.modal.querySelector('#note-input');
-            if (textarea) {
-                textarea.focus();
-                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-            }
-        }, 100);
-    }
-
-    renderNoteModal(item) {
-        const currentNote = item.note || '';
-        const charCount = currentNote.length;
-
-        return `
-            <div class="modal-overlay" data-modal="note-editor">
-                <div class="modal-dialog modal-sm">
-                    <div class="modal-header">
-                        <h4>Add Note for "${this.escapeHtml(this.truncate(item.title, 50))}"</h4>
-                        <button type="button" class="modal-close" data-action="close">×</button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="form-group">
-                            <label for="note-input">${this.config.noteLabel}</label>
-                            <textarea 
-                                id="note-input" 
-                                class="form-control" 
-                                rows="4" 
-                                maxlength="${this.config.maxNoteLength}"
-                                placeholder="Add context about this reference...">${this.escapeHtml(currentNote)}</textarea>
-                            <small class="form-text">
-                                <span id="char-count">${charCount}</span>/${this.config.maxNoteLength} characters
-                            </small>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Save</button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    bindModalEvents() {
-        if (!this.modal) return;
-
-        // Character counter
-        const textarea = this.modal.querySelector('#note-input');
-        const charCount = this.modal.querySelector('#char-count');
-
-        if (textarea && charCount) {
-            this.boundHandlers.noteInput = () => {
-                charCount.textContent = textarea.value.length;
-            };
-            textarea.addEventListener('input', this.boundHandlers.noteInput);
-        }
-
-        // Cancel button
-        const cancelBtn = this.modal.querySelector('[data-action="cancel"]');
-        if (cancelBtn) {
-            this.boundHandlers.modalCancel = () => this.closeNoteModal();
-            cancelBtn.addEventListener('click', this.boundHandlers.modalCancel);
-        }
-
-        // Save button
-        const saveBtn = this.modal.querySelector('[data-action="save"]');
-        if (saveBtn) {
-            this.boundHandlers.modalSave = () => this.saveNote();
-            saveBtn.addEventListener('click', this.boundHandlers.modalSave);
-        }
-
-        // Close button
-        const closeBtn = this.modal.querySelector('[data-action="close"]');
-        if (closeBtn) {
-            this.boundHandlers.modalClose = () => this.closeNoteModal();
-            closeBtn.addEventListener('click', this.boundHandlers.modalClose);
-        }
-
-        // ESC key
-        const escHandler = (e) => {
-            if (e.key === 'Escape') {
-                this.closeNoteModal();
-            }
-        };
-        document.addEventListener('keydown', escHandler);
-
-        // Store for cleanup
-        this.modal._escHandler = escHandler;
-
-        // Click overlay to close
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.closeNoteModal();
-            }
-        });
-    }
-
-    saveNote() {
-        if (!this.modal || !this.editingItemId) return;
-
-        const textarea = this.modal.querySelector('#note-input');
-        if (!textarea) return;
-
-        const noteText = textarea.value.trim();
-
-        // Find and update item
-        const item = this.selectedItems.find(i => i.id === this.editingItemId);
+        const item = this.selectedItems.find(i => idsEqual(i.id, itemId));
         if (item) {
-            item.note = this.normalizeNote(noteText);
+            item.note = this.normalizeNote(input.value);
         }
 
-        // Close modal
-        this.closeNoteModal();
-
-        // Refresh display
-        this.refresh();
-
-        // Trigger change callback
+        this.editingRowId = null;
+        this.refreshTable();
         this.config.onChange(this.getValue());
     }
 
-    closeNoteModal() {
-        if (!this.modal) return;
-
-        // Remove ESC handler
-        if (this.modal._escHandler) {
-            document.removeEventListener('keydown', this.modal._escHandler);
-        }
-
-        // Remove modal
-        this.modal.remove();
-        this.modal = null;
-        this.editingItemId = null;
+    handleCancelEdit(itemId) {
+        this.editingRowId = null;
+        this.refreshTable();
     }
 
-    // ====================
-    // REFRESH & UPDATE
-    // ====================
+    handleRemoveRow(itemId) {
+        this.selectedItems = this.selectedItems.filter(item => !idsEqual(item.id, itemId));
+
+        if (idsEqual(this.editingRowId, itemId)) {
+            this.editingRowId = null;
+        }
+
+        this.refresh();
+        this.config.onChange(this.getValue());
+    }
+
+    refreshTable() {
+        const tbody = this.container.querySelector(`#${this.config.fieldId}-tbody`);
+        if (tbody) {
+            tbody.innerHTML = this.selectedItems.length === 0 ?
+                this.renderEmptyRow() :
+                this.selectedItems.map(item => this.renderTableRow(item)).join('');
+        }
+    }
 
     refresh() {
-        if (!this.container) return;
+        this.refreshTable();
 
-        const selectedContainer = this.container.querySelector(`#${this.config.fieldId}-selected`);
-        if (selectedContainer) {
-            selectedContainer.outerHTML = this.renderSelectedItems();
+        // Update footer dropdown
+        const dropdown = this.container.querySelector(`#${this.config.fieldId}-dropdown`);
+        if (dropdown) {
+            const availableOptions = this.getAvailableOptions();
+            dropdown.innerHTML = `
+                <option value="">${this.config.placeholder}</option>
+                ${availableOptions.map(opt => `
+                    <option value="${opt.value}">${this.escapeHtml(opt.label)}</option>
+                `).join('')}
+            `;
+            dropdown.disabled = availableOptions.length === 0;
         }
 
+        // Update hidden input
         const hiddenInput = this.container.querySelector(`#${this.config.fieldId}-data`);
         if (hiddenInput) {
             hiddenInput.value = JSON.stringify(this.selectedItems);
         }
-
-        // Update dropdown options
-        if (!this.config.readOnly) {
-            const dropdown = this.container.querySelector(`#${this.config.fieldId}-dropdown`);
-            if (dropdown) {
-                const currentValue = dropdown.value;
-                const availableOptions = this.getAvailableOptions();
-
-                dropdown.innerHTML = `
-                    <option value="">${this.config.placeholder}</option>
-                    ${availableOptions.map(opt => `
-                        <option value="${opt.value}">${this.escapeHtml(opt.label)}</option>
-                    `).join('')}
-                `;
-
-                dropdown.disabled = availableOptions.length === 0;
-                dropdown.value = currentValue;
-            }
-        }
-
-        // Re-bind events for new elements
-        this.unbindContainerEvents();
-        this.bindEvents();
     }
-
-    unbindContainerEvents() {
-        const selectedContainer = this.container?.querySelector(`#${this.config.fieldId}-selected`);
-        if (selectedContainer && this.boundHandlers.removeClick) {
-            selectedContainer.removeEventListener('click', this.boundHandlers.removeClick);
-        }
-        if (selectedContainer && this.boundHandlers.noteClick) {
-            selectedContainer.removeEventListener('click', this.boundHandlers.noteClick);
-        }
-    }
-
-    // ====================
-    // DATA ACCESS
-    // ====================
 
     getValue() {
-        // Return array of {id, title, note}
         return this.selectedItems.map(item => ({
             id: item.id,
             title: item.title,
@@ -487,22 +361,13 @@ export default class AnnotatedMultiselectManager {
 
     setValue(value) {
         this.selectedItems = this.normalizeInitialValue(value);
+        this.editingRowId = null;
         this.refresh();
     }
 
     getAvailableOptions() {
-        // Filter out already selected items
         const selectedIds = new Set(this.selectedItems.map(item => item.id));
         return this.config.options.filter(opt => !selectedIds.has(opt.value));
-    }
-
-    // ====================
-    // UTILITIES
-    // ====================
-
-    truncate(text, maxLength) {
-        if (!text || text.length <= maxLength) return text;
-        return text.substring(0, maxLength - 3) + '...';
     }
 
     escapeHtml(text) {
@@ -512,26 +377,20 @@ export default class AnnotatedMultiselectManager {
         return div.innerHTML;
     }
 
-    // ====================
-    // CLEANUP
-    // ====================
-
     destroy() {
-        // Unbind container events
-        this.unbindContainerEvents();
-
-        // Unbind dropdown
-        const dropdown = this.container?.querySelector(`#${this.config.fieldId}-dropdown`);
-        if (dropdown && this.boundHandlers.dropdownChange) {
-            dropdown.removeEventListener('change', this.boundHandlers.dropdownChange);
+        const addBtn = this.container?.querySelector(`#${this.config.fieldId}-add`);
+        if (addBtn && this.boundHandlers.addClick) {
+            addBtn.removeEventListener('click', this.boundHandlers.addClick);
         }
 
-        // Close any open modal
-        this.closeNoteModal();
+        const tbody = this.container?.querySelector(`#${this.config.fieldId}-tbody`);
+        if (tbody && this.boundHandlers.tableClick) {
+            tbody.removeEventListener('click', this.boundHandlers.tableClick);
+        }
 
-        // Clear references
         this.container = null;
         this.selectedItems = [];
         this.boundHandlers = {};
+        this.editingRowId = null;
     }
 }

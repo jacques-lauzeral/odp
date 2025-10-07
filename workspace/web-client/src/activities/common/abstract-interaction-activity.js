@@ -124,22 +124,22 @@ export default class AbstractInteractionActivity {
             const [
                 stakeholderCategories,
                 dataCategories,
-                regulatoryAspects,
                 services,
+                documents,
                 waves
             ] = await Promise.all([
                 apiClient.get('/stakeholder-categories'),
                 apiClient.get('/data-categories'),
-                apiClient.get('/regulatory-aspects'),
                 apiClient.get('/services'),
+                apiClient.get('/documents'),
                 apiClient.get('/waves')
             ]);
 
             this.setupData = {
                 stakeholderCategories: stakeholderCategories || [],
                 dataCategories: dataCategories || [],
-                regulatoryAspects: regulatoryAspects || [],
                 services: services || [],
+                documents: documents || [],
                 waves: waves || []
             };
 
