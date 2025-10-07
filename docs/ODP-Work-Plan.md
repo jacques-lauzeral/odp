@@ -155,69 +155,70 @@ Remove deprecated RegulatoryAspect entity, introduce Document entity with struct
 
 ---
 
-### ⬜ Layer 5: Web Client (User Interface) - PENDING
+### ⚠️ Layer 5: Web Client (User Interface) - IN PROGRESS
 
 #### Phase 5.1: Removals (Priority: HIGH)
-- ❌ Remove Regulatory Aspect management page from Setup activity
-- ❌ Remove RA filter controls from OR collection view
-- ❌ Remove RA filter controls from OC collection view
-- ❌ Remove RA relationship selectors from OR forms
-- ❌ Remove OR fields: `references`, `flowExamples`, `risksAndOpportunities` textareas
-- ❌ Remove milestone field: `status` from OC milestone sub-forms
-- ❌ Remove RA columns from OR/OC list views
-- ❌ Remove RA display sections from OR/OC detail panels
+- ✅ Remove Regulatory Aspect management page from Setup activity
+- ✅ Remove RA entity from setup.js entities object
+- ✅ Delete regulatory-aspects.js component file
+- ✅ Remove RA filter controls from OR collection view (requirements.js)
+- ⬜ Remove RA filter controls from OC collection view (changes.js)
+- ✅ Remove RA columns from OR list views (requirements.js)
+- ⬜ Remove RA columns from OC list views (changes.js)
+- ✅ Remove RA grouping from OR views (requirements.js)
+- ⬜ Remove RA grouping from OC views (changes.js)
+- ⬜ Remove OR fields: `references`, `flowExamples`, `risksAndOpportunities` from requirement-form.js
+- ⬜ Remove milestone field: `status` from OC milestone sub-forms (change-form.js)
+- ✅ Remove RA field `impactsRegulatoryAspects` from requirement-form.js
+- ✅ Update requirement-form.js data transformation methods (remove RA handling)
+- ✅ Remove regulatoryAspects from abstract-interaction-activity.js loadSetupData()
 
 #### Phase 5.2: Document Management (Priority: HIGH)
-- ⬜ Add Document management page in Setup activity
-- ⬜ Create Document ListEntity component (name, version, description, url columns)
-- ⬜ Create Document FormEntity component (create/edit form)
-- ⬜ Add Document detail display
-- ⬜ Add Document deletion confirmation
+- ✅ Add Document management page in Setup activity (setup.js)
+- ✅ Create Document ListEntity component (documents.js)
+- ✅ Add Documents entity to setup.js entities object
+- ✅ Add documents to abstract-interaction-activity.js loadSetupData()
+- ✅ Add document filter to requirements.js
+- ⬜ Add document filter to changes.js
+- ✅ Add document column to requirements.js
+- ⬜ Add document column to changes.js
+- ✅ Add document grouping to requirements.js
+- ⬜ Add document grouping to changes.js
+- ✅ Create form-utils.js with formatDocumentReferences helper
 
 #### Phase 5.3: Document Reference Components (Priority: MEDIUM)
-- ⬜ Create DocumentReferenceSelector component for OR/OC forms
-- ⬜ Build document reference list display (shows document + note)
-- ⬜ Add add/edit/remove document reference functionality
-- ⬜ Add note input field for each reference
+- ⬜ Design annotated-multiselect field type pattern
+- ⬜ Create document reference UI components
+- ⬜ Integrate into requirement-form.js
+- ⬜ Integrate into change-form.js
 
 #### Phase 5.4: Dependency Management Components (Priority: MEDIUM)
-- ⬜ Create VersionDependencySelector component (select versions to depend on)
-- ⬜ Build dependency list display (shows dependent versions with navigation links)
-- ⬜ Add add/remove dependency functionality
-- ⬜ Add visual indicators for dependencies (chain icon)
+- ⬜ Add dependencies field to requirement-form.js (multiselect)
+- ⬜ Add dependencies field to change-form.js (multiselect)
+- ⬜ Update form data transformation for dependencies
 
 #### Phase 5.5: OR Forms Update (Priority: MEDIUM)
-- ⬜ Add fields: `privateNotes` textarea, `path` tag input
-- ⬜ Add section: Document References (with DocumentReferenceSelector)
-- ⬜ Add section: Dependencies (with VersionDependencySelector)
+- ⬜ Remove fields: `references`, `flowExamples`, `risksAndOpportunities` from requirement-form.js
+- ⬜ Add fields: `privateNotes` textarea, `path` tag input to requirement-form.js
 - ⬜ Update validation rules for new fields
 
 #### Phase 5.6: OC Forms Update (Priority: MEDIUM)
-- ⬜ Rename field label: `description` → `purpose`
-- ⬜ Add fields: `privateNotes` textarea, `path` tag input
-- ⬜ Add section: Document References (with DocumentReferenceSelector)
-- ⬜ Add section: Dependencies (with VersionDependencySelector)
+- ⬜ Add fields: `privateNotes` textarea, `path` tag input to change-form.js (already has purpose/initialState/finalState/details)
 - ⬜ Update validation rules for new fields
 
 #### Phase 5.7: List Views Update (Priority: LOW)
-- ⬜ Update OR/OC list column headers for new visible fields
-- ⬜ Add column: Document reference count indicator
-- ⬜ Add column: Dependency indicator (icon if has dependencies)
-- ⬜ Update sorting/filtering logic
+- ⬜ Verify OR/OC list column headers display correctly
+- ⬜ Update sorting/filtering logic if needed
 - ⬜ Verify remaining filters work correctly (type, text, DRG, categories, services, document)
 
 #### Phase 5.8: Detail Panels Update (Priority: LOW)
-- ⬜ Display document references section with notes
-- ⬜ Display dependencies section with clickable navigation links
-- ⬜ Show new fields in read-only display mode
-- ⬜ Update layout for new content sections
+- ⬜ Verify new fields display in read-only detail panels
+- ⬜ Verify document references display correctly
+- ⬜ Verify dependencies display correctly
 
-**Status:** 0% Complete - Ready to start with Phase 5.1 (Removals)
+**Status:** ~25% Complete (Phase 5.1 mostly done, Phase 5.2 setup/infrastructure done, Phases 5.3-5.8 pending)
 
 **Testing:** Manual end-to-end UI testing required - complete workflows across all activities (Setup, Elaboration, Publication, Review)
-
----
-
 ### Implementation Order
 
 1. **Layer 1: Store Layer** → ✅ COMPLETE - Tested with Neo4j browser
