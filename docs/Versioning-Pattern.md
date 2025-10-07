@@ -295,7 +295,7 @@ Current implementation supports linear versioning only. Future enhancement could
 ## Migration from Simple Entities
 
 ### Setup Entities (Non-Versioned)
-- StakeholderCategories, RegulatoryAspects, Data, Services
+- StakeholderCategories, Documents, Data, Services
 - Extend BaseStore directly
 - Simple CRUD operations with REFINES relationships
 

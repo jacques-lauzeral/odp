@@ -53,7 +53,7 @@ web-client/
 │   │   ├── setup/
 │   │   │   ├── setup.js        # ✅ Setup activity with entity tab navigation
 │   │   │   ├── stakeholder-categories.js  # ✅ Hierarchy CRUD with name/description
-│   │   │   ├── regulatory-aspects.js      # ✅ Hierarchy CRUD with title/regulation ref
+│   │   │   ├── documents.js      # ✅ Hierarchy CRUD with title/regulation ref
 │   │   │   ├── data-categories.js         # ✅ Hierarchy CRUD with classification
 │   │   │   ├── services.js                # ✅ Hierarchy CRUD with domain/type/owner
 │   │   │   └── waves.js                   # ✅ List CRUD with year/quarter validation

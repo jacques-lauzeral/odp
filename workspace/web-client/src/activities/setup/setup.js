@@ -15,11 +15,6 @@ export default class Setup {
                 endpoint: '/stakeholder-categories',
                 type: 'tree'
             },
-            'regulatory-aspects': {
-                name: 'Regulatory Aspects',
-                endpoint: '/regulatory-aspects',
-                type: 'tree'
-            },
             'data-categories': {
                 name: 'Data Categories',
                 endpoint: '/data-categories',
@@ -29,6 +24,11 @@ export default class Setup {
                 name: 'Services',
                 endpoint: '/services',
                 type: 'tree'
+            },
+            'documents': {
+                name: 'Documents',
+                endpoint: '/documents',
+                type: 'list'
             },
             'waves': {
                 name: 'Waves',

@@ -41,7 +41,7 @@ Responses return base model objects directly - no wrapper structures needed.
 ```
 src/routes/
 ├── stakeholder-categories.js      # Setup entities
-├── regulatory-aspects.js
+├── documents.js
 ├── data-categories.js
 ├── services.js
 ├── waves.js
