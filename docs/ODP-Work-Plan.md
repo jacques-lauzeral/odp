@@ -61,212 +61,20 @@ Timeline grid component for deployment visualization, pixmap milestone represent
 ### ✅ PHASE 18: Web Client Model Update
 Shared module integration (@odp/shared imports), DRG enum centralization, milestone system updates (5 event types), visibility enum integration, form updates for new OR/OC fields (purpose, initialState, finalState, details), validation consistency across UI.
 
----
-
-## 🚧 PHASE 19: Model Update - Document References & Dependencies
-
-### Overview
-Remove deprecated RegulatoryAspect entity, introduce Document entity with structured references, add version dependencies (DEPENDS_ON), update operational entity fields, remove deprecated relationships. Empty database restart - no migration scripts required.
-
-**Documentation Status:** ✅ **COMPLETE**
-**Implementation Status:** 🚧 **IN PROGRESS** - Layers 0-4 complete, Layer 5 pending
-
-### Model Changes Summary
-
-**Removed:**
-- RegulatoryAspect entity (complete removal from all layers)
-- OR fields: `references`, `flowExamples`, `risksAndOpportunities`
-- OR relationship: `impactsRegulatoryAspects`
-- Milestone field: `status`
-- All `HAS_ATTACHMENT` relationships
-
-**Added:**
-- Document entity (name, version, description, url)
-- Document references via REFERENCES edge with optional note property
-- OR/OC fields: `privateNotes`, `path` (array of strings)
-- OC fields: `initialState`, `finalState`, `details`
-- Version dependencies: DEPENDS_ON relationships (version-to-item, follows latest version automatically)
-
-**Updated:**
-- OC: `description` → `purpose`
-- Document reference pattern: Direct edge with note property (no intermediate entity)
-
----
-
-### ✅ Layer 0: Shared Module (@odp/shared) - COMPLETE
-
-**Removed:** RegulatoryAspect types and validation helpers
-
-**Added:** Document, DocumentRequest, DocumentReference, DependsOnRequirement, DependsOnChange types
-
-**Updated:** OR/OC type definitions with new fields (privateNotes, path, documentReferences, dependencies), removed old fields, validation schemas updated
-
-**Status:** 100% Complete - All type definitions and validation updated
-
----
-
-### ✅ Layer 1: Store Layer (Neo4j) - COMPLETE
-
-**Removed:** RegulatoryAspectStore, all HAS_ATTACHMENT relationships
-
-**Added:** DocumentStore with full CRUD, REFERENCES edges with note property, DEPENDS_ON relationships (version-to-item pattern)
-
-**Updated:** OperationalRequirementStore and OperationalChangeStore with new field handling, document reference management methods, dependency management methods, content filtering updated (removed RA filter, added new fields to search)
-
-**Status:** 100% Complete - All database operations support new model
-
----
-
-### ✅ Layer 2: Service Layer - COMPLETE
-
-**Removed:** RegulatoryAspectService
-
-**Added:** DocumentService with full validation, document reference validation helpers, dependency cycle detection
-
-**Updated:** OperationalRequirementService and OperationalChangeService with new field mappings, document reference validation, dependency validation, content filtering (removed regulatoryAspect parameter)
-
-**Status:** 100% Complete - All business logic updated
-
----
-
-### ✅ Layer 3: Route Layer (API) - COMPLETE
-
-**Removed:** `/regulatory-aspects` endpoints, `regulatoryAspect` query parameters from OR/OC endpoints
-
-**Added:** `/documents` CRUD endpoints with full OpenAPI spec
-
-**Updated:** OR/OC endpoint payload handling for new fields, document references, dependencies
-
-**Status:** 100% Complete - API fully supports new model, OpenAPI specs updated
-
----
-
-### ✅ Layer 4: CLI (Command-Line Interface) - COMPLETE
-
-**Removed:** `odp regulatory-aspects` command group, `--regulatory-aspect` filter from OR/OC list commands
-
-**Added:** `odp documents` command group (list/get/create/update/delete), `--document` filter, `--private-notes` and `--path` options to OR/OC commands, document reference and dependency display in detail views
-
-**Updated:** OR commands with new field options and interactive management, OC commands with field rename (description→purpose) and new options, import/export format documentation (ODP-Import-File-Format.md), ImportService with document import, document reference resolution, dependency resolution
-
-**Status:** 100% Complete - CLI fully supports new model, import/export ready
-
-**Testing:** Manual CLI workflow testing recommended - CRUD cycles for documents, OR/OC with new fields, import/export validation
-
----
-
-### ✅ Layer 5: Web Client (User Interface) - COMPLETE
-
-#### Phase 5.1: Removals (Priority: HIGH)
-- ✅ Remove Regulatory Aspect management page from Setup activity
-- ✅ Remove RA entity from setup.js entities object
-- ✅ Delete regulatory-aspects.js component file
-- ✅ Remove RA filter controls from OR collection view (requirements.js)
-- ✅ Remove RA filter controls from OC collection view (changes.js)
-- ✅ Remove RA columns from OR list views (requirements.js)
-- ✅ Remove RA columns from OC list views (changes.js)
-- ✅ Remove RA grouping from OR views (requirements.js)
-- ✅ Remove RA grouping from OC views (changes.js)
-- ✅ Remove OR fields: `references`, `flowExamples`, `risksAndOpportunities` from requirement-form.js
-- ✅ Remove milestone field: `status` from OC milestone sub-forms (change-form.js)
-- ✅ Remove RA field `impactsRegulatoryAspects` from requirement-form.js
-- ✅ Update requirement-form.js data transformation methods (remove RA handling)
-- ✅ Remove regulatoryAspects from abstract-interaction-activity.js loadSetupData()
-
-#### Phase 5.2: Document Management (Priority: HIGH)
-- ✅ Add Document management page in Setup activity (setup.js)
-- ✅ Create Document ListEntity component (documents.js)
-- ✅ Add Documents entity to setup.js entities object
-- ✅ Add documents to abstract-interaction-activity.js loadSetupData()
-- ✅ Add document filter to requirements.js
-- ✅ Add document filter to changes.js
-- ✅ Add document column to requirements.js
-- ✅ Add document column to changes.js
-- ✅ Add document grouping to requirements.js
-- ✅ Add document grouping to changes.js
-- ✅ Create form-utils.js with formatDocumentReferences helper
-
-#### Phase 5.3: Document Reference Components (Priority: MEDIUM)
-- ✅ Design annotated-multiselect field type pattern
-- ✅ Create document reference UI components
-- ✅ Integrate into requirement-form.js
-- ✅ Integrate into change-form.js
-
-#### Phase 5.4: Dependency Management Components (Priority: MEDIUM)
-- ✅ Add dependencies field to requirement-form.js (multiselect)
-- ✅ Add dependencies field to change-form.js (multiselect)
-- ✅ Update form data transformation for dependencies
-
-#### Phase 5.5: OR Forms Update (Priority: MEDIUM)
-- ✅ Remove fields: `references`, `flowExamples`, `risksAndOpportunities` from requirement-form.js
-- ✅ Add fields: `privateNotes` textarea, `path` tag input to requirement-form.js
-- ✅ Update validation rules for new fields
-
-#### Phase 5.6: OC Forms Update (Priority: MEDIUM)
-- ✅ Add fields: `privateNotes` textarea, `path` tag input to change-form.js (already has purpose/initialState/finalState/details)
-- ✅ Update validation rules for new fields
-
-#### Phase 5.7: List Views Update (Priority: LOW)
-- ✅ Verify OR list column headers display correctly
-- ✅ Verify OC list column headers display correctly
-
-#### Phase 5.8: Detail Panels Update (Priority: LOW)
-- ✅ Verify new fields display in read-only detail panels
-- ✅ Verify document references display correctly
-- ✅ Verify dependencies display correctly
-
-**Status:** ~100% Complete 
-
-**Testing:** Manual end-to-end UI testing required - complete workflows across all activities (Setup, Elaboration, Publication, Review)
-### Implementation Order
-
-1. **Layer 1: Store Layer** → ✅ COMPLETE - Tested with Neo4j browser
-2. **Layer 2: Service Layer** → ✅ COMPLETE - Service operations tested
-3. **Layer 3: Route Layer** → ✅ COMPLETE - API endpoints tested
-4. **Checkpoint 1:** ✅ Server complete - backend functionality verified
-5. **Layer 4: CLI** → ✅ COMPLETE - CLI commands tested
-6. **Checkpoint 2:** ✅ Server + CLI complete - integrated workflows verified
-7. **Layer 5: Web Client** → ✅ COMPLETE - UI development pending
-8. **Checkpoint 3:** ✅ Full system complete - awaiting complete user experience verification
-
----
-
-### Testing Checkpoints
-
-#### ✅ Checkpoint 1: Server Backend Complete
-- ✅ DocumentStore CRUD operations work
-- ✅ OR/OC updated fields persist correctly in Neo4j
-- ✅ Document references created with notes on REFERENCES edges
-- ✅ DEPENDS_ON relationships created (version-to-item, follows latest version automatically)
-- ✅ API endpoints respond correctly with new schemas
-- ✅ Filters work without regulatory aspects
-- ✅ Content search includes new fields
-
-#### ✅ Checkpoint 2: CLI Integrated
-- ✅ Document commands work end-to-end (list, get, create, update, delete)
-- ✅ OR commands handle new fields (privateNotes, path, document refs, dependencies)
-- ✅ OC commands handle new fields (purpose, states, details, document refs, dependencies)
-- ✅ Import/export works with updated format
-- ✅ Filters work correctly without regulatory aspects
-- ✅ CLI + Server integration solid
+### ✅ PHASE 19: Model Update - Document References & Dependencies
+**Removed:** RegulatoryAspect entity and all related endpoints, regulatoryAspect query parameters, CLI regulatory-aspects commands.
+**Added:** Document entity with full CRUD (title, description, version, url), annotated document references (REFERENCES edges with notes), version dependencies (DEPENDS_ON relationships), privateNotes and path fields to OR/OC.
+**Updated:** Store layer with DocumentStore and dependency methods, Service layer with DocumentService and reference validation, Route layer with /documents endpoints, CLI with document commands and updated OR/OC workflows, Web client with annotated-multiselect component, document management UI, and dependency tracking.
+**Implementation:** Complete across all 5 layers (Store, Service, Route, CLI, Web Client). Empty database restart - no migration required.
 
 ---
 
 ## System Status
 
 ### Current State
-- **Backend (Phases 1-10):** ✅ Production-ready foundation
-- **CLI (Phases 5-10):** ✅ Full-featured tool with 35+ commands
-- **Web Client (Phases 11-18):** ✅ Complete UI with all activities
-- **Model Update (Phase 19):** 🚧 80% complete - Layers 0-4 done, Layer 5 in progress
-
-### Phase 19 Progress: 80%
-- ✅ Layer 0: Shared Module (100%)
-- ✅ Layer 1: Store Layer (100%)
-- ✅ Layer 2: Service Layer (100%)
-- ✅ Layer 3: Route Layer (100%)
-- ✅ Layer 4: CLI (100%)
-- ✅ Layer 5: Web Client (100%)
+- **Backend (Phases 1-10, 19):** ✅ Production-ready with document references and dependencies
+- **CLI (Phases 5-10, 19):** ✅ Full-featured tool with document management
+- **Web Client (Phases 11-19):** ✅ Complete UI with all activities and new model support
 
 ### Key Capabilities
 - ✅ Versioned operational entities with optimistic locking
@@ -276,17 +84,9 @@ Remove deprecated RegulatoryAspect entity, introduce Document entity with struct
 - ✅ Complete ODP workflow (Setup → Elaboration → Publication → Review)
 - ✅ Responsive design with comprehensive error handling
 - ✅ Temporal timeline visualization
-- ✅ Document entity with reference management (backend/CLI complete)
-- ✅ Version dependency tracking (backend/CLI complete)
-- ✅ Document and dependency UI (complete)
+- ✅ Document entity with annotated reference management
+- ✅ Version dependency tracking with cycle detection
 
 ---
 
-## Next Steps
-
-End-to-end testing.
-
----
-
-*Last Updated: January 2025*  
-*Status: Phase 19 - 80% complete (Layers 0-4 done, Layer 5 pending)*
+*Status: Phase 19 Complete - All layers updated for new model*
