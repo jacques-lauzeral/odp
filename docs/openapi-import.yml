@@ -23,6 +23,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ImportSummary'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
   /import/requirements:
     post:
@@ -47,6 +59,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ImportSummary'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
   /import/changes:
     post:
@@ -71,15 +95,180 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ImportSummary'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /import/extract/word:
+    post:
+      summary: Extract raw data from Word document
+      description: Parse Word document structure into generic intermediate representation
+      tags: [Import]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Word document (.docx)
+              required:
+                - file
+      responses:
+        '200':
+          description: Successfully extracted raw data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawExtractedData'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /import/extract/excel:
+    post:
+      summary: Extract raw data from Excel document
+      description: Parse Excel workbook structure into generic intermediate representation
+      tags: [Import]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Excel document (.xlsx)
+              required:
+                - file
+      responses:
+        '200':
+          description: Successfully extracted raw data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawExtractedData'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /import/map/{drg}:
+    post:
+      summary: Map raw extracted data to structured import format
+      description: Apply DrG-specific business rules to transform raw data into structured entities
+      tags: [Import]
+      parameters:
+        - name: drg
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Drafting group identifier (e.g., NM_B2B, REROUTING)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RawExtractedData'
+      responses:
+        '200':
+          description: Successfully mapped to structured data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuredImportData'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Unknown DrG or mapper not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /import/structured:
+    post:
+      summary: Import structured data into database
+      description: Validate and persist structured entities with reference resolution
+      tags: [Import]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StructuredImportData'
+      responses:
+        '200':
+          description: Import completed with summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportSummary'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
 components:
   schemas:
     ImportSummary:
       type: object
       properties:
+        documents: { type: integer }
         stakeholderCategories: { type: integer }
-        services: { type: integer }
         dataCategories: { type: integer }
+        services: { type: integer }
+        waves: { type: integer }
         requirements: { type: integer }
         changes: { type: integer }
         errors:
@@ -97,3 +286,126 @@ components:
     ChangesImportRequest:
       type: object
       description: YAML structure for operational changes import
+
+    RawExtractedData:
+      type: object
+      description: Generic intermediate representation of extracted document structure
+      properties:
+        documentType:
+          type: string
+          enum: [word, excel]
+        metadata:
+          type: object
+          properties:
+            filename:
+              type: string
+            parsedAt:
+              type: string
+              format: date-time
+          additionalProperties: true
+        sections:
+          type: array
+          description: Hierarchical sections (for Word documents)
+          items:
+            $ref: '#/components/schemas/Section'
+        sheets:
+          type: array
+          description: Spreadsheet sheets (for Excel documents)
+          items:
+            $ref: '#/components/schemas/Sheet'
+      required:
+        - documentType
+        - metadata
+
+    Section:
+      type: object
+      description: Hierarchical section from Word document
+      properties:
+        level:
+          type: integer
+          description: Heading level (1-6)
+        title:
+          type: string
+        path:
+          type: array
+          items:
+            type: string
+          description: Full path from root to this section
+        content:
+          type: object
+          properties:
+            paragraphs:
+              type: array
+              items:
+                type: string
+            tables:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            lists:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+          additionalProperties: true
+        subsections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+      required:
+        - level
+        - title
+        - path
+
+    Sheet:
+      type: object
+      description: Spreadsheet sheet from Excel workbook
+      properties:
+        name:
+          type: string
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Array of row objects with column headers as keys
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - name
+        - rows
+
+    StructuredImportData:
+      type: object
+      description: Structured entities ready for database import
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: 'openapi-document.yml#/components/schemas/DocumentInput'
+        stakeholderCategories:
+          type: array
+          items:
+            $ref: 'openapi-setup.yml#/components/schemas/StakeholderCategoryInput'
+        dataCategories:
+          type: array
+          items:
+            $ref: 'openapi-setup.yml#/components/schemas/DataCategoryInput'
+        services:
+          type: array
+          items:
+            $ref: 'openapi-setup.yml#/components/schemas/ServiceInput'
+        waves:
+          type: array
+          items:
+            $ref: 'openapi-wave.yml#/components/schemas/WaveInput'
+        requirements:
+          type: array
+          items:
+            $ref: 'openapi-requirement.yml#/components/schemas/RequirementInput'
+        changes:
+          type: array
+          items:
+            $ref: 'openapi-change.yml#/components/schemas/ChangeInput'

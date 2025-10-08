@@ -1,12 +1,14 @@
-// workspace/cli/src/commands/import.js - Phase 8.2 Import Commands
+// workspace/cli/src/commands/import.js - Phase 20 Import Commands with Document Pipeline
 import { Command } from 'commander';
 import { DraftingGroupKeys, isDraftingGroupValid } from '../../../shared/src/index.js';
 import fs from 'fs';
 import fetch from 'node-fetch';
+import FormData from 'form-data';
+import path from 'path';
 
 /**
  * ImportCommands provides bulk import functionality for ODP entities.
- * Supports YAML-based import with server-side validation and response dumping.
+ * Supports both YAML-based import and document-based import pipelines.
  */
 export class ImportCommands {
     constructor(config) {
@@ -31,18 +33,18 @@ export class ImportCommands {
     /**
      * Create headers with user context for API calls
      */
-    createHeaders() {
+    createHeaders(contentType = 'application/yaml') {
         const userId = this.getUserId();
         return {
-            'Content-Type': 'application/yaml',
+            'Content-Type': contentType,
             'x-user-id': userId
         };
     }
 
     /**
-     * Read and validate YAML file exists
+     * Read and validate file exists
      */
-    readYamlFile(filePath) {
+    readFile(filePath) {
         try {
             if (!fs.existsSync(filePath)) {
                 throw new Error(`File not found: ${filePath}`);
@@ -67,6 +69,20 @@ export class ImportCommands {
     }
 
     /**
+     * Write JSON content to file or stdout
+     */
+    writeOutput(data, outputPath) {
+        const jsonContent = JSON.stringify(data, null, 2);
+
+        if (outputPath) {
+            fs.writeFileSync(outputPath, jsonContent, 'utf8');
+            console.log(`Output written to: ${outputPath}`);
+        } else {
+            console.log(jsonContent);
+        }
+    }
+
+    /**
      * Display import response summary
      */
     displayImportSummary(response, operationType) {
@@ -85,6 +101,7 @@ export class ImportCommands {
         } else {
             // Handle direct count properties
             const countProperties = [
+                'documents',
                 'stakeholderCategories',
                 'services',
                 'dataCategories',
@@ -156,6 +173,157 @@ export class ImportCommands {
         const importCommand = new Command('import')
             .description('Bulk import operations for ODP entities');
 
+        // Document extraction commands
+        importCommand
+            .command('extract-word')
+            .description('Extract raw data from Word document (.docx)')
+            .requiredOption('-f, --file <path>', 'Path to Word document')
+            .option('-o, --output <path>', 'Output JSON file (default: stdout)')
+            .action(async (options) => {
+                try {
+                    console.log(`File path: ${options.file}`);
+                    if (!fs.existsSync(options.file)) {
+                        throw new Error(`File not found: ${options.file}`);
+                    }
+                    const fileBuffer = fs.readFileSync(options.file);
+                    console.log(`File size: ${fileBuffer.length} bytes`);
+                    const fileName = path.basename(options.file);
+                    console.log(`File name: ${fileName}`);
+                    const formData = new FormData();
+                    formData.append('file', fileBuffer, fileName);
+
+                    const response = await fetch(`${this.baseUrl}/import/extract/word`, {
+                        method: 'POST',
+                        headers: {
+                            'x-user-id': this.getUserId(),
+                            ...formData.getHeaders()
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const rawData = await response.json();
+                    this.writeOutput(rawData, options.output);
+
+                } catch (error) {
+                    console.error('Error extracting Word document:', error.message);
+                    process.exit(1);
+                }
+            });
+
+        importCommand
+            .command('extract-excel')
+            .description('Extract raw data from Excel document (.xlsx)')
+            .requiredOption('-f, --file <path>', 'Path to Excel document')
+            .option('-o, --output <path>', 'Output JSON file (default: stdout)')
+            .action(async (options) => {
+                try {
+                    console.log(`Extracting data from Excel document: ${options.file}`);
+
+                    // Read file as buffer
+                    const fileBuffer = fs.readFileSync(options.file);
+                    const fileName = path.basename(options.file);
+
+                    // Create form data
+                    const formData = new FormData();
+                    formData.append('file', fileBuffer, fileName);
+
+                    const response = await fetch(`${this.baseUrl}/import/extract/excel`, {
+                        method: 'POST',
+                        headers: {
+                            'x-user-id': this.getUserId(),
+                            ...formData.getHeaders()
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const rawData = await response.json();
+                    this.writeOutput(rawData, options.output);
+
+                } catch (error) {
+                    console.error('Error extracting Excel document:', error.message);
+                    process.exit(1);
+                }
+            });
+
+        // Mapping command
+        importCommand
+            .command('map')
+            .description('Map raw extracted data to structured format using DrG-specific mapper')
+            .requiredOption('-f, --file <path>', 'Path to raw extracted JSON file')
+            .requiredOption('-d, --drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('-o, --output <path>', 'Output JSON file (default: stdout)')
+            .action(async (options) => {
+                try {
+                    // Validate DRG parameter
+                    if (!isDraftingGroupValid(options.drg)) {
+                        console.error(`Invalid DRG value: ${options.drg}`);
+                        console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+                        process.exit(1);
+                    }
+
+                    console.log(`Mapping raw data using ${options.drg} mapper...`);
+                    const rawData = JSON.parse(this.readFile(options.file));
+
+                    const response = await fetch(`${this.baseUrl}/import/map/${options.drg}`, {
+                        method: 'POST',
+                        headers: this.createHeaders('application/json'),
+                        body: JSON.stringify(rawData)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const structuredData = await response.json();
+                    this.writeOutput(structuredData, options.output);
+
+                } catch (error) {
+                    console.error('Error mapping data:', error.message);
+                    process.exit(1);
+                }
+            });
+
+        // Structured import command
+        importCommand
+            .command('structured')
+            .description('Import structured data into database')
+            .requiredOption('-f, --file <path>', 'Path to structured JSON file')
+            .action(async (options) => {
+                try {
+                    console.log(`Importing structured data from: ${options.file}`);
+                    const structuredData = JSON.parse(this.readFile(options.file));
+
+                    const response = await fetch(`${this.baseUrl}/import/structured`, {
+                        method: 'POST',
+                        headers: this.createHeaders('application/json'),
+                        body: JSON.stringify(structuredData)
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    this.displayImportSummary(result, 'structured');
+
+                } catch (error) {
+                    console.error('Error importing structured data:', error.message);
+                    process.exit(1);
+                }
+            });
+
         // Setup import command
         importCommand
             .command('setup')
@@ -164,12 +332,12 @@ export class ImportCommands {
             .action(async (options) => {
                 try {
                     console.log(`Reading setup data from: ${options.file}`);
-                    const yamlContent = this.readYamlFile(options.file);
+                    const yamlContent = this.readFile(options.file);
 
                     console.log('Uploading to server for processing...');
                     const response = await fetch(`${this.baseUrl}/import/setup`, {
                         method: 'POST',
-                        headers: this.createHeaders(),
+                        headers: this.createHeaders('application/yaml'),
                         body: yamlContent
                     });
 
@@ -204,13 +372,13 @@ export class ImportCommands {
 
                     console.log(`Reading requirements data from: ${options.file}`);
                     console.log(`Target DRG: ${options.drg}`);
-                    const yamlContent = this.readYamlFile(options.file);
+                    const yamlContent = this.readFile(options.file);
 
                     console.log('Uploading to server for processing...');
                     const url = `${this.baseUrl}/import/requirements?drg=${encodeURIComponent(options.drg)}`;
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: this.createHeaders(),
+                        headers: this.createHeaders('application/yaml'),
                         body: yamlContent
                     });
 
@@ -245,13 +413,13 @@ export class ImportCommands {
 
                     console.log(`Reading changes data from: ${options.file}`);
                     console.log(`Target DRG: ${options.drg}`);
-                    const yamlContent = this.readYamlFile(options.file);
+                    const yamlContent = this.readFile(options.file);
 
                     console.log('Uploading to server for processing...');
                     const url = `${this.baseUrl}/import/changes?drg=${encodeURIComponent(options.drg)}`;
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: this.createHeaders(),
+                        headers: this.createHeaders('application/yaml'),
                         body: yamlContent
                     });
 
@@ -272,9 +440,27 @@ export class ImportCommands {
         // Add examples/help command
         importCommand
             .command('examples')
-            .description('Show example YAML file formats for import operations')
+            .description('Show example workflows and file formats for import operations')
             .action(() => {
-                console.log('=== SETUP IMPORT EXAMPLE ===');
+                console.log('=== DOCUMENT IMPORT WORKFLOW ===');
+                console.log(`
+# Two-step workflow for Word documents (NM_B2B)
+odp import extract-word --file requirements.docx --output raw.json
+odp import map --file raw.json --drg NM_B2B --output structured.json
+odp import structured --file structured.json
+
+# Two-step workflow for Excel documents (REROUTING)
+odp import extract-excel --file requirements.xlsx --output raw.json
+odp import map --file raw.json --drg REROUTING --output structured.json
+odp import structured --file structured.json
+
+# Piping workflow (extract to stdout, pipe to file)
+odp import extract-word --file requirements.docx | tee raw.json
+odp import map --file raw.json --drg NM_B2B | tee structured.json
+odp import structured --file structured.json
+`);
+
+                console.log('\n=== SETUP IMPORT EXAMPLE ===');
                 console.log(`
 Example setup.yml format:
 

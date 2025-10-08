@@ -20,7 +20,9 @@
     "js-yaml": "^4.1.0",
     "mustache": "^4.2.0",
     "neo4j-driver": "^5.15.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "multer": "^2.0.0",
+    "mammoth": "^1.8.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
