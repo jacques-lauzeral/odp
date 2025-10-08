@@ -271,17 +271,28 @@ export const requirementFormTitles = {
 };
 
 /**
- * Required array fields that must always be present (even if empty)
+ * Required array reference fields that must always be present (even if empty)
  */
-export const requiredArrayFields = [
+export const requiredIdentifierArrayFields = [
     'refinesParents',
     'implementedONs',
-    'dependsOnRequirements',
+    'dependsOnRequirements'
+];
+
+/**
+ * Required array reference fields that must always be present (even if empty)
+ */
+export const requiredReferenceArrayFields = [
     'impactsStakeholderCategories',
     'impactsData',
-    'impactsServices',
-    'documentReferences',
-    'path'
+    'impactsServices'
+];
+
+/**
+ * Required array reference fields that must always be present (even if empty)
+ */
+export const requiredAnnotatedReferenceArrayFields = [
+    'documentReferences'
 ];
 
 /**

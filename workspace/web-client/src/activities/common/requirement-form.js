@@ -9,7 +9,9 @@ import {
 import {
     requirementFieldDefinitions,
     requirementFormTitles,
-    requiredArrayFields,
+    requiredIdentifierArrayFields,
+    requiredReferenceArrayFields,
+    requiredAnnotatedReferenceArrayFields,
     requiredTextFields,
     requirementDefaults
 } from './requirement-form-fields.js';
@@ -92,12 +94,34 @@ export default class RequirementForm extends CollectionEntityForm {
         }
 
         // Ensure all required array fields are present (even if empty)
-        requiredArrayFields.forEach(key => {
+        requiredIdentifierArrayFields.forEach(key => {
             if (transformed[key] === undefined || transformed[key] === null) {
                 transformed[key] = [];
             }
             if (!Array.isArray(transformed[key])) {
                 transformed[key] = [];
+            }
+        });
+
+        requiredReferenceArrayFields.forEach(key => {
+            if (transformed[key] && Array.isArray(transformed[key])) {
+                transformed[key] = transformed[key].map(value => {
+                    // Convert ID to object format
+                    return { id: value };
+                });
+            } else {
+                return []
+            }
+        });
+
+        requiredAnnotatedReferenceArrayFields.forEach(key => {
+            if (transformed[key] && Array.isArray(transformed[key])) {
+                transformed[key] = transformed[key].map(value => {
+                    // If already an object, keep it
+                    return { id: value.id, note: value.note };
+                });
+            } else {
+                return []
             }
         });
 
