@@ -7,9 +7,12 @@ import { getMilestoneEventDisplay } from '/shared/src/index.js';
  * Manages the 5-event milestone system with wave assignments
  */
 export class MilestoneManager {
-    constructor(parentForm, setupData, availableEventTypes) {
+    constructor(parentForm, context, availableEventTypes) {
+
+        console.log('MilestoneManager.new setupData:', JSON.stringify(context.setupData));
+
         this.parentForm = parentForm;
-        this.setupData = setupData;
+        this.setupData = context.setupData;
         this.availableEventTypes = availableEventTypes;
         this.milestones = [];
         this._eventsBound = false;

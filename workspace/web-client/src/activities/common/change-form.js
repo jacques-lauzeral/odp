@@ -11,7 +11,7 @@ import { MilestoneManager } from './change-form-milestone.js';
 import {
     changeFieldDefinitions,
     changeFormTitles,
-    requiredArrayFields,
+    requiredIdentifierArrayFields,
     requiredTextFields,
     optionalTextFields,
     changeDefaults
@@ -30,6 +30,7 @@ export default class ChangeForm extends CollectionEntityForm {
         super(entityConfig, { setupData });
 
         this.setupData = setupData;
+        console.log('ChangeForm.new setupData:', JSON.stringify(setupData));
 
         // Cache for requirements
         this.requirementsCache = null;
@@ -102,7 +103,7 @@ export default class ChangeForm extends CollectionEntityForm {
         delete transformed.milestones;
 
         // Ensure all required array fields are present
-        requiredArrayFields.forEach(key => {
+        requiredIdentifierArrayFields.forEach(key => {
             if (transformed[key] === undefined || transformed[key] === null) {
                 transformed[key] = [];
             }

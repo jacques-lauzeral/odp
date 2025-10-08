@@ -271,7 +271,7 @@ export const requirementFormTitles = {
 };
 
 /**
- * Required array reference fields that must always be present (even if empty)
+ * Required identifier array fields that must always be present (even if empty)
  */
 export const requiredIdentifierArrayFields = [
     'refinesParents',
@@ -280,7 +280,7 @@ export const requiredIdentifierArrayFields = [
 ];
 
 /**
- * Required array reference fields that must always be present (even if empty)
+ * Required reference array fields that must always be present (even if empty)
  */
 export const requiredReferenceArrayFields = [
     'impactsStakeholderCategories',
@@ -289,7 +289,7 @@ export const requiredReferenceArrayFields = [
 ];
 
 /**
- * Required array reference fields that must always be present (even if empty)
+ * Required annotated reference array fields that must always be present (even if empty)
  */
 export const requiredAnnotatedReferenceArrayFields = [
     'documentReferences'

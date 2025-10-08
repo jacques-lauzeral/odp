@@ -240,9 +240,9 @@ export const changeFormTitles = {
 };
 
 /**
- * Required array fields that must always be present (even if empty)
+ * Required identifier array fields that must always be present (even if empty)
  */
-export const requiredArrayFields = [
+export const requiredIdentifierArrayFields = [
     'satisfiesRequirements',
     'supersedsRequirements'
 ];
