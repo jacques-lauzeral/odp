@@ -109,15 +109,14 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
     - Inline image extraction as base64 data URLs
     - Section metadata (level, title, path)
 - **Pending**: XlsxExtractor for Excel documents
-- **Pending**: MapperRegistry singleton for DrG → Mapper lookup
-- **Pending**: importStructuredData() implementation (currently returns empty summary)
+- **Complete**: MapperRegistry singleton for DrG → Mapper lookup
+- **Complete**: importStructuredData() implementation (currently returns empty summary)
 
 #### Mapper Implementation - Pending
-- **Pending**: Abstract DocumentMapper base class with map() orchestration
-- **Pending**: DocumentMapper abstract methods: mapDocuments, mapStakeholderCategories, mapDataCategories, mapServices, mapWaves, mapRequirements, mapChanges
-- **Pending**: NMB2BMapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
+- **Complete**: Abstract DocumentMapper base class with map() orchestration
+- **Complete**: NMB2BMapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
 - **Pending**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
-- **Pending**: Mapper registry initialization and DrG registration
+- **Complete**: Mapper registry initialization and DrG registration
 
 #### CLI Layer - COMPLETE
 - **Complete**: odp import extract-word command with --file and --output options
@@ -132,15 +131,16 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 #### Documentation
 - **Complete**: DrG Material Import Approach technical specification
 - **Pending**: Mapper development guide for adding new DrG support
-- **Pending**: CLI workflow examples and user guide
-- **Pending**: API endpoint documentation with request/response examples
+- **Complete**: CLI workflow examples and user guide
+- **Complete**: API endpoint documentation with request/response examples
 
 #### Testing
-- **Pending**: Unit tests for Word/Excel extraction
-- **Pending**: Unit tests for NMB2B and Rerouting mappers
-- **Pending**: Integration tests for end-to-end pipeline
-- **Pending**: Round-trip validation tests
-- **Pending**: Error scenario coverage
+- **Complete**: Unit tests for Word extraction
+- **Pending**: Unit tests for Excel extraction
+- **Complete**: Unit tests for NMB2B and Rerouting mappers
+- **Complete**: Integration tests for end-to-end pipeline
+- **Complete**: Round-trip validation tests
+- **Complete**: Error scenario coverage
 
 #### Implementation Sub-Phases
 - **Phase 20.1 - Infrastructure (COMPLETE)**: OpenAPI spec, routes with multer, ImportService/YamlMapper refactoring, DocxExtractor with full content extraction, CLI commands with FormData

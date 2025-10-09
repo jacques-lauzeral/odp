@@ -469,17 +469,17 @@ class JSONImporter {
             context
         );
 
-        const impactsStakeholderCategories = this._resolveExternalIds(
+        const impactsStakeholderCategories = this._resolveImpactElementReferences(
             reqData.impactsStakeholderCategories || [],
             context
         );
 
-        const impactsData = this._resolveExternalIds(
+        const impactsData = this._resolveImpactElementReferences(
             reqData.impactsData || [],
             context
         );
 
-        const impactsServices = this._resolveExternalIds(
+        const impactsServices = this._resolveImpactElementReferences(
             reqData.impactsServices || [],
             context
         );
@@ -680,6 +680,30 @@ class JSONImporter {
                 resolved.push(internalId);
             } else {
                 missing.push(extId);
+            }
+        }
+
+        if (missing.length > 0) {
+            context.warnings.push(`Missing external references: ${missing.join(', ')}`);
+        }
+
+        return resolved;
+    }
+
+    _resolveImpactElementReferences(externalIds, context) {
+        if (!Array.isArray(externalIds)) {
+            return [];
+        }
+
+        const resolved = [];
+        const missing = [];
+
+        for (const externalId of externalIds) {
+            const internalId = context.globalRefMap.get(externalId.toLowerCase());
+            if (internalId !== undefined) {
+                resolved.push({id: externalId});
+            } else {
+                missing.push(internalId);
             }
         }
 
