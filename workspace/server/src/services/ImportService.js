@@ -1,6 +1,6 @@
 import YamlMapper from './import/YamlMapper.js';
 import DocxExtractor from './import/DocxExtractor.js';
-import Mapper from './import/Mapper.js';
+import XlsxExtractor from './import/XlsxExtractor.js';
 import JSONImporter from './import/JSONImporter.js';
 
 class ImportService {
@@ -21,13 +21,7 @@ class ImportService {
      * @returns {Object} RawExtractedData structure
      */
     async extractExcelDocument(fileBuffer, filename) {
-        return {
-            documentType: 'excel',
-            metadata: {
-                filename: filename,
-                parsedAt: new Date().toISOString()
-            }
-        };
+        return await XlsxExtractor.extract(fileBuffer, filename);
     }
 
 
