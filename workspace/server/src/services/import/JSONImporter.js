@@ -475,7 +475,7 @@ class JSONImporter {
         );
 
         const impactsData = this._resolveExternalIds(
-            reqData.impactsDataCategories || [],
+            reqData.impactsData || [],
             context
         );
 

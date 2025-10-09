@@ -286,17 +286,17 @@ components:
         impactsStakeholderCategories:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/EntityReference'
           default: []
         impactsData:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/EntityReference'
           default: []
         impactsServices:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/EntityReference'
           default: []
         implementedONs:
           type: array

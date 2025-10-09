@@ -194,8 +194,12 @@ export class BaseStore {
     }
 
     // Helper for consistent ID normalization
-    normalizeId(id) {
-        if (typeof id === 'object' && id.toNumber) return id.toNumber();
-        return parseInt(id, 10);
+    normalizeId(id, field='not-specified') {
+        try  {
+            if (typeof id === 'object' && id.toNumber) return id.toNumber();
+            return parseInt(id, 10);
+        } catch (error) {
+            throw new StoreError(`Failed to normalize ${field} id - ${error.message}`, error);
+        }
     }
 }

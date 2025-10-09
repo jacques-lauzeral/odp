@@ -112,7 +112,8 @@ class NM_B2B_Mapper extends Mapper {
         const isRequirement = this._hasStatement(subsection);
 
         if (isRequirement) {
-            const externalId = this._buildExternalId(subsection.path);
+            const externalId = this._buildExternalId(subsection.path, type);
+
             const req = {
                 externalId: externalId,
                 title: subsection.title,
@@ -161,9 +162,13 @@ class NM_B2B_Mapper extends Mapper {
     /**
      * Build external ID from path, removing common prefixes and section markers
      * Normalize: lowercase, trim tokens, replace spaces with underscores
+     * Add type prefix (on: or or:)
+     * @param {Array<string>} path - Full path array
+     * @param {string} type - 'ON' or 'OR'
+     * @returns {string} External ID with type prefix
      * @private
      */
-    _buildExternalId(path) {
+    _buildExternalId(path, type) {
         let cleanPath = [...path];
 
         // Remove 'Operational Needs and Requirements' prefix if present
@@ -182,7 +187,10 @@ class NM_B2B_Mapper extends Mapper {
             token.trim().toLowerCase().replace(/\s+/g, '_')
         );
 
-        return normalizedTokens.join('/');
+        const basePath = normalizedTokens.join('/');
+        const prefix = type === 'ON' ? 'on:' : 'or:';
+
+        return `${prefix}${basePath}`;
     }
 
     /**
@@ -314,10 +322,10 @@ class NM_B2B_Mapper extends Mapper {
     }
 
     /**
-     * Normalize ON reference to external ID
+     * Normalize ON reference to external ID with on: prefix
      * @param {string} reference - './Title' or '/Absolute/Path/Title'
      * @param {Array<string>} currentPath - Current OR's path (includes up to 'ORs' parent)
-     * @returns {string} External ID
+     * @returns {string} External ID with on: prefix
      * @private
      */
     _normalizeONReference(reference, currentPath) {
@@ -325,15 +333,15 @@ class NM_B2B_Mapper extends Mapper {
             // Relative: same organizational path as current OR
             const title = reference.substring(2);
             const orgPath = this._getOrganizationalPath(currentPath);
-            return this._buildExternalId([...orgPath, title]);
+            return this._buildExternalId([...orgPath, title], 'ON');
         } else if (reference.startsWith('/')) {
             // Absolute: parse path and normalize
             const pathString = reference.substring(1);
             const pathTokens = pathString.split('/');
-            return this._buildExternalId(pathTokens);
+            return this._buildExternalId(pathTokens, 'ON');
         }
-        // Fallback: normalize as single token
-        return reference.trim().toLowerCase().replace(/\s+/g, '_');
+        // Fallback: treat as single token
+        return this._buildExternalId([reference], 'ON');
     }
 
     /**

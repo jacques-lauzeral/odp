@@ -329,7 +329,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             
             RETURN refinesParents, impactsStakeholderCategories, impactsData, impactsServices, implementedONs,
                    documentReferences, collect(id(depReq)) as dependsOnRequirements
-        `, { versionId });refer
+        `, { versionId });
 
             if (result.records.length === 0) {
                 // Version doesn't exist - return empty relationships
@@ -346,25 +346,25 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const record = result.records[0];
             return {
-                refinesParents: record.get('refinesParents').map(id => this.normalizeId(id)),
+                refinesParents: record.get('refinesParents').map(id => this.normalizeId(id, 'refinesParents')),
                 impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(ref => ({
-                    id: this.normalizeId(ref.id),
+                    id: this.normalizeId(ref.id, 'impactsStakeholderCategories'),
                     note: ref.note || ''
                 })),
                 impactsData: record.get('impactsData').map(ref => ({
-                    id: this.normalizeId(ref.id),
+                    id: this.normalizeId(ref.id, 'impactsData'),
                     note: ref.note || ''
                 })),
                 impactsServices: record.get('impactsServices').map(ref => ({
-                    id: this.normalizeId(ref.id),
+                    id: this.normalizeId(ref.id, 'impactsServices'),
                     note: ref.note || ''
                 })),
-                implementedONs: record.get('implementedONs').map(id => this.normalizeId(id)),
+                implementedONs: record.get('implementedONs').map(id => this.normalizeId(id, 'implementedONs')),
                 documentReferences: record.get('documentReferences').map(ref => ({
-                    id: this.normalizeId(ref.id),
+                    id: this.normalizeId(ref.id, 'documentReferences'),
                     note: ref.note || ''
                 })),
-                dependsOnRequirements: record.get('dependsOnRequirements').map(id => this.normalizeId(id))
+                dependsOnRequirements: record.get('dependsOnRequirements').map(id => this.normalizeId(id, 'dependsOnRequirements'))
             };
         } catch (error) {
             throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
