@@ -2,6 +2,7 @@ import YamlMapper from './import/YamlMapper.js';
 import DocxExtractor from './import/DocxExtractor.js';
 import XlsxExtractor from './import/XlsxExtractor.js';
 import JSONImporter from './import/JSONImporter.js';
+import MapperRegistry from './import/MapperRegistry.js';
 
 class ImportService {
     /**
@@ -32,7 +33,7 @@ class ImportService {
      * @returns {Object} StructuredImportData
      */
     async mapToStructuredData(rawData, drg) {
-        const mapper = Mapper.getMapper(drg);
+        const mapper = MapperRegistry.getMapper(drg);
         return mapper.map(rawData);
     }
 

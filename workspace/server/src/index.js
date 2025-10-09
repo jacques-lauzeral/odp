@@ -11,7 +11,7 @@ import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
-import { registerImportMappers } from './services/import/mappers.js';
+import MapperRegistry from './services/import/MapperRegistry.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -89,7 +89,7 @@ async function startServer() {
         console.log('Store layer initialized successfully');
 
         console.log('Registering import mappers...');
-        registerImportMappers();
+        MapperRegistry.registerImportMappers();
 
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`ODP Server running on port ${PORT}`);
