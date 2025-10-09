@@ -11,12 +11,13 @@ import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
+import { registerImportMappers } from './services/import/mappers.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Add raw body parser for YAML content
@@ -86,6 +87,9 @@ async function startServer() {
         console.log('Initializing store layer...');
         await initializeStores();
         console.log('Store layer initialized successfully');
+
+        console.log('Registering import mappers...');
+        registerImportMappers();
 
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`ODP Server running on port ${PORT}`);

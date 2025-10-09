@@ -1,9 +1,9 @@
-import StakeholderCategoryService from './StakeholderCategoryService.js';
-import ServiceService from './ServiceService.js';
-import DataCategoryService from './DataCategoryService.js';
-import DocumentService from './DocumentService.js';
-import WaveService from './WaveService.js';
-import OperationalRequirementService from './OperationalRequirementService.js';
+import StakeholderCategoryService from '../StakeholderCategoryService.js';
+import ServiceService from '../ServiceService.js';
+import DataCategoryService from '../DataCategoryService.js';
+import DocumentService from '../DocumentService.js';
+import WaveService from '../WaveService.js';
+import OperationalRequirementService from '../OperationalRequirementService.js';
 
 class YamlMapper {
     /**
@@ -407,7 +407,7 @@ class YamlMapper {
      * Create all changes with resolved references and milestones in one step
      */
     async _createChangesWithReferences(changes, drg, userId, context) {
-        const OperationalChangeService = (await import('./OperationalChangeService.js')).default;
+        const OperationalChangeService = (await import('../OperationalChangeService.js')).default;
         let createdCount = 0;
 
         for (const changeData of changes) {

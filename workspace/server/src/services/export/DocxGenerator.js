@@ -1,8 +1,8 @@
 // workspace/server/src/services/DocxGenerator.js
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
-import { getDraftingGroupDisplay } from '../../../shared/src/index.js';
-import DocxRequirementRenderer from './DocxRequirementRenderer.js';
-import { DOCUMENT_STYLES, SPACING } from './DocxStyles.js';
+import { getDraftingGroupDisplay } from '../../../../shared/src/index.js';
+import DocxRequirementRenderer from '../import/DocxRequirementRenderer.js';
+import { DOCUMENT_STYLES, SPACING } from '../import/DocxStyles.js';
 
 class DocxGenerator {
     constructor() {

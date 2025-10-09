@@ -1,6 +1,6 @@
 // workspace/server/src/services/DocxExportService.js
 import OperationalRequirementService from './OperationalRequirementService.js';
-import DocxGenerator from './DocxGenerator.js';
+import DocxGenerator from './export/DocxGenerator.js';
 import { isDraftingGroupValid } from '../../../shared/src/index.js';
 
 class DocxExportService {

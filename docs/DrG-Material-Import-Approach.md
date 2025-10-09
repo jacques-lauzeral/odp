@@ -188,7 +188,7 @@ Matches existing ODP import format with all entity types:
       "impactsStakeholderCategories": ["SC-001"],
       "impactsServices": ["SRV-001"],
       "impactsData": ["DC-001"],
-      "referencesDocuments": [
+      "documentReferences": [
         {
           "documentExternalId": "DOC-001",
           "note": "Section 3.2"
@@ -211,7 +211,7 @@ Matches existing ODP import format with all entity types:
       "path": ["Flight Planning", "Enhancements"],
       "satisfiedORs": ["NM-B2B/Flight-Planning/Route-Validation"],
       "supersededORs": [],
-      "referencesDocuments": [
+      "documentReferences": [
         {
           "documentExternalId": "DOC-001",
           "note": "Appendix B"

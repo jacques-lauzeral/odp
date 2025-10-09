@@ -3,9 +3,9 @@ import {
     commitTransaction,
     rollbackTransaction,
     odpEditionStore
-} from '../store/index.js';
-import {DraftingGroupKeys, getDraftingGroupDisplay, MilestoneEventOrder} from "../../../shared/src/index.js";
-import baseline from "../routes/baseline.js";
+} from '../../store/index.js';
+import {DraftingGroupKeys, getDraftingGroupDisplay, MilestoneEventOrder} from "../../../../shared/src/index.js";
+import baseline from "../../routes/baseline.js";
 
 /**
  * ODPEditionAggregator handles complex data assembly for ODP Edition exports.
@@ -131,9 +131,9 @@ export class ODPEditionAggregator {
         }
 
         // Import services
-        const { default: waveService } = await import('./WaveService.js');
-        const { default: operationalChangeService } = await import('./OperationalChangeService.js');
-        const { default: operationalRequirementService } = await import('./OperationalRequirementService.js');
+        const { default: waveService } = await import('../WaveService.js');
+        const { default: operationalChangeService } = await import('../OperationalChangeService.js');
+        const { default: operationalRequirementService } = await import('../OperationalRequirementService.js');
 
         // Get all waves
         const allWaves = await waveService.listItems(userId);
@@ -160,9 +160,9 @@ export class ODPEditionAggregator {
 
     async buildRepositoryExportData(userId) {
         // Import services
-        const { default: waveService } = await import('./WaveService.js');
-        const { default: operationalChangeService } = await import('./OperationalChangeService.js');
-        const { default: operationalRequirementService } = await import('./OperationalRequirementService.js');
+        const { default: waveService } = await import('../WaveService.js');
+        const { default: operationalChangeService } = await import('../OperationalChangeService.js');
+        const { default: operationalRequirementService } = await import('../OperationalRequirementService.js');
 
         // Get ALL data
         const allWaves = await waveService.listItems(userId);
@@ -177,8 +177,8 @@ export class ODPEditionAggregator {
      * Groups milestones by wave and includes operational change reference
      */
     async _enrichWavesWithMilestones(waves, operationalChanges, userId) {
-        const { default: operationalChangeService } = await import('./OperationalChangeService.js');
-        const { idsEqual } = await import('../../../shared/src/model/utils.js');
+        const { default: operationalChangeService } = await import('../OperationalChangeService.js');
+        const { idsEqual } = await import('../../../../shared/src/model/utils.js');
 
         // Define the event type order you want
         const eventTypeOrder = MilestoneEventOrder;
@@ -248,7 +248,7 @@ export class ODPEditionAggregator {
      * Enrich operational changes with their milestones
      */
     async _enrichChangesWithMilestones(operationalChanges, userId) {
-        const { default: operationalChangeService } = await import('./OperationalChangeService.js');
+        const { default: operationalChangeService } = await import('../OperationalChangeService.js');
 
         for (const change of operationalChanges) {
             const milestones = await operationalChangeService.getMilestones(change.itemId, userId);

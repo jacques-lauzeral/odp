@@ -1,5 +1,7 @@
-import YamlMapper from './YamlMapper.js';
-import DocxExtractor from './DocxExtractor.js';
+import YamlMapper from './import/YamlMapper.js';
+import DocxExtractor from './import/DocxExtractor.js';
+import Mapper from './import/Mapper.js';
+import JSONImporter from './import/JSONImporter.js';
 
 class ImportService {
     /**
@@ -28,6 +30,7 @@ class ImportService {
         };
     }
 
+
     /**
      * Map raw extracted data to structured import format using DrG-specific mapper
      * @param {Object} rawData - RawExtractedData from extraction
@@ -35,8 +38,8 @@ class ImportService {
      * @returns {Object} StructuredImportData
      */
     async mapToStructuredData(rawData, drg) {
-        // Dummy implementation - returns empty structure
-        return {};
+        const mapper = Mapper.getMapper(drg);
+        return mapper.map(rawData);
     }
 
     /**
@@ -46,17 +49,7 @@ class ImportService {
      * @returns {Object} ImportSummary with counts and errors
      */
     async importStructuredData(structuredData, userId) {
-        // Dummy implementation - returns empty summary
-        return {
-            documents: 0,
-            stakeholderCategories: 0,
-            services: 0,
-            dataCategories: 0,
-            waves: 0,
-            requirements: 0,
-            changes: 0,
-            errors: []
-        };
+        return await JSONImporter.importStructuredData(structuredData, userId);
     }
 
     /**

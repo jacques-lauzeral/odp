@@ -1,4 +1,4 @@
-import ODPEditionTemplateRenderer from './ODPEditionTemplateRenderer.js';
+import ODPEditionTemplateRenderer from './export/ODPEditionTemplateRenderer.js';
 import {
     createTransaction,
     commitTransaction,
@@ -164,9 +164,9 @@ export class ODPEditionService {
      * @returns {string} - AsciiDoc formatted content
      */
     async exportAsAsciiDoc(editionId, userId) {
-        const ODPEditionAggregator = (await import('./ODPEditionAggregator.js')).default;
+        const ODPEditionAggregator = (await import('./export/ODPEditionAggregator.js')).default;
         const aggregator = new ODPEditionAggregator();
-        const { default: ODPEditionTemplateRenderer } = await import('./ODPEditionTemplateRenderer.js');
+        const { default: ODPEditionTemplateRenderer } = await import('./export/ODPEditionTemplateRenderer.js');
         const renderer = new ODPEditionTemplateRenderer();
 
         const data = editionId
