@@ -347,23 +347,27 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const record = result.records[0];
             return {
                 refinesParents: record.get('refinesParents').map(id => this.normalizeId(id, 'refinesParents')),
-                impactsStakeholderCategories: record.get('impactsStakeholderCategories').map(ref => ({
-                    id: this.normalizeId(ref.id, 'impactsStakeholderCategories'),
-                    note: ref.note || ''
-                })),
-                impactsData: record.get('impactsData').map(ref => ({
-                    id: this.normalizeId(ref.id, 'impactsData'),
-                    note: ref.note || ''
-                })),
-                impactsServices: record.get('impactsServices').map(ref => ({
-                    id: this.normalizeId(ref.id, 'impactsServices'),
-                    note: ref.note || ''
-                })),
+                impactsStakeholderCategories: record.get('impactsStakeholderCategories')
+                    .filter(ref => ref.id !== null).map(ref => ({
+                        id: this.normalizeId(ref.id, 'impactsStakeholderCategories'),
+                        note: ref.note || ''
+                    })),
+                impactsData: record.get('impactsData')
+                    .filter(ref => ref.id !== null).map(ref => ({
+                        id: this.normalizeId(ref.id, 'impactsData'),
+                        note: ref.note || ''
+                    })),
+                impactsServices: record.get('impactsServices')
+                    .filter(ref => ref.id !== null).map(ref => ({
+                        id: this.normalizeId(ref.id, 'impactsServices'),
+                        note: ref.note || ''
+                    })),
                 implementedONs: record.get('implementedONs').map(id => this.normalizeId(id, 'implementedONs')),
-                documentReferences: record.get('documentReferences').map(ref => ({
-                    id: this.normalizeId(ref.id, 'documentReferences'),
-                    note: ref.note || ''
-                })),
+                documentReferences: record.get('documentReferences')
+                    .filter(ref => ref.id !== null).map(ref => ({
+                        id: this.normalizeId(ref.id, 'documentReferences'),
+                        note: ref.note || ''
+                    })),
                 dependsOnRequirements: record.get('dependsOnRequirements').map(id => this.normalizeId(id, 'dependsOnRequirements'))
             };
         } catch (error) {
