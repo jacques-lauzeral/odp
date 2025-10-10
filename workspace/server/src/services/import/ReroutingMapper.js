@@ -1,10 +1,97 @@
 import Mapper from './Mapper.js';
+import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
  * Mapper for REROUTING Excel documents
  * Transforms tabular sheet structure into ODP entities
+ *
+ * COLUMN INTERPRETATION:
+ * ======================
+ *
+ * ON (Operational Need) Extraction:
+ * ---------------------------------
+ * - 'ON ID' → internal tracking only, not used in external ID
+ * - 'ON' → title (used for external ID generation)
+ * - 'ON Definition' → parsed into statement and rationale
+ *   - "What:" section → statement
+ *   - "Why:" section → rationale
+ *   - "Focus:" section → appended to statement
+ *
+ * OR (Operational Requirement) Extraction:
+ * ----------------------------------------
+ * - 'RR ID' → internal tracking only, not used in external ID
+ * - 'Title' → title (used for external ID generation)
+ * - 'What (Detailed Requirement)' + 'Fit Criteria' → statement (concatenated)
+ * - 'Why (Rationale)' + 'Opportunities/Risks' → rationale (concatenated)
+ * - 'Use Case' → flows
+ * - 'Comments' + 'Data (and other Enabler)' → privateNotes (concatenated)
+ * - 'ON ID' → implementedONs (resolved via internal ID map)
+ * - 'Stakeholders' → impactsStakeholderCategories (parsed and mapped)
+ * - 'OC ID' → used for OC-OR relationship tracking (resolved via internal ID map)
+ * - type: 'OR', drg: 'RRT' (hardcoded)
+ *
+ * OC (Operational Change) Extraction:
+ * -----------------------------------
+ * - 'OC ID' → internal tracking only ('RR-OC-' prefix removed), not used in external ID
+ * - 'OC Name' → title (used for external ID generation)
+ * - 'OC Description' → parsed into purpose and details
+ *   - Text before "In essence:" → details
+ *   - Text after "In essence:" → purpose
+ * - satisfiedORs → populated after all rows processed (relationship array)
+ * - visibility: 'NETWORK', drg: 'RRT' (hardcoded)
+ *
+ * External ID Format:
+ * -------------------
+ * - ON: oc:rrt/{title_normalized}
+ * - OR: or:rrt/{title_normalized}
+ * - OC: oc:rrt/{title_normalized}
+ *
+ * Stakeholder Mapping:
+ * --------------------
+ * Excel values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
+ * - 'NM' / 'NMOC' → stakeholder:nm / stakeholder:nmoc
+ * - 'ANSP' / 'ANSPs' → stakeholder:ansp
+ * - 'FMP' / 'FMPs' → stakeholder:fmp
+ * - 'AO' → stakeholder:ao
+ * - 'External Users' → ignored
+ * - Comma and slash delimiters handled (',', '/')
+ *
+ * IGNORED COLUMNS:
+ * ----------------
+ * The following columns are intentionally not imported:
+ * - 'Contribution (e.g.CONOPS)'
+ * - 'Priority'
+ * - 'Date'
+ * - 'Originator'
+ * - 'Dependencies'
+ * - 'Impacted Services'
+ * - 'Main Topic'
+ * - 'Target maturity'
+ * - 'Target implementation'
+ * - 'Reviewer'
+ *
+ * RELATIONSHIPS:
+ * --------------
+ * - ON → OR: One-to-many (ON.externalId stored in OR.implementedONs)
+ * - OC → OR: One-to-many (OR.externalId stored in OC.satisfiedORs)
  */
 class ReroutingMapper extends Mapper {
+    /**
+     * Map of stakeholder synonyms to external IDs
+     * Keys: variations found in Excel (including plural forms)
+     * Values: external IDs in the ODP system
+     */
+    static STAKEHOLDER_SYNONYM_MAP = {
+        'NM': 'stakeholder:nm',
+        'NMOC': 'stakeholder:nmoc',
+        'ANSP': 'stakeholder:ansp',
+        'ANSPs': 'stakeholder:ansp',
+        'FMP': 'stakeholder:fmp',
+        'FMPs': 'stakeholder:fmp',
+        'AO': 'stakeholder:ao'
+        // 'External Users' is ignored
+    };
+
     /**
      * Map raw extracted Excel data to structured import format
      * @param {Object} rawData - RawExtractedData from XlsxExtractor
@@ -13,9 +100,9 @@ class ReroutingMapper extends Mapper {
     map(rawData) {
         console.log('ReroutingMapper: Processing raw data from Excel extraction');
 
-        const { needs, requirements, changes } = this._processNMRRSheet(rawData);
+        const result = this._processNMRRSheet(rawData);
 
-        console.log(`Mapped ${needs.length} needs (ONs), ${requirements.length} requirements (ORs), and ${changes.length} changes (OCs) from NM-RR sheet`);
+        console.log(`Mapped ${result.needs.length} needs (ONs), ${result.requirements.length} requirements (ORs), and ${result.changes.length} changes (OCs) from NM-RR sheet`);
 
         return {
             documents: [],
@@ -23,8 +110,8 @@ class ReroutingMapper extends Mapper {
             dataCategories: [],
             services: [],
             waves: [],
-            requirements: [...needs, ...requirements],
-            changes: [...changes]
+            requirements: [...result.needs, ...result.requirements],
+            changes: [...result.changes]
         };
     }
 
@@ -38,6 +125,13 @@ class ReroutingMapper extends Mapper {
         const needsMap = new Map(); // Map<externalId, ON>
         const changesMap = new Map(); // Map<externalId, OC>
         const requirements = [];
+
+        // Internal ID to External ID mappings
+        const onIdToExternalId = new Map(); // Map<ON_ID, externalId>
+        const ocIdToExternalId = new Map(); // Map<OC_ID, externalId>
+
+        // Track OC -> OR relationships (using external IDs)
+        const ocToOrMap = new Map(); // Map<ocExternalId, Set<orExternalId>>
 
         // Find NM-RR sheet
         const nmrrSheet = (rawData.sheets || []).find(sheet =>
@@ -53,11 +147,29 @@ class ReroutingMapper extends Mapper {
 
         // Process each row
         for (const row of nmrrSheet.rows) {
-            const requirement = this._processNMRRRow(row, needsMap, changesMap);
+            const requirement = this._processNMRRRow(
+                row,
+                needsMap,
+                changesMap,
+                ocToOrMap,
+                onIdToExternalId,
+                ocIdToExternalId
+            );
             if (requirement) {
                 requirements.push(requirement);
             }
         }
+
+        // Now populate satisfiedORs for each OC
+        for (const [ocExternalId, orExternalIds] of ocToOrMap.entries()) {
+            const oc = changesMap.get(ocExternalId);
+            if (oc) {
+                oc.satisfiedORs = Array.from(orExternalIds);
+            }
+        }
+
+        console.log(`Mapped ${needsMap.size} needs (ONs), ${requirements.length} requirements (ORs), and ${changesMap.size} changes (OCs)`);
+        console.log(`OC-OR relationships: ${ocToOrMap.size} OCs linked to ORs`);
 
         return {
             needs: Array.from(needsMap.values()),
@@ -72,38 +184,61 @@ class ReroutingMapper extends Mapper {
      * @param {Object} row - Row object with column headers as keys
      * @param {Map} needsMap - Map of ON externalId -> ON object
      * @param {Map} changesMap - Map of OC externalId -> OC object
+     * @param {Map} ocToOrMap - Map of OC externalId -> Set of OR externalIds
+     * @param {Map} onIdToExternalId - Map of ON internal ID -> external ID
+     * @param {Map} ocIdToExternalId - Map of OC internal ID -> external ID
      * @returns {Object|null} Requirement object or null if invalid
      * @private
      */
-    _processNMRRRow(row, needsMap, changesMap) {
+    _processNMRRRow(row, needsMap, changesMap, ocToOrMap, onIdToExternalId, ocIdToExternalId) {
         // Extract ON ID from column A
         const onId = row['ON ID'];
         let onExternalId = null;
 
         if (onId && onId.trim() !== '') {
-            onExternalId = this._buildExternalId(onId, 'ON');
+            const normalizedOnId = onId.trim();
 
-            // If not already in map, extract and add
-            if (!needsMap.has(onExternalId)) {
+            // Check if we already processed this ON
+            if (onIdToExternalId.has(normalizedOnId)) {
+                onExternalId = onIdToExternalId.get(normalizedOnId);
+            } else {
+                // Extract the full ON object
                 const need = this._extractNeed(row);
                 if (need) {
+                    onExternalId = need.externalId;
+                    // Store in both maps
                     needsMap.set(onExternalId, need);
+                    onIdToExternalId.set(normalizedOnId, onExternalId);
                 }
             }
         }
 
         // Extract OC ID from OC ID column
         const ocId = row['OC ID'];
+        let ocExternalId = null;
 
         if (ocId && ocId.trim() !== '') {
-            const ocExternalId = this._buildExternalId(ocId, 'OC');
+            const normalizedOcId = this._cleanOcId(ocId.trim());
 
-            // If not already in map, extract and add
-            if (!changesMap.has(ocExternalId)) {
+            // Check if we already processed this OC
+            if (ocIdToExternalId.has(normalizedOcId)) {
+                ocExternalId = ocIdToExternalId.get(normalizedOcId);
+            } else {
+                // Extract the full OC object
                 const change = this._extractChange(row);
                 if (change) {
+                    ocExternalId = change.externalId;
+                    // Initialize with empty satisfiedORs array
+                    change.satisfiedORs = [];
+                    // Store in both maps
                     changesMap.set(ocExternalId, change);
+                    ocIdToExternalId.set(normalizedOcId, ocExternalId);
                 }
+            }
+
+            // Initialize the Set for this OC if not exists
+            if (ocExternalId && !ocToOrMap.has(ocExternalId)) {
+                ocToOrMap.set(ocExternalId, new Set());
             }
         }
 
@@ -112,38 +247,33 @@ class ReroutingMapper extends Mapper {
             return null;
         }
 
-        return {
-            externalId: this._buildExternalId(row['RR ID'], 'OR'),
-            type: 'OR',
-            drg: 'RRT',
-            title: row['Title'] || '',
-            statement: this._extractRequirementStatement(row),
-            rationale: this._extractRequirementRationale(row),
-            flows: this._extractRequirementFlows(row),
-            privateNotes: this._extractRequirementPrivateNotes(row),
-            implementedONs: onExternalId ? [onExternalId] : []
-        };
+        // Build the OR object
+        const requirement = this._extractRequirement(row);
+        if (!requirement) {
+            return null;
+        }
+
+        // Track OC -> OR relationship if OC exists
+        if (ocExternalId && requirement.externalId) {
+            ocToOrMap.get(ocExternalId).add(requirement.externalId);
+        }
+
+        // Add ON reference if exists
+        if (onExternalId) {
+            requirement.implementedONs = [onExternalId];
+        }
+
+        return requirement;
     }
 
     /**
-     * Build external ID from ID and type
-     * @param {string} id - Numeric ID (ON ID, RR ID, or OC ID)
-     * @param {string} type - 'ON', 'OR', or 'OC'
-     * @returns {string} External ID with appropriate prefix
+     * Clean OC ID by removing 'RR-OC-' prefix if present
+     * @param {string} ocId - Raw OC ID from Excel
+     * @returns {string} Cleaned OC ID
      * @private
      */
-    _buildExternalId(id, type) {
-        let normalized = id.trim();
-
-        // Remove 'RR-OC-' prefix for OC IDs
-        if (type === 'OC' && normalized.startsWith('RR-OC-')) {
-            normalized = normalized.substring(6);
-        }
-
-        const prefix = type === 'ON' ? 'on:rrt-' :
-            type === 'OR' ? 'or:rrt-' :
-                'oc:rrt-';
-        return `${prefix}${normalized}`;
+    _cleanOcId(ocId) {
+        return ocId.startsWith('RR-OC-') ? ocId.substring(6) : ocId;
     }
 
     /**
@@ -153,24 +283,28 @@ class ReroutingMapper extends Mapper {
      * @private
      */
     _extractNeed(row) {
-        const onId = row['ON ID'];
         const onTitle = row['ON'];
         const onDefinition = row['ON Definition'];
 
-        if (!onId || !onTitle) {
+        if (!onTitle) {
             return null;
         }
 
-        const externalId = this._buildExternalId(onId, 'ON');
         const { statement, rationale } = this._extractNeedDefinition(onDefinition);
 
-        return {
-            externalId: externalId,
+        // Build object first
+        const need = {
             type: 'ON',
+            drg: 'RRT',
             title: onTitle.trim(),
             statement: statement,
             rationale: rationale
         };
+
+        // Add external ID using the complete object (no path needed)
+        need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
+
+        return need;
     }
 
     /**
@@ -238,29 +372,33 @@ class ReroutingMapper extends Mapper {
     /**
      * Extract OC (Operational Change) from row
      * @param {Object} row - Row object
-     * @returns {Object|null} OC object with externalId, title, purpose, details
+     * @returns {Object|null} OC object with externalId, title, purpose, details, and satisfiedORs array
      * @private
      */
     _extractChange(row) {
-        const ocId = row['OC ID'];
         const ocName = row['OC Name'];
         const ocDescription = row['OC Description'];
 
-        if (!ocId || !ocName) {
+        if (!ocName) {
             return null;
         }
 
-        const externalId = this._buildExternalId(ocId, 'OC');
         const { purpose, details } = this._extractChangeDescription(ocDescription);
 
-        return {
-            externalId: externalId,
+        // Build object first
+        const change = {
+            drg: 'RRT',
             title: ocName.trim(),
             purpose: purpose,
             visibility: 'NETWORK',
-            drg: 'RRT',
-            details: details
+            details: details,
+            satisfiedORs: [] // Will be populated after all rows are processed
         };
+
+        // Add external ID using the complete object (no path needed)
+        change.externalId = ExternalIdBuilder.buildExternalId(change, 'oc');
+
+        return change;
     }
 
     /**
@@ -294,6 +432,41 @@ class ReroutingMapper extends Mapper {
         }
 
         return { purpose, details };
+    }
+
+    /**
+     * Extract OR (Operational Requirement) from row
+     * @param {Object} row - Row object
+     * @returns {Object|null} OR object
+     * @private
+     */
+    _extractRequirement(row) {
+        const title = row['Title'];
+
+        if (!title) {
+            return null;
+        }
+
+        // Parse stakeholders
+        const impactsStakeholderCategories = this._parseStakeholders(row['Stakeholders']);
+
+        // Build object first
+        const requirement = {
+            type: 'OR',
+            drg: 'RRT',
+            title: title.trim(),
+            statement: this._extractRequirementStatement(row),
+            rationale: this._extractRequirementRationale(row),
+            flows: this._extractRequirementFlows(row),
+            privateNotes: this._extractRequirementPrivateNotes(row),
+            implementedONs: [],  // Will be populated by caller
+            impactsStakeholderCategories: impactsStakeholderCategories
+        };
+
+        // Add external ID using the complete object (no path needed)
+        requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
+
+        return requirement;
     }
 
     /**
@@ -373,16 +546,70 @@ class ReroutingMapper extends Mapper {
 
     /**
      * Extract private notes from row
+     * Includes Comments and Data (and other Enabler) sections
      * @param {Object} row - Row object
      * @returns {string|null} Private notes text
      * @private
      */
     _extractRequirementPrivateNotes(row) {
         const comments = row['Comments'];
-        if (!comments || comments.trim() === '') {
+        const dataEnablers = row['Data (and other Enabler)'];
+
+        if (!comments && !dataEnablers) {
             return null;
         }
-        return `Comments:\n\n${comments}`;
+
+        let result = '';
+
+        // Add Comments section if present
+        if (comments && comments.trim() !== '') {
+            result = `Comments:\n\n${comments.trim()}`;
+        }
+
+        // Add Data section if present
+        if (dataEnablers && dataEnablers.trim() !== '') {
+            if (result) {
+                result += '\n\n---\n\nData (and other Enabler):\n\n' + dataEnablers.trim();
+            } else {
+                result = 'Data (and other Enabler):\n\n' + dataEnablers.trim();
+            }
+        }
+
+        return result || null;
+    }
+
+    /**
+     * Parse stakeholders column and map to external IDs
+     * @param {string} stakeholdersText - Comma-separated stakeholder text from Excel
+     * @returns {Array<string>} Array of unique stakeholder external IDs
+     * @private
+     */
+    _parseStakeholders(stakeholdersText) {
+        if (!stakeholdersText || stakeholdersText.trim() === '') {
+            return [];
+        }
+
+        const stakeholderIds = new Set();
+
+        // Split by comma and slash
+        const tokens = stakeholdersText.split(/[,/]/).map(t => t.trim()).filter(t => t);
+
+        for (const token of tokens) {
+            // Skip 'External Users'
+            if (token === 'External Users') {
+                continue;
+            }
+
+            const externalId = ReroutingMapper.STAKEHOLDER_SYNONYM_MAP[token];
+
+            if (externalId) {
+                stakeholderIds.add(externalId);
+            } else {
+                console.warn(`Unknown stakeholder token: "${token}" in text: "${stakeholdersText}"`);
+            }
+        }
+
+        return Array.from(stakeholderIds).sort();
     }
 
     /**

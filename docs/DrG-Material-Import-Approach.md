@@ -25,25 +25,25 @@ Strategy for importing Drafting Group (DrG) materials from heterogeneous Office 
 ### Stage Descriptions
 
 1. **Extraction** (Document Format → Raw Data)
-    - **Input**: Office document binary (.docx or .xlsx)
-    - **Process**: Parse document structure without business logic
-    - **Output**: Generic intermediate representation (JSON)
-    - **Libraries**: mammoth.js (Word), xlsx (Excel)
-    - **Responsibility**: Extract sections, headings, tables, paragraphs, formatting
+- **Input**: Office document binary (.docx or .xlsx)
+- **Process**: Parse document structure without business logic
+- **Output**: Generic intermediate representation (JSON)
+- **Libraries**: mammoth.js (Word), xlsx (Excel)
+- **Responsibility**: Extract sections, headings, tables, paragraphs, formatting
 
 2. **Mapping** (Raw Data → Structured Data)
-    - **Input**: Raw extracted data + DrG identifier
-    - **Process**: Apply DrG-specific business rules
-    - **Output**: Structured import payload matching ODP schema
-    - **Implementation**: Pluggable mapper classes per DrG
-    - **Responsibility**: Entity identification, field mapping, reference resolution
+- **Input**: Raw extracted data + DrG identifier
+- **Process**: Apply DrG-specific business rules
+- **Output**: Structured import payload matching ODP schema
+- **Implementation**: Pluggable mapper classes per DrG
+- **Responsibility**: Entity identification, field mapping, reference resolution
 
 3. **Import** (Structured Data → Database)
-    - **Input**: Structured JSON payload
-    - **Process**: Validate, resolve references, persist entities
-    - **Output**: ImportSummary with statistics and errors
-    - **Implementation**: Existing ImportService (enhanced)
-    - **Responsibility**: Transaction management, dependency resolution, error collection
+- **Input**: Structured JSON payload
+- **Process**: Validate, resolve references, persist entities
+- **Output**: ImportSummary with statistics and errors
+- **Implementation**: Existing ImportService (enhanced)
+- **Responsibility**: Transaction management, dependency resolution, error collection
 
 ---
 
@@ -147,8 +147,8 @@ Matches existing ODP import format with all entity types:
 {
   "documents": [
     {
-      "externalId": "DOC-001",
-      "title": "ConOPS v2.1",
+      "externalId": "document:conops_v2.1",
+      "name": "ConOPS v2.1",
       "description": "Concept of Operations",
       "version": "2.1",
       "url": "https://example.com/conops-2.1.pdf"
@@ -156,17 +156,29 @@ Matches existing ODP import format with all entity types:
   ],
   "stakeholderCategories": [
     {
-      "externalId": "SC-001",
-      "title": "Network Manager",
+      "externalId": "stakeholder:network_manager",
+      "name": "Network Manager",
       "description": "Central coordination entity"
     }
   ],
-  "dataCategories": [...],
-  "services": [...],
+  "dataCategories": [
+    {
+      "externalId": "data:flight_data",
+      "name": "Flight Data",
+      "description": "Core flight planning information"
+    }
+  ],
+  "services": [
+    {
+      "externalId": "service:flight_planning_service",
+      "name": "Flight Planning Service",
+      "description": "Route planning and validation"
+    }
+  ],
   "waves": [
     {
-      "externalId": "WAVE-2026-Q2",
-      "title": "2026 Q2 Release",
+      "externalId": "wave:2026_q2_release",
+      "name": "2026 Q2 Release",
       "description": "Second quarter deployment",
       "startDate": "2026-04-01",
       "endDate": "2026-06-30"
@@ -174,58 +186,37 @@ Matches existing ODP import format with all entity types:
   ],
   "requirements": [
     {
-      "externalId": "NM-B2B/Flight-Planning/Route-Validation",
+      "externalId": "or:nm_b2b/flight_planning/validation/route_validation",
       "title": "Route Validation",
       "type": "OR",
       "drg": "NM_B2B",
       "statement": "The system shall validate flight routes",
       "rationale": "Ensure safety and regulatory compliance",
       "flows": "1. Receive plan\n2. Validate\n3. Return result",
-      "privateNotes": "Implementation uses spatial algorithms",
-      "path": ["Flight Planning", "Route Management"],
-      "parentExternalId": "NM-B2B/Flight-Planning",
-      "implementedONs": ["NM-B2B/Flight-Planning/ON-1"],
-      "impactsStakeholderCategories": ["SC-001"],
-      "impactsServices": ["SRV-001"],
-      "impactsData": ["DC-001"],
-      "documentReferences": [
-        {
-          "documentExternalId": "DOC-001",
-          "note": "Section 3.2"
-        }
-      ],
-      "dependsOnRequirements": ["NM-B2B/Infrastructure/OR-1"]
+      "path": ["Flight Planning", "Validation"],
+      "implementedONs": ["on:nm_b2b/flight_planning/route_safety"],
+      "impactsStakeholderCategories": ["stakeholder:network_manager"],
+      "impactsServices": ["service:flight_planning_service"],
+      "impactsData": ["data:flight_data"]
     }
   ],
   "changes": [
     {
-      "externalId": "NM-B2B-OC-1",
-      "title": "Enhanced Route Validation",
-      "purpose": "Improve validation accuracy",
+      "externalId": "oc:nm_b2b/real-time_validation",
+      "title": "Real-Time Route Validation",
+      "purpose": "Enable immediate validation feedback",
       "visibility": "NETWORK",
       "drg": "NM_B2B",
-      "initialState": "Basic route checking",
-      "finalState": "Advanced validation with real-time data",
-      "details": "Implementation plan:\n1. Phase 1...\n2. Phase 2...",
-      "privateNotes": "Requires database upgrade",
-      "path": ["Flight Planning", "Enhancements"],
-      "satisfiedORs": ["NM-B2B/Flight-Planning/Route-Validation"],
+      "initialState": "Batch validation only",
+      "finalState": "Real-time validation available",
+      "details": "Migration from batch to streaming validation",
+      "satisfiedORs": ["or:nm_b2b/flight_planning/validation/route_validation"],
       "supersededORs": [],
-      "documentReferences": [
-        {
-          "documentExternalId": "DOC-001",
-          "note": "Appendix B"
-        }
-      ],
-      "dependsOnChanges": ["NM-B2B-OC-0"],
       "milestones": [
         {
-          "eventType": "API_PUBLICATION",
-          "wave": "WAVE-2026-Q2"
-        },
-        {
-          "eventType": "OPS_DEPLOYMENT",
-          "wave": "WAVE-2026-Q3"
+          "name": "API Ready",
+          "targetDate": "2026-03-15",
+          "status": "PLANNED"
         }
       ]
     }
@@ -233,19 +224,29 @@ Matches existing ODP import format with all entity types:
 }
 ```
 
+### Key Field Mapping Rules
+
+**Setup Entities (Hierarchical)**:
+- **stakeholderCategories**: Use `name` field (not `title`)
+- **dataCategories**: Use `name` field (not `title`)
+- **services**: Use `name` field (not `title`)
+- **documents**: Use `name` field (not `title`)
+- **waves**: Use `name` field (not `title`)
+- External IDs can include parent references: `data:parent_category/child_category`
+
+**Requirements and Changes**:
+- Use `title` field for human-readable names
+- Path-based external IDs: `{type}:{drg}/{organizational_path}/{title_normalized}`
+- Support both parent references and organizational paths
+
 ---
 
-## Mapper Implementation
+## DrG-Specific Mappers
 
 ### Abstract Base Class
 
 ```javascript
 class DocumentMapper {
-  /**
-   * Transform raw extracted data into structured import payload
-   * @param {Object} rawData - Generic document structure
-   * @returns {Object} - Complete structured import data
-   */
   map(rawData) {
     return {
       documents: this.mapDocuments(rawData),
@@ -257,15 +258,15 @@ class DocumentMapper {
       changes: this.mapChanges(rawData)
     };
   }
-
-  // Abstract methods - must be implemented by subclasses
-  mapDocuments(rawData) { throw new Error('Not implemented'); }
-  mapStakeholderCategories(rawData) { throw new Error('Not implemented'); }
-  mapDataCategories(rawData) { throw new Error('Not implemented'); }
-  mapServices(rawData) { throw new Error('Not implemented'); }
-  mapWaves(rawData) { throw new Error('Not implemented'); }
-  mapRequirements(rawData) { throw new Error('Not implemented'); }
-  mapChanges(rawData) { throw new Error('Not implemented'); }
+  
+  // Each subclass implements these methods
+  mapDocuments(rawData) { return []; }
+  mapStakeholderCategories(rawData) { return []; }
+  mapDataCategories(rawData) { return []; }
+  mapServices(rawData) { return []; }
+  mapWaves(rawData) { return []; }
+  mapRequirements(rawData) { return []; }
+  mapChanges(rawData) { return []; }
 }
 ```
 
@@ -275,47 +276,57 @@ class DocumentMapper {
 class NMB2BMapper extends DocumentMapper {
   mapRequirements(rawData) {
     const requirements = [];
-    
-    // Find section containing "Operational Needs" or "Operational Requirements"
     const onSection = this.findSection(rawData, /operational needs/i);
     const orSection = this.findSection(rawData, /operational requirements/i);
     
-    // Process ON sections
+    // Process ONs
     if (onSection) {
-      requirements.push(...this.extractRequirements(onSection, 'ON'));
+      for (const subsection of this.iterateSubsections(onSection)) {
+        if (this.hasStatement(subsection)) {
+          const req = {
+            externalId: ExternalIdBuilder.buildExternalId({
+              drg: 'NM_B2B',
+              path: subsection.path,
+              title: subsection.title
+            }, 'on'),
+            title: subsection.title,
+            type: 'ON',
+            drg: 'NM_B2B',
+            statement: this.extractField(subsection, 'Statement'),
+            rationale: this.extractField(subsection, 'Rationale'),
+            path: subsection.path
+          };
+          requirements.push(req);
+        }
+      }
     }
     
-    // Process OR sections
+    // Process ORs
     if (orSection) {
-      requirements.push(...this.extractRequirements(orSection, 'OR'));
-    }
-    
-    return requirements;
-  }
-  
-  extractRequirements(section, type) {
-    const requirements = [];
-    
-    // Each subsection becomes a requirement if it has "Statement" field
-    for (const subsection of this.iterateSubsections(section)) {
-      if (this.hasStatement(subsection)) {
-        const req = {
-          externalId: this.buildExternalId(subsection.path, subsection.title),
-          title: subsection.title,
-          type: type,
-          drg: 'NM_B2B',
-          statement: this.extractField(subsection, 'Statement'),
-          rationale: this.extractField(subsection, 'Rationale'),
-          flows: this.extractField(subsection, 'Flows'),
-          path: subsection.path,
-          parentExternalId: this.resolveParent(subsection.path),
-          implementedONs: type === 'OR' ? this.extractImplementedONs(subsection) : [],
-          impactsStakeholderCategories: this.extractImpacts(subsection, 'Stakeholder'),
-          impactsServices: this.extractImpacts(subsection, 'Service'),
-          impactsData: this.extractImpacts(subsection, 'Data')
-        };
-        
-        requirements.push(req);
+      for (const subsection of this.iterateSubsections(orSection)) {
+        if (this.hasStatement(subsection)) {
+          const req = {
+            externalId: ExternalIdBuilder.buildExternalId({
+              drg: 'NM_B2B',
+              path: subsection.path,
+              title: subsection.title
+            }, 'or'),
+            title: subsection.title,
+            type: 'OR',
+            drg: 'NM_B2B',
+            statement: this.extractField(subsection, 'Statement'),
+            rationale: this.extractField(subsection, 'Rationale'),
+            flows: this.extractField(subsection, 'Flow'),
+            path: subsection.path,
+            implementedONs: this.hasImplementedONs(subsection) ? 
+              this.extractImplementedONs(subsection) : [],
+            impactsStakeholderCategories: this.extractImpacts(subsection, 'Stakeholder'),
+            impactsServices: this.extractImpacts(subsection, 'Service'),
+            impactsData: this.extractImpacts(subsection, 'Data')
+          };
+          
+          requirements.push(req);
+        }
       }
     }
     
@@ -331,7 +342,10 @@ class NMB2BMapper extends DocumentMapper {
     for (const subsection of this.iterateSubsections(ocSection)) {
       if (this.hasPurpose(subsection)) {
         const change = {
-          externalId: this.buildExternalId(subsection.path, subsection.title),
+          externalId: ExternalIdBuilder.buildExternalId({
+            drg: 'NM_B2B',
+            title: subsection.title
+          }, 'oc'),
           title: subsection.title,
           purpose: this.extractField(subsection, 'Purpose'),
           visibility: this.extractField(subsection, 'Visibility') || 'NETWORK',
@@ -363,13 +377,41 @@ class NMB2BMapper extends DocumentMapper {
     }
     
     return Array.from(uniqueStakeholders).map((name, idx) => ({
-      externalId: `SC-${idx + 1}`,
-      title: name,
+      externalId: ExternalIdBuilder.buildExternalId({ name }, 'stakeholder'),
+      name: name,  // Use 'name' field
       description: `Extracted from document references`
     }));
   }
   
-  // Similar implementations for mapServices, mapDataCategories, etc.
+  mapDataCategories(rawData) {
+    const uniqueCategories = new Set();
+    
+    for (const section of rawData.sections) {
+      const impacts = this.findImpactStatements(section, 'data');
+      impacts.forEach(name => uniqueCategories.add(name));
+    }
+    
+    return Array.from(uniqueCategories).map((name, idx) => ({
+      externalId: ExternalIdBuilder.buildExternalId({ name }, 'data'),
+      name: name,  // Use 'name' field
+      description: `Extracted from document references`
+    }));
+  }
+  
+  mapServices(rawData) {
+    const uniqueServices = new Set();
+    
+    for (const section of rawData.sections) {
+      const impacts = this.findImpactStatements(section, 'service');
+      impacts.forEach(name => uniqueServices.add(name));
+    }
+    
+    return Array.from(uniqueServices).map((name, idx) => ({
+      externalId: ExternalIdBuilder.buildExternalId({ name }, 'service'),
+      name: name,  // Use 'name' field
+      description: `Extracted from document references`
+    }));
+  }
 }
 ```
 
@@ -380,9 +422,15 @@ class ReroutingMapper extends DocumentMapper {
   mapRequirements(rawData) {
     const requirementsSheet = rawData.sheets.find(s => s.name === 'Requirements');
     if (!requirementsSheet) return [];
-    
+
     return requirementsSheet.rows.map(row => ({
-      externalId: row['ID'] || this.generateId(row),
+      externalId: row['ID'] ?
+              ExternalIdBuilder.buildExternalId({
+                drg: 'REROUTING',
+                path: [row['ID']],
+                title: row['Title']
+              }, row['Type'].toLowerCase()) :
+              this.generateId(row),
       title: row['Title'],
       type: row['Type'], // 'ON' or 'OR'
       drg: 'REROUTING',
@@ -397,21 +445,45 @@ class ReroutingMapper extends DocumentMapper {
       impactsData: row['Data Categories'] ? row['Data Categories'].split(',') : []
     }));
   }
-  
+
   mapStakeholderCategories(rawData) {
     const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
     if (!setupSheet) return [];
-    
+
     return setupSheet.rows
-      .filter(row => row['Type'] === 'Stakeholder')
-      .map(row => ({
-        externalId: row['ID'],
-        title: row['Name'],
-        description: row['Description'] || ''
-      }));
+            .filter(row => row['Type'] === 'Stakeholder')
+            .map(row => ({
+              externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'stakeholder'),
+              name: row['Name'],  // Use 'name' field
+              description: row['Description'] || ''
+            }));
   }
-  
-  // Similar implementations for other entity types
+
+  mapDataCategories(rawData) {
+    const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
+    if (!setupSheet) return [];
+
+    return setupSheet.rows
+            .filter(row => row['Type'] === 'Data')
+            .map(row => ({
+              externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'data'),
+              name: row['Name'],  // Use 'name' field
+              description: row['Description'] || ''
+            }));
+  }
+
+  mapServices(rawData) {
+    const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
+    if (!setupSheet) return [];
+
+    return setupSheet.rows
+            .filter(row => row['Type'] === 'Service')
+            .map(row => ({
+              externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'service'),
+              name: row['Name'],  // Use 'name' field
+              description: row['Description'] || ''
+            }));
+  }
 }
 ```
 
@@ -423,17 +495,17 @@ class MapperRegistry {
     this.mappers = new Map();
     this.registerDefaultMappers();
   }
-  
+
   registerDefaultMappers() {
     this.register('NM_B2B', new NMB2BMapper());
     this.register('REROUTING', new ReroutingMapper());
     // Add more as needed
   }
-  
+
   register(drg, mapper) {
     this.mappers.set(drg, mapper);
   }
-  
+
   get(drg) {
     const mapper = this.mappers.get(drg);
     if (!mapper) {
@@ -489,24 +561,24 @@ Adding support for a new DrG requires:
 
 ```yaml
 # Extraction endpoints (DrG-agnostic)
-POST /import/extract/word
-  Request: multipart/form-data (docx file)
-  Response: RawExtractedData (JSON)
+  POST /import/extract/word
+Request: multipart/form-data (docx file)
+Response: RawExtractedData (JSON)
 
-POST /import/extract/excel  
-  Request: multipart/form-data (xlsx file)
-  Response: RawExtractedData (JSON)
+  POST /import/extract/excel
+Request: multipart/form-data (xlsx file)
+Response: RawExtractedData (JSON)
 
 # Mapping endpoint (DrG-specific)
-POST /import/map/{drg}
-  Path: drg = NM_B2B | REROUTING | ...
-  Request: RawExtractedData (JSON)
-  Response: StructuredImportData (JSON)
+  POST /import/map/{drg}
+Path: drg = NM_B2B | REROUTING | ...
+Request: RawExtractedData (JSON)
+Response: StructuredImportData (JSON)
 
 # Import endpoint (unified)
-POST /import/structured
-  Request: StructuredImportData (JSON)
-  Response: ImportSummary
+  POST /import/structured
+Request: StructuredImportData (JSON)
+Response: ImportSummary
 ```
 
 ### Response Schemas
@@ -531,9 +603,30 @@ StructuredImportData:
   type: object
   properties:
     documents: { type: array }
-    stakeholderCategories: { type: array }
-    dataCategories: { type: array }
-    services: { type: array }
+    stakeholderCategories:
+      type: array
+      items:
+        type: object
+        properties:
+          externalId: { type: string }
+          name: { type: string }  # Note: 'name' not 'title'
+          description: { type: string }
+    dataCategories:
+      type: array
+      items:
+        type: object
+        properties:
+          externalId: { type: string }
+          name: { type: string }  # Note: 'name' not 'title'
+          description: { type: string }
+    services:
+      type: array
+      items:
+        type: object
+        properties:
+          externalId: { type: string }
+          name: { type: string }  # Note: 'name' not 'title'
+          description: { type: string }
     waves: { type: array }
     requirements: { type: array }
     changes: { type: array }
@@ -656,3 +749,4 @@ This approach provides:
 - **Testability**: Each stage can be tested independently
 - **Flexibility**: Supports both Word and Excel sources
 - **Future-proofing**: Foundation for web-based import UI
+- **Schema consistency**: Enforces correct field naming (`name` for setup entities, `title` for requirements/changes)
