@@ -115,7 +115,7 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 #### Mapper Implementation - Pending
 - **Complete**: Abstract DocumentMapper base class with map() orchestration
 - **Complete**: NMB2BMapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
-- **Pending**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
+- **Complete**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 - **Complete**: Mapper registry initialization and DrG registration
 
 #### CLI Layer - COMPLETE
@@ -136,7 +136,7 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 
 #### Testing
 - **Complete**: Unit tests for Word extraction
-- **Pending**: Unit tests for Excel extraction
+- **Complete**: Unit tests for Excel extraction
 - **Complete**: Unit tests for NMB2B and Rerouting mappers
 - **Complete**: Integration tests for end-to-end pipeline
 - **Complete**: Round-trip validation tests
@@ -144,8 +144,8 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 
 #### Implementation Sub-Phases
 - **Phase 20.1 - Infrastructure (COMPLETE)**: OpenAPI spec, routes with multer, ImportService/YamlMapper refactoring, DocxExtractor with full content extraction, CLI commands with FormData
-- **Phase 20.2 - NM_B2B Word Support (IN PROGRESS)**: NMB2BMapper implementation, field extraction logic, structured data transformation, end-to-end testing with real documents
-- **Phase 20.3 - Rerouting Excel Support**: XlsxExtractor implementation, ReroutingMapper, Excel-specific extraction patterns
+- **Phase 20.2 - NM_B2B Word Support (COMPLETE)**: NMB2BMapper implementation, field extraction logic, structured data transformation, end-to-end testing with real documents
+- **Phase 20.3 - Rerouting Excel Support (IN PROGRESS)**: XlsxExtractor implementation, ReroutingMapper, Excel-specific extraction patterns
 - **Phase 20.4 - Additional DrG Mappers**: Mapper implementations for remaining DrGs (4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NMUI, PERF, RRT, TCF)
 
 **Success Criteria**:

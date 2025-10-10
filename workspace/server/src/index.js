@@ -38,6 +38,42 @@ app.use((req, res, next) => {
     }
 });
 
+// Request/Response Logging Middleware with Trace ID
+app.use((req, res, next) => {
+    const startTime = Date.now();
+    const timestamp = new Date().toISOString();
+
+    // Generate unique trace ID for this request
+    const traceId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Capture original path and method (they may change during routing)
+    const originalPath = req.path;
+    const originalMethod = req.method;
+
+    // Attach trace ID to request for use in services/routes
+    req.traceId = traceId;
+
+    // Log request received
+    console.log(`[${timestamp}] [${traceId}] --> ${originalMethod} ${originalPath}`);
+
+    // Capture the original res.send to log response
+    const originalSend = res.send.bind(res);
+    let responseSent = false;
+
+    // Override res.send to capture response (covers res.json, res.send, res.sendStatus, etc.)
+    res.send = function(body) {
+        if (!responseSent) {
+            responseSent = true;
+            const duration = Date.now() - startTime;
+            const responseTimestamp = new Date().toISOString();
+            console.log(`[${responseTimestamp}] [${traceId}] <-- ${originalMethod} ${originalPath} ${res.statusCode} (${duration}ms)`);
+        }
+        return originalSend(body);
+    };
+
+    next();
+});
+
 // Health check
 app.get('/hello', (req, res) => {
     res.json({ status: 'ok', message: 'ODP Server running', timestamp: new Date().toISOString() });
