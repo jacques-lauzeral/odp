@@ -55,23 +55,13 @@ class ExternalIdBuilder {
             throw new Error(`Missing required field 'name' for type '${type}'`);
         }
 
+        const nameNormalized = this._normalize(name);
+
         if (object.parentExternalId) {
-            return `${object.parentExternalId}/${name}`;
+            return `${object.parentExternalId}/${nameNormalized}`;
         }
 
-        // external model always uses parent to store the parent. OpenAPI / internal model, depending on the setup
-        // element, may use parentCategory or parentService. Ideally, the OpenAPI / internal model shall be
-        // normalised and shall use parent consistently. this is not the case yet.
-        const parent = object.parent ||
-            object.parentCategory ||
-            object.parentService;
-
-        if (parent) {
-            const parentExternalId = this.buildExternalId(parent, type);
-            return `${parentExternalId}/${name}`;
-        }
-
-        return `${type}:${name}`;
+        return `${type}:${nameNormalized}`;
     }
 
     /**

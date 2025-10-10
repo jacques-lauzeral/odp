@@ -128,21 +128,10 @@ class JSONImporter {
                 WaveService.listItems(userId)
             ]);
 
-            // Map setup entities by external ID only (case-insensitive)
-            stakeholders.forEach(entity => {
-                const externalId = ExternalIdBuilder.buildExternalId(entity, 'stakeholder');
-                context.globalRefMap.set(externalId.toLowerCase(), entity.id);
-            });
-
-            services.forEach(entity => {
-                const externalId = ExternalIdBuilder.buildExternalId(entity, 'service');
-                context.globalRefMap.set(externalId.toLowerCase(), entity.id);
-            });
-
-            dataCategories.forEach(entity => {
-                const externalId = ExternalIdBuilder.buildExternalId(entity, 'data');
-                context.globalRefMap.set(externalId.toLowerCase(), entity.id);
-            });
+            // Build maps with memoization for hierarchical entities
+            this._buildHierarchicalMap(stakeholders, 'stakeholder', context);
+            this._buildHierarchicalMap(services, 'service', context);
+            this._buildHierarchicalMap(dataCategories, 'data', context);
 
             // Build document reference map by external ID only (case-insensitive)
             documents.forEach(doc => {
@@ -161,6 +150,54 @@ class JSONImporter {
         } catch (error) {
             throw new Error(`Failed to build setup entity reference maps: ${error.message}`);
         }
+    }
+
+
+    /**
+     * Build hierarchical entity map with memoization
+     * @private
+     */
+    _buildHierarchicalMap(entities, type, context) {
+        // Create lookup by ID
+        const entityById = new Map();
+        entities.forEach(entity => entityById.set(entity.id, entity));
+
+        // Cache for computed external IDs
+        const externalIdCache = new Map();
+
+        // Recursively resolve external ID
+        const resolveExternalId = (entityId) => {
+            if (externalIdCache.has(entityId)) {
+                return externalIdCache.get(entityId);
+            }
+
+            const entity = entityById.get(entityId);
+            if (!entity) {
+                throw new Error(`Entity with ID ${entityId} not found`);
+            }
+
+            let externalId;
+            if (entity.parentId !== null && entity.parentId !== undefined) {
+                const parentExternalId = resolveExternalId(entity.parentId);
+                externalId = ExternalIdBuilder.buildExternalId({
+                    name: entity.name,
+                    parentExternalId: parentExternalId
+                }, type);
+            } else {
+                externalId = ExternalIdBuilder.buildExternalId({
+                    name: entity.name
+                }, type);
+            }
+
+            externalIdCache.set(entityId, externalId);
+            return externalId;
+        };
+
+        // Build the map
+        entities.forEach(entity => {
+            const externalId = resolveExternalId(entity.id);
+            context.globalRefMap.set(externalId.toLowerCase(), entity.id);
+        });
     }
 
     /**
