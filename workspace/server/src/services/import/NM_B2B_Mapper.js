@@ -1,4 +1,5 @@
 import Mapper from './Mapper.js';
+import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
  * Mapper for NM B2B Word documents
@@ -47,19 +48,19 @@ class NM_B2B_Mapper extends Mapper {
      */
     _addReferenceDocuments(context) {
         const conopsDocument = {
-            externalId: "NM_B2B_CONOPS",
-            title: "NM B2B ConOPS",
+            name: "NM B2B ConOPS",
             description: "NM B2B Concept of Operations",
             version: "2.1",
             url: "https://www.eurocontrol.int/publication/network-manager-b2b-concept-operations"
         };
+        conopsDocument.externalId = ExternalIdBuilder.buildExternalId(conopsDocument, 'document');
         context.documentMap.set(conopsDocument.externalId, conopsDocument);
 
         const cirDocument = {
-            externalId: "CIR-2021/116",
-            title: "Commission Implementing Regulation (EU) 2021/116",
+            name: "Commission Implementing Regulation (EU) 2021/116",
             url: "https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32021R0116"
         };
+        cirDocument.externalId = ExternalIdBuilder.buildExternalId(cirDocument, 'document');
         context.documentMap.set(cirDocument.externalId, cirDocument);
     }
 
@@ -112,23 +113,24 @@ class NM_B2B_Mapper extends Mapper {
         const isRequirement = this._hasStatement(subsection);
 
         if (isRequirement) {
-            const externalId = this._buildExternalId(subsection.path, type);
-
+            // Build the requirement object first
             const req = {
-                externalId: externalId,
                 title: subsection.title,
                 type: type, // 'ON' or 'OR'
                 drg: 'NM_B2B',
-                refines: parentReq?.externalId || null,
-                path: parentReq ? null : this._getParentPath(subsection),
+                path: parentReq? null : this._getCleanedPath(subsection.path),
+                parent: parentReq ? { externalId: parentReq.externalId } : null,
                 ...this._extractRequirementDetails(subsection, type, context)
             };
+
+            // Generate external ID using the complete object
+            req.externalId = ExternalIdBuilder.buildExternalId(req, type.toLowerCase());
 
             // Add implicit ConOPS document reference for ONs if not explicitly provided
             if (type === 'ON' && (!req.documentReferences || req.documentReferences.length === 0)) {
                 req.documentReferences = [{
-                    documentExternalId: "NM_B2B_CONOPS",
-                    note: `Section: \'${this._getOrganizationalPathString(subsection.path)}\'`
+                    documentExternalId: context.documentMap.keys().next().value, // Get first document (ConOPS)
+                    note: `Section: '${this._getOrganizationalPathString(subsection.path)}'`
                 }];
             }
 
@@ -160,15 +162,13 @@ class NM_B2B_Mapper extends Mapper {
     }
 
     /**
-     * Build external ID from path, removing common prefixes and section markers
-     * Normalize: lowercase, trim tokens, replace spaces with underscores
-     * Add type prefix (on: or or:)
-     * @param {Array<string>} path - Full path array
-     * @param {string} type - 'ON' or 'OR'
-     * @returns {string} External ID with type prefix
+     * Clean and normalize path for external ID generation
+     * Removes common prefixes and section markers
+     * @param {Array<string>} path - Raw path from document structure
+     * @returns {Array<string>} Cleaned path segments (not normalized - ExternalIdBuilder handles that)
      * @private
      */
-    _buildExternalId(path, type) {
+    _getCleanedPath(path) {
         let cleanPath = [...path];
 
         // Remove 'Operational Needs and Requirements' prefix if present
@@ -182,15 +182,10 @@ class NM_B2B_Mapper extends Mapper {
             return normalized !== 'ons' && normalized !== 'ors' && normalized !== 'ocs';
         });
 
-        // Normalize each token: lowercase, trim, replace spaces with underscores
-        const normalizedTokens = cleanPath.map(token =>
-            token.trim().toLowerCase().replace(/\s+/g, '_')
-        );
+        // Remove last element
+        cleanPath = cleanPath.slice(0, -1);
 
-        const basePath = normalizedTokens.join('/');
-        const prefix = type === 'ON' ? 'on:' : 'or:';
-
-        return `${prefix}${basePath}`;
+        return cleanPath;
     }
 
     /**
@@ -309,39 +304,53 @@ class NM_B2B_Mapper extends Mapper {
      * @private
      */
     _parseDocumentReference(text) {
-        const colonIndex = text.indexOf(':');
-        if (colonIndex > 0) {
-            return {
-                documentExternalId: text.substring(0, colonIndex).trim(),
-                note: text.substring(colonIndex + 1).trim()
-            };
+        // Find the second colon (first is part of external ID like "document:...")
+        const firstColonIndex = text.indexOf(':');
+        if (firstColonIndex > 0) {
+            const secondColonIndex = text.indexOf(':', firstColonIndex + 1);
+            if (secondColonIndex > 0) {
+                return {
+                    documentExternalId: text.substring(0, secondColonIndex).trim(),
+                    note: text.substring(secondColonIndex + 1).trim()
+                };
+            }
         }
+        // No note, just the document external ID
         return {
             documentExternalId: text.trim()
         };
     }
 
     /**
-     * Normalize ON reference to external ID with on: prefix
+     * Normalize ON reference to external ID
      * @param {string} reference - './Title' or '/Absolute/Path/Title'
      * @param {Array<string>} currentPath - Current OR's path (includes up to 'ORs' parent)
      * @returns {string} External ID with on: prefix
      * @private
      */
     _normalizeONReference(reference, currentPath) {
+        let pathTokens;
+
         if (reference.startsWith('./')) {
             // Relative: same organizational path as current OR
             const title = reference.substring(2);
             const orgPath = this._getOrganizationalPath(currentPath);
-            return this._buildExternalId([...orgPath, title], 'ON');
+            pathTokens = [...orgPath, title];
         } else if (reference.startsWith('/')) {
             // Absolute: parse path and normalize
             const pathString = reference.substring(1);
-            const pathTokens = pathString.split('/');
-            return this._buildExternalId(pathTokens, 'ON');
+            pathTokens = pathString.split('/');
+        } else {
+            // Fallback: treat as single token
+            pathTokens = [reference];
         }
-        // Fallback: treat as single token
-        return this._buildExternalId([reference], 'ON');
+
+        // Build ON object and get external ID
+        return ExternalIdBuilder.buildExternalId({
+            drg: 'NM_B2B',
+            path: this._getCleanedPath(pathTokens),
+            title: pathTokens[pathTokens.length - 1] // Last segment as title
+        }, 'on');
     }
 
     /**

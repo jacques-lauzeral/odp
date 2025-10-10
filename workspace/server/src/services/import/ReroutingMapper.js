@@ -83,12 +83,12 @@ class ReroutingMapper extends Mapper {
      */
     static STAKEHOLDER_SYNONYM_MAP = {
         'NM': 'stakeholder:nm',
-        'NMOC': 'stakeholder:nmoc',
+        'NMOC': 'stakeholder:nm/nmoc',
         'ANSP': 'stakeholder:ansp',
         'ANSPs': 'stakeholder:ansp',
-        'FMP': 'stakeholder:fmp',
-        'FMPs': 'stakeholder:fmp',
-        'AO': 'stakeholder:ao'
+        'FMP': 'stakeholder:ansp/fmp',
+        'FMPs': 'stakeholder:ansp/fmp',
+        'AO': 'stakeholder:airspace_user/ao'
         // 'External Users' is ignored
     };
 

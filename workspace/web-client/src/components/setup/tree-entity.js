@@ -95,7 +95,7 @@ export default class TreeEntity {
         // Build parent-child relationships
         flatData.forEach(item => {
             const treeItem = itemMap.get(item.id);
-            if (item.parentId && itemMap.has(item.parentId)) {
+            if (item.parentId !== null && item.parentId !== undefined && itemMap.has(item.parentId)) {
                 itemMap.get(item.parentId).children.push(treeItem);
             } else {
                 roots.push(treeItem);

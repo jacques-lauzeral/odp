@@ -5,6 +5,7 @@ import DocumentService from '../DocumentService.js';
 import WaveService from '../WaveService.js';
 import OperationalRequirementService from '../OperationalRequirementService.js';
 import OperationalChangeService from '../OperationalChangeService.js';
+import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
  * JSON Importer for StructuredImportData format
@@ -80,6 +81,9 @@ class JSONImporter {
      * @private
      */
     async _importSetupEntities(structuredData, userId, context, summary) {
+        // Load existing setup entities from database into global reference map
+        await this._buildSetupEntityReferenceMaps(userId, context);
+
         // Import documents first (no dependencies)
         if (structuredData.documents && structuredData.documents.length > 0) {
             summary.documents = await this._importDocuments(structuredData.documents, userId, context);
@@ -107,6 +111,55 @@ class JSONImporter {
         // Import waves (no dependencies)
         if (structuredData.waves && structuredData.waves.length > 0) {
             summary.waves = await this._importWaves(structuredData.waves, userId, context);
+        }
+    }
+
+    /**
+     * Build reference maps for existing setup entities from database
+     * @private
+     */
+    async _buildSetupEntityReferenceMaps(userId, context) {
+        try {
+            const [stakeholders, services, dataCategories, documents, waves] = await Promise.all([
+                StakeholderCategoryService.listItems(userId),
+                ServiceService.listItems(userId),
+                DataCategoryService.listItems(userId),
+                DocumentService.listItems(userId),
+                WaveService.listItems(userId)
+            ]);
+
+            // Map setup entities by external ID only (case-insensitive)
+            stakeholders.forEach(entity => {
+                const externalId = ExternalIdBuilder.buildExternalId(entity, 'stakeholder');
+                context.globalRefMap.set(externalId.toLowerCase(), entity.id);
+            });
+
+            services.forEach(entity => {
+                const externalId = ExternalIdBuilder.buildExternalId(entity, 'service');
+                context.globalRefMap.set(externalId.toLowerCase(), entity.id);
+            });
+
+            dataCategories.forEach(entity => {
+                const externalId = ExternalIdBuilder.buildExternalId(entity, 'data');
+                context.globalRefMap.set(externalId.toLowerCase(), entity.id);
+            });
+
+            // Build document reference map by external ID only (case-insensitive)
+            documents.forEach(doc => {
+                const externalId = ExternalIdBuilder.buildExternalId(doc, 'document');
+                context.documentIdMap.set(externalId.toLowerCase(), doc.id);
+            });
+
+            // Build wave reference map by external ID only (case-insensitive)
+            waves.forEach(wave => {
+                const externalId = ExternalIdBuilder.buildExternalId(wave, 'wave');
+                context.waveIdMap.set(externalId.toLowerCase(), wave.id);
+            });
+
+            console.log(`Loaded existing entities - Stakeholders: ${stakeholders.length}, Services: ${services.length}, Data: ${dataCategories.length}, Documents: ${documents.length}, Waves: ${waves.length}`);
+
+        } catch (error) {
+            throw new Error(`Failed to build setup entity reference maps: ${error.message}`);
         }
     }
 
@@ -163,7 +216,7 @@ class JSONImporter {
         for (const docData of documents) {
             try {
                 const createRequest = {
-                    name: docData.title,
+                    name: docData.name,
                     version: docData.version || '',
                     description: docData.description || '',
                     url: docData.url || ''
@@ -171,7 +224,7 @@ class JSONImporter {
 
                 const created = await DocumentService.createDocument(createRequest, userId);
 
-                // Store with lowercase key
+                // Store with external ID only
                 context.setupIdMap.set(docData.externalId.toLowerCase(), created.id);
                 context.documentIdMap.set(docData.externalId.toLowerCase(), created.id);
                 count++;
@@ -187,86 +240,246 @@ class JSONImporter {
     }
 
     async _importStakeholderCategories(categories, userId, context) {
-        const sorted = this._topologicalSort(categories, 'parentExternalId', context);
+        // Build lookup map by externalId
+        const categoryMap = new Map();
+        categories.forEach(cat => categoryMap.set(cat.externalId.toLowerCase(), cat));
+
+        // Recursively import each category
         let count = 0;
-
-        for (const categoryData of sorted) {
-            try {
-                const parentId = categoryData.parentExternalId ?
-                    context.setupIdMap.get(categoryData.parentExternalId.toLowerCase()) : null;
-
-                const createRequest = {
-                    name: categoryData.title,
-                    description: categoryData.description || '',
-                    parentId: parentId
-                };
-
-                const created = await StakeholderCategoryService.createStakeholderCategory(createRequest, userId);
-
-                context.setupIdMap.set(categoryData.externalId.toLowerCase(), created.id);
-                count++;
-
-            } catch (error) {
-                context.errors.push(`Failed to create stakeholder category ${categoryData.externalId}: ${error.message}`);
-            }
+        for (const categoryData of categories) {
+            const created = await this._importStakeholderCategory(
+                categoryData,
+                categoryMap,
+                userId,
+                context
+            );
+            if (created) count++;
         }
 
         return count;
+    }
+
+    /**
+     * Recursively import a stakeholder category, ensuring parent exists first
+     * @private
+     */
+    async _importStakeholderCategory(itemData, itemMap, userId, context) {
+        const externalId = itemData.externalId.toLowerCase();
+
+        // Already imported?
+        if (context.globalRefMap.has(externalId)) {
+            return context.globalRefMap.get(externalId);
+        }
+
+        let parentId = null;
+
+        // Handle parent if exists
+        if (itemData.parentExternalId) {
+            const parentExternalId = itemData.parentExternalId.toLowerCase();
+
+            // Check if parent already in global map (from DB or already imported)
+            if (context.globalRefMap.has(parentExternalId)) {
+                parentId = context.globalRefMap.get(parentExternalId);
+            } else {
+                // Parent not yet imported - check if in current batch
+                const parentData = itemMap.get(parentExternalId);
+                if (parentData) {
+                    // Recursively import parent first
+                    parentId = await this._importStakeholderCategory(
+                        parentData,
+                        itemMap,
+                        userId,
+                        context
+                    );
+                } else {
+                    context.errors.push(`Parent ${itemData.parentExternalId} not found for ${itemData.externalId}`);
+                    return null;
+                }
+            }
+        }
+
+        // Create the item
+        try {
+            const createRequest = {
+                name: itemData.name,
+                description: itemData.description || '',
+                parentId: parentId
+            };
+
+            const created = await StakeholderCategoryService.createStakeholderCategory(createRequest, userId);
+
+            // Store in global map
+            context.globalRefMap.set(externalId, created.id);
+
+            console.log(`Created stakeholder category: ${itemData.externalId}`);
+            return created.id;
+
+        } catch (error) {
+            context.errors.push(`Failed to create stakeholder category ${itemData.externalId}: ${error.message}`);
+            return null;
+        }
     }
 
     async _importServices(services, userId, context) {
-        const sorted = this._topologicalSort(services, 'parentExternalId', context);
+        // Build lookup map by externalId
+        const serviceMap = new Map();
+        services.forEach(svc => serviceMap.set(svc.externalId.toLowerCase(), svc));
+
+        // Recursively import each service
         let count = 0;
-
-        for (const serviceData of sorted) {
-            try {
-                const parentId = serviceData.parentExternalId ?
-                    context.setupIdMap.get(serviceData.parentExternalId.toLowerCase()) : null;
-
-                const createRequest = {
-                    name: serviceData.title,
-                    description: serviceData.description || '',
-                    parentId: parentId
-                };
-
-                const created = await ServiceService.createService(createRequest, userId);
-                context.setupIdMap.set(serviceData.externalId.toLowerCase(), created.id);
-                count++;
-
-            } catch (error) {
-                context.errors.push(`Failed to create service ${serviceData.externalId}: ${error.message}`);
-            }
+        for (const serviceData of services) {
+            const created = await this._importService(
+                serviceData,
+                serviceMap,
+                userId,
+                context
+            );
+            if (created) count++;
         }
 
         return count;
     }
 
-    async _importDataCategories(categories, userId, context) {
-        const sorted = this._topologicalSort(categories, 'parentExternalId', context);
-        let count = 0;
+    /**
+     * Recursively import a service, ensuring parent exists first
+     * @private
+     */
+    async _importService(itemData, itemMap, userId, context) {
+        const externalId = itemData.externalId.toLowerCase();
 
-        for (const categoryData of sorted) {
-            try {
-                const parentId = categoryData.parentExternalId ?
-                    context.setupIdMap.get(categoryData.parentExternalId.toLowerCase()) : null;
+        // Already imported?
+        if (context.globalRefMap.has(externalId)) {
+            return context.globalRefMap.get(externalId);
+        }
 
-                const createRequest = {
-                    name: categoryData.title,
-                    description: categoryData.description || '',
-                    parentId: parentId
-                };
+        let parentId = null;
 
-                const created = await DataCategoryService.createDataCategory(createRequest, userId);
+        // Handle parent if exists
+        if (itemData.parentExternalId) {
+            const parentExternalId = itemData.parentExternalId.toLowerCase();
 
-                context.setupIdMap.set(categoryData.externalId.toLowerCase(), created.id);
-                count++;
-
-            } catch (error) {
-                context.errors.push(`Failed to create data category ${categoryData.externalId}: ${error.message}`);
+            // Check if parent already in global map (from DB or already imported)
+            if (context.globalRefMap.has(parentExternalId)) {
+                parentId = context.globalRefMap.get(parentExternalId);
+            } else {
+                // Parent not yet imported - check if in current batch
+                const parentData = itemMap.get(parentExternalId);
+                if (parentData) {
+                    // Recursively import parent first
+                    parentId = await this._importService(
+                        parentData,
+                        itemMap,
+                        userId,
+                        context
+                    );
+                } else {
+                    context.errors.push(`Parent ${itemData.parentExternalId} not found for ${itemData.externalId}`);
+                    return null;
+                }
             }
         }
 
+        // Create the item
+        try {
+            const createRequest = {
+                name: itemData.name,
+                description: itemData.description || '',
+                parentId: parentId
+            };
+
+            const created = await ServiceService.createService(createRequest, userId);
+
+            // Store in global map
+            context.globalRefMap.set(externalId, created.id);
+
+            console.log(`Created service: ${itemData.externalId}`);
+            return created.id;
+
+        } catch (error) {
+            context.errors.push(`Failed to create service ${itemData.externalId}: ${error.message}`);
+            return null;
+        }
+    }
+
+    async _importDataCategories(categories, userId, context) {
+        // Build lookup map by externalId
+        const categoryMap = new Map();
+        categories.forEach(cat => categoryMap.set(cat.externalId.toLowerCase(), cat));
+
+        // Recursively import each category
+        let count = 0;
+        for (const categoryData of categories) {
+            const created = await this._importDataCategory(
+                categoryData,
+                categoryMap,
+                userId,
+                context
+            );
+            if (created) count++;
+        }
+
         return count;
+    }
+
+    /**
+     * Recursively import a data category, ensuring parent exists first
+     * @private
+     */
+    async _importDataCategory(itemData, itemMap, userId, context) {
+        const externalId = itemData.externalId.toLowerCase();
+
+        // Already imported?
+        if (context.globalRefMap.has(externalId)) {
+            return context.globalRefMap.get(externalId);
+        }
+
+        let parentId = null;
+
+        // Handle parent if exists
+        if (itemData.parentExternalId) {
+            const parentExternalId = itemData.parentExternalId.toLowerCase();
+
+            // Check if parent already in global map (from DB or already imported)
+            if (context.globalRefMap.has(parentExternalId)) {
+                parentId = context.globalRefMap.get(parentExternalId);
+            } else {
+                // Parent not yet imported - check if in current batch
+                const parentData = itemMap.get(parentExternalId);
+                if (parentData) {
+                    // Recursively import parent first
+                    parentId = await this._importDataCategory(
+                        parentData,
+                        itemMap,
+                        userId,
+                        context
+                    );
+                } else {
+                    context.errors.push(`Parent ${itemData.parentExternalId} not found for ${itemData.externalId}`);
+                    return null;
+                }
+            }
+        }
+
+        // Create the item
+        try {
+            const createRequest = {
+                name: itemData.name,
+                description: itemData.description || '',
+                parentId: parentId
+            };
+
+            const created = await DataCategoryService.createDataCategory(createRequest, userId);
+
+            // Store in global map
+            context.globalRefMap.set(externalId, created.id);
+
+            console.log(`Created data category: ${itemData.externalId}`);
+            return created.id;
+
+        } catch (error) {
+            context.errors.push(`Failed to create data category ${itemData.externalId}: ${error.message}`);
+            return null;
+        }
     }
 
     async _importWaves(waves, userId, context) {
@@ -275,7 +488,7 @@ class JSONImporter {
         for (const waveData of waves) {
             try {
                 const createRequest = {
-                    name: waveData.title,
+                    name: waveData.name,
                     year: waveData.year,
                     quarter: waveData.quarter,
                     date: waveData.date
@@ -285,8 +498,6 @@ class JSONImporter {
 
                 context.setupIdMap.set(waveData.externalId.toLowerCase(), created.id);
                 context.waveIdMap.set(waveData.externalId.toLowerCase(), created.id);
-                // Also add wave name format for lookups
-                context.waveIdMap.set(waveData.title.toLowerCase(), created.id);
                 count++;
 
                 console.log(`Created wave: ${waveData.externalId}`);
@@ -303,45 +514,20 @@ class JSONImporter {
 
     async _buildGlobalReferenceMaps(userId, context) {
         try {
-            // Load all existing entities from database
-            const [stakeholders, services, dataCategories, documents, allRequirements, waves] =
-                await Promise.all([
-                    StakeholderCategoryService.listItems(userId),
-                    ServiceService.listItems(userId),
-                    DataCategoryService.listItems(userId),
-                    DocumentService.listItems(userId),
-                    OperationalRequirementService.getAll(userId),
-                    WaveService.listItems(userId)
-                ]);
+            // Load all existing requirements from database
+            const allRequirements = await OperationalRequirementService.getAll(userId);
 
-            // Map setup entities by name (case-insensitive)
-            stakeholders.forEach(entity =>
-                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
-            );
-            services.forEach(entity =>
-                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
-            );
-            dataCategories.forEach(entity =>
-                context.globalRefMap.set(entity.name.toLowerCase(), entity.id)
-            );
+            // Build requirement ID map and resolve external IDs
+            const reqById = new Map();
+            allRequirements.forEach(req => reqById.set(req.itemId, req));
 
-            // Build document reference map by name (case-insensitive)
-            documents.forEach(doc => {
-                context.documentIdMap.set(doc.name.toLowerCase(), doc.id);
-            });
+            // Build external ID cache with memoization
+            const externalIdCache = new Map();
 
-            // Build title paths for existing requirements and map them
-            const titlePaths = this._buildTitlePaths(allRequirements, context);
-            titlePaths.forEach((id, titlePath) =>
-                context.globalRefMap.set(titlePath.toLowerCase(), id)
-            );
-
-            // Build wave reference map
-            waves.forEach(wave => {
-                context.waveIdMap.set(wave.name.toLowerCase(), wave.id);
-                // Also support "year-Qquarter" format
-                const altKey = `${wave.year}-Q${wave.quarter}`;
-                context.waveIdMap.set(altKey.toLowerCase(), wave.id);
+            // Map all requirements by their external IDs
+            allRequirements.forEach(req => {
+                const externalId = this._resolveRequirementExternalId(req.itemId, reqById, externalIdCache);
+                context.globalRefMap.set(externalId.toLowerCase(), req.itemId);
             });
 
             console.log(`Global reference map: ${context.globalRefMap.size} entries`);
@@ -353,55 +539,50 @@ class JSONImporter {
         }
     }
 
-    _buildTitlePaths(allRequirements, context) {
-        const pathMap = new Map();
-        const visitedPaths = new Map();
-        const parentMap = new Map();
-        const reqById = new Map();
+    /**
+     * Resolve internal database ID to external ID for a requirement
+     * Handles parent hierarchy recursively with memoization
+     * @param {number} itemId - Internal database ID
+     * @param {Map} reqById - Map of itemId -> requirement object
+     * @param {Map} cache - Memoization cache (itemId -> externalId)
+     * @returns {string} External ID
+     * @private
+     */
+    _resolveRequirementExternalId(itemId, reqById, cache) {
+        // Check cache first
+        if (cache.has(itemId)) {
+            return cache.get(itemId);
+        }
 
-        // Build lookup maps
-        allRequirements.forEach(req => {
-            reqById.set(req.itemId, req);
-            if (req.refinesParents && req.refinesParents.length > 0) {
-                if (req.refinesParents.length > 1) {
-                    context.warnings.push(
-                        `Requirement ${req.title} has multiple parents, using first one only`
-                    );
-                }
-                parentMap.set(req.itemId, req.refinesParents[0].id);
-            }
-        });
+        const req = reqById.get(itemId);
+        if (!req) {
+            throw new Error(`Requirement with ID ${itemId} not found`);
+        }
 
-        // Recursive path building
-        const buildPath = (reqId) => {
-            if (visitedPaths.has(reqId)) {
-                return visitedPaths.get(reqId);
-            }
+        let externalId;
 
-            const req = reqById.get(reqId);
-            if (!req) {
-                throw new Error(`Requirement with ID ${reqId} not found`);
-            }
+        // Check if has parent (refines relationship)
+        if (req.refinesParents && req.refinesParents.length > 0) {
+            const parentId = req.refinesParents[0].id;
+            const parentExternalId = this._resolveRequirementExternalId(parentId, reqById, cache);
 
-            const parentId = parentMap.get(reqId);
-            let path;
+            externalId = ExternalIdBuilder.buildExternalId({
+                drg: req.drg,
+                parent: { externalId: parentExternalId },
+                title: req.title
+            }, req.type.toLowerCase());
+        } else {
+            // No parent, use path if available
+            externalId = ExternalIdBuilder.buildExternalId({
+                drg: req.drg,
+                path: req.path || [],
+                title: req.title
+            }, req.type.toLowerCase());
+        }
 
-            if (parentId) {
-                const parentPath = buildPath(parentId);
-                path = `${parentPath}/${req.title}`;
-            } else {
-                path = req.title;
-            }
-
-            visitedPaths.set(reqId, path);
-            pathMap.set(path, reqId);
-            return path;
-        };
-
-        // Build paths for all requirements
-        allRequirements.forEach(req => buildPath(req.itemId));
-
-        return pathMap;
+        // Cache the result
+        cache.set(itemId, externalId);
+        return externalId;
     }
 
     async _createRequirementsWithoutReferences(requirements, userId, context) {
@@ -631,41 +812,6 @@ class JSONImporter {
 
     // Utility methods
 
-    _topologicalSort(items, parentField, context) {
-        const sorted = [];
-        const visited = new Set();
-        const visiting = new Set();
-
-        const visit = (item) => {
-            if (visiting.has(item.externalId)) {
-                context.errors.push(`Circular dependency detected for ${item.externalId}`);
-                return;
-            }
-
-            if (visited.has(item.externalId)) {
-                return;
-            }
-
-            visiting.add(item.externalId);
-
-            if (item[parentField]) {
-                const parent = items.find(i => i.externalId === item[parentField]);
-                if (parent) {
-                    visit(parent);
-                } else {
-                    context.errors.push(`Parent ${item[parentField]} not found for ${item.externalId}`);
-                }
-            }
-
-            visiting.delete(item.externalId);
-            visited.add(item.externalId);
-            sorted.push(item);
-        };
-
-        items.forEach(visit);
-        return sorted;
-    }
-
     _resolveExternalIds(externalIds, context) {
         if (!Array.isArray(externalIds)) {
             return [];
@@ -701,9 +847,9 @@ class JSONImporter {
         for (const externalId of externalIds) {
             const internalId = context.globalRefMap.get(externalId.toLowerCase());
             if (internalId !== undefined) {
-                resolved.push({id: externalId});
+                resolved.push({id: internalId});
             } else {
-                missing.push(internalId);
+                missing.push(externalId);
             }
         }
 
@@ -732,7 +878,7 @@ class JSONImporter {
 
             if (documentId !== undefined) {
                 resolved.push({
-                    id: documentId,  // Changed from documentId to id
+                    id: documentId,
                     note: ref.note || ''
                 });
             } else {

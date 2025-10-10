@@ -114,7 +114,7 @@ export class TreeItemService extends SimpleItemService {
             const item = await store.create(data, tx);
 
             // Handle parentId if provided
-            if (data.parentId) {
+            if (data.parentId !== null && data.parentId !== undefined) {
                 await store.createRefinesRelation(item.id, data.parentId, tx);
             }
 
@@ -158,7 +158,7 @@ export class TreeItemService extends SimpleItemService {
                 }
 
                 // Then, create new parent relationship if provided
-                if (data.parentId) {
+                if (data.parentId !== null && data.parentId !== undefined) {
                     await store.createRefinesRelation(id, data.parentId, tx);
                 }
             }
