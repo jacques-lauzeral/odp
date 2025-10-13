@@ -88,34 +88,68 @@ class DocxExtractor {
      * @returns {Array} Array of section objects
      */
     _extractFromTOC(html) {
-        // Detect TOC entries - paragraphs with links containing anchors
-        const tocPattern = /<p[^>]*><a href="#([^"]+)">([^<]+)<\/a><\/p>/gi;
         const tocEntries = [];
+
+        // Pattern 1: Split TOC entries
+        const splitPattern = /<p[^>]*><strong><a href="#([^"]+)">([^<]+)<\/a><\/strong><a href="#\1">([^<]+)<\/a><\/p>/gi;
+
         let match;
+        const processedAnchors = new Set();
 
-        while ((match = tocPattern.exec(html)) !== null) {
+        // Collect split entries with their position
+        while ((match = splitPattern.exec(html)) !== null) {
             const anchorId = match[1];
-            const tocText = match[2].trim();
+            const sectionNumber = match[2].trim();
+            const title = match[3].trim().replace(/\s+\d+$/, '');
 
-            // Parse section number and title
-            const parsed = this._parseTOCEntry(tocText);
+            const parsed = this._parseTOCEntry(`${sectionNumber} ${title}`);
             if (parsed) {
                 tocEntries.push({
                     anchorId: anchorId,
                     sectionNumber: parsed.sectionNumber,
                     title: parsed.title,
-                    level: parsed.level
+                    level: parsed.level,
+                    position: match.index  // ADD THIS
+                });
+                processedAnchors.add(anchorId);
+            }
+        }
+
+        console.log(`Found ${tocEntries.length} split pattern entries (level 3)`);
+
+        // Pattern 2: Normal entries
+        const normalPattern = /<p[^>]*><a href="#([^"]+)">([^<]+)<\/a><\/p>/gi;
+
+        while ((match = normalPattern.exec(html)) !== null) {
+            const anchorId = match[1];
+
+            if (processedAnchors.has(anchorId)) {
+                continue;
+            }
+
+            const tocText = match[2].trim();
+            const parsed = this._parseTOCEntry(tocText);
+
+            if (parsed) {
+                tocEntries.push({
+                    anchorId: anchorId,
+                    sectionNumber: parsed.sectionNumber,
+                    title: parsed.title,
+                    level: parsed.level,
+                    position: match.index  // ADD THIS
                 });
             }
         }
+
+        // SORT BY DOCUMENT POSITION
+        tocEntries.sort((a, b) => a.position - b.position);
+
+        console.log(`Found ${tocEntries.length} total TOC entries`);
 
         if (tocEntries.length === 0) {
             return [];
         }
 
-        console.log(`Found ${tocEntries.length} TOC entries`);
-
-        // Build section hierarchy from TOC
         const sections = this._buildSectionsFromTOC(tocEntries, html);
         return sections;
     }

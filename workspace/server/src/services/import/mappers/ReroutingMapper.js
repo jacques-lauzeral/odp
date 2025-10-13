@@ -1,5 +1,5 @@
-import Mapper from './Mapper.js';
-import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
+import Mapper from '../Mapper.js';
+import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
  * Mapper for REROUTING Excel documents

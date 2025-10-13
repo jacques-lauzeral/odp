@@ -1,11 +1,11 @@
-import Mapper from './Mapper.js';
-import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
+import Mapper from '../Mapper.js';
+import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
- * Mapper for NM B2B Word documents
+ * Mapper for iDL AIRAC Data Definition Process Word documents
  * Transforms hierarchical section structure into ODP entities
  */
-class NM_B2B_Mapper extends Mapper {
+class iDL_Mapper extends Mapper {
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
@@ -17,9 +17,13 @@ class NM_B2B_Mapper extends Mapper {
         // Add reference documents
         this._addReferenceDocuments(context);
 
-        // Process all top-level sections
+        // Process sections 6 (ONs) and 7 (ORs)
         for (const section of rawData.sections || []) {
-            this._mapSection(section, context);
+            if (section.sectionNumber?.startsWith('6')) {
+                this._processRequirementsSection(section, 'ON', context, null);
+            } else if (section.sectionNumber?.startsWith('7')) {
+                this._processRequirementsSection(section, 'OR', context, null);
+            }
         }
 
         return this._buildOutput(context);
@@ -48,51 +52,13 @@ class NM_B2B_Mapper extends Mapper {
      */
     _addReferenceDocuments(context) {
         const conopsDocument = {
-            name: "NM B2B ConOPS",
-            description: "NM B2B Concept of Operations",
+            name: "iDL ConOPS",
+            description: "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
             version: "2.1",
-            url: "https://www.eurocontrol.int/publication/network-manager-b2b-concept-operations"
+            url: "https://www.eurocontrol.int/publication/integrated-data-layer-idl-concept-operations-conops"
         };
         conopsDocument.externalId = ExternalIdBuilder.buildExternalId(conopsDocument, 'document');
         context.documentMap.set(conopsDocument.externalId, conopsDocument);
-
-        const cirDocument = {
-            name: "Commission Implementing Regulation (EU) 2021/116",
-            url: "https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32021R0116"
-        };
-        cirDocument.externalId = ExternalIdBuilder.buildExternalId(cirDocument, 'document');
-        context.documentMap.set(cirDocument.externalId, cirDocument);
-    }
-
-    /**
-     * Recursively map a section based on its type
-     * @private
-     */
-    _mapSection(section, context) {
-        // console.log(`Traversing section: "${section.title}" (level ${section.level})`);
-
-        const sectionType = this._getSectionType(section);
-
-        if (sectionType) {
-            this._processRequirementsSection(section, sectionType, context, null);
-        } else {
-            // Not a recognized section type, recurse into subsections
-            for (const subsection of section.subsections || []) {
-                this._mapSection(subsection, context);
-            }
-        }
-    }
-
-    /**
-     * Determine if section is ONs or ORs
-     * @private
-     * @returns {'ON'|'OR'|null}
-     */
-    _getSectionType(section) {
-        const title = section.title?.trim().toLowerCase();
-        if (title === 'ons') return 'ON';
-        if (title === 'ors') return 'OR';
-        return null;
     }
 
     /**
@@ -113,26 +79,18 @@ class NM_B2B_Mapper extends Mapper {
         const isRequirement = this._hasStatement(subsection);
 
         if (isRequirement) {
-            // Build the requirement object first
+            // Build the requirement object
             const req = {
                 title: subsection.title,
                 type: type, // 'ON' or 'OR'
-                drg: 'NM_B2B',
-                path: parentReq? null : this._getCleanedPath(subsection.path),
+                drg: 'iDL',
+                path: parentReq ? null : this._getCleanedPath(subsection.path),
                 parent: parentReq ? { externalId: parentReq.externalId } : null,
                 ...this._extractRequirementDetails(subsection, type, context)
             };
 
             // Generate external ID using the complete object
             req.externalId = ExternalIdBuilder.buildExternalId(req, type.toLowerCase());
-
-            // Add implicit ConOPS document reference for ONs if not explicitly provided
-            if (type === 'ON' && (!req.documentReferences || req.documentReferences.length === 0)) {
-                req.documentReferences = [{
-                    documentExternalId: context.documentMap.keys().next().value, // Get first document (ConOPS)
-                    note: `Section: '${this._getOrganizationalPathString(subsection.path)}'`
-                }];
-            }
 
             const map = type === 'ON' ? context.onMap : context.orMap;
             map.set(req.externalId, req);
@@ -163,68 +121,26 @@ class NM_B2B_Mapper extends Mapper {
 
     /**
      * Clean and normalize path for external ID generation
-     * Removes common prefixes and section markers
+     * Removes level 1 (Operational Needs/Requirements)
      * @param {Array<string>} path - Raw path from document structure
-     * @returns {Array<string>} Cleaned path segments (not normalized - ExternalIdBuilder handles that)
+     * @returns {Array<string>} Cleaned path segments
      * @private
      */
     _getCleanedPath(path) {
         let cleanPath = [...path];
 
-        // Remove 'Operational Needs and Requirements' prefix if present
-        if (cleanPath[0] === 'Operational Needs and Requirements') {
+        // Remove level 1 (Operational Needs or Operational Requirements)
+        if (cleanPath.length > 0 &&
+            (cleanPath[0] === 'Operational Needs' || cleanPath[0] === 'Operational Requirements')) {
             cleanPath = cleanPath.slice(1);
         }
 
-        // Remove 'ONs' or 'ORs' or 'OCs' markers
-        cleanPath = cleanPath.filter(segment => {
-            const normalized = segment.trim().toLowerCase();
-            return normalized !== 'ons' && normalized !== 'ors' && normalized !== 'ocs';
-        });
-
-        // Remove last element
-        cleanPath = cleanPath.slice(0, -1);
+        // Remove last element (the requirement title itself)
+        if (cleanPath.length > 0) {
+            cleanPath = cleanPath.slice(0, -1);
+        }
 
         return cleanPath;
-    }
-
-    /**
-     * Get parent path for requirement (if no parent requirement)
-     * @private
-     */
-    _getParentPath(subsection) {
-        if (subsection.path.length <= 1) return null;
-        return subsection.path.slice(0, -1);
-    }
-
-    /**
-     * Get organizational path (exclude 'ONs'/'ORs'/'OCs' markers)
-     * @param {Array<string>} path - Full path array
-     * @returns {Array<string>} Organizational path
-     * @private
-     */
-    _getOrganizationalPath(path) {
-        // Find last occurrence of 'ONs', 'ORs', or 'OCs' and return everything before it
-        for (let i = path.length - 1; i >= 0; i--) {
-            const segment = path[i].trim().toLowerCase();
-            if (segment === 'ons' || segment === 'ors' || segment === 'ocs') {
-                return path.slice(0, i);
-            }
-        }
-        return path; // No marker found, return full path
-    }
-
-    /**
-     * Get organizational path as string for document reference
-     * @private
-     */
-    _getOrganizationalPathString(path) {
-        const orgPath = this._getOrganizationalPath(path);
-        // Remove 'Operational Needs and Requirements' prefix if present
-        if (orgPath[0] === 'Operational Needs and Requirements') {
-            return orgPath.slice(1).join(' / ');
-        }
-        return orgPath.join(' / ');
     }
 
     /**
@@ -237,12 +153,28 @@ class NM_B2B_Mapper extends Mapper {
         let rationale = '';
         let flows = '';
         let implementedONs = [];
+        let dependencies = [];
         let documentReferences = [];
         let currentSection = null;
+
+        // Terminator keywords for rationale section
+        const rationaleTerminators = [
+            'Implemented ONs:',
+            'Implemented Operational Needs:',
+            'Impact:',
+            'Dependencies:',
+            'Flow:',
+            'Flows:',
+            'Flow example:',
+            'Flow examples:',
+            'ConOPS Reference:',
+            'ConOPS References:'
+        ];
 
         for (const p of paragraphs) {
             const text = (typeof p === 'string' ? p : p.text)?.trim() || '';
 
+            // Check for section markers
             if (text.startsWith('Statement:')) {
                 currentSection = 'statement';
                 statement = text.substring('Statement:'.length).trim();
@@ -259,24 +191,35 @@ class NM_B2B_Mapper extends Mapper {
                 else if (text.startsWith('Flows:')) prefix = 'Flows:';
                 else prefix = 'Flow:';
                 flows = text.substring(prefix.length).trim();
-            } else if (text.startsWith('Implemented ONs:')) {
+            } else if (text.startsWith('Implemented ONs:') || text.startsWith('Implemented Operational Needs:')) {
                 currentSection = 'implementedONs';
-            } else if (text.startsWith('References:') || text.startsWith('Reference:')) {
-                currentSection = 'references';
+            } else if (text.startsWith('Dependencies:')) {
+                currentSection = 'dependencies';
+            } else if (text.startsWith('ConOPS Reference:') || text.startsWith('ConOPS References:')) {
+                currentSection = 'conopsReferences';
+            } else if (rationaleTerminators.some(term => text.startsWith(term))) {
+                // Hit a terminator, stop capturing rationale
+                currentSection = null;
             } else if (currentSection === 'statement' && text && !text.endsWith(':')) {
                 statement += '\n\n' + text;
             } else if (currentSection === 'rationale' && text && !text.endsWith(':')) {
                 rationale += '\n\n' + text;
             } else if (currentSection === 'flows' && text && !text.endsWith(':')) {
                 flows += '\n\n' + text;
-            } else if (currentSection === 'implementedONs' && text.startsWith('- ')) {
-                const reference = text.substring(2).trim();
+            } else if (currentSection === 'implementedONs' && text.startsWith('-')) {
+                const reference = text.substring(1).trim();
                 const normalizedId = this._normalizeONReference(reference, subsection.path);
                 if (normalizedId) {
                     implementedONs.push(normalizedId);
                 }
-            } else if (currentSection === 'references' && text.startsWith('- ')) {
-                const reference = this._parseDocumentReference(text.substring(2).trim());
+            } else if (currentSection === 'dependencies' && text.startsWith('-')) {
+                const reference = text.substring(1).trim();
+                const normalizedId = this._normalizeORReference(reference, subsection.path);
+                if (normalizedId) {
+                    dependencies.push(normalizedId);
+                }
+            } else if (currentSection === 'conopsReferences' && text.startsWith('-')) {
+                const reference = this._parseDocumentReference(text.substring(1).trim());
                 if (reference) {
                     documentReferences.push(reference);
                 }
@@ -287,7 +230,8 @@ class NM_B2B_Mapper extends Mapper {
             statement: statement || null,
             rationale: rationale || null,
             flows: flows || null,
-            implementedONs: type === 'OR' ? implementedONs : []
+            implementedONs: type === 'OR' ? implementedONs : [],
+            dependencies: type === 'OR' ? dependencies : []
         };
 
         // Add documentReferences only if explicitly found
@@ -300,31 +244,59 @@ class NM_B2B_Mapper extends Mapper {
 
     /**
      * Parse document reference from text
-     * Format: "DOC_ID" or "DOC_ID: note text"
+     * Handles three formats:
+     * 1. Full external ID: "document:idl_conops_v2.1" or "document:idl_conops_v2.1: note"
+     * 2. Section reference: "Section 4.1.1 - Title" (auto-maps to ConOPS)
+     * 3. Placeholder: "<to be completed>" (ignored)
      * @private
      */
     _parseDocumentReference(text) {
-        // Find the second colon (first is part of external ID like "document:...")
-        const firstColonIndex = text.indexOf(':');
-        if (firstColonIndex > 0) {
-            const secondColonIndex = text.indexOf(':', firstColonIndex + 1);
-            if (secondColonIndex > 0) {
-                return {
-                    documentExternalId: text.substring(0, secondColonIndex).trim(),
-                    note: text.substring(secondColonIndex + 1).trim()
-                };
-            }
+        const trimmedText = text.trim();
+
+        // Skip placeholder references
+        if (trimmedText.startsWith('<') && trimmedText.endsWith('>')) {
+            return null;
         }
-        // No note, just the document external ID
+
+        // Check if this is a full external ID (starts with "document:")
+        if (trimmedText.startsWith('document:')) {
+            // Find the second colon (first is part of external ID like "document:...")
+            const firstColonIndex = trimmedText.indexOf(':');
+            const secondColonIndex = trimmedText.indexOf(':', firstColonIndex + 1);
+
+            if (secondColonIndex > 0) {
+                // Has a third colon, extract note
+                const thirdColonIndex = trimmedText.indexOf(':', secondColonIndex + 1);
+                if (thirdColonIndex > 0) {
+                    return {
+                        documentExternalId: trimmedText.substring(0, thirdColonIndex).trim(),
+                        note: trimmedText.substring(thirdColonIndex + 1).trim()
+                    };
+                }
+            }
+            // No note, just the document external ID
+            return {
+                documentExternalId: trimmedText
+            };
+        }
+
+        // Otherwise, treat as section reference - auto-map to ConOPS document
+        // Get the ConOPS document external ID from context
+        const conopsExternalId = ExternalIdBuilder.buildExternalId({
+            name: "iDL ConOPS",
+            version: "2.1"
+        }, 'document');
+
         return {
-            documentExternalId: text.trim()
+            documentExternalId: conopsExternalId,
+            note: trimmedText
         };
     }
 
     /**
      * Normalize ON reference to external ID
      * @param {string} reference - './Title' or '/Absolute/Path/Title'
-     * @param {Array<string>} currentPath - Current OR's path (includes up to 'ORs' parent)
+     * @param {Array<string>} currentPath - Current OR's path
      * @returns {string} External ID with on: prefix
      * @private
      */
@@ -334,23 +306,55 @@ class NM_B2B_Mapper extends Mapper {
         if (reference.startsWith('./')) {
             // Relative: same organizational path as current OR
             const title = reference.substring(2);
-            const orgPath = this._getOrganizationalPath(currentPath);
-            pathTokens = [...orgPath, title];
+            const cleanedPath = this._getCleanedPath(currentPath);
+            pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
             // Absolute: parse path and normalize
             const pathString = reference.substring(1);
-            pathTokens = pathString.split('/');
+            pathTokens = pathString.split('/').map(s => s.trim());
         } else {
-            // Fallback: treat as single token
-            pathTokens = [reference];
+            // Fallback: parse path and normalize
+            pathTokens = reference.split('/').map(s => s.trim());
         }
 
         // Build ON object and get external ID
         return ExternalIdBuilder.buildExternalId({
-            drg: 'NM_B2B',
-            path: this._getCleanedPath(pathTokens),
+            drg: 'iDL',
+            path: pathTokens.slice(0, -1), // Path without title
             title: pathTokens[pathTokens.length - 1] // Last segment as title
         }, 'on');
+    }
+
+    /**
+     * Normalize OR reference to external ID
+     * @param {string} reference - './Title' or '/Absolute/Path/Title'
+     * @param {Array<string>} currentPath - Current OR's path
+     * @returns {string} External ID with or: prefix
+     * @private
+     */
+    _normalizeORReference(reference, currentPath) {
+        let pathTokens;
+
+        if (reference.startsWith('./')) {
+            // Relative: same organizational path as current OR
+            const title = reference.substring(2);
+            const cleanedPath = this._getCleanedPath(currentPath);
+            pathTokens = [...cleanedPath, title];
+        } else if (reference.startsWith('/')) {
+            // Absolute: parse path and normalize
+            const pathString = reference.substring(1);
+            pathTokens = pathString.split('/').map(s => s.trim());
+        } else {
+            // Fallback: parse path and normalize
+            pathTokens = reference.split('/').map(s => s.trim());
+        }
+
+        // Build OR object and get external ID
+        return ExternalIdBuilder.buildExternalId({
+            drg: 'iDL',
+            path: pathTokens.slice(0, -1), // Path without title
+            title: pathTokens[pathTokens.length - 1] // Last segment as title
+        }, 'or');
     }
 
     /**
@@ -360,6 +364,7 @@ class NM_B2B_Mapper extends Mapper {
     _buildOutput(context) {
         // Validate references
         this._validateImplementedONs(context);
+        this._validateORDependencies(context);
         this._validateDocumentReferences(context);
 
         // Helper to clean entity by removing null/empty fields
@@ -377,7 +382,7 @@ class NM_B2B_Mapper extends Mapper {
         const cleanArray = (arr) => arr.map(cleanEntity);
 
         // Log mapped counts
-        console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}, OCs: ${context.changeMap.size}`);
+        console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}`);
 
         return {
             documents: cleanArray(Array.from(context.documentMap.values())),
@@ -415,6 +420,30 @@ class NM_B2B_Mapper extends Mapper {
     }
 
     /**
+     * Validate that all OR dependencies point to existing ORs
+     * @private
+     */
+    _validateORDependencies(context) {
+        let totalReferences = 0;
+        let unresolvedReferences = 0;
+
+        for (const or of context.orMap.values()) {
+            if (or.dependencies && or.dependencies.length > 0) {
+                totalReferences += or.dependencies.length;
+
+                for (const orRef of or.dependencies) {
+                    if (!context.orMap.has(orRef)) {
+                        unresolvedReferences++;
+                        console.warn(`WARNING: OR "${or.externalId}" references non-existent OR dependency: "${orRef}"`);
+                    }
+                }
+            }
+        }
+
+        console.log(`OR dependencies validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
+    }
+
+    /**
      * Validate that all document references point to existing documents
      * @private
      */
@@ -441,4 +470,4 @@ class NM_B2B_Mapper extends Mapper {
     }
 }
 
-export default NM_B2B_Mapper;
+export default iDL_Mapper;
