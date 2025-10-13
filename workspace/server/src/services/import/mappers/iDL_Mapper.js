@@ -83,7 +83,7 @@ class iDL_Mapper extends Mapper {
             const req = {
                 title: subsection.title,
                 type: type, // 'ON' or 'OR'
-                drg: 'iDL',
+                drg: 'IDL',
                 path: parentReq ? null : this._getCleanedPath(subsection.path),
                 parent: parentReq ? { externalId: parentReq.externalId } : null,
                 ...this._extractRequirementDetails(subsection, type, context)
@@ -153,7 +153,7 @@ class iDL_Mapper extends Mapper {
         let rationale = '';
         let flows = '';
         let implementedONs = [];
-        let dependencies = [];
+        let dependsOnRequirements = [];
         let documentReferences = [];
         let currentSection = null;
 
@@ -194,7 +194,7 @@ class iDL_Mapper extends Mapper {
             } else if (text.startsWith('Implemented ONs:') || text.startsWith('Implemented Operational Needs:')) {
                 currentSection = 'implementedONs';
             } else if (text.startsWith('Dependencies:')) {
-                currentSection = 'dependencies';
+                currentSection = 'dependsOnRequirements';
             } else if (text.startsWith('ConOPS Reference:') || text.startsWith('ConOPS References:')) {
                 currentSection = 'conopsReferences';
             } else if (rationaleTerminators.some(term => text.startsWith(term))) {
@@ -212,11 +212,11 @@ class iDL_Mapper extends Mapper {
                 if (normalizedId) {
                     implementedONs.push(normalizedId);
                 }
-            } else if (currentSection === 'dependencies' && text.startsWith('-')) {
+            } else if (currentSection === 'dependsOnRequirements' && text.startsWith('-')) {
                 const reference = text.substring(1).trim();
                 const normalizedId = this._normalizeORReference(reference, subsection.path);
                 if (normalizedId) {
-                    dependencies.push(normalizedId);
+                    dependsOnRequirements.push(normalizedId);
                 }
             } else if (currentSection === 'conopsReferences' && text.startsWith('-')) {
                 const reference = this._parseDocumentReference(text.substring(1).trim());
@@ -231,7 +231,7 @@ class iDL_Mapper extends Mapper {
             rationale: rationale || null,
             flows: flows || null,
             implementedONs: type === 'OR' ? implementedONs : [],
-            dependencies: type === 'OR' ? dependencies : []
+            dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
         };
 
         // Add documentReferences only if explicitly found
@@ -420,7 +420,7 @@ class iDL_Mapper extends Mapper {
     }
 
     /**
-     * Validate that all OR dependencies point to existing ORs
+     * Validate that all OR dependsOnRequirements point to existing ORs
      * @private
      */
     _validateORDependencies(context) {
@@ -428,10 +428,10 @@ class iDL_Mapper extends Mapper {
         let unresolvedReferences = 0;
 
         for (const or of context.orMap.values()) {
-            if (or.dependencies && or.dependencies.length > 0) {
-                totalReferences += or.dependencies.length;
+            if (or.dependsOnRequirements && or.dependsOnRequirements.length > 0) {
+                totalReferences += or.dependsOnRequirements.length;
 
-                for (const orRef of or.dependencies) {
+                for (const orRef of or.dependsOnRequirements) {
                     if (!context.orMap.has(orRef)) {
                         unresolvedReferences++;
                         console.warn(`WARNING: OR "${or.externalId}" references non-existent OR dependency: "${orRef}"`);
@@ -440,7 +440,7 @@ class iDL_Mapper extends Mapper {
             }
         }
 
-        console.log(`OR dependencies validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
+        console.log(`OR dependsOnRequirements validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
     }
 
     /**
