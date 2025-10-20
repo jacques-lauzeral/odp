@@ -108,15 +108,19 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
     - Table extraction with basic row/column structure
     - Inline image extraction as base64 data URLs
     - Section metadata (level, title, path)
-- **Pending**: XlsxExtractor for Excel documents
+- **Complete**: XlsxExtractor for Excel documents
 - **Complete**: MapperRegistry singleton for DrG → Mapper lookup
 - **Complete**: importStructuredData() implementation (currently returns empty summary)
 
 #### Mapper Implementation - Pending
 - **Complete**: Abstract DocumentMapper base class with map() orchestration
-- **Complete**: NMB2BMapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
-- **Complete**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 - **Complete**: Mapper registry initialization and DrG registration
+- **Complete**: NM_B2B_Mapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
+- **Complete**: iDL_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: Airport_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: Flow_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Complete**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
+- **Complete**: ASM_AFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 
 #### CLI Layer - COMPLETE
 - **Complete**: odp import extract-word command with --file and --output options
