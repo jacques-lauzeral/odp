@@ -4,6 +4,75 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
 /**
  * Mapper for NM B2B Word documents
  * Transforms hierarchical section structure into ODP entities
+ *
+ * DOCUMENT STRUCTURE INTERPRETATION:
+ * ==================================
+ *
+ * Hierarchical Organization Pattern:
+ * -----------------------------------
+ * The NM B2B document follows a nested structure where requirements are organized
+ * within an arbitrary organizational hierarchy:
+ *
+ * - Level 1+: Organizational sections (e.g., "Technical Aspects", "Service Lifecycle")
+ *   - "ONs" or "ORs" keyword section (marks entity container type)
+ *     - Entity subsection (contains Statement: paragraph → becomes requirement)
+ *       - Child entity subsection (refines parent via parent-child relationship)
+ *
+ * Any subsection containing a "Statement:" paragraph is extracted as a requirement.
+ * Entity type determined by nearest ancestor containing "ONs" or "ORs" keyword.
+ *
+ * Path Construction:
+ * ------------------
+ * - Organizational path = all ancestor section titles up to (but excluding) "ONs"/"ORs" marker
+ * - Requirement title = subsection heading text
+ * - External ID built from: drg + path + title
+ * - "Operational Needs and Requirements" prefix removed if present
+ *
+ * Entity Hierarchy:
+ * -----------------
+ * - Nested subsections under an entity → parent-child REFINES relationship
+ * - Parent reference stored in child's `parent.externalId` field
+ * - Only immediate parent tracked (not full ancestry)
+ *
+ * Field Extraction (from subsection paragraphs):
+ * ----------------------------------------------
+ * - "Statement:" → statement (multi-paragraph concatenation)
+ * - "Rationale:" → rationale (multi-paragraph concatenation)
+ * - "Flow:" / "Flows:" / "Flow example:" / "Flow examples:" → flows
+ * - "Implemented ONs:" → implementedONs array (OR-type only)
+ *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
+ *   - Relative references resolved using current entity's organizational path
+ * - "References:" / "Reference:" → documentReferences array
+ *   - Format: "- document:external_id" or "- document:external_id: note text"
+ *
+ * Document References (Default Behavior):
+ * ----------------------------------------
+ * - All ONs automatically reference "NM B2B ConOPS" document if no explicit references found
+ * - Note field populated with organizational path: "Section: 'Path/To/Requirement'"
+ * - Explicit references in document override this default behavior
+ *
+ * External ID Format:
+ * -------------------
+ * - ON: on:nm_b2b/{path_normalized}/{title_normalized}
+ * - OR: or:nm_b2b/{path_normalized}/{title_normalized}
+ *
+ * Reference Documents:
+ * --------------------
+ * Pre-populated in mapper context:
+ * - "NM B2B ConOPS" (v2.1) - default reference for all ONs
+ * - "Commission Implementing Regulation (EU) 2021/116"
+ *
+ * Validation:
+ * -----------
+ * - Implemented ONs: Verify all referenced ON external IDs exist in extracted ON map
+ * - Document References: Verify all referenced document external IDs exist in document map
+ * - Statistics logged: resolved vs unresolved references
+ *
+ * IGNORED CONTENT:
+ * ----------------
+ * - Section numbering (e.g., "6.1.2") - only titles used
+ * - Any content not within recognized field markers
+ * - Subsections without "Statement:" paragraph (organizational only, not requirements)
  */
 class NM_B2B_Mapper extends Mapper {
     /**

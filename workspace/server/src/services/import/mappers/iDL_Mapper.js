@@ -4,6 +4,88 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
 /**
  * Mapper for iDL AIRAC Data Definition Process Word documents
  * Transforms hierarchical section structure into ODP entities
+ *
+ * DOCUMENT STRUCTURE INTERPRETATION:
+ * ==================================
+ *
+ * Hierarchical Organization Pattern:
+ * -----------------------------------
+ * The iDL document uses numbered sections to organize requirements:
+ *
+ * - Section 6: "Operational Needs" (all subsections become ONs)
+ *   - 6.x: Organizational grouping (e.g., "Delivery to Operations and Publication")
+ *     - 6.x.y: Entity subsection (contains Statement: paragraph → becomes ON)
+ *       - 6.x.y.z: Child entity subsection (refines parent via parent-child relationship)
+ *
+ * - Section 7: "Operational Requirements" (all subsections become ORs)
+ *   - 7.x: Organizational grouping
+ *     - 7.x.y: Entity subsection (contains Statement: paragraph → becomes OR)
+ *       - 7.x.y.z: Child entity subsection (refines parent via parent-child relationship)
+ *
+ * Any subsection containing a "Statement:" paragraph is extracted as a requirement.
+ * Entity type determined by top-level section number (6 = ON, 7 = OR).
+ *
+ * Path Construction:
+ * ------------------
+ * - Path built from section title hierarchy (not section numbers)
+ * - Level 1 section title ("Operational Needs" or "Operational Requirements") removed
+ * - Requirement title excluded from path (stored separately)
+ * - External ID built from: drg + path + title
+ * - Example: "6.1.5 Operational Change via Instant Data Amendment"
+ *   → path: ["Delivery to Operations and Publication"]
+ *   → title: "Operational Change via Instant Data Amendment"
+ *
+ * Entity Hierarchy:
+ * -----------------
+ * - Nested subsections under an entity → parent-child REFINES relationship
+ * - Parent reference stored in child's `parent.externalId` field
+ * - Only immediate parent tracked (not full ancestry)
+ *
+ * Field Extraction (from subsection paragraphs):
+ * ----------------------------------------------
+ * - "Statement:" → statement (multi-paragraph concatenation until next keyword)
+ * - "Rationale:" → rationale (multi-paragraph concatenation, terminated by specific keywords)
+ *   - Terminators: "Implemented ONs:", "Impact:", "Dependencies:", "Flow:", "ConOPS Reference:"
+ * - "Flow:" / "Flows:" / "Flow example:" / "Flow examples:" → flows
+ * - "Implemented ONs:" / "Implemented Operational Needs:" → implementedONs array (OR-type only)
+ *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
+ *   - Relative references resolved using current entity's organizational path
+ * - "Dependencies:" → dependsOnRequirements array (OR-type only)
+ *   - Same reference format as implementedONs, resolves to OR external IDs
+ * - "ConOPS Reference:" / "ConOPS References:" → documentReferences array
+ *   - Full external ID: "- document:idl_conops_v2.1" or "- document:idl_conops_v2.1: note"
+ *   - Section reference: "- Section 4.1.1 - Title" (auto-maps to iDL ConOPS)
+ *   - Placeholder "<to be completed>" ignored
+ *
+ * Document References (Auto-Mapping):
+ * ------------------------------------
+ * - Section references (e.g., "Section 4.1.1 - Title") automatically mapped to iDL ConOPS document
+ * - Full document external IDs used as-is
+ * - Note field populated with section text for section-style references
+ *
+ * External ID Format:
+ * -------------------
+ * - ON: on:idl/{path_normalized}/{title_normalized}
+ * - OR: or:idl/{path_normalized}/{title_normalized}
+ *
+ * Reference Documents:
+ * --------------------
+ * Pre-populated in mapper context:
+ * - "iDL ConOPS" (v2.1) - default for section-style references
+ *
+ * Validation:
+ * -----------
+ * - Implemented ONs: Verify all referenced ON external IDs exist in extracted ON map
+ * - OR Dependencies: Verify all referenced OR external IDs exist in extracted OR map
+ * - Document References: Verify all referenced document external IDs exist in document map
+ * - Statistics logged: resolved vs unresolved references
+ *
+ * IGNORED CONTENT:
+ * ----------------
+ * - Section numbering (e.g., "6.1.2") - only titles used for path/external ID
+ * - Any content not within recognized field markers
+ * - Placeholder references like "<to be completed>"
+ * - Subsections without "Statement:" paragraph (organizational only, not requirements)
  */
 class iDL_Mapper extends Mapper {
     /**
