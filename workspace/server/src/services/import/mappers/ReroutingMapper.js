@@ -579,9 +579,9 @@ class ReroutingMapper extends Mapper {
     }
 
     /**
-     * Parse stakeholders column and map to external IDs
+     * Parse stakeholders column and map to reference objects
      * @param {string} stakeholdersText - Comma-separated stakeholder text from Excel
-     * @returns {Array<string>} Array of unique stakeholder external IDs
+     * @returns {Array<{externalId: string}>} Array of unique stakeholder references
      * @private
      */
     _parseStakeholders(stakeholdersText) {
@@ -589,7 +589,8 @@ class ReroutingMapper extends Mapper {
             return [];
         }
 
-        const stakeholderIds = new Set();
+        const stakeholderRefs = [];
+        const seenIds = new Set();  // Track duplicates
 
         // Split by comma and slash
         const tokens = stakeholdersText.split(/[,/]/).map(t => t.trim()).filter(t => t);
@@ -603,13 +604,17 @@ class ReroutingMapper extends Mapper {
             const externalId = ReroutingMapper.STAKEHOLDER_SYNONYM_MAP[token];
 
             if (externalId) {
-                stakeholderIds.add(externalId);
+                // Avoid duplicates
+                if (!seenIds.has(externalId)) {
+                    stakeholderRefs.push({ externalId });
+                    seenIds.add(externalId);
+                }
             } else {
                 console.warn(`Unknown stakeholder token: "${token}" in text: "${stakeholdersText}"`);
             }
         }
 
-        return Array.from(stakeholderIds).sort();
+        return stakeholderRefs;
     }
 
     /**

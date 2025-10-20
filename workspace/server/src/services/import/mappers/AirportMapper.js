@@ -18,6 +18,26 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * Pass 1: Group tables - identify OR/ON tables and associate with following Use Case tables
  * Pass 2: Map requirements - extract data from grouped tables and build requirement objects
  *
+ * Field Mapping Strategy:
+ *
+ * Structured Fields (Resolved to Entity References):
+ * - Stakeholders → impactsStakeholderCategories (with synonym resolution)
+ * - ON Reference → implementedONs (for OR type)
+ * - Regulatory requirements → documentReferences
+ *
+ * Unstructured Fields (Preserved as Raw Text in privateNotes):
+ * - Data (and other Enabler) → privateNotes section "Data and Enablers"
+ *   Reason: Heterogeneous data (63 unique items, mixed granularity, inconsistent naming)
+ * - Impacted Services → privateNotes section "Impacted Services"
+ *   Reason: Not standardized format across DrGs
+ * - Dependencies → privateNotes section "Dependencies"
+ *   Reason: Prose format requiring text parsing to extract requirement references
+ *
+ * These unstructured fields remain as empty arrays in the model for future processing:
+ * - impactsData: [] (to be populated when DataCategory taxonomy is established)
+ * - impactsServices: [] (to be populated when Service taxonomy is established)
+ * - dependsOnRequirements: [] (to be populated when dependency parsing is implemented)
+ *
  * Stakeholder Processing:
  * The mapper handles stakeholders in the following format:
  * - Input: "<p>NMOC (Airport Function, NOC, SNOC)</p>"
@@ -45,6 +65,7 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * - Resolves stakeholder references with synonym support
  * - Handles both simple and complex stakeholder notations
  * - Associates Use Cases with their corresponding requirements
+ * - Preserves heterogeneous data in privateNotes for future processing
  *
  * External ID Format:
  * - Requirements: or:airport/{path}/{drg}
@@ -323,11 +344,27 @@ class AirportMapper extends Mapper {
             rationale += '\n\nOpportunities / Risks:\n' + opportunitiesRisks;
         }
 
-        // Build private notes with Requirement ID and Originator
+        // Build private notes with all supplementary information
         let privateNotes = `Requirement ID: ${requirementNumber}`;
+
         const originator = data['Originator'];
         if (originator) {
             privateNotes += '\n\nOriginator: ' + originator;
+        }
+
+        const dependencies = data['Dependencies'];
+        if (dependencies) {
+            privateNotes += '\n\nDependencies: ' + dependencies;
+        }
+
+        const dataEnablers = data['Data (and other Enabler)'];
+        if (dataEnablers) {
+            privateNotes += '\n\nData and Enablers: ' + dataEnablers;
+        }
+
+        const impactedServices = data['Impacted Services'];
+        if (impactedServices) {
+            privateNotes += '\n\nImpacted Services: ' + impactedServices;
         }
 
         // Build flows from Use Case table if present

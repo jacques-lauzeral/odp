@@ -117,10 +117,10 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 - **Complete**: Mapper registry initialization and DrG registration
 - **Complete**: NM_B2B_Mapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
 - **Complete**: iDL_Mapper or Word documents (hierarchical section parsing, etc.)
-- **Pending**: Airport_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Complete**: Airport_Mapper or Word documents (hierarchical section parsing, etc.)
 - **Pending**: Flow_Mapper or Word documents (hierarchical section parsing, etc.)
 - **Complete**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
-- **Complete**: ASM_AFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
+- **Pending**: ASM_AFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 
 #### CLI Layer - COMPLETE
 - **Complete**: odp import extract-word command with --file and --output options
@@ -149,7 +149,7 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 #### Implementation Sub-Phases
 - **Phase 20.1 - Infrastructure (COMPLETE)**: OpenAPI spec, routes with multer, ImportService/YamlMapper refactoring, DocxExtractor with full content extraction, CLI commands with FormData
 - **Phase 20.2 - NM_B2B Word Support (COMPLETE)**: NMB2BMapper implementation, field extraction logic, structured data transformation, end-to-end testing with real documents
-- **Phase 20.3 - Rerouting Excel Support (IN PROGRESS)**: XlsxExtractor implementation, ReroutingMapper, Excel-specific extraction patterns
+- **Phase 20.3 - Rerouting Excel Support (COMPLETE)**: XlsxExtractor implementation, ReroutingMapper, Excel-specific extraction patterns
 - **Phase 20.4 - Additional DrG Mappers**: Mapper implementations for remaining DrGs (4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NMUI, PERF, RRT, TCF)
 
 **Success Criteria**:

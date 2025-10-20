@@ -467,10 +467,10 @@ class iDL_Mapper extends Mapper {
         console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}`);
 
         return {
-            documents: cleanArray(Array.from(context.documentMap.values())),
-            stakeholderCategories: cleanArray(Array.from(context.stakeholderCategoryMap.values())),
-            dataCategories: cleanArray(Array.from(context.dataCategoryMap.values())),
-            services: cleanArray(Array.from(context.serviceMap.values())),
+            documents: [],
+            stakeholderCategories: [],
+            dataCategories: [],
+            services: [],
             waves: cleanArray(Array.from(context.waveMap.values())),
             requirements: cleanArray(Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()))),
             changes: cleanArray(Array.from(context.changeMap.values()))
