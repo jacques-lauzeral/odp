@@ -2,104 +2,127 @@ import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
- * Mapper for Airport Word documents
- * Transforms table-based entity structure into ODP entities
+ * AirportMapper - Maps Airport Operational Needs and Requirements document
  *
- * DOCUMENT STRUCTURE INTERPRETATION:
- * ==================================
+ * This mapper processes Word documents from the Airport Drafting Group containing:
+ * - Operational Needs (ONs)
+ * - Operational Requirements (ORs)
+ * - Use Cases
  *
- * Organizational Pattern:
- * -----------------------
- * The Airport document uses a flat topic-based structure:
+ * Document Structure:
+ * - Hierarchical sections with numbered titles (e.g., "3.2.1 Title")
+ * - Tables containing structured requirement data
+ * - Stakeholder fields with format: "Name" or "Name (details)"
  *
- * - Section 2: Summary tables (IGNORED - manually maintained)
- * - Sections 3-10: Each top-level section represents one topic area containing:
- *   - One ON (Operational Need) defined via form table at section start
- *   - Multiple subsections that can be:
- *     - OR subsections: contain form tables with OR definitions
- *     - Organizational subsections: grouping only, no form tables (contribute to path)
+ * Two-Pass Algorithm:
+ * Pass 1: Group tables - identify OR/ON tables and associate with following Use Case tables
+ * Pass 2: Map requirements - extract data from grouped tables and build requirement objects
  *
- * Entity Identification:
- * ----------------------
- * - ONs identified by tables containing "ON #" field
- * - ORs identified by tables containing "OR #" field
- * - Entity = subsection containing such a table (not the table itself)
- * - Subsections without form tables are organizational groupings only
+ * Stakeholder Processing:
+ * The mapper handles stakeholders in the following format:
+ * - Input: "<p>NMOC (Airport Function, NOC, SNOC)</p>"
+ * - Processing:
+ *   1. Extract text from <p> tags (or split plain text)
+ *   2. Split by pattern: mainName (optionalNote)
+ *   3. Normalize mainName using synonym map (case-insensitive)
+ *   4. Resolve to externalId using internal stakeholderCategoryMap
+ *   5. Keep note with parentheses: "(Airport Function, NOC, SNOC)"
+ * - Output: { externalId: "stakeholder:nm/nmoc", note: "(Airport Function, NOC, SNOC)" }
  *
- * Path Construction:
- * ------------------
- * - ON: empty path `[]` (topic-level entities)
- * - OR: organizational path from section titles (normalized)
- *   - Includes topic section and any organizational subsections
- *   - Excludes the OR's own subsection title
- *   - Example: Section 4.2.1 "API and DPI monitoring service"
- *     → path: ["Airport network integration", "API and DPI monitoring"]
- *     → title: "API and DPI monitoring service"
+ * Synonym Handling:
+ * - Plural forms: "Aircraft Operators" → "AO"
+ * - Variations: "Aircraft Operator" → "AO"
+ * - Compound names: "APT Unit (Airport Integration Team)" → "APT Unit"
+ * - Case-insensitive matching throughout
+ *
+ * Setup Entities:
+ * The mapper builds internal maps for stakeholder categories from predefined setup data.
+ * These maps are used for resolving references during requirement extraction.
+ *
+ * Key Features:
+ * - Extracts requirements from nested section tables
+ * - Builds hierarchical paths from section structure
+ * - Resolves stakeholder references with synonym support
+ * - Handles both simple and complex stakeholder notations
+ * - Associates Use Cases with their corresponding requirements
  *
  * External ID Format:
- * -------------------
- * - ON: on:airport/{title_normalized}
- * - OR: or:airport/{path_normalized}/{title_normalized}
+ * - Requirements: or:airport/{path}/{drg}
+ * - Changes: oc:airport/{path}/{drg}
  *
- * Field Extraction (from table rows):
- * ------------------------------------
- * ONs:
- * - "ON #" → privateNotes (e.g., "APT-ON-01")
- * - "Title" → title
- * - "Need statement" → statement
- * - "Rationale" → rationale
- *
- * ORs:
- * - "OR #" → privateNotes (e.g., "APT-OR-01-1")
- * - "Title" → title
- * - "Detailed Requirement" → statement
- * - "Rationale" → rationale
- * - "Stakeholders" → impactsStakeholderCategories (parsed and mapped)
- *
- * Stakeholder Mapping:
- * --------------------
- * Table values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
- * - 'NMOC' → stakeholder:nm/nmoc
- * - 'ANSP' → stakeholder:ansp
- * - 'Airport Operator' → stakeholder:airport_operator
- * - 'Aircraft Operator' → stakeholder:airspace_user/ao
- * Multi-value fields parsed by newlines and common delimiters
- *
- * Relationships:
- * --------------
- * - ON → OR: One-to-many (all ORs within an ON's section reference that ON via implementedONs)
- * - Reference format: ON external ID (e.g., "on:airport/full_aop_nop_integration")
- *
- * IGNORED TABLE FIELDS:
- * ----------------------
- * The following table row labels are intentionally not imported:
- * - 'Fit Criteria' (future enhancement)
- * - 'Flow of Actions' (future enhancement)
- * - 'Data (and other Enabler)' (future enhancement)
- * - 'Impacted Services' (future enhancement)
- * - 'Dependencies' (future enhancement)
- * - 'Opportunities / Risks' (future enhancement)
- * - 'Date'
- * - 'Originator'
- * - 'ON Reference' (redundant - derived from section hierarchy)
- * - 'Regulatory requirements'
- *
- * IGNORED SECTIONS:
- * -----------------
- * - Section 2: "Operational Needs and Requirements summary" (manually maintained tables)
- * - Section 11: "Initial roadmap" (annex material)
- * - Any "Use Case" tables (future enhancement)
+ * @extends Mapper
  */
 class AirportMapper extends Mapper {
     /**
-     * Map of stakeholder synonyms to external IDs
+     * Synonym map for stakeholder name normalization
+     * Maps variations and plural forms to canonical names
+     * All keys are lowercase for case-insensitive matching
      */
-    static STAKEHOLDER_SYNONYM_MAP = {
-        'NMOC': 'stakeholder:nm/nmoc',
-        'ANSP': 'stakeholder:ansp',
-        'Airport Operator': 'stakeholder:airport_operator',
-        'Aircraft Operator': 'stakeholder:airspace_user/ao'
+    static STAKEHOLDER_SYNONYMS = {
+        // Aircraft Operator variations
+        'aircraft operator': 'ao',
+        'aircraft operators': 'ao',
+
+        // Plural forms
+        'ansps': 'ansp',
+        'airport operators': 'airport operator',
+
+        // Compound names - extract base name before parentheses
+        'apt unit (airport integration team)': 'apt unit',
+        'airport domain (apt unit)': 'airport domain',
+        'national authority / caa': 'national authority',
+
+        // NMOC variations - base name stays same, notes handled separately
+        'nmoc (airport function, noc, snoc)': 'nmoc',
+        'nmoc (noc, snoc)': 'nmoc',
+        'nmoc (airport function, dom, snoc)': 'nmoc',
+        'nmoc (airport function, snoc, noc)': 'nmoc',
+
+        // Common abbreviations
+        'caa': 'national authority',
+        'gha': 'ground handling agent',
     };
+
+    /**
+     * Predefined stakeholder categories for Airport domain
+     * Minimal data for mapping: name (for lookup) and externalId (for resolution)
+     */
+    static STAKEHOLDER_CATEGORIES = [
+        { name: "NM", externalId: "stakeholder:nm" },
+        { name: "ANSP", externalId: "stakeholder:ansp" },
+        { name: "NMOC", externalId: "stakeholder:nm/nmoc" },
+        { name: "FMP", externalId: "stakeholder:ansp/fmp" },
+        { name: "TWR", externalId: "stakeholder:ansp/twr" },
+        { name: "Airport Operator", externalId: "stakeholder:airport_operator" },
+        { name: "Airspace User", externalId: "stakeholder:airspace_user" },
+        { name: "AO", externalId: "stakeholder:airspace_user/ao" },
+        { name: "APT Unit", externalId: "stakeholder:nm/apt_unit" },
+        { name: "Airport Domain", externalId: "stakeholder:nm/airport_domain" },
+        { name: "National Authority", externalId: "stakeholder:national_authority" },
+        { name: "Ground Handling Agent", externalId: "stakeholder:ground_handling_agent" },
+        { name: "Third Party Supplier", externalId: "stakeholder:third_party_supplier" },
+        { name: "Surveillance Data Provider", externalId: "stakeholder:surveillance_data_provider" }
+    ];
+
+    /**
+     * Document synonym map for document reference normalization
+     * Maps common abbreviations and variations to canonical document names
+     * All keys are lowercase for case-insensitive matching
+     */
+    static DOCUMENT_SYNONYMS = {
+        'cp1 regulation 2021/116': 'commission implementing regulation (eu) 2021/116',
+    };
+
+    /**
+     * Predefined documents for Airport domain
+     * Minimal data for mapping: name (for lookup) and externalId (for resolution)
+     */
+    static DOCUMENTS = [
+        {
+            name: "Commission Implementing Regulation (EU) 2021/116",
+            externalId: "document:commission_implementing_regulation_(eu)_2021/116"
+        }
+    ];
 
     /**
      * Map raw extracted Word document data to structured import format
@@ -107,19 +130,21 @@ class AirportMapper extends Mapper {
      * @returns {Object} StructuredImportData with all entity collections
      */
     map(rawData) {
-        console.log('AirportMapper: Processing raw data from Word extraction');
-
         const context = this._initContext();
+        const sections = rawData.sections || [];
 
-        // Process sections 3-10 (skip section 2 and 11)
-        for (const section of rawData.sections || []) {
-            const sectionNum = parseInt(section.sectionNumber);
-            if (sectionNum >= 3 && sectionNum <= 10) {
-                this._processTopicSection(section, context);
+        // Pass 1: Group tables by type and associate Use Cases with Requirements
+        const tableGroups = this._groupTables(sections);
+
+        console.log(`Pass 1 complete: Found ${tableGroups.length} table groups`);
+
+        // Pass 2: Map grouped tables to requirements
+        for (const group of tableGroups) {
+            const requirement = this._mapRequirementFromGroup(group, context);
+            if (requirement) {
+                context.requirements.push(requirement);
             }
         }
-
-        console.log(`Mapped ${context.onMap.size} needs (ONs), ${context.orMap.size} requirements (ORs)`);
 
         return this._buildOutput(context);
     }
@@ -129,137 +154,267 @@ class AirportMapper extends Mapper {
      * @private
      */
     _initContext() {
-        return {
-            onMap: new Map(),
-            orMap: new Map(),
-            documentMap: new Map(),
+        const context = {
+            requirements: [],
+            changes: [],
             stakeholderCategoryMap: new Map(),
             dataCategoryMap: new Map(),
             serviceMap: new Map(),
+            documentMap: new Map(),
             waveMap: new Map(),
-            changeMap: new Map()
+            // Map requirement numbers (APT-ON-01, APT-OR-02-1) to external IDs
+            requirementNumberMap: new Map()
         };
-    }
 
-    /**
-     * Process a top-level topic section (sections 3-10)
-     * Each contains one ON and multiple OR subsections
-     * @private
-     */
-    _processTopicSection(section, context) {
-        // Extract ON from the section itself
-        const on = this._extractON(section);
-        if (on) {
-            context.onMap.set(on.externalId, on);
-            console.log(`Extracted ON: ${on.externalId}`);
+        // Build stakeholder category map: name (lowercase) -> externalId
+        for (const stakeholder of AirportMapper.STAKEHOLDER_CATEGORIES) {
+            const key = stakeholder.name.toLowerCase();
+            context.stakeholderCategoryMap.set(key, stakeholder.externalId);
         }
 
-        // Process subsections for ORs
-        const topicPath = [section.title];
-        this._processSubsections(section.subsections || [], topicPath, on ? on.externalId : null, context);
+        // Build document map: name (lowercase) -> externalId
+        for (const document of AirportMapper.DOCUMENTS) {
+            const key = document.name.toLowerCase();
+            context.documentMap.set(key, document.externalId);
+        }
+
+        return context;
     }
 
     /**
-     * Recursively process subsections to find ORs
-     * @private
+     * Pass 1: Group tables from all sections
+     * Recursively collects all tables and groups OR/ON tables with their associated Use Case tables
+     *
+     * @param {Array} sections - Document sections
+     * @returns {Array<{requirementTable, useCaseTable, path}>} Array of table groups
      */
-    _processSubsections(subsections, currentPath, onExternalId, context) {
-        for (const subsection of subsections) {
-            // Check if this subsection contains an OR table
-            const or = this._extractOR(subsection, currentPath, onExternalId);
+    _groupTables(sections) {
+        const allTables = [];
 
-            if (or) {
-                context.orMap.set(or.externalId, or);
-                console.log(`Extracted OR: ${or.externalId}`);
-            } else {
-                // No OR found - this is an organizational subsection
-                // Recurse with updated path
-                const newPath = [...currentPath, subsection.title];
-                this._processSubsections(subsection.subsections || [], newPath, onExternalId, context);
+        // Recursively collect all tables with their paths
+        const collectTables = (section, parentPath) => {
+            const currentPath = [...parentPath];
+
+            // Add current section to path if it has a meaningful title
+            if (section.title && !this._isMetaSection(section.title)) {
+                currentPath.push(section.title);
             }
+
+            // Collect tables from current section
+            if (section.content?.tables) {
+                for (const table of section.content.tables) {
+                    allTables.push({ table, path: currentPath });
+                }
+            }
+
+            // Recursively process subsections
+            if (section.subsections) {
+                for (const subsection of section.subsections) {
+                    collectTables(subsection, currentPath);
+                }
+            }
+        };
+
+        // Collect all tables
+        for (const section of sections) {
+            collectTables(section, []);
         }
-    }
 
-    /**
-     * Extract ON from section content tables
-     * @private
-     */
-    _extractON(section) {
-        const tables = section.content?.tables || [];
+        // Group tables: associate Use Case tables with preceding OR/ON tables
+        const groups = [];
+        let i = 0;
 
-        for (const table of tables) {
-            // Check if this is an ON table (contains "ON #" field)
-            const tableData = this._parseTableToObject(table);
+        while (i < allTables.length) {
+            const current = allTables[i];
+            const tableType = this._identifyTableType(current.table);
 
-            if (tableData['ON #']) {
-                const on = {
-                    type: 'ON',
-                    drg: 'AIRPORT',
-                    path: [],
-                    title: tableData['Title'],
-                    statement: tableData['Need statement'],
-                    rationale: tableData['Rationale'],
-                    privateNotes: tableData['ON #']
+            if (tableType === 'OR' || tableType === 'ON') {
+                const group = {
+                    requirementTable: current.table,
+                    useCaseTable: null,
+                    path: current.path,
+                    type: tableType
                 };
 
-                // Generate external ID
-                on.externalId = ExternalIdBuilder.buildExternalId(on, 'on');
+                // Check if next table is a Use Case table
+                if (i + 1 < allTables.length) {
+                    const next = allTables[i + 1];
+                    if (this._identifyTableType(next.table) === 'USE_CASE') {
+                        group.useCaseTable = next.table;
+                        i++; // Skip the Use Case table in next iteration
+                    }
+                }
 
-                return on;
+                groups.push(group);
             }
+
+            i++;
         }
 
-        return null;
+        return groups;
     }
 
     /**
-     * Extract OR from subsection content tables
-     * @private
+     * Identify table type based on its fields
+     *
+     * @param {Object} table - Table object with rows
+     * @returns {string} Table type: 'OR', 'ON', 'USE_CASE', or 'OTHER'
      */
-    _extractOR(subsection, currentPath, onExternalId) {
-        const tables = subsection.content?.tables || [];
+    _identifyTableType(table) {
+        const data = this._parseTableToKeyValue(table);
 
-        for (const table of tables) {
-            // Check if this is an OR table (contains "OR #" field)
-            const tableData = this._parseTableToObject(table);
-
-            if (tableData['OR #']) {
-                // Build OR object with path excluding the OR's own title
-                const or = {
-                    type: 'OR',
-                    drg: 'AIRPORT',
-                    path: this._cleanPath([...currentPath]),
-                    title: tableData['Title'] || subsection.title,
-                    statement: tableData['Detailed Requirement'],
-                    rationale: tableData['Rationale'],
-                    privateNotes: tableData['OR #'],
-                    implementedONs: onExternalId ? [onExternalId] : [],
-                    impactsStakeholderCategories: this._parseStakeholders(tableData['Stakeholders'])
-                };
-
-                // Generate external ID
-                or.externalId = ExternalIdBuilder.buildExternalId(or, 'or');
-
-                return or;
-            }
+        if (data['OR #'] || data['OR#']) {
+            return 'OR';
+        }
+        if (data['ON #'] || data['ON#']) {
+            return 'ON';
+        }
+        if (data['Use Case Title']) {
+            return 'USE_CASE';
         }
 
-        return null;
+        return 'OTHER';
     }
 
     /**
-     * Parse table rows into key-value object
-     * Assumes 2-column tables with label in first column, value in second
-     * @private
+     * Check if section title is meta (should not be included in path)
      */
-    _parseTableToObject(table) {
+    _isMetaSection(title) {
+        const metaTitles = [
+            'Introduction',
+            'Purpose',
+            'Scope',
+            'Intended audience',
+            'Initial roadmap',
+            'Acronyms',
+            'Abbreviations'
+        ];
+        return metaTitles.some(meta => title.toLowerCase().includes(meta.toLowerCase()));
+    }
+
+    /**
+     * Pass 2: Map a table group to a requirement object
+     *
+     * @param {Object} group - Table group with requirementTable, useCaseTable, path, type
+     * @param {Object} context - Mapping context
+     * @returns {Object|null} Requirement object or null
+     */
+    _mapRequirementFromGroup(group, context) {
+        const { requirementTable, useCaseTable, path, type } = group;
+
+        const data = this._parseTableToKeyValue(requirementTable);
+
+        console.log(`Mapping ${type}:`, JSON.stringify(Object.keys(data)));
+
+        const requirementNumber = data['OR #'] || data['OR#'] || data['ON #'] || data['ON#'];
+        const drg = 'AIRPORT';
+
+        // Build statement with Fit Criteria appended
+        let statement = data['Detailed Requirement'] || data['Need statement'] || '';
+        const fitCriteria = data['Fit Criteria'];
+        if (fitCriteria) {
+            statement += '\n\nFit Criteria:\n' + fitCriteria;
+        }
+
+        // Build rationale with Opportunities/Risks appended
+        let rationale = data['Rationale'] || '';
+        const opportunitiesRisks = data['Opportunities / Risks'];
+        if (opportunitiesRisks) {
+            rationale += '\n\nOpportunities / Risks:\n' + opportunitiesRisks;
+        }
+
+        // Build private notes with Requirement ID and Originator
+        let privateNotes = `Requirement ID: ${requirementNumber}`;
+        const originator = data['Originator'];
+        if (originator) {
+            privateNotes += '\n\nOriginator: ' + originator;
+        }
+
+        // Build flows from Use Case table if present
+        let flows = '';
+        if (useCaseTable) {
+            flows = this._extractFlowsFromUseCase(useCaseTable);
+        }
+
+        const requirement = {
+            externalId: ExternalIdBuilder.buildExternalId({
+                drg,
+                path,
+                title: data['Title'] || 'Untitled'
+            }, type.toLowerCase()),
+            title: data['Title'] || 'Untitled',
+            type: type,
+            statement: statement,
+            rationale: rationale,
+            flows: flows,
+            privateNotes: privateNotes,
+            path: path,
+            drg: drg,
+            refines: null,
+            impactsStakeholderCategories: this._extractImpactedStakeholders(data['Stakeholders'], context),
+            impactsData: [],
+            impactsServices: [],
+            implementedONs: type === 'OR' ? this._extractImplementedONs(data['ON Reference'], context) : [],
+            documentReferences: this._extractDocumentReferences(data['Regulatory requirements'], context),
+            dependsOnRequirements: []
+        };
+
+        // Store requirement number -> external ID mapping for reference resolution
+        context.requirementNumberMap.set(requirementNumber, requirement.externalId);
+
+        return requirement;
+    }
+
+    /**
+     * Extract flows field from Use Case table
+     * Format: [Use Case Title]\n\n[Flow of Actions]
+     *
+     * @param {Object} useCaseTable - Use Case table
+     * @returns {string} Formatted flows text
+     */
+    _extractFlowsFromUseCase(useCaseTable) {
+        const data = this._parseTableToKeyValue(useCaseTable);
+
+        const useCaseTitle = data['Use Case Title'] || '';
+        const flowOfActions = data['Flow of Actions'] || '';
+
+        if (!useCaseTitle && !flowOfActions) {
+            return '';
+        }
+
+        if (!useCaseTitle) {
+            return flowOfActions;
+        }
+
+        if (!flowOfActions) {
+            return useCaseTitle;
+        }
+
+        return `${useCaseTitle}\n\n${flowOfActions}`;
+    }
+
+    /**
+     * Parse table rows into key-value pairs
+     * Preserves HTML for fields that need structured parsing (Stakeholders)
+     */
+    _parseTableToKeyValue(table) {
         const result = {};
 
-        for (const row of table.rows || []) {
+        // Fields that should preserve HTML structure
+        const preserveHtmlFields = ['Stakeholders', 'Impacted Services', 'Data (and other Enabler)'];
+
+        for (const row of table.rows) {
             if (row.length >= 2) {
-                // Extract text from HTML tags
-                const key = this._stripHtml(row[0]).replace(/:/g, '').trim();
-                const value = this._stripHtml(row[1]).trim();
+                // Extract key (always strip HTML)
+                const key = this._stripHtml(row[0]).replace(/:\s*$/, '').trim();
+
+                // For certain fields, preserve HTML; otherwise strip it
+                let value;
+                if (preserveHtmlFields.includes(key)) {
+                    value = row[1].trim(); // Keep HTML
+                } else {
+                    value = this._stripHtml(row[1]).trim(); // Strip HTML
+                }
 
                 if (key && value) {
                     result[key] = value;
@@ -272,75 +427,308 @@ class AirportMapper extends Mapper {
 
     /**
      * Strip HTML tags from text
-     * @private
      */
     _stripHtml(html) {
-        if (!html) return '';
-        return html.replace(/<[^>]*>/g, '').trim();
+        return html.replace(/<[^>]*>/g, ' ')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     /**
-     * Clean path by normalizing segments
-     * @private
+     * Extract and resolve impacted stakeholders
+     *
+     * Processes stakeholder text in two possible formats:
+     * 1. HTML with <p> tags: "<p>NMOC (Airport Function, NOC, SNOC)</p><p>Airport Operator</p>"
+     * 2. Plain text separated by newlines/spaces: "NMOC (Airport Function, NOC, SNOC)\nAirport Operator"
+     *
+     * Returns array of { externalId, note } objects where:
+     * - externalId: resolved from stakeholderCategoryMap
+     * - note: parenthetical content WITH parentheses, or undefined if none
+     *
+     * @param {string} stakeholdersText - Raw stakeholders text from table cell
+     * @param {Object} context - Mapping context with stakeholderCategoryMap
+     * @returns {Array<{externalId: string, note?: string}>}
      */
-    _cleanPath(path) {
-        return path;
-    }
-
-    /**
-     * Parse stakeholders text and map to external IDs
-     * @private
-     */
-    _parseStakeholders(stakeholdersText) {
-        if (!stakeholdersText || stakeholdersText.trim() === '') {
+    _extractImpactedStakeholders(stakeholdersText, context) {
+        if (!stakeholdersText) {
             return [];
         }
 
-        const stakeholderIds = new Set();
+        const result = [];
+        const missing = [];
 
-        // Split by newlines and common delimiters
-        const lines = stakeholdersText.split(/[\n,;]/).map(s => s.trim()).filter(s => s);
+        let stakeholderTexts = [];
 
-        for (const line of lines) {
-            const externalId = AirportMapper.STAKEHOLDER_SYNONYM_MAP[line];
+        // Try to extract from <p> tags first
+        const paragraphMatches = stakeholdersText.match(/<p>(.*?)<\/p>/g);
 
-            if (externalId) {
-                stakeholderIds.add(externalId);
-            } else {
-                console.warn(`Unknown stakeholder: "${line}"`);
+        if (paragraphMatches && paragraphMatches.length > 0) {
+            // HTML format with <p> tags
+            stakeholderTexts = paragraphMatches.map(match => this._stripHtml(match).trim());
+        } else {
+            // Plain text format - split by newlines first, then by multiple spaces
+            // This handles both "NMOC\nAirport Operator" and "NMOC  Airport Operator"
+            stakeholderTexts = stakeholdersText
+                .split(/\n|(?:\s{2,})/) // Split by newline or 2+ spaces
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            // If we still have one long string, try to parse it more intelligently
+            // by looking for known stakeholder patterns
+            if (stakeholderTexts.length === 1 && stakeholderTexts[0].length > 30) {
+                stakeholderTexts = this._splitStakeholderText(stakeholderTexts[0]);
             }
         }
 
-        return Array.from(stakeholderIds).sort();
+        console.log('_extractImpactedStakeholders', JSON.stringify(stakeholderTexts));
+
+        for (const fullText of stakeholderTexts) {
+            if (!fullText) continue;
+
+            // Parse: "Name (optional note)"
+            const parsed = this._parseStakeholderText(fullText);
+            if (!parsed) continue;
+
+            const { mainName, note } = parsed;
+
+            // Normalize and resolve
+            const normalizedName = this._normalizeStakeholderName(mainName);
+            const externalId = this._resolveStakeholderExternalId(normalizedName, context);
+
+            if (externalId) {
+                const impactElement = { externalId };
+                if (note) {
+                    impactElement.note = note;
+                }
+                result.push(impactElement);
+            } else {
+                missing.push(mainName);
+            }
+        }
+
+        if (missing.length > 0) {
+            console.warn(`Stakeholders not found in map: ${missing.join(', ')}`);
+        }
+
+        return result;
     }
 
     /**
-     * Build final output from context maps
+     * Split concatenated stakeholder text into individual stakeholder names
+     * Uses pattern matching to identify stakeholder boundaries
+     *
+     * @param {string} text - Concatenated stakeholder text
+     * @returns {Array<string>} - Individual stakeholder names
+     */
+    _splitStakeholderText(text) {
+        // List of known stakeholder keywords that typically start a new stakeholder
+        const stakeholderKeywords = [
+            'NMOC', 'ANSP', 'FMP', 'Airport Operator', 'Aircraft Operator',
+            'Airspace User', 'APT Unit', 'Airport Domain', 'National Authority',
+            'Ground Handling Agent', 'Third Party Supplier', 'Surveillance Data Provider',
+            'TWR', 'AO', 'CAA'
+        ];
+
+        // Sort by length descending to match longer patterns first
+        const sortedKeywords = [...stakeholderKeywords].sort((a, b) => b.length - a.length);
+
+        const result = [];
+        let remaining = text;
+
+        while (remaining.length > 0) {
+            let found = false;
+
+            for (const keyword of sortedKeywords) {
+                const regex = new RegExp(`^(${keyword}(?:\\s*\\([^)]+\\))?)(?:\\s+|$)`, 'i');
+                const match = remaining.match(regex);
+
+                if (match) {
+                    result.push(match[1].trim());
+                    remaining = remaining.substring(match[0].length).trim();
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                // No keyword matched, skip to next word
+                const nextSpace = remaining.indexOf(' ');
+                if (nextSpace === -1) break;
+                remaining = remaining.substring(nextSpace + 1).trim();
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Parse stakeholder text into main name and optional note
+     *
+     * Examples:
+     * - "NMOC (Airport Function, NOC, SNOC)"
+     *   → { mainName: "NMOC", note: "(Airport Function, NOC, SNOC)" }
+     * - "Airport Operator"
+     *   → { mainName: "Airport Operator", note: null }
+     *
+     * @param {string} text - Stakeholder text to parse
+     * @returns {{mainName: string, note: string|null}|null}
+     */
+    _parseStakeholderText(text) {
+        const match = text.match(/^([^(]+?)(?:\s*(\(.+\)))?$/);
+        if (!match) return null;
+
+        return {
+            mainName: match[1].trim(),
+            note: match[2] ? match[2].trim() : null
+        };
+    }
+
+    /**
+     * Normalize stakeholder name using synonym map
+     *
+     * @param {string} name - Raw stakeholder name
+     * @returns {string} - Normalized name
+     */
+    _normalizeStakeholderName(name) {
+        const lowerName = name.toLowerCase().trim();
+        return AirportMapper.STAKEHOLDER_SYNONYMS[lowerName] || name;
+    }
+
+    /**
+     * Resolve stakeholder name to external ID using context's stakeholderCategoryMap
+     *
+     * @param {string} name - Normalized stakeholder name
+     * @param {Object} context - Mapping context
+     * @returns {string|null} - External ID or null if not found
+     */
+    _resolveStakeholderExternalId(name, context) {
+        // Case-insensitive lookup
+        const lowerName = name.toLowerCase();
+        return context.stakeholderCategoryMap.get(lowerName) || null;
+    }
+
+    /**
+     * Extract implemented ONs from "ON Reference" field
+     * Parses text like "APT-ON-01 - Full AOP/NOP Integration" to extract ON number
+     *
+     * @param {string} onReferenceText - Raw "ON Reference" field text
+     * @param {Object} context - Mapping context with requirementNumberMap
+     * @returns {Array<string>} - Array of ON external IDs
+     */
+    _extractImplementedONs(onReferenceText, context) {
+        if (!onReferenceText) {
+            return [];
+        }
+
+        const result = [];
+
+        // Extract ON number (e.g., "APT-ON-01" from "APT-ON-01 - Full AOP/NOP Integration")
+        const match = onReferenceText.match(/([A-Z]+-ON-[\d-]+)/);
+
+        if (match) {
+            const onNumber = match[1];
+            const externalId = context.requirementNumberMap.get(onNumber);
+
+            if (externalId) {
+                result.push(externalId);
+            } else {
+                console.warn(`ON Reference "${onNumber}" not found in requirement number map`);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Extract document references from "Regulatory requirements" field
+     *
+     * Parses text like "CP1 Regulation 2021/116, Full AOP/NOP Integration (Highly Desirable Data Element)"
+     *
+     * Format: [Document Reference], [Note]
+     * - Document Reference is normalized using synonym map
+     * - Note is everything after the first comma
+     *
+     * @param {string} regulatoryReqText - Raw "Regulatory requirements" field text
+     * @param {Object} context - Mapping context with documentMap
+     * @returns {Array<{externalId: string, note?: string}>} - Array of document references
+     */
+    _extractDocumentReferences(regulatoryReqText, context) {
+        if (!regulatoryReqText) {
+            return [];
+        }
+
+        const result = [];
+
+        // Split by comma: "CP1 Regulation 2021/116, Full AOP/NOP Integration (Highly Desirable Data Element)"
+        // → ["CP1 Regulation 2021/116", "Full AOP/NOP Integration (Highly Desirable Data Element)"]
+        const parts = regulatoryReqText.split(',').map(p => p.trim());
+
+        if (parts.length === 0) {
+            return [];
+        }
+
+        const docReference = parts[0];
+        const note = parts.length > 1 ? parts.slice(1).join(', ') : null;
+
+        // Normalize document name using synonym map
+        const normalizedName = this._normalizeDocumentName(docReference);
+
+        // Resolve to external ID
+        const externalId = this._resolveDocumentExternalId(normalizedName, context);
+
+        if (externalId) {
+            const docRef = { documentExternalId: externalId };
+            if (note) {
+                docRef.note = note;
+            }
+            result.push(docRef);
+        } else {
+            console.warn(`Document reference "${docReference}" (normalized: "${normalizedName}") not found in document map`);
+        }
+
+        return result;
+    }
+
+    /**
+     * Normalize document name using synonym map
+     *
+     * @param {string} name - Raw document name
+     * @returns {string} - Normalized document name
+     */
+    _normalizeDocumentName(name) {
+        const lowerName = name.toLowerCase().trim();
+        return AirportMapper.DOCUMENT_SYNONYMS[lowerName] || name;
+    }
+
+    /**
+     * Resolve document name to external ID using context's documentMap
+     *
+     * @param {string} name - Normalized document name
+     * @param {Object} context - Mapping context
+     * @returns {string|null} - External ID or null if not found
+     */
+    _resolveDocumentExternalId(name, context) {
+        // Case-insensitive lookup
+        const lowerName = name.toLowerCase();
+        return context.documentMap.get(lowerName) || null;
+    }
+
+    /**
+     * Build final output from context
      * @private
      */
     _buildOutput(context) {
-        // Helper to clean entity by removing null/empty fields
-        const cleanEntity = (entity) => {
-            const cleaned = {};
-            for (const [key, value] of Object.entries(entity)) {
-                if (value === null || value === undefined) continue;
-                if (Array.isArray(value) && value.length === 0) continue;
-                if (value === '') continue;
-                cleaned[key] = value;
-            }
-            return cleaned;
-        };
-
-        const cleanArray = (arr) => arr.map(cleanEntity);
+        console.log(`Mapped entities - Requirements: ${context.requirements.length}, Changes: ${context.changes.length}`);
 
         return {
-            documents: cleanArray(Array.from(context.documentMap.values())),
-            stakeholderCategories: cleanArray(Array.from(context.stakeholderCategoryMap.values())),
-            dataCategories: cleanArray(Array.from(context.dataCategoryMap.values())),
-            services: cleanArray(Array.from(context.serviceMap.values())),
-            waves: cleanArray(Array.from(context.waveMap.values())),
-            requirements: cleanArray(Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()))),
-            changes: cleanArray(Array.from(context.changeMap.values()))
+            documents: [],
+            stakeholderCategories: [],
+            dataCategories: [],
+            services: [],
+            waves: [],
+            requirements: context.requirements,
+            changes: context.changes
         };
     }
 }

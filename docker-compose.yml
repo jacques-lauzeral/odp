@@ -20,8 +20,9 @@ services:
     volumes:
       - .:/app  # Mount entire odp root (includes package.json)
       - /app/node_modules  # Prevent overwriting root node_modules
-      - /app/workspace/server/node_modules  # Prevent overwriting server node_modules
-    command: ["sh", "-c", "cd workspace/server && npm install && npm run dev"]
+    #  - /app/workspace/server/node_modules  # Prevent overwriting server node_modules
+    #command: ["sh", "-c", "cd workspace/server && npm install && npm run dev"]
+    command: ["sh", "-c", "cd workspace/server && npm run dev"]
     environment:
       NODE_ENV: development
 

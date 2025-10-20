@@ -10,7 +10,7 @@
     "url": "https://github.com/jacques-lauzeral/odp"
   },
   "scripts": {
-    "dev": "nodemon src/index.js --watch src",
+    "dev": "npx nodemon src/index.js --watch src",
     "start": "node src/index.js"
   },
   "dependencies": {

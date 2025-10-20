@@ -873,18 +873,39 @@ class JSONImporter {
         return resolved;
     }
 
-    _resolveImpactElementReferences(externalIds, context) {
-        if (!Array.isArray(externalIds)) {
+    _resolveImpactElementReferences(impactElements, context) {
+        if (!Array.isArray(impactElements)) {
             return [];
         }
 
         const resolved = [];
         const missing = [];
 
-        for (const externalId of externalIds) {
+        for (const element of impactElements) {
+            // Expect object format: { stakeholderCategoryExternalId: "...", note?: "..." }
+            // (or similar for other impact types)
+
+            if (typeof element !== 'object' || element === null) {
+                context.warnings.push(`Invalid impact element format (expected object): ${JSON.stringify(element)}`);
+                continue;
+            }
+
+            // Extract external ID
+            const externalId = element.externalId;
+
+            if (!externalId) {
+                context.warnings.push(`Impact element missing external ID field: ${JSON.stringify(element)}`);
+                continue;
+            }
+
             const internalId = context.globalRefMap.get(externalId.toLowerCase());
+
             if (internalId !== undefined) {
-                resolved.push({id: internalId});
+                const ref = { id: internalId };
+                if (element.note) {
+                    ref.note = element.note;
+                }
+                resolved.push(ref);
             } else {
                 missing.push(externalId);
             }
@@ -907,7 +928,7 @@ class JSONImporter {
 
         for (const ref of documentRefs) {
             if (!ref.documentExternalId) {
-                context.warnings.push('Document reference missing documentExternalId');
+                context.warnings.push('Document reference missing documentExternalId' + JSON.stringify(ref));
                 continue;
             }
 
