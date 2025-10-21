@@ -1,0 +1,101 @@
+{
+  "documents": [
+    {
+      "name": "iDL ConOPS",
+      "description": "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
+      "version": "2.1",
+      "url": "https://www.eurocontrol.int/publication/integrated-data-layer-idl-concept-operations-conops",
+      "externalId": "document:idl_conops"
+    },
+    {
+      "name": "NM B2B ConOPS",
+      "description": "NM B2B Concept of Operations",
+      "version": "2.1",
+      "url": "https://www.eurocontrol.int/publication/network-manager-b2b-concept-operations",
+      "externalId": "document:nm_b2b_conops"
+    },
+    {
+      "name": "Commission Implementing Regulation (EU) 2021/116",
+      "url": "https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32021R0116",
+      "externalId": "document:commission_implementing_regulation_(eu)_2021/116"
+    }
+  ],
+  "stakeholderCategories": [
+    {
+      "externalId": "stakeholder:nm",
+      "name": "NM",
+      "description": "Network Manager."
+    },
+    {
+      "externalId": "stakeholder:ansp",
+      "name": "ANSP",
+      "description": "Air Navigation Service Provider"
+    },
+    {
+      "externalId": "stakeholder:nm/nmoc",
+      "description": "Network Manager Operations Centre",
+      "name": "NMOC",
+      "parentExternalId": "stakeholder:nm"
+    },
+    {
+      "externalId": "stakeholder:ansp/fmp",
+      "description": "Flow Management Position",
+      "name": "FMP",
+      "parentExternalId": "stakeholder:ansp"
+    },
+    {
+      "externalId": "stakeholder:ansp/twr",
+      "name": "TWR",
+      "description": "Airport Tower (includes TWR ATCO, TWR SUP)",
+      "parentExternalId": "stakeholder:ansp"
+    },
+    {
+      "externalId": "stakeholder:airport_operator",
+      "name": "Airport Operator",
+      "description": "Airport operator."
+    },
+    {
+      "externalId": "stakeholder:airspace_user",
+      "name": "Airspace User",
+      "description": "Airspace Users are entities that utilize airspace for their operations, including commercial airlines, general aviation, military, and other operators."
+    },
+    {
+      "externalId": "stakeholder:airspace_user/ao",
+      "description": "Aircraft Operator",
+      "name": "AO",
+      "parentExternalId": "stakeholder:airspace_user"
+    },
+    {
+      "externalId": "stakeholder:nm/apt_unit",
+      "name": "APT Unit",
+      "description": "Airport Integration Team within Network Manager",
+      "parentExternalId": "stakeholder:nm"
+    },
+    {
+      "externalId": "stakeholder:nm/airport_domain",
+      "name": "Airport Domain",
+      "description": "Airport Domain within Network Manager (APT Unit)",
+      "parentExternalId": "stakeholder:nm"
+    },
+    {
+      "externalId": "stakeholder:national_authority",
+      "name": "National Authority",
+      "description": "National Aviation Authority / Civil Aviation Authority (CAA)"
+    },
+    {
+      "externalId": "stakeholder:ground_handling_agent",
+      "name": "Ground Handling Agent",
+      "description": "Ground handling service providers at airports"
+    },
+    {
+      "externalId": "stakeholder:third_party_supplier",
+      "name": "Third Party Supplier",
+      "description": "Third-party service providers (refuelling, catering, PRM services, etc.)"
+    },
+    {
+      "externalId": "stakeholder:surveillance_data_provider",
+      "name": "Surveillance Data Provider",
+      "description": "Providers of surveillance data for aircraft tracking"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ workspace/cli/generated-src/
 workspace/server/generated-src/
 workspace/shared/generated-src/
 workspace/web-client/generated-src/
+workspace/web-client/src/shared/src/
 
 # Logs
 *.log
