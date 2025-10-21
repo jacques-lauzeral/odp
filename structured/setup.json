@@ -1,6 +1,13 @@
 {
   "documents": [
     {
+      "name": "ASM/ATFCM Integration ConOPS",
+      "description": "ASM/ATFCM Integration Concept of Operations",
+      "version": "1.0",
+      "url": "https://www.eurocontrol.int/sites/default/files/2024-08/eurocontrol-asm-atfcm-integration-conops.pdf",
+      "externalId": "document:asm_atfcm_conops"
+    },
+    {
       "name": "iDL ConOPS",
       "description": "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
       "version": "2.1",
@@ -44,6 +51,18 @@
       "parentExternalId": "stakeholder:ansp"
     },
     {
+      "externalId": "stakeholder:ansp/amc",
+      "name": "AMC",
+      "description": "Airspace Management Cell - manages airspace structures and restrictions",
+      "parentExternalId": "stakeholder:ansp"
+    },
+    {
+      "externalId": "stakeholder:ansp/atc",
+      "name": "ATC Unit",
+      "description": "Air Traffic Control Unit (includes civil and military ATC)",
+      "parentExternalId": "stakeholder:ansp"
+    },
+    {
       "externalId": "stakeholder:ansp/twr",
       "name": "TWR",
       "description": "Airport Tower (includes TWR ATCO, TWR SUP)",
@@ -66,6 +85,12 @@
       "parentExternalId": "stakeholder:airspace_user"
     },
     {
+      "externalId": "stakeholder:airspace_user/cfsp",
+      "name": "CFSP",
+      "description": "Computerized Flight Service Provider - provides flight planning and related services on behalf of airspace users",
+      "parentExternalId": "stakeholder:airspace_user"
+    },
+    {
       "externalId": "stakeholder:nm/apt_unit",
       "name": "APT Unit",
       "description": "Airport Integration Team within Network Manager",
@@ -78,9 +103,30 @@
       "parentExternalId": "stakeholder:nm"
     },
     {
+      "externalId": "stakeholder:nm/woc",
+      "name": "WOC",
+      "description": "Weather Operations Centre within Network Manager",
+      "parentExternalId": "stakeholder:nm"
+    },
+    {
       "externalId": "stakeholder:national_authority",
       "name": "National Authority",
       "description": "National Aviation Authority / Civil Aviation Authority (CAA)"
+    },
+    {
+      "externalId": "stakeholder:military",
+      "name": "Military",
+      "description": "Military aviation authorities and operators"
+    },
+    {
+      "externalId": "stakeholder:system_integrator",
+      "name": "System Integrator",
+      "description": "Organizations integrating ATM systems and services"
+    },
+    {
+      "externalId": "stakeholder:easa",
+      "name": "EASA",
+      "description": "European Union Aviation Safety Agency"
     },
     {
       "externalId": "stakeholder:ground_handling_agent",
