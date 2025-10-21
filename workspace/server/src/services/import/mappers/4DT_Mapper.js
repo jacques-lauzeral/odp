@@ -11,6 +11,12 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * Sheet 1: "Operational Needs" (ONs)
  * -----------------------------------
  * - 'Title' → title (used for external ID generation)
+ * - 'Date' → ignored
+ * - 'Originator' → privateNotes as "Originator: {name}"
+ * - 'Source' → split handling:
+ *   - Text before 'CONOPS' → privateNotes as "Sources:\n\n{text}"
+ *   - Text after 'CONOPS' → documentReferences note
+ *   - If no 'CONOPS' → all text to privateNotes as "Sources:\n\n{text}"
  * - 'Need Statement' → statement
  * - 'Rationale' → rationale
  * - type: 'ON', drg: '4DT' (hardcoded)
@@ -19,11 +25,19 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * Sheet 2: "Operational Requirements" (ORs)
  * ------------------------------------------
  * - 'Title' → title (used for external ID generation)
+ * - 'Date' → ignored
+ * - 'Originator' → privateNotes as "Originator: {name}"
+ * - 'CONOPS Section' → beginning of documentReferences note
+ * - 'Source Reference' → end of documentReferences note
  * - 'Detailed Requirement' → statement (base)
  * - 'Fit Criteria' → appended to statement as "Fit Criteria:" paragraph
  * - 'Rationale' → rationale (base)
  * - 'Opportunities/Risks' → appended to rationale as "Opportunities / Risks:" paragraph
  * - 'Operational Need' → implementedONs (resolved via normalized title match)
+ * - 'Stakeholders' → impactsStakeholderCategories (parsed and mapped via synonym map)
+ * - 'Data (and other Enabler)' → privateNotes as "Data (and other Enabler):\n\n{text}"
+ * - 'Impacted Services' → privateNotes as "Impacted Services:\n\n{text}"
+ * - 'Dependencies' → ignored (always empty)
  * - type: 'OR', drg: '4DT' (hardcoded)
  * - path: null (not exported)
  *
@@ -32,33 +46,44 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * - ON: on:4dt/{title_normalized}
  * - OR: or:4dt/{title_normalized}
  *
+ * Document References:
+ * --------------------
+ * - ON: document:4d_trajectory_conops (if Source contains 'CONOPS')
+ * - OR: document:4d_trajectory_conops (if CONOPS Section or Source Reference present)
+ *
+ * Stakeholder Mapping:
+ * --------------------
+ * Excel values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
+ * - 'AU' → stakeholder:airspace_user
+ * - 'CFSP' → stakeholder:airspace_user/cfsp
+ * - 'NM' → stakeholder:nm
+ * - 'ANSP' / 'ANSPs' → stakeholder:ansp
+ * - 'CIV or MIL ANSP' → stakeholder:ansp (ignoring CIV/MIL qualifier)
+ * - Comma and slash delimiters handled (',', '/')
+ *
  * ON → OR Relationship:
  * ---------------------
  * - OR column 'Operational Need' contains ON title
  * - Matching uses normalized (trimmed, lowercase) title comparison
  * - Multiple ORs can implement the same ON
- *
- * IGNORED COLUMNS:
- * ----------------
- * The following columns are intentionally not imported:
- * - 'Date' / 'Originator'
- * - 'Source' / 'Source Reference'
- * - 'CONOPS Section'
- * - 'Stakeholders'
- * - 'Data (and other Enabler)'
- * - 'Impacted Services'
- * - 'Dependencies'
  */
 class FourDTMapper extends Mapper {
     /**
-     * Map raw extracted Excel data to structured import format
-     * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @returns {Object} StructuredImportData with all entity collections
+     * Map of stakeholder synonyms to external IDs
+     * Keys: variations found in Excel (including plural forms)
+     * Values: external IDs in the ODP system
      */
+    static STAKEHOLDER_SYNONYM_MAP = {
+        'AU': 'stakeholder:airspace_user',
+        'CFSP': 'stakeholder:airspace_user/cfsp',
+        'NM': 'stakeholder:nm',
+        'ANSP': 'stakeholder:ansp',
+        'ANSPs': 'stakeholder:ansp'
+        // Note: 'CIV or MIL ANSP' handled by removing 'CIV or MIL' prefix
+    };
     map(rawData) {
         console.log('FourDTMapper: Processing raw data from Excel extraction');
 
-        // Find the two sheets
         const needsSheet = this._findSheet(rawData, 'Operational Needs');
         const requirementsSheet = this._findSheet(rawData, 'Operational Requirements');
 
@@ -75,11 +100,8 @@ class FourDTMapper extends Mapper {
         console.log(`Found Operational Needs sheet with ${needsSheet.rows.length} rows`);
         console.log(`Found Operational Requirements sheet with ${requirementsSheet.rows.length} rows`);
 
-        // Process ONs first to build the title → externalId map
-        const onTitleMap = new Map(); // normalized_title → externalId
+        const onTitleMap = new Map();
         const needs = this._processNeedsSheet(needsSheet, onTitleMap);
-
-        // Process ORs and link to ONs
         const requirements = this._processRequirementsSheet(requirementsSheet, onTitleMap);
 
         console.log(`Mapped ${needs.length} operational needs (ONs) and ${requirements.length} operational requirements (ORs)`);
@@ -95,13 +117,6 @@ class FourDTMapper extends Mapper {
         };
     }
 
-    /**
-     * Find a sheet by name (case-insensitive)
-     * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @param {string} sheetName - Sheet name to find
-     * @returns {Object|null} Sheet object or null if not found
-     * @private
-     */
     _findSheet(rawData, sheetName) {
         const normalizedName = sheetName.toLowerCase();
         return (rawData.sheets || []).find(sheet =>
@@ -109,13 +124,6 @@ class FourDTMapper extends Mapper {
         );
     }
 
-    /**
-     * Process "Operational Needs" sheet
-     * @param {Object} sheet - Sheet object with rows
-     * @param {Map} onTitleMap - Map to populate: normalized_title → externalId
-     * @returns {Array} Array of ON objects
-     * @private
-     */
     _processNeedsSheet(sheet, onTitleMap) {
         const needs = [];
 
@@ -123,8 +131,6 @@ class FourDTMapper extends Mapper {
             const need = this._extractNeed(row);
             if (need) {
                 needs.push(need);
-
-                // Store in map for OR linking
                 const normalizedTitle = need.title.trim().toLowerCase();
                 onTitleMap.set(normalizedTitle, need.externalId);
             }
@@ -133,13 +139,6 @@ class FourDTMapper extends Mapper {
         return needs;
     }
 
-    /**
-     * Process "Operational Requirements" sheet
-     * @param {Object} sheet - Sheet object with rows
-     * @param {Map} onTitleMap - Map of normalized_title → externalId
-     * @returns {Array} Array of OR objects
-     * @private
-     */
     _processRequirementsSheet(sheet, onTitleMap) {
         const requirements = [];
 
@@ -153,16 +152,9 @@ class FourDTMapper extends Mapper {
         return requirements;
     }
 
-    /**
-     * Extract ON (Operational Need) from row
-     * @param {Object} row - Row object
-     * @returns {Object|null} ON object or null if invalid
-     * @private
-     */
     _extractNeed(row) {
         const title = row['Title'];
 
-        // Skip rows without title
         if (!title || title.trim() === '') {
             return null;
         }
@@ -172,7 +164,6 @@ class FourDTMapper extends Mapper {
         const privateNotes = this._extractNeedPrivateNotes(row);
         const documentReferences = this._extractNeedDocumentReferences(row);
 
-        // Build object first
         const need = {
             type: 'ON',
             drg: '4DT',
@@ -183,29 +174,19 @@ class FourDTMapper extends Mapper {
             documentReferences: documentReferences
         };
 
-        // Add external ID using the complete object
         need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
 
         return need;
     }
 
-    /**
-     * Extract private notes from ON row
-     * Includes Originator and Source (non-CONOPS parts)
-     * @param {Object} row - Row object
-     * @returns {string|null} Private notes text
-     * @private
-     */
     _extractNeedPrivateNotes(row) {
         let privateNotes = '';
 
-        // 1. Originator
         const originator = row['Originator']?.trim();
         if (originator) {
             privateNotes = `Originator: ${originator}`;
         }
 
-        // 2. Source (only non-CONOPS parts)
         const source = row['Source']?.trim();
         if (source) {
             let sourcesText = source;
@@ -225,20 +206,13 @@ class FourDTMapper extends Mapper {
         return privateNotes || null;
     }
 
-    /**
-     * Extract document references from ON row
-     * Extracts CONOPS references from Source column
-     * @param {Object} row - Row object
-     * @returns {Array} Array of document reference objects
-     * @private
-     */
     _extractNeedDocumentReferences(row) {
         const documentReferences = [];
 
         const source = row['Source']?.trim();
         if (source && source.includes('CONOPS')) {
             const conopsIndex = source.indexOf('CONOPS');
-            const afterConops = source.substring(conopsIndex + 6).trim(); // 'CONOPS'.length = 6
+            const afterConops = source.substring(conopsIndex + 6).trim();
 
             if (afterConops) {
                 documentReferences.push({
@@ -251,48 +225,37 @@ class FourDTMapper extends Mapper {
         return documentReferences.length > 0 ? documentReferences : [];
     }
 
-    /**
-     * Extract OR (Operational Requirement) from row
-     * @param {Object} row - Row object
-     * @param {Map} onTitleMap - Map of normalized ON titles to externalIds
-     * @returns {Object|null} OR object or null if invalid
-     * @private
-     */
     _extractRequirement(row, onTitleMap) {
         const title = row['Title'];
 
-        // Skip rows without title
         if (!title || title.trim() === '') {
             return null;
         }
 
         const statement = this._extractRequirementStatement(row);
         const rationale = this._extractRequirementRationale(row);
+        const privateNotes = this._extractRequirementPrivateNotes(row);
+        const documentReferences = this._extractRequirementDocumentReferences(row);
         const implementedONs = this._resolveImplementedONs(row, onTitleMap);
+        const impactsStakeholderCategories = this._parseStakeholders(row['Stakeholders']);
 
-        // Build object first
         const requirement = {
             type: 'OR',
             drg: '4DT',
             title: title.trim(),
             statement: statement,
             rationale: rationale,
-            implementedONs: implementedONs
+            privateNotes: privateNotes,
+            documentReferences: documentReferences,
+            implementedONs: implementedONs,
+            impactsStakeholderCategories: impactsStakeholderCategories
         };
 
-        // Add external ID using the complete object
         requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
 
         return requirement;
     }
 
-    /**
-     * Extract and compose statement from row
-     * Appends Fit Criteria if present
-     * @param {Object} row - Row object
-     * @returns {string|null} Statement text
-     * @private
-     */
     _extractRequirementStatement(row) {
         const detailedRequirement = row['Detailed Requirement']?.trim();
         const fitCriteria = row['Fit Criteria']?.trim();
@@ -303,7 +266,6 @@ class FourDTMapper extends Mapper {
 
         let statement = detailedRequirement || '';
 
-        // Append Fit Criteria if present
         if (fitCriteria) {
             if (statement) {
                 statement += '\n\nFit Criteria:\n\n' + fitCriteria;
@@ -315,13 +277,6 @@ class FourDTMapper extends Mapper {
         return statement || null;
     }
 
-    /**
-     * Extract and compose rationale from row
-     * Appends Opportunities/Risks if present
-     * @param {Object} row - Row object
-     * @returns {string|null} Rationale text
-     * @private
-     */
     _extractRequirementRationale(row) {
         const rationale = row['Rationale']?.trim();
         const opportunitiesRisks = row['Opportunities/Risks']?.trim();
@@ -332,7 +287,6 @@ class FourDTMapper extends Mapper {
 
         let result = rationale || '';
 
-        // Append Opportunities/Risks if present
         if (opportunitiesRisks) {
             if (result) {
                 result += '\n\nOpportunities / Risks:\n\n' + opportunitiesRisks;
@@ -344,13 +298,40 @@ class FourDTMapper extends Mapper {
         return result || null;
     }
 
-    /**
-     * Resolve implementedONs by matching 'Operational Need' column to ON titles
-     * @param {Object} row - Row object
-     * @param {Map} onTitleMap - Map of normalized ON titles to externalIds
-     * @returns {Array<string>} Array of ON externalIds (may be empty)
-     * @private
-     */
+    _extractRequirementPrivateNotes(row) {
+        const originator = row['Originator']?.trim();
+
+        if (originator) {
+            return `Originator: ${originator}`;
+        }
+
+        return null;
+    }
+
+    _extractRequirementDocumentReferences(row) {
+        const conopsSection = row['CONOPS Section']?.trim();
+        const sourceReference = row['Source Reference']?.trim();
+
+        if (!conopsSection && !sourceReference) {
+            return [];
+        }
+
+        let note = '';
+
+        if (conopsSection && sourceReference) {
+            note = `${conopsSection}. ${sourceReference}`;
+        } else if (conopsSection) {
+            note = conopsSection;
+        } else {
+            note = sourceReference;
+        }
+
+        return [{
+            documentExternalId: "document:4d_trajectory_conops",
+            note: note
+        }];
+    }
+
     _resolveImplementedONs(row, onTitleMap) {
         const operationalNeed = row['Operational Need']?.trim();
 
@@ -370,9 +351,44 @@ class FourDTMapper extends Mapper {
     }
 
     /**
-     * Return empty output structure
+     * Parse stakeholders column and map to reference objects
+     * @param {string} stakeholdersText - Comma-separated stakeholder text from Excel
+     * @returns {Array<{externalId: string}>} Array of unique stakeholder references
      * @private
      */
+    _parseStakeholders(stakeholdersText) {
+        if (!stakeholdersText || stakeholdersText.trim() === '') {
+            return [];
+        }
+
+        const stakeholderRefs = [];
+        const seenIds = new Set();  // Track duplicates
+
+        // Split by comma and slash
+        const tokens = stakeholdersText.split(/[,/]/).map(t => t.trim()).filter(t => t);
+
+        for (let token of tokens) {
+            // Handle "CIV or MIL ANSP" by removing the prefix
+            if (token.includes('CIV or MIL')) {
+                token = token.replace(/CIV or MIL\s*/i, '').trim();
+            }
+
+            const externalId = FourDTMapper.STAKEHOLDER_SYNONYM_MAP[token];
+
+            if (externalId) {
+                // Avoid duplicates
+                if (!seenIds.has(externalId)) {
+                    stakeholderRefs.push({ externalId });
+                    seenIds.add(externalId);
+                }
+            } else {
+                console.warn(`Unknown stakeholder token: "${token}" in text: "${stakeholdersText}"`);
+            }
+        }
+
+        return stakeholderRefs;
+    }
+
     _emptyOutput() {
         return {
             documents: [],
