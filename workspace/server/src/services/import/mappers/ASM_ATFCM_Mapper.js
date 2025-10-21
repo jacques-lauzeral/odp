@@ -278,10 +278,11 @@ class AsmAtfcmMapper extends Mapper {
      * @param {Object} row - Row object with column headers as keys
      * @param {Map} needsMap - Map of ON externalId -> ON object
      * @param {Map} onTitleToExternalId - Map of ON Title -> external ID
+     * @param {Map} stepToOrMap - Map of Step -> Set of OR external IDs
      * @returns {Object} { requirement: Object|null }
      * @private
      */
-    _processOnOrOcRow(row, needsMap, onTitleToExternalId) {
+    _processOnOrOcRow(row, needsMap, onTitleToExternalId, stepToOrMap) {
         // Extract ON Title
         const onTitle = row['ON Title:'];
         let onExternalId = null;
@@ -318,6 +319,20 @@ class AsmAtfcmMapper extends Mapper {
         // Add ON reference if exists
         if (onExternalId) {
             requirement.implementedONs = [onExternalId];
+        }
+
+        // Track Step -> OR relationship for OC creation
+        const step = row['Step'];
+        if (step && step.trim() !== '') {
+            const normalizedStep = step.trim();
+
+            // Initialize Set for this Step if not exists
+            if (!stepToOrMap.has(normalizedStep)) {
+                stepToOrMap.set(normalizedStep, new Set());
+            }
+
+            // Add OR external ID to the Set for this Step
+            stepToOrMap.get(normalizedStep).add(requirement.externalId);
         }
 
         return { requirement };
