@@ -117,10 +117,15 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 - **Complete**: Mapper registry initialization and DrG registration
 - **Complete**: NM_B2B_Mapper for Word documents (hierarchical section parsing, field extraction by keywords, ON/OR/OC detection, reference resolution)
 - **Complete**: iDL_Mapper or Word documents (hierarchical section parsing, etc.)
-- **Complete**: Airport_Mapper or Word documents (hierarchical section parsing, etc.)
-- **Pending**: Flow_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Complete**: AirportMapper or Word documents (hierarchical section parsing, etc.)
 - **Complete**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
-- **Pending**: ASM_AFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
+- **Pending**: ASM_ATFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
+- **Pending**: FlowMapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: 4DT_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: Crisis_FAAS_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: TCF_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: NMUI_Mapper or Word documents (hierarchical section parsing, etc.)
+- **Pending**: PERF_Mapper or Word documents (hierarchical section parsing, etc.)
 
 #### CLI Layer - COMPLETE
 - **Complete**: odp import extract-word command with --file and --output options
