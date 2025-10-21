@@ -36,6 +36,9 @@ export default class CollectionEntity {
         this.onRefresh = options.onRefresh || (() => {});
         this.onFilterChange = options.onFilterChange || (() => {});
 
+        // NEW: Callback for notifying when data changes (for badge updates)
+        this.onDataLoaded = options.onDataLoaded || (() => {});
+
         // Cache configurations
         this.filterConfig = this.getFilterConfig();
         this.columnConfig = this.getColumnConfig();
@@ -47,9 +50,15 @@ export default class CollectionEntity {
             300
         );
 
-        // NEW: Debounced server-side reload for filtering
+        // UPDATED: Debounced server-side reload with badge update callback
         this.debouncedReload = asyncUtils.debounce(
-            () => this.loadData().then(() => this.renderContent()),
+            () => this.loadData().then(() => {
+                this.renderContent();
+                // NEW: Notify parent that data has been reloaded
+                if (this.onDataLoaded) {
+                    this.onDataLoaded(this.data);
+                }
+            }),
             300
         );
     }
@@ -125,8 +134,20 @@ export default class CollectionEntity {
         this.container = container;
 
         try {
-            await this.loadData();
+            // Only load data if not already loaded (e.g., from cache)
+            if (this.data.length === 0) {
+                console.log(`${this.entityConfig.name}: No cached data, loading from API`);
+                await this.loadData();
+            } else {
+                console.log(`${this.entityConfig.name}: Using cached data (${this.data.length} items)`);
+            }
+
             this.renderContent();
+
+            // Notify parent of data availability (whether loaded or cached)
+            if (this.onDataLoaded && this.data.length > 0) {
+                this.onDataLoaded(this.data);
+            }
         } catch (error) {
             console.error(`Failed to render ${this.entityConfig.name}:`, error);
             this.renderError(error);
@@ -202,6 +223,11 @@ export default class CollectionEntity {
     async refresh() {
         await this.loadData();
         this.applyFilters();
+
+        // NEW: Notify parent of data refresh
+        if (this.onDataLoaded) {
+            this.onDataLoaded(this.data);
+        }
 
         // Notify parent
         if (this.onRefresh) {
@@ -393,7 +419,7 @@ export default class CollectionEntity {
     isServerSideFilter(filterKey) {
         // Server-side filters for operational entities
         const serverSideFilters = [
-            'type', 'text', 'title', 'visibility',
+            'type', 'text', 'title', 'visibility', 'drg',
             'dataCategory', 'stakeholderCategory', 'service', 'document'
         ];
         return serverSideFilters.includes(filterKey);
@@ -438,6 +464,11 @@ export default class CollectionEntity {
         this.loadData().then(() => {
             this.filteredData = [...this.data];
             this.renderContent();
+
+            // NEW: Notify parent of data change after clearing filters
+            if (this.onDataLoaded) {
+                this.onDataLoaded(this.data);
+            }
         });
     }
 

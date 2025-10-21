@@ -39,10 +39,10 @@ export default class AbstractInteractionActivity {
             }
         };
 
-        // Entity counts for tab badges
+        // NEW: Entity counts with type breakdowns
         this.entityCounts = {
-            'requirements': 0,
-            'changes': 0
+            'requirements': { ON: 0, OR: 0, total: 0 },
+            'changes': { total: 0 }
         };
 
         // Centralized state management for perspective coordination
@@ -57,6 +57,12 @@ export default class AbstractInteractionActivity {
 
         // Available event types from shared enum (5 specific milestone events)
         this.availableEventTypes = Object.keys(MilestoneEventType);
+
+        // Cache for filtered entity data (to avoid re-fetching when switching tabs)
+        this.cachedEntityData = {
+            requirements: null,
+            changes: null
+        };
     }
 
     async render(container, subPath = []) {
@@ -268,8 +274,7 @@ export default class AbstractInteractionActivity {
                             class="interaction-tab ${key === this.currentEntity ? 'interaction-tab--active' : ''}"
                             data-entity="${key}"
                         >
-                            <span class="interaction-tab__name">${entity.name}</span>
-                            <span class="interaction-tab__count" id="${key}-count">${this.entityCounts[key] || 0}</span>
+                            ${this.formatTabLabel(key)}
                         </button>
                     `).join('')}
                 </div>
@@ -310,6 +315,19 @@ export default class AbstractInteractionActivity {
         `;
 
         this.bindEvents();
+    }
+
+    // Format complete tab label with counts
+    formatTabLabel(entityKey) {
+        const counts = this.entityCounts[entityKey];
+
+        if (entityKey === 'requirements') {
+            return `<span id="${entityKey}-count">Operational Needs: ${counts.ON} | Requirements: ${counts.OR}</span>`;
+        } else if (entityKey === 'changes') {
+            return `<span id="${entityKey}-count">Operational Changes: ${counts.total}</span>`;
+        }
+
+        return '<span>Unknown</span>';
     }
 
     renderActionButtons() {
@@ -430,6 +448,20 @@ export default class AbstractInteractionActivity {
             // Create and render the entity component with setup data and options
             this.currentEntityComponent = new EntityComponent(this.app, entityConfig, this.setupData, entityOptions);
 
+            // Inject cached data BEFORE setting up callbacks or rendering
+            if (this.cachedEntityData[this.currentEntity]) {
+                console.log(`Injecting cached data for ${this.currentEntity}:`, this.cachedEntityData[this.currentEntity].length, 'items');
+                this.currentEntityComponent.collection.data = [...this.cachedEntityData[this.currentEntity]];
+                this.currentEntityComponent.collection.filteredData = [...this.cachedEntityData[this.currentEntity]];
+            }
+
+            // Pass onDataLoaded callback to collection entity
+            if (this.currentEntityComponent.collection) {
+                this.currentEntityComponent.collection.onDataLoaded = (data) => {
+                    this.updateBadgeFromData(this.currentEntity, data);
+                };
+            }
+
             const contentContainer = this.container.querySelector('#entityContent');
             if (contentContainer) {
                 await this.currentEntityComponent.render(contentContainer);
@@ -482,11 +514,30 @@ export default class AbstractInteractionActivity {
                     }
 
                     const response = await apiClient.get(endpoint);
-                    this.entityCounts[key] = Array.isArray(response) ? response.length : 0;
-                    console.log(`Loaded count for ${key}: ${this.entityCounts[key]}`);
+
+                    // Calculate type breakdowns
+                    if (key === 'requirements') {
+                        const onCount = response.filter(item => item.type === 'ON').length;
+                        const orCount = response.filter(item => item.type === 'OR').length;
+                        this.entityCounts[key] = {
+                            ON: onCount,
+                            OR: orCount,
+                            total: response.length
+                        };
+                    } else if (key === 'changes') {
+                        this.entityCounts[key] = {
+                            total: response.length
+                        };
+                    }
+
+                    console.log(`Loaded count for ${key}:`, this.entityCounts[key]);
                 } catch (error) {
                     console.warn(`Failed to load count for ${key}:`, error);
-                    this.entityCounts[key] = 0;
+                    if (key === 'requirements') {
+                        this.entityCounts[key] = { ON: 0, OR: 0, total: 0 };
+                    } else {
+                        this.entityCounts[key] = { total: 0 };
+                    }
                 }
             });
 
@@ -496,6 +547,39 @@ export default class AbstractInteractionActivity {
         }
     }
 
+    // Update badge from loaded data (called by collection's onDataLoaded callback)
+    updateBadgeFromData(entityType, data) {
+        console.log(`updateBadgeFromData called for ${entityType} with ${data.length} items`);
+
+        const badge = this.container.querySelector(`#${entityType}-count`);
+        if (!badge) {
+            console.warn(`Badge element not found for ${entityType}`);
+            return;
+        }
+
+        // Calculate counts based on entity type
+        if (entityType === 'requirements') {
+            const onCount = data.filter(item => item.type === 'ON').length;
+            const orCount = data.filter(item => item.type === 'OR').length;
+
+            this.entityCounts[entityType] = {
+                ON: onCount,
+                OR: orCount,
+                total: data.length
+            };
+
+            badge.textContent = `Operational Needs: ${onCount} | Requirements: ${orCount}`;
+        } else if (entityType === 'changes') {
+            this.entityCounts[entityType] = {
+                total: data.length
+            };
+
+            badge.textContent = `Operational Changes: ${data.length}`;
+        }
+
+        console.log(`Updated ${entityType} badge:`, this.entityCounts[entityType]);
+    }
+
     async updateEntityCountAfterLoad(entityType) {
         try {
             const badge = this.container.querySelector(`#${entityType}-count`);
@@ -503,10 +587,8 @@ export default class AbstractInteractionActivity {
 
             // Get count from the loaded entity component if available
             if (this.currentEntityComponent?.collection?.data) {
-                const count = this.currentEntityComponent.collection.data.length;
-                badge.textContent = count || '0';
-                this.entityCounts[entityType] = count;
-                console.log(`Updated ${entityType} count from loaded data: ${count}`);
+                const data = this.currentEntityComponent.collection.data;
+                this.updateBadgeFromData(entityType, data);
                 return;
             }
 
@@ -538,9 +620,7 @@ export default class AbstractInteractionActivity {
                 }
 
                 const response = await apiClient.get(endpoint);
-                const count = Array.isArray(response) ? response.length : 0;
-                badge.textContent = count || '0';
-                this.entityCounts[entityType] = count;
+                this.updateBadgeFromData(entityType, response);
             }
         } catch (error) {
             // Silently fail count updates - not critical
@@ -594,7 +674,7 @@ export default class AbstractInteractionActivity {
         </div>
     `;
 
-        // NEW: Populate filter inputs with preserved values
+        // Populate filter inputs with preserved values
         Object.entries(this.sharedState.filters).forEach(([filterKey, filterValue]) => {
             if (filterValue) {
                 const input = filtersContainer.querySelector(`[data-filter-key="${filterKey}"]`);
@@ -947,13 +1027,150 @@ export default class AbstractInteractionActivity {
         }
     }
 
+    // ====================
+    // MULTI-BADGE UPDATE SYSTEM
+    // ====================
+
+    async updateAllBadges(filters) {
+        console.log('Updating all badges with filters:', filters);
+
+        // Fire both queries in parallel - they update independently
+        this.updateRequirementsBadge(filters);
+        this.updateChangesBadge(filters);
+    }
+
+    async updateRequirementsBadge(filters) {
+        const badge = this.container.querySelector('#requirements-count');
+        if (!badge) return;
+
+        try {
+            // Show loading state
+            badge.innerHTML = '<span class="badge-loading">⟳</span>';
+            badge.classList.remove('badge-error');
+
+            // Build endpoint with filters
+            let endpoint = this.entities.requirements.endpoint;
+            const queryParams = await this.buildQueryParams(filters);
+
+            if (Object.keys(queryParams).length > 0) {
+                const queryString = new URLSearchParams(queryParams).toString();
+                endpoint = `${endpoint}?${queryString}`;
+            }
+
+            // Fetch filtered data
+            const response = await apiClient.get(endpoint);
+            const onCount = response.filter(item => item.type === 'ON').length;
+            const orCount = response.filter(item => item.type === 'OR').length;
+
+            // Cache the data for reuse when switching tabs
+            this.cachedEntityData.requirements = [...response];
+
+            // Update badge with counts
+            this.entityCounts.requirements = {
+                ON: onCount,
+                OR: orCount,
+                total: response.length
+            };
+
+            badge.textContent = `Operational Needs: ${onCount} | Requirements: ${orCount}`;
+            badge.classList.remove('badge-loading');
+
+            console.log('Requirements badge updated:', { onCount, orCount });
+        } catch (error) {
+            console.error('Failed to update requirements badge:', error);
+            badge.textContent = 'Error';
+            badge.classList.add('badge-error');
+            badge.classList.remove('badge-loading');
+        }
+    }
+
+    async updateChangesBadge(filters) {
+        const badge = this.container.querySelector('#changes-count');
+        if (!badge) return;
+
+        try {
+            // Show loading state
+            badge.innerHTML = '<span class="badge-loading">⟳</span>';
+            badge.classList.remove('badge-error');
+
+            // Build endpoint with filters
+            let endpoint = this.entities.changes.endpoint;
+            const queryParams = await this.buildQueryParams(filters);
+
+            if (Object.keys(queryParams).length > 0) {
+                const queryString = new URLSearchParams(queryParams).toString();
+                endpoint = `${endpoint}?${queryString}`;
+            }
+
+            // Fetch filtered data
+            const response = await apiClient.get(endpoint);
+            const count = response.length;
+
+            // Cache the data for reuse when switching tabs
+            this.cachedEntityData.changes = [...response];
+
+            // Update badge with count
+            this.entityCounts.changes = { total: count };
+
+            badge.textContent = `Operational Changes: ${count}`;
+            badge.classList.remove('badge-loading');
+
+            console.log('Changes badge updated:', { count });
+        } catch (error) {
+            console.error('Failed to update changes badge:', error);
+            badge.textContent = 'Error';
+            badge.classList.add('badge-error');
+            badge.classList.remove('badge-loading');
+        }
+    }
+
+    async buildQueryParams(filters) {
+        const queryParams = {};
+
+        // Add edition context if available
+        const editionContext = this.config.dataSource;
+        if (editionContext &&
+            editionContext !== 'repository' &&
+            editionContext !== 'Repository' &&
+            typeof editionContext === 'string' &&
+            editionContext.match(/^\d+$/)) {
+
+            const edition = await apiClient.get(`/odp-editions/${editionContext}`);
+            if (edition.baseline?.id) {
+                queryParams.baseline = edition.baseline.id;
+            }
+            if (edition.startsFromWave?.id) {
+                queryParams.fromWave = edition.startsFromWave.id;
+            }
+        }
+
+        // Add content filters
+        if (filters && Object.keys(filters).length > 0) {
+            Object.entries(filters).forEach(([key, value]) => {
+                if (value && value !== '') {
+                    if (Array.isArray(value)) {
+                        queryParams[key] = value.join(',');
+                    } else {
+                        queryParams[key] = value;
+                    }
+                }
+            });
+        }
+
+        return queryParams;
+    }
+
     handleSpecificFilter(filterKey, filterValue) {
         // Update shared state
         this.sharedState.filters[filterKey] = filterValue;
 
+        // Update the visible entity's collection
         if (this.currentEntityComponent?.handleFilter) {
             this.currentEntityComponent.handleFilter(filterKey, filterValue);
         }
+
+        // Update all badges with current filters
+        this.updateAllBadges(this.sharedState.filters);
     }
 
     clearAllFilters() {
@@ -970,6 +1187,9 @@ export default class AbstractInteractionActivity {
             const filterKey = input.dataset.filterKey;
             this.handleSpecificFilter(filterKey, '');
         });
+
+        // Update all badges with no filters
+        this.updateAllBadges({});
     }
 
     handleFilter(filterText) {

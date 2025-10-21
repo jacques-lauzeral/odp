@@ -13,103 +13,85 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Build optimized query for findAll with multi-context and content filtering support
-     * Wave filtering is handled separately at application level for better maintainability
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering (ignored, handled at app level)
-     * @param {object} filters - Content filtering parameters
-     * @returns {object} Query object with cypher and params
+     * Optimized buildFindAllQuery for OperationalRequirementStore
+     * Loads ALL items with ALL relationships in a SINGLE query
+     * Eliminates N+1 query problem
      */
     buildFindAllQuery(baselineId, fromWaveId, filters) {
         try {
             let cypher, params = {};
             let whereConditions = [];
 
-            // Base query structure
+            // Base query structure with relationship loading
             if (baselineId === null) {
                 // Latest versions query
                 cypher = `
-                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
-                `;
+                MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+            `;
             } else {
                 // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 cypher = `
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
-                    WHERE id(baseline) = $baselineId
-                `;
+                MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                WHERE id(baseline) = $baselineId
+            `;
                 params.baselineId = numericBaselineId;
             }
 
-            // Content filtering conditions
+            // Apply content filtering conditions (existing logic - unchanged)
             if (filters && Object.keys(filters).length > 0) {
-                // Type filtering
                 if (filters.type) {
                     whereConditions.push('version.type = $type');
                     params.type = filters.type;
                 }
-
-                // DrG filtering
                 if (filters.drg) {
                     whereConditions.push('version.drg = $drg');
                     params.drg = filters.drg;
                 }
-
-                // Title pattern filtering
                 if (filters.title) {
                     whereConditions.push('item.title CONTAINS $title');
                     params.title = filters.title;
                 }
-
-                // Path filtering (array contains)
                 if (filters.path) {
                     whereConditions.push('$path IN version.path');
                     params.path = filters.path;
                 }
-
-                // Full-text search across content fields
                 if (filters.text) {
                     whereConditions.push(`(
-                        item.title CONTAINS $text OR 
-                        version.statement CONTAINS $text OR 
-                        version.rationale CONTAINS $text OR 
-                        version.flows CONTAINS $text OR 
-                        version.privateNotes CONTAINS $text
-                    )`);
+                    item.title CONTAINS $text OR 
+                    version.statement CONTAINS $text OR 
+                    version.rationale CONTAINS $text OR 
+                    version.flows CONTAINS $text OR 
+                    version.privateNotes CONTAINS $text
+                )`);
                     params.text = filters.text;
                 }
-
-                // Document-based filtering (relationship-based)
                 if (filters.document && Array.isArray(filters.document) && filters.document.length > 0) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:REFERENCES]->(doc:Document) 
-                        WHERE id(doc) IN $document
-                    }`);
+                    MATCH (version)-[:REFERENCES]->(doc:Document) 
+                    WHERE id(doc) IN $document
+                }`);
                     params.document = filters.document.map(id => this.normalizeId(id));
                 }
-
-                // Category-based filtering (relationship-based)
                 if (filters.dataCategory && Array.isArray(filters.dataCategory) && filters.dataCategory.length > 0) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:IMPACTS]->(dc:DataCategory) 
-                        WHERE id(dc) IN $dataCategory
-                    }`);
+                    MATCH (version)-[:IMPACTS]->(dc:DataCategory) 
+                    WHERE id(dc) IN $dataCategory
+                }`);
                     params.dataCategory = filters.dataCategory.map(id => this.normalizeId(id));
                 }
-
                 if (filters.stakeholderCategory && Array.isArray(filters.stakeholderCategory) && filters.stakeholderCategory.length > 0) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:IMPACTS]->(sc:StakeholderCategory) 
-                        WHERE id(sc) IN $stakeholderCategory
-                    }`);
+                    MATCH (version)-[:IMPACTS]->(sc:StakeholderCategory) 
+                    WHERE id(sc) IN $stakeholderCategory
+                }`);
                     params.stakeholderCategory = filters.stakeholderCategory.map(id => this.normalizeId(id));
                 }
-
                 if (filters.service && Array.isArray(filters.service) && filters.service.length > 0) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:IMPACTS]->(s:Service) 
-                        WHERE id(s) IN $service
-                    }`);
+                    MATCH (version)-[:IMPACTS]->(s:Service) 
+                    WHERE id(s) IN $service
+                }`);
                     params.service = filters.service.map(id => this.normalizeId(id));
                 }
             }
@@ -124,19 +106,159 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }
             }
 
-            // Complete query with return clause
+            // *** KEY OPTIMIZATION: Load ALL relationships in OPTIONAL MATCH clauses ***
             cypher += `
-                RETURN id(item) as itemId, item.title as title,
-                       id(version) as versionId, version.version as version,
-                       version.createdAt as createdAt, version.createdBy as createdBy,
-                       version { .* } as versionData
-                ORDER BY item.title
-            `;
+            
+            // Load REFINES relationships (to parent requirements)
+            OPTIONAL MATCH (version)-[:REFINES]->(parent:${this.nodeLabel})-[:LATEST_VERSION]->(parentVersion:${this.versionLabel})
+            
+            // Load IMPACTS relationships to StakeholderCategory (with note)
+            OPTIONAL MATCH (version)-[scRel:IMPACTS]->(sc:StakeholderCategory)
+            
+            // Load IMPACTS relationships to DataCategory (with note)
+            OPTIONAL MATCH (version)-[dcRel:IMPACTS]->(dc:DataCategory)
+            
+            // Load IMPACTS relationships to Service (with note)
+            OPTIONAL MATCH (version)-[svcRel:IMPACTS]->(svc:Service)
+            
+            // Load IMPLEMENTS relationships (to ON-type requirements)
+            OPTIONAL MATCH (version)-[:IMPLEMENTS]->(on:${this.nodeLabel})-[:LATEST_VERSION]->(onVersion:${this.versionLabel})
+            WHERE onVersion.type = 'ON'
+            
+            // Load REFERENCES relationships to Documents (with note)
+            OPTIONAL MATCH (version)-[docRel:REFERENCES]->(doc:Document)
+            
+            // Load DEPENDS_ON relationships (Version -> Item -> Latest Version)
+            OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depReq:${this.nodeLabel})-[:LATEST_VERSION]->(depReqVersion:${this.versionLabel})
+            
+            // Return item data + aggregated relationships
+            RETURN 
+                id(item) as itemId, 
+                item.title as title,
+                id(version) as versionId, 
+                version.version as version,
+                version.createdAt as createdAt, 
+                version.createdBy as createdBy,
+                version { .* } as versionData,
+                
+                // Aggregate relationship arrays (filter out nulls from OPTIONAL MATCH)
+                collect(DISTINCT CASE WHEN parent IS NOT NULL 
+                    THEN {id: id(parent), title: parent.title, type: parentVersion.type} 
+                    ELSE NULL END) as refinesParents,
+                
+                collect(DISTINCT CASE WHEN sc IS NOT NULL 
+                    THEN {id: id(sc), title: sc.name, note: scRel.note} 
+                    ELSE NULL END) as impactsStakeholderCategories,
+                
+                collect(DISTINCT CASE WHEN dc IS NOT NULL 
+                    THEN {id: id(dc), title: dc.name, note: dcRel.note} 
+                    ELSE NULL END) as impactsData,
+                
+                collect(DISTINCT CASE WHEN svc IS NOT NULL 
+                    THEN {id: id(svc), title: svc.name, note: svcRel.note} 
+                    ELSE NULL END) as impactsServices,
+                
+                collect(DISTINCT CASE WHEN on IS NOT NULL 
+                    THEN {id: id(on), title: on.title, type: onVersion.type} 
+                    ELSE NULL END) as implementedONs,
+                
+                collect(DISTINCT CASE WHEN doc IS NOT NULL 
+                    THEN {id: id(doc), name: doc.name, version: doc.version, note: docRel.note} 
+                    ELSE NULL END) as documentReferences,
+                
+                collect(DISTINCT CASE WHEN depReq IS NOT NULL 
+                    THEN {itemId: id(depReq), title: depReq.title, versionId: id(depReqVersion), version: depReqVersion.version} 
+                    ELSE NULL END) as dependsOnRequirements
+                
+            ORDER BY item.title
+        `;
 
             return { cypher, params };
         } catch (error) {
             throw new StoreError(`Failed to build find all query: ${error.message}`, error);
         }
+    }
+
+    /**
+     * Refactored findAll - uses single query with aggregated relationships
+     * No more N+1 queries!
+     */
+    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
+        try {
+            // Step 1: Execute single optimized query
+            const queryObj = this.buildFindAllQuery(baselineId, null, filters);
+            const result = await transaction.run(queryObj.cypher, queryObj.params);
+
+            // Step 2: Transform records (relationships already loaded)
+            const items = [];
+            for (const record of result.records) {
+                const versionData = record.get('versionData');
+                delete versionData.version;
+                delete versionData.createdAt;
+                delete versionData.createdBy;
+
+                const item = {
+                    itemId: this.normalizeId(record.get('itemId')),
+                    title: record.get('title'),
+                    versionId: this.normalizeId(record.get('versionId')),
+                    version: this.normalizeId(record.get('version')),
+                    createdAt: record.get('createdAt'),
+                    createdBy: record.get('createdBy'),
+                    ...versionData,
+
+                    // Relationships already aggregated in query - just filter nulls
+                    refinesParents: this._filterNullsAndNormalize(record.get('refinesParents')),
+                    impactsStakeholderCategories: this._filterNullsAndNormalize(record.get('impactsStakeholderCategories')),
+                    impactsData: this._filterNullsAndNormalize(record.get('impactsData')),
+                    impactsServices: this._filterNullsAndNormalize(record.get('impactsServices')),
+                    implementedONs: this._filterNullsAndNormalize(record.get('implementedONs')),
+                    documentReferences: this._filterNullsAndNormalize(record.get('documentReferences')),
+                    dependsOnRequirements: this._filterNullsAndNormalize(record.get('dependsOnRequirements'))
+                };
+
+                items.push(item);
+            }
+
+            // Step 3: Apply wave filtering (unchanged)
+            if (fromWaveId !== null) {
+                const acceptedReqIds = await this._computeWaveFilteredRequirements(
+                    fromWaveId,
+                    transaction,
+                    baselineId
+                );
+                return items.filter(item => acceptedReqIds.has(item.itemId));
+            }
+
+            return items;
+        } catch (error) {
+            throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Helper: Filter nulls from OPTIONAL MATCH results and normalize IDs
+     */
+    _filterNullsAndNormalize(array) {
+        if (!array) return [];
+        return array
+            .filter(item => item !== null)
+            .map(item => {
+                // Normalize all ID fields
+                const normalized = { ...item };
+                if (normalized.id !== undefined) {
+                    normalized.id = this.normalizeId(normalized.id);
+                }
+                if (normalized.itemId !== undefined) {
+                    normalized.itemId = this.normalizeId(normalized.itemId);
+                }
+                if (normalized.versionId !== undefined) {
+                    normalized.versionId = this.normalizeId(normalized.versionId);
+                }
+                if (normalized.version !== undefined) {
+                    normalized.version = this.normalizeId(normalized.version);
+                }
+                return normalized;
+            });
     }
 
     /**
@@ -675,52 +797,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
         }
     }
 
-    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
-        try {
-            // Step 1: Get base results with baseline + content filtering
-            const queryObj = this.buildFindAllQuery(baselineId, null, filters);
-            const result = await transaction.run(queryObj.cypher, queryObj.params);
-
-            // Step 2: Build items with relationships
-            const items = [];
-            for (const record of result.records) {
-                const versionData = record.get('versionData');
-                delete versionData.version;
-                delete versionData.createdAt;
-                delete versionData.createdBy;
-
-                const baseItem = {
-                    itemId: this.normalizeId(record.get('itemId')),
-                    title: record.get('title'),
-                    versionId: this.normalizeId(record.get('versionId')),
-                    version: this.normalizeId(record.get('version')),
-                    createdAt: record.get('createdAt'),
-                    createdBy: record.get('createdBy'),
-                    ...versionData
-                };
-
-                const relationshipReferences = await this._buildRelationshipReferences(
-                    baseItem.versionId,
-                    transaction
-                );
-                items.push({ ...baseItem, ...relationshipReferences });
-            }
-
-            // Step 3: Apply wave filtering efficiently
-            if (fromWaveId !== null) {
-                const acceptedReqIds = await this._computeWaveFilteredRequirements(
-                    fromWaveId,
-                    transaction,
-                    baselineId
-                );
-                return items.filter(item => acceptedReqIds.has(item.itemId));
-            }
-
-            return items;
-        } catch (error) {
-            throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
-        }
-    }
 
     /**
      * Compute set of requirement IDs that pass wave filter (multi-hop expansion)
