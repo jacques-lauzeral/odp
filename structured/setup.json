@@ -1,22 +1,29 @@
 {
   "documents": [
     {
-      "name": "ASM ATFCM ConOPS",
+      "name": "ASM ATFCM CONOPS",
       "description": "ASM/ATFCM Integration Concept of Operations",
       "version": "1.0",
-      "url": "https://www.eurocontrol.int/sites/default/files/2024-08/eurocontrol-asm-atfcm-integration-conops.pdf",
+      "url": "https://www.eurocontrol.int/publication/asmatfcm-integration",
       "externalId": "document:asm_atfcm_conops"
     },
     {
-      "name": "iDL ConOPS",
+      "name": "iDL CONOPS",
       "description": "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
       "version": "2.1",
       "url": "https://www.eurocontrol.int/publication/integrated-data-layer-idl-concept-operations-conops",
       "externalId": "document:idl_conops"
     },
     {
-      "name": "NM B2B ConOPS",
-      "description": "NM B2B Concept of Operations",
+      "name": "4D Trajectory CONOPS",
+      "description": "Network 4D Trajectory Concept of Operations (CONOPS)",
+      "version": "1.0",
+      "url": "https://www.eurocontrol.int/publication/network-4d-trajectory-conops",
+      "externalId": "document:4d_trajectory_conops"
+    },
+    {
+      "name": "NM B2B CONOPS",
+      "description": "NM B2B Concept of Operations (CONOPS)",
       "version": "2.1",
       "url": "https://www.eurocontrol.int/publication/network-manager-b2b-concept-operations",
       "externalId": "document:nm_b2b_conops"
