@@ -257,7 +257,7 @@ export default class AbstractInteractionActivity {
         const activityClass = this.config.activityName.toLowerCase();
         const contextLabel = this.getContextLabel();
 
-        // Use consistent tab styling across all interaction activities
+        // NEW LAYOUT: Filters above tabs, details panel extends upward
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
@@ -268,38 +268,45 @@ export default class AbstractInteractionActivity {
                     <p>${this.config.description}</p>
                 </div>
                 
-                <div class="interaction-tabs">
-                    ${Object.entries(this.entities).map(([key, entity]) => `
-                        <button 
-                            class="interaction-tab ${key === this.currentEntity ? 'interaction-tab--active' : ''}"
-                            data-entity="${key}"
-                        >
-                            ${this.formatTabLabel(key)}
-                        </button>
-                    `).join('')}
+                <!-- NEW: Activity-level filters - FULL WIDTH -->
+                <div class="activity-filters" id="activityFilters">
+                    <!-- Dynamic filters will be rendered here -->
                 </div>
                 
                 <div class="${activityClass}-workspace">
+                    <div class="interaction-tabs">
+                        ${Object.entries(this.entities).map(([key, entity]) => `
+                            <button 
+                                class="interaction-tab ${key === this.currentEntity ? 'interaction-tab--active' : ''}"
+                                data-entity="${key}"
+                            >
+                                ${this.formatTabLabel(key)}
+                            </button>
+                        `).join('')}
+                    </div>
+                    
                     <div class="collection-container" id="mainContainer">
-                        <div class="collection-filters" id="collectionFilters">
-                            <!-- Dynamic filters will be rendered here -->
-                        </div>
-                        
-                        <div class="collection-actions">
-                            <div class="${activityClass}-actions">
-                                ${this.renderActionButtons()}
+                        <!-- LEFT COLUMN: Perspective, grouping, actions, and list -->
+                        <div class="collection-left-column">
+                            <div class="perspective-controls" id="perspectiveControls">
+                                <!-- Dynamic perspective controls will be rendered here -->
                             </div>
-                        </div>
-                        
-                        <div class="collection-list">
-                            <div class="collection-content" id="entityContent">
-                                <div class="collection-loading">
-                                    <div class="spinner"></div>
-                                    <p>Loading ${this.entities[this.currentEntity].name.toLowerCase()}...</p>
+                            
+                            <div class="collection-actions-and-grouping" id="actionsAndGrouping">
+                                <!-- Grouping and action buttons will be rendered here -->
+                            </div>
+                            
+                            <div class="collection-list">
+                                <div class="collection-content" id="entityContent">
+                                    <div class="collection-loading">
+                                        <div class="spinner"></div>
+                                        <p>Loading ${this.entities[this.currentEntity].name.toLowerCase()}...</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
+                        <!-- RIGHT COLUMN: Details panel (extends from tabs down) -->
                         <div class="collection-details">
                             <div class="details-content" id="detailsContent">
                                 <div class="no-selection-message">
@@ -631,58 +638,75 @@ export default class AbstractInteractionActivity {
     renderDynamicControls() {
         if (!this.currentEntityComponent) return;
 
-        const filtersContainer = this.container.querySelector('#collectionFilters');
-        if (!filtersContainer) return;
-
         // Get configurations from current entity
         const filterConfig = this.currentEntityComponent.getFilterConfig ?
             this.currentEntityComponent.getFilterConfig() : [];
         const groupingConfig = this.currentEntityComponent.getGroupingConfig ?
             this.currentEntityComponent.getGroupingConfig() : [];
 
-        // Render dynamic filter and grouping controls
-        filtersContainer.innerHTML = `
-        <div class="group-controls">
-            <label for="groupBy">Group by:</label>
-            <select id="groupBy" class="form-control group-select">
-                ${groupingConfig.map(option => `
-                    <option value="${option.key}" ${option.key === this.sharedState.grouping ? 'selected' : ''}>${option.label}</option>
-                `).join('')}
-            </select>
-        </div>
-        
-        <div class="filter-controls">
-            ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
-            <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
-        </div>
-        
-        <div class="perspective-controls">
-            <div class="perspective-toggle">
-                <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
-                    📋 Collection
-                </button>
-                <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
-                    📁 Hierarchical
-                </button>
-                <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
-                        ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
-                    📅 Temporal
-                </button>
-            </div>
-            
-            ${this.renderTemporalControls()}
-        </div>
-    `;
+        // ===== ACTIVITY-LEVEL FILTERS (Full Width) =====
+        const activityFiltersContainer = this.container.querySelector('#activityFilters');
+        if (activityFiltersContainer) {
+            activityFiltersContainer.innerHTML = `
+                <div class="filter-controls">
+                    ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
+                    <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
+                </div>
+            `;
 
-        // Populate filter inputs with preserved values
-        Object.entries(this.sharedState.filters).forEach(([filterKey, filterValue]) => {
-            if (filterValue) {
-                const input = filtersContainer.querySelector(`[data-filter-key="${filterKey}"]`);
-                if (input) {
-                    input.value = filterValue;
+            // Populate filter inputs with preserved values
+            Object.entries(this.sharedState.filters).forEach(([filterKey, filterValue]) => {
+                if (filterValue) {
+                    const input = activityFiltersContainer.querySelector(`[data-filter-key="${filterKey}"]`);
+                    if (input) {
+                        input.value = filterValue;
+                    }
                 }
-            }
-        });
+            });
+        }
+
+        // ===== PERSPECTIVE CONTROLS =====
+        const perspectiveContainer = this.container.querySelector('#perspectiveControls');
+        if (perspectiveContainer) {
+            perspectiveContainer.innerHTML = `
+                <div class="perspective-toggle">
+                    <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
+                        📋 Collection
+                    </button>
+                    <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
+                        📁 Hierarchical
+                    </button>
+                    <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
+                            ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
+                        📅 Temporal
+                    </button>
+                </div>
+                
+                ${this.renderTemporalControls()}
+            `;
+        }
+
+        // ===== GROUPING AND ACTIONS (Left column only) =====
+        const actionsAndGroupingContainer = this.container.querySelector('#actionsAndGrouping');
+        if (actionsAndGroupingContainer) {
+            const activityClass = this.config.activityName.toLowerCase();
+            actionsAndGroupingContainer.innerHTML = `
+                <div class="grouping-section">
+                    <label for="groupBy">Group by:</label>
+                    <select id="groupBy" class="form-control group-select">
+                        ${groupingConfig.map(option => `
+                            <option value="${option.key}" ${option.key === this.sharedState.grouping ? 'selected' : ''}>${option.label}</option>
+                        `).join('')}
+                    </select>
+                </div>
+                
+                <div class="actions-section">
+                    <div class="${activityClass}-actions">
+                        ${this.renderActionButtons()}
+                    </div>
+                </div>
+            `;
+        }
 
         // Bind events for dynamic controls
         this.bindDynamicEvents();
