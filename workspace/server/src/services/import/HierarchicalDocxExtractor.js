@@ -197,29 +197,41 @@ class HierarchicalDocxExtractor {
      */
     async _processFile(fileNode, parentPath, level) {
         try {
+            console.log(`Processing document: ${fileNode.name}`);
+
+            // Extract identifier from filename (without extension)
+            const identifier = path.basename(fileNode.name, '.docx');
+            console.log(`Document identifier: ${identifier}`);
+
             // Extract document using existing DocxExtractor
             const rawData = await DocxExtractor.extract(fileNode.buffer, fileNode.name);
 
-            // The document itself becomes a section at the current level
-            // We'll use the document's first section title (if available) or filename
+            console.log(`Extracted document has ${rawData.sections?.length || 0} sections`);
+
+            // Extract human-readable title from document content
             let documentTitle = this._extractDocumentTitle(rawData);
             if (!documentTitle) {
-                // Fallback: use filename without extension
-                documentTitle = path.basename(fileNode.name, '.docx');
+                // Fallback: use identifier if no title found in document
+                documentTitle = identifier;
             }
+
+            console.log(`Document title: ${documentTitle}`);
 
             const currentPath = [...parentPath, documentTitle];
 
             // Create section representing the document
             const section = {
                 level: level,
-                title: documentTitle,
+                title: documentTitle,          // Human-readable title from document content
+                identifier: identifier,         // Machine-readable identifier from filename
                 path: currentPath,
                 isOrganizational: false
             };
 
             // Merge document content into this section
             this._mergeDocumentContent(section, rawData);
+
+            console.log(`Merged content - has paragraphs: ${!!section.content?.paragraphs}, has tables: ${!!section.content?.tables}`);
 
             return section;
         } catch (error) {

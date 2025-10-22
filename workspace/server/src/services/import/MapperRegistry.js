@@ -5,6 +5,7 @@ import iDL_Mapper from "./mappers/iDL_Mapper.js";
 import AirportMapper from "./mappers/AirportMapper.js";
 import ASM_ATFCM_Mapper from "./mappers/ASM_ATFCM_Mapper.js";
 import FourDTMapper from "./mappers/4DT_Mapper.js";
+import FlowMapper from "./mappers/FlowMapper.js";
 
 /**
  * Provides registry for mapper lookup and defines the mapping contract
@@ -52,6 +53,7 @@ class MapperRegistry {
         MapperRegistry.register('AIRPORT', AirportMapper);
         MapperRegistry.register('ASM_ATFCM', ASM_ATFCM_Mapper);
         MapperRegistry.register('4DT', FourDTMapper);
+        MapperRegistry.register('FLOW', FlowMapper);
     }
 }
 

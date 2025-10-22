@@ -70,6 +70,17 @@
       "parentExternalId": "stakeholder:ansp"
     },
     {
+      "externalId": "stakeholder:ansp/nec",
+      "name": "NEC",
+      "description": "National ENV Coordinator",
+      "parentExternalId": "stakeholder:ansp"
+    },
+    {
+      "externalId": "stakeholder:ansp/nrc",
+      "name": "NRC",
+      "description": "National RAD Coordinator",
+      "parentExternalId": "stakeholder:ansp"
+    },    {
       "externalId": "stakeholder:ansp/twr",
       "name": "TWR",
       "description": "Airport Tower (includes TWR ATCO, TWR SUP)",

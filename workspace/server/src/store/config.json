@@ -9,7 +9,7 @@
     }
   },
   "retry": {
-    "maxAttempts": 10,
+    "maxAttempts": 20,
     "intervalMs": 2000
   }
 }
