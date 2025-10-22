@@ -100,7 +100,6 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 
 #### Service Layer - Infrastructure Complete
 - **Complete**: ImportService refactored with clean separation of concerns
-- **Complete**: YamlMapper extracted for YAML-specific import logic (3-phase algorithm)
 - **Complete**: DocxExtractor for Word document parsing with:
     - Hierarchical section extraction with proper nesting
     - Paragraph content assigned to correct sections by document position
@@ -121,7 +120,7 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 - **Complete**: ReroutingMapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 - **Complete**: ASM_ATFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 - **Complete**: 4DT_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
-- **Pending**: FlowMapper for Word documents (hierarchical section parsing, etc.)
+- **Complete**: FlowMapper for Word documents (hierarchical section parsing, etc.)
 - **Pending**: Crisis_FAAS_Mapper for Word documents (hierarchical section parsing, etc.)
 - **Pending**: TCF_Mapper for Word documents (hierarchical section parsing, etc.)
 - **Pending**: NMUI_Mapper for Word documents (hierarchical section parsing, etc.)
@@ -135,11 +134,10 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 - **Complete**: FormData integration for multipart file uploads
 - **Complete**: JSON output to file or stdout
 - **Complete**: Two-step workflow examples in help text
-- **Preserved**: Legacy YAML import commands (setup, requirements, changes) remain functional
 
 #### Documentation
 - **Complete**: DrG Material Import Approach technical specification
-- **Pending**: Mapper development guide for adding new DrG support
+- **Complete**: Mapper development guide for adding new DrG support
 - **Complete**: CLI workflow examples and user guide
 - **Complete**: API endpoint documentation with request/response examples
 
