@@ -10,7 +10,6 @@ import {
     requirementFieldDefinitions,
     requirementFormTitles,
     requiredIdentifierArrayFields,
-    requiredReferenceArrayFields,
     requiredAnnotatedReferenceArrayFields,
     requiredTextFields,
     requirementDefaults
@@ -103,17 +102,6 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
-        requiredReferenceArrayFields.forEach(key => {
-            if (transformed[key] && Array.isArray(transformed[key])) {
-                transformed[key] = transformed[key].map(value => {
-                    // Convert ID to object format
-                    return { id: value };
-                });
-            } else {
-                return []
-            }
-        });
-
         requiredAnnotatedReferenceArrayFields.forEach(key => {
             if (transformed[key] && Array.isArray(transformed[key])) {
                 transformed[key] = transformed[key].map(value => {
@@ -165,17 +153,16 @@ export default class RequirementForm extends CollectionEntityForm {
         // Handle path display - keep as array for format function
         // No transformation needed for read mode
 
-        // Extract IDs from object references if needed
-        const arrayFields = [
-            'impactsStakeholderCategories',
-            'impactsData',
-            'impactsServices',
+        // Extract IDs from object references for relationship fields only
+        // Impact fields (impactsStakeholderCategories, impactsData, impactsServices)
+        // are now annotated and should keep {id, title, note} structure
+        const relationshipFields = [
             'refinesParents',
             'implementedONs',
             'dependsOnRequirements'
         ];
 
-        arrayFields.forEach(field => {
+        relationshipFields.forEach(field => {
             if (transformed[field] && Array.isArray(transformed[field])) {
                 transformed[field] = transformed[field].map(value => {
                     if (typeof value === 'object' && value !== null) {
@@ -186,8 +173,8 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
-        // documentReferences - keep full structure for annotated-multiselect
-        // No transformation needed, keep {id, title, note} structure
+        // Impact fields and documentReferences - keep full {id, title, note} structure for annotated-multiselect
+        // No transformation needed
 
         return transformed;
     }
@@ -493,7 +480,7 @@ export default class RequirementForm extends CollectionEntityForm {
         }
 
         return values.map(ref => {
-            const title = ref.title || ref.name || ref.id || 'Unknown';
+            const title = ref.title || ref.id || 'Unknown';
             const note = ref.note ? ` (${ref.note})` : '';
             return `${title}${note}`;
         }).join(', ');

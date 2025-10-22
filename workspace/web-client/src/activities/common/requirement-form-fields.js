@@ -136,38 +136,38 @@ export const requirementFieldDefinitions = [
             {
                 key: 'impactsStakeholderCategories',
                 label: 'Stakeholder Categories',
-                type: 'multiselect',
+                type: 'annotated-multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                size: 4,
+                maxNoteLength: 200,
+                placeholder: 'Select stakeholder categories...',
+                noteLabel: 'Impact Note',
                 optionsKey: 'getStakeholderCategoryOptions',
-                helpText: 'Select all stakeholder categories affected by this requirement',
-                formatKey: 'formatMultiSetupData',
-                formatArgs: ['stakeholderCategories']
+                helpText: 'Select affected stakeholder categories and optionally add notes about the nature of the impact'
             },
             {
                 key: 'impactsData',
                 label: 'Data Categories',
-                type: 'multiselect',
+                type: 'annotated-multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                size: 4,
+                maxNoteLength: 200,
+                placeholder: 'Select data categories...',
+                noteLabel: 'Impact Note',
                 optionsKey: 'getDataCategoryOptions',
-                helpText: 'Select all data categories impacted by this requirement',
-                formatKey: 'formatMultiSetupData',
-                formatArgs: ['dataCategories']
+                helpText: 'Select impacted data categories and optionally add notes about the nature of the impact'
             },
             {
                 key: 'impactsServices',
                 label: 'Services',
-                type: 'multiselect',
+                type: 'annotated-multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                size: 4,
+                maxNoteLength: 200,
+                placeholder: 'Select services...',
+                noteLabel: 'Impact Note',
                 optionsKey: 'getServiceOptions',
-                helpText: 'Select all services affected by this requirement',
-                formatKey: 'formatMultiSetupData',
-                formatArgs: ['services']
+                helpText: 'Select affected services and optionally add notes about the nature of the impact'
             }
         ]
     },
@@ -280,18 +280,12 @@ export const requiredIdentifierArrayFields = [
 ];
 
 /**
- * Required reference array fields that must always be present (even if empty)
- */
-export const requiredReferenceArrayFields = [
-    'impactsStakeholderCategories',
-    'impactsData',
-    'impactsServices'
-];
-
-/**
  * Required annotated reference array fields that must always be present (even if empty)
  */
 export const requiredAnnotatedReferenceArrayFields = [
+    'impactsStakeholderCategories',
+    'impactsData',
+    'impactsServices',
     'documentReferences'
 ];
 

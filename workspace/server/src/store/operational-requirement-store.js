@@ -163,7 +163,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     ELSE NULL END) as implementedONs,
                 
                 collect(DISTINCT CASE WHEN doc IS NOT NULL 
-                    THEN {id: id(doc), name: doc.name, version: doc.version, note: docRel.note} 
+                    THEN {id: id(doc), title: doc.name, note: docRel.note} 
                     ELSE NULL END) as documentReferences,
                 
                 collect(DISTINCT CASE WHEN depReq IS NOT NULL 

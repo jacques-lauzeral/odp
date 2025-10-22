@@ -41,15 +41,15 @@ export default class AnnotatedMultiselectManager {
         if (!value || !Array.isArray(value)) return [];
         return value.map(item => ({
             id: item.id,
-            title: item.title || item.name || item.id,
+            title: item.title || item.id,
             note: this.normalizeNote(item.note)
         }));
     }
 
     normalizeNote(note) {
-        if (!note || typeof note !== 'string') return null;
+        if (!note || typeof note !== 'string') return undefined;
         const trimmed = note.trim();
-        return trimmed === '' ? null : trimmed;
+        return trimmed === '' ? undefined : trimmed;
     }
 
     render(container) {
@@ -74,9 +74,9 @@ export default class AnnotatedMultiselectManager {
                 <table class="annotated-table">
                     <thead>
                         <tr>
-                            <th>Document</th>
+                            <th>Item</th>
                             <th>Note</th>
-                            <th>Actions</th>
+                            ${!this.config.readOnly ? '<th>Actions</th>' : ''}
                         </tr>
                     </thead>
                     <tbody id="${this.config.fieldId}-tbody">
@@ -91,9 +91,10 @@ export default class AnnotatedMultiselectManager {
     }
 
     renderEmptyRow() {
+        const colspan = this.config.readOnly ? 2 : 3;
         return `
             <tr class="empty-row">
-                <td colspan="3" class="empty-state">No documents selected</td>
+                <td colspan="${colspan}" class="empty-state" style="padding: var(--space-3);">No items selected</td>
             </tr>
         `;
     }
@@ -144,22 +145,22 @@ export default class AnnotatedMultiselectManager {
             `<span class="note-empty">No note</span>`
         }
                 </td>
+                ${!this.config.readOnly ? `
                 <td class="cell-actions">
-                    ${!this.config.readOnly ? `
-                        <button 
-                            type="button" 
-                            class="btn btn-sm btn-secondary btn-edit" 
-                            data-item-id="${item.id}">
-                            Edit
-                        </button>
-                        <button 
-                            type="button" 
-                            class="btn btn-sm btn-danger btn-remove" 
-                            data-item-id="${item.id}">
-                            Remove
-                        </button>
-                    ` : ''}
+                    <button 
+                        type="button" 
+                        class="btn btn-sm btn-secondary btn-edit" 
+                        data-item-id="${item.id}">
+                        Edit
+                    </button>
+                    <button 
+                        type="button" 
+                        class="btn btn-sm btn-danger btn-remove" 
+                        data-item-id="${item.id}">
+                        Remove
+                    </button>
                 </td>
+                ` : ''}
             </tr>
         `;
     }
@@ -352,11 +353,16 @@ export default class AnnotatedMultiselectManager {
     }
 
     getValue() {
-        return this.selectedItems.map(item => ({
-            id: item.id,
-            title: item.title,
-            note: item.note
-        }));
+        return this.selectedItems.map(item => {
+            const result = {
+                id: item.id,
+                title: item.title
+            };
+            if (item.note !== undefined) {
+                result.note = item.note;
+            }
+            return result;
+        });
     }
 
     setValue(value) {
