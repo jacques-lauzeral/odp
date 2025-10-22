@@ -79,7 +79,108 @@ class DocxExtractor {
         console.log('No TOC found, using heading-based extraction');
         const elements = this._extractAllElements(html);
         const sections = this._buildSectionHierarchy(elements);
+
+        // If no sections found but content exists, create default section
+        if (sections.length === 0 && elements.length > 0) {
+            console.log('No headings found, creating default root section');
+            return this._createDefaultSection(elements);
+        }
+
         return sections;
+    }
+
+    /**
+     * Create a default root section when no headings are found
+     * Extracts title from first paragraph or uses "Content" as fallback
+     * @param {Array} elements - All extracted elements (paragraphs, tables, images)
+     * @returns {Array} Array with single root section containing all content
+     */
+    _createDefaultSection(elements) {
+        // Try to extract title from first paragraph
+        let title = 'Content';
+        const firstParagraph = elements.find(el => el.type === 'paragraph');
+
+        if (firstParagraph) {
+            // Check if first paragraph contains bold/strong text - likely a title
+            const strongMatch = firstParagraph.content.match(/<strong>([^<]+)<\/strong>/i);
+            if (strongMatch) {
+                title = strongMatch[1].trim();
+            } else {
+                // Use first paragraph as title (limit length)
+                const plainText = firstParagraph.content.replace(/<[^>]+>/g, '').trim();
+                if (plainText.length > 0 && plainText.length <= 100) {
+                    title = plainText;
+                }
+            }
+        }
+
+        console.log(`Using title for default section: "${title}"`);
+
+        // Create root section
+        const section = {
+            level: 1,
+            title: title,
+            path: [title],
+            content: {}
+        };
+
+        // Assign all content to this section
+        for (const element of elements) {
+            if (element.type === 'paragraph') {
+                // Handle images in paragraphs
+                if (element.hasImage) {
+                    // Extract images separately
+                    const images = this._extractImagesFromContent(element.content);
+                    if (images.length > 0) {
+                        if (!section.content.images) {
+                            section.content.images = [];
+                        }
+                        section.content.images.push(...images);
+                    }
+
+                    // Also add text content if any (strip image tags)
+                    const textContent = element.content.replace(/<img[^>]*>/gi, '').trim();
+                    if (textContent) {
+                        if (!section.content.paragraphs) {
+                            section.content.paragraphs = [];
+                        }
+
+                        if (element.isList) {
+                            const listItems = this._splitListItems(textContent);
+                            listItems.forEach(item => {
+                                section.content.paragraphs.push(`- ${item}`);
+                            });
+                        } else {
+                            section.content.paragraphs.push(textContent);
+                        }
+                    }
+                } else {
+                    if (!section.content.paragraphs) {
+                        section.content.paragraphs = [];
+                    }
+
+                    if (element.isList) {
+                        const listItems = this._splitListItems(element.content);
+                        listItems.forEach(item => {
+                            section.content.paragraphs.push(`- ${item}`);
+                        });
+                    } else {
+                        section.content.paragraphs.push(element.content);
+                    }
+                }
+            } else if (element.type === 'table') {
+                if (!section.content.tables) {
+                    section.content.tables = [];
+                }
+
+                const tableData = this._parseSimpleTable(element.content);
+                section.content.tables.push(tableData);
+            }
+        }
+
+        console.log(`Default section created with ${section.content.paragraphs?.length || 0} paragraphs and ${section.content.tables?.length || 0} tables`);
+
+        return [section];
     }
 
     /**
@@ -109,7 +210,7 @@ class DocxExtractor {
                     sectionNumber: parsed.sectionNumber,
                     title: parsed.title,
                     level: parsed.level,
-                    position: match.index  // ADD THIS
+                    position: match.index
                 });
                 processedAnchors.add(anchorId);
             }
@@ -136,7 +237,7 @@ class DocxExtractor {
                     sectionNumber: parsed.sectionNumber,
                     title: parsed.title,
                     level: parsed.level,
-                    position: match.index  // ADD THIS
+                    position: match.index
                 });
             }
         }
@@ -241,7 +342,7 @@ class DocxExtractor {
             sectionsByAnchor.set(entry.anchorId, section);
         }
 
-        // Phase 2: Assign content to sections (RE-ENABLED)
+        // Phase 2: Assign content to sections
         this._assignContentToSectionsFromTOC(sections, sectionsByAnchor, tocEntries, html);
 
         return sections;

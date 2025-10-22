@@ -2,112 +2,10 @@ openapi: 3.0.3
 
 info:
   title: ODP REST API / Import
-  description: Bulk import operations for setup and operational data
+  description: Document extraction, mapping, and structured data import operations
   version: 1.0.0
 
 paths:
-  /import/setup:
-    post:
-      summary: Bulk import setup entities
-      tags: [Import]
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              $ref: '#/components/schemas/SetupImportRequest'
-      responses:
-        '200':
-          description: Import completed with summary
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImportSummary'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-
-  /import/requirements:
-    post:
-      summary: Bulk import operational requirements
-      tags: [Import]
-      parameters:
-        - name: drg
-          in: query
-          required: true
-          schema:
-            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              $ref: '#/components/schemas/RequirementsImportRequest'
-      responses:
-        '200':
-          description: Import completed with summary
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImportSummary'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-
-  /import/changes:
-    post:
-      summary: Bulk import operational changes
-      tags: [Import]
-      parameters:
-        - name: drg
-          in: query
-          required: true
-          schema:
-            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              $ref: '#/components/schemas/ChangesImportRequest'
-      responses:
-        '200':
-          description: Import completed with summary
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ImportSummary'
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-
   /import/extract/word:
     post:
       summary: Extract raw data from Word document
@@ -129,6 +27,44 @@ paths:
       responses:
         '200':
           description: Successfully extracted raw data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RawExtractedData'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /import/extract/word-hierarchy:
+    post:
+      summary: Extract raw data from hierarchical Word documents (ZIP)
+      description: Parse ZIP file containing folder structure with Word documents into organizational hierarchy
+      tags: [Import]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: ZIP file with folder/docx hierarchy
+              required:
+                - file
+      responses:
+        '200':
+          description: Successfully extracted hierarchical raw data
           content:
             application/json:
               schema:
@@ -195,7 +131,8 @@ paths:
           required: true
           schema:
             type: string
-          description: Drafting group identifier (e.g., NM_B2B, REROUTING)
+            enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          description: Drafting group identifier
       requestBody:
         required: true
         content:
@@ -275,25 +212,13 @@ components:
           type: array
           items: { type: string }
 
-    SetupImportRequest:
-      type: object
-      description: YAML structure for setup entities import
-
-    RequirementsImportRequest:
-      type: object
-      description: YAML structure for requirements import
-
-    ChangesImportRequest:
-      type: object
-      description: YAML structure for operational changes import
-
     RawExtractedData:
       type: object
       description: Generic intermediate representation of extracted document structure
       properties:
         documentType:
           type: string
-          enum: [word, excel]
+          enum: [word, excel, hierarchical-word]
         metadata:
           type: object
           properties:
@@ -302,6 +227,9 @@ components:
             parsedAt:
               type: string
               format: date-time
+            zipEntryCount:
+              type: integer
+              description: Number of files in ZIP (for hierarchical-word only)
           additionalProperties: true
         sections:
           type: array
@@ -331,6 +259,9 @@ components:
           items:
             type: string
           description: Full path from root to this section
+        isOrganizational:
+          type: boolean
+          description: True if section represents a folder (hierarchical-word only), false if from document content
         content:
           type: object
           properties:
@@ -348,6 +279,17 @@ components:
               items:
                 type: object
                 additionalProperties: true
+            images:
+              type: array
+              items:
+                type: object
+                properties:
+                  contentType:
+                    type: string
+                  data:
+                    type: string
+                  encoding:
+                    type: string
           additionalProperties: true
         subsections:
           type: array
@@ -384,28 +326,28 @@ components:
         documents:
           type: array
           items:
-            $ref: 'openapi-document.yml#/components/schemas/DocumentInput'
+            $ref: 'openapi-base.yml#/components/schemas/DocumentRequest'
         stakeholderCategories:
           type: array
           items:
-            $ref: 'openapi-setup.yml#/components/schemas/StakeholderCategoryInput'
+            $ref: 'openapi-base.yml#/components/schemas/StakeholderCategoryRequest'
         dataCategories:
           type: array
           items:
-            $ref: 'openapi-setup.yml#/components/schemas/DataCategoryInput'
+            $ref: 'openapi-base.yml#/components/schemas/DataCategoryRequest'
         services:
           type: array
           items:
-            $ref: 'openapi-setup.yml#/components/schemas/ServiceInput'
+            $ref: 'openapi-base.yml#/components/schemas/ServiceRequest'
         waves:
           type: array
           items:
-            $ref: 'openapi-wave.yml#/components/schemas/WaveInput'
+            $ref: 'openapi-base.yml#/components/schemas/WaveRequest'
         requirements:
           type: array
           items:
-            $ref: 'openapi-requirement.yml#/components/schemas/RequirementInput'
+            $ref: 'openapi-base.yml#/components/schemas/OperationalRequirementRequest'
         changes:
           type: array
           items:
-            $ref: 'openapi-change.yml#/components/schemas/ChangeInput'
+            $ref: 'openapi-base.yml#/components/schemas/OperationalChangeRequest'
