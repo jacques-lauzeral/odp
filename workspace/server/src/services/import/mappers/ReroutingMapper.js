@@ -49,10 +49,10 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * Stakeholder Mapping:
  * --------------------
  * Excel values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
- * - 'NM' / 'NMOC' → stakeholder:nm / stakeholder:nmoc
- * - 'ANSP' / 'ANSPs' → stakeholder:ansp
- * - 'FMP' / 'FMPs' → stakeholder:fmp
- * - 'AO' → stakeholder:ao
+ * - 'NM' / 'NMOC' → stakeholder:network/nm / stakeholder:network/nm/nmoc
+ * - 'ANSP' / 'ANSPs' → stakeholder:network/ansp
+ * - 'FMP' / 'FMPs' → stakeholder:network/ansp/fmp
+ * - 'AO' → stakeholder:network/airspace_user/ao
  * - 'External Users' → ignored
  * - Comma and slash delimiters handled (',', '/')
  *
@@ -82,13 +82,13 @@ class ReroutingMapper extends Mapper {
      * Values: external IDs in the ODP system
      */
     static STAKEHOLDER_SYNONYM_MAP = {
-        'NM': 'stakeholder:nm',
-        'NMOC': 'stakeholder:nm/nmoc',
-        'ANSP': 'stakeholder:ansp',
-        'ANSPs': 'stakeholder:ansp',
-        'FMP': 'stakeholder:ansp/fmp',
-        'FMPs': 'stakeholder:ansp/fmp',
-        'AO': 'stakeholder:airspace_user/ao'
+        'NM': 'stakeholder:network/nm',
+        'NMOC': 'stakeholder:network/nm/nmoc',
+        'ANSP': 'stakeholder:network/ansp',
+        'ANSPs': 'stakeholder:network/ansp',
+        'FMP': 'stakeholder:network/ansp/fmp',
+        'FMPs': 'stakeholder:network/ansp/fmp',
+        'AO': 'stakeholder:network/airspace_user/ao'
         // 'External Users' is ignored
     };
 

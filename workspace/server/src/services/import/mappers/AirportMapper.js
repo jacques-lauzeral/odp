@@ -47,7 +47,7 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  *   3. Normalize mainName using synonym map (case-insensitive)
  *   4. Resolve to externalId using internal stakeholderCategoryMap
  *   5. Keep note with parentheses: "(Airport Function, NOC, SNOC)"
- * - Output: { externalId: "stakeholder:nm/nmoc", note: "(Airport Function, NOC, SNOC)" }
+ * - Output: { externalId: "stakeholder:network/nm/nmoc", note: "(Airport Function, NOC, SNOC)" }
  *
  * Synonym Handling:
  * - Plural forms: "Aircraft Operators" → "AO"
@@ -109,20 +109,20 @@ class AirportMapper extends Mapper {
      * Minimal data for mapping: name (for lookup) and externalId (for resolution)
      */
     static STAKEHOLDER_CATEGORIES = [
-        { name: "NM", externalId: "stakeholder:nm" },
-        { name: "ANSP", externalId: "stakeholder:ansp" },
-        { name: "NMOC", externalId: "stakeholder:nm/nmoc" },
-        { name: "FMP", externalId: "stakeholder:ansp/fmp" },
-        { name: "TWR", externalId: "stakeholder:ansp/twr" },
-        { name: "Airport Operator", externalId: "stakeholder:airport_operator" },
-        { name: "Airspace User", externalId: "stakeholder:airspace_user" },
-        { name: "AO", externalId: "stakeholder:airspace_user/ao" },
-        { name: "APT Unit", externalId: "stakeholder:nm/apt_unit" },
-        { name: "Airport Domain", externalId: "stakeholder:nm/airport_domain" },
-        { name: "National Authority", externalId: "stakeholder:national_authority" },
-        { name: "Ground Handling Agent", externalId: "stakeholder:ground_handling_agent" },
-        { name: "Third Party Supplier", externalId: "stakeholder:third_party_supplier" },
-        { name: "Surveillance Data Provider", externalId: "stakeholder:surveillance_data_provider" }
+        { name: "NM", externalId: "stakeholder:network/nm" },
+        { name: "ANSP", externalId: "stakeholder:network/ansp" },
+        { name: "NMOC", externalId: "stakeholder:network/nm/nmoc" },
+        { name: "FMP", externalId: "stakeholder:network/ansp/fmp" },
+        { name: "TWR", externalId: "stakeholder:network/ansp/twr" },
+        { name: "Airport Operator", externalId: "stakeholder:network/airport_operator" },
+        { name: "Airspace User", externalId: "stakeholder:network/airspace_user" },
+        { name: "AO", externalId: "stakeholder:network/airspace_user/ao" },
+        { name: "APT Unit", externalId: "stakeholder:network/nm/apt_unit" },
+        { name: "Airport Domain", externalId: "stakeholder:network/nm/airport_domain" },
+        { name: "National Authority", externalId: "stakeholder:network/national_authority" },
+        { name: "Ground Handling Agent", externalId: "stakeholder:network/ground_handling_agent" },
+        { name: "Third Party Supplier", externalId: "stakeholder:network/third_party_supplier" },
+        { name: "Surveillance Data Provider", externalId: "stakeholder:network/surveillance_data_provider" }
     ];
 
     /**

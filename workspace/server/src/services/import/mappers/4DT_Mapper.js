@@ -54,11 +54,11 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * Stakeholder Mapping:
  * --------------------
  * Excel values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
- * - 'AU' → stakeholder:airspace_user
- * - 'CFSP' → stakeholder:airspace_user/cfsp
- * - 'NM' → stakeholder:nm
- * - 'ANSP' / 'ANSPs' → stakeholder:ansp
- * - 'CIV or MIL ANSP' → stakeholder:ansp (ignoring CIV/MIL qualifier)
+ * - 'AU' → stakeholder:network/airspace_user
+ * - 'CFSP' → stakeholder:network/airspace_user/cfsp
+ * - 'NM' → stakeholder:network/nm
+ * - 'ANSP' / 'ANSPs' → stakeholder:network/ansp
+ * - 'CIV or MIL ANSP' → stakeholder:network/ansp (ignoring CIV/MIL qualifier)
  * - Comma and slash delimiters handled (',', '/')
  *
  * ON → OR Relationship:
@@ -74,11 +74,11 @@ class FourDTMapper extends Mapper {
      * Values: external IDs in the ODP system
      */
     static STAKEHOLDER_SYNONYM_MAP = {
-        'AU': 'stakeholder:airspace_user',
-        'CFSP': 'stakeholder:airspace_user/cfsp',
-        'NM': 'stakeholder:nm',
-        'ANSP': 'stakeholder:ansp',
-        'ANSPs': 'stakeholder:ansp'
+        'AU': 'stakeholder:network/airspace_user',
+        'CFSP': 'stakeholder:network/airspace_user/cfsp',
+        'NM': 'stakeholder:network/nm',
+        'ANSP': 'stakeholder:network/ansp',
+        'ANSPs': 'stakeholder:network/ansp'
         // Note: 'CIV or MIL ANSP' handled by removing 'CIV or MIL' prefix
     };
     map(rawData) {

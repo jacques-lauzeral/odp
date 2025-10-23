@@ -282,46 +282,46 @@ class FlowMapper extends Mapper {
         // Known stakeholder categories from setup: name → externalId
         const stakeholderMap = new Map([
             // Exact matches
-            ['nm', 'stakeholder:nm'],
-            ['nmoc', 'stakeholder:nm/nmoc'],
-            ['fmp', 'stakeholder:ansp/fmp'],
-            ['twr', 'stakeholder:ansp/twr'],
-            ['ao', 'stakeholder:airspace_user/ao'],
-            ['ansp', 'stakeholder:ansp'],
-            ['amc', 'stakeholder:ansp/amc'],
-            ['atc unit', 'stakeholder:ansp/atc'],
-            ['nec', 'stakeholder:ansp/nec'],
-            ['nrc', 'stakeholder:ansp/nrc'],
-            ['cfsp', 'stakeholder:airspace_user/cfsp'],
-            ['apt unit', 'stakeholder:nm/apt_unit'],
-            ['airport domain', 'stakeholder:nm/airport_domain'],
-            ['woc', 'stakeholder:nm/woc'],
-            ['airport operator', 'stakeholder:airport_operator'],
-            ['airspace user', 'stakeholder:airspace_user'],
-            ['national authority', 'stakeholder:national_authority'],
-            ['military', 'stakeholder:military'],
-            ['system integrator', 'stakeholder:system_integrator'],
-            ['easa', 'stakeholder:easa'],
-            ['ground handling agent', 'stakeholder:ground_handling_agent'],
-            ['third party supplier', 'stakeholder:third_party_supplier'],
-            ['surveillance data provider', 'stakeholder:surveillance_data_provider'],
+            ['nm', 'stakeholder:network/nm'],
+            ['nmoc', 'stakeholder:network/nm/nmoc'],
+            ['fmp', 'stakeholder:network/ansp/fmp'],
+            ['twr', 'stakeholder:network/ansp/twr'],
+            ['ao', 'stakeholder:network/airspace_user/ao'],
+            ['ansp', 'stakeholder:network/ansp'],
+            ['amc', 'stakeholder:network/ansp/amc'],
+            ['atc unit', 'stakeholder:network/ansp/atc'],
+            ['nec', 'stakeholder:network/ansp/nec'],
+            ['nrc', 'stakeholder:network/ansp/nrc'],
+            ['cfsp', 'stakeholder:network/airspace_user/cfsp'],
+            ['apt unit', 'stakeholder:network/nm/apt_unit'],
+            ['airport domain', 'stakeholder:network/nm/airport_domain'],
+            ['woc', 'stakeholder:network/nm/woc'],
+            ['airport operator', 'stakeholder:network/airport_operator'],
+            ['airspace user', 'stakeholder:network/airspace_user'],
+            ['national authority', 'stakeholder:network/national_authority'],
+            ['military', 'stakeholder:network/military'],
+            ['system integrator', 'stakeholder:network/system_integrator'],
+            ['easa', 'stakeholder:network/easa'],
+            ['ground handling agent', 'stakeholder:network/ground_handling_agent'],
+            ['third party supplier', 'stakeholder:network/third_party_supplier'],
+            ['surveillance data provider', 'stakeholder:network/surveillance_data_provider'],
 
             // Plurals
-            ['aos', 'stakeholder:airspace_user/ao'],
-            ['fmps', 'stakeholder:ansp/fmp'],
-            ['twrs', 'stakeholder:ansp/twr'],
+            ['aos', 'stakeholder:network/airspace_user/ao'],
+            ['fmps', 'stakeholder:network/ansp/fmp'],
+            ['twrs', 'stakeholder:network/ansp/twr'],
 
             // Abbreviations
-            ['au', 'stakeholder:airspace_user'],
+            ['au', 'stakeholder:network/airspace_user'],
 
             // Synonyms
-            ['aerodrome', 'stakeholder:airport_operator'],
+            ['aerodrome', 'stakeholder:network/airport_operator'],
 
             // Expanded forms
-            ['national env coordination', 'stakeholder:ansp/nec'],
-            ['national env coordinator', 'stakeholder:ansp/nec'],
-            ['national rad coordination', 'stakeholder:ansp/nrc'],
-            ['national rad coordinator', 'stakeholder:ansp/nrc']
+            ['national env coordination', 'stakeholder:network/ansp/nec'],
+            ['national env coordinator', 'stakeholder:network/ansp/nec'],
+            ['national rad coordination', 'stakeholder:network/ansp/nrc'],
+            ['national rad coordinator', 'stakeholder:network/ansp/nrc']
         ]);
 
         const resolvedStakeholders = [];

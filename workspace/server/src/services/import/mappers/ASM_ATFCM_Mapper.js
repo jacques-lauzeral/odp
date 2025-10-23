@@ -114,73 +114,73 @@ class AsmAtfcmMapper extends Mapper {
      */
     static STAKEHOLDER_SYNONYM_MAP = {
         // Network Manager variations
-        'NM': 'stakeholder:nm',
-        'NMOC': 'stakeholder:nm/nmoc',
-        'Network Manager': 'stakeholder:nm',
-        'NM B2B Office': 'stakeholder:nm',
+        'NM': 'stakeholder:network/nm',
+        'NMOC': 'stakeholder:network/nm/nmoc',
+        'Network Manager': 'stakeholder:network/nm',
+        'NM B2B Office': 'stakeholder:network/nm',
 
         // Weather Operations Centre
-        'WOC': 'stakeholder:nm/woc',
-        'WOCs': 'stakeholder:nm/woc',
+        'WOC': 'stakeholder:network/nm/woc',
+        'WOCs': 'stakeholder:network/nm/woc',
 
         // ANSP variations
-        'ANSP': 'stakeholder:ansp',
-        'ANSPs': 'stakeholder:ansp',
+        'ANSP': 'stakeholder:network/ansp',
+        'ANSPs': 'stakeholder:network/ansp',
 
         // Flow Management Position
-        'FMP': 'stakeholder:ansp/fmp',
-        'FMPs': 'stakeholder:ansp/fmp',
-        'Local FMPs': 'stakeholder:ansp/fmp',
-        'Local FMP': 'stakeholder:ansp/fmp',
+        'FMP': 'stakeholder:network/ansp/fmp',
+        'FMPs': 'stakeholder:network/ansp/fmp',
+        'Local FMPs': 'stakeholder:network/ansp/fmp',
+        'Local FMP': 'stakeholder:network/ansp/fmp',
 
         // Airspace Management Cell
-        'AMC': 'stakeholder:ansp/amc',
-        'AMCs': 'stakeholder:ansp/amc',
-        'Local AMCs': 'stakeholder:ansp/amc',
-        'Local AMC': 'stakeholder:ansp/amc',
+        'AMC': 'stakeholder:network/ansp/amc',
+        'AMCs': 'stakeholder:network/ansp/amc',
+        'Local AMCs': 'stakeholder:network/ansp/amc',
+        'Local AMC': 'stakeholder:network/ansp/amc',
 
         // Air Traffic Control
-        'ATC Unit': 'stakeholder:ansp/atc',
-        'ATC Units': 'stakeholder:ansp/atc',
-        'Air Traffic Control Units': 'stakeholder:ansp/atc',
-        'Civil/Military ATC Units': 'stakeholder:ansp/atc',
-        'ATSUs': 'stakeholder:ansp/atc',
-        'ATSU': 'stakeholder:ansp/atc',
+        'ATC Unit': 'stakeholder:network/ansp/atc',
+        'ATC Units': 'stakeholder:network/ansp/atc',
+        'Air Traffic Control Units': 'stakeholder:network/ansp/atc',
+        'Civil/Military ATC Units': 'stakeholder:network/ansp/atc',
+        'ATSUs': 'stakeholder:network/ansp/atc',
+        'ATSU': 'stakeholder:network/ansp/atc',
 
         // Airspace User variations
-        'AU': 'stakeholder:airspace_user',
-        'AUs': 'stakeholder:airspace_user',
-        'Airspace Users': 'stakeholder:airspace_user',
-        'Airspace User': 'stakeholder:airspace_user',
+        'AU': 'stakeholder:network/airspace_user',
+        'AUs': 'stakeholder:network/airspace_user',
+        'Airspace Users': 'stakeholder:network/airspace_user',
+        'Airspace User': 'stakeholder:network/airspace_user',
 
         // Aircraft Operator
-        'AO': 'stakeholder:airspace_user/ao',
-        'AOs': 'stakeholder:airspace_user/ao',
-        'Airlines': 'stakeholder:airspace_user/ao',
+        'AO': 'stakeholder:network/airspace_user/ao',
+        'AOs': 'stakeholder:network/airspace_user/ao',
+        'Airlines': 'stakeholder:network/airspace_user/ao',
 
         // Computerized Flight Service Provider
-        'CFSP': 'stakeholder:airspace_user/cfsp',
-        'CFSPs': 'stakeholder:airspace_user/cfsp',
+        'CFSP': 'stakeholder:network/airspace_user/cfsp',
+        'CFSPs': 'stakeholder:network/airspace_user/cfsp',
 
         // Military variations
-        'Military': 'stakeholder:military',
-        'MIL': 'stakeholder:military',
-        'MIL AU': 'stakeholder:military',
-        'Military Operational Units': 'stakeholder:military',
-        'Military authorities': 'stakeholder:military',
+        'Military': 'stakeholder:network/military',
+        'MIL': 'stakeholder:network/military',
+        'MIL AU': 'stakeholder:network/military',
+        'Military Operational Units': 'stakeholder:network/military',
+        'Military authorities': 'stakeholder:network/military',
 
         // System Integrators and Developers
-        'System Integrators': 'stakeholder:system_integrator',
-        'System Developers': 'stakeholder:system_integrator',
-        'IT Admins': 'stakeholder:system_integrator',
-        'Stakeholder IT Admins': 'stakeholder:system_integrator',
+        'System Integrators': 'stakeholder:network/system_integrator',
+        'System Developers': 'stakeholder:network/system_integrator',
+        'IT Admins': 'stakeholder:network/system_integrator',
+        'Stakeholder IT Admins': 'stakeholder:network/system_integrator',
 
         // National Authorities
-        'National Authority': 'stakeholder:national_authority',
-        'NSA': 'stakeholder:national_authority',
+        'National Authority': 'stakeholder:network/national_authority',
+        'NSA': 'stakeholder:network/national_authority',
 
         // European Aviation Safety Agency
-        'EASA': 'stakeholder:easa',
+        'EASA': 'stakeholder:network/easa',
 
         // Explicitly ignored - technical/generic terms
         'External Systems': null,
