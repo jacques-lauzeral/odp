@@ -12,7 +12,9 @@ import {
 } from '/shared/src/index.js';
 
 /**
- * ChangesEntity - Operational Changes collection management
+ * ChangesEntity - Operational Changes collection management with multi-perspective support
+ * Supports both Collection and Temporal perspectives with parent-owned data pattern
+ * UPDATED: Parent manages data loading, distributes to perspectives via setData()
  */
 export default class ChangesEntity {
     constructor(app, entityConfig, setupData) {
@@ -21,8 +23,9 @@ export default class ChangesEntity {
         this.setupData = setupData;
         this.container = null;
 
-        // Perspective tracking
-        this.currentPerspective = 'collection';
+        // Multi-perspective support
+        this.currentPerspective = 'collection'; // 'collection' | 'temporal'
+        this.data = []; // PARENT-OWNED: Single source of truth for all perspectives
         this.timelineGrid = null;
 
         // Local shared state for this entity
@@ -54,7 +57,6 @@ export default class ChangesEntity {
                 },
                 filter: (value, filterValue, column) => {
                     if (!filterValue) return true;
-                    // Client-side filtering - check if any milestone targets the filtered wave
                     const waves = this.extractAllWavesFromMilestones({ milestones: value });
                     return waves.some(wave => wave.id.toString() === filterValue.toString());
                 },
@@ -62,7 +64,6 @@ export default class ChangesEntity {
                     const wavesA = this.extractAllWavesFromMilestones({ milestones: a });
                     const wavesB = this.extractAllWavesFromMilestones({ milestones: b });
 
-                    // Sort by first wave (or empty if no waves)
                     const firstWaveA = wavesA[0];
                     const firstWaveB = wavesB[0];
 
@@ -94,7 +95,6 @@ export default class ChangesEntity {
             })
         });
 
-        // Initialize form using new inheritance pattern with tab change callback
         this.form = new ChangeForm(entityConfig, {
             setupData,
             currentTabIndex: 0,
@@ -103,15 +103,9 @@ export default class ChangesEntity {
             }
         });
 
-        // Listen for save events
         document.addEventListener('entitySaved', async(e) => {
             if (e.detail.entityType === 'Operational Changes') {
-                await this.collection.refresh();
-
-                // Update timeline if in temporal view
-                if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-                    this.timelineGrid.setData(this.collection.data);
-                }
+                await this.refresh();
             }
         });
     }
@@ -139,7 +133,6 @@ export default class ChangesEntity {
             }
         });
 
-        // Sort waves by year/quarter
         return waves.sort((a, b) => {
             if (a.year !== b.year) return a.year - b.year;
             return a.quarter - b.quarter;
@@ -147,34 +140,29 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // STATE MANAGEMENT - CENTRALIZED STATE
+    // STATE MANAGEMENT
     // ====================
 
     applySharedState(sharedState) {
         console.log('ChangesEntity.applySharedState:', sharedState);
 
-        // Apply filters to collection
         if (sharedState.filters && this.collection) {
             this.collection.currentFilters = { ...sharedState.filters };
         }
 
-        // Apply selection
         if (sharedState.selectedItem && this.collection) {
             this.collection.selectedItem = sharedState.selectedItem;
         }
 
-        // Apply grouping
         if (sharedState.grouping && this.collection) {
             this.collection.currentGrouping = sharedState.grouping;
         }
 
-        // Apply tab index to form context
         if (sharedState.currentTabIndex !== undefined && this.form) {
             this.sharedState.currentTabIndex = sharedState.currentTabIndex;
             this.form.context.currentTabIndex = sharedState.currentTabIndex;
         }
 
-        // Apply temporal state to timeline if in temporal perspective
         if (this.currentPerspective === 'temporal' && this.timelineGrid) {
             if (sharedState.timeWindow) {
                 this.timelineGrid.updateTimeWindow(
@@ -187,11 +175,10 @@ export default class ChangesEntity {
             }
         }
 
-        // Re-render to reflect state
         if (this.currentPerspective === 'collection') {
             this.collection.applyFilters();
         } else if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            this.timelineGrid.setData(this.collection.data);
+            this.timelineGrid.setData(this.collection.filteredData || this.data);
         }
     }
 
@@ -202,27 +189,25 @@ export default class ChangesEntity {
             this.collection.currentFilters = { ...filters };
             this.collection.applyFilters();
 
-            // Update timeline data if in temporal view
             if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-                this.timelineGrid.setData(this.collection.filteredData || this.collection.data);
+                this.timelineGrid.setData(this.collection.filteredData || this.data);
             }
         }
     }
 
     // ====================
-    // PERSPECTIVE SWITCHING - UPDATED FOR CENTRALIZED STATE
+    // PERSPECTIVE SWITCHING
     // ====================
 
     handlePerspectiveSwitch(perspective, sharedState) {
-        console.log(`ChangesEntity.handlePerspectiveSwitch to ${perspective} with shared state:`, sharedState);
+        console.log(`ChangesEntity.handlePerspectiveSwitch to ${perspective}`);
 
-        // Merge incoming state
         if (sharedState) {
             this.sharedState = { ...this.sharedState, ...sharedState };
         }
 
         if (perspective === this.currentPerspective) {
-            return; // Already in this perspective
+            return;
         }
 
         this.currentPerspective = perspective;
@@ -237,18 +222,12 @@ export default class ChangesEntity {
     renderTemporalView(sharedState) {
         if (!this.container) return;
 
-        console.log('ChangesEntity.renderTemporalView with shared state:', sharedState);
-
-        // Create temporal layout - full width timeline (no left panel)
         this.container.innerHTML = `
             <div class="temporal-view-container">
-                <div class="temporal-timeline-area" id="temporalTimelineArea">
-                    <!-- TimelineGrid will render here -->
-                </div>
+                <div class="temporal-timeline-area" id="temporalTimelineArea"></div>
             </div>
         `;
 
-        // Initialize timeline grid component
         const timelineContainer = this.container.querySelector('#temporalTimelineArea');
         this.timelineGrid = new TimelineGrid(this.app, this.entityConfig, this.setupData, {
             onItemSelect: (item) => this.handleTimelineItemSelect(item),
@@ -256,7 +235,6 @@ export default class ChangesEntity {
         });
         this.timelineGrid.render(timelineContainer);
 
-        // Apply shared state to timeline
         if (sharedState) {
             if (sharedState.timeWindow) {
                 this.timelineGrid.updateTimeWindow(
@@ -269,11 +247,9 @@ export default class ChangesEntity {
             }
         }
 
-        // Set data from collection (filtered or all)
-        const dataToShow = this.collection?.filteredData || this.collection?.data || [];
+        const dataToShow = this.collection?.filteredData || this.data;
         this.timelineGrid.setData(dataToShow);
 
-        // Restore selection if any
         if (sharedState?.selectedItem) {
             const itemId = this.getItemId(sharedState.selectedItem);
             if (itemId) {
@@ -285,87 +261,53 @@ export default class ChangesEntity {
     renderCollectionView(sharedState) {
         if (!this.container) return;
 
-        console.log('ChangesEntity.renderCollectionView with shared state:', sharedState);
-        console.log('Collection current filters before render:', this.collection.currentFilters);
-        console.log('Collection current grouping before render:', this.collection.currentGrouping);
-
-        // Apply shared state FIRST, then render
         if (sharedState) {
-            // Apply filters before rendering
             if (sharedState.filters) {
                 this.collection.currentFilters = { ...sharedState.filters };
             }
-
-            // Apply grouping before rendering
             if (sharedState.grouping) {
                 this.collection.currentGrouping = sharedState.grouping;
             }
-
-            // Apply tab index before rendering
             if (sharedState.currentTabIndex !== undefined) {
                 this.form.context.currentTabIndex = sharedState.currentTabIndex;
             }
         }
 
-        // Now render with state already applied
+        this.collection.setData(this.data);
         this.collection.render(this.container);
 
-        // Restore selection after render with debug logging
         if (sharedState?.selectedItem) {
             const itemId = this.getItemId(sharedState.selectedItem);
-            console.log('Attempting to restore selection - itemId:', itemId);
-            console.log('Available items in collection:', this.collection.data.map(d => this.getItemId(d)));
-
             if (itemId) {
                 this.collection.selectItem(itemId);
-                console.log('Selection restored - selected item:', this.collection.selectedItem);
             }
         }
     }
 
     handleTimelineItemSelect(item) {
-        console.log('Timeline item selected:', item?.itemId || item?.id);
-
-        // Update details panel
         this.handleItemSelect(item);
-
-        // Update the collection's selectedItem to keep it in sync
         if (this.collection) {
             this.collection.selectedItem = item;
         }
-
-        // Update shared state
         this.sharedState.selectedItem = item;
 
-        // Notify parent of selection change if needed
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
     }
 
     handleTimelineMilestoneSelect(item, milestone) {
-        console.log('Timeline milestone selected:', {
-            change: item?.itemId || item?.id,
-            milestone: milestone?.milestoneKey || milestone?.id
-        });
-
-        // Show change in details panel with milestone emphasized
         this.handleItemSelect(item);
-
-        // Store selected milestone for potential details panel emphasis
         this.selectedMilestone = milestone;
-
-        // Update shared state
         this.sharedState.selectedItem = item;
 
-        // Notify parent of selection change if needed
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
     }
 
     // ====================
-    // COLLECTION CONFIGURATION (Updated for Phase 19)
+    // CONFIGURATION
     // ====================
 
     getFilterConfig() {
@@ -399,159 +341,74 @@ export default class ChangesEntity {
                 options: this.buildDocumentOptions()
             },
             {
-                key: 'stakeholderCategory',
-                label: 'Stakeholder (via Requirements)',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('stakeholderCategories')
-            },
-            {
                 key: 'dataCategory',
-                label: 'Data (via Requirements)',
+                label: 'Data Impact',
                 type: 'select',
                 options: this.buildOptionsFromSetupData('dataCategories')
             },
             {
-                key: 'milestones',
+                key: 'stakeholderCategory',
+                label: 'Stakeholder Impact',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('stakeholderCategories')
+            },
+            {
+                key: 'service',
+                label: 'Services Impact',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('services')
+            },
+            {
+                key: 'wave',
                 label: 'Wave',
                 type: 'select',
-                options: this.buildWaveOptions()
+                options: this.buildOptionsFromSetupData('waves', 'Any Wave')
             }
         ];
     }
 
     getColumnConfig() {
         return [
-            {
-                key: 'itemId',
-                label: 'ID',
-                width: '80px',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'title',
-                label: 'Title',
-                width: 'auto',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'drg',
-                label: 'DRG',
-                width: '120px',
-                sortable: true,
-                type: 'drafting-group'
-            },
-            {
-                key: 'milestones',
-                label: 'Waves',
-                width: '120px',
-                sortable: true,
-                type: 'milestone-waves'
-            },
-            {
-                key: 'visibility',
-                label: 'Visibility',
-                width: '100px',
-                sortable: true,
-                type: 'visibility'
-            },
-            {
-                key: 'satisfiesRequirements',
-                label: 'Satisfies',
-                width: '150px',
-                sortable: false,
-                type: 'entity-reference-list',
-                maxDisplay: 2,
-                noneLabel: 'No Requirements',
-                groupPrefix: 'Satisfies'
-            },
-            {
-                key: 'supersedsRequirements',
-                label: 'Supersedes',
-                width: '150px',
-                sortable: false,
-                type: 'entity-reference-list',
-                maxDisplay: 1,
-                noneLabel: 'No Superseded',
-                groupPrefix: 'Supersedes'
-            },
-            {
-                key: 'dependsOnChanges',
-                label: 'Dependencies',
-                width: '150px',
-                sortable: false,
-                type: 'entity-reference-list',
-                maxDisplay: 2,
-                noneLabel: 'No Dependencies',
-                groupPrefix: 'Depends On'
-            },
-            {
-                key: 'createdBy',
-                label: 'Updated By',
-                width: '130px',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'createdAt',
-                label: 'Updated',
-                width: '110px',
-                sortable: true,
-                type: 'date'
-            }
+            { key: 'itemId', label: 'ID', width: '80px', sortable: true, type: 'text' },
+            { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
+            { key: 'visibility', label: 'Visibility', width: '100px', sortable: true, type: 'visibility' },
+            { key: 'drg', label: 'DRG', width: '120px', sortable: true, type: 'drafting-group' },
+            { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
+            { key: 'satisfiedRequirements', label: 'Satisfies', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
+            { key: 'supersedesRequirements', label: 'Supersedes', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
+            { key: 'impactsData', label: 'Data Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'dataCategories', maxDisplay: 2 },
+            { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact', width: '180px', sortable: false, type: 'setup-reference-list', setupKey: 'stakeholderCategories', maxDisplay: 2 },
+            { key: 'impactsServices', label: 'Services Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'services', maxDisplay: 2 },
+            { key: 'updatedBy', label: 'Updated By', width: '120px', sortable: false, type: 'text' },
+            { key: 'updatedAt', label: 'Updated', width: '120px', sortable: true, type: 'date' }
         ];
     }
 
     getGroupingConfig() {
         return [
-            { key: 'none', label: 'No grouping' },
-            { key: 'drg', label: 'Drafting Group' },
-            { key: 'milestones', label: 'Wave' },
-            { key: 'visibility', label: 'Visibility' },
-            { key: 'satisfiesRequirements', label: 'Satisfies Requirements' },
-            { key: 'supersedsRequirements', label: 'Supersedes Requirements' },
-            { key: 'dependsOnChanges', label: 'Dependencies' },
-            { key: 'documentReferences', label: 'Documents' }
+            { value: 'none', label: 'No Grouping' },
+            { key: 'visibility', label: 'Group by Visibility' },
+            { key: 'drg', label: 'Group by DRG' },
+            { key: 'wave', label: 'Group by Wave' },
+            { key: 'impactsData', label: 'Group by Data Impact' },
+            { key: 'impactsStakeholderCategories', label: 'Group by Stakeholder Impact' },
+            { key: 'impactsServices', label: 'Group by Services Impact' }
         ];
     }
 
-    // ====================
-    // HELPER METHODS (Updated for Phase 19)
-    // ====================
-
-    buildDraftingGroupOptions(emptyLabel = 'Any') {
-        const baseOptions = [{ value: '', label: emptyLabel }];
-
-        const drgOptions = Object.keys(DraftingGroup).map(key => ({
-            value: key,
-            label: getDraftingGroupDisplay(key)
-        }));
-
-        return baseOptions.concat(drgOptions);
+    buildDraftingGroupOptions() {
+        return [
+            { value: '', label: 'Any' },
+            ...Object.values(DraftingGroup).map(drg => ({
+                value: drg,
+                label: getDraftingGroupDisplay(drg)
+            }))
+        ];
     }
 
-    buildWaveOptions(emptyLabel = 'Any') {
-        const baseOptions = [{ value: '', label: emptyLabel }];
-
-        if (!this.setupData?.waves) {
-            return baseOptions;
-        }
-
-        const waveOptions = this.setupData.waves.map(wave => ({
-            value: wave.id,
-            label: `${wave.year} Q${wave.quarter}`
-        }));
-
-        return baseOptions.concat(waveOptions);
-    }
-
-    buildDocumentOptions(emptyLabel = 'Any') {
-        const baseOptions = [{ value: '', label: emptyLabel }];
-
-        if (!this.setupData?.documents) {
-            return baseOptions;
-        }
+    buildDocumentOptions() {
+        const baseOptions = [{ value: '', label: 'Any' }];
+        if (!this.setupData?.documents) return baseOptions;
 
         const docOptions = this.setupData.documents.map(doc => ({
             value: doc.id,
@@ -563,15 +420,11 @@ export default class ChangesEntity {
 
     buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {
         const baseOptions = [{ value: '', label: emptyLabel }];
+        if (!this.setupData?.[entityName]) return baseOptions;
 
-        if (!this.setupData?.[entityName]) {
-            return baseOptions;
-        }
-
-        const labelKey = 'name';
         const setupOptions = this.setupData[entityName].map(entity => ({
             value: entity.id,
-            label: entity[labelKey] || entity.name || entity.id
+            label: entity.name || entity.id
         }));
 
         return baseOptions.concat(setupOptions);
@@ -598,13 +451,9 @@ export default class ChangesEntity {
     }
 
     handleItemSelect(item) {
-        // Update details panel
         this.updateDetailsPanel(item);
-
-        // Update shared state
         this.sharedState.selectedItem = item;
 
-        // Notify parent activity of selection change if needed
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
@@ -625,7 +474,6 @@ export default class ChangesEntity {
         container.querySelectorAll('.tab-panel').forEach(p =>
             p.classList.toggle('active', p.dataset.tab === tabIndex.toString()));
 
-        // Also update form context and shared state
         this.form.context.currentTabIndex = tabIndex;
         this.sharedState.currentTabIndex = tabIndex;
     }
@@ -634,9 +482,7 @@ export default class ChangesEntity {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
 
-        // Preserve current tab before re-rendering
         const currentTab = this.getCurrentTabInPanel(detailsContainer);
-
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
         const detailsButtonText = isReviewMode ? 'Review' : 'Edit';
         const detailsHtml = await this.form.generateReadOnlyView(item, true);
@@ -651,17 +497,13 @@ export default class ChangesEntity {
                 <button class="btn btn-primary btn-sm" id="detailsBtn">${detailsButtonText}</button>
             </div>
         </div>
-        <div class="details-scrollable-content">
-            ${detailsHtml}
-        </div>
+        <div class="details-scrollable-content">${detailsHtml}</div>
     `;
 
-        // Restore tab after rendering
         if (currentTab !== null && currentTab !== 0) {
             this.switchTabInPanel(detailsContainer, currentTab);
         }
 
-        // Bind details button
         const detailsBtn = detailsContainer.querySelector('#detailsBtn');
         if (detailsBtn) {
             if (isReviewMode) {
@@ -673,64 +515,103 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // PUBLIC INTERFACE
+    // PUBLIC INTERFACE - PARENT-OWNED DATA PATTERN
     // ====================
 
-    async render(container) {
+    async render(container, perspective = 'collection') {
         this.container = container;
+        this.currentPerspective = perspective;
 
-        // Always start with collection view
-        await this.collection.render(container);
-        this.currentPerspective = 'collection';
+        if (this.data.length === 0) {
+            await this.loadData();
+        }
+
+        if (perspective === 'temporal') {
+            this.renderTemporalView(this.sharedState);
+        } else {
+            this.collection.setData(this.data);
+            await this.collection.render(container);
+        }
+    }
+
+    async loadData() {
+        try {
+            let endpoint = this.entityConfig.endpoint;
+            const queryParams = {};
+
+            const editionContext = this.app?.currentActivity?.config?.dataSource;
+            if (editionContext &&
+                editionContext !== 'repository' &&
+                editionContext !== 'Repository' &&
+                typeof editionContext === 'string' &&
+                editionContext.match(/^\d+$/)) {
+
+                const edition = await apiClient.get(`/odp-editions/${editionContext}`);
+                if (edition.baseline?.id) {
+                    queryParams.baseline = edition.baseline.id;
+                }
+                if (edition.startsFromWave?.id) {
+                    queryParams.fromWave = edition.startsFromWave.id;
+                }
+            }
+
+            if (Object.keys(queryParams).length > 0) {
+                const queryString = new URLSearchParams(queryParams).toString();
+                endpoint = `${endpoint}?${queryString}`;
+            }
+
+            console.log(`ChangesEntity: Loading data from ${endpoint}`);
+            const response = await apiClient.get(endpoint);
+            this.data = Array.isArray(response) ? response : [];
+
+            console.log(`ChangesEntity: Loaded ${this.data.length} changes`);
+        } catch (error) {
+            console.error('Failed to load changes data:', error);
+            this.data = [];
+            throw error;
+        }
     }
 
     async refresh() {
-        await this.collection.refresh();
+        await this.loadData();
 
-        // If in temporal view, update timeline data
+        this.collection.setData(this.data);
+
         if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            this.timelineGrid.setData(this.collection.data);
+            this.timelineGrid.setData(this.collection.filteredData || this.data);
+        } else if (this.currentPerspective === 'collection') {
+            this.collection.applyFilters();
         }
     }
 
     handleFilter(filterKey, filterValue) {
-        // Apply filter to collection
         this.collection.handleFilter(filterKey, filterValue);
-
-        // Update shared state
         this.sharedState.filters = { ...this.collection.currentFilters };
 
-        // Notify parent activity of filter change if needed
         if (this.app.currentActivity?.updateSharedFilters) {
             this.app.currentActivity.updateSharedFilters(this.collection.currentFilters);
         }
 
-        // If in temporal view, update timeline data with filtered results
         if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            this.timelineGrid.setData(this.collection.filteredData || this.collection.data);
+            this.timelineGrid.setData(this.collection.filteredData || this.data);
         }
     }
 
     handleGrouping(groupBy) {
-        // Special handling for wave grouping (groups by milestones)
         if (groupBy === 'wave') {
             groupBy = 'milestones';
         }
 
         this.collection.handleGrouping(groupBy);
-
-        // Update shared state
         this.sharedState.grouping = groupBy;
     }
 
     cleanup() {
-        // Clean up timeline components
         if (this.timelineGrid) {
             this.timelineGrid.cleanup();
             this.timelineGrid = null;
         }
 
-        // Existing cleanup
         this.collection.cleanup();
         this.container = null;
     }

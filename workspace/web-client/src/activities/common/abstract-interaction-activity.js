@@ -458,8 +458,8 @@ export default class AbstractInteractionActivity {
             // Inject cached data BEFORE setting up callbacks or rendering
             if (this.cachedEntityData[this.currentEntity]) {
                 console.log(`Injecting cached data for ${this.currentEntity}:`, this.cachedEntityData[this.currentEntity].length, 'items');
-                this.currentEntityComponent.collection.data = [...this.cachedEntityData[this.currentEntity]];
-                this.currentEntityComponent.collection.filteredData = [...this.cachedEntityData[this.currentEntity]];
+                // UPDATED: Set data on parent entity, which will distribute to perspectives
+                this.currentEntityComponent.data = [...this.cachedEntityData[this.currentEntity]];
             }
 
             // Pass onDataLoaded callback to collection entity
@@ -593,8 +593,8 @@ export default class AbstractInteractionActivity {
             if (!badge) return;
 
             // Get count from the loaded entity component if available
-            if (this.currentEntityComponent?.collection?.data) {
-                const data = this.currentEntityComponent.collection.data;
+            if (this.currentEntityComponent?.data) {
+                const data = this.currentEntityComponent.data;
                 this.updateBadgeFromData(entityType, data);
                 return;
             }
@@ -673,8 +673,9 @@ export default class AbstractInteractionActivity {
                     <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
                         📋 Collection
                     </button>
-                    <button class="perspective-option" data-perspective="hierarchical" disabled title="Coming soon">
-                        📁 Hierarchical
+                    <button class="perspective-option ${this.currentPerspective === 'tree' ? 'perspective-option--active' : ''}" data-perspective="tree"
+        ${this.currentEntity !== 'requirements' ? 'disabled title="Only available for requirements"' : ''}>
+    🌳 Tree
                     </button>
                     <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
                             ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>

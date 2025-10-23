@@ -5,6 +5,7 @@ import { apiClient } from '../../shared/api-client.js';
  * CollectionEntity - Pure table/list rendering engine
  * Business-agnostic collection management with pluggable column types
  * Enhanced with server-side filtering support
+ * UPDATED: Supports parent-owned data pattern via setData() for multi-perspective coordination
  */
 export default class CollectionEntity {
     constructor(app, entityConfig, options = {}) {
@@ -130,21 +131,35 @@ export default class CollectionEntity {
     // DATA MANAGEMENT
     // ====================
 
+    /**
+     * NEW: Set data from parent entity (for multi-perspective coordination)
+     * This is the preferred method when parent entity manages data loading
+     * @param {Array} entities - Pre-loaded entity data
+     */
+    setData(entities) {
+        this.data = Array.isArray(entities) ? entities : [];
+        this.filteredData = [...this.data];
+        if (this.container) {
+            this.renderContent();
+        }
+    }
+
     async render(container) {
         this.container = container;
 
         try {
-            // Only load data if not already loaded (e.g., from cache)
+            // UPDATED: Only auto-load if data is empty (backward compatibility)
+            // In multi-perspective mode, parent should call setData() before render()
             if (this.data.length === 0) {
-                console.log(`${this.entityConfig.name}: No cached data, loading from API`);
+                console.log(`${this.entityConfig.name}: No data available, attempting auto-load`);
                 await this.loadData();
             } else {
-                console.log(`${this.entityConfig.name}: Using cached data (${this.data.length} items)`);
+                console.log(`${this.entityConfig.name}: Using existing data (${this.data.length} items)`);
             }
 
             this.renderContent();
 
-            // Notify parent of data availability (whether loaded or cached)
+            // Notify parent of data availability (whether loaded or pre-set)
             if (this.onDataLoaded && this.data.length > 0) {
                 this.onDataLoaded(this.data);
             }
@@ -154,6 +169,10 @@ export default class CollectionEntity {
         }
     }
 
+    /**
+     * DEPRECATED for multi-perspective entities - parent should manage loading
+     * Kept for backward compatibility with standalone Collection usage
+     */
     async loadData() {
         try {
             let endpoint = this.entityConfig.endpoint;
@@ -250,226 +269,173 @@ export default class CollectionEntity {
             return;
         }
 
-        const groupedData = this.groupData(this.filteredData, this.currentGrouping);
+        // Apply current grouping strategy
+        const groupedData = this.groupData(this.filteredData);
 
-        this.container.innerHTML = `
-            <div class="collection-table-container">
-                ${groupedData.map(group => this.renderGroup(group)).join('')}
-            </div>
-        `;
+        let html = '<div class="collection-content">';
 
-        this.bindEvents();
-    }
-
-    renderGroup(group) {
-        const showGroupHeader = this.currentGrouping !== 'none';
-
-        return `
-            <div class="collection-group">
-                ${showGroupHeader ? `
-                    <div class="group-header" data-group="${group.key}">
-                        <h3 class="group-title">${this.escapeHtml(group.title)}</h3>
-                        <span class="group-count">${group.items.length}</span>
-                    </div>
-                ` : ''}
-                
-                <div class="collection-table-wrapper">
-                    <table class="collection-table">
-                        <thead>
-                            <tr>
-                                ${this.columnConfig.map(col => `
-                                    <th style="width: ${col.width || 'auto'}" 
-                                        class="${col.sortable ? 'sortable' : ''}" 
-                                        data-column="${col.key}">
-                                        ${this.escapeHtml(col.label)}
-                                        ${col.sortable ? '<span class="sort-indicator"></span>' : ''}
-                                    </th>
-                                `).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${group.items.map(item => this.renderTableRow(item)).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-    }
-
-    renderTableRow(item) {
-        const itemId = this.getItemId(item);
-        const isSelected = this.selectedItem && this.getItemId(this.selectedItem) === itemId;
-
-        return `
-            <tr class="collection-row ${isSelected ? 'collection-row--selected' : ''}" 
-                data-item-id="${this.escapeHtml(itemId)}">
-                ${this.columnConfig.map(col => `
-                    <td class="collection-cell collection-cell--${col.key}">
-                        ${this.renderCellValue(item, col)}
-                    </td>
-                `).join('')}
-            </tr>
-        `;
-    }
-
-    renderCellValue(item, column) {
-        const value = this.getItemValue(item, column);
-        const columnType = this.columnTypes[column.type || 'text'];
-
-        if (columnType && columnType.render) {
-            return columnType.render(value, column, item, this.context);
+        // Render groups
+        if (Array.isArray(groupedData)) {
+            // Flat list (no grouping)
+            html += this.renderTable(groupedData);
+        } else {
+            // Grouped data
+            Object.entries(groupedData).forEach(([groupKey, items]) => {
+                html += this.renderGroup(groupKey, items);
+            });
         }
 
-        // Fallback to text rendering
-        return this.escapeHtml(value?.toString() || '-');
+        html += '</div>';
+
+        this.container.innerHTML = html;
+        this.bindEvents();
+        this.updateSelectionUI();
     }
 
     renderEmptyState() {
-        const message = this.getEmptyStateMessage();
-        const hasActiveFilters = Object.keys(this.currentFilters).some(key =>
-            this.currentFilters[key] && this.currentFilters[key] !== ''
-        );
+        const emptyStateConfig = this.getEmptyStateMessage();
 
-        if (!this.container) {
-            console.warn('CollectionEntity: Container not available for rendering');
-            return;
-        }
-
-        // Show different empty state if filters are active
-        if (hasActiveFilters) {
-            this.container.innerHTML = `
-                <div class="empty-state">
-                    <div class="icon">🔍</div>
-                    <h3>No Matching Items</h3>
-                    <p>No items match your current filters.</p>
-                    <button class="btn btn-secondary" id="clearFiltersBtn">
-                        Clear All Filters
+        this.container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">${emptyStateConfig.icon}</div>
+                <div class="empty-state-title">${emptyStateConfig.title}</div>
+                <div class="empty-state-description">${emptyStateConfig.description}</div>
+                ${emptyStateConfig.showCreateButton ? `
+                    <button class="btn btn-primary empty-state-create">
+                        ${emptyStateConfig.createButtonText}
                     </button>
-                </div>
-            `;
+                ` : ''}
+            </div>
+        `;
 
-            const clearBtn = this.container.querySelector('#clearFiltersBtn');
-            if (clearBtn) {
-                clearBtn.addEventListener('click', () => {
-                    this.clearFilters();
+        // Bind create button if present
+        if (emptyStateConfig.showCreateButton) {
+            const createBtn = this.container.querySelector('.empty-state-create');
+            if (createBtn) {
+                createBtn.addEventListener('click', () => {
+                    if (this.onCreate) this.onCreate();
                 });
-            }
-        } else {
-            this.container.innerHTML = `
-                <div class="empty-state">
-                    <div class="icon">${message.icon || '📄'}</div>
-                    <h3>${message.title || 'No Items'}</h3>
-                    <p>${message.description || 'No items to display.'}</p>
-                    ${message.showCreateButton !== false ? `
-                        <button class="btn btn-primary" id="createFirstItem">
-                            ${message.createButtonText || 'Create First Item'}
-                        </button>
-                    ` : ''}
-                </div>
-            `;
-
-            if (message.showCreateButton !== false) {
-                const createBtn = this.container.querySelector('#createFirstItem');
-                if (createBtn) {
-                    createBtn.addEventListener('click', () => {
-                        if (this.onCreate) {
-                            this.onCreate();
-                        }
-                    });
-                }
             }
         }
     }
 
     renderError(error) {
+        if (!this.container) return;
+
         this.container.innerHTML = `
             <div class="error-state">
-                <h3>Failed to Load ${this.entityConfig.name}</h3>
-                <p>Error: ${this.escapeHtml(error.message)}</p>
-                <button class="btn btn-secondary" onclick="window.location.reload()">
-                    Reload Page
-                </button>
+                <div class="error-state-icon">⚠️</div>
+                <div class="error-state-title">Failed to Load Data</div>
+                <div class="error-state-description">${this.escapeHtml(error.message || 'An error occurred')}</div>
             </div>
         `;
     }
 
-    // ====================
-    // FILTERING - ENHANCED FOR SERVER-SIDE
-    // ====================
+    renderGroup(groupKey, items) {
+        const column = this.columnConfig.find(col => col.key === this.currentGrouping);
+        const groupTitle = this.getGroupTitle(groupKey, column);
 
-    handleFilter(filterKey, filterValue) {
-        this.currentFilters[filterKey] = filterValue;
-
-        // Notify parent of filter changes
-        if (this.onFilterChange) {
-            this.onFilterChange(this.currentFilters);
-        }
-
-        // Determine if this filter should use server-side or client-side filtering
-        if (this.isServerSideFilter(filterKey)) {
-            // Server-side filtering: reload data with new filters
-            this.debouncedReload();
-        } else {
-            // Client-side filtering: apply filters locally (for backwards compatibility)
-            this.debouncedFilter();
-        }
+        return `
+            <div class="collection-group">
+                <div class="collection-group-header">
+                    <span class="collection-group-title">${groupTitle}</span>
+                    <span class="collection-group-count">${items.length}</span>
+                </div>
+                ${this.renderTable(items)}
+            </div>
+        `;
     }
 
-    // NEW: Determine if a filter should use server-side filtering
-    isServerSideFilter(filterKey) {
-        // Server-side filters for operational entities
-        const serverSideFilters = [
-            'type', 'text', 'title', 'visibility', 'drg',
-            'dataCategory', 'stakeholderCategory', 'service', 'document'
-        ];
-        return serverSideFilters.includes(filterKey);
+    renderTable(items) {
+        return `
+            <table class="collection-table">
+                <thead>
+                    <tr>
+                        ${this.columnConfig.map(col => `
+                            <th 
+                                class="${col.sortable ? 'sortable' : ''}" 
+                                data-column="${col.key}"
+                                style="width: ${col.width || 'auto'}">
+                                ${this.escapeHtml(col.label)}
+                                ${col.sortable && this.currentSort?.column === col.key ?
+            (this.currentSort.direction === 'asc' ? ' ▲' : ' ▼') :
+            ''
+        }
+                            </th>
+                        `).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items.map(item => this.renderRow(item)).join('')}
+                </tbody>
+            </table>
+        `;
     }
+
+    renderRow(item) {
+        const itemId = this.getItemId(item);
+        const isSelected = this.selectedItem && this.getItemId(this.selectedItem) === itemId;
+
+        return `
+            <tr class="collection-row ${isSelected ? 'collection-row--selected' : ''}" 
+                data-item-id="${itemId}">
+                ${this.columnConfig.map(col => `
+                    <td>${this.renderCell(item, col)}</td>
+                `).join('')}
+            </tr>
+        `;
+    }
+
+    renderCell(item, column) {
+        const value = this.getItemValue(item, column);
+        const columnType = this.columnTypes[column.type || 'text'];
+
+        if (columnType && columnType.render) {
+            return columnType.render(value, column, this.context);
+        }
+
+        return this.escapeHtml(value);
+    }
+
+    // ====================
+    // FILTERING
+    // ====================
 
     applyFilters() {
-        // Client-side filtering (for backward compatibility and non-server filters)
         this.filteredData = this.data.filter(item => {
-            for (const [filterKey, filterValue] of Object.entries(this.currentFilters)) {
-                if (!filterValue) continue;
+            return this.filterConfig.every(filter => {
+                const filterValue = this.currentFilters[filter.key];
+                if (!filterValue || filterValue === '') return true;
 
-                // Skip server-side filters in client-side filtering
-                if (this.isServerSideFilter(filterKey)) continue;
-
-                const column = this.columnConfig.find(col => col.key === filterKey);
-                if (!column) continue;
-
-                const columnType = this.columnTypes[column.type || 'text'];
-                const value = this.getItemValue(item, column);
+                const itemValue = this.getItemValue(item, { key: filter.key });
+                const column = this.columnConfig.find(col => col.key === filter.key);
+                const columnType = this.columnTypes[column?.type || 'text'];
 
                 if (columnType && columnType.filter) {
-                    if (!columnType.filter(value, filterValue, column)) {
-                        return false;
-                    }
-                } else {
-                    // Default text filtering
-                    if (!value || !value.toString().toLowerCase().includes(filterValue.toLowerCase())) {
-                        return false;
-                    }
+                    return columnType.filter(itemValue, filterValue, column);
                 }
-            }
-            return true;
+
+                // Default filter: string match
+                return itemValue && itemValue.toString().toLowerCase().includes(filterValue.toLowerCase());
+            });
         });
 
         this.renderContent();
+
+        // Notify parent of filter change
+        if (this.onFilterChange) {
+            this.onFilterChange(this.currentFilters);
+        }
+    }
+
+    handleFilter(filterKey, filterValue) {
+        this.currentFilters[filterKey] = filterValue;
+        this.debouncedFilter();
     }
 
     clearFilters() {
         this.currentFilters = {};
-
-        // Reload data to clear server-side filters
-        this.loadData().then(() => {
-            this.filteredData = [...this.data];
-            this.renderContent();
-
-            // NEW: Notify parent of data change after clearing filters
-            if (this.onDataLoaded) {
-                this.onDataLoaded(this.data);
-            }
-        });
+        this.applyFilters();
     }
 
     // ====================
@@ -481,63 +447,42 @@ export default class CollectionEntity {
         this.renderContent();
     }
 
-    groupData(data, groupBy) {
-        if (groupBy === 'none') {
-            return [{
-                key: 'all',
-                title: `All Items (${data.length})`,
-                items: data
-            }];
+    groupData(data) {
+        if (this.currentGrouping === 'none' || !this.currentGrouping) {
+            return data;
         }
 
-        const column = this.columnConfig.find(col => col.key === groupBy);
-        if (!column) {
-            return [{
-                key: 'all',
-                title: `All Items (${data.length})`,
-                items: data
-            }];
-        }
+        const groups = {};
+        const column = this.columnConfig.find(col => col.key === this.currentGrouping);
 
-        const grouped = {};
-
-        for (const item of data) {
+        data.forEach(item => {
             const value = this.getItemValue(item, column);
-            const groupKey = this.getGroupKey(value, column);
-            const groupTitle = this.getGroupTitle(value, column);
+            const key = value?.toString() || 'none';
 
-            if (!grouped[groupKey]) {
-                grouped[groupKey] = {
-                    key: groupKey,
-                    title: groupTitle,
-                    items: []
-                };
+            if (!groups[key]) {
+                groups[key] = [];
             }
-            grouped[groupKey].items.push(item);
-        }
-
-        // Sort groups
-        return Object.values(grouped).sort((a, b) => {
-            const priority = this.getGroupPriority(a.key, b.key, column);
-            if (priority !== 0) return priority;
-            return a.title.localeCompare(b.title);
+            groups[key].push(item);
         });
-    }
 
-    getGroupKey(value, column) {
-        if (value === null || value === undefined) return 'none';
-        if (Array.isArray(value)) {
-            return value.length > 0 ? value[0].toString() : 'none';
+        // Sort groups by priority if defined
+        if (column?.groupPriority) {
+            const sortedKeys = Object.keys(groups).sort((a, b) =>
+                this.getGroupPriority(a, b, column)
+            );
+            const sortedGroups = {};
+            sortedKeys.forEach(key => {
+                sortedGroups[key] = groups[key];
+            });
+            return sortedGroups;
         }
-        return value.toString();
+
+        return groups;
     }
 
     getGroupTitle(value, column) {
-        if (value === null || value === undefined || value === 'none') {
-            return column.noneLabel || 'Not Specified';
-        }
+        const columnType = this.columnTypes[column?.type || 'text'];
 
-        const columnType = this.columnTypes[column.type || 'text'];
         if (columnType && columnType.getGroupTitle) {
             return columnType.getGroupTitle(value, column, this.context);
         }
