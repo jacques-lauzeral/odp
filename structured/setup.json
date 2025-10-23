@@ -36,130 +36,165 @@
   ],
   "stakeholderCategories": [
     {
-      "externalId": "stakeholder:nm",
+      "externalId": "stakeholder:network",
+      "name": "Network",
+      "description": "Any Network Stakeholder"
+    },
+    {
+      "externalId": "stakeholder:network/nm",
       "name": "NM",
-      "description": "Network Manager."
+      "description": "Network Manager",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:ansp",
-      "name": "ANSP",
-      "description": "Air Navigation Service Provider"
-    },
-    {
-      "externalId": "stakeholder:nm/nmoc",
+      "externalId": "stakeholder:network/nm/nmoc",
       "description": "Network Manager Operations Centre",
       "name": "NMOC",
-      "parentExternalId": "stakeholder:nm"
+      "parentExternalId": "stakeholder:network/nm"
     },
     {
-      "externalId": "stakeholder:ansp/fmp",
-      "description": "Flow Management Position",
-      "name": "FMP",
-      "parentExternalId": "stakeholder:ansp"
+      "externalId": "stakeholder:network/nm/crisis_management_team",
+      "description": "Network Manager Crisis Management Team",
+      "name": "Crisis Management Team",
+      "parentExternalId": "stakeholder:network/nm"
     },
     {
-      "externalId": "stakeholder:ansp/amc",
-      "name": "AMC",
-      "description": "Airspace Management Cell - manages airspace structures and restrictions",
-      "parentExternalId": "stakeholder:ansp"
+      "externalId": "stakeholder:network/nm/crisis_exercise_team",
+      "description": "Network Manager Crisis Exercise Team",
+      "name": "Crisis Exercise Team",
+      "parentExternalId": "stakeholder:network/nm"
     },
     {
-      "externalId": "stakeholder:ansp/atc",
-      "name": "ATC Unit",
-      "description": "Air Traffic Control Unit (includes civil and military ATC)",
-      "parentExternalId": "stakeholder:ansp"
-    },
-    {
-      "externalId": "stakeholder:ansp/nec",
-      "name": "NEC",
-      "description": "National ENV Coordinator",
-      "parentExternalId": "stakeholder:ansp"
-    },
-    {
-      "externalId": "stakeholder:ansp/nrc",
-      "name": "NRC",
-      "description": "National RAD Coordinator",
-      "parentExternalId": "stakeholder:ansp"
-    },    {
-      "externalId": "stakeholder:ansp/twr",
-      "name": "TWR",
-      "description": "Airport Tower (includes TWR ATCO, TWR SUP)",
-      "parentExternalId": "stakeholder:ansp"
-    },
-    {
-      "externalId": "stakeholder:airport_operator",
-      "name": "Airport Operator",
-      "description": "Airport operator."
-    },
-    {
-      "externalId": "stakeholder:airspace_user",
-      "name": "Airspace User",
-      "description": "Airspace Users are entities that utilize airspace for their operations, including commercial airlines, general aviation, military, and other operators."
-    },
-    {
-      "externalId": "stakeholder:airspace_user/ao",
-      "description": "Aircraft Operator",
-      "name": "AO",
-      "parentExternalId": "stakeholder:airspace_user"
-    },
-    {
-      "externalId": "stakeholder:airspace_user/cfsp",
-      "name": "CFSP",
-      "description": "Computerized Flight Service Provider - provides flight planning and related services on behalf of airspace users",
-      "parentExternalId": "stakeholder:airspace_user"
-    },
-    {
-      "externalId": "stakeholder:nm/apt_unit",
+      "externalId": "stakeholder:network/nm/apt_unit",
       "name": "APT Unit",
       "description": "Airport Integration Team within Network Manager",
-      "parentExternalId": "stakeholder:nm"
+      "parentExternalId": "stakeholder:network/nm"
     },
     {
-      "externalId": "stakeholder:nm/airport_domain",
+      "externalId": "stakeholder:network/nm/airport_domain",
       "name": "Airport Domain",
       "description": "Airport Domain within Network Manager (APT Unit)",
-      "parentExternalId": "stakeholder:nm"
+      "parentExternalId": "stakeholder:network/nm"
     },
     {
-      "externalId": "stakeholder:nm/woc",
+      "externalId": "stakeholder:network/nm/woc",
       "name": "WOC",
       "description": "Weather Operations Centre within Network Manager",
-      "parentExternalId": "stakeholder:nm"
+      "parentExternalId": "stakeholder:network/nm"
     },
     {
-      "externalId": "stakeholder:national_authority",
+      "externalId": "stakeholder:network/ansp",
+      "name": "ANSP",
+      "description": "Air Navigation Service Provider",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/fmp",
+      "description": "Flow Management Position",
+      "name": "FMP",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/amc",
+      "name": "AMC",
+      "description": "Airspace Management Cell - manages airspace structures and restrictions",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/atc",
+      "name": "ATC Unit",
+      "description": "Air Traffic Control Unit (includes civil and military ATC)",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/nec",
+      "name": "NEC",
+      "description": "National ENV Coordinator",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/nrc",
+      "name": "NRC",
+      "description": "National RAD Coordinator",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/twr",
+      "name": "TWR",
+      "description": "Airport Tower (includes TWR ATCO, TWR SUP)",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/airport_operator",
+      "name": "Airport Operator",
+      "description": "Airport operator",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/airspace_user",
+      "name": "Airspace User",
+      "description": "Airspace Users are entities that utilize airspace for their operations, including commercial airlines, general aviation, military, and other operators",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/airspace_user/ao",
+      "description": "Aircraft Operator",
+      "name": "AO",
+      "parentExternalId": "stakeholder:network/airspace_user"
+    },
+    {
+      "externalId": "stakeholder:network/airspace_user/cfsp",
+      "name": "CFSP",
+      "description": "Computerized Flight Service Provider - provides flight planning and related services on behalf of airspace users",
+      "parentExternalId": "stakeholder:network/airspace_user"
+    },
+    {
+      "externalId": "stakeholder:network/national_authority",
       "name": "National Authority",
-      "description": "National Aviation Authority / Civil Aviation Authority (CAA)"
+      "description": "National Aviation Authority / Civil Aviation Authority (CAA)",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:military",
+      "externalId": "stakeholder:network/military",
       "name": "Military",
-      "description": "Military aviation authorities and operators"
+      "description": "Military aviation authorities and operators",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:system_integrator",
+      "externalId": "stakeholder:network/system_integrator",
       "name": "System Integrator",
-      "description": "Organizations integrating ATM systems and services"
+      "description": "Organizations integrating ATM systems and services",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:easa",
+      "externalId": "stakeholder:network/easa",
       "name": "EASA",
-      "description": "European Union Aviation Safety Agency"
+      "description": "European Union Aviation Safety Agency",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:ground_handling_agent",
+      "externalId": "stakeholder:network/eaccc",
+      "name": "EACCC",
+      "description": "European Aviation Crisis Coordination Cell",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/ground_handling_agent",
       "name": "Ground Handling Agent",
-      "description": "Ground handling service providers at airports"
+      "description": "Ground handling service providers at airports",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:third_party_supplier",
+      "externalId": "stakeholder:network/third_party_supplier",
       "name": "Third Party Supplier",
-      "description": "Third-party service providers (refuelling, catering, PRM services, etc.)"
+      "description": "Third-party service providers (refuelling, catering, PRM services, etc.)",
+      "parentExternalId": "stakeholder:network"
     },
     {
-      "externalId": "stakeholder:surveillance_data_provider",
+      "externalId": "stakeholder:network/surveillance_data_provider",
       "name": "Surveillance Data Provider",
-      "description": "Providers of surveillance data for aircraft tracking"
+      "description": "Providers of surveillance data for aircraft tracking",
+      "parentExternalId": "stakeholder:network"
     }
   ]
 }
