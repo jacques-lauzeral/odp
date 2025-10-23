@@ -121,10 +121,10 @@ Shared module integration (@odp/shared imports), DRG enum centralization, milest
 - **Complete**: ASM_ATFCM_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 - **Complete**: 4DT_Mapper for Excel workbooks (sheet-based parsing, tabular data mapping, multi-entity extraction)
 - **Complete**: FlowMapper for Word documents (hierarchical section parsing, etc.)
-- **Pending**: Crisis_FAAS_Mapper for Word documents (hierarchical section parsing, etc.)
-- **Pending**: TCF_Mapper for Word documents (hierarchical section parsing, etc.)
-- **Pending**: NMUI_Mapper for Word documents (hierarchical section parsing, etc.)
-- **Pending**: PERF_Mapper for Word documents (hierarchical section parsing, etc.)
+- **Complete**: Crisis_FAAS_Mapper for Word documents (hierarchical section parsing, etc.)
+- **Complete**: TCF_Mapper for Word documents (hierarchical section parsing, etc.)
+- **Complete**: NMUI_Mapper for Word documents (hierarchical section parsing, etc.)
+- **Complete**: PERF_Mapper for Word documents (hierarchical section parsing, etc.)
 
 #### CLI Layer - COMPLETE
 - **Complete**: odp import extract-word command with --file and --output options
