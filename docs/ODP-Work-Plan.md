@@ -5,11 +5,11 @@
 **Status**: Feature-rich prototype with functional web UI, REST API, and CLI tooling.
 
 **Key Capabilities**:
-- Complete ODP workflow: Setup → Elaboration → Publication → Review
+- Complete ODP workflow: Setup â†’ Elaboration â†’ Publication â†’ Review
 - Versioned operational entities (ON/OR/OC) with optimistic locking
 - Multi-context queries (baseline + wave filtering)
 - Document references and version dependencies
-- Office document import pipeline (Word/Excel → structured data → database)
+- Office document import pipeline (Word/Excel â†’ structured data â†’ database)
 - Temporal timeline visualization for deployment planning
 - Client-side filtering, grouping, and search
 - Export to AsciiDoc format
@@ -37,7 +37,7 @@
 - [ ] CLI validation commands:
   - `odp convert docx-to-json --file requirements.docx --drg NM_B2B --output requirements.json`
   - `odp convert json-to-docx --file requirements.json --drg NM_B2B --output requirements.docx`
-- [ ] Test round-trip: docx → JSON → docx → JSON
+- [ ] Test round-trip: docx â†’ JSON â†’ docx â†’ JSON
 - [ ] Manual inspection of generated Word documents
 - [ ] Document edge cases and limitations
 
@@ -99,19 +99,46 @@
 
 **Priority**: Active work (lower priority than Docx Loop, can be worked on for variety/breaks).
 
-**Components**:
-- [ ] Add Tree perspective to Requirements entity (alongside Collection)
-- [ ] Extend TreeEntity component pattern from Setup activity
-- [ ] Build tree structure using:
-  - Primary grouping by DrG (top-level nodes)
-  - Organizational path via `path` field
-  - Parent-child relationships via `REFINES` edges
-- [ ] Implement perspective switcher in interaction panel
-- [ ] Share filters across Collection and Tree perspectives
-- [ ] Coordinate selection state between perspectives
-- [ ] Reuse details panel from Collection perspective
+**Implementation Tasks**:
 
-**Success Criteria**: Tree view displays hierarchical ON/OR structure organized by DrG with proper filter coordination.
+#### Component Development
+- [ ] Create TreeTableEntity component (generic tree-table)
+  - Tree structure building from flat entity list
+  - Path builder configuration (entity â†’ typed path array)
+  - Type renderer configuration (icon, color, expandability)
+  - Column configuration (which columns apply to which node types)
+  - Expand/collapse state management
+  - Filter application (hide/show nodes, auto-show parent paths)
+  - Selection handling with event emission
+- [ ] Update RequirementsEntity to use TreeTableEntity
+  - Add perspective tracking (`collection` | `tree`)
+  - Implement pathBuilder callback (DrG â†’ path â†’ requirement node)
+  - Implement typeRenderers (red/yellow folders, blue diamonds, green squares)
+  - Configure 9 columns (Title, Implements, Depends On, Documents, Data, Stakeholder, Services, Updated By, Updated)
+  - Add render() perspective switching logic
+  - Share filters with collection perspective
+  - Coordinate selection between perspectives
+
+#### Integration
+- [ ] Update AbstractInteractionActivity
+  - Add perspective switcher UI for Requirements (Collection | Tree)
+  - Handle perspective switch with state preservation
+  - Maintain existing Temporal perspective for Changes
+- [ ] CSS styling for tree-table
+  - Node type classes (drg, org-folder, on-node, or-node)
+  - Icon colors (red, yellow, blue, green)
+  - Indentation levels
+  - Expand/collapse arrows
+  - Column rendering for mixed node types
+
+#### Testing & Refinement
+- [ ] Test with real requirement data (multiple DrGs, deep paths, REFINES chains)
+- [ ] Verify filter behavior (node hiding, parent path visibility)
+- [ ] Test perspective switching (state preservation)
+- [ ] Test selection coordination between Collection and Tree
+- [ ] Performance testing with 100+ requirements
+
+**Success Criteria**: Tree view displays hierarchical ON/OR structure with DrG/path/REFINES organization, proper filtering, and seamless perspective switching.
 
 ---
 
@@ -128,10 +155,10 @@
 - [ ] Replace multi-selection list with pair suggestion box + selection list
 - [ ] Apply to all relationship types:
   - `Requirement.refines` (parent requirement)
-  - `Requirement.implements` (OR → ON links)
+  - `Requirement.implements` (OR â†’ ON links)
   - `Requirement.dependsOn` (requirement dependencies)
-  - `Change.satisfies` (OC → OR links)
-  - `Change.supersedes` (OC → OR replacement)
+  - `Change.satisfies` (OC â†’ OR links)
+  - `Change.supersedes` (OC â†’ OR replacement)
 - [ ] Type-ahead search in suggestion box
 - [ ] Visual distinction between relationship types
 
@@ -187,7 +214,7 @@
 
 ### Medium Priority
 
-#### TypeScript Migration (Prototype → Production)
+#### TypeScript Migration (Prototype â†’ Production)
 **Goal**: Migrate codebase from JavaScript to TypeScript for type safety and maintainability.
 
 **Scope**: All three components (Web Client, Backend, CLI)
@@ -195,7 +222,7 @@
 **Approach**: Gradual migration
 - New code written in TypeScript
 - Legacy code migrated incrementally
-- Priority: shared models → backend → web client → CLI
+- Priority: shared models â†’ backend â†’ web client â†’ CLI
 
 **Initial Steps**:
 - [ ] Set up TypeScript configuration for each component
@@ -256,7 +283,7 @@ Topics to address when moving from prototype to production:
 
 This document focuses on **backlog management and progress tracking**. Historical phases are documented separately for reference but not maintained in this active work plan.
 
-**Update Frequency**: Review and update as features move from Backlog → Active Work → Complete.
+**Update Frequency**: Review and update as features move from Backlog â†’ Active Work â†’ Complete.
 
 **Priority Indicators**:
 - **TOP PRIORITY**: Critical business need, blocks other work

@@ -26,52 +26,53 @@ The ODP Web Client implements a **vanilla JavaScript** architecture with activit
 ### Directory Structure
 ```
 web-client/
-├── src/
-│   ├── index.html               # ✅ Main HTML template with header container
-│   ├── index.js                 # ✅ Entry point with error handling
-│   ├── app.js                   # ✅ App initialization, routing & API client integration
-│   ├── config/
-│   │   └── api.js              # ✅ API endpoints configuration with CORS
-│   ├── shared/
-│   │   ├── api-client.js       # ✅ Fetch wrapper with user header & error handling
-│   │   ├── error-handler.js    # ✅ Centralized error management
-│   │   └── utils.js            # ✅ DOM, validation, and formatting utilities
-│   ├── components/
-│   │   ├── common/
-│   │   │   └── header.js       # ✅ Global navigation header with user context
-│   │   ├── setup/
-│   │   │   ├── tree-entity.js  # ✅ Base hierarchical entity component
-│   │   │   └── list-entity.js  # ✅ Base list/table entity component
-│   │   └── odp/
-│   │       ├── collection-entity.js     # ✅ Base collection component with setup data support
-│   │       ├── collection-entity-form.js # ✅ Base form class using inheritance pattern
-│   │       └── odp-column-types.js      # ✅ Specialized column types for ODP data
-│   ├── activities/
-│   │   ├── landing/
-│   │   │   ├── landing.js      # ✅ Landing page component with user ID
-│   │   │   └── landing.html    # ✅ Landing page template
-│   │   ├── setup/
-│   │   │   ├── setup.js        # ✅ Setup activity with entity tab navigation
-│   │   │   ├── stakeholder-categories.js  # ✅ Hierarchy CRUD with name/description
-│   │   │   ├── documents.js      # ✅ Hierarchy CRUD with title/regulation ref
-│   │   │   ├── data-categories.js         # ✅ Hierarchy CRUD with classification
-│   │   │   ├── services.js                # ✅ Hierarchy CRUD with domain/type/owner
-│   │   │   └── waves.js                   # ✅ List CRUD with year/quarter validation
-│   │   └── elaboration/
-│   │       ├── elaboration.js  # ✅ Elaboration activity with setup data loading
-│   │       ├── requirements.js # ✅ Requirements entity with collection delegation
-│   │       ├── requirement-form.js  # ✅ Requirements form using inheritance
-│   │       ├── changes.js      # ✅ Changes entity with collection delegation
-│   │       └── change-form.js  # ✅ Changes form using inheritance
-│   ├── styles/
-│   │   ├── main.css            # ✅ Global styles with design tokens
-│   │   ├── components.css      # ✅ Header & reusable component styling
-│   │   ├── landing.css         # ✅ Landing page styling
-│   │   └── activities/
-│   │       ├── setup.css       # ✅ Setup activity styling
-│   │       └── elaboration.css # ✅ Elaboration activity styling
-│   └── assets/                 # ✅ Icons and images
-└── package.json                # ✅ Dependencies and workspace integration
+â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ index.html               # âœ… Main HTML template with header container
+â”‚   â”œâ”€â”€ index.js                 # âœ… Entry point with error handling
+â”‚   â”œâ”€â”€ app.js                   # âœ… App initialization, routing & API client integration
+â”‚   â”œâ”€â”€ config/
+â”‚   â”‚   â””â”€â”€ api.js              # âœ… API endpoints configuration with CORS
+â”‚   â”œâ”€â”€ shared/
+â”‚   â”‚   â”œâ”€â”€ api-client.js       # âœ… Fetch wrapper with user header & error handling
+â”‚   â”‚   â”œâ”€â”€ error-handler.js    # âœ… Centralized error management
+â”‚   â”‚   â””â”€â”€ utils.js            # âœ… DOM, validation, and formatting utilities
+â”‚   â”œâ”€â”€ components/
+â”‚   â”‚   â”œâ”€â”€ common/
+â”‚   â”‚   â”‚   â””â”€â”€ header.js       # âœ… Global navigation header with user context
+â”‚   â”‚   â”œâ”€â”€ setup/
+â”‚   â”‚   â”‚   â”œâ”€â”€ tree-entity.js  # âœ… Base hierarchical entity component
+â”‚   â”‚   â”‚   â””â”€â”€ list-entity.js  # âœ… Base list/table entity component
+â”‚   â”‚   â””â”€â”€ odp/
+â”‚   â”‚       â”œâ”€â”€ collection-entity.js     # âœ… Base collection component with setup data support
+â”‚   â”‚       â”œâ”€â”€ collection-entity-form.js # âœ… Base form class using inheritance pattern
+│   │       ├── tree-table-entity.js     # ✅ Tree-table perspective with virtual hierarchy
+â”‚   â”‚       â””â”€â”€ odp-column-types.js      # âœ… Specialized column types for ODP data
+â”‚   â”œâ”€â”€ activities/
+â”‚   â”‚   â”œâ”€â”€ landing/
+â”‚   â”‚   â”‚   â”œâ”€â”€ landing.js      # âœ… Landing page component with user ID
+â”‚   â”‚   â”‚   â””â”€â”€ landing.html    # âœ… Landing page template
+â”‚   â”‚   â”œâ”€â”€ setup/
+â”‚   â”‚   â”‚   â”œâ”€â”€ setup.js        # âœ… Setup activity with entity tab navigation
+â”‚   â”‚   â”‚   â”œâ”€â”€ stakeholder-categories.js  # âœ… Hierarchy CRUD with name/description
+â”‚   â”‚   â”‚   â”œâ”€â”€ regulatory-aspects.js      # âœ… Hierarchy CRUD with title/regulation ref
+â”‚   â”‚   â”‚   â”œâ”€â”€ data-categories.js         # âœ… Hierarchy CRUD with classification
+â”‚   â”‚   â”‚   â”œâ”€â”€ services.js                # âœ… Hierarchy CRUD with domain/type/owner
+â”‚   â”‚   â”‚   â””â”€â”€ waves.js                   # âœ… List CRUD with year/quarter validation
+â”‚   â”‚   â””â”€â”€ elaboration/
+â”‚   â”‚       â”œâ”€â”€ elaboration.js  # âœ… Elaboration activity with setup data loading
+â”‚   â”‚       â”œâ”€â”€ requirements.js # âœ… Requirements entity with collection delegation
+â”‚   â”‚       â”œâ”€â”€ requirement-form.js  # âœ… Requirements form using inheritance
+â”‚   â”‚       â”œâ”€â”€ changes.js      # âœ… Changes entity with collection delegation
+â”‚   â”‚       â””â”€â”€ change-form.js  # âœ… Changes form using inheritance
+â”‚   â”œâ”€â”€ styles/
+â”‚   â”‚   â”œâ”€â”€ main.css            # âœ… Global styles with design tokens
+â”‚   â”‚   â”œâ”€â”€ components.css      # âœ… Header & reusable component styling
+â”‚   â”‚   â”œâ”€â”€ landing.css         # âœ… Landing page styling
+â”‚   â”‚   â””â”€â”€ activities/
+â”‚   â”‚       â”œâ”€â”€ setup.css       # âœ… Setup activity styling
+â”‚   â”‚       â””â”€â”€ elaboration.css # âœ… Elaboration activity styling
+â”‚   â””â”€â”€ assets/                 # âœ… Icons and images
+â””â”€â”€ package.json                # âœ… Dependencies and workspace integration
 ```
 
 ## Component Architecture
@@ -81,10 +82,10 @@ web-client/
 The web client uses a **clean inheritance pattern** for form management that separates concerns and enables reusable form components:
 
 ```javascript
-// Base Form Class ✅ Implemented
+// Base Form Class âœ… Implemented
 CollectionEntityForm.js  // Abstract base class with virtual methods for inheritance
 
-// Concrete Form Classes ✅ Implemented  
+// Concrete Form Classes âœ… Implemented  
 RequirementForm.js      // Extends CollectionEntityForm with requirement-specific logic
 ChangeForm.js          // Extends CollectionEntityForm with change-specific logic
 ```
@@ -95,18 +96,23 @@ ChangeForm.js          // Extends CollectionEntityForm with change-specific logi
 - **Maintainability**: Less indirection, straightforward code flow
 - **Extensibility**: Easy to add new form types following established pattern
 
-### Three-Pillar Component Strategy
+### Four-Pillar Component Strategy
 
-The web client uses three base component classes that provide extensible patterns for all entity management:
+The web client uses four base component classes that provide extensible patterns for all entity management:
 
 ```javascript
-// Setup Activity Components ✅ Implemented
-TreeEntity.js    // Base for hierarchical entities with REFINES relationships
-ListEntity.js    // Base for simple list/table entities
+// Setup Activity Components âœ… Implemented
+TreeEntity.js         // Base for hierarchical entities with REFINES relationships (real parent-child)
+ListEntity.js         // Base for simple list/table entities
 
-// ODP Browser Components ✅ Implemented  
-CollectionEntity.js // Base for SharePoint Lists-inspired collection management
+// ODP Browser Components âœ… Implemented  
+CollectionEntity.js   // Table/list perspective with filtering and grouping
+TreeTableEntity.js    // Tree-table perspective with virtual hierarchy (derived from entity paths)
 ```
+
+**Key Distinctions**:
+- **TreeEntity** (Setup): Manages real hierarchical entities with parent-child relationships stored in database
+- **TreeTableEntity** (ODP Browser): Displays virtual hierarchy derived from flat entity lists using path builders
 
 ### Form Inheritance Pattern
 **Proven Implementation for Entity Forms**:
@@ -248,6 +254,266 @@ export default class RequirementsEntity {
 }
 ```
 
+### TreeTableEntity Delegation Pattern
+**Proven Implementation for Tree-Table Perspectives**:
+```javascript
+export default class TreeTableEntity {
+    constructor(app, entityConfig, options = {}) {
+        this.app = app;
+        this.entityConfig = entityConfig;
+        this.container = null;
+        
+        // Tree structure state
+        this.data = [];
+        this.treeData = null;
+        this.selectedItem = null;
+        this.currentFilters = {};
+        
+        // Configuration callbacks (provided by parent entity)
+        this.pathBuilder = options.pathBuilder || (() => []);
+        this.typeRenderers = options.typeRenderers || {};
+        this.columns = options.columns || [];
+        
+        // Event handlers (shared with collection perspective)
+        this.onItemSelect = options.onItemSelect || (() => {});
+        this.onCreate = options.onCreate || (() => {});
+    }
+    
+    // Build tree from flat entity list using pathBuilder
+    setData(entities) {
+        this.data = entities;
+        this.buildTree(entities);
+    }
+    
+    buildTree(entities) {
+        const root = { children: {}, type: 'root' };
+        
+        entities.forEach(entity => {
+            const path = this.pathBuilder(entity);  // Get typed path
+            let currentNode = root;
+            
+            path.forEach((pathItem, index) => {
+                const isLeaf = index === path.length - 1;
+                const nodeId = pathItem.id;
+                
+                if (!currentNode.children[nodeId]) {
+                    currentNode.children[nodeId] = {
+                        id: nodeId,
+                        pathItem: pathItem,
+                        type: pathItem.type,
+                        children: {},
+                        isLeaf: isLeaf,
+                        parent: currentNode
+                    };
+                }
+                
+                currentNode = currentNode.children[nodeId];
+                if (isLeaf) currentNode.entity = entity;
+            });
+        });
+        
+        this.treeData = root;
+    }
+    
+    // Apply filters (hide nodes without visible descendants)
+    applyFilters() {
+        // Filter logic that respects shared state
+    }
+    
+    render(container) {
+        // Render tree-table with configured columns and type renderers
+    }
+}
+
+// Example usage in RequirementsEntity with multi-perspective support:
+export default class RequirementsEntity {
+    constructor(app, entityConfig, setupData) {
+        // Collection perspective
+        this.collection = new CollectionEntity(app, entityConfig, {
+            columnTypes: odpColumnTypes,
+            context: { setupData },
+            getFilterConfig: () => this.getFilterConfig(),
+            getColumnConfig: () => this.getColumnConfig(),
+            getGroupingConfig: () => this.getGroupingConfig(),
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate()
+        });
+        
+        // Tree perspective (shares handlers with collection)
+        this.tree = new TreeTableEntity(app, entityConfig, {
+            pathBuilder: (entity) => this.buildTreePath(entity),
+            typeRenderers: this.getTreeTypeRenderers(),
+            columns: this.getTreeColumns(),
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate()
+        });
+        
+        // Form (shared by both perspectives)
+        this.form = new RequirementForm(entityConfig, setupData);
+    }
+    
+    buildTreePath(entity) {
+        // Build typed path: DrG â†' org folders â†' requirement
+        return [
+            { type: 'drg', value: entity.drg, id: entity.drg },
+            ...entity.path.map((segment, idx) => ({
+                type: 'org-folder',
+                value: segment,
+                id: `${entity.drg}/${segment}`
+            })),
+            {
+                type: entity.type === 'ON' ? 'on-node' : 'or-node',
+                value: entity.title,
+                id: entity.itemId,
+                entity: entity
+            }
+        ];
+    }
+    
+    getTreeTypeRenderers() {
+        return {
+            'drg': {
+                icon: 'ðŸ"',
+                iconColor: '#dc3545',
+                expandable: true,
+                label: (pathItem) => pathItem.value
+            },
+            'org-folder': {
+                icon: 'ðŸ"',
+                iconColor: '#ffc107',
+                expandable: true,
+                label: (pathItem) => pathItem.value
+            },
+            'on-node': {
+                icon: 'ðŸ"·',
+                iconColor: '#007bff',
+                expandable: (node) => node.children?.length > 0,
+                label: (pathItem) => pathItem.entity.title
+            },
+            'or-node': {
+                icon: 'ðŸŸ©',
+                iconColor: '#28a745',
+                expandable: (node) => node.children?.length > 0,
+                label: (pathItem) => pathItem.entity.title
+            }
+        };
+    }
+    
+    getTreeColumns() {
+        return [
+            {
+                key: 'title',
+                label: 'Title',
+                width: 'auto',
+                appliesTo: ['drg', 'org-folder', 'on-node', 'or-node']
+            },
+            {
+                key: 'implements',
+                label: 'Implements',
+                width: '150px',
+                appliesTo: ['or-node'],
+                render: (node) => node.pathItem.entity.implementedONs?.length || ''
+            },
+            {
+                key: 'dependsOn',
+                label: 'Depends On',
+                width: '150px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => node.pathItem.entity.dependsOnRequirements?.length || ''
+            }
+            // ... more columns
+        ];
+    }
+}
+```
+
+## Multi-Perspective Entity Pattern
+
+**Purpose**: Enable entities to support multiple visualization perspectives (collection, tree, temporal) while sharing state, handlers, and data.
+
+### Pattern Implementation
+
+**Key Principles**:
+1. **Single Data Load**: Load entity data once, share across all perspectives
+2. **Shared State**: Filters, selection, and grouping coordinated across perspectives
+3. **Shared Handlers**: Use same event handlers (onItemSelect, onCreate) for consistency
+4. **Perspective Switching**: Managed by AbstractInteractionActivity via `currentPerspective` state
+
+**Example: Requirements with Collection + Tree**:
+```javascript
+export default class RequirementsEntity {
+    constructor(app, entityConfig, setupData) {
+        this.data = [];
+        this.currentPerspective = 'collection';  // Managed by activity
+        
+        // Both perspectives use delegation pattern
+        this.collection = new CollectionEntity(...);
+        this.tree = new TreeTableEntity(...);
+        this.form = new RequirementForm(...);
+    }
+    
+    async render(container) {
+        // Load data once
+        await this.loadData();
+        
+        // Render active perspective
+        if (this.currentPerspective === 'tree') {
+            this.tree.setData(this.data);
+            this.tree.render(container);
+        } else {
+            this.collection.setData(this.data);
+            this.collection.render(container);
+        }
+    }
+    
+    // Shared state management
+    applySharedState(sharedState) {
+        // Apply filters to both perspectives
+        if (this.collection) {
+            this.collection.currentFilters = { ...sharedState.filters };
+            this.collection.applyFilters();
+        }
+        if (this.tree) {
+            this.tree.currentFilters = { ...sharedState.filters };
+            this.tree.applyFilters();
+        }
+        
+        // Apply selection (shared across perspectives)
+        if (sharedState.selectedItem) {
+            this.collection.selectedItem = sharedState.selectedItem;
+            this.tree.selectedItem = sharedState.selectedItem;
+        }
+    }
+    
+    // Handler methods (called by both perspectives)
+    handleItemSelect(item) {
+        // Update shared state
+        this.sharedState.selectedItem = item;
+        
+        // Show details panel (same for both perspectives)
+        this.renderDetails(item);
+    }
+    
+    handleCreate() {
+        // Show form (same for both perspectives)
+        this.form.show('create');
+    }
+}
+```
+
+**Example: Changes with Collection + Temporal**:
+```javascript
+export default class ChangesEntity {
+    constructor(app, entityConfig, setupData) {
+        this.collection = new CollectionEntity(...);
+        this.temporal = new TemporalView(...);  // Timeline perspective
+        this.form = new ChangeForm(...);
+    }
+    
+    // Same pattern: single load, shared handlers, perspective switching
+}
+```
+
 ## Setup Data Integration
 **Proven Pattern for Dynamic Option Loading**:
 ```javascript
@@ -269,19 +535,19 @@ class RequirementForm extends CollectionEntityForm {
 ### Activity-Based Routing
 **Implemented URL Structure**:
 ```
-/                                    # Landing page ✅
-/setup/stakeholder-categories        # Setup activity - entity management ✅
-/setup/waves                         # Setup activity - wave management ✅
-/elaboration/requirements            # Elaboration activity - requirements ✅
-/elaboration/changes                 # Elaboration activity - changes ✅
+/                                    # Landing page âœ…
+/setup/stakeholder-categories        # Setup activity - entity management âœ…
+/setup/waves                         # Setup activity - wave management âœ…
+/elaboration/requirements            # Elaboration activity - requirements âœ…
+/elaboration/changes                 # Elaboration activity - changes âœ…
 ```
 
 **Three-Layer Architecture Pattern**:
 ```javascript
-// App.js handles Layer 1 (ODP Level) routing ✅
-// setup.js handles Layer 2 (Activity Level) entity switching ✅
-// elaboration.js handles Layer 2 (Activity Level) entity switching ✅
-// entity components handle Layer 3 (Entity Level) operations ✅
+// App.js handles Layer 1 (ODP Level) routing âœ…
+// setup.js handles Layer 2 (Activity Level) entity switching âœ…
+// elaboration.js handles Layer 2 (Activity Level) entity switching âœ…
+// entity components handle Layer 3 (Entity Level) operations âœ…
 ```
 
 ### API Integration with User Authentication
@@ -475,7 +741,7 @@ try {
 **Established and Implemented Patterns**:
 - **Plural filenames**: `requirements.js`, `changes.js` (matches URL structure)
 - **Singular classes**: `RequirementForm`, `ChangeForm` (represents single entity)
-- **Base components**: `collection-entity.js`, `collection-entity-form.js` in `components/odp/`
+- **Base components**: `collection-entity.js`, `tree-table-entity.js`, `collection-entity-form.js` in `components/odp/`
 - **Activity files**: `setup.js`, `elaboration.js` in respective activity directories
 - **Form files**: `requirement-form.js`, `change-form.js` alongside entity files
 
@@ -485,9 +751,9 @@ try {
 **Implemented Multi-Service Environment**:
 ```yaml
 services:
-  neo4j:        # Database on ports 7474, 7687 ✅
-  odp-server:   # API server on port 80 with CORS ✅
-  web-client:   # Web app on port 3000 ✅
+  neo4j:        # Database on ports 7474, 7687 âœ…
+  odp-server:   # API server on port 80 with CORS âœ…
+  web-client:   # Web app on port 3000 âœ…
 ```
 
 ### Development Commands
@@ -496,9 +762,9 @@ services:
 docker-compose up
 
 # Access points
-# Web Client: http://localhost:3000 ✅
-# API Server: http://localhost ✅
-# Neo4j Browser: http://localhost:7474 ✅
+# Web Client: http://localhost:3000 âœ…
+# API Server: http://localhost âœ…
+# Neo4j Browser: http://localhost:7474 âœ…
 ```
 
 ## Extension Guidelines
@@ -511,11 +777,17 @@ docker-compose up
 5. **Test Integration**: Ensure form works with parent CollectionEntityForm infrastructure
 
 ### Component Extension Checklist
-1. **Choose Pattern**: Form inheritance vs Collection delegation vs TreeEntity extension
+1. **Choose Pattern**:
+    - Form inheritance (CollectionEntityForm)
+    - Collection delegation (CollectionEntity)
+    - Tree-table delegation (TreeTableEntity)
+    - TreeEntity extension (Setup activity only)
+    - Multi-perspective (combine multiple delegation patterns)
 2. **Implement Required Methods**: Based on chosen pattern's interface requirements
 3. **Add to Activity**: Update entity configuration and routing
 4. **Follow Naming**: Use established file and class naming patterns
 5. **Test Integration**: Ensure user authentication and error handling work
+6. **Coordinate State**: For multi-perspective entities, implement shared state management
 
 ### Setup Data Integration Checklist
 1. **Load in Activity**: Add endpoint to loadSetupData() method

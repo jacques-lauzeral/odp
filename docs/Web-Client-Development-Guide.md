@@ -17,7 +17,7 @@ web-client/src/
 ├── components/
 │   ├── common/            # Global navigation, error handling
 │   ├── setup/             # TreeEntity, ListEntity base classes
-│   └── odp/               # CollectionEntity and forms
+│   └── odp/               # CollectionEntity, TreeTableEntity, and forms
 └── shared/                # API client, utilities, error handling
 ```
 
@@ -130,6 +130,113 @@ class MyCollectionEntity {
 }
 ```
 
+#### 4. TreeTableEntity (Hierarchical Tree-Table)
+**Use for**: Tree-table visualization with virtual hierarchy derived from entity paths
+```javascript
+// Example: RequirementsEntity with tree perspective
+class MyEntityWithTreePerspective {
+    constructor(app, entityConfig, setupData) {
+        // Collection perspective
+        this.collection = new CollectionEntity(app, entityConfig, {
+            columnTypes: odpColumnTypes,
+            context: { setupData },
+            getFilterConfig: () => this.getFilterConfig(),
+            getColumnConfig: () => this.getColumnConfig(),
+            getGroupingConfig: () => this.getGroupingConfig(),
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate()
+        });
+        
+        // Tree perspective (shares handlers with collection)
+        this.tree = new TreeTableEntity(app, entityConfig, {
+            pathBuilder: (entity) => this.buildTreePath(entity),
+            typeRenderers: this.getTreeTypeRenderers(),
+            columns: this.getTreeColumns(),
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate()
+        });
+    }
+    
+    buildTreePath(entity) {
+        // Build typed path array: DrG → org folders → entity node
+        return [
+            { type: 'drg', value: entity.drg, id: entity.drg },
+            ...entity.path.map((segment, idx) => ({
+                type: 'org-folder',
+                value: segment,
+                id: `${entity.drg}/${segment}`
+            })),
+            {
+                type: entity.type.toLowerCase() + '-node',
+                value: entity.title,
+                id: entity.itemId,
+                entity: entity
+            }
+        ];
+    }
+    
+    getTreeTypeRenderers() {
+        return {
+            'drg': {
+                icon: '📁',
+                iconColor: '#dc3545',
+                expandable: true,
+                label: (pathItem) => pathItem.value
+            },
+            'org-folder': {
+                icon: '📁',
+                iconColor: '#ffc107',
+                expandable: true,
+                label: (pathItem) => pathItem.value
+            },
+            'on-node': {
+                icon: '🔷',
+                iconColor: '#007bff',
+                expandable: (node) => node.children?.length > 0,
+                label: (pathItem) => pathItem.entity.title
+            }
+        };
+    }
+    
+    getTreeColumns() {
+        return [
+            {
+                key: 'title',
+                label: 'Title',
+                width: 'auto',
+                appliesTo: ['drg', 'org-folder', 'on-node']
+            },
+            {
+                key: 'status',
+                label: 'Status',
+                width: '120px',
+                appliesTo: ['on-node'],
+                render: (node) => node.pathItem.entity.status
+            }
+        ];
+    }
+    
+    async render(container) {
+        await this.loadData();
+        
+        // Render based on current perspective
+        if (this.currentPerspective === 'tree') {
+            this.tree.setData(this.data);
+            this.tree.render(container);
+        } else {
+            this.collection.setData(this.data);
+            this.collection.render(container);
+        }
+    }
+}
+```
+
+**Key Differences**:
+- **TreeEntity** (Setup): Extension pattern for real hierarchical entities with CRUD operations
+- **TreeTableEntity** (ODP Browser): Delegation pattern for virtual hierarchy derived from flat entity lists
+- Virtual folders (DrG, organizational) exist only when descendants are present
+- Columns can specify which node types they apply to via `appliesTo` array
+
 ## ODP Edition Parameter Resolution Pattern
 
 ### Problem Context
@@ -139,59 +246,33 @@ ODP Editions need to filter operational requirements and changes based on editio
 When working with ODP Edition contexts, always resolve edition to constituent parameters:
 
 ```javascript
-async loadData() {
-    try {
-        let endpoint = this.entityConfig.endpoint;
-        
-        // Check for edition context
-        const editionContext = this.app?.currentActivity?.config?.dataSource;
-        if (editionContext && editionContext !== 'repository' && 
-            typeof editionContext === 'string' && editionContext.match(/^\d+$/)) {
-            
-            // Step 1: Fetch edition details
-            const edition = await apiClient.get(`/odp-editions/${editionContext}`);
-            
-            // Step 2: Extract baseline and wave references
-            const queryParams = {};
-            if (edition.baseline?.id) {
-                queryParams.baseline = edition.baseline.id;
-            }
-            if (edition.startsFromWave?.id) {
-                queryParams.fromWave = edition.startsFromWave.id;
-            }
-            
-            // Step 3: Build API call with resolved parameters
-            if (Object.keys(queryParams).length > 0) {
-                const queryString = new URLSearchParams(queryParams).toString();
-                endpoint = `${endpoint}?${queryString}`;
-            }
-        }
-        
-        const response = await apiClient.get(endpoint);
-        // Process response...
-    } catch (error) {
-        // Handle errors...
+// In activity or entity component
+async loadEntityData() {
+    let queryParams = {};
+    
+    if (this.config.dataSource === 'repository') {
+        // Repository context: no filtering
+        queryParams = {};
+    } else {
+        // Edition context: resolve to baseline + fromWave
+        const edition = await this.loadEdition(this.config.dataSource);
+        queryParams = {
+            baseline: edition.baselineId,
+            fromWave: edition.fromWaveId
+        };
     }
+    
+    const data = await apiClient.get('/operational-requirements', queryParams);
+    return data;
 }
 ```
 
-### API Parameter Standards
-- **Never use `odpEdition`** parameter in client API calls
-- **Always resolve to `baseline` and `fromWave`** parameters as defined in OpenAPI specs
-- **Handle missing edition gracefully** with fallback to repository mode
+### Edition Context Sources
+- **Publication Activity**: Direct edition selection (editionId from UI)
+- **Review Activity**: Edition specified in URL parameters
+- **Elaboration Activity**: Always uses 'repository' (no edition filtering)
 
-### Navigation Between Activities
-For navigation that preserves edition context:
-
-```javascript
-// ✅ Correct: Use SPA navigation
-this.app.navigateTo(`/review/edition/${editionId}`);
-
-// ❌ Wrong: Direct browser navigation (causes 404)
-window.location.href = `/review/edition/${editionId}`;
-```
-
-## Activity Development Patterns
+## Activity Patterns
 
 ### 1. Interaction Activities (Elaboration, Review)
 **Use AbstractInteractionActivity as base class**:
@@ -286,7 +367,15 @@ class MyEntityForm extends CollectionEntityForm {
 class MyEntity {
     constructor(app, entityConfig, supportData) {
         // Collection delegation
-        this.collection = new CollectionEntity(app, entityConfig, options);
+        this.collection = new CollectionEntity(app, entityConfig, {
+            columnTypes: odpColumnTypes,
+            context: { supportData },
+            getFilterConfig: () => this.getFilterConfig(),
+            getColumnConfig: () => this.getColumnConfig(),
+            getGroupingConfig: () => this.getGroupingConfig(),
+            onItemSelect: (item) => this.handleItemSelect(item),
+            onCreate: () => this.handleCreate()
+        });
         
         // Form inheritance
         this.form = new MyEntityForm(entityConfig, supportData);
@@ -294,71 +383,12 @@ class MyEntity {
 }
 ```
 
-## Advanced Patterns
-
-### Edition Context in Review Mode
-**Target Selection Pattern** for Review activities:
-
-```javascript
-async render(container, subPath = []) {
-    // Check for direct edition navigation
-    if (subPath.length >= 2 && subPath[0] === 'edition') {
-        const editionId = subPath[1];
-        this.reviewTarget = editionId;
-        
-        try {
-            this.selectedEdition = await apiClient.get(`/odp-editions/${editionId}`);
-        } catch (error) {
-            console.warn('Failed to load edition:', error);
-            this.selectedEdition = { id: editionId, title: `Edition ${editionId}` };
-        }
-    }
-    
-    if (!this.reviewTarget) {
-        await this.renderTargetSelection();
-        return;
-    }
-    
-    // Proceed with normal rendering
-    await super.render(container, subPath);
-}
-```
-
-### Dynamic Entity Counts with Edition Support
-**Pattern for loading counts with edition context**:
-
-```javascript
-async loadEntityCounts() {
-    const promises = Object.entries(this.entities).map(async ([key, entity]) => {
-        let endpoint = entity.endpoint;
-        
-        // Resolve edition context if present
-        const editionContext = this.config.dataSource;
-        if (editionContext && editionContext !== 'repository') {
-            const edition = await apiClient.get(`/odp-editions/${editionContext}`);
-            const queryParams = {};
-            if (edition.baseline?.id) queryParams.baseline = edition.baseline.id;
-            if (edition.startsFromWave?.id) queryParams.fromWave = edition.startsFromWave.id;
-            
-            if (Object.keys(queryParams).length > 0) {
-                endpoint = `${endpoint}?${new URLSearchParams(queryParams).toString()}`;
-            }
-        }
-        
-        const response = await apiClient.get(endpoint);
-        this.entityCounts[key] = Array.isArray(response) ? response.length : 0;
-    });
-    
-    await Promise.all(promises);
-}
-```
-
 ## Best Practices
 
-### CSS Organization
-1. **Use shared base styles** for common patterns
-2. **Activity-specific files** for unique features only
-3. **Import order matters** - base styles before overrides
+### Styling
+1. **Use shared CSS** for all common interaction patterns
+2. **Minimize activity-specific CSS** - only override what's unique
+3. **Follow CSS import order** - base before specific
 4. **Test responsive design** across all breakpoints
 
 ### API Integration
@@ -368,7 +398,7 @@ async loadEntityCounts() {
 4. **Validate API responses** before processing
 
 ### Component Development
-1. **Follow established patterns** (TreeEntity, ListEntity, CollectionEntity)
+1. **Follow established patterns** (TreeEntity, ListEntity, CollectionEntity, TreeTableEntity)
 2. **Use delegation over inheritance** for complex components
 3. **Implement proper cleanup** in component lifecycle
 4. **Test with realistic data volumes**

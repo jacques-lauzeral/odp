@@ -36,19 +36,19 @@ The application uses a modular CSS architecture for maintainability and clear se
 
 ```
 styles/
-├── main.css                          # Base styles, design tokens, CSS variables
-├── base-components.css               # Buttons, form controls, utilities, loading spinner
-├── layout-components.css             # Header navigation, modals, cards, mobile navigation
-├── table-components.css              # Collection tables, row selection, grouping, empty states
-├── temporal-components.css           # Timeline grid, pixmaps, wave visualization, milestone connectors
-├── form-components.css               # Advanced forms (tabs, tags, multi-select), validation, alerts
-├── feedback-components.css           # Status indicators, notifications, error states, progress bars
-├── landing.css                       # Landing page specific styles
-└── activities/
-    ├── abstract-interaction-activity.css  # Shared interaction patterns for collection perspectives
-    ├── setup.css                          # Setup activity TreeEntity/ListEntity specific styles
-    ├── elaboration.css                    # Elaboration activity overrides and customizations
-    └── review.css                         # Review activity read-only indicators and styling
+â”œâ”€â”€ main.css                          # Base styles, design tokens, CSS variables
+â”œâ”€â”€ base-components.css               # Buttons, form controls, utilities, loading spinner
+â”œâ”€â”€ layout-components.css             # Header navigation, modals, cards, mobile navigation
+â”œâ”€â”€ table-components.css              # Collection tables, row selection, grouping, empty states
+â”œâ”€â”€ temporal-components.css           # Timeline grid, pixmaps, wave visualization, milestone connectors
+â”œâ”€â”€ form-components.css               # Advanced forms (tabs, tags, multi-select), validation, alerts
+â”œâ”€â”€ feedback-components.css           # Status indicators, notifications, error states, progress bars
+â”œâ”€â”€ landing.css                       # Landing page specific styles
+â””â”€â”€ activities/
+    â”œâ”€â”€ abstract-interaction-activity.css  # Shared interaction patterns for collection perspectives
+    â”œâ”€â”€ setup.css                          # Setup activity TreeEntity/ListEntity specific styles
+    â”œâ”€â”€ elaboration.css                    # Elaboration activity overrides and customizations
+    â””â”€â”€ review.css                         # Review activity read-only indicators and styling
 ```
 
 ### CSS Import Structure
@@ -83,7 +83,7 @@ In `src/index.html`:
 
 ## Activity UI Specifications
 
-### Landing Page ✅ IMPLEMENTED
+### Landing Page âœ… IMPLEMENTED
 **Purpose**: Simple activity launcher with user identification
 
 **Implemented Layout**:
@@ -94,7 +94,7 @@ In `src/index.html`:
 
 ---
 
-### Setup Management Activity ✅ IMPLEMENTED
+### Setup Management Activity âœ… IMPLEMENTED
 **Purpose**: Entity management interface for reference data configuration
 
 #### Activity Structure (Layer 2)
@@ -121,7 +121,7 @@ In `src/index.html`:
 
 ---
 
-### Elaboration Activity ✅ IMPLEMENTED
+### Elaboration Activity âœ… IMPLEMENTED
 **Purpose**: Content creation interface for operational requirements and changes
 
 #### Activity Structure (Layer 2)
@@ -160,7 +160,65 @@ In `src/index.html`:
 - **Form Integration**: Inline editing with validation
 - **Related Items**: Cross-references and dependencies
 
-#### Temporal Perspective ✅ IMPLEMENTED
+#### Tree Perspective (Requirements Only)
+**Purpose**: Hierarchical visualization of Operational Requirements organized by DrG, organizational path, and refinement relationships
+
+**Entity Support**: Available for Operational Requirements only (Changes use Temporal perspective instead)
+
+**Layout Pattern**: Tree-table view with hierarchical navigation and relationship columns
+
+**Component Implementation**: TreeTableEntity (see Web-Client-Technical-Solution.md for delegation pattern)
+
+**Hierarchy Structure**:
+- **Level 1**: Drafting Groups (DrG) - Root folders
+- **Level 2**: Organizational Path - Folder hierarchy from `path` field array
+- **Level 3**: Requirements with REFINES relationships - ON refines ON, OR refines OR
+
+**Visual Indicators**:
+- ðŸ“ **RED folder**: Drafting Group (DrG) root nodes
+- ðŸ“ **YELLOW folder**: Organizational path folders
+- ðŸ”· **BLUE diamond**: Operational Need (ON) nodes
+- ðŸŸ© **GREEN square**: Operational Requirement (OR) nodes
+- â–º / â–¼ **Expand/Collapse arrows**: Indicate expandable nodes with children
+
+**Tree-Table Columns**:
+1. **Title** (hierarchy column with tree structure and indentation)
+2. **Implements** (implementedONs - which ONs this OR implements)
+3. **Depends On** (dependsOnRequirements)
+4. **Documents** (documentReferences count/preview)
+5. **Data** (impactsData - data categories)
+6. **Stakeholder** (impactsStakeholderCategories)
+7. **Services** (impactsServices)
+8. **Updated By** (user who last modified)
+9. **Updated** (last modification timestamp)
+
+**Column Behavior**:
+- Folder rows (DrG, organizational): Empty cells for relationship columns
+- Requirement rows: Display relationship data with counts or previews
+- Columns only render for applicable node types (e.g., "Implements" only for OR nodes)
+
+**Filtering**:
+- Shared filter controls with Collection perspective
+- Filters apply to requirement nodes (hide/show based on criteria)
+- Parent folders automatically hidden if all descendants filtered out
+- Parent folders shown if any descendant matches filters (to maintain path visibility)
+
+**Perspective Switching**:
+- Switch between Collection and Tree perspectives via perspective selector
+- Filters preserved when switching perspectives
+- Selection state coordinated between perspectives
+- No grouping controls in Tree perspective (tree structure provides organization)
+
+**Key Features**:
+- Virtual folder nodes (DrG and organizational) - exist only when descendants are present
+- REFINES relationships create nested hierarchies within ON and OR types
+- IMPLEMENTS relationships NOT shown in tree (different from REFINES)
+- Expand/collapse state persisted during filter changes
+- Click node to show details in right panel (reuses Collection perspective's details panel)
+
+
+#### Temporal Perspective âœ… IMPLEMENTED
+
 **Purpose**: Timeline visualization for operational changes with milestone planning
 
 **Layout Pattern**: Two-panel temporal view with timeline grid
@@ -174,7 +232,7 @@ In `src/index.html`:
 
 ---
 
-### Publication Activity ✅ IMPLEMENTED
+### Publication Activity âœ… IMPLEMENTED
 **Purpose**: ODP Edition management interface for creating and browsing published editions
 
 #### Activity Structure (Layer 2)
@@ -224,7 +282,7 @@ In `src/index.html`:
 
 ---
 
-### Review Activity ✅ IMPLEMENTED
+### Review Activity âœ… IMPLEMENTED
 **Purpose**: Edition review interface for examining published content with read-only access
 
 #### Activity Structure (Layer 2)
@@ -299,7 +357,7 @@ In `src/index.html`:
 ## Technical Implementation
 
 ### Component Architecture
-- **Base Components**: TreeEntity, ListEntity, CollectionEntity patterns
+- **Base Components**: TreeEntity (Setup), ListEntity (Setup), CollectionEntity (ODP Browser), TreeTableEntity (ODP Browser)
 - **Form System**: Inheritance-based form components with validation
 - **State Management**: Activity-level state coordination
 - **API Integration**: Consistent patterns for data loading and manipulation
