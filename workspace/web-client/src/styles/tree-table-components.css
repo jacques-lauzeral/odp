@@ -1,0 +1,440 @@
+/* ODP Web Client - Tree Table Components */
+
+/* Base Tree Table Styles */
+.tree-table-container {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: white;
+}
+
+.tree-table-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.tree-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+/* Tree Table Header */
+.tree-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.tree-table th {
+    background-color: var(--bg-secondary);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    padding: var(--space-3);
+    text-align: left;
+    border-bottom: 2px solid var(--border-primary);
+    white-space: nowrap;
+}
+
+.tree-table th:first-child {
+    padding-left: var(--space-4);
+}
+
+/* Tree Table Body */
+.tree-table tbody {
+    background: white;
+}
+
+.tree-table td {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
+    vertical-align: middle;
+}
+
+.tree-table td:first-child {
+    padding-left: var(--space-4);
+}
+
+.tree-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Tree Row Base Styles */
+.tree-row {
+    transition: background-color var(--transition-fast);
+    cursor: default;
+    position: relative;
+}
+
+/* Tree Row Hover States */
+.tree-row:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* Leaf nodes (actual entities) should be clickable */
+.tree-row[data-is-leaf="true"] {
+    cursor: pointer;
+}
+
+.tree-row[data-is-leaf="true"]:hover {
+    background-color: rgba(14, 165, 233, 0.05) !important;
+}
+
+/* Tree Row Selection - Only for leaf nodes */
+.tree-row.selected,
+.tree-table .tree-row.selected {
+    background-color: rgba(14, 165, 233, 0.1) !important;
+    border-left: 3px solid var(--accent-primary);
+}
+
+.tree-row.selected td:first-child {
+    padding-left: calc(var(--space-4) - 3px);
+}
+
+/* Tree Node Type Specific Styles */
+
+/* DrG (Drafting Group) Folders - Red */
+.tree-node-drg {
+    font-weight: var(--font-weight-semibold);
+}
+
+.tree-node-drg:hover {
+    background-color: rgba(220, 53, 69, 0.03);
+}
+
+/* Organizational Path Folders - Yellow/Amber */
+.tree-node-org-folder {
+    font-weight: var(--font-weight-medium);
+}
+
+.tree-node-org-folder:hover {
+    background-color: rgba(255, 193, 7, 0.03);
+}
+
+/* ON (Operational Need) Nodes - Blue */
+.tree-node-on-node {
+    font-weight: var(--font-weight-normal);
+}
+
+.tree-node-on-node:hover {
+    background-color: rgba(0, 123, 255, 0.03);
+}
+
+/* OR (Operational Requirement) Nodes - Green */
+.tree-node-or-node {
+    font-weight: var(--font-weight-normal);
+}
+
+.tree-node-or-node:hover {
+    background-color: rgba(16, 185, 129, 0.03);
+}
+
+/* Expand/Collapse Icon */
+.expand-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-right: var(--space-1);
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+    font-size: var(--font-size-xs);
+}
+
+.expand-icon:hover {
+    color: var(--accent-primary);
+    transform: scale(1.2);
+}
+
+.expand-icon:active {
+    transform: scale(0.95);
+}
+
+/* Tree Node Content - First Column with Hierarchy */
+.tree-node-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.tree-node-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: var(--space-2);
+    font-size: var(--font-size-base);
+    line-height: 1;
+}
+
+.tree-node-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Indentation Levels - Visual hierarchy */
+.tree-row[data-level="0"] td:first-child {
+    padding-left: var(--space-4);
+}
+
+.tree-row[data-level="1"] td:first-child {
+    padding-left: calc(var(--space-4) + 20px);
+}
+
+.tree-row[data-level="2"] td:first-child {
+    padding-left: calc(var(--space-4) + 40px);
+}
+
+.tree-row[data-level="3"] td:first-child {
+    padding-left: calc(var(--space-4) + 60px);
+}
+
+.tree-row[data-level="4"] td:first-child {
+    padding-left: calc(var(--space-4) + 80px);
+}
+
+.tree-row[data-level="5"] td:first-child {
+    padding-left: calc(var(--space-4) + 100px);
+}
+
+/* Deeper nesting (fallback) */
+.tree-row[data-level="6"] td:first-child {
+    padding-left: calc(var(--space-4) + 120px);
+}
+
+/* Empty Tree State */
+.tree-table-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-16) var(--space-8);
+    color: var(--text-secondary);
+}
+
+.tree-table-empty .icon {
+    font-size: 48px;
+    margin-bottom: var(--space-4);
+    opacity: 0.5;
+}
+
+.tree-table-empty h3 {
+    margin: 0 0 var(--space-2) 0;
+    color: var(--text-primary);
+    font-size: var(--font-size-lg);
+}
+
+.tree-table-empty p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+/* Reference Item Styles (for entity-reference-list columns) */
+.reference-item {
+    display: inline;
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
+.reference-more {
+    display: inline;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    font-style: italic;
+}
+
+/* Column-specific rendering for non-entity nodes */
+.tree-row[data-is-leaf="false"] td:not(:first-child) {
+    color: var(--text-tertiary);
+    font-style: italic;
+    font-size: var(--font-size-xs);
+}
+
+/* Loading State for Tree */
+.tree-table-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-12);
+    color: var(--text-secondary);
+}
+
+.tree-table-loading .spinner {
+    margin-bottom: var(--space-4);
+}
+
+/* Tree Table in Collection List Container */
+.collection-list .tree-table-container {
+    margin: var(--space-4);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.collection-list .tree-table-wrapper {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Striping for better readability (only for non-selected rows) */
+.tree-table tbody .tree-row:nth-child(even):not(.selected) {
+    background-color: rgba(0, 0, 0, 0.01);
+}
+
+.tree-table tbody .tree-row:nth-child(odd):not(.selected) {
+    background-color: white;
+}
+
+/* Focus styles for accessibility */
+.tree-row:focus-within {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+}
+
+.expand-icon:focus {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+/* Multiline cell content in tree columns */
+.tree-table .multiline-cell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+/* Column width constraints for better layout */
+.tree-table th[style*="width: 80px"],
+.tree-table td:has(+ td[style*="width: 80px"]) {
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
+}
+
+.tree-table th[style*="width: 120px"],
+.tree-table td:has(+ td[style*="width: 120px"]) {
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+}
+
+.tree-table th[style*="width: 150px"],
+.tree-table td:has(+ td[style*="width: 150px"]) {
+    width: 150px;
+    min-width: 150px;
+    max-width: 150px;
+}
+
+/* Auto-width columns (typically first column with title) */
+.tree-table th[style*="width: auto"] {
+    width: auto;
+    min-width: 300px;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .tree-table {
+        font-size: var(--font-size-xs);
+    }
+
+    .tree-table th,
+    .tree-table td {
+        padding: var(--space-2);
+    }
+
+    /* Reduce indentation on smaller screens */
+    .tree-row[data-level="1"] td:first-child {
+        padding-left: calc(var(--space-4) + 16px);
+    }
+
+    .tree-row[data-level="2"] td:first-child {
+        padding-left: calc(var(--space-4) + 32px);
+    }
+
+    .tree-row[data-level="3"] td:first-child {
+        padding-left: calc(var(--space-4) + 48px);
+    }
+
+    .tree-row[data-level="4"] td:first-child {
+        padding-left: calc(var(--space-4) + 64px);
+    }
+}
+
+@media (max-width: 768px) {
+    .tree-table-wrapper {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .tree-table th,
+    .tree-table td {
+        padding: var(--space-2);
+    }
+
+    /* Further reduce indentation on mobile */
+    .tree-row[data-level="1"] td:first-child {
+        padding-left: calc(var(--space-3) + 12px);
+    }
+
+    .tree-row[data-level="2"] td:first-child {
+        padding-left: calc(var(--space-3) + 24px);
+    }
+
+    .tree-row[data-level="3"] td:first-child {
+        padding-left: calc(var(--space-3) + 36px);
+    }
+
+    .tree-row[data-level="4"] td:first-child {
+        padding-left: calc(var(--space-3) + 48px);
+    }
+
+    /* Hide less important columns on mobile */
+    .tree-table th:nth-child(n+6),
+    .tree-table td:nth-child(n+6) {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Show only essential columns on very small screens */
+    .tree-table th:nth-child(n+4),
+    .tree-table td:nth-child(n+4) {
+        display: none;
+    }
+
+    .tree-node-label {
+        font-size: var(--font-size-xs);
+    }
+
+    .expand-icon {
+        width: 14px;
+        height: 14px;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .tree-table-container {
+        border: 1px solid #000;
+        page-break-inside: avoid;
+    }
+
+    .tree-row {
+        page-break-inside: avoid;
+    }
+
+    .expand-icon {
+        display: none;
+    }
+
+    /* Show all expanded content when printing */
+    .tree-row[style*="display: none"] {
+        display: table-row !important;
+    }
+}

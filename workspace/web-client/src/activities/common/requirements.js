@@ -430,12 +430,6 @@ export default class RequirementsEntity {
                 type: 'text'
             },
             {
-                key: 'drg',
-                label: 'DRG',
-                width: '120px',
-                type: 'drafting-group'
-            },
-            {
                 key: 'implementedONs',
                 label: 'Implements',
                 width: '100px',
