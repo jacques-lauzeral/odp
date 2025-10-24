@@ -263,14 +263,16 @@ export default class TreeTableEntity {
 
         const html = `
             <div class="tree-table-container">
-                <table class="tree-table">
-                    <thead>
-                        ${this.renderTableHeader()}
-                    </thead>
-                    <tbody>
-                        ${this.renderTreeNodes(this.treeData, 0)}
-                    </tbody>
-                </table>
+                <div class="tree-table-wrapper">
+                    <table class="tree-table">
+                        <thead>
+                            ${this.renderTableHeader()}
+                        </thead>
+                        <tbody>
+                            ${this.renderTreeNodes(this.treeData, 0)}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
 
@@ -340,7 +342,7 @@ export default class TreeTableEntity {
                 data-node-id="${node.id}"
                 data-node-type="${node.type}"
                 data-is-leaf="${node.isLeaf}"
-                data-item-id="${node.entity?.itemId || ''}">
+                data-item-id="${node.entity?.itemId || ''}" data-level="${level}">
                 ${this.columns.map((col, idx) =>
             this.renderNodeCell(node, col, level, idx === 0)
         ).join('')}
@@ -398,12 +400,10 @@ export default class TreeTableEntity {
         if (!this.container) return;
 
         this.container.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">🌳</div>
-                <div class="empty-state-title">No Data Available</div>
-                <div class="empty-state-description">
-                    No entities to display in tree view.
-                </div>
+            <div class="tree-table-empty">
+                <div class="icon">🌳</div>
+                <h3>No Data Available</h3>
+                <p>No entities to display in tree view.</p>
             </div>
         `;
     }

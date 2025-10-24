@@ -355,23 +355,60 @@ export default class RequirementsEntity {
      * Build tree path for requirement
      * Path format: Type > Parent Chain > Requirement
      */
+    // ====================
+    // TREE CONFIGURATION
+    // ====================
+
+    /**
+     * Build tree path for requirement
+     * Returns typed path objects for TreeTableEntity
+     * Path structure: DrG → Organizational Folders → Parent Requirements → Requirement
+     */
     buildTreePath(requirement) {
-        const parts = [];
+        const path = [];
 
-        // Add type as root
-        const typeLabel = getOperationalRequirementTypeDisplay(requirement.type);
-        parts.push(typeLabel);
-
-        // Build parent chain
-        if (requirement.refinesParents && requirement.refinesParents.length > 0) {
-            const parentChain = this.getParentChain(requirement);
-            parts.push(...parentChain);
+        // Level 1: DrG (Drafting Group) root folder
+        if (requirement.drg) {
+            const drgDisplay = getDraftingGroupDisplay(requirement.drg);
+            path.push({
+                type: 'drg',
+                value: drgDisplay,
+                id: `drg:${requirement.drg}`
+            });
         }
 
-        return parts;
+        // Level 2: Organizational path folders (from path array field)
+        if (requirement.path && Array.isArray(requirement.path)) {
+            requirement.path.forEach((segment, index) => {
+                const pathPrefix = requirement.path.slice(0, index + 1).join('/');
+                path.push({
+                    type: 'org-folder',
+                    value: segment,
+                    id: `${requirement.drg || 'no-drg'}:path:${pathPrefix}`
+                });
+            });
+        }
+
+        // Level 3: Build parent chain from REFINES relationships
+        const parentChain = this.getParentChainTyped(requirement);
+        path.push(...parentChain);
+
+        // Final level: The requirement itself
+        path.push({
+            type: requirement.type === 'ON' ? 'on-node' : 'or-node',
+            value: requirement.title,
+            id: requirement.itemId || requirement.id,
+            entity: requirement
+        });
+
+        return path;
     }
 
-    getParentChain(requirement) {
+    /**
+     * Build typed parent chain for tree hierarchy
+     * Follows REFINES relationships up to root
+     */
+    getParentChainTyped(requirement) {
         const chain = [];
         const visited = new Set();
 
@@ -394,7 +431,12 @@ export default class RequirementsEntity {
 
             if (parent) {
                 buildChain(parent); // Recurse up
-                chain.push(`${parent.itemId} - ${parent.title}`);
+                chain.push({
+                    type: parent.type === 'ON' ? 'on-node' : 'or-node',
+                    value: parent.title,
+                    id: parent.itemId || parent.id,
+                    entity: parent
+                });
             }
         };
 
@@ -402,42 +444,197 @@ export default class RequirementsEntity {
         return chain;
     }
 
+    /**
+     * Type renderers for different node types in tree
+     * Keys must match the 'type' field in path objects
+     */
     getTreeTypeRenderers() {
         return {
-            'Operational Need (ON)': {
-                icon: '🎯',
-                color: '#2563eb'
+            'drg': {
+                icon: '📁',
+                iconColor: '#dc3545',
+                expandable: true,
+                label: (pathItem) => pathItem.value
             },
-            'Operational Requirement (OR)': {
-                icon: '⚙️',
-                color: '#16a34a'
+            'org-folder': {
+                icon: '📂',
+                iconColor: '#ffc107',
+                expandable: true,
+                label: (pathItem) => pathItem.value
+            },
+            'on-node': {
+                icon: '🔷',
+                iconColor: '#007bff',
+                expandable: (node) => node.children && Object.keys(node.children).length > 0,
+                label: (pathItem) => pathItem.value
+            },
+            'or-node': {
+                icon: '🟩',
+                iconColor: '#10b981',
+                expandable: (node) => node.children && Object.keys(node.children).length > 0,
+                label: (pathItem) => pathItem.value
             }
         };
     }
 
+    /**
+     * Column configuration for tree table
+     */
     getTreeColumns() {
         return [
-            {
-                key: 'itemId',
-                label: 'ID',
-                width: '80px',
-                type: 'text'
-            },
             {
                 key: 'title',
                 label: 'Title',
                 width: 'auto',
-                type: 'text'
+                appliesTo: ['drg', 'org-folder', 'on-node', 'or-node']
             },
             {
                 key: 'implementedONs',
                 label: 'Implements',
+                width: '150px',
+                appliesTo: ['or-node'],
+                render: (node) => {
+                    if (!node.entity || !node.entity.implementedONs || node.entity.implementedONs.length === 0) {
+                        return '-';
+                    }
+                    const displayItems = node.entity.implementedONs.slice(0, 2);
+                    const remaining = node.entity.implementedONs.length - displayItems.length;
+
+                    let html = displayItems.map(ref => {
+                        const title = ref?.title || ref?.id || 'Unknown';
+                        return `<span class="reference-item">${this.escapeHtml(title)}</span>`;
+                    }).join(', ');
+
+                    if (remaining > 0) {
+                        html += `, <span class="reference-more">+${remaining}</span>`;
+                    }
+                    return html;
+                }
+            },
+            {
+                key: 'dependsOnRequirements',
+                label: 'Depends On',
+                width: '120px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    if (!node.entity || !node.entity.dependsOnRequirements || node.entity.dependsOnRequirements.length === 0) {
+                        return '-';
+                    }
+                    const count = node.entity.dependsOnRequirements.length;
+                    return count === 1 ? '1 dep' : `${count} deps`;
+                }
+            },
+            {
+                key: 'documentReferences',
+                label: 'Documents',
                 width: '100px',
-                type: 'count',
-                getValue: (item) => item.implementedONs?.length || 0
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    if (!node.entity || !node.entity.documentReferences || node.entity.documentReferences.length === 0) {
+                        return '-';
+                    }
+                    return `${node.entity.documentReferences.length} docs`;
+                }
+            },
+            {
+                key: 'impactsData',
+                label: 'Data',
+                width: '120px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    if (!node.entity || !node.entity.impactsData || node.entity.impactsData.length === 0) {
+                        return '-';
+                    }
+                    return this.renderSetupDataList(node.entity.impactsData, 'dataCategories', 1);
+                }
+            },
+            {
+                key: 'impactsStakeholderCategories',
+                label: 'Stakeholder',
+                width: '120px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    if (!node.entity || !node.entity.impactsStakeholderCategories || node.entity.impactsStakeholderCategories.length === 0) {
+                        return '-';
+                    }
+                    return this.renderSetupDataList(node.entity.impactsStakeholderCategories, 'stakeholderCategories', 1);
+                }
+            },
+            {
+                key: 'impactsServices',
+                label: 'Services',
+                width: '120px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    if (!node.entity || !node.entity.impactsServices || node.entity.impactsServices.length === 0) {
+                        return '-';
+                    }
+                    return this.renderSetupDataList(node.entity.impactsServices, 'services', 1);
+                }
+            },
+            {
+                key: 'updatedBy',
+                label: 'Updated By',
+                width: '100px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    return node.entity?.updatedBy ? this.escapeHtml(node.entity.updatedBy) : '-';
+                }
+            },
+            {
+                key: 'updatedAt',
+                label: 'Updated',
+                width: '100px',
+                appliesTo: ['on-node', 'or-node'],
+                render: (node) => {
+                    return node.entity?.updatedAt ? this.formatDate(node.entity.updatedAt) : '-';
+                }
             }
         ];
     }
+
+    // Helper methods for tree rendering
+    renderSetupDataList(ids, setupKey, maxDisplay = 1) {
+        if (!this.setupData || !this.setupData[setupKey]) {
+            return ids.length.toString();
+        }
+
+        const displayItems = ids.slice(0, maxDisplay);
+        const remaining = ids.length - displayItems.length;
+
+        const names = displayItems.map(id => {
+            const item = this.setupData[setupKey].find(s => s.id === id);
+            return item ? (item.name || item.title || id) : id;
+        });
+
+        let html = names.map(name => this.escapeHtml(name)).join(', ');
+
+        if (remaining > 0) {
+            html += ` <span class="reference-more">+${remaining}</span>`;
+        }
+
+        return html;
+    }
+
+    formatDate(dateString) {
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch (error) {
+            return dateString;
+        }
+    }
+
+    escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
 
     // ====================
     // RENDERING
