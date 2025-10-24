@@ -79,7 +79,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'purpose',
                 label: 'Purpose',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: true,
                 rows: 6,
@@ -95,7 +95,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'initialState',
                 label: 'Initial State',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 rows: 5,
@@ -105,7 +105,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'finalState',
                 label: 'Final State',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 rows: 5,
@@ -115,7 +115,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'details',
                 label: 'Implementation Details',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 rows: 6,
@@ -125,7 +125,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'privateNotes',
                 label: 'Private Notes',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 rows: 3,

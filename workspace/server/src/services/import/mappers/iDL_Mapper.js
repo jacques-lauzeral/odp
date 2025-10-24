@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta, textStartsWith} from "./utils.js";
 
 /**
  * Mapper for iDL AIRAC Data Definition Process Word documents
@@ -257,36 +258,42 @@ class iDL_Mapper extends Mapper {
             const text = (typeof p === 'string' ? p : p.text)?.trim() || '';
 
             // Check for section markers
-            if (text.startsWith('Statement:')) {
+            if (textStartsWith(text, 'Statement:')) {
                 currentSection = 'statement';
                 statement = text.substring('Statement:'.length).trim();
-            } else if (text.startsWith('Rationale:')) {
+            } else if (textStartsWith(text, 'Rationale:')) {
                 currentSection = 'rationale';
                 rationale = text.substring('Rationale:'.length).trim();
-            } else if (text.startsWith('Flow:') || text.startsWith('Flows:') ||
-                text.startsWith('Flow example:') || text.startsWith('Flow examples:')) {
-                currentSection = 'flows';
-                // Determine which prefix to remove
-                let prefix;
-                if (text.startsWith('Flow examples:')) prefix = 'Flow examples:';
-                else if (text.startsWith('Flow example:')) prefix = 'Flow example:';
-                else if (text.startsWith('Flows:')) prefix = 'Flows:';
-                else prefix = 'Flow:';
-                flows = text.substring(prefix.length).trim();
-            } else if (text.startsWith('Implemented ONs:') || text.startsWith('Implemented Operational Needs:')) {
+            } else if (textStartsWith(text, 'Flow:', 'Flows:', 'Flow example', 'Flow examples')) {
+                if (currentSection === 'flows') {
+                    flows += '\n\n' + text;
+                } else {
+                    currentSection = 'flows';
+                    // Determine which prefix to remove
+                    let prefix;
+                    if (textStartsWith(text, 'Flow:')) prefix = 'Flow:';
+                    else if (textStartsWith(text, 'Flow examples')) prefix = 'Flow examples';
+                    else if (textStartsWith(text, 'Flow example:')) prefix = 'Flow example:';
+                    else if (textStartsWith(text, 'Flow example')) prefix = 'Flow example';
+                    else if (textStartsWith(text, 'Flows:')) prefix = 'Flows:';
+                    else prefix = 'Flow:';
+                    flows = text.substring(prefix.length).trim();
+                }
+            } else if (textStartsWith(text, 'Implemented ONs:', 'Implemented Operational Needs:')) {
                 currentSection = 'implementedONs';
-            } else if (text.startsWith('Dependencies:')) {
+            } else if (textStartsWith(text, 'Dependencies:')) {
                 currentSection = 'dependsOnRequirements';
-            } else if (text.startsWith('ConOPS Reference:') || text.startsWith('ConOPS References:')) {
+            } else if (textStartsWith(text, 'ConOPS Reference:', 'ConOPS References:')) {
                 currentSection = 'conopsReferences';
-            } else if (rationaleTerminators.some(term => text.startsWith(term))) {
+            } else if (rationaleTerminators.some(term => textStartsWith(text, term))) {
                 // Hit a terminator, stop capturing rationale
                 currentSection = null;
-            } else if (currentSection === 'statement' && text && !text.endsWith(':')) {
+            } else if (currentSection === 'statement' && text) {
                 statement += '\n\n' + text;
-            } else if (currentSection === 'rationale' && text && !text.endsWith(':')) {
+            } else if (currentSection === 'rationale' && text) {
                 rationale += '\n\n' + text;
-            } else if (currentSection === 'flows' && text && !text.endsWith(':')) {
+            } else if (currentSection === 'flows' && text) {
+                // Include all text in flows, including sub-headers ending with ':'
                 flows += '\n\n' + text;
             } else if (currentSection === 'implementedONs' && text.startsWith('-')) {
                 const reference = text.substring(1).trim();
@@ -309,9 +316,9 @@ class iDL_Mapper extends Mapper {
         }
 
         const result = {
-            statement: statement || null,
-            rationale: rationale || null,
-            flows: flows || null,
+            statement: textToDelta(statement),
+            rationale: textToDelta(rationale),
+            flows: textToDelta(flows),
             implementedONs: type === 'OR' ? implementedONs : [],
             dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
         };

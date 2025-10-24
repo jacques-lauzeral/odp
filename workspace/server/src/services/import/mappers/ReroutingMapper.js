@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta} from "./utils.js";
 
 /**
  * Mapper for REROUTING Excel documents
@@ -297,8 +298,8 @@ class ReroutingMapper extends Mapper {
             type: 'ON',
             drg: 'RRT',
             title: onTitle.trim(),
-            statement: statement,
-            rationale: rationale
+            statement: textToDelta(statement),
+            rationale: textToDelta(rationale)
         };
 
         // Add external ID using the complete object (no path needed)
@@ -389,9 +390,9 @@ class ReroutingMapper extends Mapper {
         const change = {
             drg: 'RRT',
             title: ocName.trim(),
-            purpose: purpose,
+            purpose: textToDelta(purpose),
             visibility: 'NETWORK',
-            details: details,
+            details: textToDelta(details),
             satisfiedORs: [] // Will be populated after all rows are processed
         };
 
@@ -455,10 +456,10 @@ class ReroutingMapper extends Mapper {
             type: 'OR',
             drg: 'RRT',
             title: title.trim(),
-            statement: this._extractRequirementStatement(row),
-            rationale: this._extractRequirementRationale(row),
-            flows: this._extractRequirementFlows(row),
-            privateNotes: this._extractRequirementPrivateNotes(row),
+            statement: textToDelta(this._extractRequirementStatement(row)),
+            rationale: textToDelta(this._extractRequirementRationale(row)),
+            flows: textToDelta(this._extractRequirementFlows(row)),
+            privateNotes: textToDelta(this._extractRequirementPrivateNotes(row)),
             implementedONs: [],  // Will be populated by caller
             impactsStakeholderCategories: impactsStakeholderCategories
         };

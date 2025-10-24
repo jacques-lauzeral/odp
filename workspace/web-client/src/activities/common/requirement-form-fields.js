@@ -79,7 +79,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'statement',
                 label: 'Statement',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: true,
                 rows: 6,
@@ -95,7 +95,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'rationale',
                 label: 'Rationale',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: true,
                 rows: 4,
@@ -103,9 +103,19 @@ export const requirementFieldDefinitions = [
                 helpText: 'Why is this requirement necessary? What problem does it solve?'
             },
             {
+                key: 'flows',
+                label: 'Flows',
+                type: 'richtext',
+                modes: ['create', 'read', 'edit'],
+                required: true,
+                rows: 4,
+                placeholder: 'Describe operational flows or flow examples that illustrate the requirement...',
+                helpText: 'Optional flow or flow example descriptions'
+            },
+            {
                 key: 'privateNotes',
                 label: 'Private Notes',
-                type: 'textarea',
+                type: 'richtext',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 rows: 3,

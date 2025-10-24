@@ -25,6 +25,9 @@ export class CollectionEntityForm {
         // NEW: Annotated multiselect managers storage
         this.annotatedMultiselectManagers = {};
 
+        // NEW: Quill rich text editors storage
+        this.quillEditors = {};
+
         // Initialize tab delegation once
         this.initTabDelegation();
     }
@@ -133,6 +136,9 @@ export class CollectionEntityForm {
 
         // NEW: Initialize annotated multiselect managers after modal is shown
         this.initializeAnnotatedMultiselects();
+
+        // NEW: Initialize Quill editors after modal is shown
+        this.initializeQuillEditors();
     }
 
     async showEditModal(item) {
@@ -150,6 +156,9 @@ export class CollectionEntityForm {
 
         // NEW: Initialize annotated multiselect managers after modal is shown
         this.initializeAnnotatedMultiselects();
+
+        // NEW: Initialize Quill editors after modal is shown
+        this.initializeQuillEditors();
     }
 
     async showReadOnlyModal(item) {
@@ -304,6 +313,11 @@ export class CollectionEntityForm {
             return this.renderAnnotatedMultiselectReadOnly(field, value);
         }
 
+        // NEW: Special handling for richtext
+        if (field.type === 'richtext') {
+            return this.renderRichtextReadOnly(field, value);
+        }
+
         // Skip empty optional fields
         if (!field.required && !value) {
             return '';
@@ -377,6 +391,20 @@ export class CollectionEntityForm {
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
                     ${field.maxLength ? `maxlength="${field.maxLength}"` : ''}>${this.escapeHtml(value || '')}</textarea>`;
+
+            case 'richtext':
+                // Render container for Quill editor and hidden input for form data
+                const editorRows = field.rows || 4;
+                const minHeight = editorRows * 24; // Approximate line height
+                return `<div id="${fieldId}" 
+                    class="quill-editor" 
+                    data-field-key="${field.key}"
+                    data-placeholder="${this.escapeHtml(field.placeholder || '')}"
+                    style="min-height: ${minHeight}px;"></div>
+                <input type="hidden" 
+                    name="${field.key}" 
+                    id="${fieldId}-data"
+                    value="${this.escapeHtml(value || JSON.stringify({ops: []}))}">`;
 
             case 'select':
                 let html = `<select id="${fieldId}" name="${field.key}" class="form-control" ${required}>`;
@@ -532,6 +560,63 @@ export class CollectionEntityForm {
         `;
     }
 
+    renderRichtextReadOnly(field, value) {
+        // Parse stringified Delta from Neo4j
+        let deltaValue;
+        try {
+            deltaValue = JSON.parse(value);
+        } catch (e) {
+            console.warn(`Failed to parse richtext value for ${field.key}:`, e);
+            // Treat as plain text fallback
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    <div class="detail-value">${this.escapeHtml(value)}</div>
+                </div>
+            `;
+        }
+
+        // Handle empty richtext
+        if (!deltaValue || !deltaValue.ops || deltaValue.ops.length === 0) {
+            if (!field.required) {
+                return ''; // Skip optional empty fields
+            }
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    <div class="detail-value">-</div>
+                </div>
+            `;
+        }
+
+        // Convert Delta to HTML for display
+        let html = '';
+        try {
+            // Create temporary container
+            const tempDiv = document.createElement('div');
+
+            // Check if Quill is available
+            if (typeof Quill !== 'undefined') {
+                const tempQuill = new Quill(tempDiv);
+                tempQuill.setContents(deltaValue);
+                html = tempQuill.root.innerHTML;
+            } else {
+                // Fallback: display as JSON if Quill not available
+                html = `<pre>${this.escapeHtml(JSON.stringify(deltaValue, null, 2))}</pre>`;
+            }
+        } catch (e) {
+            console.error('Failed to render richtext:', e);
+            html = '<em>Error rendering content</em>';
+        }
+
+        return `
+            <div class="detail-field">
+                <label>${this.escapeHtml(field.label)}</label>
+                <div class="detail-value richtext-content">${html}</div>
+            </div>
+        `;
+    }
+
     initializeAnnotatedMultiselects() {
         if (!this.currentModal) return;
 
@@ -596,6 +681,84 @@ export class CollectionEntityForm {
 
         // Clear storage
         this.annotatedMultiselectManagers = {};
+    }
+
+    // ====================
+    // QUILL RICH TEXT EDITORS
+    // ====================
+
+    initializeQuillEditors() {
+        if (!this.currentModal) return;
+        if (typeof Quill === 'undefined') {
+            console.warn('Quill is not loaded. Rich text editing will not be available.');
+            return;
+        }
+
+        // Find all quill-editor containers
+        const containers = this.currentModal.querySelectorAll('.quill-editor');
+
+        containers.forEach(container => {
+            const fieldKey = container.dataset.fieldKey;
+            const placeholder = container.dataset.placeholder || '';
+            const hiddenInput = this.currentModal.querySelector(`#${container.id}-data`);
+
+            if (!hiddenInput) {
+                console.warn(`No hidden input found for richtext field: ${fieldKey}`);
+                return;
+            }
+
+            // Parse initial value from hidden input (always stringified from Neo4j)
+            let initialContent = {ops: []};
+            try {
+                const rawValue = hiddenInput.value;
+                if (rawValue) {
+                    initialContent = JSON.parse(rawValue);
+                }
+            } catch (e) {
+                console.warn(`Failed to parse initial content for ${fieldKey}:`, e);
+            }
+
+            // Create Quill instance
+            const quill = new Quill(container, {
+                theme: 'snow',
+                placeholder: placeholder,
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        ['link'],
+                        [{'list': 'ordered'}, {'list': 'bullet'}]
+                    ]
+                }
+            });
+
+            // Set initial content
+            if (initialContent && initialContent.ops) {
+                quill.setContents(initialContent);
+            }
+
+            // Sync to hidden input on change
+            quill.on('text-change', () => {
+                const delta = quill.getContents();
+                hiddenInput.value = JSON.stringify(delta);
+            });
+
+            // Store editor instance
+            this.quillEditors[fieldKey] = quill;
+
+            console.log(`Initialized Quill editor for field: ${fieldKey}`);
+        });
+    }
+
+    cleanupQuillEditors() {
+        // Destroy all Quill editor instances
+        Object.values(this.quillEditors).forEach(quill => {
+            if (quill && typeof quill.disable === 'function') {
+                quill.disable();
+            }
+        });
+
+        // Clear storage
+        this.quillEditors = {};
     }
 
     // ====================
@@ -796,6 +959,9 @@ export class CollectionEntityForm {
 
         // NEW: Cleanup annotated multiselects before closing
         this.cleanupAnnotatedMultiselects();
+
+        // NEW: Cleanup Quill editors before closing
+        this.cleanupQuillEditors();
 
         if (this.currentModal) {
             console.log("CollectionEntityForm.closeModal - removing current modal:", this.currentModal.id);
@@ -1118,6 +1284,6 @@ export class CollectionEntityForm {
         if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;');
     }
 }

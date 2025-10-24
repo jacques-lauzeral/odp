@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta} from "./utils.js";
 
 /**
  * CRISIS_FAAS_Mapper - Maps CRISIS & FAAS Operational Needs and Requirements Word documents
@@ -418,10 +419,10 @@ class CRISIS_FAAS_Mapper extends Mapper {
             type,
             drg: 'CRISIS_FAAS',
             path,
-            statement,
-            rationale,
+            statement: textToDelta(statement),
+            rationale: textToDelta(rationale),
             flows: null,
-            privateNotes,
+            privateNotes: textToDelta(privateNotes),
             parentExternalId: null,
             implementedONs: [],
             impactsStakeholderCategories: resolvedStakeholders,

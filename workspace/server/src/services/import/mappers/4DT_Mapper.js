@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta} from "./utils.js";
 
 /**
  * Mapper for 4DT Excel documents
@@ -168,9 +169,9 @@ class FourDTMapper extends Mapper {
             type: 'ON',
             drg: '4DT',
             title: title.trim(),
-            statement: statement,
-            rationale: rationale,
-            privateNotes: privateNotes,
+            statement: textToDelta(statement),
+            rationale: textToDelta(rationale),
+            privateNotes: textToDelta(privateNotes),
             documentReferences: documentReferences
         };
 
@@ -243,9 +244,9 @@ class FourDTMapper extends Mapper {
             type: 'OR',
             drg: '4DT',
             title: title.trim(),
-            statement: statement,
-            rationale: rationale,
-            privateNotes: privateNotes,
+            statement: textToDelta(statement),
+            rationale: textToDelta(rationale),
+            privateNotes: textToDelta(privateNotes),
             documentReferences: documentReferences,
             implementedONs: implementedONs,
             impactsStakeholderCategories: impactsStakeholderCategories

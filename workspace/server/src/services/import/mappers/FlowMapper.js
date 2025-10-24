@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta} from "./utils.js";
 
 /**
  * FlowMapper - Maps FLOW Operational Needs and Requirements Word documents
@@ -983,14 +984,20 @@ class FlowMapper extends Mapper {
         // Resolve ON references in ORs
         this._resolveImplementedONs(context);
 
-        // Helper to clean entity by removing null/empty fields
+        // Helper to clean entity by removing null/empty fields and wrap text fields in Delta
         const cleanEntity = (entity) => {
             const cleaned = {};
             for (const [key, value] of Object.entries(entity)) {
                 if (value === null || value === undefined) continue;
                 if (Array.isArray(value) && value.length === 0) continue;
                 if (value === '') continue;
-                cleaned[key] = value;
+
+                // Apply textToDelta to text fields
+                if (key === 'statement' || key === 'rationale' || key === 'flows' || key === 'privateNotes') {
+                    cleaned[key] = textToDelta(value);
+                } else {
+                    cleaned[key] = value;
+                }
             }
             return cleaned;
         };

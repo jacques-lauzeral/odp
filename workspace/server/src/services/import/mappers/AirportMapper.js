@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta} from "./utils.js";
 
 /**
  * AirportMapper - Maps Airport Operational Needs and Requirements document
@@ -381,10 +382,10 @@ class AirportMapper extends Mapper {
             }, type.toLowerCase()),
             title: data['Title'] || 'Untitled',
             type: type,
-            statement: statement,
-            rationale: rationale,
-            flows: flows,
-            privateNotes: privateNotes,
+            statement: textToDelta(statement),
+            rationale: textToDelta(rationale),
+            flows: textToDelta(flows),
+            privateNotes: textToDelta(privateNotes),
             path: path,
             drg: drg,
             refines: null,
@@ -463,12 +464,17 @@ class AirportMapper extends Mapper {
     }
 
     /**
-     * Strip HTML tags from text
+     * Strip HTML tags from text while preserving paragraph breaks
      */
     _stripHtml(html) {
-        return html.replace(/<[^>]*>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/\s+/g, ' ')
+        return html.replace(/<\/p>/gi, '\n')  // Convert paragraph breaks to newlines
+            .replace(/<br\s*\/?>/gi, '\n')     // Convert line breaks to newlines
+            .replace(/<[^>]*>/g, ' ')          // Remove remaining HTML tags
+            .replace(/&nbsp;/g, ' ')           // Convert non-breaking spaces
+            .replace(/ +/g, ' ')               // Collapse multiple spaces (but not newlines)
+            .replace(/\n +/g, '\n')            // Remove spaces after newlines
+            .replace(/ +\n/g, '\n')            // Remove spaces before newlines
+            .replace(/\n\n+/g, '\n\n')         // Collapse multiple newlines to double newline
             .trim();
     }
 

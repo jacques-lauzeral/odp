@@ -1,5 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
+import {textToDelta} from "./utils.js";
 
 /**
  * Mapper for ASM_ATFCM Excel documents
@@ -265,10 +266,31 @@ class AsmAtfcmMapper extends Mapper {
         console.log(`Mapped ${needsMap.size} needs (ONs), ${requirements.length} requirements (ORs), and ${changesMap.size} changes (OCs)`);
         console.log(`OC-OR relationships: ${changesMap.size} OCs linked to ORs`);
 
+        // Apply textToDelta to all text fields before returning
+        const needs = Array.from(needsMap.values()).map(need => ({
+            ...need,
+            statement: textToDelta(need.statement),
+            rationale: textToDelta(need.rationale),
+            privateNotes: textToDelta(need.privateNotes)
+        }));
+
+        const wrappedRequirements = requirements.map(req => ({
+            ...req,
+            statement: textToDelta(req.statement),
+            rationale: textToDelta(req.rationale),
+            privateNotes: textToDelta(req.privateNotes)
+        }));
+
+        const changes = Array.from(changesMap.values()).map(change => ({
+            ...change,
+            purpose: textToDelta(change.purpose),
+            details: textToDelta(change.details)
+        }));
+
         return {
-            needs: Array.from(needsMap.values()),
-            requirements: requirements,
-            changes: Array.from(changesMap.values())
+            needs: needs,
+            requirements: wrappedRequirements,
+            changes: changes
         };
     }
 
