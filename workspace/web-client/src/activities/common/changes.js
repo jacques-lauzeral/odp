@@ -3,13 +3,7 @@ import ChangeForm from './change-form.js';
 import TimelineGrid from '../../components/odp/timeline-grid.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
 import { apiClient } from '../../shared/api-client.js';
-import { format } from '../../shared/utils.js';
-import {
-    Visibility,
-    getVisibilityDisplay,
-    DraftingGroup,
-    getDraftingGroupDisplay
-} from '/shared/src/index.js';
+
 
 /**
  * ChangesEntity - Operational Changes collection management with multi-perspective support
@@ -178,19 +172,6 @@ export default class ChangesEntity {
             this.collection.applyFilters();
         } else if (this.currentPerspective === 'temporal' && this.timelineGrid) {
             this.timelineGrid.setData(this.collection.filteredData || this.data);
-        }
-    }
-
-    syncFilters(filters) {
-        console.log('ChangesEntity.syncFilters:', filters);
-
-        if (this.collection) {
-            this.collection.currentFilters = { ...filters };
-            this.collection.applyFilters();
-
-            if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-                this.timelineGrid.setData(this.collection.filteredData || this.data);
-            }
         }
     }
 
@@ -471,50 +452,6 @@ export default class ChangesEntity {
 
         this.collection.cleanup();
         this.container = null;
-    }
-
-    // ====================
-    // MILESTONE MANAGEMENT
-    // ====================
-
-    async addMilestone(changeId, milestone) {
-        try {
-            const response = await apiClient.post(
-                `${this.entityConfig.endpoint}/${changeId}/milestones`,
-                milestone
-            );
-            await this.refresh();
-            return response;
-        } catch (error) {
-            console.error('Failed to add milestone:', error);
-            throw error;
-        }
-    }
-
-    async updateMilestone(changeId, milestoneId, milestone) {
-        try {
-            const response = await apiClient.put(
-                `${this.entityConfig.endpoint}/${changeId}/milestones/${milestoneId}`,
-                milestone
-            );
-            await this.refresh();
-            return response;
-        } catch (error) {
-            console.error('Failed to update milestone:', error);
-            throw error;
-        }
-    }
-
-    async deleteMilestone(changeId, milestoneId) {
-        try {
-            await apiClient.delete(
-                `${this.entityConfig.endpoint}/${changeId}/milestones/${milestoneId}`
-            );
-            await this.refresh();
-        } catch (error) {
-            console.error('Failed to delete milestone:', error);
-            throw error;
-        }
     }
 
     async refresh() {

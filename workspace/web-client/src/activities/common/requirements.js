@@ -2,7 +2,6 @@ import CollectionEntity from '../../components/odp/collection-entity.js';
 import TreeTableEntity from '../../components/odp/tree-table-entity.js';
 import RequirementForm from './requirement-form.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
-import { apiClient } from '../../shared/api-client.js';
 import {
     getOperationalRequirementTypeDisplay,
     getDraftingGroupDisplay
@@ -115,20 +114,6 @@ export default class RequirementsEntity {
             this.tree.applyFilters();
         } else {
             this.collection.applyFilters();
-        }
-    }
-
-    syncFilters(filters) {
-        console.log('RequirementsEntity.syncFilters:', filters);
-
-        if (this.collection) {
-            this.collection.currentFilters = { ...filters };
-            this.collection.applyFilters();
-        }
-
-        if (this.tree) {
-            this.tree.currentFilters = { ...filters };
-            this.tree.applyFilters();
         }
     }
 
@@ -648,13 +633,6 @@ export default class RequirementsEntity {
         });
     }
 
-    escapeHtml(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     async handleCreate() {
         console.log('RequirementsEntity.handleCreate');
         this.form.showCreateModal();
@@ -673,24 +651,6 @@ export default class RequirementsEntity {
 
     handleReview(item) {
         this.form.showReadOnlyModal(item || this.sharedState.selectedItem);
-    }
-
-    async handleDelete(item) {
-        const confirmed = await this.app.confirmDialog(
-            'Delete Requirement',
-            `Are you sure you want to delete requirement "${item.itemId} - ${item.title}"? This action cannot be undone.`
-        );
-
-        if (confirmed) {
-            try {
-                await apiClient.delete(`/${this.entityConfig.endpoint}/${item.id}`);
-                await this.refresh();
-                this.app.showNotification('Requirement deleted successfully', 'success');
-            } catch (error) {
-                console.error('Failed to delete requirement:', error);
-                this.app.showNotification('Failed to delete requirement', 'error');
-            }
-        }
     }
 
     async handleRefresh() {
@@ -743,11 +703,6 @@ export default class RequirementsEntity {
 
         // Update shared state
         this.sharedState.grouping = groupBy;
-    }
-
-    handleEditModeToggle(enabled) {
-        // Future: Handle inline editing mode
-        console.log('Edit mode:', enabled);
     }
 
     cleanup() {
@@ -810,91 +765,6 @@ export default class RequirementsEntity {
         } catch (error) {
             console.error('Failed to build requirement hierarchy:', error);
             return [];
-        }
-    }
-
-    async getImplementationSummary() {
-        try {
-            const summary = {
-                totalONs: 0,
-                totalORs: 0,
-                implementedONs: 0,
-                unimplementedONs: 0,
-                implementationsByDRG: {}
-            };
-
-            const allRequirements = this.data;
-
-            // Count by type
-            allRequirements.forEach(req => {
-                if (req.type === 'ON') {
-                    summary.totalONs++;
-                } else if (req.type === 'OR') {
-                    summary.totalORs++;
-                }
-            });
-
-            // Count implemented ONs
-            const implementedONIds = new Set();
-            allRequirements.forEach(req => {
-                if (req.type === 'OR' && req.implementedONs) {
-                    req.implementedONs.forEach(on => {
-                        const onId = on.itemId || on.id || on;
-                        implementedONIds.add(onId);
-                    });
-                }
-            });
-
-            summary.implementedONs = implementedONIds.size;
-            summary.unimplementedONs = summary.totalONs - summary.implementedONs;
-
-            // Count implementations by DRG
-            allRequirements.forEach(req => {
-                if (req.type === 'OR' && req.implementedONs && req.implementedONs.length > 0) {
-                    const drg = req.drg || 'Unassigned';
-                    if (!summary.implementationsByDRG[drg]) {
-                        summary.implementationsByDRG[drg] = 0;
-                    }
-                    summary.implementationsByDRG[drg] += req.implementedONs.length;
-                }
-            });
-
-            return summary;
-        } catch (error) {
-            console.error('Failed to calculate implementation summary:', error);
-            return null;
-        }
-    }
-
-    async getImpactSummary() {
-        try {
-            const summary = {
-                stakeholder: {},
-                data: {},
-                services: {}
-            };
-
-            this.data.forEach(req => {
-                // Count stakeholder impacts
-                (req.impactsStakeholderCategories || []).forEach(id => {
-                    summary.stakeholder[id] = (summary.stakeholder[id] || 0) + 1;
-                });
-
-                // Count data impacts
-                (req.impactsData || []).forEach(id => {
-                    summary.data[id] = (summary.data[id] || 0) + 1;
-                });
-
-                // Count services impacts
-                (req.impactsServices || []).forEach(id => {
-                    summary.services[id] = (summary.services[id] || 0) + 1;
-                });
-            });
-
-            return summary;
-        } catch (error) {
-            console.error('Failed to calculate impact summary:', error);
-            return null;
         }
     }
 
