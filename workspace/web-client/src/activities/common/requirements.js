@@ -24,6 +24,9 @@ export default class RequirementsEntity {
         this.currentPerspective = 'collection'; // 'collection' | 'tree'
         this.data = []; // PARENT-OWNED: Single source of truth for all perspectives
 
+        // Lifecycle state
+        this.isActive = false; // Tracks if this entity view is currently active
+
         // Local shared state for this entity
         this.sharedState = {
             filters: {},
@@ -882,5 +885,71 @@ export default class RequirementsEntity {
         if (this.collection.onRefresh) {
             this.collection.onRefresh();
         }
+    }
+
+    // ====================
+    // LIFECYCLE NOTIFICATIONS - Phase 1
+    // ====================
+
+    /**
+     * Called when requirements data has been updated (loaded/filtered)
+     * @param {Array} data - The new requirements data
+     * @param {number} count - Total count of requirements
+     */
+    onDataUpdated(data, count) {
+        console.log('RequirementsEntity.onDataUpdated:', { count, isActive: this.isActive });
+
+        // Update internal data cache
+        this.data = [...data];
+
+        // If this view is currently active, render the data
+        if (this.isActive) {
+            this.renderFromCache();
+        }
+    }
+
+    /**
+     * Render current perspective from cached data
+     */
+    renderFromCache() {
+        if (!this.container) {
+            console.warn('RequirementsEntity.renderFromCache: No container available');
+            return;
+        }
+
+        console.log(`RequirementsEntity.renderFromCache: Rendering ${this.currentPerspective} with ${this.data.length} items`);
+
+        // Distribute data to perspectives
+        this.collection.setData(this.data);
+        this.tree.setData(this.data);
+
+        // Render active perspective
+        if (this.currentPerspective === 'tree') {
+            this.tree.render(this.container);
+        } else {
+            this.collection.render(this.container);
+        }
+    }
+
+    /**
+     * Called when this entity view becomes active (user switches to this tab)
+     */
+    onActivated() {
+        console.log('RequirementsEntity.onActivated');
+        this.isActive = true;
+
+        // Render from cache if we have data
+        if (this.data && this.data.length > 0) {
+            this.renderFromCache();
+        }
+    }
+
+    /**
+     * Called when this entity view becomes inactive (user switches away)
+     */
+    onDeactivated() {
+        console.log('RequirementsEntity.onDeactivated');
+        this.isActive = false;
+        // TODO Phase 3: Optional cleanup if needed
     }
 }

@@ -28,6 +28,9 @@ export default class ChangesEntity {
         this.data = []; // PARENT-OWNED: Single source of truth for all perspectives
         this.timelineGrid = null;
 
+        // Lifecycle state
+        this.isActive = false; // Tracks if this entity view is currently active
+
         // Local shared state for this entity
         this.sharedState = {
             filters: {},
@@ -506,5 +509,68 @@ export default class ChangesEntity {
         if (this.collection.onRefresh) {
             this.collection.onRefresh();
         }
+    }
+
+    // ====================
+    // LIFECYCLE NOTIFICATIONS - Phase 1
+    // ====================
+
+    /**
+     * Called when changes data has been updated (loaded/filtered)
+     * @param {Array} data - The new changes data
+     * @param {number} count - Total count of changes
+     */
+    onDataUpdated(data, count) {
+        console.log('ChangesEntity.onDataUpdated:', { count, isActive: this.isActive });
+
+        // Update internal data cache
+        this.data = [...data];
+
+        // If this view is currently active, render the data
+        if (this.isActive) {
+            this.renderFromCache();
+        }
+    }
+
+    /**
+     * Render current perspective from cached data
+     */
+    renderFromCache() {
+        if (!this.container) {
+            console.warn('ChangesEntity.renderFromCache: No container available');
+            return;
+        }
+
+        console.log(`ChangesEntity.renderFromCache: Rendering ${this.currentPerspective} with ${this.data.length} items`);
+
+        // Render based on perspective
+        if (this.currentPerspective === 'temporal') {
+            this.renderTemporalView(this.sharedState);
+        } else {
+            this.collection.setData(this.data);
+            this.collection.render(this.container);
+        }
+    }
+
+    /**
+     * Called when this entity view becomes active (user switches to this tab)
+     */
+    onActivated() {
+        console.log('ChangesEntity.onActivated');
+        this.isActive = true;
+
+        // Render from cache if we have data
+        if (this.data && this.data.length > 0) {
+            this.renderFromCache();
+        }
+    }
+
+    /**
+     * Called when this entity view becomes inactive (user switches away)
+     */
+    onDeactivated() {
+        console.log('ChangesEntity.onDeactivated');
+        this.isActive = false;
+        // TODO Phase 3: Optional cleanup if needed
     }
 }

@@ -92,14 +92,13 @@ export default class AbstractInteractionActivity {
             // Render the activity UI (creates badge elements)
             this.renderUI();
 
-            // Load data for BOTH entities - must happen AFTER renderUI creates badges
-            // This populates cachedEntityData for both requirements and changes
-            await this.updateAllBadges({});
-
-            // Create components for BOTH entities with their cached data
+            // Create components for BOTH entities FIRST
             await this.prepareAllEntities();
 
-            // Render the current entity component
+            // Load data for BOTH entities - notifies entities via onDataUpdated()
+            await this.updateAllBadges({});
+
+            // Activate and render the current entity component
             await this.renderCurrentEntity();
 
         } catch (error) {
@@ -403,6 +402,11 @@ export default class AbstractInteractionActivity {
         // Preserve current state before switching
         this.preserveCurrentState();
 
+        // Notify current entity it's being deactivated
+        if (this.currentEntityComponent?.onDeactivated) {
+            this.currentEntityComponent.onDeactivated();
+        }
+
         // Clean up current entity component
         if (this.currentEntityComponent?.cleanup) {
             this.currentEntityComponent.cleanup();
@@ -415,6 +419,17 @@ export default class AbstractInteractionActivity {
 
         // Reset to collection perspective when switching entities
         this.currentPerspective = 'collection';
+
+        // Store container reference BEFORE activation (entity needs it to render)
+        const contentContainer = this.container.querySelector('#entityContent');
+        if (contentContainer) {
+            this.currentEntityComponent.container = contentContainer;
+        }
+
+        // Notify new entity it's being activated (this triggers render)
+        if (this.currentEntityComponent?.onActivated) {
+            this.currentEntityComponent.onActivated();
+        }
 
         // Clear details panel when switching entities
         const detailsContainer = this.container.querySelector('#detailsContent');
@@ -450,18 +465,10 @@ export default class AbstractInteractionActivity {
 
         // Re-render dynamic controls to update button and restore filter UI
         this.renderDynamicControls();
-
-        // Render the pre-created entity component (instant, no loading)
-        const contentContainer = this.container.querySelector('#entityContent');
-        if (contentContainer) {
-            await this.currentEntityComponent.render(contentContainer);
-            await this.updateEntityCountAfterLoad(this.currentEntity);
-        }
     }
 
     /**
-     * Create entity components for BOTH requirements and changes with their cached data
-     * This happens AFTER updateAllBadges() has loaded data for both entities
+     * Create entity components for BOTH requirements and changes
      * Both components are created upfront so tab switching is instant
      */
     async prepareAllEntities() {
@@ -487,23 +494,10 @@ export default class AbstractInteractionActivity {
                 // Create entity component with setup data and options
                 const entityComponent = new EntityComponent(this.app, entityConfig, this.setupData, entityOptions);
 
-                // Inject cached data (loaded by updateAllBadges)
-                if (this.cachedEntityData[entityKey]) {
-                    console.log(`Injecting cached data for ${entityKey}:`, this.cachedEntityData[entityKey].length, 'items');
-                    entityComponent.data = [...this.cachedEntityData[entityKey]];
-                }
-
-                // Pass onDataLoaded callback to collection entity
-                if (entityComponent.collection) {
-                    entityComponent.collection.onDataLoaded = (data) => {
-                        this.updateBadgeFromData(entityKey, data);
-                    };
-                }
-
                 // Store the component
                 this.entityComponents[entityKey] = entityComponent;
 
-                console.log(`Entity component prepared for ${entityKey} with ${entityComponent.data?.length || 0} items`);
+                console.log(`Entity component prepared for ${entityKey}`);
             }
 
             // Set currentEntityComponent to point to the currently selected entity
@@ -516,8 +510,8 @@ export default class AbstractInteractionActivity {
     }
 
     /**
-     * Render the current entity component (already created by prepareAllEntities)
-     * This happens AFTER renderUI() when the container exists
+     * Initialize and activate the current entity component
+     * This happens during initial render after components are prepared and data is loaded
      */
     async renderCurrentEntity() {
         try {
@@ -525,77 +519,26 @@ export default class AbstractInteractionActivity {
                 throw new Error('Entity component not prepared');
             }
 
-            // Render into container - entity.render() will call setData() on perspectives
+            // Store container reference
             const contentContainer = this.container.querySelector('#entityContent');
             if (!contentContainer) {
                 throw new Error('Entity content container not found');
             }
 
-            await this.currentEntityComponent.render(contentContainer);
+            this.currentEntityComponent.container = contentContainer;
 
-            // After entity is rendered, render dynamic controls
+            // Notify current entity it's being activated (initial load)
+            if (this.currentEntityComponent.onActivated) {
+                this.currentEntityComponent.onActivated();
+            }
+
+            // Render dynamic controls
             this.renderDynamicControls();
 
-            // Update count badge after entity loads its filtered data
-            await this.updateEntityCountAfterLoad(this.currentEntity);
-
-            console.log(`Entity rendered for ${this.currentEntity}`);
+            console.log(`Entity initialized for ${this.currentEntity}`);
 
         } catch (error) {
-            console.error(`Failed to render ${this.currentEntity} component:`, error);
-            this.renderEntityError(error);
-        }
-    }
-
-    /**
-     * LEGACY: Keep for compatibility with switchEntity()
-     * This combines both phases for entity switching
-     */
-    async loadCurrentEntity() {
-        try {
-            const entityConfig = this.entities[this.currentEntity];
-
-            // Dynamic import the entity component from common directory
-            const entityModule = await import(`../common/${this.currentEntity}.js`);
-            const EntityComponent = entityModule.default;
-
-            // Create entity component with mode configuration
-            const entityOptions = {
-                mode: this.config.mode,
-                dataSource: this.config.dataSource,
-                editionContext: this.config.editionContext
-            };
-
-            // Create and render the entity component with setup data and options
-            this.currentEntityComponent = new EntityComponent(this.app, entityConfig, this.setupData, entityOptions);
-
-            // Inject cached data BEFORE setting up callbacks or rendering
-            if (this.cachedEntityData[this.currentEntity]) {
-                console.log(`Injecting cached data for ${this.currentEntity}:`, this.cachedEntityData[this.currentEntity].length, 'items');
-                // UPDATED: Set data on parent entity, which will distribute to perspectives
-                this.currentEntityComponent.data = [...this.cachedEntityData[this.currentEntity]];
-            }
-
-            // Pass onDataLoaded callback to collection entity
-            if (this.currentEntityComponent.collection) {
-                this.currentEntityComponent.collection.onDataLoaded = (data) => {
-                    this.updateBadgeFromData(this.currentEntity, data);
-                };
-            }
-
-            const contentContainer = this.container.querySelector('#entityContent');
-            if (contentContainer) {
-                await this.currentEntityComponent.render(contentContainer);
-
-                // After entity is loaded, render dynamic controls
-                this.renderDynamicControls();
-
-                // Update count badge after entity loads its filtered data
-                await this.updateEntityCountAfterLoad(this.currentEntity);
-            }
-
-        } catch (error) {
-            console.error(`Failed to load ${this.currentEntity} component:`, error);
+            console.error(`Failed to initialize ${this.currentEntity} component:`, error);
             this.renderEntityError(error);
         }
     }
@@ -694,54 +637,6 @@ export default class AbstractInteractionActivity {
         }
 
         console.log(`Updated ${entityType} badge:`, this.entityCounts[entityType]);
-    }
-
-    async updateEntityCountAfterLoad(entityType) {
-        try {
-            const badge = this.container.querySelector(`#${entityType}-count`);
-            if (!badge) return;
-
-            // Get count from the loaded entity component if available
-            if (this.currentEntityComponent?.data) {
-                const data = this.currentEntityComponent.data;
-                this.updateBadgeFromData(entityType, data);
-                return;
-            }
-
-            // Fallback to API call with edition context resolution
-            const entity = this.entities[entityType];
-            if (entity) {
-                let endpoint = entity.endpoint;
-
-                if (this.config.dataSource &&
-                    this.config.dataSource !== 'repository' &&
-                    this.config.dataSource !== 'Repository' &&
-                    typeof this.config.dataSource === 'string' &&
-                    this.config.dataSource.match(/^\d+$/)) {
-
-                    // Resolve edition context
-                    const edition = await apiClient.get(`/odp-editions/${this.config.dataSource}`);
-                    const queryParams = {};
-                    if (edition.baseline?.id) {
-                        queryParams.baseline = edition.baseline.id;
-                    }
-                    if (edition.startsFromWave?.id) {
-                        queryParams.fromWave = edition.startsFromWave.id;
-                    }
-
-                    if (Object.keys(queryParams).length > 0) {
-                        const queryString = new URLSearchParams(queryParams).toString();
-                        endpoint = `${endpoint}?${queryString}`;
-                    }
-                }
-
-                const response = await apiClient.get(endpoint);
-                this.updateBadgeFromData(entityType, response);
-            }
-        } catch (error) {
-            // Silently fail count updates - not critical
-            console.warn(`Failed to update ${entityType} count:`, error);
-        }
     }
 
     // ====================
@@ -1266,16 +1161,16 @@ export default class AbstractInteractionActivity {
     // ====================
 
     async updateAllBadges(filters) {
-        console.log('Updating all badges with filters:', filters);
+        console.log('Loading all entity data with filters:', filters);
 
         // Fire both queries in parallel and wait for both to complete
         await Promise.all([
-            this.updateRequirementsBadge(filters),
-            this.updateChangesBadge(filters)
+            this.loadRequirements(filters),
+            this.loadChanges(filters)
         ]);
     }
 
-    async updateRequirementsBadge(filters) {
+    async loadRequirements(filters) {
         const badge = this.container.querySelector('#requirements-count');
         if (!badge) return;
 
@@ -1298,20 +1193,8 @@ export default class AbstractInteractionActivity {
             const onCount = response.filter(item => item.type === 'ON').length;
             const orCount = response.filter(item => item.type === 'OR').length;
 
-            // Cache the data for reuse when switching tabs
+            // Update cache
             this.cachedEntityData.requirements = [...response];
-
-            // CRITICAL: If this is the currently visible entity, inject the filtered data
-            if (this.currentEntity === 'requirements' && this.currentEntityComponent) {
-                this.currentEntityComponent.data = [...response];
-                // Update all perspectives with new filtered data
-                if (this.currentEntityComponent.collection) {
-                    this.currentEntityComponent.collection.setData(response);
-                }
-                if (this.currentEntityComponent.tree) {
-                    this.currentEntityComponent.tree.setData(response);
-                }
-            }
 
             // Update badge with counts
             this.entityCounts.requirements = {
@@ -1323,16 +1206,22 @@ export default class AbstractInteractionActivity {
             badge.textContent = `Operational Needs: ${onCount} | Requirements: ${orCount}`;
             badge.classList.remove('badge-loading');
 
-            console.log('Requirements badge updated:', { onCount, orCount });
+            console.log('Requirements loaded:', { onCount, orCount });
+
+            // Notify requirements entity
+            if (this.entityComponents?.requirements) {
+                this.entityComponents.requirements.onDataUpdated(response, response.length);
+            }
+
         } catch (error) {
-            console.error('Failed to update requirements badge:', error);
+            console.error('Failed to load requirements:', error);
             badge.textContent = 'Error';
             badge.classList.add('badge-error');
             badge.classList.remove('badge-loading');
         }
     }
 
-    async updateChangesBadge(filters) {
+    async loadChanges(filters) {
         const badge = this.container.querySelector('#changes-count');
         if (!badge) return;
 
@@ -1354,20 +1243,8 @@ export default class AbstractInteractionActivity {
             const response = await apiClient.get(endpoint);
             const count = response.length;
 
-            // Cache the data for reuse when switching tabs
+            // Update cache
             this.cachedEntityData.changes = [...response];
-
-            // CRITICAL: If this is the currently visible entity, inject the filtered data
-            if (this.currentEntity === 'changes' && this.currentEntityComponent) {
-                this.currentEntityComponent.data = [...response];
-                // Update all perspectives with new filtered data
-                if (this.currentEntityComponent.collection) {
-                    this.currentEntityComponent.collection.setData(response);
-                }
-                if (this.currentEntityComponent.temporal) {
-                    this.currentEntityComponent.temporal.setData(response);
-                }
-            }
 
             // Update badge with count
             this.entityCounts.changes = { total: count };
@@ -1375,9 +1252,15 @@ export default class AbstractInteractionActivity {
             badge.textContent = `Operational Changes: ${count}`;
             badge.classList.remove('badge-loading');
 
-            console.log('Changes badge updated:', { count });
+            console.log('Changes loaded:', { count });
+
+            // Notify changes entity
+            if (this.entityComponents?.changes) {
+                this.entityComponents.changes.onDataUpdated(response, count);
+            }
+
         } catch (error) {
-            console.error('Failed to update changes badge:', error);
+            console.error('Failed to load changes:', error);
             badge.textContent = 'Error';
             badge.classList.add('badge-error');
             badge.classList.remove('badge-loading');
