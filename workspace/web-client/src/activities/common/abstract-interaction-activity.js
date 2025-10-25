@@ -86,11 +86,18 @@ export default class AbstractInteractionActivity {
             // Load entity counts with edition context
             await this.loadEntityCounts();
 
-            // Render the activity
+            // Render the activity UI (creates badge elements)
             this.renderUI();
 
-            // Load current entity
-            await this.loadCurrentEntity();
+            // Load data for BOTH entities - must happen AFTER renderUI creates badges
+            // This populates cachedEntityData for both requirements and changes
+            await this.updateAllBadges({});
+
+            // Create components for BOTH entities with their cached data
+            await this.prepareAllEntities();
+
+            // Render the current entity component
+            await this.renderCurrentEntity();
 
         } catch (error) {
             console.error(`Failed to render ${this.config.activityName} Activity:`, error);
@@ -406,6 +413,9 @@ export default class AbstractInteractionActivity {
 
         this.currentEntity = entity;
 
+        // Switch to the pre-created component for this entity
+        this.currentEntityComponent = this.entityComponents[entity];
+
         // Reset to collection perspective when switching entities
         this.currentPerspective = 'collection';
 
@@ -441,10 +451,107 @@ export default class AbstractInteractionActivity {
             this.renderDynamicControls();
         }
 
-        // Load new entity
-        await this.loadCurrentEntity();
+        // Render the pre-created entity component (instant, no loading)
+        const contentContainer = this.container.querySelector('#entityContent');
+        if (contentContainer) {
+            await this.currentEntityComponent.render(contentContainer);
+            this.renderDynamicControls();
+            await this.updateEntityCountAfterLoad(this.currentEntity);
+        }
     }
 
+    /**
+     * Create entity components for BOTH requirements and changes with their cached data
+     * This happens AFTER updateAllBadges() has loaded data for both entities
+     * Both components are created upfront so tab switching is instant
+     */
+    async prepareAllEntities() {
+        try {
+            // Store all entity components in a map
+            this.entityComponents = {};
+
+            // Create components for BOTH entity types
+            for (const entityKey of ['requirements', 'changes']) {
+                const entityConfig = this.entities[entityKey];
+
+                // Dynamic import the entity component
+                const entityModule = await import(`../common/${entityKey}.js`);
+                const EntityComponent = entityModule.default;
+
+                // Create entity component with mode configuration
+                const entityOptions = {
+                    mode: this.config.mode,
+                    dataSource: this.config.dataSource,
+                    editionContext: this.config.editionContext
+                };
+
+                // Create entity component with setup data and options
+                const entityComponent = new EntityComponent(this.app, entityConfig, this.setupData, entityOptions);
+
+                // Inject cached data (loaded by updateAllBadges)
+                if (this.cachedEntityData[entityKey]) {
+                    console.log(`Injecting cached data for ${entityKey}:`, this.cachedEntityData[entityKey].length, 'items');
+                    entityComponent.data = [...this.cachedEntityData[entityKey]];
+                }
+
+                // Pass onDataLoaded callback to collection entity
+                if (entityComponent.collection) {
+                    entityComponent.collection.onDataLoaded = (data) => {
+                        this.updateBadgeFromData(entityKey, data);
+                    };
+                }
+
+                // Store the component
+                this.entityComponents[entityKey] = entityComponent;
+
+                console.log(`Entity component prepared for ${entityKey} with ${entityComponent.data?.length || 0} items`);
+            }
+
+            // Set currentEntityComponent to point to the currently selected entity
+            this.currentEntityComponent = this.entityComponents[this.currentEntity];
+
+        } catch (error) {
+            console.error('Failed to prepare entity components:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Render the current entity component (already created by prepareAllEntities)
+     * This happens AFTER renderUI() when the container exists
+     */
+    async renderCurrentEntity() {
+        try {
+            if (!this.currentEntityComponent) {
+                throw new Error('Entity component not prepared');
+            }
+
+            // Render into container - entity.render() will call setData() on perspectives
+            const contentContainer = this.container.querySelector('#entityContent');
+            if (!contentContainer) {
+                throw new Error('Entity content container not found');
+            }
+
+            await this.currentEntityComponent.render(contentContainer);
+
+            // After entity is rendered, render dynamic controls
+            this.renderDynamicControls();
+
+            // Update count badge after entity loads its filtered data
+            await this.updateEntityCountAfterLoad(this.currentEntity);
+
+            console.log(`Entity rendered for ${this.currentEntity}`);
+
+        } catch (error) {
+            console.error(`Failed to render ${this.currentEntity} component:`, error);
+            this.renderEntityError(error);
+        }
+    }
+
+    /**
+     * LEGACY: Keep for compatibility with switchEntity()
+     * This combines both phases for entity switching
+     */
     async loadCurrentEntity() {
         try {
             const entityConfig = this.entities[this.currentEntity];
@@ -1068,9 +1175,11 @@ export default class AbstractInteractionActivity {
     async updateAllBadges(filters) {
         console.log('Updating all badges with filters:', filters);
 
-        // Fire both queries in parallel - they update independently
-        this.updateRequirementsBadge(filters);
-        this.updateChangesBadge(filters);
+        // Fire both queries in parallel and wait for both to complete
+        await Promise.all([
+            this.updateRequirementsBadge(filters),
+            this.updateChangesBadge(filters)
+        ]);
     }
 
     async updateRequirementsBadge(filters) {
@@ -1098,6 +1207,18 @@ export default class AbstractInteractionActivity {
 
             // Cache the data for reuse when switching tabs
             this.cachedEntityData.requirements = [...response];
+
+            // CRITICAL: If this is the currently visible entity, inject the filtered data
+            if (this.currentEntity === 'requirements' && this.currentEntityComponent) {
+                this.currentEntityComponent.data = [...response];
+                // Update all perspectives with new filtered data
+                if (this.currentEntityComponent.collection) {
+                    this.currentEntityComponent.collection.setData(response);
+                }
+                if (this.currentEntityComponent.tree) {
+                    this.currentEntityComponent.tree.setData(response);
+                }
+            }
 
             // Update badge with counts
             this.entityCounts.requirements = {
@@ -1142,6 +1263,18 @@ export default class AbstractInteractionActivity {
 
             // Cache the data for reuse when switching tabs
             this.cachedEntityData.changes = [...response];
+
+            // CRITICAL: If this is the currently visible entity, inject the filtered data
+            if (this.currentEntity === 'changes' && this.currentEntityComponent) {
+                this.currentEntityComponent.data = [...response];
+                // Update all perspectives with new filtered data
+                if (this.currentEntityComponent.collection) {
+                    this.currentEntityComponent.collection.setData(response);
+                }
+                if (this.currentEntityComponent.temporal) {
+                    this.currentEntityComponent.temporal.setData(response);
+                }
+            }
 
             // Update badge with count
             this.entityCounts.changes = { total: count };
@@ -1198,12 +1331,7 @@ export default class AbstractInteractionActivity {
         // Update shared state
         this.sharedState.filters[filterKey] = filterValue;
 
-        // Update the visible entity's collection
-        if (this.currentEntityComponent?.handleFilter) {
-            this.currentEntityComponent.handleFilter(filterKey, filterValue);
-        }
-
-        // Update all badges with current filters
+        // Update all badges with current filters (this also injects filtered data to visible entity)
         this.updateAllBadges(this.sharedState.filters);
     }
 

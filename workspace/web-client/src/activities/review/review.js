@@ -45,7 +45,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             return;
         }
 
-        // Update configuration based on target
+        // Update configuration based on target BEFORE calling super.render
         this.updateConfigurationForTarget();
 
         // Proceed with normal interaction UI
@@ -156,7 +156,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
                 if (editionBtn) {
                     editionBtn.disabled = !editionId;
                     if (editionId) {
-                        this.selectedEdition = this.availableEditions.find(ed => ed.id === editionId);
+                        this.selectedEdition = this.availableEditions.find(ed => String(ed.id) === String(editionId));
                     }
                 }
             });
@@ -172,25 +172,25 @@ export default class ReviewActivity extends AbstractInteractionActivity {
         }
     }
 
-    selectRepositoryTarget() {
+    async selectRepositoryTarget() {
         this.reviewTarget = 'repository';
         this.selectedEdition = null;
 
         // Update URL to reflect selection
-        window.history.pushState(null, '', '/review/repository');
+        window.history.pushState(null, '', '/review/repository/requirements');
 
-        // Re-render with selected target
-        this.render(this.container);
+        // Re-render with selected target - pass proper subPath
+        await this.render(this.container, ['requirements']);
     }
 
-    selectEditionTarget(editionId) {
+    async selectEditionTarget(editionId) {
         this.reviewTarget = editionId;
 
         // Update URL to reflect selection
-        window.history.pushState(null, '', `/review/edition/${editionId}`);
+        window.history.pushState(null, '', `/review/edition/${editionId}/requirements`);
 
-        // Re-render with selected target
-        this.render(this.container);
+        // Re-render with selected target - pass proper subPath
+        await this.render(this.container, ['requirements']);
     }
 
     updateConfigurationForTarget() {
@@ -198,6 +198,8 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             this.config.context = 'Repository';
             this.config.description = 'Review the latest operational requirements and changes in development';
             this.config.dataSource = 'repository';
+            this.config.editionTitle = null;
+            this.config.editionContext = false;
         } else {
             // Reviewing specific edition
             const editionTitle = this.selectedEdition?.title || `Edition ${this.reviewTarget}`;
@@ -207,6 +209,8 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             this.config.editionTitle = editionTitle;
             this.config.editionContext = true;
         }
+
+        console.log('Configuration updated for target:', this.config);
     }
 
     renderTargetSelectionError(error) {
@@ -230,7 +234,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
     }
 
     renderActionButtons() {
-        // Return empty string - no action buttons in review mode
+        // Review mode has no action buttons
         return '';
     }
 

@@ -43,7 +43,6 @@ export default class RequirementsEntity {
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
             onRefresh: () => this.handleRefresh(),
-            onFilterChange: (filters) => this.handleFilterChange(filters),
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Requirements Yet',
@@ -646,11 +645,6 @@ export default class RequirementsEntity {
 
         console.log(`RequirementsEntity: Rendering ${perspective} perspective`);
 
-        // Initial data load if needed
-        if (this.data.length === 0) {
-            await this.loadData();
-        }
-
         // Distribute data to perspectives
         this.collection.setData(this.data);
         this.tree.setData(this.data);
@@ -790,92 +784,6 @@ export default class RequirementsEntity {
     // DATA MANAGEMENT
     // ====================
 
-    /**
-     * UPDATED: Parent loads data from API with server-side filtering
-     */
-    async loadData() {
-        try {
-            let endpoint = this.entityConfig.endpoint;
-            if (!endpoint) {
-                console.warn('RequirementsEntity: No endpoint configured');
-                this.data = [];
-                return;
-            }
-
-            const queryParams = {};
-
-            // Add edition context (baseline/wave) if present
-            const editionContext = this.app?.currentActivity?.config?.dataSource;
-            if (editionContext &&
-                editionContext !== 'repository' &&
-                editionContext !== 'Repository' &&
-                typeof editionContext === 'string' &&
-                editionContext.match(/^\d+$/)) {
-
-                const edition = await apiClient.get(`/odp-editions/${editionContext}`);
-                if (edition.baseline?.id) {
-                    queryParams.baseline = edition.baseline.id;
-                }
-                if (edition.startsFromWave?.id) {
-                    queryParams.fromWave = edition.startsFromWave.id;
-                }
-            }
-
-            // Add content filters from collection's current filters
-            if (this.collection && this.collection.currentFilters) {
-                Object.entries(this.collection.currentFilters).forEach(([key, value]) => {
-                    if (value && value !== '') {
-                        queryParams[key] = value;
-                    }
-                });
-            }
-
-            // Build endpoint with query parameters
-            if (Object.keys(queryParams).length > 0) {
-                const queryString = new URLSearchParams(queryParams).toString();
-                endpoint = `${endpoint}?${queryString}`;
-            }
-
-            console.log(`RequirementsEntity: Loading data from ${endpoint}`);
-            const response = await apiClient.get(endpoint);
-            this.data = Array.isArray(response) ? response : [];
-
-            console.log(`RequirementsEntity: Loaded ${this.data.length} requirements`);
-        } catch (error) {
-            console.error('Failed to load requirements data:', error);
-            this.data = [];
-            throw error;
-        }
-    }
-
-    /**
-     * UPDATED: Refresh data and update all perspectives
-     */
-    async refresh() {
-        await this.loadData();
-
-        // Update both perspectives with refreshed data
-        this.collection.setData(this.data);
-        this.tree.setData(this.data);
-
-        // Re-render active perspective
-        if (this.currentPerspective === 'tree') {
-            this.tree.applyFilters();
-        } else {
-            this.collection.applyFilters();
-        }
-
-        // Invalidate form caches
-        if (this.form.parentRequirementsCache) {
-            this.form.parentRequirementsCache = null;
-        }
-        if (this.form.onRequirementsCache) {
-            this.form.onRequirementsCache = null;
-        }
-        if (this.form.dependencyRequirementsCache) {
-            this.form.dependencyRequirementsCache = null;
-        }
-    }
 
     /**
      * Handle perspective switching from activity
@@ -893,24 +801,6 @@ export default class RequirementsEntity {
         this.render(this.container, perspective);
     }
 
-    async handleFilterChange(filters) {
-        console.log('RequirementsEntity.handleFilterChange:', filters);
-
-        // Update shared state
-        this.sharedState.filters = { ...filters };
-
-        // Reload data from server with new filters
-        await this.loadData();
-
-        // Update both perspectives with new data
-        this.collection.setData(this.data);
-        this.tree.setData(this.data);
-    }
-
-    handleFilter(filterKey, filterValue) {
-        // Delegate to collection - it will trigger onFilterChange callback
-        this.collection.handleFilter(filterKey, filterValue);
-    }
 
     handleGrouping(groupBy) {
         this.collection.handleGrouping(groupBy);
@@ -1069,6 +959,13 @@ export default class RequirementsEntity {
         } catch (error) {
             console.error('Failed to calculate impact summary:', error);
             return null;
+        }
+    }
+
+    async refresh() {
+        // Notify parent to reload - parent manages all data fetching
+        if (this.collection.onRefresh) {
+            this.collection.onRefresh();
         }
     }
 }

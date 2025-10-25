@@ -1,12 +1,11 @@
 import { async as asyncUtils } from '../../shared/utils.js';
-import { apiClient } from '../../shared/api-client.js';
 
 /**
  * CollectionEntity - Pure table/list rendering engine
  * Business-agnostic collection management with pluggable column types
- * Enhanced with server-side filtering support
- * UPDATED: Supports parent-owned data pattern via setData() for multi-perspective coordination
- * CLEANED: Removed create button logic - now handled at activity level
+ * Data is always injected by parent (activity level)
+ * Parent manages: data fetching, filtering, edition context
+ * Collection manages: display, rendering, client-side operations
  */
 export default class CollectionEntity {
     constructor(app, entityConfig, options = {}) {
@@ -18,7 +17,6 @@ export default class CollectionEntity {
         this.data = [];
         this.filteredData = [];
         this.selectedItem = null;
-        this.currentFilters = {};
         this.currentGrouping = 'none';
 
         // Options and injected dependencies
@@ -35,9 +33,8 @@ export default class CollectionEntity {
         this.onEdit = options.onEdit || (() => {});
         this.onDelete = options.onDelete || (() => {});
         this.onRefresh = options.onRefresh || (() => {});
-        this.onFilterChange = options.onFilterChange || (() => {});
 
-        // NEW: Callback for notifying when data changes (for badge updates)
+        // Callback for notifying parent when data is displayed
         this.onDataLoaded = options.onDataLoaded || (() => {});
 
         // Cache configurations
@@ -45,21 +42,9 @@ export default class CollectionEntity {
         this.columnConfig = this.getColumnConfig();
         this.groupingConfig = this.getGroupingConfig();
 
-        // Debounced methods
+        // Debounced client-side filtering
         this.debouncedFilter = asyncUtils.debounce(
             () => this.applyFilters(),
-            300
-        );
-
-        // UPDATED: Debounced server-side reload with badge update callback
-        this.debouncedReload = asyncUtils.debounce(
-            () => this.loadData().then(() => {
-                this.renderContent();
-                // NEW: Notify parent that data has been reloaded
-                if (this.onDataLoaded) {
-                    this.onDataLoaded(this.data);
-                }
-            }),
             300
         );
     }
@@ -148,18 +133,16 @@ export default class CollectionEntity {
         this.container = container;
 
         try {
-            // UPDATED: Only auto-load if data is empty (backward compatibility)
-            // In multi-perspective mode, parent should call setData() before render()
+            // Data must be injected by parent via setData() before render()
             if (this.data.length === 0) {
-                console.log(`${this.entityConfig.name}: No data available, attempting auto-load`);
-                await this.loadData();
+                console.log(`${this.entityConfig.name}: No data injected, showing empty state`);
             } else {
-                console.log(`${this.entityConfig.name}: Using existing data (${this.data.length} items)`);
+                console.log(`${this.entityConfig.name}: Rendering ${this.data.length} items`);
             }
 
             this.renderContent();
 
-            // Notify parent of data availability (whether loaded or pre-set)
+            // Notify parent of initial render
             if (this.onDataLoaded && this.data.length > 0) {
                 this.onDataLoaded(this.data);
             }
@@ -169,86 +152,8 @@ export default class CollectionEntity {
         }
     }
 
-    /**
-     * DEPRECATED for multi-perspective entities - parent should manage loading
-     * Kept for backward compatibility with standalone Collection usage
-     */
-    async loadData() {
-        try {
-            let endpoint = this.entityConfig.endpoint;
-            const queryParams = {};
-
-            // EXISTING: Check if we have edition context from the current activity
-            const editionContext = this.app?.currentActivity?.config?.dataSource;
-            if (editionContext &&
-                editionContext !== 'repository' &&
-                editionContext !== 'Repository' &&
-                typeof editionContext === 'string' &&
-                editionContext.match(/^\d+$/)) { // Ensure it looks like an edition ID
-
-                console.log(`Resolving edition context: ${editionContext}`);
-
-                // Step 1: Fetch the edition details to get baseline and wave references
-                const edition = await apiClient.get(`/odp-editions/${editionContext}`);
-                console.log('Edition details:', edition);
-
-                // Step 2: Build query parameters from resolved context
-                if (edition.baseline?.id) {
-                    queryParams.baseline = edition.baseline.id;
-                }
-                if (edition.startsFromWave?.id) {
-                    queryParams.fromWave = edition.startsFromWave.id;
-                }
-            }
-
-            // NEW: Add content filters to query parameters
-            if (this.currentFilters && Object.keys(this.currentFilters).length > 0) {
-                Object.entries(this.currentFilters).forEach(([key, value]) => {
-                    if (value && value !== '') {
-                        // Handle multi-select filters that need comma-separated values
-                        if (Array.isArray(value)) {
-                            queryParams[key] = value.join(',');
-                        } else {
-                            queryParams[key] = value;
-                        }
-                    }
-                });
-            }
-
-            // Build final endpoint with all parameters
-            if (Object.keys(queryParams).length > 0) {
-                const queryString = new URLSearchParams(queryParams).toString();
-                endpoint = `${endpoint}?${queryString}`;
-                console.log(`Loading data with context and filters - params:`, queryParams);
-            }
-
-            console.log(`Making API call to: ${endpoint}`);
-            const response = await apiClient.get(endpoint);
-            this.data = Array.isArray(response) ? response : [];
-
-            // NEW: For server-side filtering, filteredData is same as data
-            // since filtering is done on server
-            this.filteredData = [...this.data];
-
-            console.log(`Loaded ${this.data.length} items for ${this.entityConfig.name}`);
-        } catch (error) {
-            console.error(`Failed to load ${this.entityConfig.name.toLowerCase()} data:`, error);
-            this.data = [];
-            this.filteredData = [];
-            throw error;
-        }
-    }
-
     async refresh() {
-        await this.loadData();
-        this.applyFilters();
-
-        // NEW: Notify parent of data refresh
-        if (this.onDataLoaded) {
-            this.onDataLoaded(this.data);
-        }
-
-        // Notify parent
+        // Notify parent to reload data - parent manages all data fetching
         if (this.onRefresh) {
             this.onRefresh();
         }
@@ -383,44 +288,13 @@ export default class CollectionEntity {
     }
 
     // ====================
-    // FILTERING
+    // CLIENT-SIDE DISPLAY
     // ====================
 
     applyFilters() {
-        this.filteredData = this.data.filter(item => {
-            return this.filterConfig.every(filter => {
-                const filterValue = this.currentFilters[filter.key];
-                if (!filterValue || filterValue === '') return true;
-
-                const itemValue = this.getItemValue(item, { key: filter.key });
-                const column = this.columnConfig.find(col => col.key === filter.key);
-                const columnType = this.columnTypes[column?.type || 'text'];
-
-                if (columnType && columnType.filter) {
-                    return columnType.filter(itemValue, filterValue, column);
-                }
-
-                // Default filter: string match
-                return itemValue && itemValue.toString().toLowerCase().includes(filterValue.toLowerCase());
-            });
-        });
-
+        // No filtering - just display all injected data
+        this.filteredData = [...this.data];
         this.renderContent();
-
-        // Notify parent of filter change
-        if (this.onFilterChange) {
-            this.onFilterChange(this.currentFilters);
-        }
-    }
-
-    handleFilter(filterKey, filterValue) {
-        this.currentFilters[filterKey] = filterValue;
-        this.debouncedFilter();
-    }
-
-    clearFilters() {
-        this.currentFilters = {};
-        this.applyFilters();
     }
 
     // ====================
@@ -623,6 +497,7 @@ export default class CollectionEntity {
     }
 
     getEmptyStateMessage() {
+        // CLEANED: Removed create button configuration
         // Can be overridden by passing options
         return {
             icon: '📄',
@@ -658,7 +533,6 @@ export default class CollectionEntity {
         this.data = [];
         this.filteredData = [];
         this.selectedItem = null;
-        this.currentFilters = {};
         this.currentGrouping = 'none';
         this.currentSort = null;
     }
@@ -666,11 +540,6 @@ export default class CollectionEntity {
     // ====================
     // EXTERNAL STATE CONTROL
     // ====================
-
-    setFilters(filters) {
-        this.currentFilters = { ...filters };
-        this.applyFilters();
-    }
 
     setSelectedItem(item) {
         this.selectedItem = item;

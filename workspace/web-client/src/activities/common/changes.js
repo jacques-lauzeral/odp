@@ -519,9 +519,6 @@ export default class ChangesEntity {
         this.container = container;
         this.currentPerspective = perspective;
 
-        if (this.data.length === 0) {
-            await this.loadData();
-        }
 
         if (perspective === 'temporal') {
             this.renderTemporalView(this.sharedState);
@@ -531,68 +528,6 @@ export default class ChangesEntity {
         }
     }
 
-    async loadData() {
-        try {
-            let endpoint = this.entityConfig.endpoint;
-            const queryParams = {};
-
-            const editionContext = this.app?.currentActivity?.config?.dataSource;
-            if (editionContext &&
-                editionContext !== 'repository' &&
-                editionContext !== 'Repository' &&
-                typeof editionContext === 'string' &&
-                editionContext.match(/^\d+$/)) {
-
-                const edition = await apiClient.get(`/odp-editions/${editionContext}`);
-                if (edition.baseline?.id) {
-                    queryParams.baseline = edition.baseline.id;
-                }
-                if (edition.startsFromWave?.id) {
-                    queryParams.fromWave = edition.startsFromWave.id;
-                }
-            }
-
-            if (Object.keys(queryParams).length > 0) {
-                const queryString = new URLSearchParams(queryParams).toString();
-                endpoint = `${endpoint}?${queryString}`;
-            }
-
-            console.log(`ChangesEntity: Loading data from ${endpoint}`);
-            const response = await apiClient.get(endpoint);
-            this.data = Array.isArray(response) ? response : [];
-
-            console.log(`ChangesEntity: Loaded ${this.data.length} changes`);
-        } catch (error) {
-            console.error('Failed to load changes data:', error);
-            this.data = [];
-            throw error;
-        }
-    }
-
-    async refresh() {
-        await this.loadData();
-
-        this.collection.setData(this.data);
-
-        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            this.timelineGrid.setData(this.collection.filteredData || this.data);
-        } else if (this.currentPerspective === 'collection') {
-            this.collection.applyFilters();
-        }
-    }
-
-    handleFilter(filterKey, filterValue) {
-        this.collection.handleFilter(filterKey, filterValue);
-        this.sharedState.filters = { ...this.collection.currentFilters };
-
-        if (this.app.currentActivity?.updateSharedFilters) {
-            this.app.currentActivity.updateSharedFilters(this.collection.currentFilters);
-        }
-
-        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            this.timelineGrid.setData(this.collection.filteredData || this.data);
-        }
-    }
 
     handleGrouping(groupBy) {
         if (groupBy === 'wave') {
@@ -654,6 +589,13 @@ export default class ChangesEntity {
         } catch (error) {
             console.error('Failed to delete milestone:', error);
             throw error;
+        }
+    }
+
+    async refresh() {
+        // Notify parent to reload - parent manages all data fetching
+        if (this.collection.onRefresh) {
+            this.collection.onRefresh();
         }
     }
 }
