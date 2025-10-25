@@ -708,7 +708,25 @@ export default class RequirementsEntity {
      */
     handlePerspectiveSwitch(perspective, sharedState) {
         console.log(`RequirementsEntity: Switching to ${perspective} perspective`);
+
+        if (perspective === this.currentPerspective) {
+            return; // Already in this perspective
+        }
+
         this.currentPerspective = perspective;
+
+        // Update perspective button UI
+        const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
+        if (viewControlsContainer) {
+            const perspectiveButtons = viewControlsContainer.querySelectorAll('.perspective-option');
+            perspectiveButtons.forEach(button => {
+                if (button.dataset.perspective === perspective) {
+                    button.classList.add('perspective-option--active');
+                } else {
+                    button.classList.remove('perspective-option--active');
+                }
+            });
+        }
 
         // Apply shared state to new perspective
         if (sharedState) {
@@ -938,9 +956,96 @@ export default class RequirementsEntity {
         console.log('RequirementsEntity.onActivated');
         this.isActive = true;
 
+        // Render view controls
+        this.renderViewControls();
+
         // Render from cache if we have data
         if (this.data && this.data.length > 0) {
             this.renderFromCache();
+        }
+    }
+
+    /**
+     * Render view-specific controls (perspective selector, grouping, actions)
+     */
+    renderViewControls() {
+        const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
+        if (!viewControlsContainer) {
+            console.warn('RequirementsEntity.renderViewControls: No viewControls container');
+            return;
+        }
+
+        const groupingConfig = this.getGroupingConfig();
+        const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
+
+        viewControlsContainer.innerHTML = `
+            <div class="perspective-controls">
+                <div class="perspective-toggle">
+                    <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" 
+                            data-perspective="collection">
+                        📋 Collection
+                    </button>
+                    <button class="perspective-option ${this.currentPerspective === 'tree' ? 'perspective-option--active' : ''}" 
+                            data-perspective="tree">
+                        🌳 Tree
+                    </button>
+                </div>
+            </div>
+            
+            <div class="collection-actions-and-grouping">
+                <div class="grouping-section">
+                    <label for="groupBy">Group by:</label>
+                    <select id="groupBy" class="form-control group-select">
+                        ${groupingConfig.map(option => `
+                            <option value="${option.key || option.value}" 
+                                    ${(option.key || option.value) === this.sharedState.grouping ? 'selected' : ''}>
+                                ${option.label}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                
+                ${!isReviewMode ? `
+                    <div class="actions-section">
+                        <button class="btn btn-primary" id="createEntity">
+                            <span class="btn-icon">+</span> New Requirement
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        this.bindViewControlEvents();
+    }
+
+    /**
+     * Bind events for view controls
+     */
+    bindViewControlEvents() {
+        const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
+        if (!viewControlsContainer) return;
+
+        // Perspective switching
+        const perspectiveButtons = viewControlsContainer.querySelectorAll('.perspective-option');
+        perspectiveButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const perspective = button.dataset.perspective;
+                this.handlePerspectiveSwitch(perspective, this.sharedState);
+            });
+        });
+
+        // Grouping
+        const groupBySelect = viewControlsContainer.querySelector('#groupBy');
+        if (groupBySelect) {
+            groupBySelect.addEventListener('change', (e) => {
+                this.handleGrouping(e.target.value);
+            });
+        }
+
+        // Create button
+        const createBtn = viewControlsContainer.querySelector('#createEntity');
+        if (createBtn) {
+            createBtn.addEventListener('click', () => this.handleCreate());
         }
     }
 
@@ -950,6 +1055,11 @@ export default class RequirementsEntity {
     onDeactivated() {
         console.log('RequirementsEntity.onDeactivated');
         this.isActive = false;
-        // TODO Phase 3: Optional cleanup if needed
+
+        // Clear view controls
+        const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
+        if (viewControlsContainer) {
+            viewControlsContainer.innerHTML = '';
+        }
     }
 }

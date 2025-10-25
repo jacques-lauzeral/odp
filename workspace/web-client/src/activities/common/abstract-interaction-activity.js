@@ -14,7 +14,6 @@ export default class AbstractInteractionActivity {
         this.container = null;
         this.currentEntity = 'requirements'; // Default to requirements
         this.currentEntityComponent = null;
-        this.currentPerspective = 'collection'; // Track current perspective
         this.setupData = null;
         this.loading = true;
 
@@ -257,7 +256,7 @@ export default class AbstractInteractionActivity {
         const activityClass = this.config.activityName.toLowerCase();
         const contextLabel = this.getContextLabel();
 
-        // NEW LAYOUT: Filters above tabs, details panel extends upward
+        // NEW LAYOUT: Filters above tabs, view controls managed by entities
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
@@ -268,7 +267,7 @@ export default class AbstractInteractionActivity {
                     <p>${this.config.description}</p>
                 </div>
                 
-                <!-- NEW: Activity-level filters - FULL WIDTH -->
+                <!-- Activity-level filters - FULL WIDTH -->
                 <div class="activity-filters" id="activityFilters">
                     <!-- Dynamic filters will be rendered here -->
                 </div>
@@ -286,14 +285,11 @@ export default class AbstractInteractionActivity {
                     </div>
                     
                     <div class="collection-container" id="mainContainer">
-                        <!-- LEFT COLUMN: Perspective, grouping, actions, and list -->
+                        <!-- LEFT COLUMN: View controls and content -->
                         <div class="collection-left-column">
-                            <div class="perspective-controls" id="perspectiveControls">
-                                <!-- Dynamic perspective controls will be rendered here -->
-                            </div>
-                            
-                            <div class="collection-actions-and-grouping" id="actionsAndGrouping">
-                                <!-- Grouping and action buttons will be rendered here -->
+                            <!-- View-specific controls (perspective, grouping, actions) -->
+                            <div class="view-controls" id="viewControls">
+                                <!-- Entity views render their controls here -->
                             </div>
                             
                             <div class="collection-list">
@@ -416,9 +412,6 @@ export default class AbstractInteractionActivity {
 
         // Switch to the pre-created component for this entity
         this.currentEntityComponent = this.entityComponents[entity];
-
-        // Reset to collection perspective when switching entities
-        this.currentPerspective = 'collection';
 
         // Store container reference BEFORE activation (entity needs it to render)
         const contentContainer = this.container.querySelector('#entityContent');
@@ -738,10 +731,6 @@ export default class AbstractInteractionActivity {
         // Get filter configuration from activity (shared across all entities)
         const filterConfig = this.getFilterConfig();
 
-        // Get grouping configuration from current entity (entity-specific)
-        const groupingConfig = this.currentEntityComponent.getGroupingConfig ?
-            this.currentEntityComponent.getGroupingConfig() : [];
-
         // ===== ACTIVITY-LEVEL FILTERS (Full Width) =====
         const activityFiltersContainer = this.container.querySelector('#activityFilters');
         if (activityFiltersContainer) {
@@ -763,52 +752,8 @@ export default class AbstractInteractionActivity {
             });
         }
 
-        // ===== PERSPECTIVE CONTROLS =====
-        const perspectiveContainer = this.container.querySelector('#perspectiveControls');
-        if (perspectiveContainer) {
-            perspectiveContainer.innerHTML = `
-                <div class="perspective-toggle">
-                    <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}" data-perspective="collection">
-                        📋 Collection
-                    </button>
-                    <button class="perspective-option ${this.currentPerspective === 'tree' ? 'perspective-option--active' : ''}" data-perspective="tree"
-        ${this.currentEntity !== 'requirements' ? 'disabled title="Only available for requirements"' : ''}>
-    🌳 Tree
-                    </button>
-                    <button class="perspective-option ${this.currentPerspective === 'temporal' ? 'perspective-option--active' : ''}" data-perspective="temporal" 
-                            ${this.currentEntity !== 'changes' ? 'disabled title="Only available for changes"' : ''}>
-                        📅 Temporal
-                    </button>
-                </div>
-                
-                ${this.renderTemporalControls()}
-            `;
-        }
-
-        // ===== GROUPING AND ACTIONS (Left column only) =====
-        const actionsAndGroupingContainer = this.container.querySelector('#actionsAndGrouping');
-        if (actionsAndGroupingContainer) {
-            const activityClass = this.config.activityName.toLowerCase();
-            actionsAndGroupingContainer.innerHTML = `
-                <div class="grouping-section">
-                    <label for="groupBy">Group by:</label>
-                    <select id="groupBy" class="form-control group-select">
-                        ${groupingConfig.map(option => `
-                            <option value="${option.key}" ${option.key === this.sharedState.grouping ? 'selected' : ''}>${option.label}</option>
-                        `).join('')}
-                    </select>
-                </div>
-                
-                <div class="actions-section">
-                    <div class="${activityClass}-actions">
-                        ${this.renderActionButtons()}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Bind events for dynamic controls
-        this.bindDynamicEvents();
+        // Bind events for filter controls
+        this.bindFilterEvents();
     }
 
     renderTemporalControls() {
@@ -907,22 +852,10 @@ export default class AbstractInteractionActivity {
         }
     }
 
-    bindDynamicEvents() {
-        // Create button (dynamically rendered)
-        const createBtn = this.container.querySelector('#createEntity');
-        if (createBtn) {
-            createBtn.addEventListener('click', () => this.handleCreate());
-        }
+    bindFilterEvents() {
+        // Filter controls only - entity controls handled by entity views
 
-        // Grouping control
-        const groupSelect = this.container.querySelector('#groupBy');
-        if (groupSelect) {
-            groupSelect.addEventListener('change', (e) => {
-                this.handleGrouping(e.target.value);
-            });
-        }
-
-        // Filter controls
+        // Filter inputs
         const filterInputs = this.container.querySelectorAll('[data-filter-key]');
         filterInputs.forEach(input => {
             const filterKey = input.dataset.filterKey;
@@ -944,23 +877,6 @@ export default class AbstractInteractionActivity {
             clearAllBtn.addEventListener('click', () => {
                 this.clearAllFilters();
             });
-        }
-
-        // Perspective toggle handling
-        const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
-        perspectiveButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const perspective = e.currentTarget.dataset.perspective;
-                if (e.currentTarget.disabled) return;
-
-                this.handlePerspectiveSwitch(perspective);
-            });
-        });
-
-        // Temporal controls (only when temporal perspective is active)
-        const temporalControls = this.container.querySelector('.temporal-controls');
-        if (temporalControls) {
-            this.bindTemporalEvents();
         }
     }
 
@@ -1003,37 +919,12 @@ export default class AbstractInteractionActivity {
     handlePerspectiveSwitch(perspective) {
         console.log(`Switching to ${perspective} perspective for ${this.currentEntity}`);
 
-        if (perspective === this.currentPerspective) {
-            return; // Already in this perspective
-        }
-
-        // Preserve current state before switching
-        this.preserveCurrentState();
-
-        this.currentPerspective = perspective;
-
-        // Update UI - toggle active perspective button
-        const perspectiveButtons = this.container.querySelectorAll('.perspective-option');
-        perspectiveButtons.forEach(button => {
-            if (button.dataset.perspective === perspective) {
-                button.classList.add('perspective-option--active');
-            } else {
-                button.classList.remove('perspective-option--active');
-            }
-        });
-
-        // Re-render controls to show/hide temporal controls
-        this.renderDynamicControls();
-
-        // Pass shared state to entity component
+        // Delegate to entity - it manages its own perspective state and rendering
         if (this.currentEntityComponent?.handlePerspectiveSwitch) {
             this.currentEntityComponent.handlePerspectiveSwitch(perspective, this.sharedState);
         } else {
-            console.log(`${perspective} perspective not yet implemented for ${this.currentEntity}`);
+            console.warn(`${perspective} perspective not implemented for ${this.currentEntity}`);
         }
-
-        // Restore state to new perspective
-        this.restoreStateToNewPerspective();
     }
 
     updateTimeWindow() {
