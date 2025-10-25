@@ -84,13 +84,10 @@ export default class ChangesEntity {
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
-            onCreate: () => this.handleCreate(),
             onRefresh: () => this.handleRefresh(),
             getEmptyStateMessage: () => ({
                 icon: '🔄',
                 title: 'No Changes Yet',
-                description: 'Start creating operational changes to define implementation activities and milestones.',
-                createButtonText: 'Create First Change',
                 showCreateButton: true
             })
         });

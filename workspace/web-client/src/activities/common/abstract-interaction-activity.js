@@ -338,8 +338,19 @@ export default class AbstractInteractionActivity {
     }
 
     renderActionButtons() {
-        // Force subclasses to implement their own action buttons
-        throw new Error(`renderActionButtons() must be implemented by ${this.constructor.name}`);
+        // Only show create button in edit mode
+        if (this.config.mode !== 'edit') {
+            return '';
+        }
+
+        const singularName = this.getSingularEntityName(this.currentEntity);
+
+        return `
+            <button class="btn btn-primary" id="createEntity">
+                <span class="btn-icon">+</span>
+                New ${singularName}
+            </button>
+        `;
     }
 
     getContextLabel() {
@@ -425,12 +436,9 @@ export default class AbstractInteractionActivity {
             }
         });
 
-        // Update create button text (if in edit mode)
+        // Re-render dynamic controls to update button
         if (this.config.mode === 'edit') {
-            const createBtn = this.container.querySelector('#createEntity');
-            if (createBtn) {
-                createBtn.textContent = `+ New ${this.getSingularEntityName(entity)}`;
-            }
+            this.renderDynamicControls();
         }
 
         // Load new entity
@@ -499,12 +507,8 @@ export default class AbstractInteractionActivity {
                         typeof this.config.dataSource === 'string' &&
                         this.config.dataSource.match(/^\d+$/)) {
 
-                        console.log(`Loading count for ${key} with edition context: ${this.config.dataSource}`);
-
-                        // Step 1: Fetch the edition details to get baseline and wave references
+                        // Resolve edition context to baseline and wave IDs
                         const edition = await apiClient.get(`/odp-editions/${this.config.dataSource}`);
-
-                        // Step 2: Build query parameters from resolved context
                         const queryParams = {};
                         if (edition.baseline?.id) {
                             queryParams.baseline = edition.baseline.id;
@@ -513,7 +517,6 @@ export default class AbstractInteractionActivity {
                             queryParams.fromWave = edition.startsFromWave.id;
                         }
 
-                        // Step 3: Append query parameters if we have any
                         if (Object.keys(queryParams).length > 0) {
                             const queryString = new URLSearchParams(queryParams).toString();
                             endpoint = `${endpoint}?${queryString}`;
@@ -810,6 +813,12 @@ export default class AbstractInteractionActivity {
     }
 
     bindDynamicEvents() {
+        // Create button (dynamically rendered)
+        const createBtn = this.container.querySelector('#createEntity');
+        if (createBtn) {
+            createBtn.addEventListener('click', () => this.handleCreate());
+        }
+
         // Grouping control
         const groupSelect = this.container.querySelector('#groupBy');
         if (groupSelect) {

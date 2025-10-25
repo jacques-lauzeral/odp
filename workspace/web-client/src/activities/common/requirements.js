@@ -42,15 +42,12 @@ export default class RequirementsEntity {
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
-            onCreate: () => this.handleCreate(),
             onRefresh: () => this.handleRefresh(),
             onFilterChange: (filters) => this.handleFilterChange(filters),
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Requirements Yet',
                 description: 'Start creating operational requirements to define system needs and behaviors.',
-                createButtonText: 'Create First Requirement',
-                showCreateButton: true
             })
         });
 

@@ -6,6 +6,7 @@ import { apiClient } from '../../shared/api-client.js';
  * Business-agnostic collection management with pluggable column types
  * Enhanced with server-side filtering support
  * UPDATED: Supports parent-owned data pattern via setData() for multi-perspective coordination
+ * CLEANED: Removed create button logic - now handled at activity level
  */
 export default class CollectionEntity {
     constructor(app, entityConfig, options = {}) {
@@ -31,7 +32,6 @@ export default class CollectionEntity {
 
         // Event handlers (to be provided by subclasses)
         this.onItemSelect = options.onItemSelect || (() => {});
-        this.onCreate = options.onCreate || (() => {});
         this.onEdit = options.onEdit || (() => {});
         this.onDelete = options.onDelete || (() => {});
         this.onRefresh = options.onRefresh || (() => {});
@@ -300,23 +300,8 @@ export default class CollectionEntity {
                 <div class="empty-state-icon">${emptyStateConfig.icon}</div>
                 <div class="empty-state-title">${emptyStateConfig.title}</div>
                 <div class="empty-state-description">${emptyStateConfig.description}</div>
-                ${emptyStateConfig.showCreateButton ? `
-                    <button class="btn btn-primary empty-state-create">
-                        ${emptyStateConfig.createButtonText}
-                    </button>
-                ` : ''}
             </div>
         `;
-
-        // Bind create button if present
-        if (emptyStateConfig.showCreateButton) {
-            const createBtn = this.container.querySelector('.empty-state-create');
-            if (createBtn) {
-                createBtn.addEventListener('click', () => {
-                    if (this.onCreate) this.onCreate();
-                });
-            }
-        }
     }
 
     renderError(error) {
@@ -642,9 +627,7 @@ export default class CollectionEntity {
         return {
             icon: '📄',
             title: `No ${this.entityConfig.name || 'Items'} Yet`,
-            description: `Start creating ${(this.entityConfig.name || 'items').toLowerCase()} to see them here.`,
-            createButtonText: `Create First ${this.getEntitySingularName()}`,
-            showCreateButton: true
+            description: `Start creating ${(this.entityConfig.name || 'items').toLowerCase()} to see them here.`
         };
     }
 
