@@ -1,6 +1,9 @@
 import { async as asyncUtils } from '../../shared/utils.js';
 import { apiClient } from '../../shared/api-client.js';
 import {
+    DraftingGroup,
+    getOperationalRequirementTypeDisplay,
+    getDraftingGroupDisplay,
     MilestoneEventType,
     getMilestoneEventDisplay
 } from '/shared/src/index.js';
@@ -242,15 +245,6 @@ export default class AbstractInteractionActivity {
         console.log('Restored shared state to perspective:', this.currentPerspective);
     }
 
-    updateSharedFilters(filters) {
-        this.sharedState.filters = { ...filters };
-
-        // Notify current perspective of filter changes
-        if (this.currentEntityComponent?.syncFilters) {
-            this.currentEntityComponent.syncFilters(this.sharedState.filters);
-        }
-    }
-
     updateSharedSelection(selectedItem) {
         this.sharedState.selectedItem = selectedItem;
 
@@ -406,6 +400,9 @@ export default class AbstractInteractionActivity {
             return;
         }
 
+        // Preserve current state before switching
+        this.preserveCurrentState();
+
         // Clean up current entity component
         if (this.currentEntityComponent?.cleanup) {
             this.currentEntityComponent.cleanup();
@@ -446,16 +443,18 @@ export default class AbstractInteractionActivity {
             }
         });
 
-        // Re-render dynamic controls to update button
-        if (this.config.mode === 'edit') {
-            this.renderDynamicControls();
+        // Apply shared state to the new entity (filters, selection, grouping)
+        if (this.currentEntityComponent.applySharedState) {
+            this.currentEntityComponent.applySharedState(this.sharedState);
         }
+
+        // Re-render dynamic controls to update button and restore filter UI
+        this.renderDynamicControls();
 
         // Render the pre-created entity component (instant, no loading)
         const contentContainer = this.container.querySelector('#entityContent');
         if (contentContainer) {
             await this.currentEntityComponent.render(contentContainer);
-            this.renderDynamicControls();
             await this.updateEntityCountAfterLoad(this.currentEntity);
         }
     }
@@ -745,12 +744,106 @@ export default class AbstractInteractionActivity {
         }
     }
 
+    // ====================
+    // FILTER CONFIGURATION (ACTIVITY-LEVEL SHARED)
+    // ====================
+
+    /**
+     * Activity-level filter configuration - union of all entity filters
+     * All filters are always shown regardless of current entity
+     * Entities ignore filters they don't understand
+     */
+    getFilterConfig() {
+        return [
+            {
+                key: 'type',
+                label: 'Type',
+                type: 'select',
+                options: [
+                    { value: '', label: 'Any' },
+                    { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
+                    { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
+                ]
+            },
+            {
+                key: 'text',
+                label: 'Full Text Search',
+                type: 'text',
+                placeholder: 'Search across title, statement, rationale...'
+            },
+            {
+                key: 'drg',
+                label: 'Drafting Group',
+                type: 'select',
+                options: this.buildDraftingGroupOptions()
+            },
+            {
+                key: 'dataCategory',
+                label: 'Data Impact',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('dataCategories')
+            },
+            {
+                key: 'stakeholderCategory',
+                label: 'Stakeholder Impact',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('stakeholderCategories')
+            },
+            {
+                key: 'service',
+                label: 'Services Impact',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('services')
+            },
+            {
+                key: 'document',
+                label: 'Document Reference',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('documents')
+            },
+            {
+                key: 'wave',
+                label: 'Wave',
+                type: 'select',
+                options: this.buildOptionsFromSetupData('waves', 'Any Wave')
+            }
+        ];
+    }
+
+
+    /**
+     * Build filter options from setup data
+     */
+    buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {
+        const baseOptions = [{ value: '', label: emptyLabel }];
+        if (!this.setupData?.[entityName]) return baseOptions;
+
+        const setupOptions = this.setupData[entityName].map(entity => ({
+            value: entity.id,
+            label: entity.name || entity.id
+        }));
+
+        return baseOptions.concat(setupOptions);
+    }
+
+    buildDraftingGroupOptions() {
+        const options = [{ value: '', label: 'Any' }];
+        Object.keys(DraftingGroup).forEach(key => {
+            options.push({
+                value: key, // Send enum key (e.g., "NM_B2B")
+                label: getDraftingGroupDisplay(DraftingGroup[key]) // Display text (e.g., "NM B2B")
+            });
+        });
+        return options;
+    }
+
     renderDynamicControls() {
         if (!this.currentEntityComponent) return;
 
-        // Get configurations from current entity
-        const filterConfig = this.currentEntityComponent.getFilterConfig ?
-            this.currentEntityComponent.getFilterConfig() : [];
+        // Get filter configuration from activity (shared across all entities)
+        const filterConfig = this.getFilterConfig();
+
+        // Get grouping configuration from current entity (entity-specific)
         const groupingConfig = this.currentEntityComponent.getGroupingConfig ?
             this.currentEntityComponent.getGroupingConfig() : [];
 

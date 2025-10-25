@@ -4,9 +4,7 @@ import RequirementForm from './requirement-form.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
 import { apiClient } from '../../shared/api-client.js';
 import {
-    OperationalRequirementType,
     getOperationalRequirementTypeDisplay,
-    DraftingGroup,
     getDraftingGroupDisplay
 } from '/shared/src/index.js';
 
@@ -38,7 +36,6 @@ export default class RequirementsEntity {
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
             context: { setupData },
-            getFilterConfig: () => this.getFilterConfig(),
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
@@ -135,57 +132,6 @@ export default class RequirementsEntity {
     // ====================
     // COLLECTION CONFIGURATION
     // ====================
-
-    getFilterConfig() {
-        return [
-            {
-                key: 'type',
-                label: 'Type',
-                type: 'select',
-                options: [
-                    { value: '', label: 'Any' },
-                    { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
-                    { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
-                ]
-            },
-            {
-                key: 'text',
-                label: 'Full Text Search',
-                type: 'text',
-                placeholder: 'Search across title, statement, rationale...'
-            },
-            {
-                key: 'drg',
-                label: 'Drafting Group',
-                type: 'select',
-                options: this.buildDraftingGroupOptions()
-            },
-            {
-                key: 'dataCategory',
-                label: 'Data Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('dataCategories')
-            },
-            {
-                key: 'stakeholderCategory',
-                label: 'Stakeholder Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('stakeholderCategories')
-            },
-            {
-                key: 'service',
-                label: 'Services Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('services')
-            },
-            {
-                key: 'document',
-                label: 'Document Reference',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('documents')
-            }
-        ];
-    }
 
     getColumnConfig() {
         return [
@@ -319,38 +265,7 @@ export default class RequirementsEntity {
         ];
     }
 
-    buildDraftingGroupOptions() {
-        const options = [{ value: '', label: 'Any' }];
-        Object.keys(DraftingGroup).forEach(key => {
-            options.push({
-                value: key, // Send enum key (e.g., "NM_B2B")
-                label: getDraftingGroupDisplay(DraftingGroup[key]) // Display text (e.g., "NM B2B")
-            });
-        });
-        return options;
-    }
 
-    buildOptionsFromSetupData(key) {
-        const options = [{ value: '', label: 'Any' }];
-        if (this.setupData && this.setupData[key]) {
-            this.setupData[key].forEach(item => {
-                options.push({
-                    value: item.id,
-                    label: item.name || item.title
-                });
-            });
-        }
-        return options;
-    }
-
-    // ====================
-    // TREE CONFIGURATION
-    // ====================
-
-    /**
-     * Build tree path for requirement
-     * Path format: Type > Parent Chain > Requirement
-     */
     // ====================
     // TREE CONFIGURATION
     // ====================

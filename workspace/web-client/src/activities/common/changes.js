@@ -80,7 +80,6 @@ export default class ChangesEntity {
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: customColumnTypes,
             context: { setupData },
-            getFilterConfig: () => this.getFilterConfig(),
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
@@ -307,63 +306,6 @@ export default class ChangesEntity {
     // CONFIGURATION
     // ====================
 
-    getFilterConfig() {
-        return [
-            {
-                key: 'text',
-                label: 'Full Text Search',
-                type: 'text',
-                placeholder: 'Search across title, purpose, states, details...'
-            },
-            {
-                key: 'visibility',
-                label: 'Visibility',
-                type: 'select',
-                options: [
-                    { value: '', label: 'Any' },
-                    { value: 'NETWORK', label: getVisibilityDisplay('NETWORK') },
-                    { value: 'NM', label: getVisibilityDisplay('NM') }
-                ]
-            },
-            {
-                key: 'drg',
-                label: 'Drafting Group',
-                type: 'select',
-                options: this.buildDraftingGroupOptions()
-            },
-            {
-                key: 'document',
-                label: 'Document',
-                type: 'select',
-                options: this.buildDocumentOptions()
-            },
-            {
-                key: 'dataCategory',
-                label: 'Data Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('dataCategories')
-            },
-            {
-                key: 'stakeholderCategory',
-                label: 'Stakeholder Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('stakeholderCategories')
-            },
-            {
-                key: 'service',
-                label: 'Services Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('services')
-            },
-            {
-                key: 'wave',
-                label: 'Wave',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('waves', 'Any Wave')
-            }
-        ];
-    }
-
     getColumnConfig() {
         return [
             { key: 'itemId', label: 'ID', width: '80px', sortable: true, type: 'text' },
@@ -393,39 +335,6 @@ export default class ChangesEntity {
         ];
     }
 
-    buildDraftingGroupOptions() {
-        return [
-            { value: '', label: 'Any' },
-            ...Object.values(DraftingGroup).map(drg => ({
-                value: drg,
-                label: getDraftingGroupDisplay(drg)
-            }))
-        ];
-    }
-
-    buildDocumentOptions() {
-        const baseOptions = [{ value: '', label: 'Any' }];
-        if (!this.setupData?.documents) return baseOptions;
-
-        const docOptions = this.setupData.documents.map(doc => ({
-            value: doc.id,
-            label: doc.name || doc.title || doc.id
-        }));
-
-        return baseOptions.concat(docOptions);
-    }
-
-    buildOptionsFromSetupData(entityName, emptyLabel = 'Any') {
-        const baseOptions = [{ value: '', label: emptyLabel }];
-        if (!this.setupData?.[entityName]) return baseOptions;
-
-        const setupOptions = this.setupData[entityName].map(entity => ({
-            value: entity.id,
-            label: entity.name || entity.id
-        }));
-
-        return baseOptions.concat(setupOptions);
-    }
 
     getItemId(item) {
         return item?.itemId || item?.id || null;

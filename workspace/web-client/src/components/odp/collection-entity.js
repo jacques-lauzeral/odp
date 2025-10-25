@@ -24,7 +24,6 @@ export default class CollectionEntity {
         this.context = options.context || {};
 
         // Configuration methods (to be provided by subclasses)
-        this.getFilterConfig = options.getFilterConfig || (() => []);
         this.getColumnConfig = options.getColumnConfig || (() => []);
         this.getGroupingConfig = options.getGroupingConfig || (() => []);
 
@@ -38,7 +37,6 @@ export default class CollectionEntity {
         this.onDataLoaded = options.onDataLoaded || (() => {});
 
         // Cache configurations
-        this.filterConfig = this.getFilterConfig();
         this.columnConfig = this.getColumnConfig();
         this.groupingConfig = this.getGroupingConfig();
 
