@@ -80,7 +80,12 @@ export default class ChangesEntity {
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
-            onRefresh: () => this.handleRefresh(),
+            onRefresh: () => {
+                // Notify parent activity to reload data
+                if (this.app.currentActivity?.loadChanges) {
+                    this.app.currentActivity.loadChanges();
+                }
+            },
             getEmptyStateMessage: () => ({
                 icon: '🔄',
                 title: 'No Changes Yet',
@@ -362,10 +367,6 @@ export default class ChangesEntity {
         }
     }
 
-    handleRefresh() {
-        console.log('Changes refreshed');
-    }
-
     getCurrentTabInPanel(container) {
         const activeTab = container.querySelector('.tab-header.active');
         return activeTab ? parseInt(activeTab.dataset.tab, 10) : 0;
@@ -455,9 +456,9 @@ export default class ChangesEntity {
     }
 
     async refresh() {
-        // Notify parent to reload - parent manages all data fetching
-        if (this.collection.onRefresh) {
-            this.collection.onRefresh();
+        // Notify parent activity to reload data
+        if (this.app.currentActivity?.loadChanges) {
+            await this.app.currentActivity.loadChanges();
         }
     }
 

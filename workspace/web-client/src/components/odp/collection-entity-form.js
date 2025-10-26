@@ -396,16 +396,17 @@ export class CollectionEntityForm {
                 // Render container for Quill editor and hidden input for form data
                 const editorRows = field.rows || 4;
                 const minHeight = editorRows * 24; // Approximate line height
+                // Base64 encode the value to safely pass JSON through HTML attribute
+                const encodedValue = value ? btoa(encodeURIComponent(value)) : '';
                 return `<div id="${fieldId}" 
                     class="quill-editor" 
                     data-field-key="${field.key}"
+                    data-initial-value="${encodedValue}"
                     data-placeholder="${this.escapeHtml(field.placeholder || '')}"
                     style="min-height: ${minHeight}px;"></div>
                 <input type="hidden" 
                     name="${field.key}" 
-                    id="${fieldId}-data"
-                    value="${this.escapeHtml(value || JSON.stringify({ops: []}))}">`;
-
+                    id="${fieldId}-data">`;
             case 'select':
                 let html = `<select id="${fieldId}" name="${field.key}" class="form-control" ${required}>`;
 
@@ -707,12 +708,13 @@ export class CollectionEntityForm {
                 return;
             }
 
-            // Parse initial value from hidden input (always stringified from Neo4j)
+            // Decode base64 value from data attribute
             let initialContent = {ops: []};
             try {
-                const rawValue = hiddenInput.value;
-                if (rawValue) {
-                    initialContent = JSON.parse(rawValue);
+                const encodedValue = container.dataset.initialValue;
+                if (encodedValue) {
+                    const decodedValue = decodeURIComponent(atob(encodedValue));
+                    initialContent = JSON.parse(decodedValue);
                 }
             } catch (e) {
                 console.warn(`Failed to parse initial content for ${fieldKey}:`, e);
@@ -1064,6 +1066,16 @@ export class CollectionEntityForm {
 
     collectFormData(form) {
         console.log('CollectionEntityForm.collectFormData');
+
+        // NEW: Sync all Quill editors to hidden inputs before collecting data
+        Object.entries(this.quillEditors).forEach(([fieldKey, quill]) => {
+            const hiddenInput = form.querySelector(`input[name="${fieldKey}"]`);
+            if (hiddenInput && quill) {
+                const delta = quill.getContents();
+                hiddenInput.value = JSON.stringify(delta);
+            }
+        });
+
         const formData = new FormData(form);
         const data = {};
         const fields = this.getFieldDefinitions();

@@ -389,7 +389,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 relationships = {
                     satisfiesRequirements: record.get('satisfiesRequirements').map(id => this.normalizeId(id)),
                     supersedsRequirements: record.get('supersedsRequirements').map(id => this.normalizeId(id)),
-                    documentReferences: record.get('documentReferences').map(ref => ({
+                    documentReferences: record.get('documentReferences').filter(ref => ref.id !== null).map(ref => ({
                         id: this.normalizeId(ref.id),
                         note: ref.note || ''
                     })),

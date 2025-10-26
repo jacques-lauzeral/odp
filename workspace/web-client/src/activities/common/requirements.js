@@ -41,7 +41,12 @@ export default class RequirementsEntity {
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
-            onRefresh: () => this.handleRefresh(),
+            onRefresh: () => {
+                // Notify parent activity to reload data
+                if (this.app.currentActivity?.loadRequirements) {
+                    this.app.currentActivity.loadRequirements();
+                }
+            },
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Requirements Yet',
@@ -653,11 +658,6 @@ export default class RequirementsEntity {
         this.form.showReadOnlyModal(item || this.sharedState.selectedItem);
     }
 
-    async handleRefresh() {
-        console.log('RequirementsEntity.handleRefresh');
-        await this.refresh();
-    }
-
     // ====================
     // DATA MANAGEMENT
     // ====================
@@ -769,9 +769,9 @@ export default class RequirementsEntity {
     }
 
     async refresh() {
-        // Notify parent to reload - parent manages all data fetching
-        if (this.collection.onRefresh) {
-            this.collection.onRefresh();
+        // Notify parent activity to reload data
+        if (this.app.currentActivity?.loadRequirements) {
+            await this.app.currentActivity.loadRequirements();
         }
     }
 

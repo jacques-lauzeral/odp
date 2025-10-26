@@ -24,6 +24,8 @@ import {
  * - Field definitions extracted to change-form-fields.js
  * - Milestone management extracted to change-form-milestone.js
  * - Added: privateNotes, path, documentReferences, dependsOnChanges fields
+ *
+ * BUG FIX: Fixed rich text field rendering in edit mode by correcting options binding
  */
 export default class ChangeForm extends CollectionEntityForm {
     constructor(entityConfig, setupData) {
@@ -70,8 +72,9 @@ export default class ChangeForm extends CollectionEntityForm {
         const hydrated = { ...field };
 
         // Bind options function if specified by key
+        // FIX: Use bind() instead of arrow wrapper to preserve async function detection
         if (field.optionsKey && this[field.optionsKey]) {
-            hydrated.options = async () => await this[field.optionsKey]();
+            hydrated.options = this[field.optionsKey].bind(this);
         }
 
         // Bind format function if specified by key
@@ -239,20 +242,21 @@ export default class ChangeForm extends CollectionEntityForm {
     async onValidate(data, mode, item) {
         const errors = [];
 
-        // Validate DRG field if provided
-        if (data.drg && !Object.keys(DraftingGroup).includes(data.drg)) {
-            errors.push({
-                field: 'drg',
-                message: 'Invalid drafting group selected'
-            });
+        // Validate title
+        if (!data.title || data.title.length < 3) {
+            errors.push({ field: 'title', message: 'Title must be at least 3 characters long' });
         }
 
-        // Validate visibility field
-        if (data.visibility && !Object.keys(Visibility).includes(data.visibility)) {
-            errors.push({
-                field: 'visibility',
-                message: 'Invalid visibility option selected'
-            });
+        // Validate purpose
+        if (!data.purpose || data.purpose.length < 3) {
+            errors.push({ field: 'purpose', message: 'Purpose must be at least 3 characters long' });
+        }
+
+        // Validate visibility
+        if (!data.visibility) {
+            errors.push({ field: 'visibility', message: 'Visibility is required' });
+        } else if (!['NM', 'NETWORK'].includes(data.visibility)) {
+            errors.push({ field: 'visibility', message: 'Invalid visibility value' });
         }
 
         return {
@@ -261,12 +265,8 @@ export default class ChangeForm extends CollectionEntityForm {
         };
     }
 
-    onCancel() {
-        console.log('ChangeForm cancelled');
-    }
-
     // ====================
-    // OPTIONS GENERATORS (Referenced by field config)
+    // OPTIONS PROVIDERS (Referenced by field config)
     // ====================
 
     getVisibilityOptions() {
@@ -491,15 +491,5 @@ export default class ChangeForm extends CollectionEntityForm {
     async generateReadOnlyView(item, preserveTabIndex = false) {
         return await super.generateReadOnlyView(item, preserveTabIndex);
     }
-
-    // ====================
-    // UTILITIES
-    // ====================
-
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+    
 }
