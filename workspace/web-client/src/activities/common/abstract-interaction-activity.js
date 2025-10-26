@@ -1047,10 +1047,6 @@ export default class AbstractInteractionActivity {
         }
     }
 
-    // ====================
-    // MULTI-BADGE UPDATE SYSTEM
-    // ====================
-
     async updateAllBadges(filters) {
         console.log('Loading all entity data with filters:', filters);
 
