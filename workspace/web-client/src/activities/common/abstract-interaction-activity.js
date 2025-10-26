@@ -65,6 +65,24 @@ export default class AbstractInteractionActivity {
             requirements: null,
             changes: null
         };
+
+        // Listen for entity save events and reload the appropriate entity with current filters
+        document.addEventListener('entitySaved', async (e) => {
+            // Only handle if this is the currently active activity
+            if (this !== this.app.currentActivity) {
+                return;
+            }
+
+            const entityType = e.detail.entityType;
+            console.log(`AbstractInteractionActivity: entitySaved event received for ${entityType}`);
+
+            // Map entity type to loader method and call with current filters
+            if (entityType === 'Operational Requirements') {
+                await this.loadRequirements(this.sharedState.filters);
+            } else if (entityType === 'Operational Changes') {
+                await this.loadChanges(this.sharedState.filters);
+            }
+        });
     }
 
     async render(container, subPath = []) {

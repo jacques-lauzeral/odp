@@ -80,12 +80,6 @@ export default class ChangesEntity {
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
-            onRefresh: () => {
-                // Notify parent activity to reload data
-                if (this.app.currentActivity?.loadChanges) {
-                    this.app.currentActivity.loadChanges();
-                }
-            },
             getEmptyStateMessage: () => ({
                 icon: '🔄',
                 title: 'No Changes Yet',
@@ -98,12 +92,6 @@ export default class ChangesEntity {
             currentTabIndex: 0,
             onTabChange: (index) => {
                 this.sharedState.currentTabIndex = index;
-            }
-        });
-
-        document.addEventListener('entitySaved', async(e) => {
-            if (e.detail.entityType === 'Operational Changes') {
-                await this.refresh();
             }
         });
     }
@@ -453,13 +441,6 @@ export default class ChangesEntity {
 
         this.collection.cleanup();
         this.container = null;
-    }
-
-    async refresh() {
-        // Notify parent activity to reload data
-        if (this.app.currentActivity?.loadChanges) {
-            await this.app.currentActivity.loadChanges();
-        }
     }
 
     // ====================

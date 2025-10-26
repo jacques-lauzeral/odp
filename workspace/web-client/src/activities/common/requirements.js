@@ -41,12 +41,6 @@ export default class RequirementsEntity {
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
-            onRefresh: () => {
-                // Notify parent activity to reload data
-                if (this.app.currentActivity?.loadRequirements) {
-                    this.app.currentActivity.loadRequirements();
-                }
-            },
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Requirements Yet',
@@ -73,13 +67,6 @@ export default class RequirementsEntity {
             currentTabIndex: 0,
             onTabChange: (index) => {
                 this.sharedState.currentTabIndex = index;
-            }
-        });
-
-        // Listen for save events
-        document.addEventListener('entitySaved', async(e) => {
-            if (e.detail.entityType === 'Operational Requirements') {
-                await this.refresh();
             }
         });
     }
@@ -765,13 +752,6 @@ export default class RequirementsEntity {
         } catch (error) {
             console.error('Failed to build requirement hierarchy:', error);
             return [];
-        }
-    }
-
-    async refresh() {
-        // Notify parent activity to reload data
-        if (this.app.currentActivity?.loadRequirements) {
-            await this.app.currentActivity.loadRequirements();
         }
     }
 
