@@ -250,17 +250,6 @@ export default class AbstractInteractionActivity {
         console.log('Preserved filters from UI:', currentFilters);
     }
 
-    restoreStateToNewPerspective() {
-        if (!this.currentEntityComponent) return;
-
-        // Pass shared state to the entity component
-        if (this.currentEntityComponent.applySharedState) {
-            this.currentEntityComponent.applySharedState(this.sharedState);
-        }
-
-        console.log('Restored shared state to perspective:', this.currentPerspective);
-    }
-
     updateSharedSelection(selectedItem) {
         this.sharedState.selectedItem = selectedItem;
 
@@ -618,38 +607,6 @@ export default class AbstractInteractionActivity {
     }
 
     // Update badge from loaded data (called by collection's onDataLoaded callback)
-    updateBadgeFromData(entityType, data) {
-        console.log(`updateBadgeFromData called for ${entityType} with ${data.length} items`);
-
-        const badge = this.container.querySelector(`#${entityType}-count`);
-        if (!badge) {
-            console.warn(`Badge element not found for ${entityType}`);
-            return;
-        }
-
-        // Calculate counts based on entity type
-        if (entityType === 'requirements') {
-            const onCount = data.filter(item => item.type === 'ON').length;
-            const orCount = data.filter(item => item.type === 'OR').length;
-
-            this.entityCounts[entityType] = {
-                ON: onCount,
-                OR: orCount,
-                total: data.length
-            };
-
-            badge.textContent = `Operational Needs: ${onCount} | Requirements: ${orCount}`;
-        } else if (entityType === 'changes') {
-            this.entityCounts[entityType] = {
-                total: data.length
-            };
-
-            badge.textContent = `Operational Changes: ${data.length}`;
-        }
-
-        console.log(`Updated ${entityType} badge:`, this.entityCounts[entityType]);
-    }
-
     // ====================
     // FILTER CONFIGURATION (ACTIVITY-LEVEL SHARED)
     // ====================
@@ -774,63 +731,6 @@ export default class AbstractInteractionActivity {
         this.bindFilterEvents();
     }
 
-    renderTemporalControls() {
-        // Only show temporal controls when temporal perspective is active and entity is changes
-        if (this.currentPerspective !== 'temporal' || this.currentEntity !== 'changes') {
-            return '';
-        }
-
-        const availableWaves = this.getAvailableWaves();
-        const startWave = this.findClosestWave(this.sharedState.timeWindow.start, availableWaves);
-        const endWave = this.findClosestWave(this.sharedState.timeWindow.end, availableWaves);
-
-        return `
-        <div class="temporal-controls">
-            <div class="time-window-controls">
-                <label for="start-wave">From:</label>
-                <select id="start-wave" class="form-control">
-                    ${availableWaves.map(wave => `
-                        <option value="${wave.id}" ${startWave && startWave.id === wave.id ? 'selected' : ''}>
-                            ${wave.year} Q${wave.quarter}
-                        </option>
-                    `).join('')}
-                </select>
-                
-                <label for="end-wave">To:</label>
-                <select id="end-wave" class="form-control">
-                    ${availableWaves.map(wave => `
-                        <option value="${wave.id}" ${endWave && endWave.id === wave.id ? 'selected' : ''}>
-                            ${wave.year} Q${wave.quarter}
-                        </option>
-                    `).join('')}
-                </select>
-            </div>
-            
-            <div class="event-type-controls">
-                <div class="event-type-filters">
-                    ${this.renderEventTypeLabels()}
-                    <button class="btn-icon" id="addEventType" title="Add event type filter">+</button>
-                </div>
-            </div>
-        </div>
-    `;
-    }
-
-    renderEventTypeLabels() {
-        const activeTypes = this.sharedState.eventTypeFilters.filter(f => f !== 'ANY');
-
-        if (activeTypes.length === 0 || this.sharedState.eventTypeFilters.includes('ANY')) {
-            return '<span class="event-type-label all-types">All Events</span>';
-        }
-
-        return activeTypes.map(eventType => `
-        <span class="event-type-label" data-event-type="${eventType}">
-            ${this.formatEventTypeName(eventType)}
-            <button class="label-remove" data-event-type="${eventType}" title="Remove filter">×</button>
-        </span>
-    `).join('');
-    }
-
     renderFilterControl(filter) {
         switch (filter.type) {
             case 'text':
@@ -898,42 +798,6 @@ export default class AbstractInteractionActivity {
         }
     }
 
-    bindTemporalEvents() {
-        // Time window controls
-        const startWaveSelect = this.container.querySelector('#start-wave');
-        const endWaveSelect = this.container.querySelector('#end-wave');
-
-        if (startWaveSelect) {
-            startWaveSelect.addEventListener('change', () => {
-                this.updateTimeWindow();
-            });
-        }
-
-        if (endWaveSelect) {
-            endWaveSelect.addEventListener('change', () => {
-                this.updateTimeWindow();
-            });
-        }
-
-        // Event type controls
-        const addEventTypeBtn = this.container.querySelector('#addEventType');
-        if (addEventTypeBtn) {
-            addEventTypeBtn.addEventListener('click', (e) => {
-                this.showEventTypeDropdown(e.target);
-            });
-        }
-
-        // Event type label removal
-        const removeButtons = this.container.querySelectorAll('.label-remove');
-        removeButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const eventType = e.target.dataset.eventType;
-                this.removeEventTypeFilter(eventType);
-            });
-        });
-    }
-
     handlePerspectiveSwitch(perspective) {
         console.log(`Switching to ${perspective} perspective for ${this.currentEntity}`);
 
@@ -976,86 +840,6 @@ export default class AbstractInteractionActivity {
                 );
             }
         }
-    }
-
-    showEventTypeDropdown(button) {
-        // Get available event types (not currently selected)
-        const currentTypes = this.sharedState.eventTypeFilters.includes('ANY') ?
-            [] : this.sharedState.eventTypeFilters;
-
-        const availableTypes = this.availableEventTypes.filter(type =>
-            !currentTypes.includes(type)
-        );
-
-        if (availableTypes.length === 0) {
-            return; // No more types to add
-        }
-
-        // Create a simple dropdown menu
-        const dropdown = document.createElement('div');
-        dropdown.className = 'event-type-dropdown';
-        dropdown.innerHTML = availableTypes.map(type => `
-            <div class="dropdown-item" data-event-type="${type}">
-                ${this.formatEventTypeName(type)}
-            </div>
-        `).join('');
-
-        // Position dropdown near button
-        const rect = button.getBoundingClientRect();
-        dropdown.style.position = 'absolute';
-        dropdown.style.top = `${rect.bottom + 4}px`;
-        dropdown.style.left = `${rect.left}px`;
-        dropdown.style.zIndex = '1000';
-
-        document.body.appendChild(dropdown);
-
-        // Bind dropdown events
-        dropdown.addEventListener('click', (e) => {
-            if (e.target.classList.contains('dropdown-item')) {
-                const eventType = e.target.dataset.eventType;
-                this.addEventTypeFilter(eventType);
-                dropdown.remove();
-            }
-        });
-
-        // Remove dropdown on outside click
-        const removeDropdown = (e) => {
-            if (!dropdown.contains(e.target) && e.target !== button) {
-                dropdown.remove();
-                document.removeEventListener('click', removeDropdown);
-            }
-        };
-        setTimeout(() => document.addEventListener('click', removeDropdown), 100);
-    }
-
-    addEventTypeFilter(eventType) {
-        // Validate event type is one of the 5 allowed types
-        if (!this.availableEventTypes.includes(eventType)) {
-            console.warn('Invalid event type:', eventType);
-            return;
-        }
-
-        // Remove 'ANY' filter when adding specific types
-        if (this.sharedState.eventTypeFilters.includes('ANY')) {
-            this.sharedState.eventTypeFilters = [eventType];
-        } else {
-            this.sharedState.eventTypeFilters.push(eventType);
-        }
-
-        this.notifyEventTypeFilterChange();
-        this.renderDynamicControls(); // Re-render to update labels
-    }
-
-    removeEventTypeFilter(eventType) {
-        this.sharedState.eventTypeFilters = this.sharedState.eventTypeFilters.filter(f => f !== eventType);
-
-        // If no specific types left, default back to ANY
-        if (this.sharedState.eventTypeFilters.length === 0) {
-            this.sharedState.eventTypeFilters = ['ANY'];
-        }
-
-        this.notifyEventTypeFilterChange();
-        this.renderDynamicControls(); // Re-render to update labels
     }
 
     notifyEventTypeFilterChange() {
@@ -1281,25 +1065,6 @@ export default class AbstractInteractionActivity {
         });
     }
 
-    findClosestWave(date, waves) {
-        if (!waves || waves.length === 0) return null;
-
-        let closest = waves[0];
-        let closestDiff = Math.abs(date.getTime() - this.getWaveDate(closest).getTime());
-
-        for (const wave of waves) {
-            const waveDate = this.getWaveDate(wave);
-            const diff = Math.abs(date.getTime() - waveDate.getTime());
-
-            if (diff < closestDiff) {
-                closest = wave;
-                closestDiff = diff;
-            }
-        }
-
-        return closest;
-    }
-
     getWaveDate(wave) {
         return new Date(wave.year, (wave.quarter - 1) * 3, 1);
     }
@@ -1361,10 +1126,6 @@ export default class AbstractInteractionActivity {
 
     getSetupData() {
         return this.setupData;
-    }
-
-    isLoading() {
-        return this.loading;
     }
 
     cleanup() {
