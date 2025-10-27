@@ -92,15 +92,17 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Visibility', 'DRG', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 12, 12, 25, 10, 20]
+                        head: ['Item ID', 'Code', 'Visibility', 'DRG', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 15, 12, 12, 20, 10, 20]
                     });
 
                     items.forEach(item => {
                         const visibilityDisplay = item.visibility ? getVisibilityDisplay(item.visibility) : '-';
                         const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
+                        const codeDisplay = item.code || '-';
                         table.push([
                             item.itemId,
+                            codeDisplay,
                             visibilityDisplay,
                             drgDisplay,
                             item.title,
@@ -175,6 +177,7 @@ class OperationalChangeCommands extends VersionedCommands {
         super.displayItemDetails(item);
 
         console.log(`Purpose: ${item.purpose || item.description || ''}`);
+        console.log(`Code: ${item.code || 'Not set'}`);
         console.log(`Visibility: ${item.visibility ? getVisibilityDisplay(item.visibility) : 'Not set'}`);
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
         console.log(`Initial State: ${item.initialState || 'Not specified'}`);

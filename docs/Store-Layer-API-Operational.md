@@ -73,6 +73,7 @@ const entities = await store.findAll(transaction, baselineId = null, fromWaveId 
 const requirement = await store.create({
   title: "Authentication Security",
   type: "OR",
+  code: "OR-IDL-0021",
   statement: "System shall provide secure authentication",
   rationale: "Security compliance required",
   flows: "Authentication flow description",

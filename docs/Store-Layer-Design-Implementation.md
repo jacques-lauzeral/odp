@@ -88,14 +88,14 @@ class RefinableEntityStore extends BaseStore {
 **Key Implementation**:
 ```javascript
 class VersionedItemStore extends BaseStore {
-  constructor(driver, itemLabel, versionLabel) {
-    super(driver, itemLabel);
-    this.versionLabel = versionLabel;
-  }
+    constructor(driver, itemLabel, versionLabel) {
+        super(driver, itemLabel);
+        this.versionLabel = versionLabel;
+    }
 
-  async create(data, transaction) {
-    // Create Item node
-    const itemResult = await transaction.run(`
+    async create(data, transaction) {
+        // Create Item node
+        const itemResult = await transaction.run(`
       CREATE (item:${this.itemLabel} {
         title: $title,
         createdAt: datetime(),
@@ -105,10 +105,10 @@ class VersionedItemStore extends BaseStore {
       RETURN item
     `, { title: data.title, userId: transaction.userId });
 
-    const itemId = this.normalizeId(itemResult.records[0].get('item').identity);
+        const itemId = this.normalizeId(itemResult.records[0].get('item').identity);
 
-    // Create ItemVersion node (version 1)
-    const versionResult = await transaction.run(`
+        // Create ItemVersion node (version 1)
+        const versionResult = await transaction.run(`
       MATCH (item:${this.itemLabel}) WHERE id(item) = $itemId
       CREATE (version:${this.versionLabel} {
         version: 1,
@@ -121,25 +121,143 @@ class VersionedItemStore extends BaseStore {
       RETURN version
     `, { itemId, userId: transaction.userId, ...data });
 
-    // Create relationships
-    await this._createRelationships(versionId, data, transaction);
+        // Create relationships
+        await this._createRelationships(versionId, data, transaction);
 
-    return this._buildEntityResponse(itemId, versionId, data);
-  }
-
-  async update(itemId, data, expectedVersionId, transaction) {
-    // Optimistic locking check
-    const currentVersion = await this._getCurrentVersion(itemId, transaction);
-    if (currentVersion.id !== expectedVersionId) {
-      throw new OptimisticLockError('Version mismatch');
+        return this._buildEntityResponse(itemId, versionId, data);
     }
 
-    // Create new version
-    const newVersion = currentVersion.version + 1;
-    // ... implementation
+    async update(itemId, data, expectedVersionId, transaction) {
+        // Optimistic locking check
+        const currentVersion = await this._getCurrentVersion(itemId, transaction);
+        if (currentVersion.id !== expectedVersionId) {
+            throw new OptimisticLockError('Version mismatch');
+        }
+
+        // Create new version
+        const newVersion = currentVersion.version + 1;
+        // ... implementation
+    }
+}
+```
+
+### Code Generation Pattern
+**Additional Responsibilities**:
+- Automatic unique code generation for operational entities
+- Sequential numbering per entity type and drafting group
+- Transaction-safe code assignment
+
+**Key Implementation**:
+```javascript
+class VersionedItemStore extends BaseStore {
+  /**
+   * Find maximum code number for a given type+DRG combination
+   */
+  async _findMaxCodeNumber(entityType, drg, transaction) {
+    const codePrefix = `${entityType}-${drg}-`;
+    
+    const result = await transaction.run(`
+      MATCH (item:${this.nodeLabel})
+      WHERE item.code STARTS WITH $codePrefix
+      RETURN item.code as code
+      ORDER BY item.code DESC
+      LIMIT 1
+    `, { codePrefix });
+
+    if (result.records.length === 0) {
+      return 0;
+    }
+
+    const maxCode = result.records[0].get('code');
+    // Extract numeric part from "XX-YYY-####"
+    const numericPart = maxCode.substring(maxCode.lastIndexOf('-') + 1);
+    return parseInt(numericPart, 10);
+  }
+
+  /**
+   * Generate unique code for entity
+   */
+  async _generateCode(entityType, drg, transaction) {
+    const maxNumber = await this._findMaxCodeNumber(entityType, drg, transaction);
+    const nextNumber = maxNumber + 1;
+    const paddedNumber = nextNumber.toString().padStart(4, '0');
+    return `${entityType}-${drg}-${paddedNumber}`;
+  }
+
+  /**
+   * Abstract method - concrete stores must implement
+   * Returns entity type prefix: 'ON', 'OR', or 'OC'
+   */
+  _getEntityTypeForCode(data) {
+    throw new Error('_getEntityTypeForCode must be implemented by concrete store');
+  }
+
+  async create(data, transaction) {
+    // Generate code if drg is provided
+    let code = null;
+    if (data.drg) {
+      const entityType = this._getEntityTypeForCode(data);
+      code = await this._generateCode(entityType, data.drg, transaction);
+    }
+
+    // Create Item node with code
+    const itemResult = await transaction.run(`
+      CREATE (item:${this.itemLabel} {
+        title: $title,
+        code: $code,
+        createdAt: datetime(),
+        createdBy: $userId
+      })
+      RETURN item
+    `, { title: data.title, code, userId: transaction.userId });
+
+    // ... rest of creation logic
   }
 }
 ```
+
+**Concrete Store Implementations**:
+```javascript
+// OperationalRequirementStore
+class OperationalRequirementStore extends VersionedItemStore {
+  _getEntityTypeForCode(data) {
+    // Returns 'ON' or 'OR' based on type field
+    return data.type || 'OR';
+  }
+}
+
+// OperationalChangeStore
+class OperationalChangeStore extends VersionedItemStore {
+  _getEntityTypeForCode(data) {
+    // Always returns 'OC'
+    return 'OC';
+  }
+}
+```
+
+**Code Properties**:
+- **Atomicity**: Generated within transaction to prevent race conditions
+- **Immutability**: Stored on Item node, never changes across versions
+- **Uniqueness**: Database constraint enforces global uniqueness
+- **Scoping**: Independent counter per TYPE+DRG combination
+- **Format**: `{TYPE}-{DRG}-####` (e.g., ON-IDL-0001, OR-NM_B2B-0042)
+
+**Query Integration**:
+All queries returning operational entities include the code field:
+```javascript
+// findById query
+RETURN id(item) as itemId, 
+       item.title as title, 
+       item.code as code,  // Code included
+       id(version) as versionId
+
+// findAll query  
+RETURN id(item) as itemId,
+       item.title as title,
+       item.code as code,  // Code included
+       version { .* } as versionData
+```
+
 
 ## Relationship Management Patterns
 
@@ -451,6 +569,9 @@ export async function createIndexes(driver) {
     await session.run('CREATE INDEX IF NOT EXISTS FOR (n:OperationalRequirement) ON (n.title)');
     await session.run('CREATE INDEX IF NOT EXISTS FOR (n:OperationalChange) ON (n.title)');
     await session.run('CREATE INDEX IF NOT EXISTS FOR (n:Wave) ON (n.year, n.quarter)');
+    // Unique constraint for code field
+    await session.run('CREATE CONSTRAINT IF NOT EXISTS FOR (n:OperationalRequirement) REQUIRE n.code IS UNIQUE');
+    await session.run('CREATE CONSTRAINT IF NOT EXISTS FOR (n:OperationalChange) REQUIRE n.code IS UNIQUE');
   } finally {
     await session.close();
   }
@@ -462,29 +583,29 @@ export async function createIndexes(driver) {
 ### Store Unit Tests
 ```javascript
 describe('DocumentStore', () => {
-  let store;
-  let transaction;
+    let store;
+    let transaction;
 
-  beforeEach(async () => {
-    await initializeStores();
-    store = documentStore();
-    transaction = createTransaction('test-user');
-  });
+    beforeEach(async () => {
+        await initializeStores();
+        store = documentStore();
+        transaction = createTransaction('test-user');
+    });
 
-  afterEach(async () => {
-    await rollbackTransaction(transaction);
-  });
+    afterEach(async () => {
+        await rollbackTransaction(transaction);
+    });
 
-  it('should create document', async () => {
-    const doc = await store.create({
-      name: 'Test Document',
-      version: '1.0',
-      description: 'Test description',
-      url: 'https://example.com/doc.pdf'
-    }, transaction);
+    it('should create document', async () => {
+        const doc = await store.create({
+            name: 'Test Document',
+            version: '1.0',
+            description: 'Test description',
+            url: 'https://example.com/doc.pdf'
+        }, transaction);
 
-    expect(doc.id).toBeDefined();
-    expect(doc.name).toBe('Test Document');
-  });
+        expect(doc.id).toBeDefined();
+        expect(doc.name).toBe('Test Document');
+    });
 });
 ```

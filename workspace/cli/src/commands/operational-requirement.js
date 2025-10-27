@@ -72,14 +72,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Type', 'DRG', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 8, 12, 30, 10, 20]
+                        head: ['Item ID', 'Code', 'Type', 'DRG', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 15, 8, 12, 25, 10, 20]
                     });
 
                     items.forEach(item => {
                         const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
+                        const codeDisplay = item.code || '-';
                         table.push([
                             item.itemId,
+                            codeDisplay,
                             item.type,
                             drgDisplay,
                             item.title,
@@ -154,6 +156,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         super.displayItemDetails(item);
 
         console.log(`Type: ${item.type}`);
+        console.log(`Code: ${item.code || 'Not set'}`);
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
         console.log(`Statement: ${item.statement}`);
         console.log(`Rationale: ${item.rationale}`);

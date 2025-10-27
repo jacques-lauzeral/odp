@@ -157,6 +157,7 @@ export class VersionedItemService {
             const store = this.getStore();
             const entities = await store.findAll(tx, baselineId, fromWaveId, filters);
             await commitTransaction(tx);
+            console.log('VersionedItemService.getAll: ' + JSON.stringify(entities));
             return entities;
         } catch (error) {
             await rollbackTransaction(tx);

@@ -13,6 +13,18 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
+     * Get entity type prefix for code generation
+     * Returns 'ON' or 'OR' based on the type field in data
+     * @param {object} data - Entity data
+     * @returns {string} Entity type prefix ('ON' or 'OR')
+     */
+    _getEntityTypeForCode(data) {
+        // The type field determines if this is ON or OR
+        return data.type || 'OR'; // Default to 'OR' if not specified
+    }
+
+
+    /**
      * Optimized buildFindAllQuery for OperationalRequirementStore
      * Loads ALL items with ALL relationships in a SINGLE query
      * Eliminates N+1 query problem
@@ -134,6 +146,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             // Return item data + aggregated relationships
             RETURN 
                 id(item) as itemId, 
+                item.code as code,
                 item.title as title,
                 id(version) as versionId, 
                 version.version as version,
@@ -200,6 +213,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 const item = {
                     itemId: this.normalizeId(record.get('itemId')),
                     title: record.get('title'),
+                    code: record.get('code'),
                     versionId: this.normalizeId(record.get('versionId')),
                     version: this.normalizeId(record.get('version')),
                     createdAt: record.get('createdAt'),

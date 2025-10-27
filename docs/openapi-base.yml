@@ -205,6 +205,9 @@ components:
           format: date-time
         createdBy:
           type: string
+        code:
+          type: string
+          description: "System-generated unique code for this requirement"
         type:
           type: string
           enum: [ON, OR]
@@ -442,6 +445,9 @@ components:
           format: date-time
         createdBy:
           type: string
+        code:
+          type: string
+          description: "System-generated unique code for this change"
         purpose:
           type: string
         initialState:

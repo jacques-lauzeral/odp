@@ -16,6 +16,17 @@ export class OperationalChangeStore extends VersionedItemStore {
     }
 
     /**
+     * Get entity type prefix for code generation
+     * OperationalChange always uses 'OC' prefix
+     * @param {object} data - Entity data
+     * @returns {string} Entity type prefix ('OC')
+     */
+    _getEntityTypeForCode(data) {
+        return 'OC';
+    }
+
+
+    /**
      * Build optimized query for findAll with multi-context and content filtering support
      * Wave filtering is handled separately at application level for better maintainability
      * @param {number|null} baselineId - Optional baseline context
@@ -136,6 +147,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             // Complete query with return clause
             cypher += `
                 RETURN id(item) as itemId, item.title as title,
+                        item.code as code,
                         id(version) as versionId, version.version as version,
                         version.createdAt as createdAt, version.createdBy as createdBy,
                         version { .* } as versionData
@@ -165,6 +177,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 const baseItem = {
                     itemId: this.normalizeId(record.get('itemId')),
                     title: record.get('title'),
+                    code: record.get('code'),
                     versionId: this.normalizeId(record.get('versionId')),
                     version: this.normalizeId(record.get('version')),
                     createdAt: record.get('createdAt'),

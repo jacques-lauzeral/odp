@@ -34,24 +34,24 @@ The ODP Storage Layer provides a clean abstraction over Neo4j graph database ope
 ### Store Hierarchy
 ```
 BaseStore (CRUD operations + normalizeId)
-├── RefinableEntityStore (+ REFINES hierarchy)
-│   ├── StakeholderCategoryStore
-│   ├── DataCategoryStore
-│   └── ServiceStore
-├── WaveStore (simple entity)
-├── DocumentStore (simple entity)
-├── BaselineStore (baseline management)
-├── ODPEditionStore (edition management + context resolution)
-└── VersionedItemStore (+ versioning + multi-context)
-    ├── OperationalRequirementStore (+ REFINES + IMPACTS + REFERENCES + DEPENDS_ON)
-    └── OperationalChangeStore (+ SATISFIES + SUPERSEDS + REFERENCES + DEPENDS_ON + milestones)
+â”œâ”€â”€ RefinableEntityStore (+ REFINES hierarchy)
+â”‚   â”œâ”€â”€ StakeholderCategoryStore
+â”‚   â”œâ”€â”€ DataCategoryStore
+â”‚   â””â”€â”€ ServiceStore
+â”œâ”€â”€ WaveStore (simple entity)
+â”œâ”€â”€ DocumentStore (simple entity)
+â”œâ”€â”€ BaselineStore (baseline management)
+â”œâ”€â”€ ODPEditionStore (edition management + context resolution)
+â””â”€â”€ VersionedItemStore (+ versioning + multi-context)
+    â”œâ”€â”€ OperationalRequirementStore (+ REFINES + IMPACTS + REFERENCES + DEPENDS_ON)
+    â””â”€â”€ OperationalChangeStore (+ SATISFIES + SUPERSEDS + REFERENCES + DEPENDS_ON + milestones)
 ```
 
 ### Data Flow Pattern
 ```
-Client Request → Store Method → Neo4j Operations → Transaction Commit → Response
-                      ↓
-              User Context → Versioning → Relationship Management → Multi-Context Filtering
+Client Request â†’ Store Method â†’ Neo4j Operations â†’ Transaction Commit â†’ Response
+                      â†“
+              User Context â†’ Versioning â†’ Relationship Management â†’ Multi-Context Filtering
 ```
 
 ## Entity Categories
@@ -86,7 +86,7 @@ Client Request → Store Method → Neo4j Operations → Transaction Commit → 
 
 **Storage Pattern**:
 ```cypher
-(Item:EntityType {id, title, createdAt, createdBy, latest_version})
+(Item:EntityType {id, title, code, createdAt, createdBy})
 (Version:EntityTypeVersion {id, version, createdAt, createdBy, ...content})
 (Item)-[:LATEST_VERSION]->(Version)
 (Version)-[:VERSION_OF]->(Item)
@@ -199,3 +199,40 @@ All operational entity queries support optional context parameters:
 - **Conflict resolution**: Clear optimistic locking semantics
 - **Audit capability**: Complete change history preservation
 - **Deployment planning**: Reliable baseline management and wave-based filtering
+## Code Generation
+
+### Automatic Code Assignment
+All operational entities (OperationalRequirement, OperationalChange) automatically receive a unique, human-readable code upon creation:
+
+**Code Format**: `{TYPE}-{DRG}-####`
+- **TYPE**: Entity type prefix
+    - `ON`: Operational Need (type='ON')
+    - `OR`: Operational Requirement (type='OR')
+    - `OC`: Operational Change
+- **DRG**: Drafting Group enum value
+- **####**: Sequential 4-digit number
+
+**Examples**:
+- `ON-IDL-0001`, `ON-IDL-0002`, `ON-IDL-0003`...
+- `OR-NM_B2B-0001`, `OR-NM_B2B-0002`...
+- `OC-AIRPORT-0001`, `OC-AIRPORT-0002`...
+
+### Code Generation Implementation
+**Store Layer Responsibilities**:
+- `VersionedItemStore._findMaxCodeNumber(type, drg)`: Queries highest existing code number
+- `VersionedItemStore._generateCode(type, drg)`: Generates next sequential code
+- Concrete stores implement `_getEntityTypeForCode(data)`: Returns 'ON'/'OR'/'OC'
+
+**Code Properties**:
+- Generated atomically within transaction (prevents collisions)
+- Stored on Item node (not ItemVersion)
+- Immutable after creation (preserved across all versions)
+- Independent counter per TYPE+DRG combination
+- Database unique constraint enforced
+
+**Usage in Queries**:
+All store methods returning operational entities include the `code` field:
+- `create()` - Returns newly created entity with generated code
+- `findById()` - Returns entity with code
+- `findAll()` - All items include code field
+- `findByIdAndVersion()` - Historical versions include original code

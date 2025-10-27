@@ -12,6 +12,7 @@ The abstract node types and relationships that support the versioning.
 - `createdAt`: item creation timestamp
 - `createdBy`: item creator
 - `title`: the humanly readable item title
+- `code`: auto-generated unique identifier (format: `{TYPE}-{DRG}-####`, e.g., `ON-IDL-0001`, `OR-NM_B2B-0042`, `OC-AIRPORT-0123`)
 
 **Relationships:**
 - `LATEST_VERSION -> ItemVersion`
@@ -231,17 +232,17 @@ The milestone system has been replaced with a specific set of 5 milestone events
 
 ### Field Evolution
 - **OperationalRequirement**:
-    - Removed: `references`, `flowExamples`, `risksAndOpportunities` (rich text fields)
-    - Added: `privateNotes` (rich text field for internal notes)
-    - Added: `path` (array of strings for folder hierarchy navigation)
-    - Retained: `statement`, `rationale`, `flows`, `drg`
+  - Removed: `references`, `flowExamples`, `risksAndOpportunities` (rich text fields)
+  - Added: `privateNotes` (rich text field for internal notes)
+  - Added: `path` (array of strings for folder hierarchy navigation)
+  - Retained: `statement`, `rationale`, `flows`, `drg`
 
 - **OperationalChange**:
-    - Renamed: `description` → `purpose` for clarity
-    - Added: `initialState`, `finalState`, `details` (rich text fields for better change documentation)
-    - Added: `privateNotes` (rich text field for internal notes)
-    - Added: `path` (array of strings for folder hierarchy navigation)
-    - Retained: `visibility`, `drg`
+  - Renamed: `description` â†’ `purpose` for clarity
+  - Added: `initialState`, `finalState`, `details` (rich text fields for better change documentation)
+  - Added: `privateNotes` (rich text field for internal notes)
+  - Added: `path` (array of strings for folder hierarchy navigation)
+  - Retained: `visibility`, `drg`
 
 ### Document Reference System
 The new direct REFERENCES relationship replaces the previous `references` rich text field with a structured approach:
@@ -258,3 +259,32 @@ The new `DEPENDS_ON` relationship enables formal declaration of dependencies:
 - Dependencies point to Item nodes, automatically following the latest version
 - Dependencies are validated at service level (warning/prevention of conflicting definitions)
 - Supports better deployment planning and sequencing
+### Code Generation System
+The system automatically generates unique, human-readable codes for operational entities:
+
+**Format**: `{TYPE}-{DRG}-####`
+- `{TYPE}`: Entity type prefix
+  - `ON`: Operational Need (OperationalRequirement with type='ON')
+  - `OR`: Operational Requirement (OperationalRequirement with type='OR')
+  - `OC`: Operational Change (OperationalChange entities)
+- `{DRG}`: Drafting Group enum value (4DT, AIRPORT, ASM_ATFCM, etc.)
+- `####`: Sequential 4-digit number, unique within TYPE+DRG scope
+
+**Examples**:
+- `ON-IDL-0001`: First Operational Need in iDL drafting group
+- `OR-NM_B2B-0042`: 42nd Operational Requirement in NM B2B drafting group
+- `OC-AIRPORT-0123`: 123rd Operational Change in Airport drafting group
+
+**Implementation**:
+- Code generated automatically during Item creation
+- Stored on Item node (not ItemVersion)
+- Preserved across all versions (immutable after creation)
+- Unique constraint enforced at database level
+- Generated atomically within transaction to prevent collisions
+
+**Counter Scope**:
+Each TYPE+DRG combination maintains its own independent counter:
+- ON-IDL: 0001, 0002, 0003...
+- OR-IDL: 0001, 0002, 0003...
+- OC-IDL: 0001, 0002, 0003...
+- ON-NM_B2B: 0001, 0002, 0003...

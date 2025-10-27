@@ -37,6 +37,62 @@ export class VersionedItemStore extends BaseStore {
         throw new Error('buildFindAllQuery must be implemented by concrete store');
     }
 
+    /**
+     * Find the maximum code number for a given entity type and DRG combination
+     * @param {string} entityType - 'ON', 'OR', or 'OC'
+     * @param {string} drg - Drafting Group enum value
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<number>} Maximum code number found (0 if none exist)
+     */
+    async _findMaxCodeNumber(entityType, drg, transaction) {
+        try {
+            const codePrefix = `${entityType}-${drg}-`;
+
+            const result = await transaction.run(`
+                MATCH (item:${this.nodeLabel})
+                WHERE item.code STARTS WITH $codePrefix
+                RETURN item.code as code
+                ORDER BY item.code DESC
+                LIMIT 1
+            `, { codePrefix });
+
+            if (result.records.length === 0) {
+                return 0;
+            }
+
+            const maxCode = result.records[0].get('code');
+            // Extract the numeric part from "XX-YYY-####"
+            const numericPart = maxCode.substring(maxCode.lastIndexOf('-') + 1);
+            return parseInt(numericPart, 10);
+        } catch (error) {
+            throw new StoreError(`Failed to find max code number: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Generate a unique code for an entity
+     * @param {string} entityType - 'ON', 'OR', or 'OC'
+     * @param {string} drg - Drafting Group enum value
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<string>} Generated code (e.g., "ON-IDL-0001")
+     */
+    async _generateCode(entityType, drg, transaction) {
+        const maxNumber = await this._findMaxCodeNumber(entityType, drg, transaction);
+        const nextNumber = maxNumber + 1;
+        const paddedNumber = nextNumber.toString().padStart(4, '0');
+        return `${entityType}-${drg}-${paddedNumber}`;
+    }
+
+    /**
+     * Get entity type prefix for code generation
+     * @abstract
+     * @param {object} data - Entity data
+     * @returns {string} Entity type prefix ('ON', 'OR', or 'OC')
+     */
+    _getEntityTypeForCode(data) {
+        throw new Error('_getEntityTypeForCode must be implemented by concrete store');
+    }
+
     async create(data, transaction) {
         try {
             const { title, ...versionData } = data;
@@ -46,16 +102,24 @@ export class VersionedItemStore extends BaseStore {
             // Extract relationships from version data
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
 
-            // Create Item node (no latest_version property)
+            // Generate code if drg is provided
+            let code = null;
+            if (contentData.drg) {
+                const entityType = this._getEntityTypeForCode(data);
+                code = await this._generateCode(entityType, contentData.drg, transaction);
+            }
+
+            // Create Item node with code
             const itemResult = await transaction.run(`
                 CREATE (item:${this.nodeLabel} {
                     title: $title,
                     _label: $title,
                     createdAt: $createdAt,
                     createdBy: $createdBy
+                    ${code ? ', code: $code' : ''}
                 })
                 RETURN id(item) as itemId
-            `, { title, createdAt, createdBy });
+            `, { title, createdAt, createdBy, ...(code && { code }) });
 
             const itemId = this.normalizeId(itemResult.records[0].get('itemId'));
 
@@ -210,7 +274,7 @@ export class VersionedItemStore extends BaseStore {
                 query = `
                     MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
                     WHERE id(item) = $itemId
-                    RETURN id(item) as itemId, item.title as title,
+                    RETURN id(item) as itemId, item.title as title, item.code as code,
                            id(version) as versionId, version.version as version,
                            version.createdAt as createdAt, version.createdBy as createdBy,
                            version { .* } as versionData
@@ -222,7 +286,7 @@ export class VersionedItemStore extends BaseStore {
                 query = `
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
                     WHERE id(baseline) = $baselineId AND id(item) = $itemId
-                    RETURN id(item) as itemId, item.title as title,
+                    RETURN id(item) as itemId, item.title as title, item.code as code,
                            id(version) as versionId, version.version as version,
                            version.createdAt as createdAt, version.createdBy as createdBy,
                            version { .* } as versionData
@@ -247,6 +311,7 @@ export class VersionedItemStore extends BaseStore {
             const baseItem = {
                 itemId: this.normalizeId(record.get('itemId')),
                 title: record.get('title'),
+                code: record.get('code'),
                 versionId: this.normalizeId(record.get('versionId')),
                 version: this.normalizeId(record.get('version')),
                 createdAt: record.get('createdAt'),
@@ -270,7 +335,7 @@ export class VersionedItemStore extends BaseStore {
             const result = await transaction.run(`
                 MATCH (item:${this.nodeLabel})<-[:VERSION_OF]-(version:${this.versionLabel})
                 WHERE id(item) = $itemId AND version.version = $versionNumber
-                RETURN id(item) as itemId, item.title as title,
+                RETURN id(item) as itemId, item.title as title, item.code as code,
                        id(version) as versionId, version.version as version,
                        version.createdAt as createdAt, version.createdBy as createdBy,
                        version { .* } as versionData
@@ -291,6 +356,7 @@ export class VersionedItemStore extends BaseStore {
             const baseItem = {
                 itemId: this.normalizeId(record.get('itemId')),
                 title: record.get('title'),
+                code: record.get('code'),
                 versionId: this.normalizeId(record.get('versionId')),
                 version: this.normalizeId(record.get('version')),
                 createdAt: record.get('createdAt'),
@@ -342,64 +408,17 @@ export class VersionedItemStore extends BaseStore {
     }
 
     /**
-     * Find all items with multi-context and content filtering support
-     * Uses delegated query building for performance optimization
+     * Find all items (latest versions, baseline context, wave filtered, and content filtered)
+     * MUST be implemented by concrete stores with optimized query patterns
+     * @abstract
      * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
+     * @param {number|null} baselineId - Optional baseline ID for historical context
+     * @param {number|null} fromWaveId - Optional wave ID for filtering
      * @param {object} filters - Optional content filtering parameters
-     * @returns {Promise<Array<object>>} Array of items with relationships
+     * @returns {Promise<Array<object>>} Array of items with all relationships
      */
     async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
-        try {
-            // For performance: apply content filtering at database level, wave filtering at application level
-            // This avoids overly complex wave filtering logic in Cypher queries
-
-            // Step 1: Build and execute query with baseline + content filtering only
-            const queryObj = this.buildFindAllQuery(baselineId, null, filters);
-            const result = await transaction.run(queryObj.cypher, queryObj.params);
-
-            // Step 2: Transform records and build relationships
-            const items = [];
-            for (const record of result.records) {
-                const versionData = record.get('versionData');
-
-                // Remove internal properties from version data
-                delete versionData.version;
-                delete versionData.createdAt;
-                delete versionData.createdBy;
-
-                const baseItem = {
-                    itemId: this.normalizeId(record.get('itemId')),
-                    title: record.get('title'),
-                    versionId: this.normalizeId(record.get('versionId')),
-                    version: this.normalizeId(record.get('version')),
-                    createdAt: record.get('createdAt'),
-                    createdBy: record.get('createdBy'),
-                    ...versionData
-                };
-
-                // Get relationships as Reference objects
-                const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-                items.push({ ...baseItem, ...relationshipReferences });
-            }
-
-            // Step 3: Apply wave filtering at application level (existing logic)
-            if (fromWaveId !== null) {
-                const filteredItems = [];
-                for (const item of items) {
-                    const passesFilter = await this._checkWaveFilter(item.itemId, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredItems.push(item);
-                    }
-                }
-                return filteredItems;
-            }
-
-            return items;
-        } catch (error) {
-            throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
-        }
+        throw new Error('findAll must be implemented by concrete store');
     }
 
     /**
