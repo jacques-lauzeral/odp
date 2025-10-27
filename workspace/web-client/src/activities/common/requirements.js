@@ -116,9 +116,9 @@ export default class RequirementsEntity {
     getColumnConfig() {
         return [
             {
-                key: 'itemId',
-                label: 'ID',
-                width: '80px',
+                key: 'code',
+                label: 'Code',
+                width: 'auto',
                 sortable: true,
                 type: 'text'
             },
@@ -373,6 +373,13 @@ export default class RequirementsEntity {
      */
     getTreeColumns() {
         return [
+            {
+                key: 'code',
+                label: 'Code',
+                width: 'auto',
+                sortable: true,
+                type: 'text'
+            },
             {
                 key: 'title',
                 label: 'Title',

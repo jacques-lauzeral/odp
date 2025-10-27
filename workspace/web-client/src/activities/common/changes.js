@@ -298,7 +298,7 @@ export default class ChangesEntity {
 
     getColumnConfig() {
         return [
-            { key: 'itemId', label: 'ID', width: '80px', sortable: true, type: 'text' },
+            { key: 'code', label: 'ode', width: 'auto', sortable: true, type: 'text' },
             { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
             { key: 'visibility', label: 'Visibility', width: '100px', sortable: true, type: 'visibility' },
             { key: 'drg', label: 'DRG', width: '120px', sortable: true, type: 'drafting-group' },

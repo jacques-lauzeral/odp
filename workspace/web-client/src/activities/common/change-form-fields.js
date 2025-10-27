@@ -32,6 +32,13 @@ export const changeFieldDefinitions = [
                 readOnly: true
             },
             {
+                key: 'code',
+                label: 'Code',
+                type: 'text',
+                modes: ['read', 'edit'],
+                readOnly: true
+            },
+            {
                 key: 'title',
                 label: 'Title',
                 type: 'text',

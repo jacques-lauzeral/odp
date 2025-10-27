@@ -33,6 +33,13 @@ export const requirementFieldDefinitions = [
                 readOnly: true
             },
             {
+                key: 'code',
+                label: 'Code',
+                type: 'text',
+                modes: ['read', 'edit'],
+                readOnly: true
+            },
+            {
                 key: 'type',
                 label: 'Type',
                 type: 'radio',
