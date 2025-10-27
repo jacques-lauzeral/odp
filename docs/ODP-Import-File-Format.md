@@ -270,35 +270,13 @@ changes:
 
 ## File Format Guidelines
 
-1. **YAML Structure**: Files must be valid YAML with proper indentation
-2. **External IDs**: Use stable, meaningful business identifiers
-3. **References**: Ensure all referenced entities exist or are included in the import
-4. **Arrays**: Empty arrays should be explicitly defined as `[]`
-5. **Optional Fields**: Can be omitted or set to null/empty
-6. **Text Fields**: All text fields accept UTF-8 encoded strings
-7. **Path Arrays**: Path elements should reflect organizational structure (not for publication)
-8. **Document References**: Include document external ID and optional note for each reference
-9. **Dependencies**: List dependencies in deployment order when possible
+1. **External IDs**: Use stable, meaningful business identifiers
+2. **References**: Ensure all referenced entities exist or are included in the import
+3. **Arrays**: Empty arrays should be explicitly defined as `[]`
+4. **Optional Fields**: Can be omitted or set to null/empty
+5. **Text Fields**: All text fields accept UTF-8 encoded strings
+6. **Path Arrays**: Path elements should reflect organizational structure (not for publication)
+7. **Document References**: Include document external ID and optional note for each reference
+8. **Dependencies**: List dependencies in deployment order when possible
 
 ---
-
-## Phase 19 Changes Summary
-
-### Removed Fields
-- **Requirements**: `references`, `flowExamples`, `risksAndOpportunities`, `impactedRegulatoryAspects`
-- **Changes**: `description` (renamed to `purpose`)
-- **Milestones**: `status` field
-
-### Added Fields
-- **Requirements**: `privateNotes`, `path`, `referencesDocuments`, `dependsOnRequirements`
-- **Changes**: `purpose` (renamed from `description`), `initialState`, `finalState`, `details`, `privateNotes`, `path`, `referencesDocuments`, `dependsOnChanges`
-- **Setup**: `documents` entity type
-
-### Updated Structures
-- **Document References**: Now structured as objects with `documentExternalId` and optional `note`
-- **Dependencies**: New relationship type for version-to-item dependencies
-- **Milestones**: `eventType` is now a single value, not an array
-
----
-
-*For implementation details, see Import Service documentation and API specifications.*
