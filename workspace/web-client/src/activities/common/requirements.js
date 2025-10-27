@@ -374,17 +374,16 @@ export default class RequirementsEntity {
     getTreeColumns() {
         return [
             {
-                key: 'code',
-                label: 'Code',
-                width: 'auto',
-                sortable: true,
-                type: 'text'
-            },
-            {
                 key: 'title',
                 label: 'Title',
                 width: 'auto',
                 appliesTo: ['drg', 'org-folder', 'on-node', 'or-node']
+            },
+            {
+                key: 'code',
+                label: 'Code',
+                width: 'auto',
+                appliesTo: ['on-node', 'or-node']
             },
             {
                 key: 'implementedONs',
