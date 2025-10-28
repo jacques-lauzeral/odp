@@ -29,6 +29,8 @@ class DocxExportService {
 
             console.log(`Exporting ${requirements.length} requirements for DRG: ${drg}`);
 
+            // console.log(' - ' + JSON.stringify(requirements));
+
             // Create generator and generate document
             const generator = new DocxGenerator();
             const buffer = await generator.generate(requirements, {

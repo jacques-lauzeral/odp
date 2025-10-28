@@ -156,7 +156,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 
                 // Aggregate relationship arrays (filter out nulls from OPTIONAL MATCH)
                 collect(DISTINCT CASE WHEN parent IS NOT NULL 
-                    THEN {id: id(parent), title: parent.title, type: parentVersion.type} 
+                    THEN {id: id(parent), code: parent.code, title: parent.title, type: parentVersion.type} 
                     ELSE NULL END) as refinesParents,
                 
                 collect(DISTINCT CASE WHEN sc IS NOT NULL 
@@ -172,7 +172,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     ELSE NULL END) as impactsServices,
                 
                 collect(DISTINCT CASE WHEN on IS NOT NULL 
-                    THEN {id: id(on), title: on.title, type: onVersion.type} 
+                    THEN {id: id(on), code: on.code, title: on.title, type: onVersion.type} 
                     ELSE NULL END) as implementedONs,
                 
                 collect(DISTINCT CASE WHEN doc IS NOT NULL 
@@ -180,7 +180,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     ELSE NULL END) as documentReferences,
                 
                 collect(DISTINCT CASE WHEN depReq IS NOT NULL 
-                    THEN {itemId: id(depReq), title: depReq.title, versionId: id(depReqVersion), version: depReqVersion.version} 
+                    THEN {itemId: id(depReq), code: depReq.code, title: depReq.title, versionId: id(depReqVersion), version: depReqVersion.version} 
                     ELSE NULL END) as dependsOnRequirements
                 
             ORDER BY item.title

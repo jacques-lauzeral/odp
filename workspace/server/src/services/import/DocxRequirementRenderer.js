@@ -50,7 +50,17 @@ class DocxRequirementRenderer {
     /**
      * Create a row for an entity reference array
      */
-    _createReferenceRow(label, references) {
+    _createEntityReferencesRow(label, references) {
+        const value = (references && references.length > 0)
+            ? references.map(ref => `${ref.code} [${ref.title}]`).join(", ")
+            : "";
+        return this._createRow(label, value);
+    }
+
+    /**
+     * Create a row for an entity reference array
+     */
+    _createElementReferenceRow(label, references) {
         const value = (references && references.length > 0)
             ? references.map(ref => ref.title || ref.name || "").join(", ")
             : "";
@@ -89,12 +99,12 @@ class DocxRequirementRenderer {
             this._createRow("Code", String(or.code)),
             this._createRow("Statement", or.statement),
             this._createRow("Rationale", or.rationale),
-            this._createRow("References", or.references),
             this._createRow("Flows", or.flows),
-            this._createReferenceRow("Implements", or.implementedONs),
-            this._createReferenceRow("Impacts Stakeholders", or.impactsStakeholderCategories),
-            this._createReferenceRow("Impacts Data", or.impactsData),
-            this._createReferenceRow("Impacts Services", or.impactsServices)
+            this._createEntityReferencesRow("Implements", or.implementedONs),
+            this._createElementReferenceRow("References", or.documentReferences),
+            this._createElementReferenceRow("Impacts Stakeholders", or.impactsStakeholderCategories),
+            this._createElementReferenceRow("Impacts Data", or.impactsData),
+            this._createElementReferenceRow("Impacts Services", or.impactsServices)
         ];
 
         return [
