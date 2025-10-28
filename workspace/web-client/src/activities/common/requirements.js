@@ -50,7 +50,7 @@ export default class RequirementsEntity {
 
         // Initialize tree perspective
         this.tree = new TreeTableEntity(app, entityConfig, {
-            pathBuilder: (entity) => this.buildTreePath(entity),
+            pathBuilder: (entity, entityMap) => this.buildRequirementTreePath(entity, entityMap),
             typeRenderers: this.getTreeTypeRenderers(),
             columns: this.getTreeColumns(),
             context: { setupData },
@@ -251,14 +251,44 @@ export default class RequirementsEntity {
     // ====================
 
     /**
-     * Build tree path for requirement
-     * Returns typed path objects for TreeTableEntity
-     * Path structure: DrG → Organizational Folders → Parent Requirements → Requirement
+     * Build organizational path nodes from path array
+     * Returns org-folder nodes only (no DrG, no requirement node)
+     *
+     * @param {string} drg - Drafting group for ID generation
+     * @param {Array} pathArray - Array of path segments (e.g., ['Operations', 'Ground'])
+     * @returns {Array} Array of org-folder path nodes
      */
-    buildTreePath(requirement) {
+    buildPathTreePath(drg, pathArray) {
+        if (!pathArray || !Array.isArray(pathArray) || pathArray.length === 0) {
+            return [];
+        }
+
+        return pathArray.map((segment, index) => {
+            const pathPrefix = pathArray.slice(0, index + 1).join('/');
+            return {
+                type: 'org-folder',
+                value: segment,
+                id: `${drg || 'no-drg'}:path:${pathPrefix}`
+            };
+        });
+    }
+
+    /**
+     * Build complete tree path for a requirement
+     *
+     * Path construction rules (mutually exclusive):
+     * 1. If path[] defined: DrG → Organizational Folders → Requirement
+     * 2. Else if refinesParent defined: Parent's complete tree-path → Requirement
+     * 3. Else: DrG → Requirement (root-level)
+     *
+     * @param {Object} requirement - The requirement entity
+     * @param {Map} entityMap - Map of all requirements by ID for parent lookup
+     * @returns {Array} Complete tree path from DrG to requirement
+     */
+    buildRequirementTreePath(requirement, entityMap) {
         const path = [];
 
-        // Level 1: DrG (Drafting Group) root folder
+        // Level 1: DrG (Drafting Group) root folder - ALWAYS included
         if (requirement.drg) {
             const drgDisplay = getDraftingGroupDisplay(requirement.drg);
             path.push({
@@ -268,23 +298,30 @@ export default class RequirementsEntity {
             });
         }
 
-        // Level 2: Organizational path folders (from path array field)
-        if (requirement.path && Array.isArray(requirement.path)) {
-            requirement.path.forEach((segment, index) => {
-                const pathPrefix = requirement.path.slice(0, index + 1).join('/');
-                path.push({
-                    type: 'org-folder',
-                    value: segment,
-                    id: `${requirement.drg || 'no-drg'}:path:${pathPrefix}`
-                });
-            });
+        // MUTUALLY EXCLUSIVE: Either organizational path OR parent chain
+        if (requirement.path && Array.isArray(requirement.path) && requirement.path.length > 0) {
+            // Case 1: Organizational path folders
+            const orgNodes = this.buildPathTreePath(requirement.drg, requirement.path);
+            path.push(...orgNodes);
+        } else if (requirement.refinesParents && requirement.refinesParents.length > 0) {
+            // Case 2: Recursive parent chain - inherit parent's complete path
+            const parentRef = requirement.refinesParents[0];
+            const parentId = parentRef.itemId || parentRef.id || parentRef;
+            const parent = entityMap ? entityMap.get(parentId) : null;
+            if (parent) {
+                // Recursively build parent's complete tree path
+                const parentPath = this.buildRequirementTreePath(parent, entityMap);
+
+                // Extract parent's middle nodes (skip DrG at [0]) and parent node itself
+                // We already added DrG above, so we take everything from index 1 onwards
+                if (parentPath.length > 1) {
+                    path.push(...parentPath.slice(1));
+                }
+            }
         }
+        // Case 3: Neither path nor refinesParent - requirement goes directly under DrG
 
-        // Level 3: Build parent chain from REFINES relationships
-        const parentChain = this.getParentChainTyped(requirement);
-        path.push(...parentChain);
-
-        // Final level: The requirement itself
+        // Final level: The requirement itself - ALWAYS included
         path.push({
             type: requirement.type === 'ON' ? 'on-node' : 'or-node',
             value: requirement.title,
@@ -293,46 +330,6 @@ export default class RequirementsEntity {
         });
 
         return path;
-    }
-
-    /**
-     * Build typed parent chain for tree hierarchy
-     * Follows REFINES relationships up to root
-     */
-    getParentChainTyped(requirement) {
-        const chain = [];
-        const visited = new Set();
-
-        const buildChain = (req) => {
-            if (!req || !req.refinesParents || req.refinesParents.length === 0) {
-                return;
-            }
-
-            // Take first parent (primary refinement)
-            const parentRef = req.refinesParents[0];
-            const parentId = parentRef.itemId || parentRef.id || parentRef;
-
-            // Prevent cycles
-            if (visited.has(parentId)) return;
-            visited.add(parentId);
-
-            const parent = this.data.find(r =>
-                (r.itemId || r.id) === parentId
-            );
-
-            if (parent) {
-                buildChain(parent); // Recurse up
-                chain.push({
-                    type: parent.type === 'ON' ? 'on-node' : 'or-node',
-                    value: parent.title,
-                    id: parent.itemId || parent.id,
-                    entity: parent
-                });
-            }
-        };
-
-        buildChain(requirement);
-        return chain;
     }
 
     /**

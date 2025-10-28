@@ -13,6 +13,7 @@ export default class TreeTableEntity {
 
         // Tree structure state
         this.data = [];                    // Flat entity list
+        this.requirementMap = null;        // ID - Entity map
         this.treeData = null;              // Built tree structure
         this.selectedItem = null;          // Currently selected item
         this.currentFilters = {};          // Current filter values
@@ -45,14 +46,19 @@ export default class TreeTableEntity {
      * @param {Array} entities - Flat list of entities
      */
     setData(entities) {
-        console.log('TreeTableEntity.setData:', entities.length, 'entities');
         this.data = entities;
-        this.buildTree(entities);
 
-        // Notify parent that data is loaded
-        if (this.onDataLoaded) {
-            this.onDataLoaded(entities);
-        }
+        // Build entity map for quick lookup
+        this.requirementMap = new Map();
+        entities.forEach(entity => {
+            const id = entity.itemId || entity.id;
+            if (id) {
+                this.requirementMap.set(id, entity);
+            }
+        });
+
+        this.buildTree(entities);
+        // ... rest
     }
 
     /**
@@ -71,7 +77,7 @@ export default class TreeTableEntity {
 
         entities.forEach(entity => {
             try {
-                const path = this.pathBuilder(entity);
+                const path = this.pathBuilder(entity, this.requirementMap);
                 if (!path || !Array.isArray(path)) {
                     console.warn('Invalid path for entity:', entity);
                     return;

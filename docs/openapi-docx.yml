@@ -7,9 +7,9 @@ info:
   version: 1.0.0
 
 paths:
-  /docx/export/requirements:
+  /docx/export:
     get:
-      summary: Export operational requirements as Word document
+      summary: Export operational requirements and changes as Word document
       tags: [Export]
       parameters:
         - name: drg

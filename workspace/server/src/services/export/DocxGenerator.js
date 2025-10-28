@@ -1,13 +1,13 @@
 // workspace/server/src/services/DocxGenerator.js
 import { Document, Packer, Paragraph, HeadingLevel, AlignmentType, LevelFormat } from 'docx';
 import { getDraftingGroupDisplay } from '../../../../shared/src/index.js';
-import DocxRequirementRenderer from './DocxRequirementRenderer.js';
+import DocxEntityRenderer from './DocxEntityRenderer.js';
 import { DOCUMENT_STYLES, SPACING } from './DocxStyles.js';
 
 class DocxGenerator {
     constructor() {
         this.sectionCounter = {};
-        this.renderer = new DocxRequirementRenderer();
+        this.renderer = new DocxEntityRenderer();
     }
 
     /**
@@ -101,11 +101,17 @@ class DocxGenerator {
     }
 
     /**
-     * Generate a Word document from requirements
+     * Generate a Word document from requirements and changes
+     * @param {Array} requirements - Array of ONs and ORs
+     * @param {Array} changes - Array of OCs
+     * @param {Object} metadata - Document metadata
+     * @returns {Buffer} - Word document buffer
      */
-    async generate(requirements, metadata) {
+    async generate(requirements, changes, metadata) {
         this.sectionCounter = {};
-        const hierarchy = this._buildHierarchy(requirements);
+
+        // Build hierarchy from separate requirements and changes arrays
+        const hierarchy = this._buildHierarchy(requirements, changes);
 
         const doc = new Document({
             creator: metadata.userId || 'ODP System',
@@ -131,32 +137,43 @@ class DocxGenerator {
         // Title
         children.push(
             this._createParagraph(
-                `${getDraftingGroupDisplay(metadata.drg)} Operational Needs and Requirements`,
+                `${getDraftingGroupDisplay(metadata.drg)} Operational Needs, Requirements and Changes`,
                 null,
                 'title'
             )
         );
 
-        // Process path sections
+        // Section 1: Operational Needs and Requirements
+        children.push(this._createNumberedHeading('Operational Needs and Requirements', 1));
+
+        // Process path tree (organizational structure)
         if (hierarchy.pathSections.size > 0) {
-            hierarchy.pathSections.forEach((section, pathKey) => {
-                children.push(...this._renderPathSection(section, hierarchy, 1));
+            hierarchy.pathSections.forEach((node, nodeName) => {
+                children.push(...this._renderPathNode(node, hierarchy, 2));
             });
         }
 
         // Root ONs
         if (hierarchy.rootONs.length > 0) {
-            children.push(this._createNumberedHeading('Operational Needs', 1));
+            children.push(this._createNumberedHeading('Operational Needs', 2));
             hierarchy.rootONs.forEach(on => {
-                children.push(...this._renderON(on, hierarchy, 2));
+                children.push(...this._renderON(on, hierarchy, 3));
             });
         }
 
         // Root ORs
         if (hierarchy.rootORs.length > 0) {
-            children.push(this._createNumberedHeading('Operational Requirements', 1));
+            children.push(this._createNumberedHeading('Operational Requirements', 2));
             hierarchy.rootORs.forEach(or => {
-                children.push(...this._renderOR(or, hierarchy, 2));
+                children.push(...this._renderOR(or, hierarchy, 3));
+            });
+        }
+
+        // Section 2: Operational Changes (separate top-level section)
+        if (hierarchy.rootOCs.length > 0) {
+            children.push(this._createNumberedHeading('Operational Changes', 1));
+            hierarchy.rootOCs.forEach(oc => {
+                children.push(...this._renderOC(oc, 2));
             });
         }
 
@@ -164,27 +181,39 @@ class DocxGenerator {
     }
 
     /**
-     * Render a path-based section
+     * Render a path node recursively (organizational structure)
+     * Handles nested path hierarchies with intermediate nodes
+     * @param {Object} node - Path node with name, children, ons, ors
+     * @param {Object} hierarchy - Complete hierarchy structure
+     * @param {number} level - Current heading level
+     * @returns {Array} - Array of paragraphs
      */
-    _renderPathSection(section, hierarchy, level) {
+    _renderPathNode(node, hierarchy, level) {
         const paragraphs = [];
-        const sectionTitle = section.path[section.path.length - 1] || 'Section';
 
-        paragraphs.push(this._createNumberedHeading(sectionTitle, level));
+        // Render this node's heading
+        paragraphs.push(this._createNumberedHeading(node.name, level));
 
-        // ONs
-        if (section.ons.length > 0) {
+        // First: Render this node's ONs (if any)
+        if (node.ons.length > 0) {
             paragraphs.push(this._createNumberedHeading('Operational Needs', level + 1));
-            section.ons.forEach(on => {
+            node.ons.forEach(on => {
                 paragraphs.push(...this._renderON(on, hierarchy, level + 2));
             });
         }
 
-        // ORs
-        if (section.ors.length > 0) {
+        // Second: Render this node's ORs (if any)
+        if (node.ors.length > 0) {
             paragraphs.push(this._createNumberedHeading('Operational Requirements', level + 1));
-            section.ors.forEach(or => {
+            node.ors.forEach(or => {
                 paragraphs.push(...this._renderOR(or, hierarchy, level + 2));
+            });
+        }
+
+        // Third: Recursively render child nodes (organizational sub-sections, already sorted alphabetically)
+        if (node.children.size > 0) {
+            node.children.forEach((childNode, childName) => {
+                paragraphs.push(...this._renderPathNode(childNode, hierarchy, level + 1));
             });
         }
 
@@ -228,6 +257,18 @@ class DocxGenerator {
     }
 
     /**
+     * Render an OC (flat, no children)
+     */
+    _renderOC(oc, level) {
+        const elements = [];
+
+        elements.push(this._createNumberedHeading(oc.title, level));
+        elements.push(...this.renderer.renderOC(oc, level));
+
+        return elements;
+    }
+
+    /**
      * Get next section number for a given level
      */
     _getNextSectionNumber(level) {
@@ -250,61 +291,188 @@ class DocxGenerator {
     }
 
     /**
-     * Build hierarchical structure from flat requirement list
+     * Build hierarchical structure from requirements and changes
+     * Orchestrates the complete hierarchy building process
+     * @param {Array} requirements - Array of ONs and ORs
+     * @param {Array} changes - Array of OCs
      */
-    _buildHierarchy(requirements) {
-        const ons = requirements.filter(r => r.type === 'ON');
-        const ors = requirements.filter(r => r.type === 'OR');
-
-        const onChildren = new Map();
-        ons.forEach(on => {
-            if (on.refinesParents && on.refinesParents.length > 0) {
-                const parentId = on.refinesParents[0].id;
-                if (!onChildren.has(parentId)) {
-                    onChildren.set(parentId, []);
-                }
-                onChildren.get(parentId).push(on);
-            }
+    _buildHierarchy(requirements, changes) {
+        // Create lookup map for requirement references
+        const requirementsById = new Map();
+        requirements.forEach(req => {
+            requirementsById.set(req.itemId, req);
         });
 
-        const orChildren = new Map();
-        ors.forEach(or => {
-            if (or.refinesParents && or.refinesParents.length > 0) {
-                const parentId = or.refinesParents[0].id;
-                if (!orChildren.has(parentId)) {
-                    orChildren.set(parentId, []);
-                }
-                orChildren.get(parentId).push(or);
-            }
-        });
+        // Separate requirements based on path vs refinement
+        const pathBasedRequirements = requirements.filter(r => r.path && r.path.length > 0);
+        const refinementBasedRequirements = requirements.filter(r =>
+            (!r.path || r.path.length === 0) && r.refinesParents && r.refinesParents.length > 0
+        );
+        const rootRequirements = requirements.filter(r =>
+            (!r.path || r.path.length === 0) && (!r.refinesParents || r.refinesParents.length === 0)
+        );
 
-        // Sort root ONs and ORs alphanumerically by code
-        const rootONs = ons
-            .filter(on => !on.refinesParents || on.refinesParents.length === 0)
-            .sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+        // Build path sections (organizational structure)
+        const pathSections = this._buildPathSections(pathBasedRequirements);
 
-        const rootORs = ors
-            .filter(or => !or.refinesParents || or.refinesParents.length === 0)
-            .sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+        // Build refinement hierarchy (parent-child relationships)
+        const { onChildren, orChildren } = this._buildRefinementHierarchy(
+            refinementBasedRequirements,
+            requirementsById
+        );
 
-        // Sort children in maps
-        onChildren.forEach((children, parentId) => {
-            children.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
-        });
+        // Separate and sort root ONs and ORs
+        const rootONs = this._sortEntitiesByCode(
+            rootRequirements.filter(r => r.type === 'ON')
+        );
+        const rootORs = this._sortEntitiesByCode(
+            rootRequirements.filter(r => r.type === 'OR')
+        );
 
-        orChildren.forEach((children, parentId) => {
-            children.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
-        });
-
-        const pathSections = this._buildPathSections(requirements);
+        // Sort all OCs alphanumerically by code (flat list, no hierarchy)
+        const rootOCs = this._sortEntitiesByCode([...changes]);
 
         return {
             pathSections,
             rootONs,
             rootORs,
+            rootOCs,
             onChildren,
             orChildren
         };
+    }
+
+    /**
+     * Build path sections from requirements with organizational paths
+     * Creates nested tree structure from path arrays
+     * @param {Array} requirements - Requirements with path attribute
+     * @returns {Map} - Map of root-level path nodes (sorted alphabetically)
+     */
+    _buildPathSections(requirements) {
+        const rootNodes = new Map();
+
+        requirements.forEach(req => {
+            if (!req.path || req.path.length === 0) return;
+
+            // Navigate/create path in tree
+            let currentLevel = rootNodes;
+
+            req.path.forEach((pathToken, index) => {
+                const isLeaf = (index === req.path.length - 1);
+
+                // Create node if it doesn't exist
+                if (!currentLevel.has(pathToken)) {
+                    currentLevel.set(pathToken, {
+                        name: pathToken,
+                        children: new Map(),
+                        ons: [],
+                        ors: []
+                    });
+                }
+
+                const node = currentLevel.get(pathToken);
+
+                // If this is the leaf node, add the requirement
+                if (isLeaf) {
+                    if (req.type === 'ON') {
+                        node.ons.push(req);
+                    } else {
+                        node.ors.push(req);
+                    }
+                }
+
+                // Move to next level
+                currentLevel = node.children;
+            });
+        });
+
+        // Sort requirements within each node and sort children recursively
+        this._sortPathTree(rootNodes);
+
+        // Sort root nodes alphabetically
+        const sortedRootNodes = new Map(
+            Array.from(rootNodes.entries()).sort((a, b) =>
+                a[0].localeCompare(b[0], undefined, { sensitivity: 'base' })
+            )
+        );
+
+        return sortedRootNodes;
+    }
+
+    /**
+     * Recursively sort path tree nodes and their requirements
+     * @param {Map} nodes - Map of path nodes
+     */
+    _sortPathTree(nodes) {
+        nodes.forEach((node, key) => {
+            // Sort ONs and ORs within this node
+            node.ons = this._sortEntitiesByCode(node.ons);
+            node.ors = this._sortEntitiesByCode(node.ors);
+
+            // Sort children alphabetically
+            if (node.children.size > 0) {
+                const sortedChildren = new Map(
+                    Array.from(node.children.entries()).sort((a, b) =>
+                        a[0].localeCompare(b[0], undefined, { sensitivity: 'base' })
+                    )
+                );
+                node.children = sortedChildren;
+
+                // Recursively sort children's children
+                this._sortPathTree(node.children);
+            }
+        });
+    }
+
+    /**
+     * Build refinement hierarchy (parent-child relationships)
+     * Creates maps of children for each parent requirement
+     * @param {Array} requirements - Requirements with refinesParents
+     * @param {Map} requirementsById - Lookup map for all requirements
+     * @returns {Object} - Object with onChildren and orChildren maps
+     */
+    _buildRefinementHierarchy(requirements, requirementsById) {
+        const onChildren = new Map();
+        const orChildren = new Map();
+
+        requirements.forEach(req => {
+            if (req.refinesParents && req.refinesParents.length > 0) {
+                const parentRef = req.refinesParents[0];
+                const parentId = parentRef.itemId || parentRef.id || parentRef;
+
+                if (req.type === 'ON') {
+                    if (!onChildren.has(parentId)) {
+                        onChildren.set(parentId, []);
+                    }
+                    onChildren.get(parentId).push(req);
+                } else if (req.type === 'OR') {
+                    if (!orChildren.has(parentId)) {
+                        orChildren.set(parentId, []);
+                    }
+                    orChildren.get(parentId).push(req);
+                }
+            }
+        });
+
+        // Sort children arrays by code
+        onChildren.forEach((children, parentId) => {
+            onChildren.set(parentId, this._sortEntitiesByCode(children));
+        });
+
+        orChildren.forEach((children, parentId) => {
+            orChildren.set(parentId, this._sortEntitiesByCode(children));
+        });
+
+        return { onChildren, orChildren };
+    }
+
+    /**
+     * Sort entities alphanumerically by code
+     * @param {Array} entities - Array of entities with code property
+     * @returns {Array} - Sorted array
+     */
+    _sortEntitiesByCode(entities) {
+        return [...entities].sort((a, b) => this._compareAlphanumeric(a.code, b.code));
     }
 
     /**
@@ -315,49 +483,6 @@ class DocxGenerator {
      */
     _compareAlphanumeric(a, b) {
         return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-    }
-
-    /**
-     * Build sections based on paths
-     */
-    _buildPathSections(requirements) {
-        const sections = new Map();
-
-        requirements.forEach(req => {
-            if (req.path && req.path.length > 0) {
-                const pathKey = req.path.join('/');
-                if (!sections.has(pathKey)) {
-                    sections.set(pathKey, {
-                        path: req.path,
-                        ons: [],
-                        ors: []
-                    });
-                }
-
-                if (req.type === 'ON') {
-                    sections.get(pathKey).ons.push(req);
-                } else {
-                    sections.get(pathKey).ors.push(req);
-                }
-            }
-        });
-
-        // Sort ONs and ORs within each section by code
-        sections.forEach((section, pathKey) => {
-            section.ons.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
-            section.ors.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
-        });
-
-        // Sort sections alphabetically by path (last element of path array)
-        const sortedSections = new Map(
-            Array.from(sections.entries()).sort((a, b) => {
-                const nameA = a[1].path[a[1].path.length - 1] || '';
-                const nameB = b[1].path[b[1].path.length - 1] || '';
-                return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
-            })
-        );
-
-        return sortedSections;
     }
 
     /**

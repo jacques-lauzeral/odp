@@ -8,17 +8,17 @@ export function docxCommands(program, config) {
     const docxCommand = new Command('docx')
         .description('DocX document operations (import/export)');
 
-    // Export requirements subcommand
+    // Export subcommand
     docxCommand
-        .command('export-requirements <drg>')
-        .description('Export operational requirements for a DRG as Word document')
-        .option('-o, --output <filename>', 'Output filename (default: requirements-{drg}-{timestamp}.docx)')
+        .command('export <drg>')
+        .description('Export operational requirements and changes for a DRG as Word document')
+        .option('-o, --output <filename>', 'Output filename (default: on-or-oc-{drg}.docx)')
         .action(async (drg, options) => {
             try {
                 const userId = program.opts().user;
-                const url = `${config.server.baseUrl}/docx/export/requirements?drg=${drg}`;
+                const url = `${config.server.baseUrl}/docx/export?drg=${drg}`;
 
-                console.log(`Exporting requirements for DRG: ${drg}...`);
+                console.log(`Exporting requirements and changes for DRG: ${drg}...`);
 
                 const response = await fetch(url, {
                     headers: {
@@ -36,7 +36,7 @@ export function docxCommands(program, config) {
 
                 // Generate filename
                 const filename = options.output ||
-                    `requirements-${drg.toLowerCase()}-${Date.now()}.docx`;
+                    `on-or-oc-${drg.toLowerCase()}.docx`;
 
                 // Save the file
                 const buffer = await response.buffer();
@@ -46,7 +46,7 @@ export function docxCommands(program, config) {
                 console.log(`  Size: ${(buffer.length / 1024).toFixed(2)} KB`);
 
             } catch (error) {
-                console.error('Error exporting requirements:', error.message);
+                console.error('Error exporting requirements and changes:', error.message);
                 process.exit(1);
             }
         });

@@ -683,7 +683,7 @@ class JSONImporter {
 
         // Resolve all reference types
         const refinesParents = this._resolveExternalIds(
-            reqData.refines ? [reqData.refines] : [],
+            reqData.parent ? [reqData.parent.externalId] : [],
             context
         );
 

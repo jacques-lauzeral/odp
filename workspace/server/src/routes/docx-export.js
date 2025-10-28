@@ -16,7 +16,7 @@ function getUserId(req) {
 }
 
 // Export operational requirements as Word document
-router.get('/export/requirements', async (req, res) => {
+router.get('/export', async (req, res) => {
     try {
         const userId = getUserId(req);
         const drg = req.query.drg;
@@ -31,15 +31,15 @@ router.get('/export/requirements', async (req, res) => {
             });
         }
 
-        console.log(`DocxExportService.exportRequirementsByDrg() userId: ${userId}, drg: ${drg}`);
+        console.log(`DocxExportService.exportRequirementsAndChanges() userId: ${userId}, drg: ${drg}`);
 
-        const buffer = await DocxExportService.exportRequirementsByDrg(drg, userId);
+        const buffer = await DocxExportService.exportRequirementsAndChanges(drg, userId);
 
         // Set response headers for Word document
         res.setHeader('Content-Type',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.setHeader('Content-Disposition',
-            `attachment; filename="requirements-${drg.toLowerCase()}-${Date.now()}.docx"`);
+            `attachment; filename="on-or-oc-${drg.toLowerCase()}.docx"`);
 
         // Send binary buffer
         res.send(buffer);
