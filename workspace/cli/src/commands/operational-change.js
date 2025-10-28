@@ -176,10 +176,10 @@ class OperationalChangeCommands extends VersionedCommands {
     displayItemDetails(item) {
         super.displayItemDetails(item);
 
-        console.log(`Purpose: ${item.purpose || item.description || ''}`);
         console.log(`Code: ${item.code || 'Not set'}`);
-        console.log(`Visibility: ${item.visibility ? getVisibilityDisplay(item.visibility) : 'Not set'}`);
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
+        console.log(`Purpose: ${item.purpose || item.description || ''}`);
+        console.log(`Visibility: ${item.visibility ? getVisibilityDisplay(item.visibility) : 'Not set'}`);
         console.log(`Initial State: ${item.initialState || 'Not specified'}`);
         console.log(`Final State: ${item.finalState || 'Not specified'}`);
         console.log(`Details: ${item.details || 'Not specified'}`);
@@ -193,7 +193,7 @@ class OperationalChangeCommands extends VersionedCommands {
         if (item.satisfiesRequirements && item.satisfiesRequirements.length > 0) {
             console.log(`\nSatisfies Requirements:`);
             item.satisfiesRequirements.forEach(req => {
-                console.log(`  - ${req.title} (${req.type}) [ID: ${req.id}]`);
+                console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`);
             });
         }
 
@@ -201,7 +201,7 @@ class OperationalChangeCommands extends VersionedCommands {
         if (item.supersedsRequirements && item.supersedsRequirements.length > 0) {
             console.log(`\nSupersedes Requirements:`);
             item.supersedsRequirements.forEach(req => {
-                console.log(`  - ${req.title} (${req.type}) [ID: ${req.id}]`);
+                console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`);
             });
         }
 
@@ -218,7 +218,7 @@ class OperationalChangeCommands extends VersionedCommands {
         if (item.dependsOnChanges && item.dependsOnChanges.length > 0) {
             console.log(`\nDepends On Changes:`);
             item.dependsOnChanges.forEach(dep => {
-                console.log(`  - ${dep.title} [ID: ${dep.itemId}, Version: ${dep.version}]`);
+                console.log(`  - ${dep.code} [ID: ${dep.id}] ${dep.title}`);
             });
         }
 

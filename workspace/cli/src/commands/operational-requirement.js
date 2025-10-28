@@ -171,7 +171,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (item.refinesParents && item.refinesParents.length > 0) {
             console.log(`\nRefines:`);
             item.refinesParents.forEach(parent => {
-                console.log(`  - ${parent.title} (${parent.type}) [ID: ${parent.id}]`);
+                console.log(`  - ${parent.code} [ID: ${parent.id}] ${parent.title}`);
             });
         }
 
@@ -179,7 +179,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (item.implementedONs && item.implementedONs.length > 0) {
             console.log(`\nImplemented ONs:`);
             item.implementedONs.forEach(on => {
-                console.log(`  - ${on.title} (${on.type}) [ID: ${on.id}]`);
+                console.log(`  - ${on.code} [ID: ${on.id}] ${on.title}`);
             });
         }
 
@@ -222,7 +222,7 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (item.dependsOnRequirements && item.dependsOnRequirements.length > 0) {
             console.log(`\nDepends On Requirements:`);
             item.dependsOnRequirements.forEach(dep => {
-                console.log(`  - ${dep.title} [ID: ${dep.itemId}, Version: ${dep.version}]`);
+                console.log(`  - ${dep.code} [ID: ${dep.id}] ${dep.title}`);
             });
         }
     }

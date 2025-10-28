@@ -297,7 +297,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             const satisfiesResult = await transaction.run(`
             MATCH (version:${this.versionLabel})-[:SATISFIES]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
             WHERE id(version) = $versionId
-            RETURN id(req) as id, req.title as title, reqVersion.type as type
+            RETURN id(req) as id, req.title as title, req.code as code, reqVersion.type as type
             ORDER BY req.title
         `, { versionId });
 
@@ -307,7 +307,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             const supersedsResult = await transaction.run(`
             MATCH (version:${this.versionLabel})-[:SUPERSEDS]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
             WHERE id(version) = $versionId
-            RETURN id(req) as id, req.title as title, reqVersion.type as type
+            RETURN id(req) as id, req.title as title, req.code as code, reqVersion.type as type
             ORDER BY req.title
         `, { versionId });
 
@@ -331,13 +331,14 @@ export class OperationalChangeStore extends VersionedItemStore {
             const dependsOnResult = await transaction.run(`
             MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(changeItem:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
             WHERE id(version) = $versionId
-            RETURN id(changeItem) as itemId, changeItem.title as title, id(changeVersion) as versionId, changeVersion.version as version
+            RETURN id(changeItem) as itemId, changeItem.title as title, changeItem.code as code, id(changeVersion) as versionId, changeVersion.version as version
             ORDER BY changeItem.title
         `, { versionId });
 
             const dependsOnChanges = dependsOnResult.records.map(record => ({
                 itemId: this.normalizeId(record.get('itemId')),
                 title: record.get('title'),
+                code: record.get('code'),
                 versionId: this.normalizeId(record.get('versionId')),
                 version: this.normalizeId(record.get('version'))
             }));

@@ -449,7 +449,8 @@ export class VersionedItemStore extends BaseStore {
     _buildReference(record, titleField = 'title') {
         const ref = {
             id: this.normalizeId(record.get('id')),
-            title: record.get(titleField)
+            title: record.get(titleField),
+            code: record.get('code')
         };
 
         // Add additional fields if present

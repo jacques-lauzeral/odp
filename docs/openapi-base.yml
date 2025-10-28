@@ -32,6 +32,8 @@ components:
       properties:
         id:
           type: string
+        code:
+          type: string
         title:
           type: string
         type:

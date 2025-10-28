@@ -320,7 +320,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const refinesResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:REFINES]->(parent:OperationalRequirement)-[:LATEST_VERSION]->(parentVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId
-                RETURN id(parent) as id, parent.title as title, parentVersion.type as type
+                RETURN id(parent) as id, parent.title as title, parent.code as code, parentVersion.type as type
                 ORDER BY parent.title
             `, { versionId });
 
@@ -372,7 +372,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const implementedONsResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:IMPLEMENTS]->(target:OperationalRequirement)-[:LATEST_VERSION]->(targetVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId AND targetVersion.type = 'ON'
-                RETURN id(target) as id, target.title as title, targetVersion.type as type
+                RETURN id(target) as id, target.title as title, target.code as code, targetVersion.type as type
                 ORDER BY target.title
             `, { versionId });
 
@@ -397,13 +397,14 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const dependsOnResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(reqItem:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId
-                RETURN id(reqItem) as itemId, reqItem.title as title, id(reqVersion) as versionId, reqVersion.version as version
+                RETURN id(reqItem) as itemId, reqItem.title as title, reqItem.code as code, id(reqVersion) as versionId, reqVersion.version as version
                 ORDER BY reqItem.title
             `, { versionId });
 
             const dependsOnRequirements = dependsOnResult.records.map(record => ({
                 itemId: this.normalizeId(record.get('itemId')),
                 title: record.get('title'),
+                code: record.get('code'),
                 versionId: this.normalizeId(record.get('versionId')),
                 version: this.normalizeId(record.get('version'))
             }));

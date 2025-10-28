@@ -62,7 +62,7 @@ class DocxRequirementRenderer {
      */
     renderON(on, level) {
         const rows = [
-            this._createRow("ID", String(on.itemId)),
+            this._createRow("Code", String(on.code)),
             this._createRow("Statement", on.statement),
             this._createRow("Rationale", on.rationale),
             this._createRow("References", on.references),
@@ -86,7 +86,7 @@ class DocxRequirementRenderer {
      */
     renderOR(or, level) {
         const rows = [
-            this._createRow("ID", String(or.itemId)),
+            this._createRow("Code", String(or.code)),
             this._createRow("Statement", or.statement),
             this._createRow("Rationale", or.rationale),
             this._createRow("References", or.references),
