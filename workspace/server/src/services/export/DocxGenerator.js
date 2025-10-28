@@ -1,8 +1,8 @@
 // workspace/server/src/services/DocxGenerator.js
-import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
+import { Document, Packer, Paragraph, HeadingLevel, AlignmentType, LevelFormat } from 'docx';
 import { getDraftingGroupDisplay } from '../../../../shared/src/index.js';
-import DocxRequirementRenderer from '../import/DocxRequirementRenderer.js';
-import { DOCUMENT_STYLES, SPACING } from '../import/DocxStyles.js';
+import DocxRequirementRenderer from './DocxRequirementRenderer.js';
+import { DOCUMENT_STYLES, SPACING } from './DocxStyles.js';
 
 class DocxGenerator {
     constructor() {
@@ -42,6 +42,65 @@ class DocxGenerator {
     }
 
     /**
+     * Build numbering configuration for lists
+     */
+    _buildNumberingConfig() {
+        return {
+            config: [
+                {
+                    reference: 'default-numbering',
+                    levels: [
+                        {
+                            level: 0,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 720, hanging: 360 }
+                                }
+                            }
+                        },
+                        {
+                            level: 1,
+                            format: LevelFormat.DECIMAL,
+                            text: '%2.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 1440, hanging: 360 }
+                                }
+                            }
+                        },
+                        {
+                            level: 2,
+                            format: LevelFormat.DECIMAL,
+                            text: '%3.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 2160, hanging: 360 }
+                                }
+                            }
+                        },
+                        {
+                            level: 3,
+                            format: LevelFormat.DECIMAL,
+                            text: '%4.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 2880, hanging: 360 }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+    }
+
+    /**
      * Generate a Word document from requirements
      */
     async generate(requirements, metadata) {
@@ -53,6 +112,7 @@ class DocxGenerator {
             title: `Requirements Export - ${metadata.drg}`,
             description: `Operational requirements for DRG: ${metadata.drg}`,
             styles: DOCUMENT_STYLES,
+            numbering: this._buildNumberingConfig(),
             sections: [{
                 properties: {},
                 children: this._buildDocumentContent(hierarchy, metadata)
@@ -218,8 +278,24 @@ class DocxGenerator {
             }
         });
 
-        const rootONs = ons.filter(on => !on.refinesParents || on.refinesParents.length === 0);
-        const rootORs = ors.filter(or => !or.refinesParents || or.refinesParents.length === 0);
+        // Sort root ONs and ORs alphanumerically by code
+        const rootONs = ons
+            .filter(on => !on.refinesParents || on.refinesParents.length === 0)
+            .sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+
+        const rootORs = ors
+            .filter(or => !or.refinesParents || or.refinesParents.length === 0)
+            .sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+
+        // Sort children in maps
+        onChildren.forEach((children, parentId) => {
+            children.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+        });
+
+        orChildren.forEach((children, parentId) => {
+            children.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+        });
+
         const pathSections = this._buildPathSections(requirements);
 
         return {
@@ -229,6 +305,16 @@ class DocxGenerator {
             onChildren,
             orChildren
         };
+    }
+
+    /**
+     * Compare two codes alphanumerically (natural sort)
+     * @param {string} a - First code
+     * @param {string} b - Second code
+     * @returns {number} - Comparison result
+     */
+    _compareAlphanumeric(a, b) {
+        return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
     }
 
     /**
@@ -256,7 +342,22 @@ class DocxGenerator {
             }
         });
 
-        return sections;
+        // Sort ONs and ORs within each section by code
+        sections.forEach((section, pathKey) => {
+            section.ons.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+            section.ors.sort((a, b) => this._compareAlphanumeric(a.code, b.code));
+        });
+
+        // Sort sections alphabetically by path (last element of path array)
+        const sortedSections = new Map(
+            Array.from(sections.entries()).sort((a, b) => {
+                const nameA = a[1].path[a[1].path.length - 1] || '';
+                const nameB = b[1].path[b[1].path.length - 1] || '';
+                return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+            })
+        );
+
+        return sortedSections;
     }
 
     /**
