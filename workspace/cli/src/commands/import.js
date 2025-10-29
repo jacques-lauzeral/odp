@@ -201,11 +201,11 @@ export class ImportCommands {
                 }
             });
 
-        // Extract Word hierarchy command (NEW)
+        // Extract hierarchical Word documents command
         importCommand
             .command('extract-word-hierarchy')
-            .description('Extract raw data from ZIP with hierarchical Word documents')
-            .requiredOption('-f, --file <path>', 'Path to ZIP file with folder/docx hierarchy')
+            .description('Extract raw data from hierarchical Word documents (ZIP)')
+            .requiredOption('-f, --file <path>', 'Path to ZIP file')
             .option('-o, --output <path>', 'Output JSON file (default: stdout)')
             .action(async (options) => {
                 try {
@@ -302,6 +302,7 @@ export class ImportCommands {
             .requiredOption('-f, --file <path>', 'Path to raw extracted JSON')
             .requiredOption('-d, --drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('-o, --output <path>', 'Output JSON file (default: stdout)')
+            .option('-s, --specific', 'Use DrG-specific mapper (default: standard format for round-trip editing)')
             .action(async (options) => {
                 try {
                     // Validate DRG
@@ -313,10 +314,17 @@ export class ImportCommands {
 
                     console.log(`Reading raw data from: ${options.file}`);
                     console.log(`Mapping with DrG: ${options.drg}`);
+                    console.log(`Mapper mode: ${options.specific ? 'DrG-specific' : 'standard (round-trip)'}`);
 
                     const rawData = JSON.parse(this.readFile(options.file));
 
-                    const response = await fetch(`${this.baseUrl}/import/map/${options.drg}`, {
+                    // Build URL with query parameter
+                    const url = new URL(`${this.baseUrl}/import/map/${options.drg}`);
+                    if (options.specific) {
+                        url.searchParams.set('specific', 'true');
+                    }
+
+                    const response = await fetch(url.toString(), {
                         method: 'POST',
                         headers: this.createHeaders('application/json'),
                         body: JSON.stringify(rawData)
@@ -375,27 +383,42 @@ export class ImportCommands {
             .action(() => {
                 console.log('=== DOCUMENT IMPORT WORKFLOW ===');
                 console.log(`
-# Three-step workflow for Word documents
-odp import extract-word --file requirements.docx --output raw.json
-odp import map --file raw.json --drg NM_B2B --output structured.json
+# ROUND-TRIP EDITING WORKFLOW (default - standard format)
+# Export from ODP → Edit in Word → Re-import
+odp import extract-word --file crisis_faas-on-or-oc.docx --output raw.json
+odp import map --file raw.json --drg CRISIS_FAAS --output structured.json
+odp import structured --file structured.json
+
+# ORIGINAL SOURCE IMPORT WORKFLOW (DrG-specific format)
+# Import original DrG materials with specialized mappers
+odp import extract-word --file NM_B2B_Requirements.docx --output raw.json
+odp import map --file raw.json --drg NM_B2B --specific --output structured.json
 odp import structured --file structured.json
 
 # Three-step workflow for hierarchical Word documents (ZIP)
 odp import extract-word-hierarchy --file FLOW_Requirements.zip --output raw.json
-odp import map --file raw.json --drg FLOW --output structured.json
+odp import map --file raw.json --drg FLOW --specific --output structured.json
 odp import structured --file structured.json
 
 # Three-step workflow for Excel documents
-odp import extract-excel --file requirements.xlsx --output raw.json
-odp import map --file raw.json --drg REROUTING --output structured.json
+odp import extract-excel --file 4dt-requirements.xlsx --output raw.json
+odp import map --file raw.json --drg 4DT --specific --output structured.json
 odp import structured --file structured.json
 
 # Piping workflow (extract to stdout, pipe to file)
-odp import extract-word --file requirements.docx | tee raw.json
-odp import map --file raw.json --drg NM_B2B | tee structured.json
+odp import extract-word --file exported.docx | tee raw.json
+odp import map --file raw.json --drg AIRPORT | tee structured.json
 odp import structured --file structured.json
 
 # Available DRG values: ${DraftingGroupKeys.join(', ')}
+
+# MAPPER MODES:
+# --specific flag OFF (default): Standard format mapper for round-trip editing
+#   - Processes exported .docx with table-based entities
+#   - Code field preserves entity identity
+# --specific flag ON: DrG-specific mapper for original source documents
+#   - Uses specialized parser for each DrG's unique format
+#   - NM_B2B_Mapper, AirportMapper, ReroutingMapper, etc.
 `);
             });
 

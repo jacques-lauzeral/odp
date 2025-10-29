@@ -3,6 +3,7 @@ import HierarchicalDocxExtractor from './import/HierarchicalDocxExtractor.js';
 import XlsxExtractor from './import/XlsxExtractor.js';
 import JSONImporter from './import/JSONImporter.js';
 import MapperRegistry from './import/MapperRegistry.js';
+import StandardMapper from './import/mappers/StandardMapper.js';
 
 class ImportService {
     /**
@@ -41,9 +42,16 @@ class ImportService {
      * @param {string} drg - Drafting group identifier
      * @returns {Promise<Object>} StructuredImportData
      */
-    async mapToStructuredData(rawData, drg) {
-        const mapper = MapperRegistry.getMapper(drg);
-        return mapper.map(rawData);
+    async mapToStructuredData(rawData, drg, specific = false) {
+        if (specific) {
+            // Use DrG-specific mapper from registry
+            const mapper = MapperRegistry.getMapper(drg);
+            return mapper.map(rawData);
+        } else {
+            // Use standard format mapper (default for round-trip)
+            const mapper = new StandardMapper(drg);
+            return mapper.map(rawData);
+        }
     }
 
     /**

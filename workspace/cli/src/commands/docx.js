@@ -12,7 +12,7 @@ export function docxCommands(program, config) {
     docxCommand
         .command('export <drg>')
         .description('Export operational requirements and changes for a DRG as Word document')
-        .option('-o, --output <filename>', 'Output filename (default: on-or-oc-{drg}.docx)')
+        .option('-o, --output <filename>', 'Output filename (default: ${drg.toLowerCase()}-on-or-oc.docx)')
         .action(async (drg, options) => {
             try {
                 const userId = program.opts().user;
@@ -36,7 +36,7 @@ export function docxCommands(program, config) {
 
                 // Generate filename
                 const filename = options.output ||
-                    `on-or-oc-${drg.toLowerCase()}.docx`;
+                    `${drg.toLowerCase()}-on-or-oc.docx`;
 
                 // Save the file
                 const buffer = await response.buffer();

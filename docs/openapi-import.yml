@@ -123,7 +123,14 @@ paths:
   /import/map/{drg}:
     post:
       summary: Map raw extracted data to structured import format
-      description: Apply DrG-specific business rules to transform raw data into structured entities
+      description: |
+        Apply business rules to transform raw data into structured entities.
+        
+        Two mapping modes:
+        - Standard format (default): For round-trip editing of exported .docx files.
+          Uses table-based entity format with Code field for identity preservation.
+        - DrG-specific format: For original source documents using specialized mappers
+          tailored to each DrG's unique document structure and conventions.
       tags: [Import]
       parameters:
         - name: drg
@@ -133,6 +140,20 @@ paths:
             type: string
             enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
           description: Drafting group identifier
+        - name: specific
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            Use DrG-specific mapper for original source documents.
+            
+            When false (default): Uses StandardMapper for round-trip editing workflow.
+            Processes exported .docx files with standardized table-based entity format.
+            
+            When true: Uses specialized mapper from MapperRegistry (e.g., NM_B2B_Mapper,
+            AirportMapper, ReroutingMapper) for importing original DrG source materials.
       requestBody:
         required: true
         content:

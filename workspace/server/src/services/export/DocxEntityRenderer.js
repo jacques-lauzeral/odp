@@ -196,7 +196,8 @@ class DocxEntityRenderer {
             this._createRichTextRow("Statement", on.statement),
             this._createRichTextRow("Rationale", on.rationale),
             this._createAnnotatedReferencesRow("References", on.documentReferences),
-            this._createRichTextRow("Flows", on.flows)
+            this._createRichTextRow("Flows", on.flows),
+            this._createRichTextRow("Private Notes", on.privateNotes)
         ];
 
         return [
@@ -224,7 +225,8 @@ class DocxEntityRenderer {
             this._createAnnotatedReferencesRow("References", or.documentReferences),
             this._createAnnotatedReferencesRow("Impacts Stakeholders", or.impactsStakeholderCategories),
             this._createAnnotatedReferencesRow("Impacts Data", or.impactsData),
-            this._createAnnotatedReferencesRow("Impacts Services", or.impactsServices)
+            this._createAnnotatedReferencesRow("Impacts Services", or.impactsServices),
+            this._createRichTextRow("Private Notes", or.privateNotes)
         ];
 
         return [
