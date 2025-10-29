@@ -1,25 +1,28 @@
 // Setup Elements
 
 export const StakeholderCategory = {
-    id: 0,
+    id: '',
     name: '',
-    description: ''
+    description: '',
+    parentId: null // string or null
 };
 
 export const DataCategory = {
-    id: 0,
+    id: '',
     name: '',
-    description: ''
+    description: '',
+    parentId: null // string or null
 };
 
 export const Service = {
-    id: 0,
+    id: '',
     name: '',
-    description: ''
+    description: '',
+    parentId: null // string or null
 };
 
 export const Document = {
-    id: 0,
+    id: '',
     name: '',
     version: '',
     description: '',
@@ -27,7 +30,7 @@ export const Document = {
 };
 
 export const Wave = {
-    id: 0,
+    id: '',
     year: 0,
     quarter: 0,
     date: '',

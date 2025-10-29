@@ -17,7 +17,7 @@ components:
             message:
               type: string
 
-    EntityReference:
+    AnnotatedReference:
       type: object
       properties:
         id:
@@ -27,7 +27,7 @@ components:
         note:
           type: string
 
-    OperationalRequirementReference:
+    OperationalEntityReference:
       type: object
       properties:
         id:
@@ -38,7 +38,7 @@ components:
           type: string
         type:
           type: string
-          enum: [ON, OR]
+          enum: [ON, OR, OC]
 
     # Setup Entity Schemas
     StakeholderCategory:
@@ -50,12 +50,9 @@ components:
           type: string
         description:
           type: string
-        parentCategory:
-          $ref: '#/components/schemas/EntityReference'
-        childCategories:
-          type: array
-          items:
-            $ref: '#/components/schemas/EntityReference'
+        parentId:
+          type: string
+          nullable: true
 
     StakeholderCategoryRequest:
       type: object
@@ -65,7 +62,7 @@ components:
           type: string
         description:
           type: string
-        parentCategoryId:
+        parentId:
           type: string
           nullable: true
 
@@ -78,12 +75,9 @@ components:
           type: string
         description:
           type: string
-        parentCategory:
-          $ref: '#/components/schemas/EntityReference'
-        childCategories:
-          type: array
-          items:
-            $ref: '#/components/schemas/EntityReference'
+        parentId:
+          type: string
+          nullable: true
 
     DataCategoryRequest:
       type: object
@@ -93,7 +87,7 @@ components:
           type: string
         description:
           type: string
-        parentCategoryId:
+        parentId:
           type: string
           nullable: true
 
@@ -106,12 +100,9 @@ components:
           type: string
         description:
           type: string
-        parentService:
-          $ref: '#/components/schemas/EntityReference'
-        childServices:
-          type: array
-          items:
-            $ref: '#/components/schemas/EntityReference'
+        parentId:
+          type: string
+          nullable: true
 
     ServiceRequest:
       type: object
@@ -121,7 +112,7 @@ components:
           type: string
         description:
           type: string
-        parentServiceId:
+        parentId:
           type: string
           nullable: true
 
@@ -167,16 +158,19 @@ components:
           type: integer
         quarter:
           type: integer
+          nullable: true
         date:
           type: string
           format: date
+          nullable: true
         name:
           type: string
+          nullable: true
           description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
 
     WaveRequest:
       type: object
-      required: [year, quarter, date]
+      required: [year]
       properties:
         year:
           type: integer
@@ -186,9 +180,11 @@ components:
           type: integer
           minimum: 1
           maximum: 4
+          nullable: true
         date:
           type: string
           format: date
+          nullable: true
 
     # Operational Entity Schemas
     OperationalRequirement:
@@ -231,33 +227,33 @@ components:
         refinesParents:
           type: array
           items:
-            $ref: '#/components/schemas/OperationalRequirementReference'
+            $ref: '#/components/schemas/OperationalEntityReference'
         impactsStakeholderCategories:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
         impactsData:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
         impactsServices:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
         implementedONs:
           type: array
           items:
-            $ref: '#/components/schemas/OperationalRequirementReference'
+            $ref: '#/components/schemas/OperationalEntityReference'
           description: "ON-type requirements implemented by this OR (OR type only)"
         dependsOnRequirements:
           type: array
           items:
-            type: string
-          description: "Requirement item IDs (follows latest version automatically) this requirement depends on"
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "Requirements this requirement depends on"
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
 
     OperationalRequirementRequest:
       type: object
@@ -291,17 +287,17 @@ components:
         impactsStakeholderCategories:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
           default: []
         impactsData:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
           default: []
         impactsServices:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
           default: []
         implementedONs:
           type: array
@@ -318,7 +314,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
           default: []
 
     OperationalRequirementUpdateRequest:
@@ -383,7 +379,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
 
     Milestone:
       type: object
@@ -473,20 +469,20 @@ components:
         satisfiesRequirements:
           type: array
           items:
-            $ref: '#/components/schemas/OperationalRequirementReference'
+            $ref: '#/components/schemas/OperationalEntityReference'
         supersedsRequirements:
           type: array
           items:
-            $ref: '#/components/schemas/OperationalRequirementReference'
+            $ref: '#/components/schemas/OperationalEntityReference'
         dependsOnChanges:
           type: array
           items:
-            type: string
-          description: "Change item IDs (follows latest version automatically) this change depends on"
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "Changes this change depends on"
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
         milestones:
           type: array
           items:
@@ -537,7 +533,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
           default: []
         milestones:
           type: array
@@ -597,7 +593,7 @@ components:
         documentReferences:
           type: array
           items:
-            $ref: '#/components/schemas/EntityReference'
+            $ref: '#/components/schemas/AnnotatedReference'
         milestones:
           type: array
           items:
@@ -653,9 +649,9 @@ components:
         createdBy:
           type: string
         baseline:
-          $ref: '#/components/schemas/EntityReference'
+          $ref: '#/components/schemas/AnnotatedReference'
         startsFromWave:
-          $ref: '#/components/schemas/EntityReference'
+          $ref: '#/components/schemas/AnnotatedReference'
 
     ODPEditionRequest:
       type: object

@@ -44,30 +44,36 @@ export class StandardMapper {
             return result;
         }
 
-        // Find root section (level 1)
-        const rootSection = rawData.sections.find(s => s.level === 1);
-        if (!rootSection) {
-            console.warn('[StandardMapper] Could not find root section');
+        // Find all level 1 sections
+        const level1Sections = rawData.sections.filter(s => s.level === 1);
+        if (level1Sections.length === 0) {
+            console.warn('[StandardMapper] Could not find any level 1 sections');
             return result;
         }
 
-        console.log(`[StandardMapper] Root section: "${rootSection.title}"`);
+        console.log(`[StandardMapper] Found ${level1Sections.length} level 1 section(s)`);
 
-        const normalizedTitle = rootSection.title.toLowerCase();
+        // Process each level 1 section
+        for (const section of level1Sections) {
+            const normalizedTitle = section.title.toLowerCase();
+            console.log(`[StandardMapper] Processing section: "${section.title}"`);
 
-        if (normalizedTitle.includes('operational needs and requirements')) {
-            // Process ONs and ORs
-            const entities = this._mapONs_ORs(rootSection, []);
-            result.requirements = entities;
-            console.log(`[StandardMapper] Extracted ${entities.length} requirements (ONs + ORs)`);
-        } else if (normalizedTitle.includes('operational changes')) {
-            // Process OCs
-            const entities = this._mapOCs(rootSection, []);
-            result.changes = entities;
-            console.log(`[StandardMapper] Extracted ${entities.length} operational changes`);
-        } else {
-            console.warn(`[StandardMapper] Unknown root section type: "${rootSection.title}"`);
+            if (normalizedTitle.includes('operational needs and requirements')) {
+                // Process ONs and ORs
+                const entities = this._mapONs_ORs(section, []);
+                result.requirements.push(...entities);
+                console.log(`[StandardMapper] Extracted ${entities.length} requirements (ONs + ORs)`);
+            } else if (normalizedTitle.includes('operational changes')) {
+                // Process OCs
+                const entities = this._mapOCs(section, []);
+                result.changes.push(...entities);
+                console.log(`[StandardMapper] Extracted ${entities.length} operational changes`);
+            } else {
+                console.warn(`[StandardMapper] Unknown section type: "${section.title}"`);
+            }
         }
+
+        console.log(`[StandardMapper] Total extracted: ${result.requirements.length} requirements, ${result.changes.length} changes`);
 
         return result;
     }
@@ -395,17 +401,33 @@ export class StandardMapper {
     /**
      * Extract list items from HTML
      */
+    /**
+     * Extract list items from HTML
+     * Handles both <li> tags and <p class="list-paragraph"> tags
+     */
     _extractListItems(html) {
         if (!html) return [];
 
-        const liRegex = /<li[^>]*>(.*?)<\/li>/gi;
         const items = [];
-        let match;
 
+        // Try <li> tags first
+        const liRegex = /<li[^>]*>(.*?)<\/li>/gi;
+        let match;
         while ((match = liRegex.exec(html)) !== null) {
             const itemText = this._extractPlainText(match[1]);
             if (itemText) {
                 items.push(itemText);
+            }
+        }
+
+        // If no <li> items found, try <p class="list-paragraph"> tags
+        if (items.length === 0) {
+            const pRegex = /<p\s+class="list-paragraph"[^>]*>(.*?)<\/p>/gi;
+            while ((match = pRegex.exec(html)) !== null) {
+                const itemText = this._extractPlainText(match[1]);
+                if (itemText) {
+                    items.push(itemText);
+                }
             }
         }
 
@@ -426,13 +448,18 @@ export class StandardMapper {
 
     /**
      * Add entity references (simple array of external IDs)
+     * Removes bracketed helper text like [Title Here] and trims the result
      */
     _addEntityReferences(entity, fieldName, html) {
         if (!html) return;
 
         const items = this._extractListItems(html);
         if (items.length > 0) {
-            entity[fieldName] = items;
+            // Remove bracketed text and trim each item
+            entity[fieldName] = items.map(item => {
+                // Remove anything in brackets: "ON-RRT-0001 [Title]" -> "ON-RRT-0001"
+                return item.replace(/\s*\[.*?\]\s*$/, '').trim();
+            });
         }
     }
 

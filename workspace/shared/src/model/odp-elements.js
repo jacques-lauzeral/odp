@@ -1,25 +1,27 @@
 // Type declarations
-export const EntityReference = {
-    id: 0,
+export const AnnotatedReference = {
+    id: '',
     title: '',
     note: '' // optional
 };
 
-export const OperationalRequirementReference = {
-    id: 0,
+export const OperationalEntityReference = {
+    id: '',
+    code: '',
     title: '',
-    type: '' // ON | OR
+    type: '' // ON | OR | OC
 };
 
 // ODP Elements
 
 export const OperationalRequirement = {
-    itemId: 0,
+    itemId: '',
     title: '',
-    versionId: 0,
+    versionId: '',
     version: 0,
     createdAt: '',
     createdBy: '',
+    code: '',
     type: '', // ON | OR
     statement: '',
     rationale: '',
@@ -27,22 +29,34 @@ export const OperationalRequirement = {
     privateNotes: '',
     path: [], // array of strings
     drg: '', // DraftingGroup enum
-    refinesParents: [], // array of OperationalRequirementReference
-    impactsStakeholderCategories: [], // array of EntityReference
-    impactsData: [], // array of EntityReference
-    impactsServices: [], // array of EntityReference
-    implementedONs: [], // array of OperationalRequirementReference (OR type only)
-    documentReferences: [], // array of EntityReference
-    dependsOnRequirements: [] // array of itemIds (strings)
+    refinesParents: [], // array of OperationalEntityReference
+    impactsStakeholderCategories: [], // array of AnnotatedReference
+    impactsData: [], // array of AnnotatedReference
+    impactsServices: [], // array of AnnotatedReference
+    implementedONs: [], // array of OperationalEntityReference (OR type only)
+    documentReferences: [], // array of AnnotatedReference
+    dependsOnRequirements: [] // array of OperationalEntityReference
+};
+
+export const Milestone = {
+    id: '',
+    milestoneKey: '',
+    title: '',
+    description: '',
+    eventType: '', // API_PUBLICATION | API_TEST_DEPLOYMENT | UI_TEST_DEPLOYMENT | OPS_DEPLOYMENT | API_DECOMMISSIONING
+    targetDate: '',
+    actualDate: null, // string or null
+    wave: null // Wave object or null
 };
 
 export const OperationalChange = {
-    itemId: 0,
+    itemId: '',
     title: '',
-    versionId: 0,
+    versionId: '',
     version: 0,
     createdAt: '',
     createdBy: '',
+    code: '',
     purpose: '',
     initialState: '',
     finalState: '',
@@ -51,9 +65,9 @@ export const OperationalChange = {
     path: [], // array of strings
     visibility: '', // NM | NETWORK
     drg: '', // DraftingGroup enum
-    satisfiesRequirements: [], // array of OperationalRequirementReference
-    supersedsRequirements: [], // array of OperationalRequirementReference
-    milestones: [],
-    documentReferences: [], // array of EntityReference
-    dependsOnChanges: [] // array of itemIds (strings)
+    satisfiesRequirements: [], // array of OperationalEntityReference
+    supersedsRequirements: [], // array of OperationalEntityReference
+    dependsOnChanges: [], // array of OperationalEntityReference
+    documentReferences: [], // array of AnnotatedReference
+    milestones: [] // array of Milestone
 };
