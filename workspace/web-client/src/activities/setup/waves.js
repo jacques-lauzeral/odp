@@ -91,8 +91,8 @@ export default class Waves extends ListEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="quarter">Quarter *</label>
-                                <select id="quarter" name="quarter" class="form-control form-select" required>
+                                <label for="quarter">Quarter</label>
+                                <select id="quarter" name="quarter" class="form-control form-select">
                                     <option value="">Select quarter...</option>
                                     <option value="1" ${currentQuarter === 1 ? 'selected' : ''}>Q1 (Jan-Mar)</option>
                                     <option value="2" ${currentQuarter === 2 ? 'selected' : ''}>Q2 (Apr-Jun)</option>
@@ -102,8 +102,8 @@ export default class Waves extends ListEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="date">Target Date *</label>
-                                <input type="date" id="date" name="date" class="form-control" required>
+                                <label for="date">Target Date</label>
+                                <input type="date" id="date" name="date" class="form-control">
                                 <small class="form-text">Target completion date for this wave</small>
                             </div>
                         </form>
@@ -142,13 +142,13 @@ export default class Waves extends ListEntity {
                             <div class="form-group">
                                 <label for="edit-year">Year *</label>
                                 <input type="number" id="edit-year" name="year" class="form-control" 
-                                       min="2020" max="2030" 
+                                       min="2025" max="2050" 
                                        value="${item.year}" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-quarter">Quarter *</label>
-                                <select id="edit-quarter" name="quarter" class="form-control form-select" required>
+                                <label for="edit-quarter">Quarter</label>
+                                <select id="edit-quarter" name="quarter" class="form-control form-select" >
                                     <option value="">Select quarter...</option>
                                     <option value="1" ${item.quarter === 1 ? 'selected' : ''}>Q1 (Jan-Mar)</option>
                                     <option value="2" ${item.quarter === 2 ? 'selected' : ''}>Q2 (Apr-Jun)</option>
@@ -158,9 +158,9 @@ export default class Waves extends ListEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-date">Target Date *</label>
+                                <label for="edit-date">Target Date</label>
                                 <input type="date" id="edit-date" name="date" class="form-control"
-                                       value="${item.date ? item.date.split('T')[0] : ''}" required>
+                                       value="${item.date ? item.date.split('T')[0] : ''}" >
                             </div>
                         </form>
                     </div>

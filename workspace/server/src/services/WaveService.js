@@ -131,7 +131,7 @@ export class WaveService extends SimpleItemService {
      * Generate wave name from year and quarter
      */
     _generateWaveName(year, quarter) {
-        return `${year}.${quarter}`;
+        return quarter ? `${year}.${quarter}` : `${year}`;
     }
 
     /**
@@ -145,18 +145,10 @@ export class WaveService extends SimpleItemService {
             throw new Error('Validation failed: year is required');
         }
 
-        if (quarter === undefined || quarter === null) {
-            throw new Error('Validation failed: quarter is required');
-        }
-
-        if (!date) {
-            throw new Error('Validation failed: date is required');
-        }
-
         // Field validation with conversion
         const validatedYear = this._validateYear(year);
-        const validatedQuarter = this._validateQuarter(quarter);
-        this._validateDate(date);
+        const validatedQuarter = quarter ? this._validateQuarter(quarter) : null;
+        if (date) this._validateDate(date) ;
 
         // Update data object with converted values and derived name
         data.year = validatedYear;
