@@ -34,6 +34,7 @@ export class StandardMapper {
      * Main entry point - map raw extracted data to structured import format
      */
     map(rawData) {
+        console.log('StandardMapper mapping raw data');
         const result = {
             requirements: [],
             changes: []

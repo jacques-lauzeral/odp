@@ -438,9 +438,8 @@ export default class TreeTableEntity {
         this.container.querySelectorAll('.tree-row').forEach(row => {
             row.addEventListener('click', (e) => {
                 const nodeId = row.dataset.nodeId;
-                const isLeaf = row.dataset.isLeaf === 'true';
-                if (isLeaf) {
-                    const itemId = row.dataset.itemId;
+                const itemId = row.dataset.itemId;
+                if (itemId) {  // Only select if there's an entity (itemId present)
                     this.handleNodeSelect(nodeId, itemId);
                 }
             });
@@ -452,15 +451,28 @@ export default class TreeTableEntity {
      * @param {string} nodeId - Node ID
      */
     toggleNodeExpansion(nodeId) {
+        console.log('toggleNodeExpansion', nodeId);
         const node = this.findNodeById(this.treeData, nodeId);
-        if (!node || !node.expandable) return;
+        console.log(`toggleNodeExpansion ${nodeId} node: ${node}`);
+        if (!node) return;
+
+        // Evaluate expandable if it's a function
+        const isExpandable = typeof node.expandable === 'function'
+            ? node.expandable(node)
+            : node.expandable;
+
+        console.log(`toggleNodeExpansion node ${nodeId} is expandable: ${isExpandable}`);
+
+        if (!isExpandable) return;
 
         node.expanded = !node.expanded;
 
         // Track expanded state
         if (node.expanded) {
+            console.log('toggleNodeExpansion expandedNodes.add', nodeId);
             this.expandedNodes.add(nodeId);
         } else {
+            console.log('toggleNodeExpansion expandedNodes.delete', nodeId);
             this.expandedNodes.delete(nodeId);
         }
 
@@ -492,7 +504,7 @@ export default class TreeTableEntity {
      * @returns {Object|null} - Found node or null
      */
     findNodeById(node, nodeId) {
-        if (node.id === nodeId) return node;
+        if (node.id == nodeId) return node;
 
         for (const child of Object.values(node.children)) {
             const found = this.findNodeById(child, nodeId);

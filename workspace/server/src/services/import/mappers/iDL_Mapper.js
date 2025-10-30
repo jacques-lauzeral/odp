@@ -95,6 +95,7 @@ class iDL_Mapper extends Mapper {
      * @returns {Object} StructuredImportData with all entity collections
      */
     map(rawData) {
+        console.log('iDL_Mapper mapping raw data');
         const context = this._initContext();
 
         // Add reference documents

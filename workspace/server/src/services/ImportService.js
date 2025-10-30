@@ -40,6 +40,7 @@ class ImportService {
      * Map raw extracted data to structured import format using DrG-specific mapper
      * @param {Object} rawData - RawExtractedData from extraction
      * @param {string} drg - Drafting group identifier
+     * @param {boolean} specific - Specifies whether the drg specific mapper has to be used instead of standard one
      * @returns {Promise<Object>} StructuredImportData
      */
     async mapToStructuredData(rawData, drg, specific = false) {

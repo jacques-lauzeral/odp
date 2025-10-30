@@ -117,6 +117,7 @@ router.post('/map/:drg', async (req, res) => {
     try {
         const userId = getUserId(req);
         const drg = req.params.drg;
+        const specific = req.query.specific === 'true'; // Parse query param as boolean
 
         console.log(`ImportService.mapToStructuredData() userId: ${userId}, drg: ${drg}`);
 
@@ -142,7 +143,7 @@ router.post('/map/:drg', async (req, res) => {
             });
         }
 
-        const structuredData = await importService.mapToStructuredData(rawData, drg);
+        const structuredData = await importService.mapToStructuredData(rawData, drg, specific);
 
         res.json(structuredData);
 
