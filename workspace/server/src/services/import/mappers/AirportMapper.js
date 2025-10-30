@@ -15,8 +15,15 @@ import {textToDelta} from "./utils.js";
  * - Tables containing structured requirement data
  * - Stakeholder fields with format: "Name" or "Name (details)"
  *
+ * Section Processing:
+ * - Sections 1-2: Skipped (Introduction and Summary sections)
+ * - Sections 3-10: Processed (Actual ON/OR definitions)
+ * This prevents summary tables (which contain "ON #" or "OR #" columns but lack
+ * actual requirement definitions) from being incorrectly identified as requirements.
+ *
  * Two-Pass Algorithm:
  * Pass 1: Group tables - identify OR/ON tables and associate with following Use Case tables
+ *         Tables from sections 1-2 are filtered out during collection phase
  * Pass 2: Map requirements - extract data from grouped tables and build requirement objects
  *
  * Field Mapping Strategy:
@@ -204,6 +211,24 @@ class AirportMapper extends Mapper {
     }
 
     /**
+     * Check if section should be processed based on section number
+     * Only processes sections 3-10 (skips Introduction and Summary sections 1-2)
+     *
+     * @param {string} sectionNumber - Section number (e.g., "3", "3.2", "3.2.1")
+     * @returns {boolean} True if section should be processed
+     * @private
+     */
+    _isProcessableSection(sectionNumber) {
+        if (!sectionNumber) return false;
+
+        // Extract top-level section number (e.g., "3" from "3.2.1")
+        const topLevel = sectionNumber.split('.')[0];
+        const num = parseInt(topLevel, 10);
+
+        return num >= 3 && num <= 10;
+    }
+
+    /**
      * Pass 1: Group tables from all sections
      * Recursively collects all tables and groups OR/ON tables with their associated Use Case tables
      *
@@ -222,12 +247,17 @@ class AirportMapper extends Mapper {
                 currentPath.push(section.title);
             }
 
-            // Collect tables from current section
-            if (section.content?.tables) {
+            // Only collect tables from sections 3-10 (skip Introduction and Summary)
+            const shouldProcess = this._isProcessableSection(section.sectionNumber);
+
+            // Collect tables from current section only if in valid section range
+            if (shouldProcess && section.content?.tables) {
                 for (const table of section.content.tables) {
-                    allTables.push({ table, path: currentPath });
+                    console.log(`...found ${section.title} (${parentPath} ... ${currentPath})`)
+                    allTables.push({ table, title: section.title, path: currentPath, parentPath: parentPath });
                 }
             }
+
 
             // Recursively process subsections
             if (section.subsections) {
@@ -254,9 +284,11 @@ class AirportMapper extends Mapper {
                 const group = {
                     requirementTable: current.table,
                     useCaseTable: null,
-                    path: current.path,
-                    type: tableType
+                    path: tableType === 'OR' ? current.parentPath : current.path,
+                    type: tableType,
+                    title: current.title
                 };
+                console.log(`...added ${group.type} ${group.title} (${group.path})`)
 
                 // Check if next table is a Use Case table
                 if (i + 1 < allTables.length) {
@@ -322,7 +354,7 @@ class AirportMapper extends Mapper {
      * @returns {Object|null} Requirement object or null
      */
     _mapRequirementFromGroup(group, context) {
-        const { requirementTable, useCaseTable, path, type } = group;
+        const { requirementTable, useCaseTable, path, type, title } = group;
 
         const data = this._parseTableToKeyValue(requirementTable);
 
@@ -378,9 +410,9 @@ class AirportMapper extends Mapper {
             externalId: ExternalIdBuilder.buildExternalId({
                 drg,
                 path,
-                title: data['Title'] || 'Untitled'
+                title: title
             }, type.toLowerCase()),
-            title: data['Title'] || 'Untitled',
+            title: title,
             type: type,
             statement: textToDelta(statement),
             rationale: textToDelta(rationale),
