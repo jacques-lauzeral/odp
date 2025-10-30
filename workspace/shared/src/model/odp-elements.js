@@ -16,17 +16,17 @@ export const OperationalEntityReference = {
 
 export const OperationalRequirement = {
     itemId: '',
-    title: '',
+    title: '', // string
     versionId: '',
     version: 0,
     createdAt: '',
     createdBy: '',
-    code: '',
+    code: '', // string
     type: '', // ON | OR
-    statement: '',
-    rationale: '',
-    flows: '',
-    privateNotes: '',
+    statement: '', // rich text
+    rationale: '', // rich text
+    flows: '', // rich text
+    privateNotes: '', // rich text
     path: [], // array of strings
     drg: '', // DraftingGroup enum
     refinesParents: [], // array of OperationalEntityReference
@@ -41,8 +41,8 @@ export const OperationalRequirement = {
 export const Milestone = {
     id: '',
     milestoneKey: '',
-    title: '',
-    description: '',
+    title: '', // string
+    description: '', // rich text
     eventType: '', // API_PUBLICATION | API_TEST_DEPLOYMENT | UI_TEST_DEPLOYMENT | OPS_DEPLOYMENT | API_DECOMMISSIONING
     targetDate: '',
     actualDate: null, // string or null
@@ -51,17 +51,17 @@ export const Milestone = {
 
 export const OperationalChange = {
     itemId: '',
-    title: '',
+    title: '', // string
     versionId: '',
     version: 0,
     createdAt: '',
     createdBy: '',
-    code: '',
-    purpose: '',
-    initialState: '',
-    finalState: '',
-    details: '',
-    privateNotes: '',
+    code: '', // string
+    purpose: '', // rich text
+    initialState: '', // rich text
+    finalState: '', // rich text
+    details: '', // rich text
+    privateNotes: '', // rich text
     path: [], // array of strings
     visibility: '', // NM | NETWORK
     drg: '', // DraftingGroup enum

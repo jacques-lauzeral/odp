@@ -15,9 +15,11 @@ import Comparator from '../../../../shared/src/model/Comparator.js';
  * Algorithm:
  * Phase 1: Build code maps from database (existing entities)
  * Phase 2: Classify imported entities (to create vs update candidates)
- * Phase 3: Create new entities with setup references only (no operational refs)
- * Phase 4: Update created entities with operational references
- * Phase 5: Compare and update existing entities
+ * Phase 3: Resolve annotated references (setup elements: stakeholders, data, services, documents)
+ * Phase 4: Create new entities (references already resolved)
+ * Phase 5: Resolve operational references (transform codes → itemIds in candidate data)
+ * Phase 6: Update created entities with operational references
+ * Phase 7: Compare and update existing entities
  */
 class StandardImporter {
     /**
@@ -39,16 +41,24 @@ class StandardImporter {
             console.log('Phase 2: Classifying imported entities...');
             this._classifyEntities(structuredData, context);
 
-            // Phase 3: Create new entities with setup references only
-            console.log('Phase 3: Creating new entities without operational references...');
+            // Phase 3: Resolve annotated references (setup elements)
+            console.log('Phase 3: Resolving annotated references in candidate data...');
+            this._resolveAllAnnotatedReferences(context);
+
+            // Phase 4: Create new entities (references already resolved)
+            console.log('Phase 4: Creating new entities...');
             await this._createEntitiesWithoutOperationalReferences(userId, context, summary);
 
-            // Phase 4: Update created entities with operational references
-            console.log('Phase 4: Updating created entities with operational references...');
+            // Phase 5: Resolve operational references (codes → itemIds)
+            console.log('Phase 5: Resolving operational references in candidate data...');
+            this._resolveAllOperationalReferences(context);
+
+            // Phase 6: Update created entities with operational references
+            console.log('Phase 6: Updating created entities with operational references...');
             await this._updateCreatedEntitiesWithOperationalReferences(userId, context, summary);
 
-            // Phase 5: Compare and update existing entities
-            console.log('Phase 5: Comparing and updating existing entities...');
+            // Phase 7: Compare and update existing entities
+            console.log('Phase 7: Comparing and updating existing entities...');
             await this._updateExistingEntities(userId, context, summary);
 
             // Validate referential integrity
@@ -181,21 +191,19 @@ class StandardImporter {
             this._buildSetupElementMap(services, 'service', context.serviceMap);
             this._buildSetupElementMap(dataCategories, 'data', context.dataMap);
 
-            // Build document and wave maps
+            // Build document and wave maps by name
             documents.forEach(doc => {
-                const externalId = ExternalIdBuilder.buildExternalId(doc, 'document');
-                context.documentMap.set(externalId.toLowerCase(), doc);
+                context.documentMap.set(doc.name.toLowerCase(), doc);
             });
 
             waves.forEach(wave => {
-                const externalId = ExternalIdBuilder.buildExternalId(wave, 'wave');
-                context.waveMap.set(externalId.toLowerCase(), wave);
+                context.waveMap.set(wave.name.toLowerCase(), wave);
             });
 
             // Load operational entities
             const [requirements, changes] = await Promise.all([
-                OperationalRequirementService.listItems(userId),
-                OperationalChangeService.listItems(userId)
+                OperationalRequirementService.getAll(userId),
+                OperationalChangeService.getAll(userId)
             ]);
 
             // Build operational entity code maps
@@ -220,49 +228,12 @@ class StandardImporter {
     }
 
     /**
-     * Build setup element map with hierarchical external ID resolution
+     * Build setup element map by name (case-insensitive)
      * @private
      */
     _buildSetupElementMap(entities, type, targetMap) {
-        // Create lookup by ID
-        const entityById = new Map();
-        entities.forEach(entity => entityById.set(entity.id, entity));
-
-        // Cache for computed external IDs
-        const externalIdCache = new Map();
-
-        // Recursively resolve external ID
-        const resolveExternalId = (entityId) => {
-            if (externalIdCache.has(entityId)) {
-                return externalIdCache.get(entityId);
-            }
-
-            const entity = entityById.get(entityId);
-            if (!entity) {
-                throw new Error(`Entity with ID ${entityId} not found`);
-            }
-
-            let externalId;
-            if (entity.parentId !== null && entity.parentId !== undefined) {
-                const parentExternalId = resolveExternalId(entity.parentId);
-                externalId = ExternalIdBuilder.buildExternalId({
-                    name: entity.name,
-                    parentExternalId: parentExternalId
-                }, type);
-            } else {
-                externalId = ExternalIdBuilder.buildExternalId({
-                    name: entity.name
-                }, type);
-            }
-
-            externalIdCache.set(entityId, externalId);
-            return externalId;
-        };
-
-        // Build the map
         entities.forEach(entity => {
-            const externalId = resolveExternalId(entity.id);
-            targetMap.set(externalId.toLowerCase(), entity);
+            targetMap.set(entity.name.toLowerCase(), entity);
         });
     }
 
@@ -311,7 +282,93 @@ class StandardImporter {
         console.log(`Classification: UpdateCandidates=[ONs=${context.updateCandidateONs.length}, ORs=${context.updateCandidateORs.length}, OCs=${context.updateCandidateOCs.length}]`);
     }
 
-    // ==================== Phase 3: Create Entities Without Operational References ====================
+    // ==================== Phase 3: Resolve Annotated References ====================
+
+    /**
+     * Resolve annotated references (setup elements) in all candidate data
+     * This phase transforms externalIds to internal IDs for stakeholders, data, services, documents
+     * Maps import file format field names to API model field names
+     * @private
+     */
+    _resolveAllAnnotatedReferences(context) {
+        let resolvedCount = 0;
+
+        // Resolve references in all ON candidates (toCreate + updateCandidate)
+        for (const onData of [...context.toCreateONs, ...context.updateCandidateONs]) {
+            onData.impactsStakeholderCategories = this._resolveAnnotatedReferences(
+                onData.impactedStakeholderCategories || [],
+                context.stakeholderMap,
+                context
+            );
+            resolvedCount += onData.impactsStakeholderCategories.length;
+
+            onData.impactsData = this._resolveAnnotatedReferences(
+                onData.impactedData || [],
+                context.dataMap,
+                context
+            );
+            resolvedCount += onData.impactsData.length;
+
+            onData.impactsServices = this._resolveAnnotatedReferences(
+                onData.impactedServices || [],
+                context.serviceMap,
+                context
+            );
+            resolvedCount += onData.impactsServices.length;
+
+            onData.documentReferences = this._resolveAnnotatedReferences(
+                onData.referencesDocuments || [],
+                context.documentMap,
+                context
+            );
+            resolvedCount += onData.documentReferences.length;
+        }
+
+        // Resolve references in all OR candidates (toCreate + updateCandidate)
+        for (const orData of [...context.toCreateORs, ...context.updateCandidateORs]) {
+            orData.impactsStakeholderCategories = this._resolveAnnotatedReferences(
+                orData.impactedStakeholderCategories || [],
+                context.stakeholderMap,
+                context
+            );
+            resolvedCount += orData.impactsStakeholderCategories.length;
+
+            orData.impactsData = this._resolveAnnotatedReferences(
+                orData.impactedData || [],
+                context.dataMap,
+                context
+            );
+            resolvedCount += orData.impactsData.length;
+
+            orData.impactsServices = this._resolveAnnotatedReferences(
+                orData.impactedServices || [],
+                context.serviceMap,
+                context
+            );
+            resolvedCount += orData.impactsServices.length;
+
+            orData.documentReferences = this._resolveAnnotatedReferences(
+                orData.referencesDocuments || [],
+                context.documentMap,
+                context
+            );
+            resolvedCount += orData.documentReferences.length;
+        }
+
+        // Resolve references in all OC candidates (toCreate + updateCandidate)
+        for (const ocData of [...context.toCreateOCs, ...context.updateCandidateOCs]) {
+            ocData.documentReferences = this._resolveAnnotatedReferences(
+                ocData.referencesDocuments || [],
+                context.documentMap,
+                context
+            );
+            resolvedCount += ocData.documentReferences.length;
+        }
+
+        console.log(`Resolved ${resolvedCount} annotated references (setup elements)`);
+    }
+
+    // ==================== Phase 4: Create Entities Without Operational References ====================
 
     /**
      * Create new entities with setup references only
@@ -398,32 +455,13 @@ class StandardImporter {
             drg: reqData.drg
         };
 
-        // Resolve setup element references (always included)
-        request.impactsStakeholderCategories = this._resolveAnnotatedReferences(
-            reqData.impactsStakeholderCategories || [],
-            context.stakeholderMap,
-            context
-        );
+        // Annotated references already resolved in Phase 3
+        request.impactsStakeholderCategories = reqData.impactsStakeholderCategories || [];
+        request.impactsData = reqData.impactsData || [];
+        request.impactsServices = reqData.impactsServices || [];
+        request.documentReferences = reqData.documentReferences || [];
 
-        request.impactsData = this._resolveAnnotatedReferences(
-            reqData.impactsData || [],
-            context.dataMap,
-            context
-        );
-
-        request.impactsServices = this._resolveAnnotatedReferences(
-            reqData.impactsServices || [],
-            context.serviceMap,
-            context
-        );
-
-        request.documentReferences = this._resolveAnnotatedReferences(
-            reqData.documentReferences || [],
-            context.documentMap,
-            context
-        );
-
-        // Skip operational references in Phase 3
+        // Skip operational references in Phase 4
         if (!skipOperationalRefs) {
             request.refinesParents = this._resolveOperationalReferences(
                 reqData.refinesParents || [],
@@ -465,17 +503,13 @@ class StandardImporter {
             drg: ocData.drg
         };
 
-        // Resolve document references (setup element)
-        request.documentReferences = this._resolveAnnotatedReferences(
-            ocData.documentReferences || [],
-            context.documentMap,
-            context
-        );
+        // Annotated references already resolved in Phase 3
+        request.documentReferences = ocData.documentReferences || [];
 
         // Process milestones
         request.milestones = this._processMilestones(ocData, context);
 
-        // Skip operational references in Phase 3
+        // Skip operational references in Phase 4
         if (!skipOperationalRefs) {
             request.satisfiesRequirements = this._resolveOperationalReferences(
                 ocData.satisfiesRequirements || [],
@@ -500,7 +534,83 @@ class StandardImporter {
         return request;
     }
 
-    // ==================== Phase 4: Update Created Entities With Operational References ====================
+    // ==================== Phase 5: Resolve Operational References ====================
+
+    /**
+     * Resolve operational references (codes → itemIds) in all candidate data
+     * This phase transforms the candidate data structures to use itemIds instead of codes
+     * @private
+     */
+    _resolveAllOperationalReferences(context) {
+        let resolvedCount = 0;
+        let unresolvedCount = 0;
+
+        // Build unified code→itemId resolution map
+        const codeToItemIdMap = new Map();
+
+        // Add all existing entities
+        for (const [code, entity] of context.codeONMap) {
+            codeToItemIdMap.set(code, entity.itemId);
+        }
+        for (const [code, entity] of context.codeORMap) {
+            codeToItemIdMap.set(code, entity.itemId);
+        }
+        for (const [code, entity] of context.codeOCMap) {
+            codeToItemIdMap.set(code, entity.itemId);
+        }
+
+        console.log(`Built code→itemId map with ${codeToItemIdMap.size} entries`);
+
+        // Helper to resolve a single reference array
+        const resolveReferenceArray = (refs, fieldName, entityCode) => {
+            if (!Array.isArray(refs) || refs.length === 0) {
+                return [];
+            }
+
+            const resolved = [];
+            for (const code of refs) {
+                // Check if code needs translation (newly created entity)
+                const internalCode = context.externalInternalCodeMap.get(code) || code;
+                const itemId = codeToItemIdMap.get(internalCode);
+
+                if (itemId !== undefined) {
+                    resolved.push(itemId);
+                    resolvedCount++;
+                } else {
+                    context.referentialIntegrityErrors.push(
+                        `${entityCode}: ${fieldName} reference not found: ${code}`
+                    );
+                    unresolvedCount++;
+                }
+            }
+
+            return resolved;
+        };
+
+        // Resolve references in all ON candidates (toCreate + updateCandidate)
+        for (const onData of [...context.toCreateONs, ...context.updateCandidateONs]) {
+            onData.refinesParents = resolveReferenceArray(onData.refinesParents, 'refinesParents', onData.externalId);
+            onData.dependsOnRequirements = resolveReferenceArray(onData.dependsOnRequirements, 'dependsOnRequirements', onData.externalId);
+        }
+
+        // Resolve references in all OR candidates (toCreate + updateCandidate)
+        for (const orData of [...context.toCreateORs, ...context.updateCandidateORs]) {
+            orData.refinesParents = resolveReferenceArray(orData.refinesParents, 'refinesParents', orData.externalId);
+            orData.implementedONs = resolveReferenceArray(orData.implementedONs, 'implementedONs', orData.externalId);
+            orData.dependsOnRequirements = resolveReferenceArray(orData.dependsOnRequirements, 'dependsOnRequirements', orData.externalId);
+        }
+
+        // Resolve references in all OC candidates (toCreate + updateCandidate)
+        for (const ocData of [...context.toCreateOCs, ...context.updateCandidateOCs]) {
+            ocData.satisfiesRequirements = resolveReferenceArray(ocData.satisfiesRequirements, 'satisfiesRequirements', ocData.externalId);
+            ocData.supersedsRequirements = resolveReferenceArray(ocData.supersedsRequirements, 'supersedsRequirements', ocData.externalId);
+            ocData.dependsOnChanges = resolveReferenceArray(ocData.dependsOnChanges, 'dependsOnChanges', ocData.externalId);
+        }
+
+        console.log(`Resolved ${resolvedCount} operational references, ${unresolvedCount} unresolved`);
+    }
+
+    // ==================== Phase 6: Update Created Entities With Operational References ====================
 
     /**
      * Update created entities with operational references
@@ -520,7 +630,7 @@ class StandardImporter {
                 }
 
                 const updateRequest = this._buildUpdateRequest(originalData, context, entity);
-                await OperationalRequirementService.update(entity.itemId, entity.versionId, updateRequest, userId);
+                await OperationalRequirementService.update(entity.itemId, updateRequest, entity.versionId, userId);
 
                 console.log(`Updated ON with operational refs: ${entity.code}`);
 
@@ -542,7 +652,7 @@ class StandardImporter {
                 }
 
                 const updateRequest = this._buildUpdateRequest(originalData, context, entity);
-                await OperationalRequirementService.update(entity.itemId, entity.versionId, updateRequest, userId);
+                await OperationalRequirementService.update(entity.itemId, updateRequest, entity.versionId, userId);
 
                 console.log(`Updated OR with operational refs: ${entity.code}`);
 
@@ -564,7 +674,7 @@ class StandardImporter {
                 }
 
                 const updateRequest = this._buildUpdateRequestForChange(originalData, context, entity);
-                await OperationalChangeService.update(entity.itemId, entity.versionId, updateRequest, userId);
+                await OperationalChangeService.update(entity.itemId, updateRequest, entity.versionId, userId);
 
                 console.log(`Updated OC with operational refs: ${entity.code}`);
 
@@ -590,45 +700,14 @@ class StandardImporter {
             drg: reqData.drg
         };
 
-        // Resolve all references (setup + operational)
-        request.impactsStakeholderCategories = this._resolveAnnotatedReferences(
-            reqData.impactsStakeholderCategories || [],
-            context.stakeholderMap,
-            context
-        );
-
-        request.impactsData = this._resolveAnnotatedReferences(
-            reqData.impactsData || [],
-            context.dataMap,
-            context
-        );
-
-        request.impactsServices = this._resolveAnnotatedReferences(
-            reqData.impactsServices || [],
-            context.serviceMap,
-            context
-        );
-
-        request.documentReferences = this._resolveAnnotatedReferences(
-            reqData.documentReferences || [],
-            context.documentMap,
-            context
-        );
-
-        request.refinesParents = this._resolveOperationalReferences(
-            reqData.refinesParents || [],
-            context
-        );
-
-        request.implementedONs = this._resolveOperationalReferences(
-            reqData.implementedONs || [],
-            context
-        );
-
-        request.dependsOnRequirements = this._resolveOperationalReferences(
-            reqData.dependsOnRequirements || [],
-            context
-        );
+        // All references already resolved in Phase 3 (annotated) and Phase 5 (operational)
+        request.impactsStakeholderCategories = reqData.impactsStakeholderCategories || [];
+        request.impactsData = reqData.impactsData || [];
+        request.impactsServices = reqData.impactsServices || [];
+        request.documentReferences = reqData.documentReferences || [];
+        request.refinesParents = reqData.refinesParents || [];
+        request.implementedONs = reqData.implementedONs || [];
+        request.dependsOnRequirements = reqData.dependsOnRequirements || [];
 
         return request;
     }
@@ -650,33 +729,17 @@ class StandardImporter {
             drg: ocData.drg
         };
 
-        request.documentReferences = this._resolveAnnotatedReferences(
-            ocData.documentReferences || [],
-            context.documentMap,
-            context
-        );
-
+        // All references already resolved in Phase 3 (annotated) and Phase 5 (operational)
+        request.documentReferences = ocData.documentReferences || [];
         request.milestones = this._processMilestones(ocData, context);
-
-        request.satisfiesRequirements = this._resolveOperationalReferences(
-            ocData.satisfiesRequirements || [],
-            context
-        );
-
-        request.supersedsRequirements = this._resolveOperationalReferences(
-            ocData.supersedsRequirements || [],
-            context
-        );
-
-        request.dependsOnChanges = this._resolveOperationalReferences(
-            ocData.dependsOnChanges || [],
-            context
-        );
+        request.satisfiesRequirements = ocData.satisfiesRequirements || [];
+        request.supersedsRequirements = ocData.supersedsRequirements || [];
+        request.dependsOnChanges = ocData.dependsOnChanges || [];
 
         return request;
     }
 
-    // ==================== Phase 5: Update Existing Entities ====================
+    // ==================== Phase 7: Update Existing Entities ====================
 
     /**
      * Compare and update existing entities
@@ -690,8 +753,9 @@ class StandardImporter {
                 const comparison = Comparator.compareOperationalRequirement(existing, candidateData);
 
                 if (comparison.hasChanges) {
+                    console.log(`Updating ON ${candidateData.externalId} since ${JSON.stringify(comparison.changes)}`);
                     const updateRequest = this._buildUpdateRequest(candidateData, context, existing);
-                    await OperationalRequirementService.update(existing.itemId, existing.versionId, updateRequest, userId);
+                    await OperationalRequirementService.update(existing.itemId, updateRequest, existing.versionId, userId);
 
                     context.updatedEntities.ons.push(existing.code);
                     console.log(`Updated ON: ${existing.code} (${comparison.changes.length} changes)`);
@@ -712,8 +776,9 @@ class StandardImporter {
                 const comparison = Comparator.compareOperationalRequirement(existing, candidateData);
 
                 if (comparison.hasChanges) {
+                    console.log(`Updating OR ${candidateData.externalId} since ${JSON.stringify(comparison.changes)}`);
                     const updateRequest = this._buildUpdateRequest(candidateData, context, existing);
-                    await OperationalRequirementService.update(existing.itemId, existing.versionId, updateRequest, userId);
+                    await OperationalRequirementService.update(existing.itemId, updateRequest, existing.versionId, userId);
 
                     context.updatedEntities.ors.push(existing.code);
                     console.log(`Updated OR: ${existing.code} (${comparison.changes.length} changes)`);
@@ -734,8 +799,9 @@ class StandardImporter {
                 const comparison = Comparator.compareOperationalChange(existing, candidateData);
 
                 if (comparison.hasChanges) {
+                    console.log(`Updating OC ${candidateData.externalId} since ${JSON.stringify(comparison.changes)}`);
                     const updateRequest = this._buildUpdateRequestForChange(candidateData, context, existing);
-                    await OperationalChangeService.update(existing.itemId, existing.versionId, updateRequest, userId);
+                    await OperationalChangeService.update(existing.itemId, updateRequest, existing.versionId, userId);
 
                     context.updatedEntities.ocs.push(existing.code);
                     console.log(`Updated OC: ${existing.code} (${comparison.changes.length} changes)`);
@@ -785,13 +851,15 @@ class StandardImporter {
         const resolved = [];
 
         for (const ref of refs) {
-            if (!ref.externalId && !ref.id) {
-                context.warnings.push(`Annotated reference missing externalId: ${JSON.stringify(ref)}`);
+            // Handle different field names: externalId, id, or documentExternalId
+            const name = ref.externalId || ref.id || ref.documentExternalId;
+
+            if (!name) {
+                context.warnings.push(`Annotated reference missing externalId/id/documentExternalId: ${JSON.stringify(ref)}`);
                 continue;
             }
 
-            const externalId = ref.externalId || ref.id;
-            const entity = entityMap.get(externalId.toLowerCase());
+            const entity = entityMap.get(name.toLowerCase());
 
             if (entity) {
                 const resolvedRef = { id: entity.id };
@@ -802,7 +870,7 @@ class StandardImporter {
             } else {
                 // Collect as referential integrity error
                 context.referentialIntegrityErrors.push(
-                    `Setup element reference not found: ${externalId}`
+                    `Setup element reference not found: ${name}`
                 );
             }
         }

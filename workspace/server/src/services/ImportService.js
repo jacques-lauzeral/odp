@@ -2,6 +2,7 @@ import DocxExtractor from './import/DocxExtractor.js';
 import HierarchicalDocxExtractor from './import/HierarchicalDocxExtractor.js';
 import XlsxExtractor from './import/XlsxExtractor.js';
 import JSONImporter from './import/JSONImporter.js';
+import StandardImporter from './import/StandardImporter.js';
 import MapperRegistry from './import/MapperRegistry.js';
 import StandardMapper from './import/mappers/StandardMapper.js';
 
@@ -59,11 +60,19 @@ class ImportService {
      * Import structured data into database
      * @param {Object} structuredData - StructuredImportData with all entities
      * @param {string} userId - User performing the import
+     * @param {boolean} specific - If true, use JSONImporter (DrG-specific); if false, use StandardImporter (round-trip)
      * @returns {Promise<Object>} ImportSummary with counts and errors
      */
-    async importStructuredData(structuredData, userId) {
-        return await JSONImporter.importStructuredData(structuredData, userId);
+    async importStructuredData(structuredData, userId, specific = false) {
+        if (specific) {
+            // DrG-specific import: use JSONImporter (externalId-based, create all as new)
+            return await JSONImporter.importStructuredData(structuredData, userId);
+        } else {
+            // Round-trip import: use StandardImporter (code-based, CREATE/UPDATE/SKIP)
+            return await StandardImporter.importStandardData(structuredData, userId);
+        }
     }
 }
+
 
 export default ImportService;

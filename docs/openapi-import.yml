@@ -189,8 +189,31 @@ paths:
   /import/structured:
     post:
       summary: Import structured data into database
-      description: Validate and persist structured entities with reference resolution
+      description: |
+        Validate and persist structured entities with reference resolution.
+        
+        Two import modes:
+        - Standard mode (default): Uses StandardImporter for round-trip editing workflow.
+          Entities identified by code field, supports CREATE/UPDATE/SKIP logic with
+          comparison-based change detection.
+        - DrG-specific mode: Uses JSONImporter for initial DrG material import.
+          Entities identified by externalId field, creates all entities as new.
       tags: [Import]
+      parameters:
+        - name: specific
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            Use JSONImporter for DrG-specific initial material import (externalId-based).
+            
+            When false (default): Uses StandardImporter for round-trip editing workflow.
+            Entities use code field for identity, enables CREATE/UPDATE/SKIP based on comparison.
+            
+            When true: Uses JSONImporter for initial import of DrG source materials.
+            Entities use externalId field and are created as new entries.
       requestBody:
         required: true
         content:

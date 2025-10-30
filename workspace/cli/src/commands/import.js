@@ -349,14 +349,22 @@ export class ImportCommands {
             .command('structured')
             .description('Import structured data into database')
             .requiredOption('-f, --file <path>', 'Path to structured JSON payload')
+            .option('-s, --specific', 'Use DrG-specific mapper (default: standard format for round-trip editing)')
             .action(async (options) => {
                 try {
                     console.log(`Reading structured data from: ${options.file}`);
                     const structuredData = JSON.parse(this.readFile(options.file));
 
                     console.log('Importing structured data into database...');
+                    console.log(`Import mode: ${options.specific ? 'DrG-specific' : 'standard (round-trip)'}`);
 
-                    const response = await fetch(`${this.baseUrl}/import/structured`, {
+                    // Build URL with query parameter
+                    const url = new URL(`${this.baseUrl}/import/structured`);
+                    if (options.specific) {
+                        url.searchParams.set('specific', 'true');
+                    }
+
+                    const response = await fetch(url.toString(), {
                         method: 'POST',
                         headers: this.createHeaders('application/json'),
                         body: JSON.stringify(structuredData)
@@ -425,6 +433,8 @@ odp import structured --file structured.json
         program.addCommand(importCommand);
     }
 }
+
+
 
 /**
  * Export function to create and register import commands
