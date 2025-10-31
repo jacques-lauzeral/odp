@@ -6,7 +6,6 @@ import { DOCUMENT_STYLES, SPACING } from './DocxStyles.js';
 
 class DocxGenerator {
     constructor() {
-        this.sectionCounter = {};
         this.renderer = new DocxEntityRenderer();
     }
 
@@ -34,11 +33,18 @@ class DocxGenerator {
     }
 
     /**
-     * Create numbered heading
+     * Create numbered heading using Word's outline numbering
      */
     _createNumberedHeading(title, level) {
-        const num = this._getNextSectionNumber(level);
-        return this._createParagraph(`${num}. ${title}`, level);
+        return new Paragraph({
+            text: title,
+            heading: this._getHeadingLevel(level),
+            spacing: this._getSpacingForLevel(level),
+            numbering: {
+                reference: 'outline-numbering',
+                level: level - 1  // Word levels are 0-indexed
+            }
+        });
     }
 
     /**
@@ -47,6 +53,79 @@ class DocxGenerator {
     _buildNumberingConfig() {
         return {
             config: [
+                // Outline numbering for section headings (multilevel)
+                {
+                    reference: 'outline-numbering',
+                    levels: [
+                        {
+                            level: 0,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 0, hanging: 0 }
+                                }
+                            }
+                        },
+                        {
+                            level: 1,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.%2.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 0, hanging: 0 }
+                                }
+                            }
+                        },
+                        {
+                            level: 2,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.%2.%3.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 0, hanging: 0 }
+                                }
+                            }
+                        },
+                        {
+                            level: 3,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.%2.%3.%4.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 0, hanging: 0 }
+                                }
+                            }
+                        },
+                        {
+                            level: 4,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.%2.%3.%4.%5.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 0, hanging: 0 }
+                                }
+                            }
+                        },
+                        {
+                            level: 5,
+                            format: LevelFormat.DECIMAL,
+                            text: '%1.%2.%3.%4.%5.%6.',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 0, hanging: 0 }
+                                }
+                            }
+                        }
+                    ]
+                },
+                // Ordered lists for content
                 {
                     reference: 'default-numbering',
                     levels: [
@@ -157,7 +236,6 @@ class DocxGenerator {
      * @returns {Buffer} - Word document buffer
      */
     async generate(requirements, changes, metadata) {
-        this.sectionCounter = {};
 
         // Build hierarchy from separate requirements and changes arrays
         const hierarchy = this._buildHierarchy(requirements, changes);
@@ -317,27 +395,7 @@ class DocxGenerator {
         return elements;
     }
 
-    /**
-     * Get next section number for a given level
-     */
-    _getNextSectionNumber(level) {
-        if (!this.sectionCounter[level]) {
-            this.sectionCounter[level] = 0;
-        }
-        this.sectionCounter[level]++;
 
-        // Reset deeper levels
-        for (let i = level + 1; i <= 6; i++) {
-            this.sectionCounter[i] = 0;
-        }
-
-        // Build number string
-        const parts = [];
-        for (let i = 1; i <= level; i++) {
-            parts.push(this.sectionCounter[i] || 1);
-        }
-        return parts.join('.');
-    }
 
     /**
      * Build hierarchical structure from requirements and changes
