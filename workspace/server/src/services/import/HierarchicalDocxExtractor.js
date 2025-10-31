@@ -242,7 +242,7 @@ class HierarchicalDocxExtractor {
 
     /**
      * Extract document title from raw extracted data
-     * Strategy: Look for the first heading or use first section title
+     * Strategy: Look for entity marker in content paragraphs or use first section title
      * @param {Object} rawData - RawExtractedData from DocxExtractor
      * @returns {string|null} Document title or null
      */
@@ -251,7 +251,43 @@ class HierarchicalDocxExtractor {
             return null;
         }
 
-        // Use the first section's title
+        // Strategy: Look for entity markers in content paragraphs first
+        // Entity markers: "Operational Need (ON)", "Operational Requirement (OR)", "Use Case"
+        const entityMarkers = [
+            'Operational Need (ON)',
+            'Operational Requirement (OR)',
+            'Use Case'
+        ];
+
+        // Search all sections recursively for entity markers in paragraphs
+        const findEntityMarker = (sections) => {
+            for (const section of sections) {
+                // Check content paragraphs
+                if (section.content && section.content.paragraphs) {
+                    for (const para of section.content.paragraphs) {
+                        // Strip HTML tags for comparison
+                        const text = para.replace(/<[^>]+>/g, '').trim();
+                        if (entityMarkers.includes(text)) {
+                            return text;
+                        }
+                    }
+                }
+
+                // Recurse into subsections
+                if (section.subsections && section.subsections.length > 0) {
+                    const found = findEntityMarker(section.subsections);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        const marker = findEntityMarker(rawData.sections);
+        if (marker) {
+            return marker;
+        }
+
+        // Fallback: Use the first section's title
         const firstSection = rawData.sections[0];
         return firstSection.title;
     }
