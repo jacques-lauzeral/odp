@@ -11,7 +11,7 @@ class DocxExtractor {
         try {
             // Extract HTML with custom style mappings and list handling
             const result = await mammoth.convertToHtml(fileBuffer, {
-                includeDefaultStyleMap: false, // Don't use defaults, we'll be explicit
+                includeDefaultStyleMap: true, // Enable default list handling (ol/ul)
                 styleMap: [
                     // Standard heading styles
                     "p[style-name='Heading 1'] => h1:fresh",
@@ -27,9 +27,6 @@ class DocxExtractor {
                     "p[style-name='heading 4'] => h4:fresh",
                     "p[style-name='heading 5'] => h5:fresh",
                     "p[style-name='heading 6'] => h6:fresh",
-                    // List paragraph - keep as separate paragraph with marker
-                    "p[style-name='List Paragraph'] => p.list-paragraph:fresh",
-                    "p[style-name='ListParagraph'] => p.list-paragraph:fresh",
                     // Normal paragraph
                     "p => p:fresh"
                 ],

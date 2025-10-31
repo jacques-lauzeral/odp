@@ -95,6 +95,55 @@ class DocxGenerator {
                             }
                         }
                     ]
+                },
+                {
+                    reference: 'default-bullet',
+                    levels: [
+                        {
+                            level: 0,
+                            format: LevelFormat.BULLET,
+                            text: '•',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 720, hanging: 360 }
+                                }
+                            }
+                        },
+                        {
+                            level: 1,
+                            format: LevelFormat.BULLET,
+                            text: '◦',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 1440, hanging: 360 }
+                                }
+                            }
+                        },
+                        {
+                            level: 2,
+                            format: LevelFormat.BULLET,
+                            text: '▪',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 2160, hanging: 360 }
+                                }
+                            }
+                        },
+                        {
+                            level: 3,
+                            format: LevelFormat.BULLET,
+                            text: '▪',
+                            alignment: AlignmentType.START,
+                            style: {
+                                paragraph: {
+                                    indent: { left: 2880, hanging: 360 }
+                                }
+                            }
+                        }
+                    ]
                 }
             ]
         };

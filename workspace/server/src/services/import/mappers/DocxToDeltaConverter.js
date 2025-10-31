@@ -10,14 +10,16 @@
  * - <strong>text</strong> → bold
  * - <em>text</em> or <i>text</i> → italic
  * - <u>text</u> → underline
- * - <p class="list-paragraph">text</p> → bullet list item
+ * - <ol><li>text</li></ol> → ordered list
+ * - <ul><li>text</li></ul> → bullet list
+ * - <p class="list-paragraph">text</p> → bullet list (fallback)
  * - Nested formatting: <strong><em>text</em></strong>
  *
  * Output format matches textToDelta utility:
  * {
  *   ops: [
  *     { insert: "text", attributes: { bold: true } },
- *     { insert: "\n" }
+ *     { insert: "\n", attributes: { list: "ordered" } }
  *   ]
  * }
  */
@@ -63,8 +65,8 @@ class DocxToDeltaConverter {
 
             // Add newline with list attribute if applicable
             const newlineOp = { insert: '\n' };
-            if (paragraph.isList) {
-                newlineOp.attributes = { list: 'bullet' };
+            if (paragraph.listType) {
+                newlineOp.attributes = { list: paragraph.listType };
             }
             ops.push(newlineOp);
         }
@@ -74,25 +76,48 @@ class DocxToDeltaConverter {
 
     /**
      * Extract paragraph elements from HTML
+     * Detects both semantic list tags (<ol>/<ul>) and class-based lists
      * @param {string} html - HTML content
-     * @returns {Array<{html: string, isList: boolean}>} Paragraph objects
+     * @returns {Array<{html: string, listType: string|null}>} Paragraph objects
      * @private
      */
     _extractParagraphs(html) {
         const paragraphs = [];
 
-        // Match <p> tags with optional class attribute
-        const paragraphRegex = /<p(?:\s+class="([^"]*)")?>(.*?)<\/p>/gs;
-        let match;
+        // First, try to detect semantic list structures (<ol>/<ul>)
+        const listRegex = /<(ol|ul)>(.*?)<\/\1>/gs;
+        let listMatch;
 
-        while ((match = paragraphRegex.exec(html)) !== null) {
-            const className = match[1] || '';
-            const content = match[2];
+        while ((listMatch = listRegex.exec(html)) !== null) {
+            const listType = listMatch[1]; // 'ol' or 'ul'
+            const listContent = listMatch[2];
 
-            paragraphs.push({
-                html: content,
-                isList: className.includes('list-paragraph')
-            });
+            // Extract list items from this list
+            const liRegex = /<li>(.*?)<\/li>/gs;
+            let liMatch;
+
+            while ((liMatch = liRegex.exec(listContent)) !== null) {
+                paragraphs.push({
+                    html: liMatch[1],
+                    listType: listType === 'ol' ? 'ordered' : 'bullet'
+                });
+            }
+        }
+
+        // If no semantic lists found, fall back to paragraph detection
+        if (paragraphs.length === 0) {
+            const paragraphRegex = /<p(?:\s+class="([^"]*)")?>(.*?)<\/p>/gs;
+            let match;
+
+            while ((match = paragraphRegex.exec(html)) !== null) {
+                const className = match[1] || '';
+                const content = match[2];
+
+                paragraphs.push({
+                    html: content,
+                    listType: className.includes('list-paragraph') ? 'bullet' : null
+                });
+            }
         }
 
         return paragraphs;

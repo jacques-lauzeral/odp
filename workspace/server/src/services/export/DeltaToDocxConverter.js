@@ -26,7 +26,7 @@ class DeltaToDocxConverter {
                 throw new Error('Invalid Delta format: missing or invalid ops array');
             }
 
-            // Split ops into paragraph segments
+            // Split ops into paragraph segments (two-pass approach)
             const paragraphSegments = this._segmentIntoParagraphs(delta.ops);
 
             // Convert each segment to a Paragraph
@@ -71,35 +71,39 @@ class DeltaToDocxConverter {
     }
 
     /**
-     * Split ops array into paragraph segments (split on newline operations)
+     * Split ops array into paragraph segments
+     * Step 1: Normalize ops (split multi-line inserts)
+     * Step 2: Segment into lines based on newlines
      * @param {Array} ops - Quill Delta ops array
      * @returns {Array} - Array of paragraph segments
      */
     _segmentIntoParagraphs(ops) {
+        // Step 1: Normalize ops by splitting multi-line insert strings
+        const normalizedOps = this._normalizeOps(ops);
+
+        // Step 2: Segment into lines
         const segments = [];
         let currentSegment = {
             runs: [],
             attributes: {} // Line-level attributes from \n
         };
 
-        for (const op of ops) {
+        for (const op of normalizedOps) {
             if (this._isNewline(op)) {
-                // Capture line-level formatting from newline
+                // Newline closes current line with its attributes
                 currentSegment.attributes = op.attributes || {};
-
-                // Close current segment
                 segments.push(currentSegment);
 
-                // Start new segment
+                // Start new line
                 currentSegment = {
                     runs: [],
                     attributes: {}
                 };
             } else if (this._isInsert(op)) {
-                // Add text run to current segment
+                // Add text run to current line
                 currentSegment.runs.push(op);
             }
-            // Ignore other operation types (retain, delete) as we're only rendering content
+            // Ignore other operation types (retain, delete)
         }
 
         // Add final segment if it has content
@@ -107,12 +111,60 @@ class DeltaToDocxConverter {
             segments.push(currentSegment);
         }
 
-        // Handle empty delta - return at least one empty paragraph
+        // Handle empty delta
         if (segments.length === 0) {
             segments.push({ runs: [], attributes: {} });
         }
 
         return segments;
+    }
+
+    /**
+     * Normalize ops by splitting insert strings that contain embedded newlines
+     * @param {Array} ops - Original ops array
+     * @returns {Array} - Normalized ops array
+     */
+    _normalizeOps(ops) {
+        const normalized = [];
+
+        for (const op of ops) {
+            // Only process insert operations with string content
+            if (this._isInsert(op) && typeof op.insert === 'string') {
+                const text = op.insert;
+
+                // Check if insert contains newlines
+                if (text.includes('\n')) {
+                    // Split on newlines, preserving them
+                    const parts = text.split('\n');
+
+                    for (let i = 0; i < parts.length; i++) {
+                        // Add text part if non-empty
+                        if (parts[i].length > 0) {
+                            normalized.push({
+                                insert: parts[i],
+                                attributes: op.attributes
+                            });
+                        }
+
+                        // Add newline between parts (except after last part)
+                        if (i < parts.length - 1) {
+                            normalized.push({
+                                insert: '\n',
+                                attributes: op.attributes
+                            });
+                        }
+                    }
+                } else {
+                    // No newlines, keep as-is
+                    normalized.push(op);
+                }
+            } else {
+                // Non-string inserts or other ops, keep as-is
+                normalized.push(op);
+            }
+        }
+
+        return normalized;
     }
 
     /**
@@ -139,7 +191,8 @@ class DeltaToDocxConverter {
         // Handle list formatting
         if (attributes.list) {
             if (attributes.list === 'bullet') {
-                paragraphOptions.bullet = {
+                paragraphOptions.numbering = {
+                    reference: 'default-bullet',
                     level: attributes.indent || 0
                 };
             } else if (attributes.list === 'ordered') {
