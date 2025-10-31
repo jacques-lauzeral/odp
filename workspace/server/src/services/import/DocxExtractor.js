@@ -28,7 +28,17 @@ class DocxExtractor {
                     "p[style-name='heading 5'] => h5:fresh",
                     "p[style-name='heading 6'] => h6:fresh",
                     // Normal paragraph
-                    "p:not(numbering) => p:fresh"
+                    // "p => p:fresh"
+                    //"p:not(numbering) => p:fresh"
+
+                    // Explicitly preserve ordered list items
+                    "p[style-name='List Paragraph']:ordered-list(1) => ol > li:fresh",
+                    "p[style-name='List Paragraph']:ordered-list(2) => ol > li:fresh",
+
+                    // Explicitly preserve unordered list items
+                    "p[style-name='List Paragraph']:unordered-list(1) => ul > li:fresh",
+                    "p[style-name='List Paragraph']:unordered-list(2) => ul > li:fresh"
+
                 ],
                 convertImage: mammoth.images.imgElement(function(image) {
                     return image.read("base64").then(function(imageBuffer) {
@@ -39,8 +49,20 @@ class DocxExtractor {
                 })
             });
 
-            // DO NOT REMOVE THIS LOG
-            console.log('Raw HTML (first 5000 chars):', result.value.substring(0, 5000));
+            // Log complete HTML to file for debugging
+            const fs = await import('fs');
+            const path = await import('path');
+            const logDir = path.join(process.cwd(), 'logs');
+
+            // Ensure logs directory exists
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true });
+            }
+
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const logFile = path.join(logDir, `docx-html-${timestamp}.log`);
+            fs.writeFileSync(logFile, result.value, 'utf8');
+            console.log(`Raw HTML logged to: ${logFile}`);
 
             // Parse HTML to extract structured sections
             const sections = this._parseHtmlToSections(result.value);
@@ -65,16 +87,11 @@ class DocxExtractor {
      * @returns {Array} Array of section objects
      */
     _parseHtmlToSections(html) {
-        // Try TOC-based extraction first
-        const tocSections = this._extractFromTOC(html);
-        if (tocSections.length > 0) {
-            console.log('Using TOC-based extraction');
-            return tocSections;
-        }
+        // Clean HTML to remove TOC before processing
+        const cleanedHtml = this._removeTOC(html);
 
-        // Fallback to heading-based extraction
-        console.log('No TOC found, using heading-based extraction');
-        const elements = this._extractAllElements(html);
+        // Extract elements from cleaned HTML
+        const elements = this._extractAllElements(cleanedHtml);
         const sections = this._buildSectionHierarchy(elements);
 
         // If no sections found but content exists, create default section
@@ -84,6 +101,49 @@ class DocxExtractor {
         }
 
         return sections;
+    }
+
+    /**
+     * Remove Table of Contents from HTML
+     * Detects TOC by structure: consecutive paragraphs containing only anchor links
+     * @param {string} html - HTML content
+     * @returns {string} HTML with TOC removed
+     */
+    _removeTOC(html) {
+        // Split HTML into lines for easier processing
+        const lines = html.split('\n');
+        const cleanedLines = [];
+        let inTOC = false;
+        let tocStartIndex = -1;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            // Check if this line is a TOC entry (paragraph with only anchor link to #_Toc...)
+            const isTOCEntry = line.match(/^<p>\s*<a href="#_Toc[^"]*">[^<]*<\/a>\s*<\/p>$/);
+
+            if (isTOCEntry) {
+                if (!inTOC) {
+                    // Start of TOC detected
+                    inTOC = true;
+                    tocStartIndex = i;
+                    console.log(`TOC detected starting at line ${i}`);
+                }
+                // Skip this TOC entry line
+                continue;
+            }
+
+            // If we were in TOC and hit a non-TOC line, TOC has ended
+            if (inTOC && !isTOCEntry) {
+                console.log(`TOC ended at line ${i}, removed ${i - tocStartIndex} lines`);
+                inTOC = false;
+            }
+
+            // Keep non-TOC lines
+            cleanedLines.push(lines[i]);
+        }
+
+        return cleanedLines.join('\n');
     }
 
     /**
@@ -143,10 +203,8 @@ class DocxExtractor {
                         }
 
                         if (element.isList) {
-                            const listItems = this._splitListItems(textContent);
-                            listItems.forEach(item => {
-                                section.content.paragraphs.push(`- ${item}`);
-                            });
+                            // List items are already extracted individually
+                            section.content.paragraphs.push(textContent);
                         } else {
                             section.content.paragraphs.push(textContent);
                         }
@@ -157,10 +215,8 @@ class DocxExtractor {
                     }
 
                     if (element.isList) {
-                        const listItems = this._splitListItems(element.content);
-                        listItems.forEach(item => {
-                            section.content.paragraphs.push(`- ${item}`);
-                        });
+                        // List items are already extracted individually
+                        section.content.paragraphs.push(element.content);
                     } else {
                         section.content.paragraphs.push(element.content);
                     }
@@ -181,429 +237,138 @@ class DocxExtractor {
     }
 
     /**
-     * Extract document structure from Table of Contents
+     * Extract all content elements (headings, paragraphs, lists, tables) from HTML
+     * in document order
      * @param {string} html - HTML content
-     * @returns {Array} Array of section objects
-     */
-    _extractFromTOC(html) {
-        const tocEntries = [];
-
-        // Pattern 1: Split TOC entries
-        const splitPattern = /<p[^>]*><strong><a href="#([^"]+)">([^<]+)<\/a><\/strong><a href="#\1">([^<]+)<\/a><\/p>/gi;
-
-        let match;
-        const processedAnchors = new Set();
-
-        // Collect split entries with their position
-        while ((match = splitPattern.exec(html)) !== null) {
-            const anchorId = match[1];
-            const sectionNumber = match[2].trim();
-            const title = match[3].trim().replace(/\s+\d+$/, '');
-
-            const parsed = this._parseTOCEntry(`${sectionNumber} ${title}`);
-            if (parsed) {
-                tocEntries.push({
-                    anchorId: anchorId,
-                    sectionNumber: parsed.sectionNumber,
-                    title: parsed.title,
-                    level: parsed.level,
-                    position: match.index
-                });
-                processedAnchors.add(anchorId);
-            }
-        }
-
-        console.log(`Found ${tocEntries.length} split pattern entries (level 3)`);
-
-        // Pattern 2: Normal entries
-        const normalPattern = /<p[^>]*><a href="#([^"]+)">([^<]+)<\/a><\/p>/gi;
-
-        while ((match = normalPattern.exec(html)) !== null) {
-            const anchorId = match[1];
-
-            if (processedAnchors.has(anchorId)) {
-                continue;
-            }
-
-            const tocText = match[2].trim();
-            const parsed = this._parseTOCEntry(tocText);
-
-            if (parsed) {
-                tocEntries.push({
-                    anchorId: anchorId,
-                    sectionNumber: parsed.sectionNumber,
-                    title: parsed.title,
-                    level: parsed.level,
-                    position: match.index
-                });
-            }
-        }
-
-        // SORT BY DOCUMENT POSITION
-        tocEntries.sort((a, b) => a.position - b.position);
-
-        console.log(`Found ${tocEntries.length} total TOC entries`);
-
-        if (tocEntries.length === 0) {
-            return [];
-        }
-
-        const sections = this._buildSectionsFromTOC(tocEntries, html);
-        return sections;
-    }
-
-    /**
-     * Parse a TOC entry to extract section number, title, and level
-     * Examples: "1  Introduction", "4.1.1  Consistent B2B", "4.1.1.1.1  NM B2B Essentials"
-     */
-    _parseTOCEntry(tocText) {
-        // Remove page numbers at the end (tabs and digits)
-        const textWithoutPage = tocText.replace(/\s+\d+$/, '');
-
-        // Match section number pattern: digits separated by dots, followed by title
-        const pattern = /^([\d.]+)\s+(.+)$/;
-        const match = textWithoutPage.match(pattern);
-
-        if (!match) {
-            return null;
-        }
-
-        const sectionNumber = match[1].trim();
-        const title = match[2].trim();
-
-        // Calculate level from section number depth (1.2.3 = level 3)
-        const level = sectionNumber.split('.').filter(s => s.length > 0).length;
-
-        return {
-            sectionNumber: sectionNumber,
-            title: title,
-            level: level
-        };
-    }
-
-    /**
-     * Build section hierarchy from TOC entries and match with content
-     *
-     * Strategy: The TOC entries already define the complete hierarchy.
-     * We just need to build the tree structure by tracking parent sections at each level.
-     * Content assignment happens separately based on document position.
-     */
-    _buildSectionsFromTOC(tocEntries, html) {
-        const sections = [];
-        const sectionsByLevel = {}; // Track current section at each level
-        const sectionsByAnchor = new Map(); // Quick lookup by anchor ID
-
-        // Phase 1: Build complete section tree from TOC entries
-        for (let i = 0; i < tocEntries.length; i++) {
-            const entry = tocEntries[i];
-            const level = entry.level;
-
-            // Create section - omit empty arrays/objects initially
-            const section = {
-                level: level,
-                title: entry.title,
-                sectionNumber: entry.sectionNumber,
-                path: [],
-                _anchorId: entry.anchorId // Internal: for content assignment
-            };
-
-            // Clear deeper levels (we're starting a new branch)
-            for (let l = level; l <= 10; l++) {
-                delete sectionsByLevel[l];
-            }
-
-            // Find parent (nearest section at level-1, level-2, etc.)
-            let parent = null;
-            for (let l = level - 1; l >= 1; l--) {
-                if (sectionsByLevel[l]) {
-                    parent = sectionsByLevel[l];
-                    break;
-                }
-            }
-
-            // Set path and add to hierarchy
-            if (parent) {
-                section.path = [...parent.path, entry.title];
-                // Lazy create subsections array
-                if (!parent.subsections) {
-                    parent.subsections = [];
-                }
-                parent.subsections.push(section);
-            } else {
-                section.path = [entry.title];
-                sections.push(section);
-            }
-
-            // Register section at this level
-            sectionsByLevel[level] = section;
-            sectionsByAnchor.set(entry.anchorId, section);
-        }
-
-        // Phase 2: Assign content to sections
-        this._assignContentToSectionsFromTOC(sections, sectionsByAnchor, tocEntries, html);
-
-        return sections;
-    }
-
-    /**
-     * Assign content to all sections by iterating through TOC entries
-     * @param {Array} sections - Root level sections
-     * @param {Map} sectionsByAnchor - Map of anchorId -> section
-     * @param {Array} tocEntries - Original TOC entries with anchors
-     * @param {string} html - Full HTML content
-     */
-    _assignContentToSectionsFromTOC(sections, sectionsByAnchor, tocEntries, html) {
-        // Extract all content elements with positions
-        const contentElements = this._extractContentElements(html);
-
-        console.log(`Extracted ${contentElements.length} content elements`);
-
-        // For each TOC entry, assign content between its anchor and the next section
-        for (let i = 0; i < tocEntries.length; i++) {
-            const entry = tocEntries[i];
-            const section = sectionsByAnchor.get(entry.anchorId);
-
-            if (!section) {
-                continue;
-            }
-
-            // Find next boundary anchor - simply the next TOC entry (any level)
-            let nextBoundaryAnchor = null;
-            if (i + 1 < tocEntries.length) {
-                nextBoundaryAnchor = tocEntries[i + 1].anchorId;
-            }
-
-            this._assignContentToSection(section, entry.anchorId, nextBoundaryAnchor, html, contentElements);
-        }
-    }
-
-    /**
-     * Extract all content elements (paragraphs, tables, images) with their positions
-     * @param {string} html - Full HTML content
-     * @returns {Array} Array of content elements with type, content, and index
-     */
-    _extractContentElements(html) {
-        const elements = [];
-
-        // Extract paragraphs (including list items)
-        const paragraphRegex = /<p([^>]*)>(.*?)<\/p>/gis;
-        let match;
-
-        while ((match = paragraphRegex.exec(html)) !== null) {
-            const attributes = match[1];
-            const content = match[2];
-
-            // Skip TOC entries (paragraphs with anchor links)
-            if (content.includes('<a href="#')) {
-                continue;
-            }
-
-            // Check for images in paragraph
-            const imageRegex = /<img\s+src="([^"]+)"[^>]*>/gi;
-            const hasImage = imageRegex.test(content);
-
-            // Extract text (strip HTML tags except images)
-            let text = content;
-            if (hasImage) {
-                // Keep image tags, extract surrounding text
-                text = content.trim();
-            } else {
-                // Just extract text
-                text = content.replace(/<[^>]+>/g, '').trim();
-            }
-
-            if (text) {
-                // Check if it's a list paragraph
-                const isList = attributes.includes('list-paragraph');
-                elements.push({
-                    type: 'paragraph',
-                    content: text,
-                    index: match.index,
-                    isList: isList,
-                    hasImage: hasImage
-                });
-            }
-        }
-
-        // Extract tables (simplified - just capture table HTML for now)
-        const tableRegex = /<table>(.*?)<\/table>/gis;
-        while ((match = tableRegex.exec(html)) !== null) {
-            elements.push({
-                type: 'table',
-                content: match[0],
-                index: match.index
-            });
-        }
-
-        // Sort by position in document
-        elements.sort((a, b) => a.index - b.index);
-
-        return elements;
-    }
-
-    /**
-     * Assign content (paragraphs, tables, images) to a section based on anchor boundaries
-     * Only assigns content between this section's anchor and the next section
-     */
-    _assignContentToSection(section, startAnchor, nextBoundaryAnchor, html, contentElements) {
-        // Find start position - look for anchor tag
-        const startPattern = new RegExp(`<a[^>]*id="${startAnchor}"[^>]*>`);
-        const startMatch = html.match(startPattern);
-        const startPos = startMatch ? html.indexOf(startMatch[0]) : -1;
-
-        // Find end position - next section
-        let endPos = html.length;
-        if (nextBoundaryAnchor) {
-            const endPattern = new RegExp(`<a[^>]*id="${nextBoundaryAnchor}"[^>]*>`);
-            const endMatch = html.match(endPattern);
-            if (endMatch) {
-                endPos = html.indexOf(endMatch[0]);
-            }
-        }
-
-        if (startPos === -1) {
-            return;
-        }
-
-        // Assign content elements that fall within this section's range
-        for (const element of contentElements) {
-            if (element.index > startPos && element.index < endPos) {
-                if (element.type === 'paragraph') {
-                    if (element.hasImage) {
-                        const images = this._extractImagesFromContent(element.content);
-                        if (images.length > 0) {
-                            // Lazy create content and images array
-                            if (!section.content) {
-                                section.content = {};
-                            }
-                            if (!section.content.images) {
-                                section.content.images = [];
-                            }
-                            section.content.images.push(...images);
-                        }
-
-                        const textContent = element.content.replace(/<img[^>]*>/gi, '').trim();
-                        if (textContent) {
-                            // Lazy create content and paragraphs array
-                            if (!section.content) {
-                                section.content = {};
-                            }
-                            if (!section.content.paragraphs) {
-                                section.content.paragraphs = [];
-                            }
-
-                            if (element.isList) {
-                                const listItems = this._splitListItems(textContent);
-                                listItems.forEach(item => {
-                                    section.content.paragraphs.push(`- ${item}`);
-                                });
-                            } else {
-                                section.content.paragraphs.push(textContent);
-                            }
-                        }
-                    } else {
-                        // Lazy create content and paragraphs array
-                        if (!section.content) {
-                            section.content = {};
-                        }
-                        if (!section.content.paragraphs) {
-                            section.content.paragraphs = [];
-                        }
-
-                        if (element.isList) {
-                            const listItems = this._splitListItems(element.content);
-                            listItems.forEach(item => {
-                                section.content.paragraphs.push(`- ${item}`);
-                            });
-                        } else {
-                            section.content.paragraphs.push(element.content);
-                        }
-                    }
-                } else if (element.type === 'table') {
-                    // Lazy create content and tables array
-                    if (!section.content) {
-                        section.content = {};
-                    }
-                    if (!section.content.tables) {
-                        section.content.tables = [];
-                    }
-
-                    const tableData = this._parseSimpleTable(element.content);
-                    section.content.tables.push(tableData);
-                }
-            }
-        }
-    }
-
-    /**
-     * Extract all HTML elements with their type and position
+     * @returns {Array} Array of elements with type and content
      */
     _extractAllElements(html) {
         const elements = [];
 
-        // Extract headings
-        const headingRegex = /<h(\d)>([^<]+)<\/h\1>/gi;
+        // Extract headings with their anchor IDs
+        const headingRegex = /<h([1-6])>(.*?)<\/h\1>/gis;
         let match;
+
         while ((match = headingRegex.exec(html)) !== null) {
+            const level = parseInt(match[1]);
+            const content = match[2];
+
+            // Extract anchor ID if present
+            const anchorMatch = content.match(/<a id="([^"]+)"><\/a>/);
+            const anchorId = anchorMatch ? anchorMatch[1] : null;
+
+            // Extract text content (remove all tags)
+            const text = content.replace(/<[^>]+>/g, '').trim();
+
             elements.push({
                 type: 'heading',
-                level: parseInt(match[1]),
-                content: match[2].trim(),
-                index: match.index
+                level: level,
+                content: text,
+                anchorId: anchorId,
+                position: match.index
             });
         }
 
-        // Extract paragraphs (including list items)
-        const paragraphRegex = /<p([^>]*)>(.*?)<\/p>/gis;
+        // Extract paragraphs (excluding those that are part of headings)
+        const paragraphRegex = /<p>(.*?)<\/p>/gis;
+
         while ((match = paragraphRegex.exec(html)) !== null) {
-            const attributes = match[1];
-            const content = match[2];
+            let content = match[1].trim();
 
-            // Check for images in paragraph
-            const imageRegex = /<img\s+src="([^"]+)"[^>]*>/gi;
-            const hasImage = imageRegex.test(content);
+            // Skip empty paragraphs
+            if (!content) continue;
 
-            // Extract text (strip HTML tags except images)
-            let text = content;
-            if (hasImage) {
-                // Keep image tags, extract surrounding text
-                text = content.trim();
-            } else {
-                // Just extract text
-                text = content.replace(/<[^>]+>/g, '').trim();
-            }
+            // Strip all anchor tags from content
+            content = content.replace(/<a[^>]*><\/a>/g, '');
 
-            if (text) {
-                // Check if it's a list paragraph
-                const isList = attributes.includes('list-paragraph');
-                elements.push({
-                    type: 'paragraph',
-                    content: text,
-                    index: match.index,
-                    isList: isList,
-                    hasImage: hasImage
-                });
+            // Check if paragraph contains an image
+            const hasImage = /<img\s/.test(content);
+
+            elements.push({
+                type: 'paragraph',
+                content: content,
+                hasImage: hasImage,
+                isList: false,
+                position: match.index
+            });
+        }
+
+        // Extract list items (ordered and unordered)
+        // Handle ordered lists
+        const olRegex = /<ol>(.*?)<\/ol>/gis;
+        while ((match = olRegex.exec(html)) !== null) {
+            const listHtml = match[1];
+            const liRegex = /<li>(.*?)<\/li>/gi;
+            let liMatch;
+
+            while ((liMatch = liRegex.exec(listHtml)) !== null) {
+                let content = liMatch[1].trim();
+                if (content) {
+                    // Strip anchor tags from list item content
+                    content = content.replace(/<a[^>]*><\/a>/g, '');
+                    // Add prefix to indicate list item
+                    content = '- ' + content;
+
+                    elements.push({
+                        type: 'paragraph',
+                        content: content,
+                        hasImage: false,
+                        isList: true,
+                        listType: 'ordered',
+                        position: match.index + liMatch.index
+                    });
+                }
             }
         }
 
-        // Extract tables (simplified - just capture table HTML for now)
+        // Handle unordered lists
+        const ulRegex = /<ul>(.*?)<\/ul>/gis;
+        while ((match = ulRegex.exec(html)) !== null) {
+            const listHtml = match[1];
+            const liRegex = /<li>(.*?)<\/li>/gi;
+            let liMatch;
+
+            while ((liMatch = liRegex.exec(listHtml)) !== null) {
+                let content = liMatch[1].trim();
+                if (content) {
+                    // Strip anchor tags from list item content
+                    content = content.replace(/<a[^>]*><\/a>/g, '');
+                    // Add prefix to indicate list item
+                    content = '- ' + content;
+
+                    elements.push({
+                        type: 'paragraph',
+                        content: content,
+                        hasImage: false,
+                        isList: true,
+                        listType: 'unordered',
+                        position: match.index + liMatch.index
+                    });
+                }
+            }
+        }
+
+        // Extract tables
         const tableRegex = /<table>(.*?)<\/table>/gis;
         while ((match = tableRegex.exec(html)) !== null) {
             elements.push({
                 type: 'table',
                 content: match[0],
-                index: match.index
+                position: match.index
             });
         }
 
-        // Sort by position in document
-        elements.sort((a, b) => a.index - b.index);
+        // Sort elements by position in document
+        elements.sort((a, b) => a.position - b.position);
 
+        console.log(`Extracted ${elements.length} elements from HTML`);
         return elements;
     }
 
     /**
-     * Build hierarchical section structure from elements
+     * Build hierarchical section structure from flat list of elements
+     * @param {Array} elements - Flat list of elements
+     * @returns {Array} Hierarchical array of sections
      */
     _buildSectionHierarchy(elements) {
         const sections = [];
@@ -617,31 +382,38 @@ class DocxExtractor {
                 const section = {
                     level: level,
                     title: element.content,
-                    path: []
+                    path: [],
+                    subsections: []
                 };
 
-                // Clear deeper levels
-                for (let l = level; l <= 6; l++) {
+                // Add anchor ID if present (but not TOC anchors)
+                if (element.anchorId && !element.anchorId.startsWith('_Toc')) {
+                    section._anchorId = element.anchorId;
+                }
+
+                // Clear all deeper level sections
+                for (let l = level + 1; l <= 6; l++) {
                     delete sectionsByLevel[l];
                 }
 
-                // Find parent (previous level)
-                let parent = null;
-                for (let l = level - 1; l >= 1; l--) {
-                    if (sectionsByLevel[l]) {
-                        parent = sectionsByLevel[l];
-                        break;
+                // Find parent section
+                if (level > 1) {
+                    let parentSection = null;
+                    for (let l = level - 1; l >= 1; l--) {
+                        if (sectionsByLevel[l]) {
+                            parentSection = sectionsByLevel[l];
+                            break;
+                        }
                     }
-                }
 
-                // Set path based on parent
-                if (parent) {
-                    section.path = [...parent.path, element.content];
-                    // Lazy create subsections
-                    if (!parent.subsections) {
-                        parent.subsections = [];
+                    if (parentSection) {
+                        section.path = [...parentSection.path, element.content];
+                        parentSection.subsections.push(section);
+                    } else {
+                        // No parent found, treat as root
+                        section.path = [element.content];
+                        sections.push(section);
                     }
-                    parent.subsections.push(section);
                 } else {
                     // Root level section
                     section.path = [element.content];
@@ -691,10 +463,8 @@ class DocxExtractor {
                             }
 
                             if (element.isList) {
-                                const listItems = this._splitListItems(textContent);
-                                listItems.forEach(item => {
-                                    currentSection.content.paragraphs.push(`- ${item}`);
-                                });
+                                // List items are already extracted individually
+                                currentSection.content.paragraphs.push(textContent);
                             } else {
                                 currentSection.content.paragraphs.push(textContent);
                             }
@@ -708,12 +478,10 @@ class DocxExtractor {
                             currentSection.content.paragraphs = [];
                         }
 
-                        // Format list items with markdown-style bullets
+                        // Add list items or regular paragraphs
                         if (element.isList) {
-                            const listItems = this._splitListItems(element.content);
-                            listItems.forEach(item => {
-                                currentSection.content.paragraphs.push(`- ${item}`);
-                            });
+                            // List items are already extracted individually
+                            currentSection.content.paragraphs.push(element.content);
                         } else {
                             currentSection.content.paragraphs.push(element.content);
                         }
