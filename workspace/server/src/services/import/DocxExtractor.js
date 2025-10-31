@@ -28,7 +28,7 @@ class DocxExtractor {
                     "p[style-name='heading 5'] => h5:fresh",
                     "p[style-name='heading 6'] => h6:fresh",
                     // Normal paragraph
-                    "p => p:fresh"
+                    "p:not(numbering) => p:fresh"
                 ],
                 convertImage: mammoth.images.imgElement(function(image) {
                     return image.read("base64").then(function(imageBuffer) {
