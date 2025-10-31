@@ -373,14 +373,25 @@ class DocxExtractor {
     _buildSectionHierarchy(elements) {
         const sections = [];
         const sectionsByLevel = {}; // Track current section at each level
+        const counters = [0, 0, 0, 0, 0, 0]; // Counters for h1-h6
 
         for (const element of elements) {
             if (element.type === 'heading') {
                 const level = element.level;
 
+                // Auto-generate section number based on hierarchy
+                counters[level - 1]++; // Increment counter at current level
+                // Reset all deeper level counters
+                for (let i = level; i < 6; i++) {
+                    counters[i] = 0;
+                }
+                // Build section number from counters
+                const sectionNumber = counters.slice(0, level).join('.');
+
                 // Create new section
                 const section = {
                     level: level,
+                    sectionNumber: sectionNumber,
                     title: element.content,
                     path: [],
                     subsections: []
