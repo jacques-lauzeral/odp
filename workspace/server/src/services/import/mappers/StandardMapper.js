@@ -11,16 +11,16 @@ import DocxToDeltaConverter from './DocxToDeltaConverter.js';
  *
  * 2. _mapONs_ORs(section, path) - Organizational traversal:
  *    For each subsection:
- *      - If "Operational Needs" → _mapONs(subsection, path)
- *      - Else if "Operational Requirements" → _mapORs(subsection, path)
+ *      - If "Operational Needs" → _mapONs(subsection, path, null)
+ *      - Else if "Operational Requirements" → _mapORs(subsection, path, null)
  *      - Else → organizational section → _mapONs_ORs(subsection, [...path, title])
  *
- * 3. _mapONs(section, path) - Entity extraction:
+ * 3. _mapONs(section, path, parentEntity) - Entity extraction:
  *    For each subsection:
- *      - If has table → extract ON with path, recurse with SAME path
- *      - Else → _mapONs(subsection, [...path, title])
+ *      - If has table → extract ON with path and parentEntity, recurse with currentEntity as parent
+ *      - Else → _mapONs(subsection, [...path, title], currentEntity)
  *
- * 4. _mapORs(section, path) - Same as _mapONs
+ * 4. _mapORs(section, path, parentEntity) - Same as _mapONs
  *
  * 5. _mapOCs(section, path) - Straightforward, no organizational hierarchy
  */
@@ -97,12 +97,12 @@ export class StandardMapper {
             if (normalizedTitle.includes('operational needs')) {
                 // Found ON entity type section
                 console.log(`[StandardMapper] Found Operational Needs section, path: [${path.join(', ')}]`);
-                const ons = this._mapONs(subsection, path);
+                const ons = this._mapONs(subsection, path, null);
                 entities.push(...ons);
             } else if (normalizedTitle.includes('operational requirements')) {
                 // Found OR entity type section
                 console.log(`[StandardMapper] Found Operational Requirements section, path: [${path.join(', ')}]`);
-                const ors = this._mapORs(subsection, path);
+                const ors = this._mapORs(subsection, path, null);
                 entities.push(...ors);
             } else {
                 // Organizational section - add to path and continue traversal
@@ -121,20 +121,23 @@ export class StandardMapper {
      * Step 3: Extract ON entities from tables
      * @param {Object} section - ON entity type section or subsection
      * @param {Array<string>} path - Organizational path (fixed for all entities in this branch)
+     * @param {Object|null} parentEntity - Parent entity for refines relationship
      * @returns {Array} Array of ON entities
      */
-    _mapONs(section, path) {
+    _mapONs(section, path, parentEntity) {
         const entities = [];
+        let currentEntity = null; // Track entity extracted in THIS section
 
         // Check for table in current section
         if (section.content && section.content.tables && section.content.tables.length > 0) {
             console.log(`[StandardMapper] Found ${section.content.tables.length} table(s) in ON section "${section.title}"`);
 
             for (const table of section.content.tables) {
-                const entity = this._extractEntity(table, 'ON', section.title, path);
+                const entity = this._extractEntity(table, 'ON', section.title, path, parentEntity);
                 if (entity) {
+                    currentEntity = entity; // Remember this entity as parent for subsections
                     entities.push(entity);
-                    console.log(`[StandardMapper] Extracted ON: ${entity.externalId}, path: [${entity.path ? entity.path.join(', ') : 'null'}]`);
+                    console.log(`[StandardMapper] Extracted ON: ${entity.externalId}, path: [${entity.path ? entity.path.join(', ') : 'null'}]${entity.refinesParents ? `, refinesParents: [${entity.refinesParents.join(', ')}]` : ''}`);
                 }
             }
         }
@@ -145,14 +148,14 @@ export class StandardMapper {
                 // If subsection has table, use SAME path
                 // If no table, it's a further organizational level, add to path
                 if (subsection.content && subsection.content.tables && subsection.content.tables.length > 0) {
-                    // Entity section - use same path
-                    const subEntities = this._mapONs(subsection, path);
+                    // Entity section - use same path, pass currentEntity as parent
+                    const subEntities = this._mapONs(subsection, path, currentEntity);
                     entities.push(...subEntities);
                 } else {
-                    // Organizational subsection - add to path
+                    // Organizational subsection - add to path, pass currentEntity as parent
                     const cleanTitle = this._stripNumbering(subsection.title);
                     const newPath = [...path, cleanTitle];
-                    const subEntities = this._mapONs(subsection, newPath);
+                    const subEntities = this._mapONs(subsection, newPath, currentEntity);
                     entities.push(...subEntities);
                 }
             }
@@ -165,20 +168,23 @@ export class StandardMapper {
      * Step 4: Extract OR entities from tables (same logic as _mapONs)
      * @param {Object} section - OR entity type section or subsection
      * @param {Array<string>} path - Organizational path (fixed for all entities in this branch)
+     * @param {Object|null} parentEntity - Parent entity for refines relationship
      * @returns {Array} Array of OR entities
      */
-    _mapORs(section, path) {
+    _mapORs(section, path, parentEntity) {
         const entities = [];
+        let currentEntity = null; // Track entity extracted in THIS section
 
         // Check for table in current section
         if (section.content && section.content.tables && section.content.tables.length > 0) {
             console.log(`[StandardMapper] Found ${section.content.tables.length} table(s) in OR section "${section.title}"`);
 
             for (const table of section.content.tables) {
-                const entity = this._extractEntity(table, 'OR', section.title, path);
+                const entity = this._extractEntity(table, 'OR', section.title, path, parentEntity);
                 if (entity) {
+                    currentEntity = entity; // Remember this entity as parent for subsections
                     entities.push(entity);
-                    console.log(`[StandardMapper] Extracted OR: ${entity.externalId}, path: [${entity.path ? entity.path.join(', ') : 'null'}]`);
+                    console.log(`[StandardMapper] Extracted OR: ${entity.externalId}, path: [${entity.path ? entity.path.join(', ') : 'null'}]${entity.refinesParents ? `, refinesParents: [${entity.refinesParents.join(', ')}]` : ''}`);
                 }
             }
         }
@@ -189,14 +195,14 @@ export class StandardMapper {
                 // If subsection has table, use SAME path
                 // If no table, it's a further organizational level, add to path
                 if (subsection.content && subsection.content.tables && subsection.content.tables.length > 0) {
-                    // Entity section - use same path
-                    const subEntities = this._mapORs(subsection, path);
+                    // Entity section - use same path, pass currentEntity as parent
+                    const subEntities = this._mapORs(subsection, path, currentEntity);
                     entities.push(...subEntities);
                 } else {
-                    // Organizational subsection - add to path
+                    // Organizational subsection - add to path, pass currentEntity as parent
                     const cleanTitle = this._stripNumbering(subsection.title);
                     const newPath = [...path, cleanTitle];
-                    const subEntities = this._mapORs(subsection, newPath);
+                    const subEntities = this._mapORs(subsection, newPath, currentEntity);
                     entities.push(...subEntities);
                 }
             }
@@ -214,24 +220,21 @@ export class StandardMapper {
     _mapOCs(section, path) {
         const entities = [];
 
-        // Check for table in current section
-        if (section.content && section.content.tables && section.content.tables.length > 0) {
-            console.log(`[StandardMapper] Found ${section.content.tables.length} table(s) in OC section "${section.title}"`);
-
-            for (const table of section.content.tables) {
-                const entity = this._extractEntity(table, 'OC', section.title, []);
-                if (entity) {
-                    entities.push(entity);
-                    console.log(`[StandardMapper] Extracted OC: ${entity.externalId}`);
-                }
-            }
-        }
-
-        // Recurse into subsections (no path accumulation for OCs)
+        // Process OCs directly - no organizational hierarchy
         if (section.subsections) {
             for (const subsection of section.subsections) {
-                const subEntities = this._mapOCs(subsection, []);
-                entities.push(...subEntities);
+                // Each subsection should contain an OC table
+                if (subsection.content && subsection.content.tables && subsection.content.tables.length > 0) {
+                    console.log(`[StandardMapper] Found ${subsection.content.tables.length} table(s) in OC section "${subsection.title}"`);
+
+                    for (const table of subsection.content.tables) {
+                        const entity = this._extractEntity(table, 'OC', subsection.title, path, null);
+                        if (entity) {
+                            entities.push(entity);
+                            console.log(`[StandardMapper] Extracted OC: ${entity.externalId}`);
+                        }
+                    }
+                }
             }
         }
 
@@ -244,9 +247,10 @@ export class StandardMapper {
      * @param {string} entityType - 'ON', 'OR', or 'OC'
      * @param {string} sectionTitle - Section title (becomes entity title)
      * @param {Array<string>} path - Organizational path
+     * @param {Object|null} parentEntity - Parent entity for refines relationship
      * @returns {Object|null} Extracted entity or null
      */
-    _extractEntity(table, entityType, sectionTitle, path) {
+    _extractEntity(table, entityType, sectionTitle, path, parentEntity) {
         if (!table.rows || table.rows.length === 0) {
             return null;
         }
@@ -277,6 +281,11 @@ export class StandardMapper {
         // Add path if not empty
         if (path && path.length > 0) {
             entity.path = path;
+        }
+
+        // Add parent relationship if parent exists
+        if (parentEntity) {
+            entity.refinesParents = [parentEntity.externalId];
         }
 
         // Map fields based on entity type
