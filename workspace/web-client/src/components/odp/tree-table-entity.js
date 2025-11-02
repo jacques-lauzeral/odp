@@ -336,17 +336,37 @@ export default class TreeTableEntity {
     renderTreeNodes(node, level) {
         let html = '';
 
-        Object.values(node.children)
+        // Sort children for consistent display order
+        const sortedChildren = Object.values(node.children)
             .filter(child => child.visible)
-            .forEach(child => {
-                // Render node row
-                html += this.renderNodeRow(child, level);
+            .sort((a, b) => {
+                // Sort by node type: ONs first, then ORs, then folders
+                const typeOrder = {
+                    'on-node': 1,       // Operational Needs first
+                    'or-node': 2,       // Then Operational Requirements
+                    'drg': 3,           // Then Drafting Group folders
+                    'org-folder': 4     // Finally organizational folders
+                };
+                const typeA = typeOrder[a.type] || 99;
+                const typeB = typeOrder[b.type] || 99;
 
-                // Render children if expanded
-                if (child.expanded && !child.isLeaf) {
-                    html += this.renderTreeNodes(child, level + 1);
+                if (typeA !== typeB) {
+                    return typeA - typeB;
                 }
+
+                // Within same type, sort alphabetically by label
+                return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
             });
+
+        sortedChildren.forEach(child => {
+            // Render node row
+            html += this.renderNodeRow(child, level);
+
+            // Render children if expanded
+            if (child.expanded && !child.isLeaf) {
+                html += this.renderTreeNodes(child, level + 1);
+            }
+        });
 
         return html;
     }
