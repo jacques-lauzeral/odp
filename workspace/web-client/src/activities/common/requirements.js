@@ -53,6 +53,7 @@ export default class RequirementsEntity {
             pathBuilder: (entity, entityMap) => this.buildRequirementTreePath(entity, entityMap),
             typeRenderers: this.getTreeTypeRenderers(),
             columns: this.getTreeColumns(),
+            columnTypes: odpColumnTypes,
             context: { setupData },
             onItemSelect: (item) => this.handleItemSelect(item),
             onCreate: () => this.handleCreate(),
@@ -380,147 +381,86 @@ export default class RequirementsEntity {
                 key: 'code',
                 label: 'Code',
                 width: 'auto',
-                appliesTo: ['on-node', 'or-node']
+                appliesTo: ['on-node', 'or-node'],
+                type: 'text'
             },
             {
                 key: 'implementedONs',
                 label: 'Implements',
                 width: '150px',
                 appliesTo: ['or-node'],
-                render: (node) => {
-                    if (!node.entity || !node.entity.implementedONs || node.entity.implementedONs.length === 0) {
-                        return '-';
-                    }
-                    const displayItems = node.entity.implementedONs.slice(0, 2);
-                    const remaining = node.entity.implementedONs.length - displayItems.length;
-
-                    let html = displayItems.map(ref => {
-                        const title = ref?.title || ref?.id || 'Unknown';
-                        return `<span class="reference-item">${this.escapeHtml(title)}</span>`;
-                    }).join(', ');
-
-                    if (remaining > 0) {
-                        html += `, <span class="reference-more">+${remaining}</span>`;
-                    }
-                    return html;
-                }
+                type: 'implemented-ons',
+                maxDisplay: 1,
+                noneLabel: 'No Implementation'
             },
             {
                 key: 'dependsOnRequirements',
                 label: 'Depends On',
                 width: '120px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    if (!node.entity || !node.entity.dependsOnRequirements || node.entity.dependsOnRequirements.length === 0) {
-                        return '-';
-                    }
-                    const count = node.entity.dependsOnRequirements.length;
-                    return count === 1 ? '1 dep' : `${count} deps`;
-                }
+                type: 'entity-reference-list',
+                maxDisplay: 1,
+                noneLabel: 'No Dependencies'
             },
             {
                 key: 'documentReferences',
                 label: 'Documents',
                 width: '100px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    if (!node.entity || !node.entity.documentReferences || node.entity.documentReferences.length === 0) {
-                        return '-';
-                    }
-                    return `${node.entity.documentReferences.length} docs`;
-                }
+                type: 'annotated-reference-list',
+                maxDisplay: 1,
+                noneLabel: 'No Documents'
             },
             {
                 key: 'impactsData',
                 label: 'Data',
                 width: '120px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    if (!node.entity || !node.entity.impactsData || node.entity.impactsData.length === 0) {
-                        return '-';
-                    }
-                    return this.renderSetupDataList(node.entity.impactsData, 'dataCategories', 1);
-                }
+                type: 'multi-setup-reference',
+                setupEntity: 'dataCategories',
+                renderMode: 'inline',
+                noneLabel: 'No Data Impact'
             },
             {
                 key: 'impactsStakeholderCategories',
                 label: 'Stakeholder',
                 width: '120px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    if (!node.entity || !node.entity.impactsStakeholderCategories || node.entity.impactsStakeholderCategories.length === 0) {
-                        return '-';
-                    }
-                    return this.renderSetupDataList(node.entity.impactsStakeholderCategories, 'stakeholderCategories', 1);
-                }
+                type: 'multi-setup-reference',
+                setupEntity: 'stakeholderCategories',
+                renderMode: 'inline',
+                noneLabel: 'No Stakeholder Impact'
             },
             {
                 key: 'impactsServices',
                 label: 'Services',
                 width: '120px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    if (!node.entity || !node.entity.impactsServices || node.entity.impactsServices.length === 0) {
-                        return '-';
-                    }
-                    return this.renderSetupDataList(node.entity.impactsServices, 'services', 1);
-                }
+                type: 'multi-setup-reference',
+                setupEntity: 'services',
+                renderMode: 'inline',
+                noneLabel: 'No Service Impact'
             },
             {
                 key: 'updatedBy',
                 label: 'Updated By',
                 width: '100px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    return node.entity?.updatedBy ? this.escapeHtml(node.entity.updatedBy) : '-';
-                }
+                type: 'text'
             },
             {
                 key: 'updatedAt',
                 label: 'Updated',
                 width: '100px',
                 appliesTo: ['on-node', 'or-node'],
-                render: (node) => {
-                    return node.entity?.updatedAt ? this.formatDate(node.entity.updatedAt) : '-';
-                }
+                type: 'date'
             }
         ];
     }
 
-    // Helper methods for tree rendering
-    renderSetupDataList(ids, setupKey, maxDisplay = 1) {
-        if (!this.setupData || !this.setupData[setupKey]) {
-            return ids.length.toString();
-        }
-
-        const displayItems = ids.slice(0, maxDisplay);
-        const remaining = ids.length - displayItems.length;
-
-        const names = displayItems.map(id => {
-            const item = this.setupData[setupKey].find(s => s.id === id);
-            return item ? (item.name || item.title || id) : id;
-        });
-
-        let html = names.map(name => this.escapeHtml(name)).join(', ');
-
-        if (remaining > 0) {
-            html += ` <span class="reference-more">+${remaining}</span>`;
-        }
-
-        return html;
-    }
-
-    formatDate(dateString) {
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric'
-            });
-        } catch (error) {
-            return dateString;
-        }
-    }
+    // ====================
+    // UTILITY METHODS
+    // ====================
 
     escapeHtml(str) {
         if (str === null || str === undefined) return '';
@@ -528,7 +468,6 @@ export default class RequirementsEntity {
         div.textContent = str;
         return div.innerHTML;
     }
-
 
     // ====================
     // RENDERING

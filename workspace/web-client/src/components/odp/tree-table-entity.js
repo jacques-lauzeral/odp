@@ -4,6 +4,8 @@ import { async as asyncUtils } from '../../shared/utils.js';
  * TreeTableEntity - Tree-table visualization with virtual hierarchy
  * Builds tree structure from flat entity lists using configurable path builders
  * Virtual folders (DrG, organizational) are derived from entity paths, not stored
+ *
+ * UPDATED: Now supports columnTypes delegation for consistent rendering with CollectionEntity
  */
 export default class TreeTableEntity {
     constructor(app, entityConfig, options = {}) {
@@ -24,6 +26,9 @@ export default class TreeTableEntity {
         this.typeRenderers = options.typeRenderers || {};
         this.columns = options.columns || [];
         this.context = options.context || {};
+
+        // NEW: Column types for rendering delegation (shared with CollectionEntity)
+        this.columnTypes = options.columnTypes || {};
 
         // Event handlers (shared with collection perspective)
         this.onItemSelect = options.onItemSelect || (() => {});
@@ -234,12 +239,21 @@ export default class TreeTableEntity {
             }
         });
 
-        // Set folder visibility based on descendants
+        // Mark folder as visible if any descendant is visible
         if (!node.isLeaf) {
             node.visible = hasVisibleDescendant;
         }
 
-        return node.visible;
+        return hasVisibleDescendant;
+    }
+
+    /**
+     * Update filters and re-apply
+     * @param {Object} filters - New filter values
+     */
+    setFilters(filters) {
+        this.currentFilters = filters;
+        this.debouncedFilter();
     }
 
     // ====================
@@ -247,65 +261,76 @@ export default class TreeTableEntity {
     // ====================
 
     /**
-     * Render tree-table in container
+     * Render tree table into container
      * @param {HTMLElement} container - Container element
      */
-    async render(container) {
+    render(container) {
         this.container = container;
-
-        if (!this.treeData) {
-            this.renderEmpty();
-            return;
-        }
-
         this.renderContent();
-    }
-
-    /**
-     * Render tree-table content
-     */
-    renderContent() {
-        if (!this.container) return;
-
-        const html = `
-            <div class="tree-table-container">
-                <div class="tree-table-wrapper">
-                    <table class="tree-table">
-                        <thead>
-                            ${this.renderTableHeader()}
-                        </thead>
-                        <tbody>
-                            ${this.renderTreeNodes(this.treeData, 0)}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-
-        this.container.innerHTML = html;
         this.attachEventListeners();
     }
 
     /**
-     * Render table header
-     * @returns {string} - HTML for table header
+     * Render tree content
      */
-    renderTableHeader() {
-        return `
-            <tr>
-                ${this.columns.map(col => `
-                    <th style="width: ${col.width || 'auto'}">
-                        ${this.escapeHtml(col.label)}
-                    </th>
-                `).join('')}
-            </tr>
+    renderContent() {
+        if (!this.container) return;
+
+        if (!this.treeData || Object.keys(this.treeData.children).length === 0) {
+            this.renderEmpty();
+            return;
+        }
+
+        const tableHtml = `
+            <div class="tree-table-container">
+                <table class="tree-table">
+                    <thead>
+                        <tr>
+                            ${this.columns.map(col => `
+                                <th style="width: ${col.width || 'auto'}">${col.label}</th>
+                            `).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${this.renderTreeNodes(this.treeData, 0)}
+                    </tbody>
+                </table>
+            </div>
         `;
+
+        this.container.innerHTML = tableHtml;
+        this.attachEventListeners();
+
+        // Notify parent that data is displayed
+        if (this.onDataLoaded) {
+            const visibleCount = this.countVisibleLeafNodes(this.treeData);
+            this.onDataLoaded(visibleCount);
+        }
+    }
+
+    /**
+     * Count visible leaf nodes recursively
+     * @param {Object} node - Tree node
+     * @returns {number} - Count of visible leaf nodes
+     */
+    countVisibleLeafNodes(node) {
+        let count = 0;
+        Object.values(node.children).forEach(child => {
+            if (child.visible) {
+                if (child.isLeaf) {
+                    count++;
+                } else {
+                    count += this.countVisibleLeafNodes(child);
+                }
+            }
+        });
+        return count;
     }
 
     /**
      * Render tree nodes recursively
      * @param {Object} node - Tree node
-     * @param {number} level - Indentation level
+     * @param {number} level - Current indentation level
      * @returns {string} - HTML for tree nodes
      */
     renderTreeNodes(node, level) {
@@ -358,6 +383,8 @@ export default class TreeTableEntity {
 
     /**
      * Render a cell for a node
+     * UPDATED: Now delegates to columnTypes when available
+     *
      * @param {Object} node - Tree node
      * @param {Object} column - Column configuration
      * @param {number} level - Indentation level
@@ -386,11 +413,25 @@ export default class TreeTableEntity {
                     <span>${this.escapeHtml(node.label)}</span>
                 </div>
             `;
-        } else {
-            // Other columns use custom render or default
-            if (column.render && node.entity) {
+        } else if (node.entity) {
+            // Other columns - delegate to column type renderer if available
+            // Priority: custom render > columnType > default
+
+            if (column.render) {
+                // Custom render function (backward compatibility)
                 content = column.render(node);
-            } else if (node.entity && column.key) {
+            } else if (column.type && this.columnTypes && this.columnTypes[column.type]) {
+                // Delegate to collection column type renderer
+                const value = node.entity[column.key];
+                const columnType = this.columnTypes[column.type];
+
+                if (columnType && columnType.render) {
+                    content = columnType.render(value, column, this.context);
+                } else {
+                    content = this.escapeHtml(value || '');
+                }
+            } else if (column.key) {
+                // Fallback: direct value rendering
                 const value = node.entity[column.key];
                 content = this.escapeHtml(value || '');
             }
