@@ -1,4 +1,4 @@
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * StandardMapper - Maps standard export format back to structured import data
@@ -30,7 +30,7 @@ import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 export class StandardMapper {
     constructor(drg) {
         this.drg = drg;
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -435,7 +435,7 @@ export class StandardMapper {
     _addRichTextField(entity, fieldName, text) {
         if (!text) return;
 
-        const deltaJson = this.converter.convertHtmlToDelta(text);
+        const deltaJson = this.converter.asciidocToDelta(text);
         if (deltaJson) {
             entity[fieldName] = deltaJson;
         }

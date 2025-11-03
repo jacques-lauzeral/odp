@@ -37,14 +37,14 @@
  * - Well-established AsciiDoc conventions
  * - Single converter for all text → Delta transformations
  */
-class DocxToDeltaConverter {
+class AsciidocToDeltaConverter {
 
     /**
      * Convert AsciiDoc-style text to Delta JSON string
      * @param {string} text - AsciiDoc formatted text
      * @returns {string} Stringified Delta JSON
      */
-    convertHtmlToDelta(text) {
+    asciidocToDelta(text) {
         // Handle null/empty input
         if (!text || text.trim() === '') {
             return JSON.stringify({ ops: [] });
@@ -262,4 +262,4 @@ class DocxToDeltaConverter {
     }
 }
 
-export default DocxToDeltaConverter;
+export default AsciidocToDeltaConverter;

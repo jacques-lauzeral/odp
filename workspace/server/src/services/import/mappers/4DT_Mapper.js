@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * Mapper for 4DT Excel documents
@@ -85,7 +85,7 @@ class FourDTMapper extends Mapper {
 
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     map(rawData) {
@@ -175,9 +175,9 @@ class FourDTMapper extends Mapper {
             type: 'ON',
             drg: '4DT',
             title: title.trim(),
-            statement: this.converter.convertHtmlToDelta(statement),
-            rationale: this.converter.convertHtmlToDelta(rationale),
-            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
+            statement: this.converter.asciidocToDelta(statement),
+            rationale: this.converter.asciidocToDelta(rationale),
+            privateNotes: this.converter.asciidocToDelta(privateNotes),
             documentReferences: documentReferences
         };
 
@@ -253,9 +253,9 @@ class FourDTMapper extends Mapper {
             type: 'OR',
             drg: '4DT',
             title: title.trim(),
-            statement: this.converter.convertHtmlToDelta(statement),
-            rationale: this.converter.convertHtmlToDelta(rationale),
-            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
+            statement: this.converter.asciidocToDelta(statement),
+            rationale: this.converter.asciidocToDelta(rationale),
+            privateNotes: this.converter.asciidocToDelta(privateNotes),
             documentReferences: documentReferences,
             implementedONs: implementedONs,
             impactsStakeholderCategories: impactsStakeholderCategories

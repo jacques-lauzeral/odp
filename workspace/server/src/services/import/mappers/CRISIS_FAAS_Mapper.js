@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * CRISIS_FAAS_Mapper - Maps CRISIS & FAAS Operational Needs and Requirements Word documents
@@ -83,7 +83,7 @@ import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 class CRISIS_FAAS_Mapper extends Mapper {
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -424,10 +424,10 @@ class CRISIS_FAAS_Mapper extends Mapper {
             type,
             drg: 'CRISIS_FAAS',
             path,
-            statement: this.converter.convertHtmlToDelta(statement),
-            rationale: this.converter.convertHtmlToDelta(rationale),
+            statement: this.converter.asciidocToDelta(statement),
+            rationale: this.converter.asciidocToDelta(rationale),
             flows: null,
-            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
+            privateNotes: this.converter.asciidocToDelta(privateNotes),
             parentExternalId: null,
             implementedONs: [],
             impactsStakeholderCategories: resolvedStakeholders,

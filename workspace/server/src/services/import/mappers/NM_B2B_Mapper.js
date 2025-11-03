@@ -1,7 +1,7 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 import {textStartsWith} from "./utils.js";
-import DocxToDeltaConverter from "./DocxToDeltaConverter.js";
+import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
 
 /**
  * Mapper for NM B2B Word documents
@@ -79,7 +79,7 @@ import DocxToDeltaConverter from "./DocxToDeltaConverter.js";
 class NM_B2B_Mapper extends Mapper {
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -366,9 +366,9 @@ class NM_B2B_Mapper extends Mapper {
         }
 
         const result = {
-            statement: this.converter.convertHtmlToDelta(statement),
-            rationale: this.converter.convertHtmlToDelta(rationale),
-            flows: this.converter.convertHtmlToDelta(flows),
+            statement: this.converter.asciidocToDelta(statement),
+            rationale: this.converter.asciidocToDelta(rationale),
+            flows: this.converter.asciidocToDelta(flows),
             implementedONs: type === 'OR' ? implementedONs : []
         };
 

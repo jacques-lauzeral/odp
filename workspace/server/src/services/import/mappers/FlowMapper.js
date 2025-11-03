@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * FlowMapper - Maps FLOW Operational Needs and Requirements Word documents
@@ -99,7 +99,9 @@ import DocxToDeltaConverter from './DocxToDeltaConverter.js';
  *
  * Use Cases:
  * - Detected by case-insensitive match on "use case" section title
- * - Extract all table fields except "Date" and "Originator"
+ * - Extract only "Title:" and "Flow of Actions:" fields
+ * - Format as AsciiDoc: **{title}**\n\n{flow of actions}
+ * - "Date:" and "Originator:" fields are ignored
  * - Resolve "ON Reference:" field to find target ON via identifier map
  * - Inject formatted content into target ON's flows field
  * - Multiple Use Cases for same ON are concatenated with double newline separator
@@ -154,7 +156,7 @@ import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 class FlowMapper extends Mapper {
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -664,17 +666,21 @@ class FlowMapper extends Mapper {
             return;
         }
 
-        // Format Use Case content as field: value pairs
-        const contentLines = [];
-        for (const [field, value] of Object.entries(tableData)) {
-            if (value && value.trim()) {
-                contentLines.push(`${this._capitalizeField(field)}: ${value}`);
-            }
+        // Extract only title and flow of actions
+        const title = tableData['title'];
+        const flowOfActions = tableData['flow of actions'];
+
+        if (!title || !flowOfActions) {
+            console.warn(`Use Case missing title or flow of actions, skipping`);
+            return;
         }
+
+        // Format as: **{title}**\n\n{flow of actions}
+        const content = `**${title}**\n\n${flowOfActions}`;
 
         context.useCases.push({
             onReference: this._stripVersion(onReference),
-            content: contentLines.join('\n')
+            content: content
         });
     }
 
@@ -704,7 +710,8 @@ class FlowMapper extends Mapper {
             'dependencies',
             'data (and other enabler)',
             'data (and other enablers)',
-            'impacted services'
+            'impacted services',
+            'flow of actions'
         ];
 
         // Process first table (assuming single table per section)
@@ -1028,7 +1035,7 @@ class FlowMapper extends Mapper {
 
                 // Apply Delta conversion to text fields
                 if (key === 'statement' || key === 'rationale' || key === 'flows' || key === 'privateNotes') {
-                    cleaned[key] = this.converter.convertHtmlToDelta(value);
+                    cleaned[key] = this.converter.asciidocToDelta(value);
                 } else {
                     cleaned[key] = value;
                 }

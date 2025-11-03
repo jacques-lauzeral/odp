@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * Mapper for ASM_ATFCM Excel documents
@@ -191,7 +191,7 @@ class AsmAtfcmMapper extends Mapper {
 
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -274,22 +274,22 @@ class AsmAtfcmMapper extends Mapper {
         // Apply Delta conversion to all text fields before returning
         const needs = Array.from(needsMap.values()).map(need => ({
             ...need,
-            statement: this.converter.convertHtmlToDelta(need.statement),
-            rationale: this.converter.convertHtmlToDelta(need.rationale),
-            privateNotes: this.converter.convertHtmlToDelta(need.privateNotes)
+            statement: this.converter.asciidocToDelta(need.statement),
+            rationale: this.converter.asciidocToDelta(need.rationale),
+            privateNotes: this.converter.asciidocToDelta(need.privateNotes)
         }));
 
         const wrappedRequirements = requirements.map(req => ({
             ...req,
-            statement: this.converter.convertHtmlToDelta(req.statement),
-            rationale: this.converter.convertHtmlToDelta(req.rationale),
-            privateNotes: this.converter.convertHtmlToDelta(req.privateNotes)
+            statement: this.converter.asciidocToDelta(req.statement),
+            rationale: this.converter.asciidocToDelta(req.rationale),
+            privateNotes: this.converter.asciidocToDelta(req.privateNotes)
         }));
 
         const changes = Array.from(changesMap.values()).map(change => ({
             ...change,
-            purpose: this.converter.convertHtmlToDelta(change.purpose),
-            details: this.converter.convertHtmlToDelta(change.details)
+            purpose: this.converter.asciidocToDelta(change.purpose),
+            details: this.converter.asciidocToDelta(change.details)
         }));
 
         return {

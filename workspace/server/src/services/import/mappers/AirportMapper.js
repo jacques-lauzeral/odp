@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * AirportMapper - Maps Airport Operational Needs and Requirements document
@@ -154,7 +154,7 @@ class AirportMapper extends Mapper {
 
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -418,10 +418,10 @@ class AirportMapper extends Mapper {
             }, type.toLowerCase()),
             title: title,
             type: type,
-            statement: this.converter.convertHtmlToDelta(statement),
-            rationale: this.converter.convertHtmlToDelta(rationale),
-            flows: this.converter.convertHtmlToDelta(flows),
-            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
+            statement: this.converter.asciidocToDelta(statement),
+            rationale: this.converter.asciidocToDelta(rationale),
+            flows: this.converter.asciidocToDelta(flows),
+            privateNotes: this.converter.asciidocToDelta(privateNotes),
             path: path,
             drg: drg,
             refines: null,

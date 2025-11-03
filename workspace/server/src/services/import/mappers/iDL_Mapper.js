@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 import {textStartsWith} from "./utils.js";
 
 /**
@@ -92,7 +92,7 @@ import {textStartsWith} from "./utils.js";
 class iDL_Mapper extends Mapper {
     constructor() {
         super();
-        this.converter = new DocxToDeltaConverter();
+        this.converter = new AsciidocToDeltaConverter();
     }
 
     /**
@@ -324,9 +324,9 @@ class iDL_Mapper extends Mapper {
         }
 
         const result = {
-            statement: this.converter.convertHtmlToDelta(statement),
-            rationale: this.converter.convertHtmlToDelta(rationale),
-            flows: this.converter.convertHtmlToDelta(flows),
+            statement: this.converter.asciidocToDelta(statement),
+            rationale: this.converter.asciidocToDelta(rationale),
+            flows: this.converter.asciidocToDelta(flows),
             implementedONs: type === 'OR' ? implementedONs : [],
             dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
         };
