@@ -520,7 +520,7 @@ class AsmAtfcmMapper extends Mapper {
 
             // Append Fit Criteria if present and not empty/TBD
             if (this._isValidContent(fitCriteria)) {
-                statement += '\n\nFit Criteria:\n\n' + fitCriteria.trim();
+                statement += '\n\n**Fit Criteria:**\n\n' + fitCriteria.trim();
             }
         }
 
@@ -534,7 +534,7 @@ class AsmAtfcmMapper extends Mapper {
 
             // Append Opportunities & Risks if present and not empty/TBD
             if (this._isValidContent(opportunitiesRisks)) {
-                rationale += '\n\nOpportunities & Risks:\n\n' + opportunitiesRisks.trim();
+                rationale += '\n\n**Opportunities & Risks:**\n\n' + opportunitiesRisks.trim();
             }
         }
 
@@ -582,31 +582,31 @@ class AsmAtfcmMapper extends Mapper {
         }
 
         if (originator && originator.trim() !== '') {
-            parts.push(`Originator: ${originator.trim()}`);
+            parts.push(`**Originator:** ${originator.trim()}`);
         }
 
         if (orCode && orCode.trim() !== '') {
-            parts.push(`OR Code: ${orCode.trim()}`);
+            parts.push(`**OR Code:** ${orCode.trim()}`);
         }
 
         if (this._isValidPrivateNote(dependencies)) {
-            parts.push(`Dependencies: ${dependencies.trim()}`);
+            parts.push(`**Dependencies:** ${dependencies.trim()}`);
         }
 
         if (priority && priority.trim() !== '') {
-            parts.push(`Priority (Implementing Year): ${priority.trim()}`);
+            parts.push(`**Priority (Implementing Year):** ${priority.trim()}`);
         }
 
         if (this._isValidPrivateNote(dataEnablers)) {
-            parts.push(`Data (and other Enablers): ${dataEnablers.trim()}`);
+            parts.push(`**Data (and other Enablers):** ${dataEnablers.trim()}`);
         }
 
         if (this._isValidPrivateNote(impactedServices)) {
-            parts.push(`Impacted Services: ${impactedServices.trim()}`);
+            parts.push(`**Impacted Services:** ${impactedServices.trim()}`);
         }
 
         if (remark && remark.trim() !== '') {
-            parts.push(`Remark: ${remark.trim()}`);
+            parts.push(`**Remark:** ${remark.trim()}`);
         }
 
         return parts.length > 0 ? parts.join('\n\n') : null;

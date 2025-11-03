@@ -510,8 +510,8 @@ class FlowMapper extends Mapper {
             const fitCriteria = tableData['fit criteria'];
             if (!this._isPlaceholderOrEmpty(fitCriteria)) {
                 statement = statement
-                    ? `${statement}\n\nFit Criteria:\n${fitCriteria}`
-                    : `Fit Criteria:\n${fitCriteria}`;
+                    ? `${statement}\n\n**Fit Criteria:**\n${fitCriteria}`
+                    : `**Fit Criteria:**\n${fitCriteria}`;
             }
         } else {
             // OR: Use "Detailed Requirement" field
@@ -522,8 +522,8 @@ class FlowMapper extends Mapper {
             const fitCriteria = tableData['fit criteria'];
             if (!this._isPlaceholderOrEmpty(fitCriteria)) {
                 statement = statement
-                    ? `${statement}\n\nFit Criteria:\n${fitCriteria}`
-                    : `Fit Criteria:\n${fitCriteria}`;
+                    ? `${statement}\n\n**Fit Criteria:**\n${fitCriteria}`
+                    : `**Fit Criteria:**\n${fitCriteria}`;
             }
         }
 
@@ -547,8 +547,8 @@ class FlowMapper extends Mapper {
         const opportunitiesRisks = tableData['opportunities/risks'];
         if (!this._isPlaceholderOrEmpty(opportunitiesRisks)) {
             rationale = rationale
-                ? `${rationale}\n\nOpportunities / Risks:\n${opportunitiesRisks}`
-                : `Opportunities / Risks:\n${opportunitiesRisks}`;
+                ? `${rationale}\n\n**Opportunities / Risks:**\n${opportunitiesRisks}`
+                : `**Opportunities / Risks:**\n${opportunitiesRisks}`;
         }
 
         // VALIDATION: Rationale warning
@@ -573,7 +573,7 @@ class FlowMapper extends Mapper {
             impactsStakeholderCategories = resolvedStakeholders;
 
             if (unresolvedStakeholders.length > 0) {
-                unresolvedStakeholdersNote = `Stakeholders (unresolved):\n${unresolvedStakeholders.join('\n')}`;
+                unresolvedStakeholdersNote = `**Stakeholders (unresolved):**\n${unresolvedStakeholders.join('\n')}`;
             }
         }
 
@@ -581,11 +581,11 @@ class FlowMapper extends Mapper {
         const privateNotesParts = [];
 
         if (section.identifier) {
-            privateNotesParts.push(`Identifier: ${section.identifier}`);
+            privateNotesParts.push(`**Identifier:** ${section.identifier}`);
         }
 
         if (tableData['originator']) {
-            privateNotesParts.push(`Originator: ${tableData['originator']}`);
+            privateNotesParts.push(`**Originator:** ${tableData['originator']}`);
         }
 
         // For ORs, add Data and Impacted Services if present and not placeholder
@@ -593,13 +593,13 @@ class FlowMapper extends Mapper {
             // Handle "Data (and other Enabler)" or "Data (and other Enablers)"
             const dataField = tableData['data (and other enabler)'] || tableData['data (and other enablers)'];
             if (!this._isPlaceholderOrEmpty(dataField)) {
-                privateNotesParts.push(`Data (and other Enabler):\n${dataField.trim()}`);
+                privateNotesParts.push(`**Data (and other Enabler):**\n${dataField.trim()}`);
             }
 
             // Handle "Impacted Services"
             const servicesField = tableData['impacted services'];
             if (!this._isPlaceholderOrEmpty(servicesField)) {
-                privateNotesParts.push(`Impacted Services:\n${servicesField.trim()}`);
+                privateNotesParts.push(`**Impacted Services:**\n${servicesField.trim()}`);
             }
 
             // Add unresolved stakeholders if any

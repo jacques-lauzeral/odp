@@ -495,9 +495,9 @@ class ReroutingMapper extends Mapper {
         // Append Fit Criteria if present
         if (fitCriteria && fitCriteria.trim() !== '') {
             if (result) {
-                result += '\n\nFit Criteria:\n\n' + fitCriteria.trim();
+                result += '\n\n**Fit Criteria:**\n\n' + fitCriteria.trim();
             } else {
-                result = 'Fit Criteria:\n\n' + fitCriteria.trim();
+                result = '**Fit Criteria:**\n\n' + fitCriteria.trim();
             }
         }
 
@@ -524,9 +524,9 @@ class ReroutingMapper extends Mapper {
         // Append Opportunities/Risks if present
         if (opportunitiesRisks && opportunitiesRisks.trim() !== '') {
             if (result) {
-                result += '\n\nOpportunities/Risks:\n\n' + opportunitiesRisks.trim();
+                result += '\n\n**Opportunities/Risks:**\n\n' + opportunitiesRisks.trim();
             } else {
-                result = 'Opportunities/Risks:\n\n' + opportunitiesRisks.trim();
+                result = '**Opportunities/Risks:**\n\n' + opportunitiesRisks.trim();
             }
         }
 
@@ -569,15 +569,15 @@ class ReroutingMapper extends Mapper {
 
         // Add Comments section if present
         if (comments && comments.trim() !== '') {
-            result = `Comments:\n\n${comments.trim()}`;
+            result = `**Comments:**\n\n${comments.trim()}`;
         }
 
         // Add Data section if present
         if (dataEnablers && dataEnablers.trim() !== '') {
             if (result) {
-                result += '\n\n---\n\nData (and other Enabler):\n\n' + dataEnablers.trim();
+                result += '\n\n---\n\n**Data (and other Enabler):**\n\n' + dataEnablers.trim();
             } else {
-                result = 'Data (and other Enabler):\n\n' + dataEnablers.trim();
+                result = '**Data (and other Enabler):**\n\n' + dataEnablers.trim();
             }
         }
 

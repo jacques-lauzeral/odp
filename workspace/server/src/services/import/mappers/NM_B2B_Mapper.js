@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta, textStartsWith} from "./utils.js";
+import {textStartsWith} from "./utils.js";
 import DocxToDeltaConverter from "./DocxToDeltaConverter.js";
 
 /**

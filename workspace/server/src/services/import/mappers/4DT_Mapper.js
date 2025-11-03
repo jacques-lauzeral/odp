@@ -285,9 +285,9 @@ class FourDTMapper extends Mapper {
 
         if (fitCriteriaText) {
             if (statement) {
-                statement += '\n\nFit Criteria:\n\n' + fitCriteria.trim();
+                statement += '\n\n**Fit Criteria:**\n\n' + fitCriteria.trim();
             } else {
-                statement = 'Fit Criteria:\n\n' + fitCriteria.trim();
+                statement = '**Fit Criteria:**\n\n' + fitCriteria.trim();
             }
         }
 
@@ -313,9 +313,9 @@ class FourDTMapper extends Mapper {
 
         if (oppRisksText) {
             if (result) {
-                result += '\n\nOpportunities / Risks:\n\n' + opportunitiesRisks.trim();
+                result += '\n\n**FOpportunities / Risks:**\n\n' + opportunitiesRisks.trim();
             } else {
-                result = 'Opportunities / Risks:\n\n' + opportunitiesRisks.trim();
+                result = '**Opportunities / Risks:**\n\n' + opportunitiesRisks.trim();
             }
         }
 
@@ -327,7 +327,7 @@ class FourDTMapper extends Mapper {
         const originatorText = originator ? originator.trim() : '';
 
         if (originatorText) {
-            return `Originator: ${originatorText}`;
+            return `**Originator:** ${originatorText}`;
         }
 
         return null;

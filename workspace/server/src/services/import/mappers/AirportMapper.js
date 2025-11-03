@@ -371,14 +371,14 @@ class AirportMapper extends Mapper {
         let statement = data['Detailed Requirement'] || data['Need statement'] || '';
         const fitCriteria = data['Fit Criteria'];
         if (fitCriteria) {
-            statement += '\n\nFit Criteria:\n' + fitCriteria;
+            statement += '\n\n**Fit Criteria:**\n' + fitCriteria;
         }
 
         // Build rationale with Opportunities/Risks appended
         let rationale = data['Rationale'] || '';
         const opportunitiesRisks = data['Opportunities / Risks'];
         if (opportunitiesRisks) {
-            rationale += '\n\nOpportunities / Risks:\n' + opportunitiesRisks;
+            rationale += '\n\n**Opportunities / Risks:**\n' + opportunitiesRisks;
         }
 
         // Build private notes with all supplementary information
@@ -386,22 +386,22 @@ class AirportMapper extends Mapper {
 
         const originator = data['Originator'];
         if (originator) {
-            privateNotes += '\n\nOriginator: ' + originator;
+            privateNotes += '\n\n**Originator:** ' + originator;
         }
 
         const dependencies = data['Dependencies'];
         if (dependencies) {
-            privateNotes += '\n\nDependencies: ' + dependencies;
+            privateNotes += '\n\n**Dependencies:** ' + dependencies;
         }
 
         const dataEnablers = data['Data (and other Enabler)'];
         if (dataEnablers) {
-            privateNotes += '\n\nData and Enablers: ' + dataEnablers;
+            privateNotes += '\n\n**Data and Enablers:** ' + dataEnablers;
         }
 
         const impactedServices = data['Impacted Services'];
         if (impactedServices) {
-            privateNotes += '\n\nImpacted Services: ' + impactedServices;
+            privateNotes += '\n\n**Impacted Services:** ' + impactedServices;
         }
 
         // Build flows from Use Case table if present

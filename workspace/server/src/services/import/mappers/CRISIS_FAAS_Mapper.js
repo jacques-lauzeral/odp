@@ -331,7 +331,7 @@ class CRISIS_FAAS_Mapper extends Mapper {
             const fitCriteria = tableData['fit criteria'];
             if (!this._isPlaceholderOrEmpty(fitCriteria)) {
                 statement = statement
-                    ? `${statement}\n\nFit Criteria:\n${fitCriteria}`
+                    ? `${statement}\n\n**Fit Criteria:**\n${fitCriteria}`
                     : `Fit Criteria:\n${fitCriteria}`;
             }
         }
@@ -356,8 +356,8 @@ class CRISIS_FAAS_Mapper extends Mapper {
             const opportunitiesRisks = tableData['opportunities/risks'];
             if (!this._isPlaceholderOrEmpty(opportunitiesRisks)) {
                 rationale = rationale
-                    ? `${rationale}\n\nOpportunities / Risks:\n${opportunitiesRisks}`
-                    : `Opportunities / Risks:\n${opportunitiesRisks}`;
+                    ? `${rationale}\n\n**Opportunities / Risks:**\n${opportunitiesRisks}`
+                    : `**Opportunities / Risks:**\n${opportunitiesRisks}`;
             }
         }
 
@@ -380,7 +380,7 @@ class CRISIS_FAAS_Mapper extends Mapper {
         // Add originator if present
         const originator = tableData['originator'];
         if (!this._isPlaceholderOrEmpty(originator)) {
-            privateNotesEntries.push(`Originator: ${originator}`);
+            privateNotesEntries.push(`**Originator:** ${originator}`);
         }
 
         // For OR: Add additional fields
@@ -394,23 +394,23 @@ class CRISIS_FAAS_Mapper extends Mapper {
 
                 // Add unresolved to privateNotes
                 if (unresolvedStakeholders.length > 0) {
-                    privateNotesEntries.push(`Stakeholders (unresolved):\n${unresolvedStakeholders.join('\n')}`);
+                    privateNotesEntries.push(`**Stakeholders (unresolved):**\n${unresolvedStakeholders.join('\n')}`);
                 }
             }
 
             const dataEnablers = tableData['data (and other enabler)'];
             if (!this._isPlaceholderOrEmpty(dataEnablers)) {
-                privateNotesEntries.push(`Data (and other Enabler): ${dataEnablers}`);
+                privateNotesEntries.push(`**Data (and other Enabler):** ${dataEnablers}`);
             }
 
             const impactedServices = tableData['impacted services'];
             if (!this._isPlaceholderOrEmpty(impactedServices)) {
-                privateNotesEntries.push(`Impacted Services: ${impactedServices}`);
+                privateNotesEntries.push(`**Impacted Services:** ${impactedServices}`);
             }
 
             const dependencies = tableData['dependencies'];
             if (!this._isPlaceholderOrEmpty(dependencies)) {
-                privateNotesEntries.push(`Dependencies: ${dependencies}`);
+                privateNotesEntries.push(`**Dependencies:** ${dependencies}`);
             }
         }
 
