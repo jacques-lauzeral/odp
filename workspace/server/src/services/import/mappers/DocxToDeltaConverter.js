@@ -1,140 +1,153 @@
 /**
- * DocxToDeltaConverter
+ * AsciiDocToDeltaConverter
  *
- * Converts HTML content from DocxExtractor back to Quill Delta JSON format.
- * This is the reverse operation of DeltaToDocxConverter, enabling round-trip
- * editing: Delta → Docx → HTML → Delta
+ * Converts AsciiDoc-style plain text to Quill Delta JSON format.
+ * This converter processes text with AsciiDoc formatting markers produced by
+ * DocxExtractor's HTML normalization.
  *
- * Supported HTML structures:
- * - <p>text</p> → normal paragraph
- * - <strong>text</strong> → bold
- * - <em>text</em> or <i>text</i> → italic
- * - <u>text</u> → underline
- * - <ol><li>text</li></ol> → ordered list
- * - <ul><li>text</li></ul> → bullet list
- * - <p class="list-paragraph">text</p> → bullet list (fallback)
- * - Nested formatting: <strong><em>text</em></strong>
+ * Supported AsciiDoc structures:
+ * ===============================
  *
- * Output format matches textToDelta utility:
+ * Lists:
+ * - ". item" → ordered list item
+ * - "* item" → bullet list item
+ * - Multiple consecutive items grouped into single list
+ *
+ * Inline formatting:
+ * - "**text**" → bold
+ * - "*text*" → italic
+ * - "__text__" → underline
+ * - Nested formatting: "***text***" → bold + italic
+ *
+ * Paragraphs:
+ * - Lines separated by "\n\n" → separate paragraphs
+ * - Single "\n" within content → line break
+ *
+ * Output format matches Quill Delta specification:
  * {
  *   ops: [
  *     { insert: "text", attributes: { bold: true } },
  *     { insert: "\n", attributes: { list: "ordered" } }
  *   ]
  * }
+ *
+ * Design rationale:
+ * - Unified text format from all extractors (Word, Excel)
+ * - Simple, readable markup for debugging
+ * - Well-established AsciiDoc conventions
+ * - Single converter for all text → Delta transformations
  */
 class DocxToDeltaConverter {
 
     /**
-     * Convert HTML string to Delta JSON string
-     * @param {string} html - HTML content from DocxExtractor table cells
+     * Convert AsciiDoc-style text to Delta JSON string
+     * @param {string} text - AsciiDoc formatted text
      * @returns {string} Stringified Delta JSON
      */
-    convertHtmlToDelta(html) {
+    convertHtmlToDelta(text) {
         // Handle null/empty input
-        if (!html || html.trim() === '') {
+        if (!text || text.trim() === '') {
             return JSON.stringify({ ops: [] });
         }
 
-        // Extract paragraphs from HTML
-        const paragraphs = this._extractParagraphs(html);
+        // Split into lines
+        const lines = text.split('\n');
 
-        if (paragraphs.length === 0) {
+        if (lines.length === 0) {
             return JSON.stringify({ ops: [] });
         }
 
-        // Build Delta ops from paragraphs
+        // Build Delta ops from lines
         const ops = [];
+        let i = 0;
 
-        for (let i = 0; i < paragraphs.length; i++) {
-            const paragraph = paragraphs[i];
+        while (i < lines.length) {
+            const line = lines[i];
+            const trimmedLine = line.trimStart();
 
-            // Extract text runs with inline formatting
-            const runs = this._extractTextRuns(paragraph.html);
+            // Skip empty lines (they're paragraph separators)
+            if (trimmedLine === '') {
+                i++;
+                continue;
+            }
 
-            // Add runs to ops
-            for (const run of runs) {
-                if (run.text) {
-                    const op = { insert: run.text };
-                    if (Object.keys(run.attributes).length > 0) {
-                        op.attributes = run.attributes;
+            // Check for list items
+            if (trimmedLine.startsWith('. ') || trimmedLine.startsWith('* ')) {
+                const listType = trimmedLine.startsWith('. ') ? 'ordered' : 'bullet';
+                const prefix = trimmedLine.startsWith('. ') ? '. ' : '* ';
+
+                // Process consecutive list items of same type
+                while (i < lines.length) {
+                    const currentLine = lines[i].trimStart();
+                    if (!currentLine.startsWith(prefix)) break;
+
+                    const content = currentLine.substring(prefix.length);
+
+                    // Parse inline formatting in list item
+                    const runs = this._parseInlineFormatting(content);
+
+                    // Add text runs
+                    for (const run of runs) {
+                        if (run.text) {
+                            const op = { insert: run.text };
+                            if (Object.keys(run.attributes).length > 0) {
+                                op.attributes = run.attributes;
+                            }
+                            ops.push(op);
+                        }
                     }
-                    ops.push(op);
-                }
-            }
 
-            // Add newline with list attribute if applicable
-            const newlineOp = { insert: '\n' };
-            if (paragraph.listType) {
-                newlineOp.attributes = { list: paragraph.listType };
+                    // Add newline with list attribute
+                    ops.push({
+                        insert: '\n',
+                        attributes: { list: listType }
+                    });
+
+                    i++;
+                }
+            } else {
+                // Normal text line - parse inline formatting
+                const runs = this._parseInlineFormatting(line);
+
+                // Add text runs
+                for (const run of runs) {
+                    if (run.text) {
+                        const op = { insert: run.text };
+                        if (Object.keys(run.attributes).length > 0) {
+                            op.attributes = run.attributes;
+                        }
+                        ops.push(op);
+                    }
+                }
+
+                // Add newline (normal paragraph)
+                ops.push({ insert: '\n' });
+
+                i++;
             }
-            ops.push(newlineOp);
         }
 
         return JSON.stringify({ ops });
     }
 
     /**
-     * Extract paragraph elements from HTML
-     * Detects both semantic list tags (<ol>/<ul>) and paragraph tags in document order
-     * @param {string} html - HTML content
-     * @returns {Array<{html: string, listType: string|null}>} Paragraph objects
-     * @private
-     */
-    _extractParagraphs(html) {
-        const paragraphs = [];
-
-        // Combined regex to match both <p> tags and <ol>/<ul> tags in document order
-        // This captures: <p>...</p>, <ol>...</ol>, and <ul>...</ul>
-        const elementRegex = /<(p|ol|ul)(?:\s+class="([^"]*)")?>(.*?)<\/\1>/gs;
-        let match;
-
-        while ((match = elementRegex.exec(html)) !== null) {
-            const tagName = match[1]; // 'p', 'ol', or 'ul'
-            const className = match[2] || '';
-            const content = match[3];
-
-            if (tagName === 'p') {
-                // Regular paragraph
-                paragraphs.push({
-                    html: content,
-                    listType: className.includes('list-paragraph') ? 'bullet' : null
-                });
-            } else {
-                // List (<ol> or <ul>) - extract individual list items
-                const listType = tagName === 'ol' ? 'ordered' : 'bullet';
-                const liRegex = /<li>(.*?)<\/li>/gs;
-                let liMatch;
-
-                while ((liMatch = liRegex.exec(content)) !== null) {
-                    paragraphs.push({
-                        html: liMatch[1],
-                        listType: listType
-                    });
-                }
-            }
-        }
-
-        return paragraphs;
-    }
-
-    /**
-     * Extract text runs with inline formatting from paragraph HTML
-     * @param {string} html - Paragraph inner HTML
+     * Parse inline formatting from AsciiDoc text
+     * Handles: **bold**, *italic*, __underline__, and nested combinations
+     *
+     * @param {string} text - Line of text with AsciiDoc formatting
      * @returns {Array<{text: string, attributes: Object}>} Text runs with formatting
      * @private
      */
-    _extractTextRuns(html) {
+    _parseInlineFormatting(text) {
         const runs = [];
-        const stack = []; // Stack to track nested formatting tags
+        let i = 0;
         let currentText = '';
         let currentAttributes = {};
 
-        // Parse HTML character by character with tag detection
-        let i = 0;
-        while (i < html.length) {
-            if (html[i] === '<') {
-                // Save current text run if any
+        while (i < text.length) {
+            // Check for formatting markers
+            if (this._matchesAt(text, i, '**')) {
+                // Save current run if any
                 if (currentText) {
                     runs.push({
                         text: currentText,
@@ -143,36 +156,86 @@ class DocxToDeltaConverter {
                     currentText = '';
                 }
 
-                // Extract tag
-                const tagEnd = html.indexOf('>', i);
-                if (tagEnd === -1) break;
+                // Find closing **
+                const closeIndex = text.indexOf('**', i + 2);
+                if (closeIndex !== -1) {
+                    const boldText = text.substring(i + 2, closeIndex);
 
-                const tag = html.substring(i, tagEnd + 1);
-                const tagName = this._extractTagName(tag);
-
-                if (tagName) {
-                    if (tag.startsWith('</')) {
-                        // Closing tag - pop from stack
-                        if (stack.length > 0 && stack[stack.length - 1] === tagName) {
-                            stack.pop();
-                            currentAttributes = this._buildAttributes(stack);
-                        }
-                    } else {
-                        // Opening tag - push to stack
-                        stack.push(tagName);
-                        currentAttributes = this._buildAttributes(stack);
+                    // Recursively parse content inside bold (might have nested formatting)
+                    const nestedRuns = this._parseInlineFormatting(boldText);
+                    for (const run of nestedRuns) {
+                        runs.push({
+                            text: run.text,
+                            attributes: { ...run.attributes, bold: true }
+                        });
                     }
+
+                    i = closeIndex + 2;
+                    continue;
+                }
+            } else if (this._matchesAt(text, i, '__')) {
+                // Save current run if any
+                if (currentText) {
+                    runs.push({
+                        text: currentText,
+                        attributes: { ...currentAttributes }
+                    });
+                    currentText = '';
                 }
 
-                i = tagEnd + 1;
-            } else {
-                // Regular character
-                currentText += html[i];
-                i++;
+                // Find closing __
+                const closeIndex = text.indexOf('__', i + 2);
+                if (closeIndex !== -1) {
+                    const underlineText = text.substring(i + 2, closeIndex);
+
+                    // Recursively parse content inside underline
+                    const nestedRuns = this._parseInlineFormatting(underlineText);
+                    for (const run of nestedRuns) {
+                        runs.push({
+                            text: run.text,
+                            attributes: { ...run.attributes, underline: true }
+                        });
+                    }
+
+                    i = closeIndex + 2;
+                    continue;
+                }
+            } else if (this._matchesAt(text, i, '*') && !this._matchesAt(text, i, '**')) {
+                // Single * for italic (but not ** for bold)
+                // Save current run if any
+                if (currentText) {
+                    runs.push({
+                        text: currentText,
+                        attributes: { ...currentAttributes }
+                    });
+                    currentText = '';
+                }
+
+                // Find closing *
+                const closeIndex = text.indexOf('*', i + 1);
+                if (closeIndex !== -1 && !this._matchesAt(text, closeIndex - 1, '*')) {
+                    const italicText = text.substring(i + 1, closeIndex);
+
+                    // Recursively parse content inside italic
+                    const nestedRuns = this._parseInlineFormatting(italicText);
+                    for (const run of nestedRuns) {
+                        runs.push({
+                            text: run.text,
+                            attributes: { ...run.attributes, italic: true }
+                        });
+                    }
+
+                    i = closeIndex + 1;
+                    continue;
+                }
             }
+
+            // Regular character
+            currentText += text[i];
+            i++;
         }
 
-        // Add final text run if any
+        // Add final run if any
         if (currentText) {
             runs.push({
                 text: currentText,
@@ -180,88 +243,22 @@ class DocxToDeltaConverter {
             });
         }
 
-        // Decode HTML entities and strip list markers
-        return runs.map(run => ({
-            text: this._decodeHtmlEntities(this._stripListMarker(run.text)),
-            attributes: run.attributes
-        }));
+        return runs;
     }
 
     /**
-     * Extract tag name from tag string
-     * @param {string} tag - HTML tag (e.g., "<strong>", "</em>")
-     * @returns {string|null} Tag name or null
+     * Check if text matches a pattern at a specific index
+     * @param {string} text - Text to check
+     * @param {number} index - Position to check
+     * @param {string} pattern - Pattern to match
+     * @returns {boolean} True if pattern matches at index
      * @private
      */
-    _extractTagName(tag) {
-        const match = tag.match(/<\/?([a-z]+)/i);
-        return match ? match[1].toLowerCase() : null;
-    }
-
-    /**
-     * Build attributes object from tag stack
-     * @param {Array<string>} stack - Stack of active formatting tags
-     * @returns {Object} Attributes object
-     * @private
-     */
-    _buildAttributes(stack) {
-        const attributes = {};
-
-        for (const tag of stack) {
-            switch (tag) {
-                case 'strong':
-                case 'b':
-                    attributes.bold = true;
-                    break;
-                case 'em':
-                case 'i':
-                    attributes.italic = true;
-                    break;
-                case 'u':
-                    attributes.underline = true;
-                    break;
-            }
+    _matchesAt(text, index, pattern) {
+        if (index + pattern.length > text.length) {
+            return false;
         }
-
-        return attributes;
-    }
-
-    /**
-     * Strip leading list marker ("- ") from text
-     * @param {string} text - Text content
-     * @returns {string} Text without list marker
-     * @private
-     */
-    _stripListMarker(text) {
-        const trimmed = text.trimStart();
-        if (trimmed.startsWith('- ')) {
-            return trimmed.substring(2);
-        }
-        return text;
-    }
-
-    /**
-     * Decode common HTML entities
-     * @param {string} text - Text with HTML entities
-     * @returns {string} Decoded text
-     * @private
-     */
-    _decodeHtmlEntities(text) {
-        const entities = {
-            '&amp;': '&',
-            '&lt;': '<',
-            '&gt;': '>',
-            '&quot;': '"',
-            '&#39;': "'",
-            '&nbsp;': ' '
-        };
-
-        let decoded = text;
-        for (const [entity, char] of Object.entries(entities)) {
-            decoded = decoded.split(entity).join(char);
-        }
-
-        return decoded;
+        return text.substring(index, index + pattern.length) === pattern;
     }
 }
 

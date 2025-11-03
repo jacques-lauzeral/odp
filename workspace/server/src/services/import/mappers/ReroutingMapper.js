@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 
 /**
  * Mapper for REROUTING Excel documents
@@ -92,6 +92,11 @@ class ReroutingMapper extends Mapper {
         'AO': 'stakeholder:network/airspace_user/ao'
         // 'External Users' is ignored
     };
+
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
 
     /**
      * Map raw extracted Excel data to structured import format
@@ -298,8 +303,8 @@ class ReroutingMapper extends Mapper {
             type: 'ON',
             drg: 'RRT',
             title: onTitle.trim(),
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale)
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale)
         };
 
         // Add external ID using the complete object (no path needed)
@@ -390,9 +395,9 @@ class ReroutingMapper extends Mapper {
         const change = {
             drg: 'RRT',
             title: ocName.trim(),
-            purpose: textToDelta(purpose),
+            purpose: this.converter.convertHtmlToDelta(purpose),
             visibility: 'NETWORK',
-            details: textToDelta(details),
+            details: this.converter.convertHtmlToDelta(details),
             satisfiedORs: [] // Will be populated after all rows are processed
         };
 
@@ -456,10 +461,10 @@ class ReroutingMapper extends Mapper {
             type: 'OR',
             drg: 'RRT',
             title: title.trim(),
-            statement: textToDelta(this._extractRequirementStatement(row)),
-            rationale: textToDelta(this._extractRequirementRationale(row)),
-            flows: textToDelta(this._extractRequirementFlows(row)),
-            privateNotes: textToDelta(this._extractRequirementPrivateNotes(row)),
+            statement: this.converter.convertHtmlToDelta(this._extractRequirementStatement(row)),
+            rationale: this.converter.convertHtmlToDelta(this._extractRequirementRationale(row)),
+            flows: this.converter.convertHtmlToDelta(this._extractRequirementFlows(row)),
+            privateNotes: this.converter.convertHtmlToDelta(this._extractRequirementPrivateNotes(row)),
             implementedONs: [],  // Will be populated by caller
             impactsStakeholderCategories: impactsStakeholderCategories
         };

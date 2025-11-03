@@ -42,6 +42,29 @@ export function textStartsWith(text, ...prefixes) {
  * textToDelta('Items:\n- First item\n- Second item\nNormal text')
  * // Returns bullet list ops for the two items, then normal text
  */
+/**
+ * Convert plain text to stringified Quill Delta format
+ *
+ * Processing:
+ * - Removes leading and trailing blank lines
+ * - Detects consecutive lines starting with '* ' and converts to bullet list items
+ * - Detects consecutive lines starting with '. ' and converts to ordered list items
+ *
+ * @param {string} text - Plain text content
+ * @returns {string} Stringified Delta JSON
+ *
+ * @example
+ * textToDelta('Statement: This is a requirement')
+ * // Returns: '{"ops":[{"insert":"Statement: This is a requirement"},{"insert":"\\n"}]}'
+ *
+ * @example
+ * textToDelta('Items:\n* First item\n* Second item\nNormal text')
+ * // Returns bullet list ops for the two items, then normal text
+ *
+ * @example
+ * textToDelta('Steps:\n. First step\n. Second step\nNormal text')
+ * // Returns ordered list ops for the two steps, then normal text
+ */
 export function textToDelta(text) {
     if (!text || text.trim() === '') {
         return JSON.stringify({ ops: [] });
@@ -80,24 +103,32 @@ export function textToDelta(text) {
             continue;
         }
 
-        // Check if line starts with '- '
-        if (line.trimStart().startsWith('- ')) {
-            // Process consecutive bullet list items
-            while (i < trimmedLines.length && trimmedLines[i].trimStart().startsWith('- ')) {
-                const bulletLine = trimmedLines[i];
-                const content = bulletLine.trimStart().substring(2); // Remove '- '
+        const trimmedLine = line.trimStart();
+
+        // Check if line starts with '* ' (bullet) or '. ' (ordered)
+        if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('. ')) {
+            // Detect list type from first character
+            const listType = trimmedLine.startsWith('* ') ? 'bullet' : 'ordered';
+            const prefix = trimmedLine.startsWith('* ') ? '* ' : '. ';
+
+            // Process consecutive list items of the same type
+            while (i < trimmedLines.length) {
+                const currentLine = trimmedLines[i].trimStart();
+                if (!currentLine.startsWith(prefix)) break;
+
+                const content = currentLine.substring(prefix.length);
 
                 ops.push({
                     insert: content
                 });
                 ops.push({
                     insert: '\n',
-                    attributes: { list: 'bullet' }
+                    attributes: { list: listType }
                 });
 
                 i++;
             }
-            // Don't add extra newline after bullet group - Quill handles spacing
+            // Don't add extra newline after list group - Quill handles spacing
         } else {
             // Normal text line
             ops.push({

@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 
 /**
  * Mapper for ASM_ATFCM Excel documents
@@ -189,6 +189,11 @@ class AsmAtfcmMapper extends Mapper {
     };
 
 
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
+
     /**
      * Map raw extracted Excel data to structured import format
      * @param {Object} rawData - RawExtractedData from XlsxExtractor
@@ -266,25 +271,25 @@ class AsmAtfcmMapper extends Mapper {
         console.log(`Mapped ${needsMap.size} needs (ONs), ${requirements.length} requirements (ORs), and ${changesMap.size} changes (OCs)`);
         console.log(`OC-OR relationships: ${changesMap.size} OCs linked to ORs`);
 
-        // Apply textToDelta to all text fields before returning
+        // Apply Delta conversion to all text fields before returning
         const needs = Array.from(needsMap.values()).map(need => ({
             ...need,
-            statement: textToDelta(need.statement),
-            rationale: textToDelta(need.rationale),
-            privateNotes: textToDelta(need.privateNotes)
+            statement: this.converter.convertHtmlToDelta(need.statement),
+            rationale: this.converter.convertHtmlToDelta(need.rationale),
+            privateNotes: this.converter.convertHtmlToDelta(need.privateNotes)
         }));
 
         const wrappedRequirements = requirements.map(req => ({
             ...req,
-            statement: textToDelta(req.statement),
-            rationale: textToDelta(req.rationale),
-            privateNotes: textToDelta(req.privateNotes)
+            statement: this.converter.convertHtmlToDelta(req.statement),
+            rationale: this.converter.convertHtmlToDelta(req.rationale),
+            privateNotes: this.converter.convertHtmlToDelta(req.privateNotes)
         }));
 
         const changes = Array.from(changesMap.values()).map(change => ({
             ...change,
-            purpose: textToDelta(change.purpose),
-            details: textToDelta(change.details)
+            purpose: this.converter.convertHtmlToDelta(change.purpose),
+            details: this.converter.convertHtmlToDelta(change.details)
         }));
 
         return {

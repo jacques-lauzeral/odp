@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 
 /**
  * AirportMapper - Maps Airport Operational Needs and Requirements document
@@ -48,13 +48,12 @@ import {textToDelta} from "./utils.js";
  *
  * Stakeholder Processing:
  * The mapper handles stakeholders in the following format:
- * - Input: "<p>NMOC (Airport Function, NOC, SNOC)</p>"
+ * - Input: "NMOC (Airport Function, NOC, SNOC)" (AsciiDoc plain text)
  * - Processing:
- *   1. Extract text from <p> tags (or split plain text)
- *   2. Split by pattern: mainName (optionalNote)
- *   3. Normalize mainName using synonym map (case-insensitive)
- *   4. Resolve to externalId using internal stakeholderCategoryMap
- *   5. Keep note with parentheses: "(Airport Function, NOC, SNOC)"
+ *   1. Split text by pattern: mainName (optionalNote)
+ *   2. Normalize mainName using synonym map (case-insensitive)
+ *   3. Resolve to externalId using internal stakeholderCategoryMap
+ *   4. Keep note with parentheses: "(Airport Function, NOC, SNOC)"
  * - Output: { externalId: "stakeholder:network/nm/nmoc", note: "(Airport Function, NOC, SNOC)" }
  *
  * Synonym Handling:
@@ -152,6 +151,11 @@ class AirportMapper extends Mapper {
             externalId: "document:commission_implementing_regulation_(eu)_2021/116"
         }
     ];
+
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
 
     /**
      * Map raw extracted Word document data to structured import format
@@ -414,10 +418,10 @@ class AirportMapper extends Mapper {
             }, type.toLowerCase()),
             title: title,
             type: type,
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale),
-            flows: textToDelta(flows),
-            privateNotes: textToDelta(privateNotes),
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale),
+            flows: this.converter.convertHtmlToDelta(flows),
+            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
             path: path,
             drg: drg,
             refines: null,
@@ -465,25 +469,36 @@ class AirportMapper extends Mapper {
 
     /**
      * Parse table rows into key-value pairs
-     * Preserves HTML for fields that need structured parsing (Stakeholders)
+     * Preserves AsciiDoc formatting for rich text fields that will be converted to Delta
      */
     _parseTableToKeyValue(table) {
         const result = {};
 
-        // Fields that should preserve HTML structure
-        const preserveHtmlFields = ['Stakeholders', 'Impacted Services', 'Data (and other Enabler)'];
+        // Fields that should preserve AsciiDoc formatting (will be converted to Delta)
+        const richTextFields = [
+            'Detailed Requirement',
+            'Need statement',
+            'Rationale',
+            'Fit Criteria',
+            'Opportunities / Risks',
+            'Flow of Actions',
+            'Dependencies',
+            'Data (and other Enabler)',
+            'Impacted Services',
+            'Originator'
+        ];
 
         for (const row of table.rows) {
             if (row.length >= 2) {
-                // Extract key (always strip HTML)
-                const key = this._stripHtml(row[0]).replace(/:\s*$/, '').trim();
+                // Extract key (strip formatting markers)
+                const key = this._stripAsciiDoc(row[0]).replace(/:\s*$/, '').trim();
 
-                // For certain fields, preserve HTML; otherwise strip it
+                // For rich text fields, preserve AsciiDoc; for others, strip formatting
                 let value;
-                if (preserveHtmlFields.includes(key)) {
-                    value = row[1].trim(); // Keep HTML
+                if (richTextFields.includes(key)) {
+                    value = row[1].trim(); // Keep AsciiDoc formatting
                 } else {
-                    value = this._stripHtml(row[1]).trim(); // Strip HTML
+                    value = this._stripAsciiDoc(row[1]).trim(); // Strip formatting
                 }
 
                 if (key && value) {
@@ -496,26 +511,38 @@ class AirportMapper extends Mapper {
     }
 
     /**
-     * Strip HTML tags from text while preserving paragraph breaks
+     * Strip AsciiDoc formatting markers from text
+     * Preserves paragraph breaks and list structure
      */
-    _stripHtml(html) {
-        return html.replace(/<\/p>/gi, '\n')  // Convert paragraph breaks to newlines
-            .replace(/<br\s*\/?>/gi, '\n')     // Convert line breaks to newlines
-            .replace(/<[^>]*>/g, ' ')          // Remove remaining HTML tags
-            .replace(/&nbsp;/g, ' ')           // Convert non-breaking spaces
-            .replace(/ +/g, ' ')               // Collapse multiple spaces (but not newlines)
-            .replace(/\n +/g, '\n')            // Remove spaces after newlines
-            .replace(/ +\n/g, '\n')            // Remove spaces before newlines
-            .replace(/\n\n+/g, '\n\n')         // Collapse multiple newlines to double newline
+    _stripAsciiDoc(text) {
+        if (!text) return '';
+
+        let result = text;
+
+        // Strip AsciiDoc formatting markers
+        result = result.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → text
+        result = result.replace(/\*([^*]+)\*/g, '$1');       // *italic* → text
+        result = result.replace(/__([^_]+)__/g, '$1');       // __underline__ → text
+
+        // Strip AsciiDoc list markers (preserve the content)
+        result = result.replace(/^\. /gm, '');  // Ordered list
+        result = result.replace(/^\* /gm, '');  // Bullet list
+
+        // Clean up whitespace
+        result = result.replace(/ +/g, ' ')                 // Collapse multiple spaces
+            .replace(/\n +/g, '\n')                         // Remove spaces after newlines
+            .replace(/ +\n/g, '\n')                         // Remove spaces before newlines
+            .replace(/\n\n+/g, '\n\n')                      // Collapse multiple newlines to double newline
             .trim();
+
+        return result;
     }
 
     /**
      * Extract and resolve impacted stakeholders
      *
-     * Processes stakeholder text in two possible formats:
-     * 1. HTML with <p> tags: "<p>NMOC (Airport Function, NOC, SNOC)</p><p>Airport Operator</p>"
-     * 2. Plain text separated by newlines/spaces: "NMOC (Airport Function, NOC, SNOC)\nAirport Operator"
+     * Processes stakeholder text (AsciiDoc format from table cells):
+     * Example input: "NMOC (Airport Function, NOC, SNOC)\nAirport Operator"
      *
      * Returns array of { externalId, note } objects where:
      * - externalId: resolved from stakeholderCategoryMap

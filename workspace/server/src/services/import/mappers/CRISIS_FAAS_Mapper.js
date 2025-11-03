@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 
 /**
  * CRISIS_FAAS_Mapper - Maps CRISIS & FAAS Operational Needs and Requirements Word documents
@@ -81,6 +81,11 @@ import {textToDelta} from "./utils.js";
  * - Use Cases: Not present in CRISIS_FAAS documents
  */
 class CRISIS_FAAS_Mapper extends Mapper {
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
+
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
@@ -419,10 +424,10 @@ class CRISIS_FAAS_Mapper extends Mapper {
             type,
             drg: 'CRISIS_FAAS',
             path,
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale),
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale),
             flows: null,
-            privateNotes: textToDelta(privateNotes),
+            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
             parentExternalId: null,
             implementedONs: [],
             impactsStakeholderCategories: resolvedStakeholders,
@@ -476,20 +481,37 @@ class CRISIS_FAAS_Mapper extends Mapper {
             return data;
         }
 
+        // Fields that should preserve AsciiDoc formatting (will be converted to Delta)
+        const richTextFields = [
+            'statement',
+            'need statement',
+            'rationale',
+            'fit criteria',
+            'opportunities/risks',
+            'dependencies',
+            'data (and other enabler)',
+            'impacted services'
+        ];
+
         // Extract field-value pairs from 2-column table
         for (const row of table.rows) {
             if (row.length < 2) continue;
 
             const [fieldCell, valueCell] = row;
 
-            // Extract field name (remove HTML tags, remove colon, lowercase)
+            // Extract field name (strip formatting, remove colon, lowercase)
             const fieldName = this._extractText(fieldCell)
                 .replace(/:/g, '')
                 .trim()
                 .toLowerCase();
 
-            // Extract value (remove HTML tags, trim)
-            const value = this._extractText(valueCell).trim();
+            // For rich text fields, preserve AsciiDoc; for others, strip formatting
+            let value;
+            if (richTextFields.includes(fieldName)) {
+                value = valueCell.trim(); // Keep AsciiDoc formatting
+            } else {
+                value = this._extractText(valueCell).trim(); // Strip formatting
+            }
 
             if (fieldName && value) {
                 data[fieldName] = value;
@@ -500,21 +522,27 @@ class CRISIS_FAAS_Mapper extends Mapper {
     }
 
     /**
-     * Extract text from HTML cell content
+     * Extract text from cell content (strips AsciiDoc formatting markers)
      * @private
      */
-    _extractText(html) {
-        if (!html) return '';
+    _extractText(text) {
+        if (!text) return '';
 
-        // Remove HTML tags but preserve line breaks from <br> and </p>
-        let text = html
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/p>/gi, '\n')
-            .replace(/<[^>]*>/g, '')
-            .replace(/\n+/g, '\n')
-            .trim();
+        let result = text;
 
-        return text;
+        // Strip AsciiDoc formatting markers
+        result = result.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → text
+        result = result.replace(/\*([^*]+)\*/g, '$1');       // *italic* → text
+        result = result.replace(/__([^_]+)__/g, '$1');       // __underline__ → text
+
+        // Strip AsciiDoc list markers
+        result = result.replace(/^\. /gm, '');  // Ordered list
+        result = result.replace(/^\* /gm, '');  // Bullet list
+
+        // Handle multiple newlines
+        result = result.replace(/\n+/g, '\n').trim();
+
+        return result;
     }
 
     /**

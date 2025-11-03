@@ -1,6 +1,7 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta, textStartsWith} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
+import {textStartsWith} from "./utils.js";
 
 /**
  * Mapper for iDL AIRAC Data Definition Process Word documents
@@ -89,6 +90,11 @@ import {textToDelta, textStartsWith} from "./utils.js";
  * - Subsections without "Statement:" paragraph (organizational only, not requirements)
  */
 class iDL_Mapper extends Mapper {
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
+
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
@@ -229,6 +235,7 @@ class iDL_Mapper extends Mapper {
 
     /**
      * Extract requirement details from subsection paragraphs
+     * Paragraphs are now AsciiDoc-formatted plain text from DocxExtractor
      * @private
      */
     _extractRequirementDetails(subsection, type, context) {
@@ -261,10 +268,10 @@ class iDL_Mapper extends Mapper {
             // Check for section markers
             if (textStartsWith(text, 'Statement:')) {
                 currentSection = 'statement';
-                statement = text.substring('Statement:'.length).trim();
+                statement = text.substring(text.toLowerCase().indexOf('statement:') + 'statement:'.length).trim();
             } else if (textStartsWith(text, 'Rationale:')) {
                 currentSection = 'rationale';
-                rationale = text.substring('Rationale:'.length).trim();
+                rationale = text.substring(text.toLowerCase().indexOf('rationale:') + 'rationale:'.length).trim();
             } else if (textStartsWith(text, 'Flow:', 'Flows:', 'Flow example', 'Flow examples')) {
                 if (currentSection === 'flows') {
                     flows += '\n\n' + text;
@@ -278,7 +285,8 @@ class iDL_Mapper extends Mapper {
                     else if (textStartsWith(text, 'Flow example')) prefix = 'Flow example';
                     else if (textStartsWith(text, 'Flows:')) prefix = 'Flows:';
                     else prefix = 'Flow:';
-                    flows = text.substring(prefix.length).trim();
+
+                    flows = text.substring(text.toLowerCase().indexOf(prefix.toLowerCase()) + prefix.length).trim();
                 }
             } else if (textStartsWith(text, 'Implemented ONs:', 'Implemented Operational Needs:')) {
                 currentSection = 'implementedONs';
@@ -294,7 +302,6 @@ class iDL_Mapper extends Mapper {
             } else if (currentSection === 'rationale' && text) {
                 rationale += '\n\n' + text;
             } else if (currentSection === 'flows' && text) {
-                // Include all text in flows, including sub-headers ending with ':'
                 flows += '\n\n' + text;
             } else if (currentSection === 'implementedONs' && text.startsWith('-')) {
                 const reference = text.substring(1).trim();
@@ -317,9 +324,9 @@ class iDL_Mapper extends Mapper {
         }
 
         const result = {
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale),
-            flows: textToDelta(flows),
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale),
+            flows: this.converter.convertHtmlToDelta(flows),
             implementedONs: type === 'OR' ? implementedONs : [],
             dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
         };
@@ -558,6 +565,7 @@ class iDL_Mapper extends Mapper {
 
         console.log(`Document references validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
     }
+
 }
 
 export default iDL_Mapper;

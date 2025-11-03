@@ -23,6 +23,9 @@ import DocxToDeltaConverter from './DocxToDeltaConverter.js';
  * 4. _mapORs(section, path, parentEntity) - Same as _mapONs
  *
  * 5. _mapOCs(section, path) - Straightforward, no organizational hierarchy
+ *
+ * NOTE: StandardMapper now works with AsciiDoc-formatted text from table cells
+ * rather than HTML. List items use AsciiDoc markers (". " for ordered, "* " for bullet).
  */
 export class StandardMapper {
     constructor(drg) {
@@ -212,29 +215,32 @@ export class StandardMapper {
     }
 
     /**
-     * Step 5: Extract OC entities - no organizational hierarchy
+     * Step 5: Extract OC entities from tables
      * @param {Object} section - OC section
-     * @param {Array<string>} path - Path (always empty for OCs)
+     * @param {Array<string>} path - Organizational path (not used for OCs currently)
      * @returns {Array} Array of OC entities
      */
     _mapOCs(section, path) {
         const entities = [];
 
-        // Process OCs directly - no organizational hierarchy
+        // Check for table in current section
+        if (section.content && section.content.tables && section.content.tables.length > 0) {
+            console.log(`[StandardMapper] Found ${section.content.tables.length} table(s) in OC section "${section.title}"`);
+
+            for (const table of section.content.tables) {
+                const entity = this._extractEntity(table, 'OC', section.title, null, null);
+                if (entity) {
+                    entities.push(entity);
+                    console.log(`[StandardMapper] Extracted OC: ${entity.externalId}`);
+                }
+            }
+        }
+
+        // Recurse into subsections
         if (section.subsections) {
             for (const subsection of section.subsections) {
-                // Each subsection should contain an OC table
-                if (subsection.content && subsection.content.tables && subsection.content.tables.length > 0) {
-                    console.log(`[StandardMapper] Found ${subsection.content.tables.length} table(s) in OC section "${subsection.title}"`);
-
-                    for (const table of subsection.content.tables) {
-                        const entity = this._extractEntity(table, 'OC', subsection.title, path, null);
-                        if (entity) {
-                            entities.push(entity);
-                            console.log(`[StandardMapper] Extracted OC: ${entity.externalId}`);
-                        }
-                    }
-                }
+                const subEntities = this._mapOCs(subsection, path);
+                entities.push(...subEntities);
             }
         }
 
@@ -243,93 +249,84 @@ export class StandardMapper {
 
     /**
      * Extract entity from table
-     * @param {Object} table - Table object
-     * @param {string} entityType - 'ON', 'OR', or 'OC'
-     * @param {string} sectionTitle - Section title (becomes entity title)
-     * @param {Array<string>} path - Organizational path
-     * @param {Object|null} parentEntity - Parent entity for refines relationship
-     * @returns {Object|null} Extracted entity or null
      */
-    _extractEntity(table, entityType, sectionTitle, path, parentEntity) {
-        if (!table.rows || table.rows.length === 0) {
+    _extractEntity(table, type, sectionTitle, path, parentEntity) {
+        const rows = table.rows || [];
+        if (rows.length === 0) {
+            console.warn(`[StandardMapper] Empty table in section "${sectionTitle}"`);
             return null;
         }
 
         // Build field map from table rows
-        const fields = this._buildFieldMap(table.rows);
+        const fields = this._buildFieldMap(rows);
 
-        // Extract Code field (required)
-        const code = this._extractPlainText(fields['Code'] || fields['code']);
-        if (!code) {
-            console.warn(`[StandardMapper] Skipping ${entityType} without Code field in section "${sectionTitle}"`);
+        // Extract title from field "Title" or section title as fallback
+        const title = fields['Title'] ? this._extractPlainText(fields['Title']) : this._stripNumbering(sectionTitle);
+
+        if (!title || title.trim() === '') {
+            console.warn(`[StandardMapper] Could not determine title for entity in section "${sectionTitle}"`);
             return null;
         }
 
-        // Create base entity
+        // Build base entity
         const entity = {
-            externalId: code,
-            type: entityType,
-            drg: this.drg
+            type: type,
+            drg: this.drg,
+            title: title.trim()
         };
 
-        // Add title from section
-        const title = this._stripNumbering(sectionTitle);
-        if (title) {
-            entity.title = title;
-        }
-
-        // Add path if not empty
-        if (path && path.length > 0) {
+        // Add path (only for ONs and ORs with no parent)
+        if ((type === 'ON' || type === 'OR') && !parentEntity && path && path.length > 0) {
             entity.path = path;
         }
 
-        // Add parent relationship if parent exists
+        // Add parent reference (for nested entities)
         if (parentEntity) {
             entity.refinesParents = [parentEntity.externalId];
         }
 
-        // Map fields based on entity type
-        switch (entityType) {
-            case 'ON':
-                this._mapONFields(entity, fields);
-                break;
-            case 'OR':
-                this._mapORFields(entity, fields);
-                break;
-            case 'OC':
-                this._mapOCFields(entity, fields);
-                break;
+        // Generate external ID
+        entity.externalId = this._buildExternalId(entity);
+
+        // Map type-specific fields
+        if (type === 'ON' || type === 'OR') {
+            this._mapRequirementFields(entity, fields);
+        } else if (type === 'OC') {
+            this._mapOCFields(entity, fields);
         }
 
         return entity;
     }
 
     /**
-     * Map ON-specific fields
+     * Build external ID for entity
      */
-    _mapONFields(entity, fields) {
-        // Rich text fields
-        this._addRichTextField(entity, 'statement', fields['Statement']);
-        this._addRichTextField(entity, 'rationale', fields['Rationale']);
-        this._addRichTextField(entity, 'flows', fields['Flows']);
-        this._addRichTextField(entity, 'privateNotes', fields['Private Notes']);
+    _buildExternalId(entity) {
+        const type = entity.type.toLowerCase();
+        const drg = this.drg.toLowerCase();
+        const title = entity.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-        // Document references
-        this._addDocumentReferences(entity, fields['References']);
+        if (entity.path && entity.path.length > 0) {
+            const pathStr = entity.path.map(p => p.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')).join('/');
+            return `${type}:${drg}/${pathStr}/${title}`;
+        } else {
+            return `${type}:${drg}/${title}`;
+        }
     }
 
     /**
-     * Map OR-specific fields
+     * Map ON/OR-specific fields
      */
-    _mapORFields(entity, fields) {
-        // Rich text fields
+    _mapRequirementFields(entity, fields) {
+        // Rich text fields (AsciiDoc → Delta)
         this._addRichTextField(entity, 'statement', fields['Statement']);
         this._addRichTextField(entity, 'rationale', fields['Rationale']);
         this._addRichTextField(entity, 'flows', fields['Flows']);
         this._addRichTextField(entity, 'privateNotes', fields['Private Notes']);
 
         // Entity references
-        this._addEntityReferences(entity, 'implementedONs', fields['Implements']);
+        this._addEntityReferences(entity, 'implementedONs', fields['Implements Needs']);
+        this._addEntityReferences(entity, 'dependsOnRequirements', fields['Depends On Requirements']);
 
         // Document references
         this._addDocumentReferences(entity, fields['References']);
@@ -344,7 +341,7 @@ export class StandardMapper {
      * Map OC-specific fields
      */
     _mapOCFields(entity, fields) {
-        // Rich text fields
+        // Rich text fields (AsciiDoc → Delta)
         this._addRichTextField(entity, 'purpose', fields['Purpose']);
         this._addRichTextField(entity, 'initialState', fields['Initial State']);
         this._addRichTextField(entity, 'finalState', fields['Final State']);
@@ -367,7 +364,7 @@ export class StandardMapper {
 
             if (cells && cells.length >= 2) {
                 const fieldName = this._extractPlainText(cells[0]);
-                const fieldValue = cells[1]; // Keep as HTML
+                const fieldValue = cells[1]; // Keep as AsciiDoc text
 
                 if (fieldName) {
                     fields[fieldName] = fieldValue;
@@ -388,55 +385,43 @@ export class StandardMapper {
     }
 
     /**
-     * Extract plain text from HTML
+     * Extract plain text from AsciiDoc text
+     * Strips formatting markers but preserves content
      */
-    _extractPlainText(html) {
-        if (!html) return '';
+    _extractPlainText(text) {
+        if (!text) return '';
 
-        // Remove HTML tags
-        let text = html.replace(/<[^>]+>/g, '');
+        let plainText = text;
 
-        // Decode HTML entities
-        text = text
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'");
+        // Remove AsciiDoc formatting markers
+        plainText = plainText.replace(/\*\*([^*]+)\*\*/g, '$1'); // **bold**
+        plainText = plainText.replace(/\*([^*]+)\*/g, '$1'); // *italic*
+        plainText = plainText.replace(/__([^_]+)__/g, '$1'); // __underline__
 
-        return text.trim();
+        // Remove list markers
+        plainText = plainText.replace(/^\. /gm, ''); // Ordered list
+        plainText = plainText.replace(/^\* /gm, ''); // Bullet list
+
+        return plainText.trim();
     }
 
     /**
-     * Extract list items from HTML
+     * Extract list items from AsciiDoc text
+     * Handles both ". " (ordered) and "* " (bullet) list markers
      */
-    /**
-     * Extract list items from HTML
-     * Handles both <li> tags and <p class="list-paragraph"> tags
-     */
-    _extractListItems(html) {
-        if (!html) return [];
+    _extractListItems(text) {
+        if (!text) return [];
 
         const items = [];
+        const lines = text.split('\n');
 
-        // Try <li> tags first
-        const liRegex = /<li[^>]*>(.*?)<\/li>/gi;
-        let match;
-        while ((match = liRegex.exec(html)) !== null) {
-            const itemText = this._extractPlainText(match[1]);
-            if (itemText) {
-                items.push(itemText);
-            }
-        }
-
-        // If no <li> items found, try <p class="list-paragraph"> tags
-        if (items.length === 0) {
-            const pRegex = /<p\s+class="list-paragraph"[^>]*>(.*?)<\/p>/gi;
-            while ((match = pRegex.exec(html)) !== null) {
-                const itemText = this._extractPlainText(match[1]);
-                if (itemText) {
-                    items.push(itemText);
+        for (const line of lines) {
+            const trimmed = line.trimStart();
+            // Check for list markers
+            if (trimmed.startsWith('. ') || trimmed.startsWith('* ')) {
+                const item = trimmed.substring(2).trim();
+                if (item) {
+                    items.push(item);
                 }
             }
         }
@@ -445,12 +430,12 @@ export class StandardMapper {
     }
 
     /**
-     * Add rich text field (HTML → Delta JSON)
+     * Add rich text field (AsciiDoc → Delta JSON)
      */
-    _addRichTextField(entity, fieldName, html) {
-        if (!html) return;
+    _addRichTextField(entity, fieldName, text) {
+        if (!text) return;
 
-        const deltaJson = this.converter.convertHtmlToDelta(html);
+        const deltaJson = this.converter.convertHtmlToDelta(text);
         if (deltaJson) {
             entity[fieldName] = deltaJson;
         }
@@ -460,10 +445,10 @@ export class StandardMapper {
      * Add entity references (simple array of external IDs)
      * Removes bracketed helper text like [Title Here] and trims the result
      */
-    _addEntityReferences(entity, fieldName, html) {
-        if (!html) return;
+    _addEntityReferences(entity, fieldName, text) {
+        if (!text) return;
 
-        const items = this._extractListItems(html);
+        const items = this._extractListItems(text);
         if (items.length > 0) {
             // Remove bracketed text and trim each item
             entity[fieldName] = items.map(item => {
@@ -476,10 +461,10 @@ export class StandardMapper {
     /**
      * Add document references (array of {documentExternalId, note?})
      */
-    _addDocumentReferences(entity, html) {
-        if (!html) return;
+    _addDocumentReferences(entity, text) {
+        if (!text) return;
 
-        const items = this._extractListItems(html);
+        const items = this._extractListItems(text);
         if (items.length === 0) return;
 
         const references = items.map(item => {
@@ -504,10 +489,10 @@ export class StandardMapper {
     /**
      * Add annotated references (array of {externalId, note?})
      */
-    _addAnnotatedReferences(entity, fieldName, html) {
-        if (!html) return;
+    _addAnnotatedReferences(entity, fieldName, text) {
+        if (!text) return;
 
-        const items = this._extractListItems(html);
+        const items = this._extractListItems(text);
         if (items.length === 0) return;
 
         const references = items.map(item => {

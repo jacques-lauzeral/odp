@@ -1,6 +1,7 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 import {textToDelta, textStartsWith} from "./utils.js";
+import DocxToDeltaConverter from "./DocxToDeltaConverter.js";
 
 /**
  * Mapper for NM B2B Word documents
@@ -76,6 +77,11 @@ import {textToDelta, textStartsWith} from "./utils.js";
  * - Subsections without "Statement:" paragraph (organizational only, not requirements)
  */
 class NM_B2B_Mapper extends Mapper {
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
+
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
@@ -298,7 +304,8 @@ class NM_B2B_Mapper extends Mapper {
     }
 
     /**
-     * Extract requirement details from subsection paragraphs
+     * Extract requirement details from subsection paragraphs.
+     * Paragraphs are now AsciiDoc-formatted plain text from DocxExtractor
      * @private
      */
     _extractRequirementDetails(subsection, type, context) {
@@ -359,9 +366,9 @@ class NM_B2B_Mapper extends Mapper {
         }
 
         const result = {
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale),
-            flows: textToDelta(flows),
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale),
+            flows: this.converter.convertHtmlToDelta(flows),
             implementedONs: type === 'OR' ? implementedONs : []
         };
 

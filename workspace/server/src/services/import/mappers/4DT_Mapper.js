@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 
 /**
  * Mapper for 4DT Excel documents
@@ -82,6 +82,12 @@ class FourDTMapper extends Mapper {
         'ANSPs': 'stakeholder:network/ansp'
         // Note: 'CIV or MIL ANSP' handled by removing 'CIV or MIL' prefix
     };
+
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
+
     map(rawData) {
         console.log('FourDTMapper: Processing raw data from Excel extraction');
 
@@ -160,8 +166,8 @@ class FourDTMapper extends Mapper {
             return null;
         }
 
-        const statement = row['Need Statement']?.trim() || null;
-        const rationale = row['Rationale']?.trim() || null;
+        const statement = row['Need Statement'] || null;
+        const rationale = row['Rationale'] || null;
         const privateNotes = this._extractNeedPrivateNotes(row);
         const documentReferences = this._extractNeedDocumentReferences(row);
 
@@ -169,9 +175,9 @@ class FourDTMapper extends Mapper {
             type: 'ON',
             drg: '4DT',
             title: title.trim(),
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale),
-            privateNotes: textToDelta(privateNotes),
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale),
+            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
             documentReferences: documentReferences
         };
 
@@ -183,18 +189,20 @@ class FourDTMapper extends Mapper {
     _extractNeedPrivateNotes(row) {
         let privateNotes = '';
 
-        const originator = row['Originator']?.trim();
-        if (originator) {
-            privateNotes = `Originator: ${originator}`;
+        const originator = row['Originator'];
+        const originatorText = originator ? originator.trim() : '';
+        if (originatorText) {
+            privateNotes = `Originator: ${originatorText}`;
         }
 
-        const source = row['Source']?.trim();
-        if (source) {
-            let sourcesText = source;
+        const source = row['Source'];
+        const sourceText = source ? source.trim() : '';
+        if (sourceText) {
+            let sourcesText = sourceText;
 
-            if (source.includes('CONOPS')) {
-                const conopsIndex = source.indexOf('CONOPS');
-                const beforeConops = source.substring(0, conopsIndex).trim();
+            if (sourceText.includes('CONOPS')) {
+                const conopsIndex = sourceText.indexOf('CONOPS');
+                const beforeConops = sourceText.substring(0, conopsIndex).trim();
                 sourcesText = beforeConops;
             }
 
@@ -210,10 +218,11 @@ class FourDTMapper extends Mapper {
     _extractNeedDocumentReferences(row) {
         const documentReferences = [];
 
-        const source = row['Source']?.trim();
-        if (source && source.includes('CONOPS')) {
-            const conopsIndex = source.indexOf('CONOPS');
-            const afterConops = source.substring(conopsIndex + 6).trim();
+        const source = row['Source'];
+        const sourceText = source ? source.trim() : '';
+        if (sourceText && sourceText.includes('CONOPS')) {
+            const conopsIndex = sourceText.indexOf('CONOPS');
+            const afterConops = sourceText.substring(conopsIndex + 6).trim();
 
             if (afterConops) {
                 documentReferences.push({
@@ -244,9 +253,9 @@ class FourDTMapper extends Mapper {
             type: 'OR',
             drg: '4DT',
             title: title.trim(),
-            statement: textToDelta(statement),
-            rationale: textToDelta(rationale),
-            privateNotes: textToDelta(privateNotes),
+            statement: this.converter.convertHtmlToDelta(statement),
+            rationale: this.converter.convertHtmlToDelta(rationale),
+            privateNotes: this.converter.convertHtmlToDelta(privateNotes),
             documentReferences: documentReferences,
             implementedONs: implementedONs,
             impactsStakeholderCategories: impactsStakeholderCategories
@@ -258,20 +267,27 @@ class FourDTMapper extends Mapper {
     }
 
     _extractRequirementStatement(row) {
-        const detailedRequirement = row['Detailed Requirement']?.trim();
-        const fitCriteria = row['Fit Criteria']?.trim();
+        const detailedRequirement = row['Detailed Requirement'];
+        const fitCriteria = row['Fit Criteria'];
 
-        if (!detailedRequirement && !fitCriteria) {
+        const detailedReqText = detailedRequirement ? detailedRequirement.trim() : '';
+        const fitCriteriaText = fitCriteria ? fitCriteria.trim() : '';
+
+        if (!detailedReqText && !fitCriteriaText) {
             return null;
         }
 
-        let statement = detailedRequirement || '';
+        let statement = '';
 
-        if (fitCriteria) {
+        if (detailedReqText) {
+            statement = detailedRequirement.trim();
+        }
+
+        if (fitCriteriaText) {
             if (statement) {
-                statement += '\n\nFit Criteria:\n\n' + fitCriteria;
+                statement += '\n\nFit Criteria:\n\n' + fitCriteria.trim();
             } else {
-                statement = 'Fit Criteria:\n\n' + fitCriteria;
+                statement = 'Fit Criteria:\n\n' + fitCriteria.trim();
             }
         }
 
@@ -279,20 +295,27 @@ class FourDTMapper extends Mapper {
     }
 
     _extractRequirementRationale(row) {
-        const rationale = row['Rationale']?.trim();
-        const opportunitiesRisks = row['Opportunities/Risks']?.trim();
+        const rationale = row['Rationale'];
+        const opportunitiesRisks = row['Opportunities/Risks'];
 
-        if (!rationale && !opportunitiesRisks) {
+        const rationaleText = rationale ? rationale.trim() : '';
+        const oppRisksText = opportunitiesRisks ? opportunitiesRisks.trim() : '';
+
+        if (!rationaleText && !oppRisksText) {
             return null;
         }
 
-        let result = rationale || '';
+        let result = '';
 
-        if (opportunitiesRisks) {
+        if (rationaleText) {
+            result = rationale.trim();
+        }
+
+        if (oppRisksText) {
             if (result) {
-                result += '\n\nOpportunities / Risks:\n\n' + opportunitiesRisks;
+                result += '\n\nOpportunities / Risks:\n\n' + opportunitiesRisks.trim();
             } else {
-                result = 'Opportunities / Risks:\n\n' + opportunitiesRisks;
+                result = 'Opportunities / Risks:\n\n' + opportunitiesRisks.trim();
             }
         }
 
@@ -300,31 +323,35 @@ class FourDTMapper extends Mapper {
     }
 
     _extractRequirementPrivateNotes(row) {
-        const originator = row['Originator']?.trim();
+        const originator = row['Originator'];
+        const originatorText = originator ? originator.trim() : '';
 
-        if (originator) {
-            return `Originator: ${originator}`;
+        if (originatorText) {
+            return `Originator: ${originatorText}`;
         }
 
         return null;
     }
 
     _extractRequirementDocumentReferences(row) {
-        const conopsSection = row['CONOPS Section']?.trim();
-        const sourceReference = row['Source Reference']?.trim();
+        const conopsSection = row['CONOPS Section'];
+        const sourceReference = row['Source Reference'];
 
-        if (!conopsSection && !sourceReference) {
+        const conopsSectionText = conopsSection ? conopsSection.trim() : '';
+        const sourceRefText = sourceReference ? sourceReference.trim() : '';
+
+        if (!conopsSectionText && !sourceRefText) {
             return [];
         }
 
         let note = '';
 
-        if (conopsSection && sourceReference) {
-            note = `${conopsSection}. ${sourceReference}`;
-        } else if (conopsSection) {
-            note = conopsSection;
+        if (conopsSectionText && sourceRefText) {
+            note = `${conopsSectionText}. ${sourceRefText}`;
+        } else if (conopsSectionText) {
+            note = conopsSectionText;
         } else {
-            note = sourceReference;
+            note = sourceRefText;
         }
 
         return [{
@@ -334,31 +361,38 @@ class FourDTMapper extends Mapper {
     }
 
     _resolveImplementedONs(row, onTitleMap) {
-        const operationalNeed = row['Operational Need']?.trim();
+        const operationalNeed = row['Operational Need'];
+        const operationalNeedText = operationalNeed ? operationalNeed.trim() : '';
 
-        if (!operationalNeed || operationalNeed === '') {
+        if (!operationalNeedText || operationalNeedText === '') {
             return [];
         }
 
-        const normalizedNeed = operationalNeed.toLowerCase();
+        const normalizedNeed = operationalNeedText.toLowerCase();
         const onExternalId = onTitleMap.get(normalizedNeed);
 
         if (onExternalId) {
             return [onExternalId];
         } else {
-            console.warn(`Unable to resolve ON reference: "${operationalNeed}" (OR: "${row['Title']}")`);
+            const rowTitle = row['Title'] || '';
+            console.warn(`Unable to resolve ON reference: "${operationalNeedText}" (OR: "${rowTitle}")`);
             return [];
         }
     }
 
     /**
      * Parse stakeholders column and map to reference objects
-     * @param {string} stakeholdersText - Comma-separated stakeholder text from Excel
+     * @param {string} stakeholdersText - Comma-separated stakeholder text from Excel (plain text)
      * @returns {Array<{externalId: string}>} Array of unique stakeholder references
      * @private
      */
     _parseStakeholders(stakeholdersText) {
-        if (!stakeholdersText || stakeholdersText.trim() === '') {
+        if (!stakeholdersText) {
+            return [];
+        }
+
+        const trimmedText = stakeholdersText.trim();
+        if (trimmedText === '') {
             return [];
         }
 
@@ -366,7 +400,7 @@ class FourDTMapper extends Mapper {
         const seenIds = new Set();  // Track duplicates
 
         // Split by comma and slash
-        const tokens = stakeholdersText.split(/[,/]/).map(t => t.trim()).filter(t => t);
+        const tokens = trimmedText.split(/[,/]/).map(t => t.trim()).filter(t => t);
 
         for (let token of tokens) {
             // Handle "CIV or MIL ANSP" by removing the prefix
@@ -383,7 +417,7 @@ class FourDTMapper extends Mapper {
                     seenIds.add(externalId);
                 }
             } else {
-                console.warn(`Unknown stakeholder token: "${token}" in text: "${stakeholdersText}"`);
+                console.warn(`Unknown stakeholder token: "${token}" in text: "${trimmedText}"`);
             }
         }
 

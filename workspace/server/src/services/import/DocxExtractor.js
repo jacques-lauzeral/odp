@@ -147,6 +147,194 @@ class DocxExtractor {
     }
 
     /**
+     * Convert HTML to AsciiDoc-style plain text
+     *
+     * DESIGN DECISION: Unified text format with AsciiDoc markers
+     * ===========================================================
+     * This method normalizes HTML from mammoth into plain text with AsciiDoc-style
+     * formatting markers, providing a consistent format for all mappers.
+     *
+     * Supported conversions:
+     * - <p>text</p> → "text" (paragraph separation handled by caller)
+     * - <strong>text</strong> → "**text**" (bold)
+     * - <em>text</em> or <i>text</i> → "*text*" (italic)
+     * - <u>text</u> → "__text__" (underline)
+     * - <ol><li>item</li></ol> → ". item" (ordered list, one per line)
+     * - <ul><li>item</li></ul> → "* item" (unordered list, one per line)
+     * - Nested formatting preserved: <strong><em>text</em></strong> → "***text***"
+     *
+     * Rationale:
+     * - Simple text processing for mappers (no HTML parsing needed)
+     * - Consistent format from both Word and Excel sources
+     * - AsciiDoc is well-established, readable convention
+     * - Single converter (textToDelta) handles all text → Delta conversion
+     *
+     * @param {string} html - HTML fragment from mammoth
+     * @returns {string} AsciiDoc-style plain text
+     * @private
+     */
+    _htmlToAsciiDoc(html) {
+        if (!html || html.trim() === '') {
+            return '';
+        }
+
+        let result = html;
+
+        // Handle lists first (they need special treatment)
+        // Extract ordered lists
+        result = result.replace(/<ol>(.*?)<\/ol>/gis, (match, content) => {
+            const items = [];
+            const liRegex = /<li>(.*?)<\/li>/gi;
+            let liMatch;
+
+            while ((liMatch = liRegex.exec(content)) !== null) {
+                const itemContent = this._htmlToAsciiDoc(liMatch[1]); // Recursive for nested formatting
+                items.push(`. ${itemContent}`);
+            }
+
+            return items.join('\n');
+        });
+
+        // Extract unordered lists
+        result = result.replace(/<ul>(.*?)<\/ul>/gis, (match, content) => {
+            const items = [];
+            const liRegex = /<li>(.*?)<\/li>/gi;
+            let liMatch;
+
+            while ((liMatch = liRegex.exec(content)) !== null) {
+                const itemContent = this._htmlToAsciiDoc(liMatch[1]); // Recursive for nested formatting
+                items.push(`* ${itemContent}`);
+            }
+
+            return items.join('\n');
+        });
+
+        // Convert inline formatting to AsciiDoc markers
+        // Bold: <strong> or <b> → **text**
+        result = result.replace(/<(strong|b)>(.*?)<\/\1>/gi, '**$2**');
+
+        // Italic: <em> or <i> → *text*
+        result = result.replace(/<(em|i)>(.*?)<\/\1>/gi, '*$2*');
+
+        // Underline: <u> → __text__
+        result = result.replace(/<u>(.*?)<\/u>/gi, '__$1__');
+
+        // Remove paragraph tags (preserve content)
+        result = result.replace(/<p>(.*?)<\/p>/gi, '$1');
+
+        // Remove any remaining HTML tags
+        result = result.replace(/<[^>]+>/g, '');
+
+        // Decode HTML entities
+        result = result
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'");
+
+        // Strip anchor tags (empty anchors for TOC)
+        result = result.replace(/<a[^>]*><\/a>/g, '');
+
+        return result.trim();
+    }
+
+    /**
+     * Extract all content elements (headings, paragraphs, lists, tables) from HTML
+     * in document order
+     * @param {string} html - HTML content
+     * @returns {Array} Array of elements with type and content
+     */
+    _extractAllElements(html) {
+        const elements = [];
+
+        // Extract headings with their anchor IDs
+        const headingRegex = /<h([1-6])>(.*?)<\/h\1>/gis;
+        let match;
+
+        while ((match = headingRegex.exec(html)) !== null) {
+            const level = parseInt(match[1]);
+            const content = match[2];
+
+            // Extract anchor ID if present
+            const anchorMatch = content.match(/<a id="([^"]+)"><\/a>/);
+            const anchorId = anchorMatch ? anchorMatch[1] : null;
+
+            // Extract text content (remove all tags)
+            const text = content.replace(/<[^>]+>/g, '').trim();
+
+            elements.push({
+                type: 'heading',
+                level: level,
+                content: text,
+                anchorId: anchorId,
+                position: match.index
+            });
+        }
+
+        // Extract paragraphs (excluding those that are part of headings)
+        const paragraphRegex = /<p>(.*?)<\/p>/gis;
+
+        while ((match = paragraphRegex.exec(html)) !== null) {
+            let content = match[1].trim();
+
+            // Skip empty paragraphs
+            if (!content) continue;
+
+            // Strip all anchor tags from content
+            content = content.replace(/<a[^>]*><\/a>/g, '');
+
+            // Check if paragraph contains an image
+            const hasImage = /<img\s/.test(content);
+
+            // Convert to AsciiDoc format
+            const asciiDocContent = this._htmlToAsciiDoc('<p>' + content + '</p>');
+
+            elements.push({
+                type: 'paragraph',
+                content: asciiDocContent,
+                hasImage: hasImage,
+                isList: false,
+                position: match.index
+            });
+        }
+
+        // Extract list blocks (ordered and unordered)
+        const listRegex = /<(ol|ul)>(.*?)<\/\1>/gis;
+        while ((match = listRegex.exec(html)) !== null) {
+            const listHtml = match[0]; // Complete <ol>...</ol> or <ul>...</ul>
+
+            // Convert to AsciiDoc format
+            const asciiDocContent = this._htmlToAsciiDoc(listHtml);
+
+            elements.push({
+                type: 'paragraph',
+                content: asciiDocContent,
+                hasImage: false,
+                isList: true,
+                position: match.index
+            });
+        }
+
+        // Extract tables
+        const tableRegex = /<table>(.*?)<\/table>/gis;
+        while ((match = tableRegex.exec(html)) !== null) {
+            elements.push({
+                type: 'table',
+                content: match[0], // Keep tables as HTML (they're processed differently)
+                position: match.index
+            });
+        }
+
+        // Sort elements by position in document
+        elements.sort((a, b) => a.position - b.position);
+
+        console.log(`Extracted ${elements.length} elements from HTML`);
+        return elements;
+    }
+
+    /**
      * Create a default root section when no headings are found
      * Extracts title from first paragraph or uses "Content" as fallback
      * @param {Array} elements - All extracted elements (paragraphs, tables, images)
@@ -234,135 +422,6 @@ class DocxExtractor {
         console.log(`Default section created with ${section.content.paragraphs?.length || 0} paragraphs and ${section.content.tables?.length || 0} tables`);
 
         return [section];
-    }
-
-    /**
-     * Extract all content elements (headings, paragraphs, lists, tables) from HTML
-     * in document order
-     * @param {string} html - HTML content
-     * @returns {Array} Array of elements with type and content
-     */
-    _extractAllElements(html) {
-        const elements = [];
-
-        // Extract headings with their anchor IDs
-        const headingRegex = /<h([1-6])>(.*?)<\/h\1>/gis;
-        let match;
-
-        while ((match = headingRegex.exec(html)) !== null) {
-            const level = parseInt(match[1]);
-            const content = match[2];
-
-            // Extract anchor ID if present
-            const anchorMatch = content.match(/<a id="([^"]+)"><\/a>/);
-            const anchorId = anchorMatch ? anchorMatch[1] : null;
-
-            // Extract text content (remove all tags)
-            const text = content.replace(/<[^>]+>/g, '').trim();
-
-            elements.push({
-                type: 'heading',
-                level: level,
-                content: text,
-                anchorId: anchorId,
-                position: match.index
-            });
-        }
-
-        // Extract paragraphs (excluding those that are part of headings)
-        const paragraphRegex = /<p>(.*?)<\/p>/gis;
-
-        while ((match = paragraphRegex.exec(html)) !== null) {
-            let content = match[1].trim();
-
-            // Skip empty paragraphs
-            if (!content) continue;
-
-            // Strip all anchor tags from content
-            content = content.replace(/<a[^>]*><\/a>/g, '');
-
-            // Check if paragraph contains an image
-            const hasImage = /<img\s/.test(content);
-
-            elements.push({
-                type: 'paragraph',
-                content: content,
-                hasImage: hasImage,
-                isList: false,
-                position: match.index
-            });
-        }
-
-        // Extract list items (ordered and unordered)
-        // Handle ordered lists
-        const olRegex = /<ol>(.*?)<\/ol>/gis;
-        while ((match = olRegex.exec(html)) !== null) {
-            const listHtml = match[1];
-            const liRegex = /<li>(.*?)<\/li>/gi;
-            let liMatch;
-
-            while ((liMatch = liRegex.exec(listHtml)) !== null) {
-                let content = liMatch[1].trim();
-                if (content) {
-                    // Strip anchor tags from list item content
-                    content = content.replace(/<a[^>]*><\/a>/g, '');
-                    // Add prefix to indicate list item
-                    content = '- ' + content;
-
-                    elements.push({
-                        type: 'paragraph',
-                        content: content,
-                        hasImage: false,
-                        isList: true,
-                        listType: 'ordered',
-                        position: match.index + liMatch.index
-                    });
-                }
-            }
-        }
-
-        // Handle unordered lists
-        const ulRegex = /<ul>(.*?)<\/ul>/gis;
-        while ((match = ulRegex.exec(html)) !== null) {
-            const listHtml = match[1];
-            const liRegex = /<li>(.*?)<\/li>/gi;
-            let liMatch;
-
-            while ((liMatch = liRegex.exec(listHtml)) !== null) {
-                let content = liMatch[1].trim();
-                if (content) {
-                    // Strip anchor tags from list item content
-                    content = content.replace(/<a[^>]*><\/a>/g, '');
-                    // Add prefix to indicate list item
-                    content = '- ' + content;
-
-                    elements.push({
-                        type: 'paragraph',
-                        content: content,
-                        hasImage: false,
-                        isList: true,
-                        listType: 'unordered',
-                        position: match.index + liMatch.index
-                    });
-                }
-            }
-        }
-
-        // Extract tables
-        const tableRegex = /<table>(.*?)<\/table>/gis;
-        while ((match = tableRegex.exec(html)) !== null) {
-            elements.push({
-                type: 'table',
-                content: match[0],
-                position: match.index
-            });
-        }
-
-        // Sort elements by position in document
-        elements.sort((a, b) => a.position - b.position);
-
-        console.log(`Extracted ${elements.length} elements from HTML`);
-        return elements;
     }
 
     /**
@@ -598,6 +657,12 @@ class DocxExtractor {
         return [text];
     }
 
+    /**
+     * Parse table HTML and convert cell content to AsciiDoc format
+     * @param {string} tableHtml - HTML table content
+     * @returns {Object} Table data with AsciiDoc-formatted cells
+     * @private
+     */
     _parseSimpleTable(tableHtml) {
         const rows = [];
         const rowRegex = /<tr>(.*?)<\/tr>/gis;
@@ -609,7 +674,10 @@ class DocxExtractor {
             let cellMatch;
 
             while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-                cells.push(cellMatch[1].trim());
+                const cellHtml = cellMatch[1].trim();
+                // Convert cell HTML to AsciiDoc format
+                const asciiDocContent = this._htmlToAsciiDoc(cellHtml);
+                cells.push(asciiDocContent);
             }
 
             if (cells.length > 0) {

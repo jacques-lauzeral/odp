@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import {textToDelta} from "./utils.js";
+import DocxToDeltaConverter from './DocxToDeltaConverter.js';
 
 /**
  * FlowMapper - Maps FLOW Operational Needs and Requirements Word documents
@@ -152,6 +152,11 @@ import {textToDelta} from "./utils.js";
  * - Use Case sections themselves (content injected into ONs instead)
  */
 class FlowMapper extends Mapper {
+    constructor() {
+        super();
+        this.converter = new DocxToDeltaConverter();
+    }
+
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
@@ -675,6 +680,7 @@ class FlowMapper extends Mapper {
 
     /**
      * Extract table data from section content
+     * Preserves AsciiDoc formatting for rich text fields
      * @private
      * @param {boolean} excludeDateOriginator - If true, exclude Date and Originator fields
      * @returns {Object} Field name (lowercase) -> value
@@ -686,6 +692,21 @@ class FlowMapper extends Mapper {
             return data;
         }
 
+        // Fields that should preserve AsciiDoc formatting (will be converted to Delta)
+        const richTextFields = [
+            'need statement',
+            'detailed requirement',
+            'statement',
+            'rationale',
+            'fit criteria',
+            'opportunities/risks',
+            'flows',
+            'dependencies',
+            'data (and other enabler)',
+            'data (and other enablers)',
+            'impacted services'
+        ];
+
         // Process first table (assuming single table per section)
         const table = section.content.tables[0];
 
@@ -695,7 +716,7 @@ class FlowMapper extends Mapper {
             const fieldCell = row[0];
             const valueCell = row[1];
 
-            // Extract field name (remove HTML tags, colons, normalize)
+            // Extract field name (strip formatting, remove colons, normalize)
             const fieldName = this._extractText(fieldCell)
                 .replace(/:/g, '')
                 .trim()
@@ -706,8 +727,13 @@ class FlowMapper extends Mapper {
                 continue;
             }
 
-            // Extract value (remove HTML tags, trim)
-            const value = this._extractText(valueCell).trim();
+            // For rich text fields, preserve AsciiDoc; for others, strip formatting
+            let value;
+            if (richTextFields.includes(fieldName)) {
+                value = valueCell.trim(); // Keep AsciiDoc formatting
+            } else {
+                value = this._extractText(valueCell).trim(); // Strip formatting
+            }
 
             if (fieldName && value) {
                 data[fieldName] = value;
@@ -718,19 +744,27 @@ class FlowMapper extends Mapper {
     }
 
     /**
-     * Extract text from HTML cell content
+     * Extract text from cell content (strips AsciiDoc formatting markers)
      * @private
      */
-    _extractText(html) {
-        if (!html) return '';
+    _extractText(text) {
+        if (!text) return '';
 
-        // Remove HTML tags
-        let text = html.replace(/<[^>]*>/g, '');
+        let result = text;
 
-        // Handle list paragraphs (join with newlines)
-        text = text.replace(/\n+/g, '\n').trim();
+        // Strip AsciiDoc formatting markers
+        result = result.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → text
+        result = result.replace(/\*([^*]+)\*/g, '$1');       // *italic* → text
+        result = result.replace(/__([^_]+)__/g, '$1');       // __underline__ → text
 
-        return text;
+        // Strip AsciiDoc list markers
+        result = result.replace(/^\. /gm, '');  // Ordered list
+        result = result.replace(/^\* /gm, '');  // Bullet list
+
+        // Handle multiple newlines (join with newlines)
+        result = result.replace(/\n+/g, '\n').trim();
+
+        return result;
     }
 
     /**
@@ -992,9 +1026,9 @@ class FlowMapper extends Mapper {
                 if (Array.isArray(value) && value.length === 0) continue;
                 if (value === '') continue;
 
-                // Apply textToDelta to text fields
+                // Apply Delta conversion to text fields
                 if (key === 'statement' || key === 'rationale' || key === 'flows' || key === 'privateNotes') {
-                    cleaned[key] = textToDelta(value);
+                    cleaned[key] = this.converter.convertHtmlToDelta(value);
                 } else {
                     cleaned[key] = value;
                 }
