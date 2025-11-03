@@ -9,6 +9,14 @@ class DocxEntityRenderer {
     }
 
     /**
+     * Get all unique numbering instances used by the delta converter
+     * @returns {Set} - Set of numbering instance IDs
+     */
+    getUsedNumberingInstances() {
+        return this.deltaConverter.getUsedNumberingInstances();
+    }
+
+    /**
      * Create table cell margins
      */
     _getCellMargins() {

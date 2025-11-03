@@ -49,183 +49,188 @@ class DocxGenerator {
 
     /**
      * Build numbering configuration for lists
+     * @param {Set} usedInstances - Set of numbering instance IDs used in content
      */
-    _buildNumberingConfig() {
-        return {
-            config: [
-                // Outline numbering for section headings (multilevel)
-                {
-                    reference: 'outline-numbering',
-                    levels: [
-                        {
-                            level: 0,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 0, hanging: 0 }
-                                }
-                            }
-                        },
-                        {
-                            level: 1,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.%2.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 0, hanging: 0 }
-                                }
-                            }
-                        },
-                        {
-                            level: 2,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.%2.%3.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 0, hanging: 0 }
-                                }
-                            }
-                        },
-                        {
-                            level: 3,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.%2.%3.%4.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 0, hanging: 0 }
-                                }
-                            }
-                        },
-                        {
-                            level: 4,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.%2.%3.%4.%5.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 0, hanging: 0 }
-                                }
-                            }
-                        },
-                        {
-                            level: 5,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.%2.%3.%4.%5.%6.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 0, hanging: 0 }
-                                }
+    _buildNumberingConfig(usedInstances = new Set()) {
+        const config = [
+            // Outline numbering for section headings (multilevel)
+            {
+                reference: 'outline-numbering',
+                levels: [
+                    {
+                        level: 0,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
                             }
                         }
-                    ]
-                },
-                // Ordered lists for content
-                {
-                    reference: 'default-numbering',
-                    levels: [
-                        {
-                            level: 0,
-                            format: LevelFormat.DECIMAL,
-                            text: '%1.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 720, hanging: 360 }
-                                }
-                            }
-                        },
-                        {
-                            level: 1,
-                            format: LevelFormat.DECIMAL,
-                            text: '%2.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 1440, hanging: 360 }
-                                }
-                            }
-                        },
-                        {
-                            level: 2,
-                            format: LevelFormat.DECIMAL,
-                            text: '%3.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 2160, hanging: 360 }
-                                }
-                            }
-                        },
-                        {
-                            level: 3,
-                            format: LevelFormat.DECIMAL,
-                            text: '%4.',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 2880, hanging: 360 }
-                                }
+                    },
+                    {
+                        level: 1,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
                             }
                         }
-                    ]
-                },
-                {
-                    reference: 'default-bullet',
-                    levels: [
-                        {
-                            level: 0,
-                            format: LevelFormat.BULLET,
-                            text: '•',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 720, hanging: 360 }
-                                }
-                            }
-                        },
-                        {
-                            level: 1,
-                            format: LevelFormat.BULLET,
-                            text: '◦',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 1440, hanging: 360 }
-                                }
-                            }
-                        },
-                        {
-                            level: 2,
-                            format: LevelFormat.BULLET,
-                            text: '▪',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 2160, hanging: 360 }
-                                }
-                            }
-                        },
-                        {
-                            level: 3,
-                            format: LevelFormat.BULLET,
-                            text: '▪',
-                            alignment: AlignmentType.START,
-                            style: {
-                                paragraph: {
-                                    indent: { left: 2880, hanging: 360 }
-                                }
+                    },
+                    {
+                        level: 2,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
                             }
                         }
-                    ]
-                }
-            ]
-        };
+                    },
+                    {
+                        level: 3,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.%4.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
+                            }
+                        }
+                    },
+                    {
+                        level: 4,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.%4.%5.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
+                            }
+                        }
+                    },
+                    {
+                        level: 5,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.%4.%5.%6.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
+                            }
+                        }
+                    }
+                ]
+            },
+            // Bullet lists for content (shared across all bullet lists)
+            {
+                reference: 'default-bullet',
+                levels: [
+                    {
+                        level: 0,
+                        format: LevelFormat.BULLET,
+                        text: '•',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 720, hanging: 360 }
+                            }
+                        }
+                    },
+                    {
+                        level: 1,
+                        format: LevelFormat.BULLET,
+                        text: '◦',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 1440, hanging: 360 }
+                            }
+                        }
+                    },
+                    {
+                        level: 2,
+                        format: LevelFormat.BULLET,
+                        text: '▪',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 2160, hanging: 360 }
+                            }
+                        }
+                    },
+                    {
+                        level: 3,
+                        format: LevelFormat.BULLET,
+                        text: '▪',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 2880, hanging: 360 }
+                            }
+                        }
+                    }
+                ]
+            }
+        ];
+
+        // Add dynamic numbering configs for each used ordered list instance
+        usedInstances.forEach(instanceId => {
+            config.push({
+                reference: `ordered-list-${instanceId}`,
+                levels: [
+                    {
+                        level: 0,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 720, hanging: 360 }
+                            }
+                        }
+                    },
+                    {
+                        level: 1,
+                        format: LevelFormat.DECIMAL,
+                        text: '%2.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 1440, hanging: 360 }
+                            }
+                        }
+                    },
+                    {
+                        level: 2,
+                        format: LevelFormat.DECIMAL,
+                        text: '%3.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 2160, hanging: 360 }
+                            }
+                        }
+                    },
+                    {
+                        level: 3,
+                        format: LevelFormat.DECIMAL,
+                        text: '%4.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 2880, hanging: 360 }
+                            }
+                        }
+                    }
+                ]
+            });
+        });
+
+        return { config };
     }
 
     /**
@@ -240,15 +245,24 @@ class DocxGenerator {
         // Build hierarchy from separate requirements and changes arrays
         const hierarchy = this._buildHierarchy(requirements, changes);
 
+        // Build document content first (this processes delta and assigns numbering instances)
+        const content = this._buildDocumentContent(hierarchy, metadata);
+
+        // Collect used numbering instances from renderer
+        const usedInstances = this.renderer.getUsedNumberingInstances();
+
+        // Build numbering config with dynamic instances
+        const numberingConfig = this._buildNumberingConfig(usedInstances);
+
         const doc = new Document({
             creator: metadata.userId || 'ODP System',
             title: `Requirements Export - ${metadata.drg}`,
             description: `Operational requirements for DRG: ${metadata.drg}`,
             styles: DOCUMENT_STYLES,
-            numbering: this._buildNumberingConfig(),
+            numbering: numberingConfig,
             sections: [{
                 properties: {},
-                children: this._buildDocumentContent(hierarchy, metadata)
+                children: content
             }]
         });
 

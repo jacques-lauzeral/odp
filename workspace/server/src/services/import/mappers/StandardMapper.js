@@ -268,10 +268,18 @@ export class StandardMapper {
             return null;
         }
 
+        // Extract Code field (required)
+        const code = this._extractPlainText(fields['Code'] || fields['code']);
+        if (!code) {
+            console.warn(`[StandardMapper] Skipping ${type} without Code field in section "${sectionTitle}"`);
+            return null;
+        }
+
         // Build base entity
         const entity = {
             type: type,
             drg: this.drg,
+            externalId: code,
             title: title.trim()
         };
 
@@ -284,9 +292,6 @@ export class StandardMapper {
         if (parentEntity) {
             entity.refinesParents = [parentEntity.externalId];
         }
-
-        // Generate external ID
-        entity.externalId = this._buildExternalId(entity);
 
         // Map type-specific fields
         if (type === 'ON' || type === 'OR') {
@@ -325,7 +330,7 @@ export class StandardMapper {
         this._addRichTextField(entity, 'privateNotes', fields['Private Notes']);
 
         // Entity references
-        this._addEntityReferences(entity, 'implementedONs', fields['Implements Needs']);
+        this._addEntityReferences(entity, 'implementedONs', fields['Implements']);
         this._addEntityReferences(entity, 'dependsOnRequirements', fields['Depends On Requirements']);
 
         // Document references

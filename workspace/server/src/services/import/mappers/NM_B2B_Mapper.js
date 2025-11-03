@@ -351,16 +351,28 @@ class NM_B2B_Mapper extends Mapper {
                 rationale += '\n\n' + text;
             } else if (currentSection === 'flows' && text) {
                 flows += '\n\n' + text;
-            } else if (currentSection === 'implementedONs' && text.startsWith('- ')) {
-                const reference = text.substring(2).trim();
-                const normalizedId = this._normalizeONReference(reference, subsection.path);
-                if (normalizedId) {
-                    implementedONs.push(normalizedId);
+            } else if (currentSection === 'implementedONs') {
+                // Split by newlines to handle both single and multi-line formats
+                const lines = text.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('* ')) {
+                        const reference = line.substring(2).trim();
+                        const normalizedId = this._normalizeONReference(reference, subsection.path);
+                        if (normalizedId) {
+                            implementedONs.push(normalizedId);
+                        }
+                    }
                 }
-            } else if (currentSection === 'references' && text.startsWith('- ')) {
-                const reference = this._parseDocumentReference(text.substring(2).trim());
-                if (reference) {
-                    documentReferences.push(reference);
+            } else if (currentSection === 'references') {
+                // Split by newlines to handle both single and multi-line formats
+                const lines = text.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('* ')) {
+                        const reference = this._parseDocumentReference(line.substring(2).trim());
+                        if (reference) {
+                            documentReferences.push(reference);
+                        }
+                    }
                 }
             }
         }

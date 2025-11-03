@@ -303,22 +303,37 @@ class iDL_Mapper extends Mapper {
                 rationale += '\n\n' + text;
             } else if (currentSection === 'flows' && text) {
                 flows += '\n\n' + text;
-            } else if (currentSection === 'implementedONs' && text.startsWith('-')) {
-                const reference = text.substring(1).trim();
-                const normalizedId = this._normalizeONReference(reference, subsection.path);
-                if (normalizedId) {
-                    implementedONs.push(normalizedId);
+            } else if (currentSection === 'implementedONs') {
+                const lines = text.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('* ')) {
+                        const reference = line.substring(2).trim();
+                        const normalizedId = this._normalizeONReference(reference, subsection.path);
+                        if (normalizedId) {
+                            implementedONs.push(normalizedId);
+                        }
+                    }
                 }
-            } else if (currentSection === 'dependsOnRequirements' && text.startsWith('-')) {
-                const reference = text.substring(1).trim();
-                const normalizedId = this._normalizeORReference(reference, subsection.path);
-                if (normalizedId) {
-                    dependsOnRequirements.push(normalizedId);
+            } else if (currentSection === 'dependsOnRequirements') {
+                const lines = text.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('* ')) {
+                        const reference = line.substring(2).trim();
+                        const normalizedId = this._normalizeORReference(reference, subsection.path);
+                        if (normalizedId) {
+                            dependsOnRequirements.push(normalizedId);
+                        }
+                    }
                 }
-            } else if (currentSection === 'conopsReferences' && text.startsWith('-')) {
-                const reference = this._parseDocumentReference(text.substring(1).trim());
-                if (reference) {
-                    documentReferences.push(reference);
+            } else if (currentSection === 'conopsReferences') {
+                const lines = text.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('* ')) {
+                        const reference = this._parseDocumentReference(line.substring(2).trim());
+                        if (reference) {
+                            documentReferences.push(reference);
+                        }
+                    }
                 }
             }
         }

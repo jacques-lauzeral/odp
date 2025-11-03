@@ -6,6 +6,20 @@ import { Paragraph, TextRun } from 'docx';
  * Supports inline formatting (bold, italic, underline) and lists (bullet/ordered).
  */
 class DeltaToDocxConverter {
+    constructor() {
+        // Track numbering instances for list restart
+        this.numberingInstanceCounter = 0;
+        this.usedNumberingInstances = new Set();
+    }
+
+    /**
+     * Get all unique numbering instances used by this converter
+     * @returns {Set} - Set of numbering instance IDs
+     */
+    getUsedNumberingInstances() {
+        return this.usedNumberingInstances;
+    }
+
     /**
      * Convert Delta JSON string to array of docx Paragraphs
      * @param {string} deltaJson - Escaped JSON string containing Quill Delta
@@ -71,11 +85,12 @@ class DeltaToDocxConverter {
     }
 
     /**
-     * Split ops array into paragraph segments
+     * Split ops array into paragraph segments with list boundary detection
      * Step 1: Normalize ops (split multi-line inserts)
      * Step 2: Segment into lines based on newlines
+     * Step 3: Detect list boundaries and assign numbering instances
      * @param {Array} ops - Quill Delta ops array
-     * @returns {Array} - Array of paragraph segments
+     * @returns {Array} - Array of paragraph segments with numbering instance IDs
      */
     _segmentIntoParagraphs(ops) {
         // Step 1: Normalize ops by splitting multi-line insert strings
@@ -116,7 +131,41 @@ class DeltaToDocxConverter {
             segments.push({ runs: [], attributes: {} });
         }
 
+        // Step 3: Detect list boundaries and assign numbering instances
+        this._assignNumberingInstances(segments);
+
         return segments;
+    }
+
+    /**
+     * Detect list boundaries and assign unique numbering instances to each ordered list block
+     * Modifies segments in place by adding numberingInstanceId property
+     * @param {Array} segments - Array of paragraph segments
+     */
+    _assignNumberingInstances(segments) {
+        let currentListType = null;
+        let currentInstanceId = null;
+
+        for (const segment of segments) {
+            const listType = segment.attributes.list;
+
+            // Detect list boundary (type change)
+            if (listType !== currentListType) {
+                // If starting a new ordered list block, create new instance
+                if (listType === 'ordered') {
+                    currentInstanceId = this.numberingInstanceCounter++;
+                    this.usedNumberingInstances.add(currentInstanceId);
+                } else {
+                    currentInstanceId = null;
+                }
+                currentListType = listType;
+            }
+
+            // Assign instance ID to ordered list items
+            if (listType === 'ordered' && currentInstanceId !== null) {
+                segment.numberingInstanceId = currentInstanceId;
+            }
+        }
     }
 
     /**
@@ -169,11 +218,11 @@ class DeltaToDocxConverter {
 
     /**
      * Create a docx Paragraph from a segment
-     * @param {Object} segment - Paragraph segment with runs and attributes
+     * @param {Object} segment - Paragraph segment with runs, attributes, and optional numberingInstanceId
      * @returns {Paragraph} - docx Paragraph object
      */
     _createParagraph(segment) {
-        const { runs, attributes } = segment;
+        const { runs, attributes, numberingInstanceId } = segment;
 
         // Build children (TextRuns) from runs
         const children = runs.map(run => this._createTextRun(run));
@@ -196,8 +245,10 @@ class DeltaToDocxConverter {
                     level: attributes.indent || 0
                 };
             } else if (attributes.list === 'ordered') {
+                // Use unique numbering reference for each ordered list block
+                const reference = `ordered-list-${numberingInstanceId}`;
                 paragraphOptions.numbering = {
-                    reference: 'default-numbering',
+                    reference: reference,
                     level: attributes.indent || 0
                 };
             }
