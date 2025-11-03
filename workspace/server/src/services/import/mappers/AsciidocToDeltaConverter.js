@@ -71,17 +71,22 @@ class AsciidocToDeltaConverter {
                 continue;
             }
 
-            // Check for list items
-            if (trimmedLine.startsWith('. ') || trimmedLine.startsWith('* ')) {
-                const listType = trimmedLine.startsWith('. ') ? 'ordered' : 'bullet';
-                const prefix = trimmedLine.startsWith('. ') ? '. ' : '* ';
+            // Check for list items (with depth support: ., .., ... or *, **, ***)
+            const listMatch = trimmedLine.match(/^([.*]{1,3})\s+/);
+            if (listMatch) {
+                const marker = listMatch[1];
+                const listType = marker.includes('.') ? 'ordered' : 'bullet';
+                const indent = marker.length - 1; // 0, 1, or 2 for max 3 levels
 
-                // Process consecutive list items of same type
+                // Process consecutive list items of same type and depth
                 while (i < lines.length) {
                     const currentLine = lines[i].trimStart();
-                    if (!currentLine.startsWith(prefix)) break;
+                    const currentMatch = currentLine.match(/^([.*]{1,3})\s+/);
 
-                    const content = currentLine.substring(prefix.length);
+                    // Stop if not a list item or different marker pattern
+                    if (!currentMatch || currentMatch[1] !== marker) break;
+
+                    const content = currentLine.substring(currentMatch[0].length);
 
                     // Parse inline formatting in list item
                     const runs = this._parseInlineFormatting(content);
@@ -97,10 +102,14 @@ class AsciidocToDeltaConverter {
                         }
                     }
 
-                    // Add newline with list attribute
+                    // Add newline with list attribute and indent
+                    const listAttributes = { list: listType };
+                    if (indent > 0) {
+                        listAttributes.indent = indent;
+                    }
                     ops.push({
                         insert: '\n',
-                        attributes: { list: listType }
+                        attributes: listAttributes
                     });
 
                     i++;

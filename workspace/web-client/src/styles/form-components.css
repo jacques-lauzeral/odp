@@ -676,3 +676,70 @@
         width: 100%;
     }
 }
+
+/* Read-Only Richtext (Disabled Quill) - Compact Styling */
+.richtext-readonly {
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.richtext-readonly.ql-container {
+    border: none !important;
+    font-size: var(--font-size-base, 1rem);
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+}
+
+.richtext-readonly .ql-editor {
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: 1.7;
+    color: var(--text-secondary, #6b7280);
+    min-height: 0 !important;
+}
+
+.richtext-readonly .ql-clipboard {
+    display: none !important;
+}
+
+.richtext-readonly .ql-editor p {
+    margin-bottom: var(--space-3, 0.75rem);
+}
+
+.richtext-readonly .ql-editor p:first-child {
+    margin-top: 0;
+}
+
+.richtext-readonly .ql-editor p:last-child {
+    margin-bottom: 0;
+}
+
+.richtext-readonly .ql-editor strong {
+    font-weight: var(--font-weight-semibold, 600);
+    color: var(--text-primary, #111827);
+}
+
+.richtext-readonly .ql-editor ol,
+.richtext-readonly .ql-editor ul {
+    margin-left: var(--space-6, 1.5rem);
+    margin-bottom: var(--space-3, 0.75rem);
+    margin-top: 0;
+    padding-left: 0;
+}
+
+.richtext-readonly .ql-editor li {
+    margin-bottom: var(--space-2, 0.5rem);
+    padding-left: 0;
+}
+
+/* Also target the parent detail-value container for richtext */
+.detail-value.richtext-content {
+    padding: 0;
+}
+
+.detail-value.richtext-content .richtext-placeholder {
+    margin: 0;
+    padding: 0;
+}

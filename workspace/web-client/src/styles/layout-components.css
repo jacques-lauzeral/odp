@@ -202,7 +202,7 @@
 .modal-body {
     padding: var(--space-6);
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .modal-footer {

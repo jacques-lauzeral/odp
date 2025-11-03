@@ -31,13 +31,15 @@ class DocxExtractor {
                     // "p => p:fresh"
                     //"p:not(numbering) => p:fresh"
 
-                    // Explicitly preserve ordered list items
+                    // Explicitly preserve ordered list items with nesting
                     "p[style-name='List Paragraph']:ordered-list(1) => ol > li:fresh",
-                    "p[style-name='List Paragraph']:ordered-list(2) => ol > li:fresh",
+                    "p[style-name='List Paragraph']:ordered-list(2) => ol > ol > li:fresh",
+                    "p[style-name='List Paragraph']:ordered-list(3) => ol > ol > ol > li:fresh",
 
-                    // Explicitly preserve unordered list items
+                    // Explicitly preserve unordered list items with nesting
                     "p[style-name='List Paragraph']:unordered-list(1) => ul > li:fresh",
-                    "p[style-name='List Paragraph']:unordered-list(2) => ul > li:fresh"
+                    "p[style-name='List Paragraph']:unordered-list(2) => ul > ul > li:fresh",
+                    "p[style-name='List Paragraph']:unordered-list(3) => ul > ul > ul > li:fresh"
 
                 ],
                 convertImage: mammoth.images.imgElement(function(image) {
@@ -173,41 +175,15 @@ class DocxExtractor {
      * @returns {string} AsciiDoc-style plain text
      * @private
      */
-    _htmlToAsciiDoc(html) {
+    _htmlToAsciiDoc(html, listDepth = 0) {
         if (!html || html.trim() === '') {
             return '';
         }
 
         let result = html;
 
-        // Handle lists first (they need special treatment)
-        // Extract ordered lists
-        result = result.replace(/<ol>(.*?)<\/ol>/gis, (match, content) => {
-            const items = [];
-            const liRegex = /<li>(.*?)<\/li>/gi;
-            let liMatch;
-
-            while ((liMatch = liRegex.exec(content)) !== null) {
-                const itemContent = this._htmlToAsciiDoc(liMatch[1]); // Recursive for nested formatting
-                items.push(`. ${itemContent}`);
-            }
-
-            return items.join('\n');
-        });
-
-        // Extract unordered lists
-        result = result.replace(/<ul>(.*?)<\/ul>/gis, (match, content) => {
-            const items = [];
-            const liRegex = /<li>(.*?)<\/li>/gi;
-            let liMatch;
-
-            while ((liMatch = liRegex.exec(content)) !== null) {
-                const itemContent = this._htmlToAsciiDoc(liMatch[1]); // Recursive for nested formatting
-                items.push(`* ${itemContent}`);
-            }
-
-            return items.join('\n');
-        });
+        // Handle lists first with proper tag-depth tracking (not regex)
+        result = this._processListsWithDepthTracking(result, listDepth);
 
         // Convert inline formatting to AsciiDoc markers
         // Bold: <strong> or <b> → **text**
@@ -238,6 +214,160 @@ class DocxExtractor {
         result = result.replace(/<a[^>]*><\/a>/g, '');
 
         return result.trim();
+    }
+
+    /**
+     * Process lists with proper tag-depth tracking to handle nested structures
+     * This replaces regex-based processing which can't handle nested tags correctly
+     * @param {string} html - HTML content
+     * @param {number} listDepth - Current list nesting depth
+     * @returns {string} HTML with lists converted to AsciiDoc
+     * @private
+     */
+    _processListsWithDepthTracking(html, listDepth) {
+        let result = '';
+        let position = 0;
+
+        while (position < html.length) {
+            // Find next list opening tag
+            const olIndex = html.indexOf('<ol>', position);
+            const ulIndex = html.indexOf('<ul>', position);
+
+            // Determine which comes first (or if any exist)
+            let nextListIndex = -1;
+            let listType = null;
+
+            if (olIndex !== -1 && (ulIndex === -1 || olIndex < ulIndex)) {
+                nextListIndex = olIndex;
+                listType = 'ordered';
+            } else if (ulIndex !== -1) {
+                nextListIndex = ulIndex;
+                listType = 'bullet';
+            }
+
+            // No more lists found
+            if (nextListIndex === -1) {
+                result += html.substring(position);
+                break;
+            }
+
+            // Add content before the list
+            result += html.substring(position, nextListIndex);
+
+            // Find matching closing tag with depth tracking
+            const openTag = listType === 'ordered' ? '<ol>' : '<ul>';
+            const closeTag = listType === 'ordered' ? '</ol>' : '</ul>';
+
+            let depth = 1;
+            let searchPos = nextListIndex + openTag.length;
+            let closeIndex = -1;
+
+            while (searchPos < html.length && depth > 0) {
+                const nextOpen = html.indexOf(openTag, searchPos);
+                const nextClose = html.indexOf(closeTag, searchPos);
+
+                if (nextClose === -1) {
+                    // No closing tag found - malformed HTML
+                    break;
+                }
+
+                if (nextOpen !== -1 && nextOpen < nextClose) {
+                    // Found nested opening tag
+                    depth++;
+                    searchPos = nextOpen + openTag.length;
+                } else {
+                    // Found closing tag
+                    depth--;
+                    if (depth === 0) {
+                        closeIndex = nextClose;
+                        break;
+                    }
+                    searchPos = nextClose + closeTag.length;
+                }
+            }
+
+            if (closeIndex === -1) {
+                // Malformed HTML - no matching close tag
+                result += html.substring(nextListIndex);
+                break;
+            }
+
+            // Extract list content (between opening and closing tags)
+            const listContent = html.substring(nextListIndex + openTag.length, closeIndex);
+
+            // Process the list content
+            const asciiDocList = this._processListItems(listContent, listType, listDepth);
+            result += asciiDocList;
+
+            // Move position past the closing tag
+            position = closeIndex + closeTag.length;
+        }
+
+        return result;
+    }
+
+    /**
+     * Process list items with depth tracking for nested lists
+     * @param {string} content - HTML content inside <ol> or <ul>
+     * @param {string} listType - 'ordered' or 'bullet'
+     * @param {number} depth - Current nesting depth (0-2, max 3 levels)
+     * @returns {string} AsciiDoc formatted list items
+     * @private
+     */
+    _processListItems(content, listType, depth) {
+        const maxDepth = 2; // 0, 1, 2 = 3 levels total
+        const currentDepth = Math.min(depth, maxDepth);
+
+        // Generate prefix based on type and depth
+        const prefix = listType === 'ordered'
+            ? '.'.repeat(currentDepth + 1) + ' '
+            : '*'.repeat(currentDepth + 1) + ' ';
+
+        const items = [];
+
+        // Process content sequentially, looking for <li> and nested <ol>/<ul> as siblings
+        let position = 0;
+
+        while (position < content.length) {
+            // Try to match <li>...</li>
+            const liRegex = /<li>(.*?)<\/li>/gis;
+            liRegex.lastIndex = position;
+            const liMatch = liRegex.exec(content);
+
+            // Try to match nested <ol>...</ol> or <ul>...</ul>
+            const nestedListRegex = /<(ol|ul)>(.*?)<\/\1>/gis;
+            nestedListRegex.lastIndex = position;
+            const nestedMatch = nestedListRegex.exec(content);
+
+            // Determine which comes first
+            const liIndex = liMatch ? liMatch.index : Infinity;
+            const nestedIndex = nestedMatch ? nestedMatch.index : Infinity;
+
+            if (liIndex === Infinity && nestedIndex === Infinity) {
+                // No more matches
+                break;
+            }
+
+            if (liIndex < nestedIndex) {
+                // Process <li> item
+                const itemHtml = liMatch[1];
+                const itemContent = this._htmlToAsciiDoc(itemHtml, currentDepth + 1);
+                items.push(prefix + itemContent);
+                position = liRegex.lastIndex;
+            } else {
+                // Process nested list
+                const nestedType = nestedMatch[1] === 'ol' ? 'ordered' : 'bullet';
+                const nestedContent = nestedMatch[2];
+
+                // Recursively process nested list with incremented depth
+                const nestedItems = this._processListItems(nestedContent, nestedType, currentDepth + 1);
+                items.push(nestedItems);
+
+                position = nestedListRegex.lastIndex;
+            }
+        }
+
+        return items.join('\n');
     }
 
     /**

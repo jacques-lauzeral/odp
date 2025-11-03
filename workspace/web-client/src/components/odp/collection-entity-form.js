@@ -175,6 +175,9 @@ export class CollectionEntityForm {
 
         // NEW: Initialize annotated multiselect managers for read-only mode (if needed)
         this.initializeAnnotatedMultiselects();
+
+        // NEW: Initialize read-only richtext fields with disabled Quill editors
+        this.initializeRichtextReadOnly();
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
@@ -590,30 +593,15 @@ export class CollectionEntityForm {
             `;
         }
 
-        // Convert Delta to HTML for display
-        let html = '';
-        try {
-            // Create temporary container
-            const tempDiv = document.createElement('div');
-
-            // Check if Quill is available
-            if (typeof Quill !== 'undefined') {
-                const tempQuill = new Quill(tempDiv);
-                tempQuill.setContents(deltaValue);
-                html = tempQuill.root.innerHTML;
-            } else {
-                // Fallback: display as JSON if Quill not available
-                html = `<pre>${this.escapeHtml(JSON.stringify(deltaValue, null, 2))}</pre>`;
-            }
-        } catch (e) {
-            console.error('Failed to render richtext:', e);
-            html = '<em>Error rendering content</em>';
-        }
-
+        // Return placeholder that will be enhanced with disabled Quill editor after DOM insertion
+        // Store Delta JSON in data attribute for post-processing
+        const deltaJson = this.escapeHtml(JSON.stringify(deltaValue));
         return `
             <div class="detail-field">
                 <label>${this.escapeHtml(field.label)}</label>
-                <div class="detail-value richtext-content">${html}</div>
+                <div class="detail-value richtext-content">
+                    <div class="richtext-placeholder" data-delta="${deltaJson}" data-field-key="${field.key}"></div>
+                </div>
             </div>
         `;
     }
@@ -682,6 +670,59 @@ export class CollectionEntityForm {
 
         // Clear storage
         this.annotatedMultiselectManagers = {};
+    }
+
+    /**
+     * Initialize read-only richtext fields with disabled Quill editors
+     * Called after modal is rendered in read mode, or after non-modal content is inserted
+     * @param {HTMLElement} container - Optional container to search within (defaults to currentModal)
+     */
+    initializeRichtextReadOnly(container = null) {
+        const searchRoot = container || this.currentModal;
+
+        if (!searchRoot) {
+            console.warn('No container provided for richtext initialization');
+            return;
+        }
+
+        if (typeof Quill === 'undefined') {
+            console.warn('Quill is not loaded. Rich text will not render properly.');
+            return;
+        }
+
+        // Find all richtext placeholders
+        const placeholders = searchRoot.querySelectorAll('.richtext-placeholder');
+
+        placeholders.forEach(placeholder => {
+            const deltaJson = placeholder.getAttribute('data-delta');
+            const fieldKey = placeholder.getAttribute('data-field-key');
+
+            if (!deltaJson) {
+                console.warn(`No delta data found for richtext placeholder: ${fieldKey}`);
+                return;
+            }
+
+            try {
+                // Parse Delta JSON
+                const deltaValue = JSON.parse(deltaJson);
+
+                // Create Quill editor in the placeholder with minimal configuration
+                const quillEditor = new Quill(placeholder, {
+                    theme: null, // No theme for most compact rendering
+                    readOnly: true // Use readOnly instead of disable for cleaner rendering
+                });
+
+                // Set content
+                quillEditor.setContents(deltaValue);
+
+                // Optional: Add styling to indicate read-only state
+                placeholder.classList.add('richtext-readonly');
+
+            } catch (e) {
+                console.error(`Failed to initialize read-only richtext for ${fieldKey}:`, e);
+                placeholder.innerHTML = '<em>Error rendering content</em>';
+            }
+        });
     }
 
     // ====================
