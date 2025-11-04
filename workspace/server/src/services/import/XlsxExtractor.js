@@ -76,6 +76,7 @@ class XlsxExtractor {
         return normalized;
     }
 
+
     /**
      * Normalize text extracted from Excel cells
      * Removes carriage returns and converts tabs to spaces
