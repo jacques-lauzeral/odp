@@ -34,12 +34,27 @@ class DocxGenerator {
 
     /**
      * Create numbered heading using Word's outline numbering
+     * Supports levels 1-9: levels 1-6 use native heading styles, 7-9 use custom styles
      */
     _createNumberedHeading(title, level) {
+        // For levels 1-6, use native heading styles
+        if (level <= 6) {
+            return new Paragraph({
+                text: title,
+                heading: this._getHeadingLevel(level),
+                spacing: this._getSpacingForLevel(level),
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: level - 1  // Word levels are 0-indexed
+                }
+            });
+        }
+
+        // For levels 7-9, use custom style names
+        const styleName = `Heading${level}`;
         return new Paragraph({
             text: title,
-            heading: this._getHeadingLevel(level),
-            spacing: this._getSpacingForLevel(level),
+            style: styleName,
             numbering: {
                 reference: 'outline-numbering',
                 level: level - 1  // Word levels are 0-indexed
@@ -53,7 +68,7 @@ class DocxGenerator {
      */
     _buildNumberingConfig(usedInstances = new Set()) {
         const config = [
-            // Outline numbering for section headings (multilevel)
+            // Outline numbering for section headings (multilevel) - supports 9 levels
             {
                 reference: 'outline-numbering',
                 levels: [
@@ -116,6 +131,39 @@ class DocxGenerator {
                         level: 5,
                         format: LevelFormat.DECIMAL,
                         text: '%1.%2.%3.%4.%5.%6.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
+                            }
+                        }
+                    },
+                    {
+                        level: 6,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.%4.%5.%6.%7.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
+                            }
+                        }
+                    },
+                    {
+                        level: 7,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.%4.%5.%6.%7.%8.',
+                        alignment: AlignmentType.START,
+                        style: {
+                            paragraph: {
+                                indent: { left: 0, hanging: 0 }
+                            }
+                        }
+                    },
+                    {
+                        level: 8,
+                        format: LevelFormat.DECIMAL,
+                        text: '%1.%2.%3.%4.%5.%6.%7.%8.%9.',
                         alignment: AlignmentType.START,
                         style: {
                             paragraph: {
@@ -258,7 +306,65 @@ class DocxGenerator {
             creator: metadata.userId || 'ODP System',
             title: `Requirements Export - ${metadata.drg}`,
             description: `Operational requirements for DRG: ${metadata.drg}`,
-            styles: DOCUMENT_STYLES,
+            styles: {
+                default: DOCUMENT_STYLES.default,
+                paragraphStyles: [
+                    {
+                        id: "Heading7",
+                        name: "Heading 7",
+                        basedOn: "Normal",
+                        next: "Normal",
+                        quickFormat: true,
+                        run: {
+                            font: "Aptos",
+                            size: 22,  // 11pt
+                            bold: true
+                        },
+                        paragraph: {
+                            spacing: {
+                                before: 120,
+                                after: 200
+                            }
+                        }
+                    },
+                    {
+                        id: "Heading8",
+                        name: "Heading 8",
+                        basedOn: "Normal",
+                        next: "Normal",
+                        quickFormat: true,
+                        run: {
+                            font: "Aptos",
+                            size: 22,  // 11pt
+                            bold: true
+                        },
+                        paragraph: {
+                            spacing: {
+                                before: 120,
+                                after: 200
+                            }
+                        }
+                    },
+                    {
+                        id: "Heading9",
+                        name: "Heading 9",
+                        basedOn: "Normal",
+                        next: "Normal",
+                        quickFormat: true,
+                        run: {
+                            font: "Aptos",
+                            size: 22,  // 11pt
+                            bold: true
+                        },
+                        paragraph: {
+                            spacing: {
+                                before: 120,
+                                after: 200
+                            }
+                        }
+                    }
+                ]
+            },
             numbering: numberingConfig,
             sections: [{
                 properties: {},
@@ -607,7 +713,8 @@ class DocxGenerator {
     }
 
     /**
-     * Get appropriate heading level
+     * Get appropriate heading level (for native Word heading styles only)
+     * Only handles levels 1-6; levels 7+ use custom styles in _createNumberedHeading
      */
     _getHeadingLevel(level) {
         const levels = [
@@ -623,6 +730,7 @@ class DocxGenerator {
 
     /**
      * Get spacing for heading level
+     * Supports levels 1-9
      */
     _getSpacingForLevel(level) {
         const spacingMap = [
@@ -631,9 +739,12 @@ class DocxGenerator {
             SPACING.heading3,
             SPACING.heading4,
             SPACING.heading5,
-            SPACING.heading6
+            SPACING.heading6,
+            SPACING.heading7,
+            SPACING.heading8,
+            SPACING.heading9
         ];
-        return spacingMap[Math.min(level - 1, 5)];
+        return spacingMap[Math.min(level - 1, 8)];
     }
 }
 

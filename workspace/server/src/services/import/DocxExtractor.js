@@ -13,20 +13,35 @@ class DocxExtractor {
             const result = await mammoth.convertToHtml(fileBuffer, {
                 includeDefaultStyleMap: true, // Enable default list handling (ol/ul)
                 styleMap: [
-                    // Standard heading styles
+                    // Standard heading styles (levels 1-6)
                     "p[style-name='Heading 1'] => h1:fresh",
                     "p[style-name='Heading 2'] => h2:fresh",
                     "p[style-name='Heading 3'] => h3:fresh",
                     "p[style-name='Heading 4'] => h4:fresh",
                     "p[style-name='Heading 5'] => h5:fresh",
                     "p[style-name='Heading 6'] => h6:fresh",
-                    // Alternate heading style names
+                    // Alternate heading style names (lowercase)
                     "p[style-name='heading 1'] => h1:fresh",
                     "p[style-name='heading 2'] => h2:fresh",
                     "p[style-name='heading 3'] => h3:fresh",
                     "p[style-name='heading 4'] => h4:fresh",
                     "p[style-name='heading 5'] => h5:fresh",
                     "p[style-name='heading 6'] => h6:fresh",
+
+                    // Custom heading styles (levels 7-9)
+                    "p[style-name='Heading7'] => h7:fresh",
+                    "p[style-name='Heading 7'] => h7:fresh",
+                    "p[style-name='heading7'] => h7:fresh",
+                    "p[style-name='heading 7'] => h7:fresh",
+                    "p[style-name='Heading8'] => h8:fresh",
+                    "p[style-name='Heading 8'] => h8:fresh",
+                    "p[style-name='heading8'] => h8:fresh",
+                    "p[style-name='heading 8'] => h8:fresh",
+                    "p[style-name='Heading9'] => h9:fresh",
+                    "p[style-name='Heading 9'] => h9:fresh",
+                    "p[style-name='heading9'] => h9:fresh",
+                    "p[style-name='heading 9'] => h9:fresh",
+
                     // Normal paragraph
                     // "p => p:fresh"
                     //"p:not(numbering) => p:fresh"
@@ -423,11 +438,20 @@ class DocxExtractor {
      * @param {string} html - HTML content
      * @returns {Array} Array of elements with type and content
      */
+    /**
+     * Extract all content elements (headings, paragraphs, lists, tables) from HTML
+     * in document order
+     * Supports heading levels 1-9 for backward compatibility and extended hierarchy
+     * @param {string} html - HTML content
+     * @returns {Array} Array of elements with type and content
+     */
     _extractAllElements(html) {
         const elements = [];
 
-        // Extract headings with their anchor IDs
-        const headingRegex = /<h([1-6])>(.*?)<\/h\1>/gis;
+        // Extract headings with their anchor IDs (levels 1-9)
+        // Levels 1-6 are standard Word headings
+        // Levels 7-9 are custom styles mapped via mammoth styleMap
+        const headingRegex = /<h([1-9])>(.*?)<\/h\1>/gis;
         let match;
 
         while ((match = headingRegex.exec(html)) !== null) {
@@ -603,13 +627,14 @@ class DocxExtractor {
 
     /**
      * Build hierarchical section structure from flat list of elements
+     * Supports heading levels 1-9
      * @param {Array} elements - Flat list of elements
      * @returns {Array} Hierarchical array of sections
      */
     _buildSectionHierarchy(elements) {
         const sections = [];
         const sectionsByLevel = {}; // Track current section at each level
-        const counters = [0, 0, 0, 0, 0, 0]; // Counters for h1-h6
+        const counters = [0, 0, 0, 0, 0, 0, 0, 0, 0]; // Counters for h1-h9
 
         for (const element of elements) {
             if (element.type === 'heading') {
@@ -618,7 +643,7 @@ class DocxExtractor {
                 // Auto-generate section number based on hierarchy
                 counters[level - 1]++; // Increment counter at current level
                 // Reset all deeper level counters
-                for (let i = level; i < 6; i++) {
+                for (let i = level; i < 9; i++) {
                     counters[i] = 0;
                 }
                 // Build section number from counters
@@ -639,7 +664,7 @@ class DocxExtractor {
                 }
 
                 // Clear all deeper level sections
-                for (let l = level + 1; l <= 6; l++) {
+                for (let l = level + 1; l <= 9; l++) {
                     delete sectionsByLevel[l];
                 }
 
@@ -673,7 +698,7 @@ class DocxExtractor {
             } else if (element.type === 'paragraph') {
                 // Find the most recent section at any level
                 let currentSection = null;
-                for (let l = 6; l >= 1; l--) {
+                for (let l = 9; l >= 1; l--) {
                     if (sectionsByLevel[l]) {
                         currentSection = sectionsByLevel[l];
                         break;
@@ -738,7 +763,7 @@ class DocxExtractor {
             } else if (element.type === 'table') {
                 // Find the most recent section at any level
                 let currentSection = null;
-                for (let l = 6; l >= 1; l--) {
+                for (let l = 9; l >= 1; l--) {
                     if (sectionsByLevel[l]) {
                         currentSection = sectionsByLevel[l];
                         break;

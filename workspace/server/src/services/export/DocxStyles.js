@@ -52,6 +52,37 @@ export const DOCUMENT_STYLES = {
                 italics: true
             }
         },
+        // Custom styles for deeper heading levels (7-9)
+        heading7: {
+            run: {
+                font: "Aptos",
+                size: 22,  // 11pt
+                bold: true
+            },
+            paragraph: {
+                spacing: { before: 120, after: 200 }
+            }
+        },
+        heading8: {
+            run: {
+                font: "Aptos",
+                size: 22,  // 11pt
+                bold: true
+            },
+            paragraph: {
+                spacing: { before: 120, after: 200 }
+            }
+        },
+        heading9: {
+            run: {
+                font: "Aptos",
+                size: 22,  // 11pt
+                bold: true
+            },
+            paragraph: {
+                spacing: { before: 120, after: 200 }
+            }
+        },
         title: {
             run: {
                 font: "Aptos Display",
@@ -69,6 +100,9 @@ export const SPACING = {
     heading4: { before: 120, after: 200 },
     heading5: { before: 120, after: 200 },
     heading6: { before: 120, after: 200 },
+    heading7: { before: 120, after: 200 },
+    heading8: { before: 120, after: 200 },
+    heading9: { before: 120, after: 200 },
     afterTable: { after: 400 }
 };
 
