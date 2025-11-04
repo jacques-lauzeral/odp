@@ -354,7 +354,7 @@ export class StandardMapper {
         this._addRichTextField(entity, 'privateNotes', fields['Private Notes']);
 
         // Entity references
-        this._addEntityReferences(entity, 'satisfiedORs', fields['Satisfies Requirements']);
+        this._addEntityReferences(entity, 'satisfiesRequirements', fields['Satisfies Requirements']);
         this._addEntityReferences(entity, 'dependsOnChanges', fields['Depends on Changes']);
     }
 

@@ -872,7 +872,7 @@ class DocxExtractor {
 
         while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
             const cells = [];
-            const cellRegex = /<t[dh]>(.*?)<\/t[dh]>/gi;
+            const cellRegex = /<t[dh]>(.*?)<\/t[dh]>/gis;
             let cellMatch;
 
             while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {

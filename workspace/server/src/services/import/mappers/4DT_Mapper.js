@@ -313,7 +313,7 @@ class FourDTMapper extends Mapper {
 
         if (oppRisksText) {
             if (result) {
-                result += '\n\n**FOpportunities / Risks:**\n\n' + opportunitiesRisks.trim();
+                result += '\n\n**Opportunities / Risks:**\n\n' + opportunitiesRisks.trim();
             } else {
                 result = '**Opportunities / Risks:**\n\n' + opportunitiesRisks.trim();
             }
@@ -368,7 +368,7 @@ class FourDTMapper extends Mapper {
             return [];
         }
 
-        const normalizedNeed = operationalNeedText.toLowerCase();
+        const normalizedNeed = operationalNeedText.trim().toLowerCase();
         const onExternalId = onTitleMap.get(normalizedNeed);
 
         if (onExternalId) {
