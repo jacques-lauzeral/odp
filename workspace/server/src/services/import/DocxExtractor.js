@@ -242,6 +242,14 @@ class DocxExtractor {
      * @returns {string} HTML with lists converted to AsciiDoc
      * @private
      */
+    /**
+     * Process lists with proper tag-depth tracking to handle nested structures
+     * This replaces regex-based processing which can't handle nested tags correctly
+     * @param {string} html - HTML content
+     * @param {number} listDepth - Current list nesting depth
+     * @returns {string} HTML with lists converted to AsciiDoc
+     * @private
+     */
     _processListsWithDepthTracking(html, listDepth) {
         let result = '';
         let position = 0;
@@ -317,13 +325,26 @@ class DocxExtractor {
             const asciiDocList = this._processListItems(listContent, listType, listDepth);
             result += asciiDocList;
 
+            // Add newline after list block to ensure separation from following content
+            // This prevents "...item.\n<p>Text</p>" from becoming "...item.\nText"
+            // Instead becomes "...item.\n\n<p>Text</p>" → "...item.\n\nText\n\n"
+            result += '\n';
+
             // Move position past the closing tag
-            position = closeIndex + closeTag.length;
+            position = closeTag.length + closeIndex;
         }
 
         return result;
     }
 
+    /**
+     * Process list items with depth tracking for nested lists
+     * @param {string} content - HTML content inside <ol> or <ul>
+     * @param {string} listType - 'ordered' or 'bullet'
+     * @param {number} depth - Current nesting depth (0-2, max 3 levels)
+     * @returns {string} AsciiDoc formatted list items
+     * @private
+     */
     /**
      * Process list items with depth tracking for nested lists
      * @param {string} content - HTML content inside <ol> or <ul>
@@ -370,7 +391,15 @@ class DocxExtractor {
                 // Process <li> item
                 const itemHtml = liMatch[1];
                 const itemContent = this._htmlToAsciiDoc(itemHtml, currentDepth + 1);
-                items.push(prefix + itemContent);
+
+                // Split on double newlines to handle multiple paragraphs within single <li>
+                // Each paragraph becomes a separate list item with the same prefix
+                const paragraphs = itemContent.split('\n\n').filter(p => p.trim());
+
+                paragraphs.forEach(para => {
+                    items.push(prefix + para.trim());
+                });
+
                 position = liRegex.lastIndex;
             } else {
                 // Process nested list
