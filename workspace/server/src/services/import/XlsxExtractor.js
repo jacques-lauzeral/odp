@@ -31,9 +31,12 @@ class XlsxExtractor {
                     raw: false            // Format values as strings
                 });
 
+                // Normalize text in all cells
+                const normalizedRows = rows.map(row => this._normalizeRow(row));
+
                 sheets.push({
                     name: sheetName,
-                    rows: rows
+                    rows: normalizedRows
                 });
             }
 
@@ -55,6 +58,44 @@ class XlsxExtractor {
         } catch (error) {
             throw new Error(`Failed to extract Excel document: ${error.message}`);
         }
+    }
+
+    /**
+     * Normalize all text values in a row object
+     * @param {Object} row - Row object with column names as keys
+     * @returns {Object} Row with normalized text values
+     * @private
+     */
+    _normalizeRow(row) {
+        const normalized = {};
+
+        for (const [key, value] of Object.entries(row)) {
+            normalized[key] = this._normalizeText(value);
+        }
+
+        return normalized;
+    }
+
+    /**
+     * Normalize text extracted from Excel cells
+     * Removes carriage returns and converts tabs to spaces
+     * @param {*} value - Raw value from Excel cell
+     * @returns {*} Normalized value (strings are normalized, other types unchanged)
+     * @private
+     */
+    _normalizeText(value) {
+        // Only normalize string values
+        if (typeof value !== 'string') {
+            return value;
+        }
+
+        // Remove carriage returns (Windows line endings \r\n -> \n)
+        let normalized = value.replace(/\r/g, '');
+
+        // Convert tabs to spaces for consistency
+        normalized = normalized.replace(/\t/g, ' ');
+
+        return normalized;
     }
 }
 
