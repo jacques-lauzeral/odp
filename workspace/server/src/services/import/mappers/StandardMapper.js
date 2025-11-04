@@ -331,7 +331,7 @@ export class StandardMapper {
 
         // Entity references
         this._addEntityReferences(entity, 'implementedONs', fields['Implements']);
-        this._addEntityReferences(entity, 'dependsOnRequirements', fields['Depends On Requirements']);
+        this._addEntityReferences(entity, 'dependsOnRequirements', fields['Depends on Requirements']);
 
         // Document references
         this._addDocumentReferences(entity, fields['References']);
@@ -355,6 +355,7 @@ export class StandardMapper {
 
         // Entity references
         this._addEntityReferences(entity, 'satisfiedORs', fields['Satisfies Requirements']);
+        this._addEntityReferences(entity, 'dependsOnChanges', fields['Depends on Changes']);
     }
 
     /**

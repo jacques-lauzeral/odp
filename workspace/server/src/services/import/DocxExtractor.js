@@ -157,7 +157,7 @@ class DocxExtractor {
      * formatting markers, providing a consistent format for all mappers.
      *
      * Supported conversions:
-     * - <p>text</p> → "text" (paragraph separation handled by caller)
+     * - <p>text</p> → "text\n\n" (paragraph with double newline separator)
      * - <strong>text</strong> → "**text**" (bold)
      * - <em>text</em> or <i>text</i> → "*text*" (italic)
      * - <u>text</u> → "__text__" (underline)
@@ -170,6 +170,7 @@ class DocxExtractor {
      * - Consistent format from both Word and Excel sources
      * - AsciiDoc is well-established, readable convention
      * - Single converter (textToDelta) handles all text → Delta conversion
+     * - Double newlines preserve paragraph structure from Word documents
      *
      * @param {string} html - HTML fragment from mammoth
      * @returns {string} AsciiDoc-style plain text
@@ -195,25 +196,42 @@ class DocxExtractor {
         // Underline: <u> → __text__
         result = result.replace(/<u>(.*?)<\/u>/gi, '__$1__');
 
-        // Remove paragraph tags (preserve content)
-        result = result.replace(/<p>(.*?)<\/p>/gi, '$1');
+        // Remove paragraph tags with double newline separator to preserve structure
+        result = result.replace(/<p>(.*?)<\/p>/gi, '$1\n\n');
 
         // Remove any remaining HTML tags
         result = result.replace(/<[^>]+>/g, '');
 
         // Decode HTML entities
-        result = result
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'");
+        result = this._decodeHtmlEntities(result);
 
-        // Strip anchor tags (empty anchors for TOC)
-        result = result.replace(/<a[^>]*><\/a>/g, '');
+        // Clean up excessive whitespace while preserving intentional paragraph breaks
+        // Trim leading/trailing whitespace
+        result = result.trim();
 
-        return result.trim();
+        // Collapse multiple spaces into single space (but preserve newlines)
+        result = result.replace(/[^\S\n]+/g, ' ');
+
+        // Collapse more than 2 consecutive newlines into exactly 2
+        result = result.replace(/\n{3,}/g, '\n\n');
+
+        return result;
+    }
+
+    _decodeHtmlEntities(text) {
+        const entities = {
+            '&amp;': '&',
+            '&lt;': '<',
+            '&gt;': '>',
+            '&quot;': '"',
+            '&apos;': "'",
+            '&#39;': "'",
+            '&nbsp;': ' '
+        };
+
+        return text.replace(/&[#\w]+;/g, (entity) => {
+            return entities[entity] || entity;
+        });
     }
 
     /**
