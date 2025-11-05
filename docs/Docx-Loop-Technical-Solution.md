@@ -39,7 +39,8 @@ Word Document (.docx)
   - Extracts raw JSON structure
   - Preserves headings, paragraphs, tables
   - Extracts hyperlinks and anchors
-  - Captures images and formatting
+  - Converts images (EMF → PNG) for web compatibility
+  - Formats text as AsciiDoc with image syntax
     ↓
 Raw JSON File
     ↓
@@ -48,6 +49,7 @@ Raw JSON File
   - Parses ODP Entity IDs
   - Resolves cross-references
   - Validates consistency
+  - Converts AsciiDoc to Quill Delta format
     ↓
 Structured JSON File
     ↓
@@ -162,11 +164,25 @@ Database (Neo4j)
 - Hyperlinks
 - Bullet lists (with indent levels)
 - Numbered lists (with indent levels)
+- Embedded images (converted to PNG for web compatibility)
 
 **Not Supported:**
 - Tables
-- Images
 - Complex nested structures beyond lists
+
+### Image Handling
+
+**Export (Word generation):**
+- Images stored as Quill Delta image inserts are embedded in Word documents
+- PNG format preferred for web compatibility
+
+**Import (Word parsing):**
+- Images extracted from Word documents using mammoth.js
+- EMF (Enhanced Metafile) images automatically converted to PNG for web compatibility
+- Conversion performed using LibreOffice headless mode
+- Images embedded inline in text as AsciiDoc syntax: `image::data:image/png;base64,...[]`
+- Failed conversions replaced with transparent placeholder image
+- Single source of truth: images stored once in paragraph text (no separate image arrays)
 
 ### Reference Formatting
 
@@ -216,14 +232,26 @@ Format: `<Title> (<EntityID>)` where EntityID omits version
 **Processing:**
 1. Convert to HTML using mammoth.js
 2. Extract document structure:
-    - Headings (h1-h6) with hierarchy
-    - Paragraphs (with list markers)
-    - Tables
-    - Images
-3. **NEW: Extract hyperlinks and anchors**
-    - Link text, href target, position in paragraph
-    - Heading bookmark IDs (Word-generated)
-    - Full context around links
+   - Headings (h1-h6) with hierarchy
+   - Paragraphs (with list markers)
+   - Tables
+   - Images (with EMF → PNG conversion)
+3. Convert HTML to AsciiDoc format:
+   - Text formatting: `**bold**`, `*italic*`, `__underline__`
+   - Lists: `. item` (ordered), `* item` (bullet)
+   - Images: `image::data:image/png;base64,...[]`
+4. **Image Conversion Process:**
+   - Detect `<img src="data:image/x-emf;base64,...">` tags
+   - Write EMF data to temporary file
+   - Convert using LibreOffice: `libreoffice --headless --convert-to png`
+   - Read converted PNG and encode as base64
+   - Replace with `image::data:image/png;base64,...[]` syntax
+   - Clean up temporary files
+   - Fallback to 1x1 transparent PNG on conversion failure
+5. Extract hyperlinks and anchors:
+   - Link text, href target, position in paragraph
+   - Heading bookmark IDs (Word-generated)
+   - Full context around links
 
 **Output:** Raw JSON structure
 
@@ -240,14 +268,16 @@ Format: `<Title> (<EntityID>)` where EntityID omits version
       level: 1,
       title: '1. Operational Needs',
       path: ['Operational Needs'],
-      anchor: '_Toc123456', // NEW: Word bookmark ID
+      anchor: '_Toc123456', // Word bookmark ID
       content: {
         paragraphs: [
           'ODP ID: on:idl/145[7]',
           'Statement: Ensure all data...',
+          'image::data:image/png;base64,iVBORw0KGg...[]',  // Embedded PNG image
+          'Figure 1 - Process Overview',
           'Stakeholders: Network Manager, Airport Operators'
         ],
-        // NEW: Link metadata
+        // Link metadata
         links: [
           {
             text: 'Core Infrastructure',
@@ -263,201 +293,114 @@ Format: `<Title> (<EntityID>)` where EntityID omits version
 }
 ```
 
-**Enhanced Paragraph Structure:**
-```javascript
-{
-  type: 'paragraph',
-  content: 'Text with links preserved as plain text',
-  isList: false,
-  hasImage: false,
-  links: [ // NEW PROPERTY - optional
-    {
-      text: 'Link display text',
-      href: '#bookmark_id', // Internal anchor or external URL
-      position: { start: 10, end: 30 }, // Character offsets
-      context: 'Full sentence or list item containing link'
-    }
-  ]
-}
-```
-
-**Enhanced Heading Structure:**
-```javascript
-{
-  type: 'heading',
-  level: 2,
-  content: '1.2.3 Section Title',
-  anchor: '_Toc123456' // NEW PROPERTY - Word bookmark ID or null
-}
-```
+**Key Features:**
+- Hierarchical section structure (9 levels supported: h1-h9)
+- Paragraph-level content with AsciiDoc formatting markers
+- Images embedded inline with web-compatible PNG format
+- Link preservation for cross-reference validation
+- Clean separation of structure vs content
 
 ### Stage 2: ODPMapper (ODP-Specific)
 
 **Input:** Raw JSON from DocxExtractor
 
 **Processing:**
-1. **Identify entity boundaries:**
-    - Parse section hierarchy
-    - Detect ON/OR/OC definitions by structure
+1. Identify entity sections (contain "ODP ID:" paragraph)
+2. Parse entity identity: `{type}:{drg}/{id}[{version}]`
+3. Extract field content by keyword markers:
+   - "Statement:" → statement field
+   - "Rationale:" → rationale field
+   - "Stakeholders:" → stakeholder references
+   - "Documents:" → document references
+   - "Implements ONs:" → implementedONs array
+   - "Depends On ORs:" → dependsOnRequirements array
+4. Convert AsciiDoc paragraphs to Quill Delta JSON:
+   - Parse inline formatting: `**bold**` → `{insert: "bold", attributes: {bold: true}}`
+   - Parse lists: `* item` → `{insert: "item\n", attributes: {list: "bullet"}}`
+   - Parse images: `image::data:...[]` → `{insert: {image: "data:image/png;base64,..."}}`
+5. Resolve references:
+   - Parse entity references: `(on:idl/140)` format
+   - Parse setup element references: `ElementName[note]` format
+   - Validate external IDs exist or can be created
+6. Build structured JSON matching ImportService schema
 
-2. **Extract entity identity:**
-    - Parse ODP ID: `on:idl/145[7]` → `{type: 'on', drg: 'idl', entityId: '145', versionId: '7'}`
-    - Determine operation: ID present = UPDATE, absent = CREATE
-
-3. **Parse field content:**
-    - Extract labeled fields (Statement:, Rationale:, etc.)
-    - Preserve rich text formatting (convert to Quill Delta)
-    - Handle multi-line content
-
-4. **Resolve references:**
-    - **Setup elements**: Parse `<Name>[<Note>]` format
-        - Extract from appendix if new
-        - Match to existing by name
-    - **Entity relationships**: Parse `(<EntityID>)` format
-        - Extract entity IDs from parentheses
-        - Validate IDs follow format rules
-        - **OPTIONAL**: Cross-check link targets if anchor data available
-
-5. **Validate consistency:**
-    - Version ID matches for updates
-    - Referenced entities exist or flagged as new
-    - Required fields present
-    - Cross-reference integrity (if link data available)
-
-**Validation Examples:**
-```javascript
-// Entity reference with optional link validation
-{
-  text: 'Core Infrastructure',
-  odpId: 'or:idl/512',
-  linkTarget: '#_Toc123457', // From links array
-  warning: null // Or 'Link target mismatch' if validation fails
-}
-
-// Setup element reference
-{
-  name: 'Network Manager',
-  note: 'Primary coordinator',
-  matchType: 'existing' | 'new',
-  setupElementId: 'stakeholder:network-manager' // If existing
-}
-```
-
-**Output:** Structured JSON (ODP schema)
+**Output:** Structured JSON for import
 
 ```javascript
 {
-  metadata: {
-    drg: 'idl',
-    importType: 'odp-loop',
-    importedAt: '2025-01-15T10:35:00Z',
-    validationWarnings: [
-      {
-        entityId: 'on:idl/145',
-        field: 'implementingORs',
-        message: 'Referenced entity or:idl/999 not found in document or database',
-        severity: 'warning'
-      }
-    ]
-  },
+  drg: 'idl',
   entities: [
     {
-      // UPDATE operation (has externalId)
+      type: 'OperationalNeed',
       externalId: 'on:idl/145[7]',
-      type: 'ON',
-      drg: 'idl',
       title: 'Data Quality Management',
-      path: ['Operational Needs'],
-      statement: { ops: [...] }, // Quill Delta
-      rationale: { ops: [...] },
-      impactsStakeholderCategories: [
-        { id: 'stakeholder:network-manager', note: 'Primary coordinator' },
-        { id: 'stakeholder:airport-operators', note: null }
+      statement: '{"ops":[{"insert":"Ensure all data..."},{"insert":"\\n"}]}',
+      rationale: '{"ops":[{"insert":"Data quality is critical..."},{"insert":"\\n"}]}',
+      stakeholders: [
+        { externalId: 'stakeholder:network-manager', note: 'Primary coordinator' },
+        { externalId: 'stakeholder:airport-operators' }
       ],
-      references: [...],
-      implementingORs: [
-        { id: 'or:idl/512' },
-        { id: 'or:idl/513' }
-      ]
-    },
-    {
-      // CREATE operation (no externalId)
-      type: 'OR',
-      drg: 'idl',
-      title: 'New Validation Rule',
-      statement: { ops: [...] },
-      implementedONs: [
-        { id: 'on:idl/145' }
-      ]
+      documents: [
+        { externalId: 'document:airac-cycle', note: 'Reference for timing' }
+      ],
+      implementingORs: ['or:idl/512', 'or:idl/513']
     }
   ]
 }
 ```
 
+**Key Transformations:**
+- ODP ID parsing → externalId, version tracking
+- Reference parsing → structured relationship arrays
+- AsciiDoc → Quill Delta JSON (with embedded images)
+- Field extraction by keyword markers
+- Title normalization and path cleanup
+
 ### Stage 3: JSONImporter (Enhanced)
 
-**Input:** Structured JSON from ODPMapper
+**Input:** Structured JSON payload
 
-**Enhancements for ODP Loop:**
+**Key Enhancements for Docx Loop:**
 
 1. **Operation Detection:**
 ```javascript
 function determineOperation(entity) {
-  if (entity.externalId && entity.externalId.includes('[')) {
-    return 'UPDATE'; // Has entity ID with version
-  } else {
-    return 'CREATE'; // No external ID
-  }
+  if (!entity.externalId) return 'CREATE';
+  if (entity.externalId.includes('[')) return 'UPDATE';
+  return 'CREATE'; // No version bracket = new entity
 }
 ```
 
-2. **Update Logic:**
+2. **Version Conflict Detection:**
 ```javascript
-async function updateEntity(entity, userId, tx, force = false) {
-  // Parse external ID
-  const { type, drg, entityId, versionId } = parseExternalId(entity.externalId);
+function validateVersion(entity, dbEntity) {
+  const requestedVersion = extractVersion(entity.externalId);
+  const currentVersion = dbEntity.currentVersionId;
   
-  // Retrieve existing entity
-  const existing = await store.findByExternalId(`${type}:${drg}/${entityId}`, tx);
-  
-  if (!existing) {
-    throw new Error(`Entity ${entity.externalId} not found`);
-  }
-  
-  // Version conflict detection
-  if (!force && existing.versionId !== versionId) {
+  if (requestedVersion !== currentVersion) {
     throw new VersionConflictError({
-      expected: versionId,
-      actual: existing.versionId,
-      entity: entity.externalId
+      externalId: entity.externalId,
+      requested: requestedVersion,
+      current: currentVersion
     });
   }
-  
-  // Update entity fields (preserves unchanged fields)
-  const updated = await store.update(existing.itemId, entity, userId, tx);
-  
-  return updated;
 }
 ```
 
-3. **Force Flag:**
-- CLI parameter: `--force`
-- Overrides version mismatch errors
-- Updates entity regardless of version
-- Use with caution (potential data loss)
+3. **Entity Updates:**
+- Query existing entity by external ID (without version)
+- Validate version matches (if UPDATE)
+- Create new version node with incremented version ID
+- Update entity's current version pointer
+- Preserve full version history
 
-4. **Transaction Management:**
+4. **Greedy Error Collection:**
 ```javascript
-async function importStructuredJson(jsonData, userId, force = false) {
-  const tx = createTransaction(userId);
-  const results = {
-    created: [],
-    updated: [],
-    errors: []
-  };
+async function importEntities(jsonData, userId, force = false) {
+  const tx = beginTransaction();
+  const results = { created: [], updated: [], errors: [] };
   
   try {
-    // Process each entity
     for (const entity of jsonData.entities) {
       try {
         const operation = determineOperation(entity);
@@ -544,12 +487,12 @@ async function importStructuredJson(jsonData, userId, force = false) {
 - Bold, italic, underline
 - Simple hyperlinks
 - Basic bullet lists (single level)
+- Embedded images (PNG format)
 
 **Not Yet Supported:**
 - Multi-level list nesting
 - Complex Quill Delta preservation
 - Tables within rich text fields
-- Full Delta → Word → Delta round-trip
 
 ### Technical Challenge: Quill Delta vs Word
 
@@ -560,14 +503,43 @@ async function importStructuredJson(jsonData, userId, force = false) {
 - Word uses **semantic nested lists** (<ul><li><ul><li>)
 
 **Current Approach:**
-- Export: Render Quill Delta to plain/simple formatted text
-- Import: Parse simple formatted text (no complex structure preservation)
+- Export: Render Quill Delta to Word formatting
+- Import: Parse Word content → AsciiDoc → Quill Delta
+- Images: Convert EMF → PNG at extraction time for web compatibility
 - Accept some formatting loss on round-trip
 
 **Path to Full Fidelity:**
 - Build Delta ↔ Word converters
 - Map Quill indent levels to Word list nesting
-- Preserve all Quill-supported features
+- Preserve all Quill-supported features including images
+
+### Image Processing Pipeline
+
+**Word → ODP:**
+```
+Word Document (.docx with EMF images)
+    ↓
+Mammoth.js extracts: <img src="data:image/x-emf;base64,...">
+    ↓
+DocxExtractor converts EMF → PNG using LibreOffice
+    ↓
+AsciiDoc format: image::data:image/png;base64,...[]
+    ↓
+ODPMapper converts to Quill Delta: {insert: {image: "data:..."}}
+    ↓
+Stored in Neo4j as Quill Delta JSON
+```
+
+**ODP → Word:**
+```
+Neo4j Quill Delta JSON: {insert: {image: "data:image/png;base64,..."}}
+    ↓
+DocxGenerator extracts image data
+    ↓
+Creates Word image element with PNG data
+    ↓
+Word Document (.docx with PNG images)
+```
 
 ## Error Handling
 
@@ -585,12 +557,20 @@ async function importStructuredJson(jsonData, userId, force = false) {
 2. **Force update** (`--force` flag): Override version check, accept data loss risk
 3. **Manual merge**: Export latest, compare changes, re-edit
 
+### Image Conversion Errors
+
+**Handling:**
+- EMF conversion failure → Use transparent 1x1 PNG placeholder
+- Log conversion errors with image context
+- Continue processing document (non-blocking error)
+- User notified of placeholder images in import summary
+
 ### Validation Errors
 
 **Types:**
 - **Blocking**: Malformed external ID, missing required fields
 - **Error**: Referenced entity not found, invalid setup element
-- **Warning**: Cross-reference mismatch, formatting loss
+- **Warning**: Cross-reference mismatch, formatting loss, image conversion failure
 
 **Behavior:**
 - Collect all errors greedily
@@ -621,31 +601,45 @@ if (errors.length > 0 && !force) {
 ```json
 {
   "dependencies": {
-    "mammoth": "^1.8.0",    // Word → HTML conversion (with internal link support)
+    "mammoth": "^1.8.0",    // Word → HTML conversion (with image support)
     "docx": "^8.5.0",        // Word document generation
     "quill-delta": "^5.1.0"  // Rich text format (future)
   }
 }
 ```
 
+### System Dependencies
+- **LibreOffice**: Required for EMF → PNG image conversion
+   - Version: 24.2+ (headless mode)
+   - Components: libreoffice-core, libreoffice-draw
+   - Purpose: Convert Windows EMF images to web-compatible PNG format
+   - Alternative: ImageMagick with libwmf (less reliable for complex EMF files)
+
 ### Library Responsibilities
-- **mammoth**: Extract document structure, headings, paragraphs, links, anchors
-- **docx**: Generate Word documents with styles, numbering, bookmarks
+- **mammoth**: Extract document structure, headings, paragraphs, links, anchors, images
+- **docx**: Generate Word documents with styles, numbering, bookmarks, images
 - **quill-delta**: Rich text serialization (future enhancement)
+- **LibreOffice**: EMF → PNG image format conversion
 
 ## Configuration
 
 ### Mammoth Configuration (DocxExtractor)
 ```javascript
 {
-  includeDefaultStyleMap: false,
+  includeDefaultStyleMap: true,
   styleMap: [
     "p[style-name='Heading 1'] => h1:fresh",
     "p[style-name='Heading 2'] => h2:fresh",
     "p[style-name='Heading 3'] => h3:fresh",
     // ... other styles
   ],
-  convertImage: mammoth.images.imgElement(...)
+  convertImage: mammoth.images.imgElement(function(image) {
+    return image.read("base64").then(function(imageBuffer) {
+      return {
+        src: "data:" + image.contentType + ";base64," + imageBuffer
+      };
+    });
+  })
 }
 ```
 
@@ -671,26 +665,43 @@ if (errors.length > 0 && !force) {
 }
 ```
 
+### LibreOffice Configuration (Image Conversion)
+```javascript
+{
+  command: 'libreoffice --headless --convert-to png',
+  timeout: 30000, // 30 seconds per image
+  tempDir: './logs',
+  fallbackImage: '1x1 transparent PNG base64'
+}
+```
+
 ## Testing Strategy
 
 ### Unit Tests
-- **DocxExtractor**: Link extraction accuracy, anchor detection, structure preservation
-- **ODPMapper**: Entity ID parsing, reference resolution, field mapping
+- **DocxExtractor**: Image extraction and conversion, link extraction accuracy, anchor detection, structure preservation
+- **ODPMapper**: AsciiDoc → Delta conversion with images, entity ID parsing, reference resolution, field mapping
 - **JSONImporter**: Operation detection, version conflict handling, transaction rollback
 
 ### Integration Tests
-- **Complete round-trip**: Export → Edit → Import with version increment
+- **Complete round-trip**: Export → Edit (add/modify images) → Import with version increment
+- **Image handling**: EMF conversion, PNG preservation, fallback placeholder
 - **Version conflicts**: Concurrent edits, forced updates
 - **Reference integrity**: Cross-entity relationships, setup element creation
-- **Error scenarios**: Malformed IDs, missing entities, validation failures
+- **Error scenarios**: Malformed IDs, missing entities, validation failures, image conversion failures
 
 ### Test Data
-- Sample documents per DRG
-- Edge cases: empty fields, deep nesting, many relationships
-- Invalid scenarios: wrong ID format, missing versions, broken references
-- Performance tests: large documents (100+ entities)
+- Sample documents per DRG with embedded images
+- Edge cases: empty fields, deep nesting, many relationships, complex EMF images
+- Invalid scenarios: wrong ID format, missing versions, broken references, corrupt images
+- Performance tests: large documents (100+ entities, 50+ images)
 
 ## Performance Considerations
+
+### Image Conversion
+- LibreOffice startup overhead (~1-2 seconds per conversion)
+- Consider batch conversion optimization for multiple images
+- Timeout handling for complex EMF files
+- Temporary file cleanup to prevent disk space issues
 
 ### Streaming
 - Process large documents in chunks
@@ -715,8 +726,16 @@ if (errors.length > 0 && !force) {
 - Sanitize extracted content
 - Validate DRG enum values
 - Check user permissions for DRG
+- Scan images for malicious content
 
 ### Output Sanitization
 - Escape special characters in generated documents
 - Validate rich text before rendering
 - Prevent injection in cross-references
+- Sanitize image data URLs
+
+### Temporary File Security
+- Use cryptographically random filenames
+- Clean up temporary files after conversion
+- Restrict file system permissions on temp directory
+- Monitor disk space usage

@@ -19,6 +19,7 @@ The purpose of this project is to elaborate a high quality prototype with modern
 - **Containerization:** Docker Compose for service orchestration
 - **Database:** Neo4j 5.15 with APOC plugin
 - **Node.js:** Version 20 with live code reloading
+- **Document processing:** LibreOffice 24.2+ (headless mode) for image format conversion
 - **Source code repository:** GitHub
 - **IDE:** WebStorm 2024.3.5
 
@@ -34,6 +35,7 @@ The purpose of this project is to elaborate a high quality prototype with modern
 - **Deployment solution:** Docker Compose
 - **Services:** Neo4j graph database + Node.js application
 - **Environment:** Development with live code reloading
+- **System dependencies:** LibreOffice for document processing (EMF → PNG conversion)
 - **Rationale:** Simplified service coordination, environment configuration, and consistent development workflow
 
 ### 3.2 Application Architecture
@@ -66,6 +68,8 @@ HTTP Requests → Express Routes → Service Layer → Store Layer → Neo4j Dat
 - **Entity stores:** Specialized stores extending base functionality
 
 ### 3.5 Server Backend Dependencies
+
+**Node.js Packages:**
 - **Express.js**: Web framework for REST API
 - **Neo4j driver**: Official JavaScript driver for database connectivity
 - **node-fetch**: HTTP client for external API calls
@@ -74,6 +78,50 @@ HTTP Requests → Express Routes → Service Layer → Store Layer → Neo4j Dat
 - **commander**: CLI framework for command-line interface
 - **cli-table3**: ASCII table formatting for CLI output
 - **mustache**: Template engine for AsciiDoc document generation
+
+**Document Processing:**
+- **mammoth**: Word document parsing (DOCX → HTML conversion)
+- **docx**: Word document generation library
+- **xlsx**: Excel spreadsheet processing
+
+**System Dependencies:**
+- **LibreOffice**: Required for EMF → PNG image conversion in Word documents
+  - Version: 24.2+ with headless mode support
+  - Components: libreoffice-core, libreoffice-draw
+  - Purpose: Convert Windows Enhanced Metafile (EMF) images to web-compatible PNG format
+  - Usage: Invoked via command line during document extraction
+  - Alternative: ImageMagick with libwmf (less reliable for complex EMF files)
+
+### 3.6 Document Processing Architecture
+
+**DrG Material Import Pipeline:**
+```
+Office Document (.docx/.xlsx)
+    ↓
+[1. Extractor] - Document parsing
+  - DocxExtractor: mammoth.js + LibreOffice for images
+  - XlsxExtractor: xlsx library
+    ↓
+Raw JSON (Generic structure)
+    ↓
+[2. Mapper] - DrG-specific mapping
+  - Converts AsciiDoc → Quill Delta
+  - Resolves entity references
+    ↓
+Structured JSON (Import format)
+    ↓
+[3. Importer] - Database import
+  - Transaction management
+  - Version tracking
+    ↓
+Neo4j Database
+```
+
+**Image Processing:**
+- EMF images in Word documents converted to PNG at extraction time
+- LibreOffice invoked synchronously for each image conversion
+- Fallback to transparent placeholder on conversion failure
+- Converted images embedded as Quill Delta image inserts
 
 ## 4 Web Client
 
@@ -116,17 +164,20 @@ odp/                          # Git repository root
 │   │   │   ├── routes/      # Entity route files
 │   │   │   ├── services/    # Business logic layer
 │   │   │   ├── store/       # Data access layer
+│   │   │   ├── extractors/  # Document parsing (DocxExtractor, XlsxExtractor)
+│   │   │   ├── mappers/     # DrG-specific mappers
 │   │   │   └── templates/   # Mustache templates for exports
 │   │   └── package.json     # Server dependencies
 │   ├── shared/              # Common models and utilities
 │   ├── web-client/          # Frontend application
 │   └── cli/                 # Command-line interface
 ├── docker-compose.yml       # Development environment
+├── Dockerfile.odp-server    # Custom server image with LibreOffice
 └── package.json            # Root workspace configuration
 ```
 
 ### 6.2 Development Environment Services
-- **odp-server**: Node.js application with live reload
+- **odp-server**: Node.js application with live reload + LibreOffice
 - **neo4j**: Graph database with web interface
 - **Networking**: Internal Docker network for service communication
 
@@ -138,6 +189,34 @@ odp/                          # Git repository root
 4. Create entity routes file
 5. Add routes to main server
 6. Add CLI commands for entity
+```
+
+### 6.4 Docker Configuration
+
+**Custom Server Image:**
+```dockerfile
+FROM node:20
+
+# Install LibreOffice for EMF→PNG conversion
+RUN apt-get update && \
+    apt-get install -y libreoffice-core libreoffice-draw --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+```
+
+**Docker Compose Services:**
+```yaml
+services:
+  odp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.odp-server
+    # ... other configuration
+  
+  neo4j:
+    image: neo4j:5.15
+    # ... other configuration
 ```
 
 ## 7 Data Architecture
@@ -153,6 +232,12 @@ odp/                          # Git repository root
 - **Relationship handling:** Store layer abstraction over Cypher queries
 - **Transaction management:** Explicit boundaries with proper error handling
 - **Current entities:** StakeholderCategory with hierarchy support (REFINES relationships)
+
+### 7.3 Rich Text Storage
+- **Format:** Quill Delta JSON stored as string properties
+- **Fields:** statement, rationale, flows, privateNotes (for ON/OR/OC entities)
+- **Images:** Embedded as Delta image inserts with base64-encoded PNG data
+- **Round-trip:** Word ↔ AsciiDoc ↔ Quill Delta conversion pipeline
 
 ## 8 API Architecture
 
@@ -194,6 +279,7 @@ odp/                          # Git repository root
 - **New entities:** Follow established Store → Service → Routes → CLI pattern
 - **Relationship types:** Extend store methods for entity-specific relationships
 - **Business logic:** Add service methods for complex operations
+- **Document formats:** Add new extractors/mappers for different DrG sources
 
 ## 10 Architecture Evolution
 
@@ -202,17 +288,38 @@ odp/                          # Git repository root
 - **Direct HTTP integration:** CLI uses fetch instead of generated clients
 - **Clean separation:** Routes → Services → Store → Database layers
 - **Proven patterns:** Established repeatable patterns for entity expansion
+- **Document processing:** Added 3-stage import pipeline (Extractor → Mapper → Importer)
 
 ### 10.2 Architecture Benefits
 - **Simplicity:** Easy to understand and modify
 - **Reproducibility:** Clear patterns for adding new entities
 - **Performance:** Direct route handling without middleware overhead
 - **Maintainability:** Explicit code structure with clear separation of concerns
+- **Flexibility:** Pluggable extractors and mappers for different document sources
 
 ### 10.3 Future Architecture Considerations
 - **Scalability:** Connection pooling and transaction optimization already in place
 - **Security:** Authentication and authorization can be added to route level
 - **Performance:** Query optimization and caching strategies at store level
 - **Production:** Current architecture scales well beyond development environment
+- **Document processing:** Batch image conversion optimization for large documents
 
-This architecture provides a solid, simple foundation for prototype development while maintaining clear patterns for production evolution and rapid entity expansion in Phases 2-4.
+## 11 System Requirements
+
+### 11.1 Development Environment
+- **Operating System:** Linux, macOS, or Windows with WSL2
+- **Docker:** Version 20.10+ with Docker Compose V2
+- **Memory:** Minimum 8GB RAM (16GB recommended)
+- **Storage:** 10GB free disk space for containers and data
+
+### 11.2 Runtime Dependencies
+- **Node.js:** Version 20 (containerized)
+- **Neo4j:** Version 5.15 (containerized)
+- **LibreOffice:** Version 24.2+ (containerized in odp-server)
+
+### 11.3 External Tools (Optional)
+- **Neo4j Browser:** Built-in at http://localhost:7474
+- **WebStorm:** IDE for development (recommended)
+- **Git:** Version control
+
+This architecture provides a solid, simple foundation for prototype development while maintaining clear patterns for production evolution and rapid entity expansion in Phases 2-4. The addition of document processing capabilities with LibreOffice integration enables robust import of DrG materials with image support while maintaining web compatibility through automatic format conversion.

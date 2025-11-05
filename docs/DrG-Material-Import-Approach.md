@@ -28,15 +28,16 @@ Strategy for importing Drafting Group (DrG) materials from heterogeneous Office 
 - **Input**: Office document binary (.docx or .xlsx)
 - **Process**: Parse document structure without business logic
 - **Output**: Generic intermediate representation (JSON)
-- **Libraries**: mammoth.js (Word), xlsx (Excel)
-- **Responsibility**: Extract sections, headings, tables, paragraphs, formatting
+- **Libraries**: mammoth.js (Word), xlsx (Excel), LibreOffice (image conversion)
+- **Responsibility**: Extract sections, headings, tables, paragraphs, formatting, images
+- **Image Handling**: Convert EMF → PNG for web compatibility, embed in AsciiDoc format
 
 2. **Mapping** (Raw Data → Structured Data)
 - **Input**: Raw extracted data + DrG identifier
 - **Process**: Apply DrG-specific business rules
 - **Output**: Structured import payload matching ODP schema
 - **Implementation**: Pluggable mapper classes per DrG
-- **Responsibility**: Entity identification, field mapping, reference resolution
+- **Responsibility**: Entity identification, field mapping, reference resolution, AsciiDoc → Quill Delta conversion
 
 3. **Import** (Structured Data → Database)
 - **Input**: Structured JSON payload
@@ -93,10 +94,10 @@ Represents document structure in a DrG-agnostic way:
           "path": ["Operational Needs", "Service Lifecycle Management"],
           "content": {
             "paragraphs": [
-              {"style": "Heading3", "text": "Statement"},
-              {"style": "Normal", "text": "The system shall..."},
-              {"style": "Heading3", "text": "Rationale"},
-              {"style": "Normal", "text": "This enables..."}
+              "Statement: The system shall...",
+              "image::data:image/png;base64,iVBORw0KGgoAAAANSUh...[]",
+              "Figure 1 - Process Diagram",
+              "Rationale: This enables..."
             ]
           },
           "subsections": [...]
@@ -106,6 +107,13 @@ Represents document structure in a DrG-agnostic way:
   ]
 }
 ```
+
+**Image Handling in Paragraphs:**
+- Images embedded inline using AsciiDoc syntax: `image::data:image/png;base64,...[]`
+- EMF (Windows Enhanced Metafile) images converted to PNG during extraction
+- Conversion performed using LibreOffice headless mode
+- Failed conversions replaced with transparent placeholder
+- Images stored once in paragraph text (no separate image arrays)
 
 ### Excel Document Structure
 
@@ -134,6 +142,55 @@ Represents document structure in a DrG-agnostic way:
   ]
 }
 ```
+
+---
+
+## Image Processing Pipeline
+
+### Extraction Stage (DocxExtractor)
+
+**Process:**
+1. Mammoth.js converts Word document to HTML
+2. Extract `<img src="data:image/x-emf;base64,...">` tags
+3. Detect EMF content type in data URL
+4. Convert EMF → PNG using LibreOffice:
+    - Write EMF data to temporary file
+    - Execute: `libreoffice --headless --convert-to png`
+    - Read converted PNG and encode as base64
+    - Clean up temporary files
+5. Replace in HTML with PNG data URL
+6. Convert to AsciiDoc: `image::data:image/png;base64,...[]`
+7. Store in paragraph text (single source of truth)
+
+**Error Handling:**
+- Conversion timeout: 30 seconds per image
+- Failure fallback: 1x1 transparent PNG placeholder
+- Logging: Detailed error messages with image context
+- Non-blocking: Continue processing document
+
+### Mapping Stage (DrG-Specific Mapper)
+
+**Process:**
+1. Parse AsciiDoc paragraphs
+2. Detect image syntax: `image::data:...[]`
+3. Convert to Quill Delta format:
+   ```javascript
+   {
+     insert: {
+       image: "data:image/png;base64,iVBORw0KGg..."
+     }
+   }
+   ```
+4. Embed in rich text field Delta JSON
+5. Store in structured import payload
+
+### Import Stage (ImportService)
+
+**Process:**
+- Quill Delta with embedded images stored as JSON string
+- Images remain base64-encoded in Delta format
+- No additional processing required
+- Images preserved through database round-trip
 
 ---
 
@@ -190,9 +247,9 @@ Matches existing ODP import format with all entity types:
       "title": "Route Validation",
       "type": "OR",
       "drg": "NM_B2B",
-      "statement": "The system shall validate flight routes",
-      "rationale": "Ensure safety and regulatory compliance",
-      "flows": "1. Receive plan\n2. Validate\n3. Return result",
+      "statement": "{\"ops\":[{\"insert\":\"The system shall validate flight routes\"},{\"insert\":\"\\n\"},{\"insert\":{\"image\":\"data:image/png;base64,iVBORw0KGg...\"}},{\"insert\":\"\\n\"}]}",
+      "rationale": "{\"ops\":[{\"insert\":\"Ensure safety and regulatory compliance\"},{\"insert\":\"\\n\"}]}",
+      "flows": "{\"ops\":[{\"insert\":\"1. Receive plan\\n2. Validate\\n3. Return result\"},{\"insert\":\"\\n\"}]}",
       "path": ["Flight Planning", "Validation"],
       "implementedONs": ["on:nm_b2b/flight_planning/route_safety"],
       "impactsStakeholderCategories": ["stakeholder:network_manager"],
@@ -204,12 +261,12 @@ Matches existing ODP import format with all entity types:
     {
       "externalId": "oc:nm_b2b/real-time_validation",
       "title": "Real-Time Route Validation",
-      "purpose": "Enable immediate validation feedback",
+      "purpose": "{\"ops\":[{\"insert\":\"Enable immediate validation feedback\"},{\"insert\":\"\\n\"}]}",
       "visibility": "NETWORK",
       "drg": "NM_B2B",
-      "initialState": "Batch validation only",
-      "finalState": "Real-time validation available",
-      "details": "Migration from batch to streaming validation",
+      "initialState": "{\"ops\":[{\"insert\":\"Batch validation only\"},{\"insert\":\"\\n\"}]}",
+      "finalState": "{\"ops\":[{\"insert\":\"Real-time validation available\"},{\"insert\":\"\\n\"}]}",
+      "details": "{\"ops\":[{\"insert\":\"Migration from batch to streaming validation\"},{\"insert\":\"\\n\"}]}",
       "satisfiedORs": ["or:nm_b2b/flight_planning/validation/route_validation"],
       "supersededORs": [],
       "milestones": [
@@ -238,6 +295,10 @@ Matches existing ODP import format with all entity types:
 - Use `title` field for human-readable names
 - Path-based external IDs: `{type}:{drg}/{organizational_path}/{title_normalized}`
 - Support both parent references and organizational paths
+- **Rich text fields** stored as Quill Delta JSON strings:
+    - `statement`, `rationale`, `flows`, `privateNotes` (for ON/OR)
+    - `purpose`, `details`, `initialState`, `finalState` (for OC)
+- **Images** embedded in Quill Delta as: `{insert: {image: "data:image/png;base64,..."}}`
 
 ---
 
@@ -247,6 +308,10 @@ Matches existing ODP import format with all entity types:
 
 ```javascript
 class DocumentMapper {
+  constructor() {
+    this.converter = new AsciidocToDeltaConverter();
+  }
+
   map(rawData) {
     return {
       documents: this.mapDocuments(rawData),
@@ -267,6 +332,33 @@ class DocumentMapper {
   mapWaves(rawData) { return []; }
   mapRequirements(rawData) { return []; }
   mapChanges(rawData) { return []; }
+  
+  // Shared utility for AsciiDoc → Quill Delta conversion
+  convertToQuillDelta(asciidocText) {
+    return this.converter.asciidocToDelta(asciidocText);
+  }
+}
+```
+
+### AsciiDoc to Delta Converter
+
+**Handles:**
+- Text formatting: `**bold**`, `*italic*`, `__underline__`
+- Lists: `. item` (ordered), `* item` (bullet), with indent levels
+- Images: `image::data:image/png;base64,...[]`
+- Paragraphs: Double newline separation
+
+**Output:**
+```javascript
+{
+  ops: [
+    { insert: "Bold text", attributes: { bold: true } },
+    { insert: "\n" },
+    { insert: { image: "data:image/png;base64,..." } },
+    { insert: "\n" },
+    { insert: "List item", attributes: { list: "bullet" } },
+    { insert: "\n" }
+  ]
 }
 ```
 
@@ -276,141 +368,36 @@ class DocumentMapper {
 class NMB2BMapper extends DocumentMapper {
   mapRequirements(rawData) {
     const requirements = [];
-    const onSection = this.findSection(rawData, /operational needs/i);
-    const orSection = this.findSection(rawData, /operational requirements/i);
     
-    // Process ONs
-    if (onSection) {
-      for (const subsection of this.iterateSubsections(onSection)) {
-        if (this.hasStatement(subsection)) {
-          const req = {
-            externalId: ExternalIdBuilder.buildExternalId({
-              drg: 'NM_B2B',
-              path: subsection.path,
-              title: subsection.title
-            }, 'on'),
-            title: subsection.title,
-            type: 'ON',
-            drg: 'NM_B2B',
-            statement: this.extractField(subsection, 'Statement'),
-            rationale: this.extractField(subsection, 'Rationale'),
-            path: subsection.path
-          };
-          requirements.push(req);
-        }
-      }
-    }
-    
-    // Process ORs
-    if (orSection) {
-      for (const subsection of this.iterateSubsections(orSection)) {
-        if (this.hasStatement(subsection)) {
-          const req = {
-            externalId: ExternalIdBuilder.buildExternalId({
-              drg: 'NM_B2B',
-              path: subsection.path,
-              title: subsection.title
-            }, 'or'),
-            title: subsection.title,
-            type: 'OR',
-            drg: 'NM_B2B',
-            statement: this.extractField(subsection, 'Statement'),
-            rationale: this.extractField(subsection, 'Rationale'),
-            flows: this.extractField(subsection, 'Flow'),
-            path: subsection.path,
-            implementedONs: this.hasImplementedONs(subsection) ? 
-              this.extractImplementedONs(subsection) : [],
-            impactsStakeholderCategories: this.extractImpacts(subsection, 'Stakeholder'),
-            impactsServices: this.extractImpacts(subsection, 'Service'),
-            impactsData: this.extractImpacts(subsection, 'Data')
-          };
-          
-          requirements.push(req);
-        }
+    for (const section of rawData.sections) {
+      // Find ON/OR sections
+      if (this.isRequirementSection(section)) {
+        const req = {
+          externalId: this.extractExternalId(section),
+          title: this.extractTitle(section),
+          type: this.extractType(section),
+          drg: 'NM_B2B',
+          // Convert AsciiDoc paragraphs to Quill Delta JSON
+          statement: this.convertToQuillDelta(this.extractField(section, 'Statement')),
+          rationale: this.convertToQuillDelta(this.extractField(section, 'Rationale')),
+          flows: this.convertToQuillDelta(this.extractField(section, 'Flows')),
+          path: this.extractPath(section),
+          implementedONs: this.extractReferences(section, 'Implements ONs'),
+          impactsStakeholderCategories: this.extractImpacts(section, 'Stakeholders'),
+          impactsServices: this.extractImpacts(section, 'Services'),
+          impactsData: this.extractImpacts(section, 'Data')
+        };
+        requirements.push(req);
       }
     }
     
     return requirements;
   }
   
-  mapChanges(rawData) {
-    const changes = [];
-    const ocSection = this.findSection(rawData, /operational changes/i);
-    
-    if (!ocSection) return changes;
-    
-    for (const subsection of this.iterateSubsections(ocSection)) {
-      if (this.hasPurpose(subsection)) {
-        const change = {
-          externalId: ExternalIdBuilder.buildExternalId({
-            drg: 'NM_B2B',
-            title: subsection.title
-          }, 'oc'),
-          title: subsection.title,
-          purpose: this.extractField(subsection, 'Purpose'),
-          visibility: this.extractField(subsection, 'Visibility') || 'NETWORK',
-          drg: 'NM_B2B',
-          initialState: this.extractField(subsection, 'Initial State'),
-          finalState: this.extractField(subsection, 'Final State'),
-          details: this.extractField(subsection, 'Details'),
-          path: subsection.path,
-          satisfiedORs: this.extractReferences(subsection, 'Satisfied ORs'),
-          supersededORs: this.extractReferences(subsection, 'Superseded ORs'),
-          milestones: this.extractMilestones(subsection)
-        };
-        
-        changes.push(change);
-      }
-    }
-    
-    return changes;
-  }
-  
-  mapStakeholderCategories(rawData) {
-    // Extract from impact statements across all requirements
-    const uniqueStakeholders = new Set();
-    
-    // Scan all requirement sections for stakeholder references
-    for (const section of rawData.sections) {
-      const impacts = this.findImpactStatements(section, 'stakeholder');
-      impacts.forEach(name => uniqueStakeholders.add(name));
-    }
-    
-    return Array.from(uniqueStakeholders).map((name, idx) => ({
-      externalId: ExternalIdBuilder.buildExternalId({ name }, 'stakeholder'),
-      name: name,  // Use 'name' field
-      description: `Extracted from document references`
-    }));
-  }
-  
-  mapDataCategories(rawData) {
-    const uniqueCategories = new Set();
-    
-    for (const section of rawData.sections) {
-      const impacts = this.findImpactStatements(section, 'data');
-      impacts.forEach(name => uniqueCategories.add(name));
-    }
-    
-    return Array.from(uniqueCategories).map((name, idx) => ({
-      externalId: ExternalIdBuilder.buildExternalId({ name }, 'data'),
-      name: name,  // Use 'name' field
-      description: `Extracted from document references`
-    }));
-  }
-  
-  mapServices(rawData) {
-    const uniqueServices = new Set();
-    
-    for (const section of rawData.sections) {
-      const impacts = this.findImpactStatements(section, 'service');
-      impacts.forEach(name => uniqueServices.add(name));
-    }
-    
-    return Array.from(uniqueServices).map((name, idx) => ({
-      externalId: ExternalIdBuilder.buildExternalId({ name }, 'service'),
-      name: name,  // Use 'name' field
-      description: `Extracted from document references`
-    }));
+  extractField(section, fieldName) {
+    // Find paragraphs starting with "fieldName:"
+    // Collect subsequent paragraphs until next field marker
+    // Return concatenated AsciiDoc text (may include image:: syntax)
   }
 }
 ```
@@ -420,30 +407,26 @@ class NMB2BMapper extends DocumentMapper {
 ```javascript
 class ReroutingMapper extends DocumentMapper {
   mapRequirements(rawData) {
-    const requirementsSheet = rawData.sheets.find(s => s.name === 'Requirements');
-    if (!requirementsSheet) return [];
+    const reqSheet = rawData.sheets.find(s => s.name === 'Requirements');
+    if (!reqSheet) return [];
 
-    return requirementsSheet.rows.map(row => ({
-      externalId: row['ID'] ?
-              ExternalIdBuilder.buildExternalId({
-                drg: 'REROUTING',
-                path: [row['ID']],
-                title: row['Title']
-              }, row['Type'].toLowerCase()) :
-              this.generateId(row),
-      title: row['Title'],
-      type: row['Type'], // 'ON' or 'OR'
-      drg: 'REROUTING',
-      statement: row['Statement'],
-      rationale: row['Rationale'],
-      flows: row['Flows'] || '',
-      path: row['Path'] ? row['Path'].split('/') : [],
-      parentExternalId: row['Parent ID'] || null,
-      implementedONs: row['Implemented ONs'] ? row['Implemented ONs'].split(',') : [],
-      impactsStakeholderCategories: row['Stakeholders'] ? row['Stakeholders'].split(',') : [],
-      impactsServices: row['Services'] ? row['Services'].split(',') : [],
-      impactsData: row['Data Categories'] ? row['Data Categories'].split(',') : []
-    }));
+    return reqSheet.rows
+      .filter(row => row['Type'] === 'OR' || row['Type'] === 'ON')
+      .map(row => ({
+        externalId: row['ID'],
+        title: row['Title'],
+        type: row['Type'],
+        drg: 'REROUTING',
+        // Convert plain text to Quill Delta (no images in Excel)
+        statement: this.convertToQuillDelta(row['Statement'] || ''),
+        rationale: this.convertToQuillDelta(row['Rationale'] || ''),
+        flows: this.convertToQuillDelta(row['Flows'] || ''),
+        path: this.extractPathFromId(row['ID']),
+        implementedONs: this.parseReferences(row['Implemented ONs']),
+        impactsStakeholderCategories: this.parseReferences(row['Stakeholders']),
+        impactsServices: this.parseReferences(row['Services']),
+        impactsData: this.parseReferences(row['Data'])
+      }));
   }
 
   mapStakeholderCategories(rawData) {
@@ -451,25 +434,12 @@ class ReroutingMapper extends DocumentMapper {
     if (!setupSheet) return [];
 
     return setupSheet.rows
-            .filter(row => row['Type'] === 'Stakeholder')
-            .map(row => ({
-              externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'stakeholder'),
-              name: row['Name'],  // Use 'name' field
-              description: row['Description'] || ''
-            }));
-  }
-
-  mapDataCategories(rawData) {
-    const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
-    if (!setupSheet) return [];
-
-    return setupSheet.rows
-            .filter(row => row['Type'] === 'Data')
-            .map(row => ({
-              externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'data'),
-              name: row['Name'],  // Use 'name' field
-              description: row['Description'] || ''
-            }));
+      .filter(row => row['Type'] === 'Stakeholder')
+      .map(row => ({
+        externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'stakeholder'),
+        name: row['Name'],  // Use 'name' field
+        description: row['Description'] || ''
+      }));
   }
 
   mapServices(rawData) {
@@ -522,9 +492,10 @@ class MapperRegistry {
 
 ### Error Handling Strategy
 
-- **Extraction stage**: Fail fast on unparseable documents
+- **Extraction stage**: Fail fast on unparseable documents, log image conversion failures
 - **Mapping stage**: Collect warnings for missing optional fields, errors for required fields
 - **Import stage**: Greedy processing with comprehensive error collection (existing behavior)
+- **Image errors**: Non-blocking, use placeholder and continue processing
 
 ### Reference Resolution
 
@@ -543,6 +514,7 @@ Each DrG mapper handles:
 - Entity type discrimination (ON vs OR, requirement vs setup)
 - Reference notation styles (relative paths, absolute IDs)
 - Missing data defaults (empty arrays, placeholder text)
+- Image presence (Word documents may have images, Excel typically does not)
 
 ### Extensibility
 
@@ -552,6 +524,7 @@ Adding support for a new DrG requires:
 2. Register mapper in `MapperRegistry`
 3. No changes to extraction or import stages
 4. No changes to API or CLI interfaces
+5. Reuse `AsciidocToDeltaConverter` for rich text fields
 
 ---
 
@@ -595,6 +568,9 @@ RawExtractedData:
     sections:
       type: array
       items: { $ref: '#/components/schemas/Section' }
+      description: |
+        Word document sections with content.paragraphs containing AsciiDoc-formatted text.
+        Images embedded as: image::data:image/png;base64,...[]
     sheets:
       type: array
       items: { $ref: '#/components/schemas/Sheet' }
@@ -628,7 +604,22 @@ StructuredImportData:
           name: { type: string }  # Note: 'name' not 'title'
           description: { type: string }
     waves: { type: array }
-    requirements: { type: array }
+    requirements:
+      type: array
+      items:
+        type: object
+        properties:
+          externalId: { type: string }
+          title: { type: string }
+          statement: 
+            type: string
+            description: Quill Delta JSON with possible embedded images
+          rationale: 
+            type: string
+            description: Quill Delta JSON with possible embedded images
+          flows: 
+            type: string
+            description: Quill Delta JSON
     changes: { type: array }
 
 ImportSummary:
@@ -644,6 +635,10 @@ ImportSummary:
     errors:
       type: array
       items: { type: string }
+    warnings:
+      type: array
+      items: { type: string }
+      description: Non-blocking issues (e.g., image conversion failures)
 ```
 
 ---
@@ -693,21 +688,25 @@ odp import structured --file <path>
 
 ### Unit Testing
 
-- **Extraction**: Test parsing of sample Word/Excel documents
-- **Mapping**: Test each mapper with known raw data inputs
+- **Extraction**: Test parsing of sample Word/Excel documents with images
+- **Image Conversion**: Test EMF → PNG conversion with various image formats
+- **Mapping**: Test each mapper with known raw data inputs including images
+- **AsciiDoc Conversion**: Test conversion of formatting and image syntax to Quill Delta
 - **Import**: Test structured payload validation and persistence (existing tests)
 
 ### Integration Testing
 
-- **End-to-end**: Full pipeline with real DrG documents
-- **Round-trip**: Export → Import → Export comparison
-- **Error scenarios**: Malformed documents, missing required fields
+- **End-to-end**: Full pipeline with real DrG documents containing images
+- **Round-trip**: Export → Import → Export comparison with image preservation
+- **Error scenarios**: Malformed documents, missing required fields, corrupt images
+- **Image handling**: EMF conversion, PNG preservation, placeholder fallback
 
 ### Validation Testing
 
 - **Schema compliance**: Structured output matches ODP schema
 - **Reference integrity**: All references resolve correctly
 - **Data preservation**: No information loss during transformation
+- **Image integrity**: Images render correctly in web client after import
 
 ---
 
@@ -736,6 +735,8 @@ odp import structured --file <path>
 4. **Template generation**: Export canonical document templates per DrG
 5. **Web upload UI**: Browser-based document upload and preview
 6. **Batch processing**: Import multiple documents in single transaction
+7. **Image optimization**: Compress large images, thumbnail generation
+8. **Alternative formats**: Support for SVG, handle more image formats
 
 ---
 
@@ -750,3 +751,6 @@ This approach provides:
 - **Flexibility**: Supports both Word and Excel sources
 - **Future-proofing**: Foundation for web-based import UI
 - **Schema consistency**: Enforces correct field naming (`name` for setup entities, `title` for requirements/changes)
+- **Rich text support**: Full Quill Delta format with embedded images
+- **Web compatibility**: Automatic EMF → PNG conversion for browser rendering
+- **Robustness**: Graceful handling of image conversion failures
