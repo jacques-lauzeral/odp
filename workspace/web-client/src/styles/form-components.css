@@ -734,12 +734,48 @@
     padding-left: 0;
 }
 
-/* Also target the parent detail-value container for richtext */
-.detail-value.richtext-content {
-    padding: 0;
+/* Remove spacing from richtext placeholder container */
+.richtext-placeholder {
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
-.detail-value.richtext-content .richtext-placeholder {
+/* Ensure ql-container added by Quill has no spacing */
+.richtext-placeholder.ql-container {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+}
+
+/* Compact styling for richtext fields in read mode */
+.detail-field.richtext-field {
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-2);
+}
+
+.detail-field.richtext-field label {
+    margin-bottom: var(--space-2);
+}
+
+/* Also target the parent detail-value container for richtext */
+/* Compact richtext in read-only mode */
+.detail-value.richtext-content {
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: normal !important;
+    min-height: 0 !important;
+    height: auto !important;
+    white-space: normal !important;
+}
+
+.detail-value.richtext-content > * {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.detail-value.richtext-content.richtext-placeholder {
     margin: 0;
     padding: 0;
 }
+
+/* Override detail-value padding for richtext in read mode */

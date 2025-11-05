@@ -220,23 +220,6 @@
     /* Item details styles */
 }
 
-.detail-field {
-    margin-bottom: var(--space-4);
-}
-
-.detail-field label {
-    display: block;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
-    color: var(--text-secondary);
-    margin-bottom: var(--space-1);
-}
-
-.detail-field p {
-    margin: 0;
-    color: var(--text-primary);
-}
-
 /* Actions Container */
 .actions-container {
     flex: 1;
