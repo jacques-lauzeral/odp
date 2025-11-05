@@ -1,9 +1,9 @@
 // workspace/server/src/services/DeltaToDocxConverter.js
-import { Paragraph, TextRun } from 'docx';
+import { Paragraph, TextRun, ImageRun } from 'docx';
 
 /**
  * Converts Quill Delta JSON format to docx Paragraph arrays.
- * Supports inline formatting (bold, italic, underline) and lists (bullet/ordered).
+ * Supports inline formatting (bold, italic, underline), lists (bullet/ordered), and embedded images.
  */
 class DeltaToDocxConverter {
     constructor() {
@@ -224,8 +224,8 @@ class DeltaToDocxConverter {
     _createParagraph(segment) {
         const { runs, attributes, numberingInstanceId } = segment;
 
-        // Build children (TextRuns) from runs
-        const children = runs.map(run => this._createTextRun(run));
+        // Build children (TextRuns/ImageRuns) from runs
+        const children = runs.map(run => this._createRun(run)).filter(run => run !== null);
 
         // If no children, add empty text run to prevent docx errors
         if (children.length === 0) {
@@ -258,6 +258,80 @@ class DeltaToDocxConverter {
         // Examples: header, blockquote, code-block, align, etc.
 
         return new Paragraph(paragraphOptions);
+    }
+
+    /**
+     * Create a TextRun or ImageRun from a Delta insert operation
+     * @param {Object} op - Delta insert operation
+     * @returns {TextRun|ImageRun|null} - docx Run object or null if unsupported
+     */
+    _createRun(op) {
+        // Check if this is an image embed
+        if (this._isImageEmbed(op)) {
+            return this._createImageRun(op);
+        }
+
+        // Otherwise, create a text run
+        return this._createTextRun(op);
+    }
+
+    /**
+     * Check if operation is an image embed
+     * @param {Object} op - Delta insert operation
+     * @returns {boolean}
+     */
+    _isImageEmbed(op) {
+        return typeof op.insert === 'object' &&
+            op.insert !== null &&
+            op.insert.hasOwnProperty('image');
+    }
+
+    /**
+     * Create an ImageRun from a Delta image insert operation
+     * @param {Object} op - Delta insert operation with image embed
+     * @returns {ImageRun|null} - docx ImageRun object or null if conversion fails
+     */
+    _createImageRun(op) {
+        try {
+            const imageData = op.insert.image;
+
+            // Validate data URL format: data:image/png;base64,<data>
+            if (!imageData || typeof imageData !== 'string') {
+                console.warn('Invalid image data in Delta op:', op);
+                return null;
+            }
+
+            // Parse data URL
+            const dataUrlMatch = imageData.match(/^data:image\/([^;]+);base64,(.+)$/);
+            if (!dataUrlMatch) {
+                console.warn('Invalid image data URL format:', imageData.substring(0, 100));
+                return null;
+            }
+
+            const [, imageType, base64Data] = dataUrlMatch;
+
+            // Convert base64 to buffer
+            const imageBuffer = Buffer.from(base64Data, 'base64');
+
+            // Create ImageRun with reasonable default dimensions
+            // Note: docx library will handle the image size, but we can specify max dimensions
+            return new ImageRun({
+                data: imageBuffer,
+                transformation: {
+                    width: 600,  // Max width in pixels (can be adjusted)
+                    height: 450  // Max height in pixels (can be adjusted)
+                }
+            });
+
+        } catch (error) {
+            console.error('Error creating ImageRun:', error);
+            // Return placeholder text run on error
+            return new TextRun({
+                text: '[IMAGE - Conversion Error]',
+                italics: true,
+                color: '999999'
+            });
+        }
     }
 
     /**
@@ -324,10 +398,13 @@ class DeltaToDocxConverter {
             return insert;
         }
 
-        // Handle embeds (images, formulas, etc.) - not yet supported
-        // For now, return placeholder text
+        // Handle non-image embeds (formulas, etc.) - return placeholder text
         if (typeof insert === 'object') {
             const embedType = Object.keys(insert)[0];
+            // Don't show placeholder for images (handled separately)
+            if (embedType === 'image') {
+                return '';
+            }
             return `[${embedType.toUpperCase()}]`;
         }
 
