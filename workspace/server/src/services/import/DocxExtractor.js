@@ -206,7 +206,8 @@ class DocxExtractor {
 
         // Convert images to AsciiDoc syntax with EMF→PNG conversion
         // Process each <img> tag individually
-        result = result.replace(/<img\s+src="([^"]+)"[^>]*>/gi, (match, dataUrl) => {
+        // Match <img> tags with src attribute anywhere, handling attributes in any order
+        result = result.replace(/<img\s+[^>]*?src="([^"]+)"[^>]*>/gi, (match, dataUrl) => {
             // Parse data URL to get content type and base64 data
             const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
             const dataMatch = dataUrl.match(dataUrlPattern);
@@ -604,6 +605,11 @@ class DocxExtractor {
             // Convert to AsciiDoc format
             const asciiDocContent = this._htmlToAsciiDoc('<p>' + content + '</p>');
 
+            // Debug logging for images
+            if (hasImage) {
+                console.log('Paragraph with image - AsciiDoc output:', asciiDocContent.substring(0, 100));
+            }
+
             elements.push({
                 type: 'paragraph',
                 content: asciiDocContent,
@@ -818,12 +824,24 @@ class DocxExtractor {
                 }
 
                 if (currentSection) {
-                    // Strip Unicode placeholder character
+                    // Strip Unicode placeholder character but preserve image syntax
                     const textContent = element.content
                         .replace(/\uFFFC/g, '')  // Remove Unicode object replacement character
                         .trim();
 
-                    if (textContent) {
+                    // Keep paragraphs that have content OR contain image syntax
+                    const hasImageSyntax = /image::[^\[\]]+\[\]/.test(textContent);
+
+                    // Debug logging
+                    if (element.hasImage || hasImageSyntax) {
+                        console.log('Processing image paragraph:');
+                        console.log('  hasImage flag:', element.hasImage);
+                        console.log('  hasImageSyntax:', hasImageSyntax);
+                        console.log('  textContent length:', textContent.length);
+                        console.log('  textContent preview:', textContent.substring(0, 100));
+                    }
+
+                    if (textContent || hasImageSyntax) {
                         // Lazy create content and paragraphs
                         if (!currentSection.content) {
                             currentSection.content = {};
@@ -837,6 +855,14 @@ class DocxExtractor {
                             currentSection.content.paragraphs.push(textContent);
                         } else {
                             currentSection.content.paragraphs.push(textContent);
+                        }
+
+                        if (element.hasImage || hasImageSyntax) {
+                            console.log('  -> Paragraph ADDED to section');
+                        }
+                    } else {
+                        if (element.hasImage || hasImageSyntax) {
+                            console.log('  -> Paragraph SKIPPED (failed condition)');
                         }
                     }
                 }
