@@ -273,7 +273,7 @@ class DocxExtractor {
     }
 
     /**
-     * Convert EMF image to PNG using LibreOffice
+     * Convert EMF image to PNG using LibreOffice and trim whitespace with ImageMagick
      * @param {string} emfBase64 - Base64 encoded EMF data
      * @returns {string} Base64 encoded PNG data
      * @private
@@ -284,6 +284,7 @@ class DocxExtractor {
         const tempDir = path.join(process.cwd(), 'logs');
         const emfPath = path.join(tempDir, `temp-${tempId}.emf`);
         const pngPath = path.join(tempDir, `temp-${tempId}.png`);
+        const trimmedPngPath = path.join(tempDir, `temp-${tempId}-trimmed.png`);
 
         try {
             // Ensure temp directory exists
@@ -304,21 +305,30 @@ class DocxExtractor {
                 stdio: 'pipe' // Suppress LibreOffice verbose output
             });
 
-            // Read converted PNG and encode to base64
-            const pngBuffer = fs.readFileSync(pngPath);
-            const pngBase64 = pngBuffer.toString('base64');
+            // Trim whitespace using ImageMagick
+            // -trim: Remove edges that are the background color
+            // +repage: Reset the page canvas and position
+            execSync(`convert "${pngPath}" -trim +repage "${trimmedPngPath}"`, {
+                timeout: 10000,
+                stdio: 'pipe'
+            });
 
-            console.log('Successfully converted EMF to PNG using LibreOffice');
+            // Read trimmed PNG and encode to base64
+            const trimmedPngBuffer = fs.readFileSync(trimmedPngPath);
+            const pngBase64 = trimmedPngBuffer.toString('base64');
+
+            console.log('Successfully converted EMF to PNG and trimmed whitespace');
             return pngBase64;
 
         } catch (error) {
-            console.error('LibreOffice conversion failed:', error.message);
+            console.error('EMF conversion failed:', error.message);
             throw error; // Re-throw to trigger placeholder fallback
         } finally {
             // Clean up temp files
             try {
                 if (fs.existsSync(emfPath)) fs.unlinkSync(emfPath);
                 if (fs.existsSync(pngPath)) fs.unlinkSync(pngPath);
+                if (fs.existsSync(trimmedPngPath)) fs.unlinkSync(trimmedPngPath);
             } catch (cleanupError) {
                 console.warn('Failed to clean up temp files:', cleanupError.message);
             }
