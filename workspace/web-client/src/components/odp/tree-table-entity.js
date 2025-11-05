@@ -110,9 +110,9 @@ export default class TreeTableEntity {
                             // Node display properties from renderer
                             icon: renderer.icon || '📄',
                             iconColor: renderer.iconColor || '#666',
-                            expandable: isLeaf ? false : (typeof renderer.expandable === 'function'
+                            expandable: typeof renderer.expandable === 'function'
                                 ? renderer.expandable
-                                : renderer.expandable !== false),
+                                : (isLeaf ? false : (renderer.expandable !== false)),
                             label: renderer.label
                                 ? renderer.label(pathItem)
                                 : pathItem.value
@@ -124,11 +124,6 @@ export default class TreeTableEntity {
                     // For leaf nodes, attach entity
                     if (isLeaf) {
                         currentNode.entity = entity;
-                        // Update expandable based on whether node has children
-                        const renderer = this.typeRenderers[pathItem.type];
-                        if (renderer && typeof renderer.expandable === 'function') {
-                            currentNode.expandable = renderer.expandable(currentNode);
-                        }
                     }
                 });
             } catch (error) {
@@ -362,8 +357,9 @@ export default class TreeTableEntity {
             // Render node row
             html += this.renderNodeRow(child, level);
 
-            // Render children if expanded
-            if (child.expanded && !child.isLeaf) {
+            // Render children if expanded and has children
+            // Don't rely on isLeaf flag - check actual children existence
+            if (child.expanded && Object.keys(child.children).length > 0) {
                 html += this.renderTreeNodes(child, level + 1);
             }
         });
@@ -422,7 +418,13 @@ export default class TreeTableEntity {
         if (isFirstColumn) {
             // First column shows hierarchy with indentation
             const indent = level * 20;
-            const expandIcon = node.expandable
+
+            // Evaluate expandable lazily at render time
+            const isExpandable = typeof node.expandable === 'function'
+                ? node.expandable(node)
+                : node.expandable;
+
+            const expandIcon = isExpandable
                 ? (node.expanded ? '▼' : '▶')
                 : '';
 
