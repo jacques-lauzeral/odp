@@ -19,6 +19,9 @@
  * - "__text__" → underline
  * - Nested formatting: "***text***" → bold + italic
  *
+ * Images:
+ * - "image::data:image/png;base64,...[]" → embedded image
+ *
  * Paragraphs:
  * - Lines separated by "\n\n" → separate paragraphs
  * - Single "\n" within content → line break
@@ -27,7 +30,8 @@
  * {
  *   ops: [
  *     { insert: "text", attributes: { bold: true } },
- *     { insert: "\n", attributes: { list: "ordered" } }
+ *     { insert: "\n", attributes: { list: "ordered" } },
+ *     { insert: { image: "data:image/png;base64,..." } }
  *   ]
  * }
  *
@@ -67,6 +71,23 @@ class AsciidocToDeltaConverter {
 
             // Skip empty lines (they're paragraph separators)
             if (trimmedLine === '') {
+                i++;
+                continue;
+            }
+
+            // Check for image syntax: image::data:...[]
+            const imageMatch = trimmedLine.match(/^image::(data:[^[\]]+)\[\]$/);
+            if (imageMatch) {
+                const dataUrl = imageMatch[1];
+
+                // Insert image as Delta image op
+                ops.push({
+                    insert: { image: dataUrl }
+                });
+
+                // Add newline after image
+                ops.push({ insert: '\n' });
+
                 i++;
                 continue;
             }

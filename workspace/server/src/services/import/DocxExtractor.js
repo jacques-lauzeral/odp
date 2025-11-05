@@ -1,4 +1,8 @@
 import mammoth from 'mammoth';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import crypto from 'crypto';
 
 class DocxExtractor {
     /**
@@ -178,6 +182,7 @@ class DocxExtractor {
      * - <u>text</u> → "__text__" (underline)
      * - <ol><li>item</li></ol> → ". item" (ordered list, one per line)
      * - <ul><li>item</li></ul> → "* item" (unordered list, one per line)
+     * - <img src="data:..."> → "image::data:...[]" (AsciiDoc image syntax, EMF converted to PNG)
      * - Nested formatting preserved: <strong><em>text</em></strong> → "***text***"
      *
      * Rationale:
@@ -186,6 +191,7 @@ class DocxExtractor {
      * - AsciiDoc is well-established, readable convention
      * - Single converter (textToDelta) handles all text → Delta conversion
      * - Double newlines preserve paragraph structure from Word documents
+     * - EMF images converted to PNG at extraction time for web compatibility
      *
      * @param {string} html - HTML fragment from mammoth
      * @returns {string} AsciiDoc-style plain text
@@ -197,6 +203,39 @@ class DocxExtractor {
         }
 
         let result = html;
+
+        // Convert images to AsciiDoc syntax with EMF→PNG conversion
+        // Process each <img> tag individually
+        result = result.replace(/<img\s+src="([^"]+)"[^>]*>/gi, (match, dataUrl) => {
+            // Parse data URL to get content type and base64 data
+            const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
+            const dataMatch = dataUrl.match(dataUrlPattern);
+
+            if (dataMatch) {
+                let contentType = dataMatch[1];
+                let imageData = dataMatch[2];
+
+                // Convert EMF to PNG
+                if (contentType === 'image/x-emf') {
+                    try {
+                        imageData = this._convertEmfToPng(imageData);
+                        contentType = 'image/png';
+                        console.log('Converted EMF image to PNG during AsciiDoc conversion');
+                    } catch (error) {
+                        console.warn('Failed to convert EMF image:', error.message);
+                        // Use missing image placeholder
+                        imageData = this._getMissingImagePlaceholder();
+                        contentType = 'image/png';
+                    }
+                }
+
+                // Return AsciiDoc image syntax with converted data
+                return `image::data:${contentType};base64,${imageData}[]`;
+            }
+
+            // Fallback if data URL parsing fails
+            return `image::${dataUrl}[]`;
+        });
 
         // Handle lists first with proper tag-depth tracking (not regex)
         result = this._processListsWithDepthTracking(result, listDepth);
@@ -231,6 +270,69 @@ class DocxExtractor {
         result = result.replace(/\n{3,}/g, '\n\n');
 
         return result;
+    }
+
+    /**
+     * Convert EMF image to PNG using LibreOffice
+     * @param {string} emfBase64 - Base64 encoded EMF data
+     * @returns {string} Base64 encoded PNG data
+     * @private
+     */
+    _convertEmfToPng(emfBase64) {
+        // Generate unique temp filenames
+        const tempId = crypto.randomBytes(8).toString('hex');
+        const tempDir = path.join(process.cwd(), 'logs');
+        const emfPath = path.join(tempDir, `temp-${tempId}.emf`);
+        const pngPath = path.join(tempDir, `temp-${tempId}.png`);
+
+        try {
+            // Ensure temp directory exists
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+
+            // Write EMF file
+            const emfBuffer = Buffer.from(emfBase64, 'base64');
+            fs.writeFileSync(emfPath, emfBuffer);
+
+            // Convert using LibreOffice (synchronous)
+            // --headless: Run without GUI
+            // --convert-to png: Output format
+            // --outdir: Output directory
+            execSync(`libreoffice --headless --convert-to png --outdir "${tempDir}" "${emfPath}"`, {
+                timeout: 30000,
+                stdio: 'pipe' // Suppress LibreOffice verbose output
+            });
+
+            // Read converted PNG and encode to base64
+            const pngBuffer = fs.readFileSync(pngPath);
+            const pngBase64 = pngBuffer.toString('base64');
+
+            console.log('Successfully converted EMF to PNG using LibreOffice');
+            return pngBase64;
+
+        } catch (error) {
+            console.error('LibreOffice conversion failed:', error.message);
+            throw error; // Re-throw to trigger placeholder fallback
+        } finally {
+            // Clean up temp files
+            try {
+                if (fs.existsSync(emfPath)) fs.unlinkSync(emfPath);
+                if (fs.existsSync(pngPath)) fs.unlinkSync(pngPath);
+            } catch (cleanupError) {
+                console.warn('Failed to clean up temp files:', cleanupError.message);
+            }
+        }
+    }
+
+    /**
+     * Get base64 encoded missing image placeholder (small PNG icon)
+     * @returns {string} Base64 encoded PNG
+     * @private
+     */
+    _getMissingImagePlaceholder() {
+        // 1x1 transparent PNG pixel
+        return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     }
 
     _decodeHtmlEntities(text) {
@@ -706,42 +808,12 @@ class DocxExtractor {
                 }
 
                 if (currentSection) {
-                    // Handle images in paragraphs
-                    if (element.hasImage) {
-                        // Extract images separately
-                        const images = this._extractImagesFromContent(element.content);
-                        if (images.length > 0) {
-                            // Lazy create content and images
-                            if (!currentSection.content) {
-                                currentSection.content = {};
-                            }
-                            if (!currentSection.content.images) {
-                                currentSection.content.images = [];
-                            }
-                            images.forEach(img => {
-                                currentSection.content.images.push(img);
-                            });
-                        }
+                    // Strip Unicode placeholder character
+                    const textContent = element.content
+                        .replace(/\uFFFC/g, '')  // Remove Unicode object replacement character
+                        .trim();
 
-                        // Also add text content if any (strip image tags)
-                        const textContent = element.content.replace(/<img[^>]*>/gi, '').trim();
-                        if (textContent) {
-                            // Lazy create content and paragraphs
-                            if (!currentSection.content) {
-                                currentSection.content = {};
-                            }
-                            if (!currentSection.content.paragraphs) {
-                                currentSection.content.paragraphs = [];
-                            }
-
-                            if (element.isList) {
-                                // List items are already extracted individually
-                                currentSection.content.paragraphs.push(textContent);
-                            } else {
-                                currentSection.content.paragraphs.push(textContent);
-                            }
-                        }
-                    } else {
+                    if (textContent) {
                         // Lazy create content and paragraphs
                         if (!currentSection.content) {
                             currentSection.content = {};
@@ -750,12 +822,11 @@ class DocxExtractor {
                             currentSection.content.paragraphs = [];
                         }
 
-                        // Add list items or regular paragraphs
                         if (element.isList) {
                             // List items are already extracted individually
-                            currentSection.content.paragraphs.push(element.content);
+                            currentSection.content.paragraphs.push(textContent);
                         } else {
-                            currentSection.content.paragraphs.push(element.content);
+                            currentSection.content.paragraphs.push(textContent);
                         }
                     }
                 }
@@ -786,35 +857,6 @@ class DocxExtractor {
         }
 
         return sections;
-    }
-
-    /**
-     * Extract images from HTML content
-     */
-    _extractImagesFromContent(content) {
-        const images = [];
-        const imageRegex = /<img\s+src="([^"]+)"[^>]*>/gi;
-        let match;
-
-        while ((match = imageRegex.exec(content)) !== null) {
-            const src = match[1];
-
-            // Parse data URL to get content type and base64 data
-            if (src.startsWith('data:')) {
-                const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
-                const dataMatch = src.match(dataUrlPattern);
-
-                if (dataMatch) {
-                    images.push({
-                        contentType: dataMatch[1],
-                        data: dataMatch[2],
-                        encoding: 'base64'
-                    });
-                }
-            }
-        }
-
-        return images;
     }
 
     /**
