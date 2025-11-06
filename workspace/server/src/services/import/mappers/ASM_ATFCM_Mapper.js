@@ -176,13 +176,15 @@ class AsmAtfcmMapper extends Mapper {
         'Airspace Management Cells': 'stakeholder:network/ansp/amc',
 
         // Air Traffic Control
-        'ATC Unit': 'stakeholder:network/ansp/atc',
-        'ATC Units': 'stakeholder:network/ansp/atc',
-        'Air Traffic Control Units': 'stakeholder:network/ansp/atc',
-        'Civil/Military ATC Units': 'stakeholder:network/ansp/atc',
-        'Civil, Military ATC Units': 'stakeholder:network/ansp/atc',  // Fallback for comma variant
-        'ATSUs': 'stakeholder:network/ansp/atc',
-        'ATSU': 'stakeholder:network/ansp/atc',
+        'ATC Unit': 'stakeholder:network/ansp/atc_unit',
+        'ATC Units': 'stakeholder:network/ansp/atc_unit',
+        'Air Traffic Control Units': 'stakeholder:network/ansp/atc_unit',
+        'Civil/Military ATC Units': 'stakeholder:network/ansp/atc_unit',
+        'Civil, Military ATC Units': 'stakeholder:network/ansp/atc_unit',  // Fallback for comma variant
+
+        // Air Traffic Service
+        'ATSUs': 'stakeholder:network/ansp/ats_unit',
+        'ATSU': 'stakeholder:network/ansp/ats_unit',
 
         // Airspace User variations
         'AU': 'stakeholder:network/airspace_user',

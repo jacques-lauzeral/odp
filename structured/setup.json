@@ -118,6 +118,12 @@
       "parentExternalId": "stakeholder:network/ansp"
     },
     {
+      "externalId": "stakeholder:network/ansp/ats_unit",
+      "name": "ATS Unit",
+      "description": "Air Traffic Service Unit",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
       "externalId": "stakeholder:network/ansp/nec",
       "name": "NEC",
       "description": "National ENV Coordinator",
