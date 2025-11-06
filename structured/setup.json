@@ -112,7 +112,7 @@
       "parentExternalId": "stakeholder:network/ansp"
     },
     {
-      "externalId": "stakeholder:network/ansp/atc",
+      "externalId": "stakeholder:network/ansp/atc_unit",
       "name": "ATC Unit",
       "description": "Air Traffic Control Unit (includes civil and military ATC)",
       "parentExternalId": "stakeholder:network/ansp"

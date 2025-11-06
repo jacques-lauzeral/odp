@@ -219,11 +219,11 @@ export class OperationalChangeService extends VersionedItemService {
                 milestones: newMilestones
             };
 
-            // Update OC with modified milestones
+            // Update OC with new milestones
             const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
             await commitTransaction(tx);
 
-            // Return the updated milestone (at the same index position) with version info
+            // Return the updated milestone with version info
             const updatedMilestone = updatedOC.milestones[milestoneIndex];
 
             return {
@@ -246,7 +246,7 @@ export class OperationalChangeService extends VersionedItemService {
      * @param {string} milestoneKey - Milestone Key (stable identifier)
      * @param {string} expectedVersionId - Expected version ID for optimistic locking
      * @param {string} userId - User ID
-     * @returns {boolean} True if successful
+     * @returns {object} Response with operationalChange version info
      */
     async deleteMilestone(itemId, milestoneKey, expectedVersionId, userId) {
         const tx = createTransaction(userId);
@@ -259,15 +259,21 @@ export class OperationalChangeService extends VersionedItemService {
                 throw new Error('Operational change not found');
             }
 
-            // Find milestone to delete by milestoneKey
+            // Convert existing milestones to raw data format
+            const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
+
+            // Find the milestone to delete by milestoneKey
             const milestoneIndex = current.milestones.findIndex(m => m.milestoneKey === milestoneKey);
             if (milestoneIndex === -1) {
                 throw new Error('Milestone not found');
             }
 
-            // Convert existing milestones to raw data format and filter out deleted milestone
-            const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
-            const newMilestones = existingMilestonesData.filter((_, index) => index !== milestoneIndex);
+            // Create new milestones array without the deleted milestone
+            const newMilestones = existingMilestonesData.filter(m => m.milestoneKey !== milestoneKey);
+
+            // Validate the updated milestones
+            this._validateMilestones(newMilestones);
+            await this._validateMilestoneWaves(newMilestones);
 
             // Create complete payload for update
             const completePayload = {
@@ -287,39 +293,31 @@ export class OperationalChangeService extends VersionedItemService {
                 milestones: newMilestones
             };
 
-            // Update OC with milestone removed
-            await store.update(itemId, completePayload, expectedVersionId, tx);
+            // Update OC with new milestones
+            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
             await commitTransaction(tx);
 
-            return true; // Successful deletion
+            return {
+                operationalChange: {
+                    itemId: updatedOC.itemId,
+                    versionId: updatedOC.versionId,
+                    version: updatedOC.version
+                }
+            };
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
         }
     }
 
-    // Milestones are not sent by the client at update time.
-    // They must be loaded from the store layer and added to the payload
-    async _doUpdate(itemId, payload, expectedVersionId, tx) {
-        const jsonPayload = JSON.stringify(payload);
-        console.log(`OperationalChangeService._doUpdate() payload: ${jsonPayload}`);
-        const current = await this.getStore().findById(itemId, tx);
-        payload.milestones = this._convertMilestonesToRawData(current.milestones);
-        const jsonCompletedPayload = JSON.stringify(payload);
-        console.log(`OperationalChangeService._doUpdate() completed payload: ${jsonCompletedPayload}`);
-        return super._doUpdate(itemId, payload, expectedVersionId, tx);
-    }
-
     // Implement validation methods required by VersionedItemService
     async _validateCreatePayload(payload) {
-        this._validateRequiredFieldsForCreate(payload);
-        this._validateOptionalFields(payload);
-        await this._validateReferencedEntities(payload);
-    }
-
-    async _validateUpdatePayload(payload) {
-        this._validateRequiredFieldsForUpdate(payload);
-        this._validateOptionalFields(payload);
+        const jsonPayload = JSON.stringify(payload);
+        console.log(`OperationalChangeService._validateCreatePayload() payload: ${jsonPayload}`);
+        this._validateRequiredFields(payload);
+        this._validateDRG(payload.drg);
+        this._validateVisibility(payload.visibility);
+        this._validateRelationshipArrays(payload);
         await this._validateReferencedEntities(payload);
     }
 
@@ -342,56 +340,26 @@ export class OperationalChangeService extends VersionedItemService {
         };
     }
 
+    async _validateUpdatePayload(payload) {
+        const jsonPayload = JSON.stringify(payload);
+        console.log(`OperationalChangeService._validateUpdatePayload() payload: ${jsonPayload}`);
+        this._validateRequiredFields(payload);
+        this._validateDRG(payload.drg);
+        this._validateVisibility(payload.visibility);
+        this._validateRelationshipArrays(payload);
+        await this._validateReferencedEntities(payload);
+    }
+
     // Validation helper methods
-    _validateRequiredFieldsForCreate(payload) {
-        const requiredFields = ['title', 'purpose', 'visibility'];
+    _validateRequiredFields(payload) {
+        const requiredFields = [
+            'title', 'purpose', 'initialState', 'finalState', 'drg', 'visibility'
+        ];
 
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {
                 throw new Error(`Validation failed: missing required field: ${field}`);
             }
-        }
-    }
-
-    _validateRequiredFieldsForUpdate(payload) {
-        // Only title is required for updates
-        if (payload.title === undefined || payload.title === null) {
-            throw new Error(`Validation failed: missing required field: title`);
-        }
-    }
-
-    _validateOptionalFields(payload) {
-        // Only validate fields that are actually provided
-        if (payload.visibility !== undefined) {
-            this._validateVisibility(payload.visibility);
-        }
-
-        if (payload.drg !== undefined && payload.drg !== null) {
-            this._validateDRG(payload.drg);
-        }
-
-        if (payload.satisfiesRequirements !== undefined) {
-            this._validateRelationshipArray(payload.satisfiesRequirements, 'satisfiesRequirements');
-        }
-
-        if (payload.supersedsRequirements !== undefined) {
-            this._validateRelationshipArray(payload.supersedsRequirements, 'supersedsRequirements');
-        }
-
-        if (payload.documentReferences !== undefined) {
-            this._validateDocumentReferences(payload.documentReferences);
-        }
-
-        if (payload.dependsOnChanges !== undefined) {
-            this._validateRelationshipArray(payload.dependsOnChanges, 'dependsOnChanges');
-        }
-
-        if (payload.path !== undefined) {
-            this._validatePath(payload.path);
-        }
-
-        if (payload.milestones !== undefined) {
-            this._validateMilestones(payload.milestones);
         }
     }
 
@@ -407,27 +375,42 @@ export class OperationalChangeService extends VersionedItemService {
         }
     }
 
-    _validateRelationshipArray(array, fieldName) {
-        if (!Array.isArray(array)) {
-            throw new Error(`Validation failed: ${fieldName} must be an array`);
-        }
-    }
+    _validateRelationshipArrays(payload) {
+        const relationshipFields = [
+            'satisfiesRequirements', 'supersedsRequirements',
+            'documentReferences', 'dependsOnChanges', 'milestones'
+        ];
 
-    _validateDocumentReferences(documentReferences) {
-        if (!Array.isArray(documentReferences)) {
-            throw new Error('Validation failed: documentReferences must be an array');
+        for (const field of relationshipFields) {
+            if (payload[field] !== undefined && !Array.isArray(payload[field])) {
+                throw new Error(`Validation failed: ${field} must be an array`);
+            }
         }
 
-        for (const ref of documentReferences) {
-            if (typeof ref !== 'object' || ref === null) {
-                throw new Error('Validation failed: each document reference must be an object');
+        // Validate EntityReference structure for documentReferences
+        if (payload.documentReferences) {
+            for (const ref of payload.documentReferences) {
+                console.log(`OperationalChangeService._validateRelationshipArrays() payload ref: ${JSON.stringify(ref)}`);
+                if (typeof ref !== 'object' || ref === null) {
+                    throw new Error('Validation failed: each documentReferences item must be an object');
+                }
+                if (ref.id === undefined || ref.id === null) {
+                    throw new Error('Validation failed: documentReferences item must have id property');
+                }
+                if (ref.note !== undefined && typeof ref.note !== 'string') {
+                    throw new Error('Validation failed: documentReferences note must be a string');
+                }
             }
-            if (!ref.id) {
-                throw new Error('Validation failed: document reference must have id');
-            }
-            if (ref.note !== undefined && typeof ref.note !== 'string') {
-                throw new Error('Validation failed: document reference note must be a string');
-            }
+        }
+
+        // Validate path array
+        if (payload.path) {
+            this._validatePath(payload.path);
+        }
+
+        // Validate milestones array
+        if (payload.milestones) {
+            this._validateMilestones(payload.milestones);
         }
     }
 
