@@ -33,7 +33,7 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * - 'Step' → path[0] (first element of hierarchical path)
  * - 'CONOPS Improvement reference' → path[1] (second element of hierarchical path)
  * - 'Stakeholders:' → impactsStakeholderCategories (parsed via synonym map)
- * - 'INM Roadmap reference (code)' → referencesDocuments (document:inm-roadmap with column value as note)
+ * - 'INM Roadmap reference (code)' → documentReferences (document:inm-roadmap with column value as note)
  * - 'Originator:' → privateNotes
  * - 'OR Code' → privateNotes
  * - 'Dependencies:' → privateNotes
@@ -53,7 +53,7 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * - 'Details' → details (rich text)
  * - 'Satisfied Ors' → satisfiedORs (semicolon-delimited list)
  * - 'Superseded Ors' → supersededORs (semicolon-delimited, "N/A" → empty array)
- * - 'Additional documents' → referencesDocuments (line-delimited → document references)
+ * - 'Additional documents' → documentReferences (line-delimited → document references)
  * - 'Milestones' → milestones (single milestone: title='M1', wave='wave:2027', eventTypes=[parsed values])
  * - 'Remarks' → privateNotes (combined with other fields)
  * - 'Dependences' → privateNotes (appended as Dependencies section)
@@ -80,6 +80,8 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * Data (and other Enablers): [value]
  *
  * Impacted Services: [value]
+ *
+ * Stakeholders (unmapped): [comma-separated list of unmapped stakeholder names]
  *
  * Remark: [value]
  *
@@ -146,6 +148,7 @@ class AsmAtfcmMapper extends Mapper {
         'NMOC': 'stakeholder:network/nm/nmoc',
         'Network Manager': 'stakeholder:network/nm',
         'NM B2B Office': 'stakeholder:network/nm',
+        'Network Manager Operations Centre': 'stakeholder:network/nm/nmoc',
 
         // Weather Operations Centre
         'WOC': 'stakeholder:network/nm/woc',
@@ -154,30 +157,37 @@ class AsmAtfcmMapper extends Mapper {
         // ANSP variations
         'ANSP': 'stakeholder:network/ansp',
         'ANSPs': 'stakeholder:network/ansp',
+        'ANSPs MIL': 'stakeholder:network/ansp',  // ANSPs including Military
 
         // Flow Management Position
         'FMP': 'stakeholder:network/ansp/fmp',
         'FMPs': 'stakeholder:network/ansp/fmp',
+        'FM': 'stakeholder:network/ansp/fmp',  // Abbreviation for Flow Management
         'Local FMPs': 'stakeholder:network/ansp/fmp',
         'Local FMP': 'stakeholder:network/ansp/fmp',
+        'Flow Management Positions': 'stakeholder:network/ansp/fmp',
 
         // Airspace Management Cell
         'AMC': 'stakeholder:network/ansp/amc',
         'AMCs': 'stakeholder:network/ansp/amc',
         'Local AMCs': 'stakeholder:network/ansp/amc',
+        'local AMCs': 'stakeholder:network/ansp/amc',  // lowercase variant
         'Local AMC': 'stakeholder:network/ansp/amc',
+        'Airspace Management Cells': 'stakeholder:network/ansp/amc',
 
         // Air Traffic Control
         'ATC Unit': 'stakeholder:network/ansp/atc',
         'ATC Units': 'stakeholder:network/ansp/atc',
         'Air Traffic Control Units': 'stakeholder:network/ansp/atc',
         'Civil/Military ATC Units': 'stakeholder:network/ansp/atc',
+        'Civil, Military ATC Units': 'stakeholder:network/ansp/atc',  // Fallback for comma variant
         'ATSUs': 'stakeholder:network/ansp/atc',
         'ATSU': 'stakeholder:network/ansp/atc',
 
         // Airspace User variations
         'AU': 'stakeholder:network/airspace_user',
         'AUs': 'stakeholder:network/airspace_user',
+        'Aus': 'stakeholder:network/airspace_user',  // Typo variant
         'Airspace Users': 'stakeholder:network/airspace_user',
         'Airspace User': 'stakeholder:network/airspace_user',
 
@@ -185,6 +195,7 @@ class AsmAtfcmMapper extends Mapper {
         'AO': 'stakeholder:network/airspace_user/ao',
         'AOs': 'stakeholder:network/airspace_user/ao',
         'Airlines': 'stakeholder:network/airspace_user/ao',
+        'Airlines/AU': 'stakeholder:network/airspace_user/ao',
 
         // Computerized Flight Service Provider
         'CFSP': 'stakeholder:network/airspace_user/cfsp',
@@ -210,9 +221,18 @@ class AsmAtfcmMapper extends Mapper {
         // European Aviation Safety Agency
         'EASA': 'stakeholder:network/easa',
 
-        // Explicitly ignored - technical/generic terms
+        // Explicitly ignored - technical/generic terms, vague groupings
         'External Systems': null,
-        'External Users': null
+        'External Users': null,
+        'EXT': null,  // External (too vague)
+        'relevant ASM actors': null,  // Too generic
+        'local ASM actor': null,  // Too generic
+        'local ASM': null,  // Fragment from "local ASM/ATFCM actors"
+        'ATFCM actors': null,  // Fragment from "local ASM/ATFCM actors"
+        'All CDM stakeholders: FMPs': null,  // Prefix text, not a stakeholder
+        'AMC. FMP': null,  // Malformed (period instead of comma)
+        'System Developers (EAUP': null,  // Incomplete after parenthetical removal
+        'ADP platforms)': null  // Fragment after parenthetical removal
     };
 
 
@@ -482,13 +502,16 @@ class AsmAtfcmMapper extends Mapper {
         }
 
         // Parse stakeholders
-        const impactsStakeholderCategories = this._parseStakeholders(row['Stakeholders:']);
+        const stakeholderResult = this._parseStakeholders(row['Stakeholders:']);
 
         // Parse document references
-        const referencesDocuments = this._parseRequirementDocumentReferences(row);
+        const documentReferences = this._parseRequirementDocumentReferences(row);
 
         // Build path from Step and CONOPS Improvement reference
         const path = this._buildPath(step, conopsReference);
+
+        // Build private notes (including unmapped stakeholders if any)
+        const privateNotes = this._extractRequirementPrivateNotes(row, stakeholderResult.unmapped);
 
         // Build object first
         const requirement = {
@@ -498,10 +521,10 @@ class AsmAtfcmMapper extends Mapper {
             path: path,
             statement: statement,
             rationale: rationale,
-            privateNotes: this._extractRequirementPrivateNotes(row),
+            privateNotes: privateNotes,
             implementedONs: [],  // Will be populated by caller
-            impactsStakeholderCategories: impactsStakeholderCategories,
-            referencesDocuments: referencesDocuments
+            impactsStakeholderCategories: stakeholderResult.refs,
+            documentReferences: documentReferences
         };
 
         // Add external ID using the complete object (no path needed)
@@ -534,10 +557,11 @@ class AsmAtfcmMapper extends Mapper {
     /**
      * Extract private notes for OR
      * @param {Object} row - Row object
+     * @param {Array<string>} unmappedStakeholders - Unmapped stakeholder names
      * @returns {string|null} Private notes text
      * @private
      */
-    _extractRequirementPrivateNotes(row) {
+    _extractRequirementPrivateNotes(row, unmappedStakeholders = []) {
         const rowNumber = row['#'];
         const originator = row['Originator:'];
         const orCode = row['OR Code'];
@@ -575,6 +599,10 @@ class AsmAtfcmMapper extends Mapper {
 
         if (this._isValidPrivateNote(impactedServices)) {
             parts.push(`**Impacted Services:** ${impactedServices.trim()}`);
+        }
+
+        if (unmappedStakeholders && unmappedStakeholders.length > 0) {
+            parts.push(`**Stakeholders (unmapped):** ${unmappedStakeholders.join(', ')}`);
         }
 
         if (remark && remark.trim() !== '') {
@@ -669,7 +697,7 @@ class AsmAtfcmMapper extends Mapper {
         const supersededORs = this._resolveOrCodes(row['Superseded Ors'], orCodeMap, 'Superseded Ors', true);
 
         // Parse document references (line-delimited)
-        const referencesDocuments = this._parseDocumentReferences(row['Additional documents']);
+        const documentReferences = this._parseDocumentReferences(row['Additional documents']);
 
         // Parse milestones
         const milestones = this._parseOcMilestones(row['Milestones']);
@@ -689,7 +717,7 @@ class AsmAtfcmMapper extends Mapper {
             visibility: 'NETWORK',
             satisfiedORs: satisfiedORs,
             supersededORs: supersededORs,
-            referencesDocuments: referencesDocuments,
+            documentReferences: documentReferences,
             milestones: milestones,
             privateNotes: privateNotes
         };
@@ -872,30 +900,35 @@ class AsmAtfcmMapper extends Mapper {
 
     /**
      * Parse stakeholders column and map to reference objects
-     * Handles multiple delimiters: comma, semicolon, slash
+     * Handles multiple delimiters: comma, semicolon, slash, bullet point, newline
      * Skips explicitly ignored tokens (mapped to null)
      * Logs warnings for unmapped tokens
      *
      * @param {string} stakeholdersText - Delimited stakeholder text from Excel
-     * @returns {Array<{externalId: string}>} Array of unique stakeholder references
+     * @returns {Object} { refs: Array<{externalId}>, unmapped: Array<string> }
      * @private
      */
     _parseStakeholders(stakeholdersText) {
         if (!stakeholdersText || stakeholdersText.trim() === '') {
-            return [];
+            return { refs: [], unmapped: [] };
         }
 
         const stakeholderRefs = [];
         const seenIds = new Set();  // Prevent duplicates
-        const unmappedTokens = new Set();  // Track unknowns
+        const unmappedTokens = [];  // Track unknowns (preserve order)
 
-        // Split by comma, semicolon, or slash
+        // Split by comma, semicolon, slash, bullet point, or newline
         const tokens = stakeholdersText
-            .split(/[,;/]/)
+            .split(/[,;/•\n]/)
             .map(t => t.trim())
             .filter(t => t && t !== '');
 
-        for (const token of tokens) {
+        for (let token of tokens) {
+            // Remove parenthetical text (e.g., "(EAUP/ADP platforms)" or "(EAUP, ADP platforms)")
+            token = token.replace(/\s*\([^)]*\)\s*/g, '').trim();
+
+            if (!token) continue;
+
             const externalId = AsmAtfcmMapper.STAKEHOLDER_SYNONYM_MAP[token];
 
             if (externalId === null) {
@@ -910,20 +943,22 @@ class AsmAtfcmMapper extends Mapper {
                     seenIds.add(externalId);
                 }
             } else {
-                // Unknown token - track for reporting
-                unmappedTokens.add(token);
+                // Unknown token - track for reporting and private notes
+                if (!unmappedTokens.includes(token)) {
+                    unmappedTokens.push(token);
+                }
             }
         }
 
         // Report unmapped tokens (helps identify missing synonyms)
-        if (unmappedTokens.size > 0) {
+        if (unmappedTokens.length > 0) {
             console.warn(
                 `Unmapped stakeholders in "${stakeholdersText}": ` +
-                Array.from(unmappedTokens).join(', ')
+                unmappedTokens.join(', ')
             );
         }
 
-        return stakeholderRefs;
+        return { refs: stakeholderRefs, unmapped: unmappedTokens };
     }
 
     /**
