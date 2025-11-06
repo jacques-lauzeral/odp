@@ -433,6 +433,7 @@ class AsmAtfcmMapper extends Mapper {
         const onTitle = row['ON Title:'];
         const onStatement = row['ON Statement'];
         const onRationale = row['ON Rationale'];
+        const onConopsImprovement = row['CONOPS Improvement reference'];
 
         if (!onTitle || onTitle.trim() === '') {
             return null;
@@ -442,6 +443,7 @@ class AsmAtfcmMapper extends Mapper {
         const need = {
             type: 'ON',
             drg: 'ASM_ATFCM',
+            path: [ onConopsImprovement ],
             title: onTitle.trim(),
             statement: onStatement && onStatement.trim() !== '' ? onStatement.trim() : null,
             rationale: onRationale && onRationale.trim() !== '' ? onRationale.trim() : null,
@@ -505,6 +507,7 @@ class AsmAtfcmMapper extends Mapper {
      */
     _extractRequirement(row) {
         const orTitle = row['OR Title:'];
+        const orConopsImprovement = row['CONOPS Improvement reference'];
 
         if (!orTitle || orTitle.trim() === '') {
             return null;
@@ -546,6 +549,7 @@ class AsmAtfcmMapper extends Mapper {
             type: 'OR',
             drg: 'ASM_ATFCM',
             title: orTitle.trim(),
+            path: [ orConopsImprovement ],
             statement: statement,
             rationale: rationale,
             privateNotes: this._extractRequirementPrivateNotes(row),

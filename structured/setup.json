@@ -196,5 +196,23 @@
       "description": "Providers of surveillance data for aircraft tracking",
       "parentExternalId": "stakeholder:network"
     }
+  ],
+  "waves": [
+    {
+      "externalId": "wave:2027",
+      "year": "2027"
+    },
+    {
+      "externalId": "wave:2028",
+      "year": "2028"
+    },
+    {
+      "externalId": "wave:2029",
+      "year": "2029"
+    },
+    {
+      "externalId": "wave:2030",
+      "year": "2030"
+    }
   ]
 }
