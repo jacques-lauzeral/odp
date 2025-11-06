@@ -799,9 +799,11 @@ class JSONImporter {
                             }
 
                             processedMilestones.push({
+                                title: milestoneData.title,
                                 milestoneKey: milestoneKey,
-                                eventType: milestoneData.eventType || 'OPS_DEPLOYMENT',
-                                waveId: waveId
+                                description: milestoneData.description || 'TBD',
+                                eventTypes: milestoneData.eventTypes,
+                                wave: waveId
                             });
 
                             milestoneIndex++;

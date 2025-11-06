@@ -78,7 +78,7 @@ requirements:
     impactedStakeholderCategories: ["StakeholderRef1"]
     impactedServices: ["ServiceRef1"]
     impactedDataCategories: ["DataRef1"]
-    referencesDocuments:  # Optional
+    documentReferences:  # Optional
       - documentExternalId: "Doc-001"
         note: "Section 3.2"  # Optional reference note
       - documentExternalId: "Doc-002"
@@ -101,7 +101,7 @@ requirements:
 - **impactedStakeholderCategories**: External IDs of affected stakeholder categories
 - **impactedServices**: External IDs of affected services
 - **impactedDataCategories**: External IDs of affected data categories
-- **referencesDocuments**: Array of document references with optional notes
+- **documentReferences**: Array of document references with optional notes
 - **dependsOnRequirements**: External IDs of requirements this one depends on
 
 ### Constraints
@@ -129,7 +129,7 @@ requirements:
     impactedStakeholderCategories: ["ANSP", "Airlines"]
     impactedServices: ["Flight-Plan-Service"]
     impactedDataCategories: ["Route-Data"]
-    referencesDocuments:
+    documentReferences:
       - documentExternalId: "ICAO-Doc-4444"
         note: "Chapter 4, Section 4.3"
       - documentExternalId: "EUROCONTROL-Spec-001"
@@ -155,13 +155,14 @@ changes:
     path: ["Section 1", "Subsection 1.1"]  # Optional organizational hierarchy
     satisfiedORs: ["OR-External-Id-1", "OR-External-Id-2"]
     supersededORs: ["OR-External-Id-3"]  # Optional, usually empty
-    referencesDocuments:  # Optional
+    documentReferences:  # Optional
       - documentExternalId: "Doc-001"
         note: "Implementation guide, Section 5"
     dependsOnChanges: ["Change-External-Id-1"]  # Optional
     milestones:
-      - eventType: "OPS_DEPLOYMENT"  # Single event type per milestone
-        wave: "2027-Q2"  # External ID of the wave
+      - title: "M1"
+        eventTypes: [ "OPS_DEPLOYMENT" ]  # event type array
+        wave: "wave:2027"  # External ID of the wave
 ```
 
 ### Field Descriptions
@@ -185,7 +186,8 @@ changes:
 - **dependsOnChanges**: External IDs of changes this one depends on (optional)
 
 #### Milestone Fields
-- **eventType**: Type of milestone event (single value):
+- **title**: Milestone title
+- **eventTypes**: array of events:
   - `API_PUBLICATION` - API specification published
   - `API_TEST_DEPLOYMENT` - API deployed to test environment
   - `UI_TEST_DEPLOYMENT` - UI deployed to test environment
@@ -196,7 +198,6 @@ changes:
 ### Constraints
 - No `parentExternalId` field (changes don't support REFINES relationships)
 - Milestone keys are automatically generated during import (not specified in file)
-- Each milestone has a single `eventType` (not an array)
 - Impact references are derived from satisfied/superseded requirements
 - Document references are resolved by external ID during import
 - Dependency references are resolved by external ID (version-to-item pattern)
@@ -217,16 +218,18 @@ changes:
     path: ["Rerouting Tools", "Core Engine", "Algorithm Improvements"]
     satisfiedORs: ["RR-OR-1-01", "RR-OR-1-01a", "RR-OR-1-07", "RR-OR-1-13"]
     supersededORs: []
-    referencesDocuments:
+    documentReferences:
       - documentExternalId: "RR-Design-Spec-v2"
         note: "Section 3: Algorithm Design"
       - documentExternalId: "Performance-Requirements"
     dependsOnChanges: ["RR-OC-1-0"]
     milestones:
-      - eventType: "API_TEST_DEPLOYMENT"
-        wave: "2027-Q1"
-      - eventType: "OPS_DEPLOYMENT"
-        wave: "2027-Q2"
+      - title: "M1"
+        eventTypes: ["API_TEST_DEPLOYMENT"]
+        wave: "wave:2027-Q1"
+      - title: "M2"
+        eventTypes: ["OPS_DEPLOYMENT"]
+        wave: "wave:2027-Q2"
 ```
 
 ---

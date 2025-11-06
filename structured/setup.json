@@ -8,6 +8,13 @@
       "externalId": "document:asm_atfcm_conops"
     },
     {
+      "name": "FLOW CONOPS",
+      "description": "Flow Integration Concept of Operations",
+      "version": "1.0",
+      "url": "https://www.eurocontrol.int/publication/flow-conops",
+      "externalId": "document:flow_conops"
+    },
+    {
       "name": "iDL CONOPS",
       "description": "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
       "version": "2.1",
@@ -27,6 +34,10 @@
       "version": "2.1",
       "url": "https://www.eurocontrol.int/publication/network-manager-b2b-concept-operations",
       "externalId": "document:nm_b2b_conops"
+    },
+    {
+      "name": "iNM Roadmap",
+      "externalId": "document:inm_roadmap"
     },
     {
       "name": "Commission Implementing Regulation (EU) 2021/116",
