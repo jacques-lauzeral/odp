@@ -187,46 +187,6 @@ export class WaveService extends SimpleItemService {
             (excludeId === null || wave.id !== excludeId)
         );
     }
-
-    // =============================================================================
-    // LEGACY COMPATIBILITY METHODS
-    // For backward compatibility with existing CLI/router code
-    // =============================================================================
-
-    /**
-     * @deprecated Use listItems() instead
-     */
-    async listWaves(userId) {
-        return this.listItems(userId);
-    }
-
-    /**
-     * @deprecated Use getItem() instead
-     */
-    async getWave(id, userId) {
-        return this.getItem(id, userId);
-    }
-
-    /**
-     * @deprecated Use createItem() instead
-     */
-    async createWave(data, userId) {
-        return this.createItem(data, userId);
-    }
-
-    /**
-     * @deprecated Use updateItem() instead
-     */
-    async updateWave(id, data, userId) {
-        return this.updateItem(id, data, userId);
-    }
-
-    /**
-     * @deprecated Use deleteItem() instead
-     */
-    async deleteWave(id, userId) {
-        return this.deleteItem(id, userId);
-    }
 }
 
 // Export instance for route handlers

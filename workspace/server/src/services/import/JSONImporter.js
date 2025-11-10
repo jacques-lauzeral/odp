@@ -525,13 +525,12 @@ class JSONImporter {
         for (const waveData of waves) {
             try {
                 const createRequest = {
-                    name: waveData.name,
                     year: waveData.year,
                     quarter: waveData.quarter,
                     date: waveData.date
                 };
 
-                const created = await WaveService.createWave(createRequest, userId);
+                const created = await WaveService.createItem(createRequest, userId);
 
                 context.setupIdMap.set(waveData.externalId.toLowerCase(), created.id);
                 context.waveIdMap.set(waveData.externalId.toLowerCase(), created.id);
@@ -566,10 +565,6 @@ class JSONImporter {
                 const externalId = this._resolveRequirementExternalId(req.itemId, reqById, externalIdCache);
                 context.globalRefMap.set(externalId.toLowerCase(), req.itemId);
             });
-
-            console.log(`Global reference map: ${context.globalRefMap.size} entries`);
-            console.log(`Document map: ${context.documentIdMap.size} entries`);
-            console.log(`Wave map: ${context.waveIdMap.size} entries`);
 
         } catch (error) {
             throw new Error(`Failed to build global reference maps: ${error.message}`);
@@ -803,7 +798,7 @@ class JSONImporter {
                                 milestoneKey: milestoneKey,
                                 description: milestoneData.description || 'TBD',
                                 eventTypes: milestoneData.eventTypes,
-                                wave: waveId
+                                waveId: waveId
                             });
 
                             milestoneIndex++;
