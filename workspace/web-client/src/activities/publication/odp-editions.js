@@ -1,7 +1,6 @@
 import CollectionEntity from '../../components/odp/collection-entity.js';
 import ODPEditionForm from './odp-edition-form.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
-import { apiClient } from '../../shared/api-client.js';
 
 export default class ODPEditionsEntity {
     constructor(app, entityConfig, supportData) {
@@ -9,12 +8,12 @@ export default class ODPEditionsEntity {
         this.entityConfig = entityConfig;
         this.supportData = supportData;
         this.container = null;
+        this.data = [];
 
         // Initialize collection with ODP column types
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
             context: { supportData },
-            getFilterConfig: () => this.getFilterConfig(),
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
             onItemSelect: (item) => this.handleItemSelect(item),
@@ -35,35 +34,26 @@ export default class ODPEditionsEntity {
         // Listen for save events
         document.addEventListener('entitySaved', async (e) => {
             if (e.detail.entityType === 'ODP Editions') {
-                await this.collection.refresh();
+                await this.handleRefresh();
             }
         });
     }
 
     // ====================
-    // COLLECTION CONFIGURATION
+    // DATA INJECTION
     // ====================
 
-    getFilterConfig() {
-        return [
-            {
-                key: 'type',
-                label: 'Type',
-                type: 'select',
-                options: [
-                    { value: '', label: 'All Types' },
-                    { value: 'DRAFT', label: 'DRAFT' },
-                    { value: 'OFFICIAL', label: 'OFFICIAL' }
-                ]
-            },
-            {
-                key: 'startsFromWave',
-                label: 'Wave',
-                type: 'select',
-                options: this.buildWaveOptions()
-            }
-        ];
+    setData(editions) {
+        this.data = Array.isArray(editions) ? editions : [];
+        console.log('ODPEditionsEntity.setData:', this.data.length);
+
+        // Inject data to collection
+        this.collection.setData(this.data);
     }
+
+    // ====================
+    // COLLECTION CONFIGURATION
+    // ====================
 
     getColumnConfig() {
         return [
@@ -131,25 +121,6 @@ export default class ODPEditionsEntity {
     }
 
     // ====================
-    // HELPER METHODS
-    // ====================
-
-    buildWaveOptions() {
-        const baseOptions = [{ value: '', label: 'All Waves' }];
-
-        if (!this.supportData?.waves) {
-            return baseOptions;
-        }
-
-        const waveOptions = this.supportData.waves.map(wave => ({
-            value: wave.id,
-            label: `${wave.year} Q${wave.quarter}`
-        }));
-
-        return baseOptions.concat(waveOptions);
-    }
-
-    // ====================
     // EVENT HANDLERS
     // ====================
 
@@ -157,26 +128,29 @@ export default class ODPEditionsEntity {
         this.form.showCreateModal();
     }
 
-    // FIXED: Use app router instead of direct browser navigation
     handleReviewEdition(item) {
         if (item && item.id) {
-            // FIXED: Use internal SPA navigation instead of window.location
             this.app.navigateTo(`/review/edition/${item.id}`);
         }
     }
 
     handleItemSelect(item) {
-        // Update details panel
         this.updateDetailsPanel(item);
     }
 
     handleRefresh() {
-        console.log('Editions refreshed');
+        // Notify parent activity to reload data
+        if (this.app.currentActivity?.loadEditions) {
+            this.app.currentActivity.loadEditions(this.app.currentActivity.filters);
+        }
     }
 
     async updateDetailsPanel(item) {
         const detailsContainer = document.querySelector('#detailsContent');
         if (!detailsContainer) return;
+
+        // Preserve current tab before re-rendering
+        const currentTab = this.getCurrentTabInPanel(detailsContainer);
 
         const detailsHtml = await this.form.generateReadOnlyView(item);
         detailsContainer.innerHTML = `
@@ -194,11 +168,33 @@ export default class ODPEditionsEntity {
             </div>
         `;
 
-        // FIXED: Bind review button with correct method
+        // Restore tab if it was not the first tab
+        if (currentTab !== null && currentTab !== 0) {
+            this.switchTabInPanel(detailsContainer, currentTab);
+        }
+
         const reviewBtn = detailsContainer.querySelector('#reviewEditionBtn');
         if (reviewBtn) {
             reviewBtn.addEventListener('click', () => this.handleReviewEdition(item));
         }
+    }
+
+    getCurrentTabInPanel(container) {
+        const activeTab = container.querySelector('.tab-header.active');
+        return activeTab ? parseInt(activeTab.getAttribute('data-tab'), 10) : 0;
+    }
+
+    switchTabInPanel(container, tabIndex) {
+        const headers = container.querySelectorAll('.tab-header');
+        const panels = container.querySelectorAll('.tab-panel');
+
+        headers.forEach((header, index) => {
+            header.classList.toggle('active', index === tabIndex);
+        });
+
+        panels.forEach((panel, index) => {
+            panel.classList.toggle('active', index === tabIndex);
+        });
     }
 
     // ====================
@@ -208,10 +204,6 @@ export default class ODPEditionsEntity {
     async render(container) {
         this.container = container;
         await this.collection.render(container);
-    }
-
-    async refresh() {
-        await this.collection.refresh();
     }
 
     handleFilter(filterKey, filterValue) {
@@ -225,5 +217,6 @@ export default class ODPEditionsEntity {
     cleanup() {
         this.collection.cleanup();
         this.container = null;
+        this.data = [];
     }
 }

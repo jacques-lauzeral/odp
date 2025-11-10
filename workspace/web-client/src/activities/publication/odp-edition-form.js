@@ -76,7 +76,7 @@ export default class ODPEditionForm extends CollectionEntityForm {
                         format: (value) => this.formatBaseline(value)
                     },
                     {
-                        key: 'startsFromWaveId',
+                        key: 'startsFromWave',
                         label: 'Starts From Wave',
                         type: 'select',
                         modes: ['create', 'read'],
@@ -133,12 +133,19 @@ export default class ODPEditionForm extends CollectionEntityForm {
         if (!transformed.title) transformed.title = '';
         if (!transformed.type) transformed.type = 'DRAFT';
 
-        // Convert string IDs to numbers
+        // Convert string IDs to numbers for API
         if (transformed.baselineId) {
             transformed.baselineId = parseInt(transformed.baselineId, 10);
         }
-        if (transformed.startsFromWaveId) {
-            transformed.startsFromWaveId = parseInt(transformed.startsFromWaveId, 10);
+
+        // Handle startsFromWave - could be object or ID depending on source
+        if (transformed.startsFromWave) {
+            if (typeof transformed.startsFromWave === 'object') {
+                transformed.startsFromWaveId = parseInt(transformed.startsFromWave.id, 10);
+            } else {
+                transformed.startsFromWaveId = parseInt(transformed.startsFromWave, 10);
+            }
+            delete transformed.startsFromWave; // Remove object, keep only ID for API
         }
 
         return transformed;
@@ -149,13 +156,15 @@ export default class ODPEditionForm extends CollectionEntityForm {
 
         const transformed = { ...item };
 
-        // Extract baseline and wave IDs from references
+        // Extract baseline and wave IDs from references for form value binding
+        // The select fields need the ID value, but we keep the object for formatting
         if (transformed.baseline && typeof transformed.baseline === 'object') {
             transformed.baselineId = transformed.baseline.id;
         }
-        if (transformed.startsFromWave && typeof transformed.startsFromWave === 'object') {
-            transformed.startsFromWaveId = transformed.startsFromWave.id;
-        }
+
+        // For startsFromWave, the field key is 'startsFromWave' and value is the object
+        // The select will use the object's id property automatically
+        // No transformation needed - keep the object as-is for format function
 
         return transformed;
     }
@@ -183,13 +192,21 @@ export default class ODPEditionForm extends CollectionEntityForm {
             }
         }
 
-        // Validate wave exists
-        if (data.startsFromWaveId) {
-            const waveId = parseInt(data.startsFromWaveId, 10);
+        // Validate wave exists - handle both object and ID
+        let waveId = null;
+        if (data.startsFromWave) {
+            if (typeof data.startsFromWave === 'object') {
+                waveId = parseInt(data.startsFromWave.id, 10);
+            } else {
+                waveId = parseInt(data.startsFromWave, 10);
+            }
+        }
+
+        if (waveId) {
             const wave = this.supportData?.waves?.find(w => parseInt(w.id, 10) === waveId);
             if (!wave) {
                 errors.push({
-                    field: 'startsFromWaveId',
+                    field: 'startsFromWave',
                     message: 'Selected wave not found'
                 });
             }
@@ -232,8 +249,8 @@ export default class ODPEditionForm extends CollectionEntityForm {
         return this.supportData.waves
             .map(wave => ({
                 value: parseInt(wave.id, 10),
-                label: `${wave.year} Q${wave.quarter}`,
-                sortKey: (wave.year * 10) + wave.quarter
+                label: wave.name,
+                sortKey: (wave.year * 10) + (wave.quarter || 0)
             }))
             .sort((a, b) => a.sortKey - b.sortKey);
     }
@@ -266,14 +283,14 @@ export default class ODPEditionForm extends CollectionEntityForm {
         if (!value) return 'No wave';
 
         if (typeof value === 'object' && value !== null) {
-            return `${value.year} Q${value.quarter}`;
+            return value.name;
         }
 
         // Look up in support data
         if (this.supportData?.waves) {
             const wave = this.supportData.waves.find(w => w.id === value);
             if (wave) {
-                return `${wave.year} Q${wave.quarter}`;
+                return wave.name;
             }
         }
 

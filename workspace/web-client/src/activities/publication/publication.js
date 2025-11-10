@@ -16,8 +16,10 @@ export default class PublicationActivity {
             context: 'publication'
         };
 
-        // Edition count for display
+        // State management
         this.editionCount = 0;
+        this.editions = [];
+        this.filters = {};
     }
 
     async render(container, subPath = []) {
@@ -30,13 +32,13 @@ export default class PublicationActivity {
             // Load support data (baselines and waves)
             await this.loadSupportData();
 
-            // Load edition count
-            await this.loadEditionCount();
+            // Load editions data
+            await this.loadEditions(this.filters);
 
-            // Render the activity
+            // Render the activity UI
             this.renderUI();
 
-            // Load ODP editions entity
+            // Create and render the entity component
             await this.loadEditionsEntity();
 
         } catch (error) {
@@ -70,7 +72,6 @@ export default class PublicationActivity {
 
     async loadSupportData() {
         try {
-            // Load baselines and waves in parallel
             const [baselines, waves] = await Promise.all([
                 apiClient.get('/baselines'),
                 apiClient.get('/waves')
@@ -89,6 +90,56 @@ export default class PublicationActivity {
         }
     }
 
+    async loadEditions(filters = {}) {
+        try {
+            let endpoint = this.entityConfig.endpoint;
+            const queryParams = this.buildQueryParams(filters);
+
+            if (Object.keys(queryParams).length > 0) {
+                const queryString = new URLSearchParams(queryParams).toString();
+                endpoint = `${endpoint}?${queryString}`;
+            }
+
+            const response = await apiClient.get(endpoint);
+            this.editions = Array.isArray(response) ? response : [];
+            this.editionCount = this.editions.length;
+
+            console.log('Editions loaded:', this.editionCount);
+
+            // Inject data to entity component if it exists
+            if (this.currentEntityComponent) {
+                this.currentEntityComponent.setData(this.editions);
+            }
+
+            // Update count badge
+            this.updateEditionCountBadge();
+
+        } catch (error) {
+            console.error('Failed to load editions:', error);
+            this.editions = [];
+            this.editionCount = 0;
+            throw error;
+        }
+    }
+
+    buildQueryParams(filters) {
+        const queryParams = {};
+
+        if (filters && Object.keys(filters).length > 0) {
+            Object.entries(filters).forEach(([key, value]) => {
+                if (value && value !== '') {
+                    if (Array.isArray(value)) {
+                        queryParams[key] = value.join(',');
+                    } else {
+                        queryParams[key] = value;
+                    }
+                }
+            });
+        }
+
+        return queryParams;
+    }
+
     renderUI() {
         this.container.innerHTML = `
             <div class="publication-activity">
@@ -104,21 +155,34 @@ export default class PublicationActivity {
                 </div>
                 
                 <div class="publication-workspace">
+                    <!-- Activity-level filters above workspace -->
+                    <div class="activity-filters" id="activityFilters">
+                        <div class="filter-controls">
+                            ${this.renderFilterControls()}
+                            <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
+                        </div>
+                    </div>
+
                     <div class="collection-container">
-                        <div class="collection-filters" id="collectionFilters">
-                            <!-- Dynamic filters will be rendered here -->
-                        </div>
-                        
-                        <div class="collection-actions">
-                            <div class="publication-actions">
-                                <button class="btn btn-primary action-create" id="createEdition">
-                                    + New Edition
-                                </button>
+                        <!-- Left column: actions/grouping + list -->
+                        <div class="collection-left-column">
+                            <div class="collection-actions-and-grouping">
+                                <div class="actions-section">
+                                    <div class="publication-actions">
+                                        <button class="btn btn-primary action-create" id="createEdition">
+                                            + New Edition
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="grouping-section">
+                                    <label for="groupBy">Group by:</label>
+                                    <select id="groupBy" class="form-control group-select">
+                                        ${this.renderGroupingOptions()}
+                                    </select>
+                                </div>
                             </div>
-                        </div>
-                        
-                        <div class="collection-list">
-                            <div class="collection-content" id="editionsContent">
+                            
+                            <div class="collection-list" id="collectionList">
                                 <div class="collection-loading">
                                     <div class="spinner"></div>
                                     <p>Loading editions...</p>
@@ -126,6 +190,7 @@ export default class PublicationActivity {
                             </div>
                         </div>
                         
+                        <!-- Right column: details panel -->
                         <div class="collection-details">
                             <div class="details-content" id="detailsContent">
                                 <div class="no-selection-message">
@@ -143,137 +208,108 @@ export default class PublicationActivity {
         this.bindEvents();
     }
 
+    renderFilterControls() {
+        const filterConfig = this.getFilterConfig();
+
+        return filterConfig.map(filter => {
+            switch (filter.type) {
+                case 'text':
+                    return `
+                        <div class="filter-group">
+                            <label for="filter-${filter.key}">${filter.label}:</label>
+                            <input 
+                                type="text" 
+                                id="filter-${filter.key}"
+                                data-filter-key="${filter.key}"
+                                class="form-control filter-input" 
+                                placeholder="${filter.placeholder || `Filter by ${filter.label.toLowerCase()}...`}"
+                            >
+                        </div>
+                    `;
+                case 'select':
+                    return `
+                        <div class="filter-group">
+                            <label for="filter-${filter.key}">${filter.label}:</label>
+                            <select 
+                                id="filter-${filter.key}"
+                                data-filter-key="${filter.key}"
+                                class="form-control filter-select"
+                            >
+                                ${filter.options.map(option => {
+                        if (typeof option === 'string') {
+                            return `<option value="${option}">${option}</option>`;
+                        } else {
+                            return `<option value="${option.value}">${option.label}</option>`;
+                        }
+                    }).join('')}
+                            </select>
+                        </div>
+                    `;
+                default:
+                    return '';
+            }
+        }).join('');
+    }
+
+    renderGroupingOptions() {
+        const groupingConfig = this.getGroupingConfig();
+
+        return groupingConfig.map(option =>
+            `<option value="${option.key}">${option.label}</option>`
+        ).join('');
+    }
+
+    getFilterConfig() {
+        return [
+            {
+                key: 'type',
+                label: 'Type',
+                type: 'select',
+                options: [
+                    { value: '', label: 'All Types' },
+                    { value: 'DRAFT', label: 'DRAFT' },
+                    { value: 'OFFICIAL', label: 'OFFICIAL' }
+                ]
+            },
+            {
+                key: 'startsFromWave',
+                label: 'Wave',
+                type: 'select',
+                options: this.buildWaveOptions()
+            }
+        ];
+    }
+
+    getGroupingConfig() {
+        return [
+            { key: 'none', label: 'No grouping' },
+            { key: 'type', label: 'Type' },
+            { key: 'startsFromWave', label: 'Wave' }
+        ];
+    }
+
+    buildWaveOptions() {
+        const baseOptions = [{ value: '', label: 'All Waves' }];
+
+        if (!this.supportData?.waves) {
+            return baseOptions;
+        }
+
+        const waveOptions = this.supportData.waves.map(wave => ({
+            value: wave.id,
+            label: wave.name || `${wave.year}.${wave.quarter}`
+        }));
+
+        return baseOptions.concat(waveOptions);
+    }
+
     bindEvents() {
         // Create edition button
         const createBtn = this.container.querySelector('#createEdition');
         if (createBtn) {
             createBtn.addEventListener('click', () => this.handleCreate());
         }
-    }
 
-    async loadEditionsEntity() {
-        try {
-            // Create and render the editions entity component
-            this.currentEntityComponent = new ODPEditionsEntity(
-                this.app,
-                this.entityConfig,
-                this.supportData
-            );
-
-            const contentContainer = this.container.querySelector('#editionsContent');
-            if (contentContainer) {
-                await this.currentEntityComponent.render(contentContainer);
-
-                // After entity is loaded, render dynamic controls
-                this.renderDynamicControls();
-
-                // Update edition count
-                await this.updateEditionCount();
-            }
-
-        } catch (error) {
-            console.error('Failed to load editions entity:', error);
-            this.renderEntityError(error);
-        }
-    }
-
-    async loadEditionCount() {
-        try {
-            const response = await apiClient.get(this.entityConfig.endpoint);
-            this.editionCount = Array.isArray(response) ? response.length : 0;
-        } catch (error) {
-            console.warn('Failed to load edition count:', error);
-            this.editionCount = 0;
-        }
-    }
-
-    async updateEditionCount() {
-        try {
-            const countSpan = this.container.querySelector('.edition-count');
-            if (!countSpan) return;
-
-            const response = await apiClient.get(this.entityConfig.endpoint);
-            const count = Array.isArray(response) ? response.length : 0;
-            countSpan.textContent = `${count} editions`;
-            this.editionCount = count;
-        } catch (error) {
-            console.warn('Failed to update edition count:', error);
-        }
-    }
-
-    renderDynamicControls() {
-        if (!this.currentEntityComponent) return;
-
-        const filtersContainer = this.container.querySelector('#collectionFilters');
-        if (!filtersContainer) return;
-
-        // Get configurations from current entity
-        const filterConfig = this.currentEntityComponent.getFilterConfig ?
-            this.currentEntityComponent.getFilterConfig() : [];
-        const groupingConfig = this.currentEntityComponent.getGroupingConfig ?
-            this.currentEntityComponent.getGroupingConfig() : [];
-
-        // Render dynamic filter and grouping controls
-        filtersContainer.innerHTML = `
-            <div class="group-controls">
-                <label for="groupBy">Group by:</label>
-                <select id="groupBy" class="form-control group-select">
-                    ${groupingConfig.map(option => `
-                        <option value="${option.key}">${option.label}</option>
-                    `).join('')}
-                </select>
-            </div>
-            
-            <div class="filter-controls">
-                ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
-                <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
-            </div>
-        `;
-
-        // Bind events for dynamic controls
-        this.bindDynamicEvents();
-    }
-
-    renderFilterControl(filter) {
-        switch (filter.type) {
-            case 'text':
-                return `
-                    <div class="filter-group">
-                        <label for="filter-${filter.key}">${filter.label}:</label>
-                        <input 
-                            type="text" 
-                            id="filter-${filter.key}"
-                            data-filter-key="${filter.key}"
-                            class="form-control filter-input" 
-                            placeholder="${filter.placeholder || `Filter by ${filter.label.toLowerCase()}...`}"
-                        >
-                    </div>
-                `;
-            case 'select':
-                return `
-                    <div class="filter-group">
-                        <label for="filter-${filter.key}">${filter.label}:</label>
-                        <select 
-                            id="filter-${filter.key}"
-                            data-filter-key="${filter.key}"
-                            class="form-control filter-select"
-                        >
-                            ${filter.options.map(option => {
-                    if (typeof option === 'string') {
-                        return `<option value="${option}">${option}</option>`;
-                    } else {
-                        return `<option value="${option.value}">${option.label}</option>`;
-                    }
-                }).join('')}
-                        </select>
-                    </div>
-                `;
-            default:
-                return '';
-        }
-    }
-
-    bindDynamicEvents() {
         // Grouping control
         const groupSelect = this.container.querySelector('#groupBy');
         if (groupSelect) {
@@ -307,10 +343,49 @@ export default class PublicationActivity {
         }
     }
 
-    handleFilter(filterKey, filterValue) {
-        if (this.currentEntityComponent?.handleFilter) {
-            this.currentEntityComponent.handleFilter(filterKey, filterValue);
+    async loadEditionsEntity() {
+        try {
+            // Create the editions entity component
+            this.currentEntityComponent = new ODPEditionsEntity(
+                this.app,
+                this.entityConfig,
+                this.supportData
+            );
+
+            const contentContainer = this.container.querySelector('#collectionList');
+            if (contentContainer) {
+                // Inject current data to entity
+                this.currentEntityComponent.setData(this.editions);
+
+                // Render the entity
+                await this.currentEntityComponent.render(contentContainer);
+            }
+
+        } catch (error) {
+            console.error('Failed to load editions entity:', error);
+            this.renderEntityError(error);
         }
+    }
+
+    updateEditionCountBadge() {
+        const countSpan = this.container?.querySelector('.edition-count');
+        if (countSpan) {
+            countSpan.textContent = `${this.editionCount} editions`;
+        }
+    }
+
+    async handleFilter(filterKey, filterValue) {
+        // Update filter state
+        if (filterValue && filterValue !== '') {
+            this.filters[filterKey] = filterValue;
+        } else {
+            delete this.filters[filterKey];
+        }
+
+        console.log('Filter changed:', { filterKey, filterValue, allFilters: this.filters });
+
+        // Reload editions with current filters
+        await this.loadEditions(this.filters);
     }
 
     handleGrouping(groupBy) {
@@ -325,7 +400,7 @@ export default class PublicationActivity {
         }
     }
 
-    clearAllFilters() {
+    async clearAllFilters() {
         // Clear all filter inputs
         const filterInputs = this.container.querySelectorAll('[data-filter-key]');
         filterInputs.forEach(input => {
@@ -334,18 +409,13 @@ export default class PublicationActivity {
             } else if (input.tagName === 'SELECT') {
                 input.selectedIndex = 0;
             }
-
-            // Trigger clear for each filter
-            const filterKey = input.dataset.filterKey;
-            this.handleFilter(filterKey, '');
         });
-    }
 
-    // Handle Read edition action (navigate to Read activity with edition context)
-    handleReadEdition(edition) {
-        if (edition && edition.id) {
-            this.app.navigateTo(`/read?edition=${edition.id}`);
-        }
+        // Clear filter state
+        this.filters = {};
+
+        // Reload editions with no filters
+        await this.loadEditions({});
     }
 
     renderError(error) {
@@ -374,7 +444,7 @@ export default class PublicationActivity {
     }
 
     renderEntityError(error) {
-        const contentContainer = this.container.querySelector('#editionsContent');
+        const contentContainer = this.container.querySelector('#collectionList');
         if (contentContainer) {
             contentContainer.innerHTML = `
                 <div class="error-state">
@@ -396,7 +466,6 @@ export default class PublicationActivity {
         return this.loading;
     }
 
-    // Utility function for debouncing
     debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
@@ -414,9 +483,10 @@ export default class PublicationActivity {
             this.currentEntityComponent.cleanup();
         }
 
-        // Clear references
         this.container = null;
         this.currentEntityComponent = null;
         this.supportData = null;
+        this.editions = [];
+        this.filters = {};
     }
 }
