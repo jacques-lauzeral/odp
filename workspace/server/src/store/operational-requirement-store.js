@@ -842,7 +842,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 MATCH (change:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
                 WHERE EXISTS {
                     MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                    WHERE date(targetWave.date) >= date(fromWave.date)
+                    WHERE (targetWave.year > fromWave.year)
+                       OR (targetWave.year = fromWave.year AND 
+                           COALESCE(targetWave.quarter, 0) >= COALESCE(fromWave.quarter, 0))
                 }
                 
                 // Step 2: Find requirements directly satisfied/superseded by these OCs
@@ -878,7 +880,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 WHERE id(baseline) = $baselineId
                 AND EXISTS {
                     MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                    WHERE date(targetWave.date) >= date(fromWave.date)
+                    WHERE (targetWave.year > fromWave.year)
+                       OR (targetWave.year = fromWave.year AND 
+                           COALESCE(targetWave.quarter, 0) >= COALESCE(fromWave.quarter, 0))
                 }
                 
                 // Step 2: Find requirements satisfied/superseded by these OCs

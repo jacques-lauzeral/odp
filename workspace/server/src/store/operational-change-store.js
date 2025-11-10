@@ -223,7 +223,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                 MATCH (change:OperationalChange)-[:LATEST_VERSION]->(version:OperationalChangeVersion)
                 WHERE EXISTS {
                     MATCH (version)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                    WHERE date(targetWave.date) >= date(fromWave.date)
+                    WHERE (targetWave.year > fromWave.year)
+                       OR (targetWave.year = fromWave.year AND 
+                           COALESCE(targetWave.quarter, 0) >= COALESCE(fromWave.quarter, 0))
                 }
                 RETURN collect(DISTINCT id(change)) as acceptedChangeIds
             `;
@@ -237,7 +239,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                 WHERE id(baseline) = $baselineId
                 AND EXISTS {
                     MATCH (version)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                    WHERE date(targetWave.date) >= date(fromWave.date)
+                    WHERE (targetWave.year > fromWave.year)
+                       OR (targetWave.year = fromWave.year AND 
+                           COALESCE(targetWave.quarter, 0) >= COALESCE(fromWave.quarter, 0))
                 }
                 RETURN collect(DISTINCT id(change)) as acceptedChangeIds
             `;
