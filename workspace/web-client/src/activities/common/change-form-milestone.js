@@ -7,12 +7,8 @@ import { getMilestoneEventDisplay } from '/shared/src/index.js';
  * Manages the 5-event milestone system with wave assignments
  */
 export class MilestoneManager {
-    constructor(parentForm, context, availableEventTypes) {
-
-        console.log('MilestoneManager.new setupData:', JSON.stringify(context.setupData));
-
+    constructor(parentForm, availableEventTypes) {
         this.parentForm = parentForm;
-        this.setupData = context.setupData;
         this.availableEventTypes = availableEventTypes;
         this.milestones = [];
         this._eventsBound = false;
@@ -459,11 +455,11 @@ export class MilestoneManager {
     }
 
     renderWaveOptions(selectedWaveId) {
-        if (!this.setupData?.waves) {
+        if (!this.parentForm.context.setupData?.waves) {
             return '';
         }
 
-        return this.setupData.waves.map(wave => {
+        return this.parentForm.context.setupData.waves.map(wave => {
             const waveId = wave.id.toString();
             const selected = selectedWaveId && selectedWaveId.toString() === waveId ? 'selected' : '';
             const label = `${wave.name}`;
@@ -639,9 +635,6 @@ export class MilestoneManager {
 
     formatWave(wave) {
         if (!wave) return 'Not assigned';
-        if (wave.year && wave.quarter) {
-            return `${wave.year} Q${wave.quarter}`;
-        }
         return wave.name || 'Not assigned';
     }
 

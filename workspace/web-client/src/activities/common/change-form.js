@@ -44,7 +44,6 @@ export default class ChangeForm extends CollectionEntityForm {
         // Initialize milestone manager
         this.milestoneManager = new MilestoneManager(
             this,
-            context.setupData,
             Object.keys(MilestoneEventType)
         );
     }
