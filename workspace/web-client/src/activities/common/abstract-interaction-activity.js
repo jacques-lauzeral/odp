@@ -52,8 +52,7 @@ export default class AbstractInteractionActivity {
             filters: {},
             selectedItem: null,
             grouping: 'none',
-            // Temporal-specific state
-            timeWindow: { start: null, end: null },
+            // Temporal-specific state (milestone event type filters only)
             eventTypeFilters: ['ANY']
         };
 
@@ -99,9 +98,6 @@ export default class AbstractInteractionActivity {
 
             // Load setup data
             await this.loadSetupData();
-
-            // Initialize temporal state
-            this.initializeTimeWindow();
 
             // Load entity counts with edition context
             await this.loadEntityCounts();
@@ -180,40 +176,6 @@ export default class AbstractInteractionActivity {
         } catch (error) {
             this.loading = false;
             throw new Error(`Failed to load setup data: ${error.message}`);
-        }
-    }
-
-    initializeTimeWindow() {
-        const now = new Date();
-        const threeYearsLater = new Date(now.getFullYear() + 3, now.getMonth(), now.getDate());
-
-        if (this.setupData?.waves && this.setupData.waves.length > 0) {
-            // Find waves in the next 3 years
-            const relevantWaves = this.setupData.waves.filter(wave => {
-                const waveDate = new Date(wave.year, (wave.quarter - 1) * 3, 1);
-                return waveDate >= now && waveDate <= threeYearsLater;
-            });
-
-            if (relevantWaves.length > 0) {
-                // Sort waves by date
-                relevantWaves.sort((a, b) => {
-                    if (a.year !== b.year) return a.year - b.year;
-                    return a.quarter - b.quarter;
-                });
-
-                const firstWave = relevantWaves[0];
-                const lastWave = relevantWaves[relevantWaves.length - 1];
-
-                this.sharedState.timeWindow.start = new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1);
-                this.sharedState.timeWindow.end = new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0);
-            } else {
-                // Fallback if no waves in range
-                this.sharedState.timeWindow.start = now;
-                this.sharedState.timeWindow.end = threeYearsLater;
-            }
-        } else {
-            this.sharedState.timeWindow.start = now;
-            this.sharedState.timeWindow.end = threeYearsLater;
         }
     }
 
@@ -806,39 +768,6 @@ export default class AbstractInteractionActivity {
             this.currentEntityComponent.handlePerspectiveSwitch(perspective, this.sharedState);
         } else {
             console.warn(`${perspective} perspective not implemented for ${this.currentEntity}`);
-        }
-    }
-
-    updateTimeWindow() {
-        const startWaveSelect = this.container.querySelector('#start-wave');
-        const endWaveSelect = this.container.querySelector('#end-wave');
-
-        if (!startWaveSelect || !endWaveSelect) return;
-
-        const startWaveId = parseInt(startWaveSelect.value, 10);
-        const endWaveId = parseInt(endWaveSelect.value, 10);
-
-        const availableWaves = this.getAvailableWaves();
-        const startWave = availableWaves.find(w => String(w.id) === String(startWaveId));
-        const endWave = availableWaves.find(w => String(w.id) === String(endWaveId));
-
-        if (startWave && endWave) {
-            this.sharedState.timeWindow.start = new Date(startWave.year, (startWave.quarter - 1) * 3, 1);
-            this.sharedState.timeWindow.end = new Date(endWave.year, (endWave.quarter - 1) * 3 + 3, 0);
-
-            // Ensure start is before end
-            if (this.sharedState.timeWindow.start > this.sharedState.timeWindow.end) {
-                [this.sharedState.timeWindow.start, this.sharedState.timeWindow.end] =
-                    [this.sharedState.timeWindow.end, this.sharedState.timeWindow.start];
-            }
-
-            // Notify timeline component
-            if (this.currentEntityComponent?.timelineGrid) {
-                this.currentEntityComponent.timelineGrid.updateTimeWindow(
-                    this.sharedState.timeWindow.start,
-                    this.sharedState.timeWindow.end
-                );
-            }
         }
     }
 

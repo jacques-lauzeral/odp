@@ -125,6 +125,104 @@ export default class ChangesEntity {
         });
     }
 
+    /**
+     * Calculate optimal time window showing all future setup waves
+     * @returns {Object} { start: Date, end: Date } or null if no future waves
+     */
+    calculateOptimalTimeWindow() {
+
+        if (!this.setupData?.waves || this.setupData.waves.length === 0) {
+            return null;
+        }
+
+        const now = new Date();
+
+        // Filter for future waves only (>= today)
+        const futureWaves = this.setupData.waves
+            .map(wave => ({
+                wave,
+                date: wave.quarter
+                    ? new Date(wave.year, (wave.quarter - 1) * 3, 1)
+                    : new Date(wave.year, 0, 1) // Jan 1st if no quarter
+            }))
+            .filter(item => item.date >= now)
+            .sort((a, b) => a.date - b.date);
+
+        futureWaves.forEach(item => {
+            console.log(`  - Wave ${item.wave.year}${item.wave.quarter ? ' Q'+item.wave.quarter : ''}: ${item.date}`);
+        });
+
+        if (futureWaves.length === 0) {
+            return null; // No future waves
+        }
+
+        const firstWave = futureWaves[0].wave;
+        const lastWave = futureWaves[futureWaves.length - 1].wave;
+
+        const timeWindow = {
+            start: firstWave.quarter
+                ? new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1)
+                : new Date(firstWave.year, 0, 1),
+            end: lastWave.quarter
+                ? new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0)
+                : new Date(lastWave.year, 11, 31) // Dec 31st if no quarter
+        };
+
+        return timeWindow;
+    }
+
+    /**
+     * Filter changes to only include those with milestones in the time window
+     * @param {Array} changes - Array of changes to filter
+     * @param {Object} timeWindow - { start: Date, end: Date }
+     * @returns {Array} Filtered changes
+     */
+    filterChangesByTimeWindow(changes, timeWindow) {
+
+        if (!timeWindow || !timeWindow.start || !timeWindow.end) {
+            return changes; // No filtering if time window not set
+        }
+
+        const filtered = changes.filter(change => {
+            // Include changes that have at least one milestone in the time window
+            if (!change.milestones || change.milestones.length === 0) {
+                return false; // Exclude changes without milestones
+            }
+
+            const hasMilestoneInWindow = change.milestones.some(milestone => {
+                const wave = this.findMilestoneWave(milestone);
+                if (!wave) {
+                    return false;
+                }
+
+                const waveDate = wave.quarter
+                    ? new Date(wave.year, (wave.quarter - 1) * 3, 1)
+                    : new Date(wave.year, 0, 1);
+
+                const inWindow = waveDate >= timeWindow.start && waveDate <= timeWindow.end;
+                return inWindow;
+            });
+
+            return hasMilestoneInWindow;
+        });
+
+        return filtered;
+    }
+
+    /**
+     * Find wave for a milestone
+     * @param {Object} milestone - Milestone object
+     * @returns {Object|null} Wave object or null
+     */
+    findMilestoneWave(milestone) {
+        if (milestone.wave) return milestone.wave;
+
+        if (milestone.waveId && this.setupData?.waves) {
+            return this.setupData.waves.find(w => String(w.id) === String(milestone.waveId));
+        }
+
+        return null;
+    }
     // ====================
     // STATE MANAGEMENT
     // ====================
@@ -206,6 +304,7 @@ export default class ChangesEntity {
     }
 
     renderTemporalView(sharedState) {
+
         if (!this.container) return;
 
         this.container.innerHTML = `
@@ -221,8 +320,28 @@ export default class ChangesEntity {
         });
         this.timelineGrid.render(timelineContainer);
 
+        // Initialize time window if not already set
+        if (!this.sharedState.timeWindow) {
+            const optimalWindow = this.calculateOptimalTimeWindow();
+            if (optimalWindow) {
+                this.sharedState.timeWindow = optimalWindow;
+            } else {
+            }
+        } else {
+        }
+
+        // Apply time window to timeline grid
+        if (this.sharedState.timeWindow) {
+            this.timelineGrid.updateTimeWindow(
+                this.sharedState.timeWindow.start,
+                this.sharedState.timeWindow.end
+            );
+        }
+
+        // Apply shared state if provided (may override)
         if (sharedState) {
             if (sharedState.timeWindow) {
+                this.sharedState.timeWindow = sharedState.timeWindow;
                 this.timelineGrid.updateTimeWindow(
                     sharedState.timeWindow.start,
                     sharedState.timeWindow.end
@@ -233,7 +352,13 @@ export default class ChangesEntity {
             }
         }
 
-        const dataToShow = this.collection?.filteredData || this.data;
+        // Filter data by time window before displaying
+        let dataToShow = this.collection?.filteredData || this.data;
+
+        if (this.sharedState.timeWindow) {
+            dataToShow = this.filterChangesByTimeWindow(dataToShow, this.sharedState.timeWindow);
+        }
+
         this.timelineGrid.setData(dataToShow);
 
         if (sharedState?.selectedItem) {
@@ -259,7 +384,13 @@ export default class ChangesEntity {
             }
         }
 
-        this.collection.setData(this.data);
+        // Apply time window filtering if set
+        let dataToShow = this.data;
+        if (this.sharedState.timeWindow) {
+            dataToShow = this.filterChangesByTimeWindow(dataToShow, this.sharedState.timeWindow);
+        }
+
+        this.collection.setData(dataToShow);
         this.collection.render(this.container);
 
         if (sharedState?.selectedItem) {

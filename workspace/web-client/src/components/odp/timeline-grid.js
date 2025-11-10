@@ -44,7 +44,9 @@ export default class TimelineGrid {
 
         if (this.setupData?.waves) {
             const relevantWaves = this.setupData.waves.filter(wave => {
-                const waveDate = new Date(wave.year, (wave.quarter - 1) * 3, 1);
+                const waveDate = wave.quarter
+                    ? new Date(wave.year, (wave.quarter - 1) * 3, 1)
+                    : new Date(wave.year, 0, 1); // Jan 1st if no quarter
                 return waveDate >= now && waveDate <= threeYearsLater;
             });
 
@@ -52,8 +54,12 @@ export default class TimelineGrid {
                 const firstWave = relevantWaves[0];
                 const lastWave = relevantWaves[relevantWaves.length - 1];
 
-                this.timeWindow.start = new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1);
-                this.timeWindow.end = new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0);
+                this.timeWindow.start = firstWave.quarter
+                    ? new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1)
+                    : new Date(firstWave.year, 0, 1);
+                this.timeWindow.end = lastWave.quarter
+                    ? new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0)
+                    : new Date(lastWave.year, 11, 31);
             } else {
                 // Fallback if no waves in range
                 this.timeWindow.start = now;
@@ -71,7 +77,8 @@ export default class TimelineGrid {
 
     async render(container) {
         this.container = container;
-        this.renderContent();
+        // Don't render content yet - wait for setData() to be called
+        // this.renderContent();
     }
 
     setData(data) {
@@ -96,7 +103,6 @@ export default class TimelineGrid {
     }
 
     updateTimeWindow(startDate, endDate) {
-        console.log(`TimelineGrid.updateTimeWindow [${startDate}, ${endDate}]`);
         this.timeWindow.start = startDate;
         this.timeWindow.end = endDate;
         this.renderContent();
@@ -216,7 +222,7 @@ export default class TimelineGrid {
                         <div class="timeline-wave-header" 
                              data-wave-id="${wave.id}"
                              style="left: ${this.calculateWavePosition(index, waves.length)}%">
-                            <div class="wave-label">${wave.year} Q${wave.quarter}</div>
+                            <div class="wave-label">${wave.quarter ? `${wave.year} Q${wave.quarter}` : wave.year}</div>
                             <div class="wave-line"></div>
                         </div>
                     `).join('')}
@@ -246,31 +252,26 @@ export default class TimelineGrid {
 
     renderMilestones(change, waves) {
         if (!change.milestones || change.milestones.length === 0) {
-            console.log(`No milestones for change ${this.getItemId(change)}`);
             return '';
         }
 
         const itemId = this.getItemId(change);
-        console.log(`Rendering ${change.milestones.length} milestones for change ${itemId}`);
 
         const renderedMilestones = change.milestones.map((milestone, index) => {
             // Find the wave for this milestone
             const wave = this.findMilestoneWave(milestone);
             if (!wave) {
-                console.log(`No wave found for milestone ${index}:`, milestone);
                 return '';
             }
 
             // Find wave position in visible waves
             const waveIndex = waves.findIndex(w => String(w.id) === String(wave.id));
             if (waveIndex === -1) {
-                console.log(`Wave ${wave.id} (${wave.year} Q${wave.quarter}) not in visible range for milestone ${index}`);
                 return '';
             }
 
             // Apply milestone filtering - check if this milestone should be visible
             if (!this.shouldShowMilestone(milestone)) {
-                console.log(`Milestone ${index} filtered out by event type filter`);
                 return '';
             }
 
@@ -296,32 +297,21 @@ export default class TimelineGrid {
                  style="left: ${position}%;"
                  data-item-id="${itemId}"
                  data-milestone-key="${milestoneKey}"
-                 title="${this.escapeHtml(milestoneTitle)} (${wave.year} Q${wave.quarter})">
+                 title="${this.escapeHtml(milestoneTitle)} (${wave.year}${wave.quarter ? ' Q' + wave.quarter : ''})">
                 ${pixmapHtml}
             </div>
         `;
-
-            console.log(`Rendered milestone ${index} at ${position}%:`, {
-                milestoneKey,
-                waveId: wave.id,
-                waveLabel: `${wave.year} Q${wave.quarter}`,
-                eventTypes: milestone.eventTypes,
-                position,
-                isSelected
-            });
 
             return milestoneHtml;
         });
 
         const validMilestones = renderedMilestones.filter(html => html !== '');
-        console.log(`Change ${itemId}: ${change.milestones.length} total milestones, ${validMilestones.length} rendered`);
 
         return validMilestones.join('');
     }
 
     renderPixmap(eventTypes) {
         if (!eventTypes || eventTypes.length === 0) {
-            console.log('No event types for pixmap, rendering empty');
             return `
             <div class="pixmap">
                 <div class="pixmap-row">
@@ -344,8 +334,6 @@ export default class TimelineGrid {
         const hasApiDecommission = validEventTypes.includes('API_DECOMMISSIONING');
         const hasUiTest = validEventTypes.includes('UI_TEST_DEPLOYMENT');
         const hasOpsDeployment = validEventTypes.includes('OPS_DEPLOYMENT');
-
-        console.log('Rendering pixmap with valid event types:', validEventTypes);
 
         // Build tooltip content using shared display function
         const apiEvents = validEventTypes.filter(t => t.includes('API')).map(t => getMilestoneEventDisplay(t));
@@ -503,11 +491,14 @@ export default class TimelineGrid {
         if (!this.setupData?.waves) return [];
 
         return this.setupData.waves.filter(wave => {
-            const waveDate = new Date(wave.year, (wave.quarter - 1) * 3, 1);
+            const waveDate = wave.quarter
+                ? new Date(wave.year, (wave.quarter - 1) * 3, 1)
+                : new Date(wave.year, 0, 1); // Jan 1st if no quarter
+
             return waveDate >= this.timeWindow.start && waveDate <= this.timeWindow.end;
         }).sort((a, b) => {
             if (a.year !== b.year) return a.year - b.year;
-            return a.quarter - b.quarter;
+            return (a.quarter || 0) - (b.quarter || 0);
         });
     }
 
