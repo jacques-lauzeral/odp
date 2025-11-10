@@ -128,7 +128,7 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
-        // Handle DRG field - ensure it's either a valid DRG key or null
+        // Handle DrG field - ensure it's either a valid DrG key or null
         if (transformed.drg !== undefined) {
             if (transformed.drg === '' || transformed.drg === null) {
                 transformed.drg = null;
@@ -240,7 +240,7 @@ export default class RequirementForm extends CollectionEntityForm {
         console.log('RequirementForm.onValidate');
         const errors = [];
 
-        // Validate DRG field if provided
+        // Validate DrG field if provided
         if (data.drg && !Object.keys(DraftingGroup).includes(data.drg)) {
             errors.push({
                 field: 'drg',

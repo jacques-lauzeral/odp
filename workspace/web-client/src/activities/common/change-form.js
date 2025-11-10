@@ -126,7 +126,7 @@ export default class ChangeForm extends CollectionEntityForm {
             }
         });
 
-        // Handle DRG field
+        // Handle DrG field
         if (transformed.drg !== undefined) {
             if (transformed.drg === '' || transformed.drg === null) {
                 transformed.drg = null;

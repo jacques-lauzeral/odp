@@ -428,7 +428,7 @@ export default class ChangesEntity {
             { key: 'code', label: 'ode', width: 'auto', sortable: true, type: 'text' },
             { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
             { key: 'visibility', label: 'Visibility', width: '100px', sortable: true, type: 'visibility' },
-            { key: 'drg', label: 'DRG', width: '120px', sortable: true, type: 'drafting-group' },
+            { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
             { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
             { key: 'satisfiesRequirements', label: 'Satisfies', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
             { key: 'supersedesRequirements', label: 'Supersedes', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
@@ -445,7 +445,7 @@ export default class ChangesEntity {
         return [
             { value: 'none', label: 'No Grouping' },
             { key: 'visibility', label: 'Group by Visibility' },
-            { key: 'drg', label: 'Group by DRG' },
+            { key: 'drg', label: 'Group by DrG' },
             { key: 'wave', label: 'Group by Wave' },
             { key: 'impactsData', label: 'Group by Data Impact' },
             { key: 'impactsStakeholderCategories', label: 'Group by Stakeholder Impact' },

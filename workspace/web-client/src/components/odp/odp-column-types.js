@@ -746,7 +746,7 @@ export const draftingGroupColumn = {
             label: getDraftingGroupDisplay(key)
         }));
 
-        return [{ value: '', label: 'All DRGs' }, ...options];
+        return [{ value: '', label: 'All DrGs' }, ...options];
     },
 
     /**
@@ -762,7 +762,7 @@ export const draftingGroupColumn = {
      * Get group title using shared enum
      */
     getGroupTitle: (value, column, context) => {
-        if (!value) return column.noneLabel || 'No DRG';
+        if (!value) return column.noneLabel || 'No DrG';
         return getDraftingGroupDisplay(value);
     }
 };

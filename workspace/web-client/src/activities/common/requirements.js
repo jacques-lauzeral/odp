@@ -140,7 +140,7 @@ export default class RequirementsEntity {
             },
             {
                 key: 'drg',
-                label: 'DRG',
+                label: 'DrG',
                 width: '120px',
                 sortable: true,
                 type: 'drafting-group'
