@@ -51,10 +51,7 @@ export default class PublicationActivity {
         this.container.innerHTML = `
             <div class="publication-activity">
                 <div class="publication-header">
-                    <h1>
-                        ODP Publication
-                        <span class="publication-context">Edition Management</span>
-                    </h1>
+                    <h1> ODP Publication  </h1>
                     <p>Create and manage ODP editions for deployment planning</p>
                 </div>
                 
@@ -145,8 +142,7 @@ export default class PublicationActivity {
             <div class="publication-activity">
                 <div class="publication-header">
                     <h1>
-                        ODP Publication
-                        <span class="publication-context">Edition Management</span>
+                        Publication
                     </h1>
                     <p>Create and manage ODP editions for deployment planning</p>
                     <div class="publication-stats">
@@ -423,7 +419,7 @@ export default class PublicationActivity {
             <div class="publication-activity">
                 <div class="publication-header">
                     <h1>
-                        ODP Publication
+                        Publication
                         <span class="publication-context">Edition Management</span>
                     </h1>
                     <p>Create and manage ODP editions for deployment planning</p>

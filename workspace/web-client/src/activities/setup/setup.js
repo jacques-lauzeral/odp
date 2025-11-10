@@ -70,7 +70,7 @@ export default class Setup {
         const html = `
             <div class="setup-activity">
                 <div class="setup-header">
-                    <h1>Setup Management</h1>
+                    <h1>Setup</h1>
                     <p>Configure reference data for operational deployment planning</p>
                 </div>
                 

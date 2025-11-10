@@ -58,7 +58,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             this.container.innerHTML = `
                 <div class="review-activity">
                     <div class="review-header">
-                        <h1>ODP Review</h1>
+                        <h1>Review</h1>
                         <p>Select what you want to review</p>
                     </div>
                     <div class="target-selection-loading">
@@ -75,7 +75,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             this.container.innerHTML = `
                 <div class="review-activity">
                     <div class="review-header">
-                        <h1>ODP Review</h1>
+                        <h1>Review</h1>
                         <p>Select what you want to review</p>
                     </div>
                     
@@ -217,7 +217,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
         this.container.innerHTML = `
             <div class="review-activity">
                 <div class="review-header">
-                    <h1>ODP Review</h1>
+                    <h1>Review</h1>
                     <p>Select what you want to review</p>
                 </div>
                 

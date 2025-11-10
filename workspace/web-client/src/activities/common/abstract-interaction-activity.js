@@ -19,7 +19,7 @@ export default class AbstractInteractionActivity {
 
         // Configuration from child classes
         this.config = {
-            activityName: 'ODP Interaction',
+            activityName: 'Interaction',
             context: 'Repository',
             description: 'Interact with ODP content',
             mode: 'edit', // 'edit' or 'review'
@@ -128,7 +128,7 @@ export default class AbstractInteractionActivity {
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
                     <h1>
-                        ODP ${this.config.activityName}
+                        ${this.config.activityName}
                         <span class="context-label">${contextLabel}</span>
                     </h1>
                     <p>${this.config.description}</p>
@@ -230,7 +230,7 @@ export default class AbstractInteractionActivity {
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
                     <h1>
-                        ODP ${this.config.activityName}
+                        ${this.config.activityName}
                         <span class="context-label">${contextLabel}</span>
                     </h1>
                     <p>${this.config.description}</p>
@@ -1010,7 +1010,7 @@ export default class AbstractInteractionActivity {
             <div class="${activityClass}-activity">
                 <div class="${activityClass}-header">
                     <h1>
-                        ODP ${this.config.activityName}
+                        ${this.config.activityName}
                         <span class="context-label">${this.getContextLabel()}</span>
                     </h1>
                     <p>${this.config.description}</p>
