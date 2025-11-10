@@ -28,11 +28,8 @@ import {
  * BUG FIX: Fixed rich text field rendering in edit mode by correcting options binding
  */
 export default class ChangeForm extends CollectionEntityForm {
-    constructor(entityConfig, setupData) {
-        super(entityConfig, { setupData });
-
-        this.setupData = setupData;
-        console.log('ChangeForm.new setupData:', JSON.stringify(setupData));
+    constructor(entityConfig, context) {
+        super(entityConfig, context);
 
         // Cache for requirements
         this.requirementsCache = null;
@@ -47,7 +44,7 @@ export default class ChangeForm extends CollectionEntityForm {
         // Initialize milestone manager
         this.milestoneManager = new MilestoneManager(
             this,
-            setupData,
+            context.setupData,
             Object.keys(MilestoneEventType)
         );
     }
@@ -348,14 +345,17 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     async getDocumentOptions() {
-        if (!this.setupData?.documents) {
+        if (!this.context?.setupData?.documents) {
             return [];
         }
 
-        return this.setupData.documents.map(doc => ({
+        const options = this.context.setupData.documents.map(doc => ({
             value: doc.id,
             label: doc.name || doc.title || doc.id
         }));
+
+        console.log('getDocumentOptions - returning options:', options);
+        return options;
     }
 
     // ====================

@@ -210,6 +210,26 @@ export const changeFieldDefinitions = [
         ]
     },
 
+    // Document References Section
+    {
+        title: 'Document References',
+        fields: [
+            {
+                key: 'documentReferences',
+                label: 'Document References',
+                type: 'annotated-multiselect',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                maxNoteLength: 200,
+                placeholder: 'Select documents...',
+                noteLabel: 'Reference Note',
+                optionsKey: 'getDocumentOptions',
+                helpText: 'Select documents and optionally add notes about their relevance',
+                formatKey: 'formatAnnotatedReferences'
+            }
+        ]
+    },
+
     // Metadata Section
     {
         title: 'Metadata',
@@ -252,6 +272,13 @@ export const changeFormTitles = {
 export const requiredIdentifierArrayFields = [
     'satisfiesRequirements',
     'supersedsRequirements'
+];
+
+/**
+ * Required annotated reference array fields that must always be present (even if empty)
+ */
+export const requiredAnnotatedReferenceArrayFields = [
+    'documentReferences'
 ];
 
 /**

@@ -435,6 +435,7 @@ export default class ChangesEntity {
             { key: 'impactsData', label: 'Data Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'dataCategories', maxDisplay: 2 },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact', width: '180px', sortable: false, type: 'setup-reference-list', setupKey: 'stakeholderCategories', maxDisplay: 2 },
             { key: 'impactsServices', label: 'Services Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'services', maxDisplay: 2 },
+            { key: 'documentReferences', label: 'Documents', width: '150px', sortable: false, type: 'annotated-reference-list', maxDisplay: 2, noneLabel: 'No Documents' },
             { key: 'createdBy', label: 'Updated By', width: '120px', sortable: false, type: 'text' },
             { key: 'createdAt', label: 'Updated', width: '120px', sortable: true, type: 'date' }
         ];
