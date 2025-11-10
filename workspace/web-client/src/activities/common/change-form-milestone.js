@@ -466,7 +466,7 @@ export class MilestoneManager {
         return this.setupData.waves.map(wave => {
             const waveId = wave.id.toString();
             const selected = selectedWaveId && selectedWaveId.toString() === waveId ? 'selected' : '';
-            const label = `${wave.year} Q${wave.quarter}`;
+            const label = `${wave.name}`;
             return `<option value="${waveId}" ${selected}>${this.escapeHtml(label)}</option>`;
         }).join('');
     }

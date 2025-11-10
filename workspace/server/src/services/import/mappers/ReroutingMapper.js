@@ -38,6 +38,8 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'OC Description' → parsed into purpose and details
  *   - Text before "In essence:" → details
  *   - Text after "In essence:" → purpose
+ * - 'Target maturity' → M1 milestone (API_PUBLICATION, wave:YYYY)
+ * - 'Target implementation' → M2 milestone (OPS_DEPLOYMENT, wave:YYYY)
  * - satisfiedORs → populated after all rows processed (relationship array)
  * - visibility: 'NETWORK', drg: 'RRT' (hardcoded)
  *
@@ -67,8 +69,6 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'Dependencies'
  * - 'Impacted Services'
  * - 'Main Topic'
- * - 'Target maturity'
- * - 'Target implementation'
  * - 'Reviewer'
  *
  * RELATIONSHIPS:
@@ -200,6 +200,7 @@ class ReroutingMapper extends Mapper {
         // Extract ON ID from column A
         const onId = row['ON ID'];
         let onExternalId = null;
+        let need = null;
 
         if (onId && onId.trim() !== '') {
             const normalizedOnId = onId.trim();
@@ -207,9 +208,11 @@ class ReroutingMapper extends Mapper {
             // Check if we already processed this ON
             if (onIdToExternalId.has(normalizedOnId)) {
                 onExternalId = onIdToExternalId.get(normalizedOnId);
+                // Retrieve ON from needsMap
+                need = needsMap.get(onExternalId);
             } else {
                 // Extract the full ON object
-                const need = this._extractNeed(row);
+                need = this._extractNeed(row);
                 if (need) {
                     onExternalId = need.externalId;
                     // Store in both maps
@@ -234,75 +237,71 @@ class ReroutingMapper extends Mapper {
                 const change = this._extractChange(row);
                 if (change) {
                     ocExternalId = change.externalId;
-                    // Initialize with empty satisfiedORs array
-                    change.satisfiedORs = [];
                     // Store in both maps
                     changesMap.set(ocExternalId, change);
                     ocIdToExternalId.set(normalizedOcId, ocExternalId);
                 }
             }
-
-            // Initialize the Set for this OC if not exists
-            if (ocExternalId && !ocToOrMap.has(ocExternalId)) {
-                ocToOrMap.set(ocExternalId, new Set());
-            }
         }
 
-        // Skip rows without RR ID
-        if (!row['RR ID'] || row['RR ID'].trim() === '') {
-            return null;
-        }
+        // Extract the OR (Operational Requirement), passing the need for path inheritance
+        const requirement = this._extractRequirement(row, need);
 
-        // Build the OR object
-        const requirement = this._extractRequirement(row);
         if (!requirement) {
             return null;
         }
 
-        // Track OC -> OR relationship if OC exists
-        if (ocExternalId && requirement.externalId) {
-            ocToOrMap.get(ocExternalId).add(requirement.externalId);
-        }
-
-        // Add ON reference if exists
+        // Link OR -> ON
         if (onExternalId) {
             requirement.implementedONs = [onExternalId];
+        }
+
+        // Track OC -> OR relationship (for later processing)
+        if (ocExternalId) {
+            if (!ocToOrMap.has(ocExternalId)) {
+                ocToOrMap.set(ocExternalId, new Set());
+            }
+            ocToOrMap.get(ocExternalId).add(requirement.externalId);
         }
 
         return requirement;
     }
 
     /**
-     * Clean OC ID by removing 'RR-OC-' prefix if present
+     * Clean OC ID by removing 'RR-OC-' prefix
      * @param {string} ocId - Raw OC ID from Excel
      * @returns {string} Cleaned OC ID
      * @private
      */
     _cleanOcId(ocId) {
-        return ocId.startsWith('RR-OC-') ? ocId.substring(6) : ocId;
+        if (ocId.startsWith('RR-OC-')) {
+            return ocId.substring(6);
+        }
+        return ocId;
     }
 
     /**
      * Extract ON (Operational Need) from row
      * @param {Object} row - Row object
-     * @returns {Object|null} ON object with externalId, title, statement, rationale
+     * @returns {Object|null} ON object
      * @private
      */
     _extractNeed(row) {
         const onTitle = row['ON'];
         const onDefinition = row['ON Definition'];
 
-        if (!onTitle) {
+        if (!onTitle || !onDefinition) {
             return null;
         }
 
-        const { statement, rationale } = this._extractNeedDefinition(onDefinition);
+        const { statement, rationale } = this._extractNeedStatementAndRationale(onDefinition);
 
         // Build object first
         const need = {
             type: 'ON',
             drg: 'RRT',
             title: onTitle.trim(),
+            path: [onTitle.trim()],
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale)
         };
@@ -315,61 +314,42 @@ class ReroutingMapper extends Mapper {
 
     /**
      * Extract statement and rationale from ON Definition
-     * Parses "What:", "Why:", "Focus:" sections
-     * @param {string} definition - ON Definition text
+     * Parses structured text with "What:", "Why:", and "Focus:" sections
+     * @param {string} definition - ON Definition text from Excel
      * @returns {Object} { statement, rationale }
      * @private
      */
-    _extractNeedDefinition(definition) {
+    _extractNeedStatementAndRationale(definition) {
+        let statement = null;
+        let rationale = null;
+
         if (!definition || definition.trim() === '') {
-            return { statement: null, rationale: null };
+            return { statement, rationale };
         }
 
         const text = definition.trim();
 
-        // Find positions of key markers
-        const whatPos = text.indexOf('What:');
-        const whyPos = text.indexOf('Why:');
-        const focusPos = text.indexOf('Focus:');
-
-        let statement = null;
-        let rationale = null;
-
         // Extract "What:" section
-        if (whatPos !== -1) {
-            let whatEnd = text.length;
-
-            // Find where "What:" ends (at "Why:" or "Focus:", whichever comes first)
-            if (whyPos !== -1 && whyPos > whatPos) {
-                whatEnd = whyPos;
-            }
-            if (focusPos !== -1 && focusPos > whatPos && focusPos < whatEnd) {
-                whatEnd = focusPos;
-            }
-
-            const whatText = text.substring(whatPos + 5, whatEnd).trim();
-            statement = whatText;
-
-            // If "Focus:" present, append it to statement in a separate paragraph
-            if (focusPos !== -1) {
-                const focusText = text.substring(focusPos + 6).trim();
-                if (focusText) {
-                    statement = `${whatText}\n\nFocus:\n\n${focusText}`;
-                }
-            }
+        const whatMatch = text.match(/What:\s*([\s\S]*?)(?=Why:|Focus:|$)/i);
+        if (whatMatch) {
+            statement = whatMatch[1].trim();
         }
 
         // Extract "Why:" section
-        if (whyPos !== -1) {
-            let whyEnd = text.length;
+        const whyMatch = text.match(/Why:\s*([\s\S]*?)(?=Focus:|$)/i);
+        if (whyMatch) {
+            rationale = whyMatch[1].trim();
+        }
 
-            // Find where "Why:" ends (at "Focus:" if it comes after "Why:")
-            if (focusPos !== -1 && focusPos > whyPos) {
-                whyEnd = focusPos;
+        // Extract "Focus:" section and append to statement
+        const focusMatch = text.match(/Focus:\s*([\s\S]*?)$/i);
+        if (focusMatch) {
+            const focus = focusMatch[1].trim();
+            if (statement) {
+                statement += '\n\n**Focus:**\n\n' + focus;
+            } else {
+                statement = '**Focus:**\n\n' + focus;
             }
-
-            const whyText = text.substring(whyPos + 4, whyEnd).trim();
-            rationale = whyText;
         }
 
         return { statement, rationale };
@@ -378,7 +358,7 @@ class ReroutingMapper extends Mapper {
     /**
      * Extract OC (Operational Change) from row
      * @param {Object} row - Row object
-     * @returns {Object|null} OC object with externalId, title, purpose, details, and satisfiedORs array
+     * @returns {Object|null} OC object
      * @private
      */
     _extractChange(row) {
@@ -394,11 +374,12 @@ class ReroutingMapper extends Mapper {
         // Build object first
         const change = {
             drg: 'RRT',
+            visibility: 'NETWORK',
             title: ocName.trim(),
             purpose: this.converter.asciidocToDelta(purpose),
-            visibility: 'NETWORK',
             details: this.converter.asciidocToDelta(details),
-            satisfiedORs: [] // Will be populated after all rows are processed
+            satisfiedORs: [],  // Will be populated after all rows processed
+            milestones: this._extractMilestones(row)
         };
 
         // Add external ID using the complete object (no path needed)
@@ -408,10 +389,79 @@ class ReroutingMapper extends Mapper {
     }
 
     /**
-     * Extract purpose and details from OC Description
+     * Extract milestones from Target maturity and Target implementation columns
+     * @param {Object} row - Row object
+     * @returns {Array} Array of milestone objects
+     * @private
+     */
+    _extractMilestones(row) {
+        const milestones = [];
+
+        // M1 - API Publication from Target maturity
+        const targetMaturity = row['Target maturity'];
+        if (targetMaturity) {
+            const year = this._parseYear(targetMaturity);
+            if (year) {
+                milestones.push({
+                    title: 'M1',
+                    wave: `wave:${year}`,
+                    eventTypes: ['API_PUBLICATION']
+                });
+            }
+        }
+
+        // M2 - OPS Deployment from Target implementation
+        const targetImplementation = row['Target implementation'];
+        if (targetImplementation) {
+            const year = this._parseYear(targetImplementation);
+            if (year) {
+                milestones.push({
+                    title: 'M2',
+                    wave: `wave:${year}`,
+                    eventTypes: ['OPS_DEPLOYMENT']
+                });
+            }
+        }
+
+        return milestones;
+    }
+
+    /**
+     * Parse year from date string
+     * Handles various date formats and returns 4-digit year
+     * @param {string|number} dateValue - Date value from Excel
+     * @returns {string|null} 4-digit year or null if invalid
+     * @private
+     */
+    _parseYear(dateValue) {
+        if (!dateValue) {
+            return null;
+        }
+
+        const value = String(dateValue).trim();
+
+        // Try to extract 4-digit year
+        const yearMatch = value.match(/\b(20\d{2})\b/);
+        if (yearMatch) {
+            return yearMatch[1];
+        }
+
+        // Try to extract 2-digit year and convert to 4-digit
+        const shortYearMatch = value.match(/\b(\d{2})\b/);
+        if (shortYearMatch) {
+            const shortYear = parseInt(shortYearMatch[1], 10);
+            // Assume 20xx for years 00-99
+            return `20${shortYear.toString().padStart(2, '0')}`;
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse OC Description into purpose and details
      * Text before "In essence:" → details
      * Text after "In essence:" → purpose
-     * @param {string} description - OC Description text
+     * @param {string} description - OC Description from Excel
      * @returns {Object} { purpose, details }
      * @private
      */
@@ -443,10 +493,11 @@ class ReroutingMapper extends Mapper {
     /**
      * Extract OR (Operational Requirement) from row
      * @param {Object} row - Row object
+     * @param {Object|null} need - ON object to inherit path from
      * @returns {Object|null} OR object
      * @private
      */
-    _extractRequirement(row) {
+    _extractRequirement(row, need = null) {
         const title = row['Title'];
 
         if (!title) {
@@ -461,6 +512,7 @@ class ReroutingMapper extends Mapper {
             type: 'OR',
             drg: 'RRT',
             title: title.trim(),
+            path: need ? need.path : undefined,
             statement: this.converter.asciidocToDelta(this._extractRequirementStatement(row)),
             rationale: this.converter.asciidocToDelta(this._extractRequirementRationale(row)),
             flows: this.converter.asciidocToDelta(this._extractRequirementFlows(row)),

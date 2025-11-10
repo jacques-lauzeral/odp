@@ -216,6 +216,10 @@
   ],
   "waves": [
     {
+      "externalId": "wave:2026",
+      "year": "2026"
+    },
+    {
       "externalId": "wave:2027",
       "year": "2027"
     },

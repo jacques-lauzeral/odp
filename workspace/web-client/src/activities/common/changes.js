@@ -40,15 +40,10 @@ export default class ChangesEntity {
             ...odpColumnTypes,
             'milestone-waves': {
                 render: (value, column, item, context) => {
-                    const waves = this.extractAllWavesFromMilestones(item);
+                    const waves = this.extractAllWavesFromMilestones({ milestones: value });
                     if (!waves || waves.length === 0) return '-';
 
-                    const waveLabels = waves.map(wave => {
-                        if (wave.year && wave.quarter) {
-                            return `${wave.year} Q${wave.quarter}`;
-                        }
-                        return wave.name || 'Unknown';
-                    });
+                    const waveLabels = waves.map(wave => wave.name || 'Unknown');
 
                     return waveLabels.join(', ');
                 },
@@ -97,6 +92,7 @@ export default class ChangesEntity {
     }
 
     extractAllWavesFromMilestones(item) {
+        console.log(`extractAllWavesFromMilestones ${JSON.stringify(item)}`);
         if (!item?.milestones || !Array.isArray(item.milestones) || item.milestones.length === 0) {
             return [];
         }
@@ -110,7 +106,7 @@ export default class ChangesEntity {
             if (milestone.wave) {
                 wave = milestone.wave;
             } else if (milestone.waveId && this.setupData?.waves) {
-                wave = this.setupData.waves.find(w => w.id === milestone.waveId);
+                wave = this.setupData.waves.find(w => String(w.id) === String(milestone.waveId));
             }
 
             if (wave && !seenWaveIds.has(wave.id)) {
@@ -434,13 +430,13 @@ export default class ChangesEntity {
             { key: 'visibility', label: 'Visibility', width: '100px', sortable: true, type: 'visibility' },
             { key: 'drg', label: 'DRG', width: '120px', sortable: true, type: 'drafting-group' },
             { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
-            { key: 'satisfiedRequirements', label: 'Satisfies', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
+            { key: 'satisfiesRequirements', label: 'Satisfies', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
             { key: 'supersedesRequirements', label: 'Supersedes', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
             { key: 'impactsData', label: 'Data Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'dataCategories', maxDisplay: 2 },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact', width: '180px', sortable: false, type: 'setup-reference-list', setupKey: 'stakeholderCategories', maxDisplay: 2 },
             { key: 'impactsServices', label: 'Services Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'services', maxDisplay: 2 },
-            { key: 'updatedBy', label: 'Updated By', width: '120px', sortable: false, type: 'text' },
-            { key: 'updatedAt', label: 'Updated', width: '120px', sortable: true, type: 'date' }
+            { key: 'createdBy', label: 'Updated By', width: '120px', sortable: false, type: 'text' },
+            { key: 'createdAt', label: 'Updated', width: '120px', sortable: true, type: 'date' }
         ];
     }
 
