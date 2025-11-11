@@ -197,70 +197,208 @@ class DocxExtractor {
      * @returns {string} AsciiDoc-style plain text
      * @private
      */
-    _htmlToAsciiDoc(html, listDepth = 0) {
+    /**
+     * Convert HTML to AsciiDoc using stack-based linear algorithm
+     * Handles nested lists, formatting tags, and images in a single pass
+     * @param {string} html - HTML fragment from mammoth
+     * @returns {string} AsciiDoc-style plain text
+     * @private
+     */
+    _htmlToAsciiDoc(html) {
         if (!html || html.trim() === '') {
             return '';
         }
 
-        let result = html;
+        const stack = [];
+        let result = '';
+        let position = 0;
+        let textBuffer = '';
 
-        // Convert images to AsciiDoc syntax with EMF→PNG conversion
-        // Process each <img> tag individually
-        // Match <img> tags with src attribute anywhere, handling attributes in any order
-        result = result.replace(/<img\s+[^>]*?src="([^"]+)"[^>]*>/gi, (match, dataUrl) => {
-            // Parse data URL to get content type and base64 data
-            const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
-            const dataMatch = dataUrl.match(dataUrlPattern);
+        // Helper: Calculate list prefix based on stack depth
+        const getListPrefix = () => {
+            let ulDepth = 0;
+            let olDepth = 0;
+            let inListItem = false;
 
-            if (dataMatch) {
-                let contentType = dataMatch[1];
-                let imageData = dataMatch[2];
+            for (const item of stack) {
+                if (item.tag === 'ul') ulDepth++;
+                else if (item.tag === 'ol') olDepth++;
+                else if (item.tag === 'li') inListItem = true;
+            }
 
-                // Convert EMF to PNG
-                if (contentType === 'image/x-emf') {
-                    try {
-                        imageData = this._convertEmfToPng(imageData);
-                        contentType = 'image/png';
-                        console.log('Converted EMF image to PNG during AsciiDoc conversion');
-                    } catch (error) {
-                        console.warn('Failed to convert EMF image:', error.message);
-                        // Use missing image placeholder
-                        imageData = this._getMissingImagePlaceholder();
-                        contentType = 'image/png';
+            if (!inListItem) return '';
+
+            // Determine if we're in ordered or unordered list
+            // Count from outermost to current position
+            let depth = 0;
+            let isOrdered = false;
+            for (const item of stack) {
+                if (item.tag === 'ul' || item.tag === 'ol') {
+                    depth++;
+                    isOrdered = (item.tag === 'ol');
+                }
+            }
+
+            if (isOrdered) {
+                return '.'.repeat(depth) + ' ';
+            } else {
+                return '*'.repeat(depth) + ' ';
+            }
+        };
+
+        // Helper: Flush accumulated text buffer
+        const flushTextBuffer = () => {
+            if (textBuffer) {
+                result += textBuffer;
+                textBuffer = '';
+            }
+        };
+
+        // Helper: Extract attribute value from tag string
+        const extractAttribute = (tagString, attrName) => {
+            const regex = new RegExp(`${attrName}=["']([^"']+)["']`, 'i');
+            const match = tagString.match(regex);
+            return match ? match[1] : null;
+        };
+
+        // Main parsing loop
+        while (position < html.length) {
+            const char = html[position];
+
+            if (char === '<') {
+                // Flush any accumulated text before processing tag
+                flushTextBuffer();
+
+                // Find the end of the tag
+                const tagEnd = html.indexOf('>', position);
+                if (tagEnd === -1) {
+                    // Malformed HTML - no closing >
+                    textBuffer += html.substring(position);
+                    break;
+                }
+
+                const tagString = html.substring(position + 1, tagEnd);
+                const isClosingTag = tagString.startsWith('/');
+                const isSelfClosing = tagString.endsWith('/');
+
+                // Extract tag name
+                let tagName = isClosingTag ? tagString.substring(1).trim() : tagString.split(/\s+/)[0].replace('/', '');
+
+                if (isClosingTag) {
+                    // Closing tag
+                    const openTag = stack.pop();
+
+                    if (!openTag || openTag.tag !== tagName) {
+                        console.warn(`Mismatched closing tag: expected ${openTag?.tag}, got ${tagName}`);
+                    }
+
+                    // Emit closing markers based on tag type
+                    switch (tagName) {
+                        case 'strong':
+                        case 'b':
+                            result += '**';
+                            break;
+                        case 'em':
+                        case 'i':
+                            result += '*';
+                            break;
+                        case 'u':
+                            result += '__';
+                            break;
+                        case 's':
+                            result += '~~';
+                            break;
+                        case 'p':
+                            result += '\n\n';
+                            break;
+                        case 'li':
+                            // Nothing to emit - newline was emitted at opening
+                            break;
+                        case 'ul':
+                        case 'ol':
+                            // Nothing to emit
+                            break;
+                    }
+
+                } else {
+                    // Opening tag or self-closing tag
+
+                    if (tagName === 'img') {
+                        // Handle images immediately (self-closing)
+                        const src = extractAttribute(tagString, 'src');
+                        if (src) {
+                            // Check if EMF and convert
+                            const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
+                            const dataMatch = src.match(dataUrlPattern);
+
+                            if (dataMatch) {
+                                let contentType = dataMatch[1];
+                                let imageData = dataMatch[2];
+
+                                if (contentType === 'image/x-emf') {
+                                    try {
+                                        imageData = this._convertEmfToPng(imageData);
+                                        contentType = 'image/png';
+                                    } catch (error) {
+                                        console.warn('Failed to convert EMF:', error.message);
+                                        imageData = this._getMissingImagePlaceholder();
+                                        contentType = 'image/png';
+                                    }
+                                }
+
+                                result += `image::data:${contentType};base64,${imageData}[]`;
+                            } else {
+                                result += `image::${src}[]`;
+                            }
+                        }
+
+                    } else if (!isSelfClosing) {
+                        // Push opening tag to stack
+                        stack.push({ tag: tagName, attributes: {} });
+
+                        // Emit opening markers based on tag type
+                        switch (tagName) {
+                            case 'li':
+                                result += '\n' + getListPrefix();
+                                break;
+                            case 'strong':
+                            case 'b':
+                                result += '**';
+                                break;
+                            case 'em':
+                            case 'i':
+                                result += '*';
+                                break;
+                            case 'u':
+                                result += '__';
+                                break;
+                            case 's':
+                                result += '~~';
+                                break;
+                            case 'ul':
+                            case 'ol':
+                            case 'p':
+                                // No immediate emission
+                                break;
+                        }
                     }
                 }
 
-                // Return AsciiDoc image syntax with converted data
-                return `image::data:${contentType};base64,${imageData}[]`;
+                position = tagEnd + 1;
+
+            } else {
+                // Regular text content - accumulate
+                textBuffer += char;
+                position++;
             }
+        }
 
-            // Fallback if data URL parsing fails
-            return `image::${dataUrl}[]`;
-        });
+        // Flush any remaining text
+        flushTextBuffer();
 
-        // Handle lists first with proper tag-depth tracking (not regex)
-        result = this._processListsWithDepthTracking(result, listDepth);
-
-        // Convert inline formatting to AsciiDoc markers
-        // Bold: <strong> or <b> → **text**
-        result = result.replace(/<(strong|b)>(.*?)<\/\1>/gi, '**$2**');
-
-        // Italic: <em> or <i> → *text*
-        result = result.replace(/<(em|i)>(.*?)<\/\1>/gi, '*$2*');
-
-        // Underline: <u> → __text__
-        result = result.replace(/<u>(.*?)<\/u>/gi, '__$1__');
-
-        // Remove paragraph tags with double newline separator to preserve structure
-        result = result.replace(/<p>(.*?)<\/p>/gi, '$1\n\n');
-
-        // Remove any remaining HTML tags
-        result = result.replace(/<[^>]+>/g, '');
-
-        // Decode HTML entities
+        // Clean up: decode HTML entities
         result = this._decodeHtmlEntities(result);
 
-        // Clean up excessive whitespace while preserving intentional paragraph breaks
         // Trim leading/trailing whitespace
         result = result.trim();
 
@@ -363,195 +501,6 @@ class DocxExtractor {
     }
 
     /**
-     * Process lists with proper tag-depth tracking to handle nested structures
-     * This replaces regex-based processing which can't handle nested tags correctly
-     * @param {string} html - HTML content
-     * @param {number} listDepth - Current list nesting depth
-     * @returns {string} HTML with lists converted to AsciiDoc
-     * @private
-     */
-    /**
-     * Process lists with proper tag-depth tracking to handle nested structures
-     * This replaces regex-based processing which can't handle nested tags correctly
-     * @param {string} html - HTML content
-     * @param {number} listDepth - Current list nesting depth
-     * @returns {string} HTML with lists converted to AsciiDoc
-     * @private
-     */
-    _processListsWithDepthTracking(html, listDepth) {
-        let result = '';
-        let position = 0;
-
-        while (position < html.length) {
-            // Find next list opening tag
-            const olIndex = html.indexOf('<ol>', position);
-            const ulIndex = html.indexOf('<ul>', position);
-
-            // Determine which comes first (or if any exist)
-            let nextListIndex = -1;
-            let listType = null;
-
-            if (olIndex !== -1 && (ulIndex === -1 || olIndex < ulIndex)) {
-                nextListIndex = olIndex;
-                listType = 'ordered';
-            } else if (ulIndex !== -1) {
-                nextListIndex = ulIndex;
-                listType = 'bullet';
-            }
-
-            // No more lists found
-            if (nextListIndex === -1) {
-                result += html.substring(position);
-                break;
-            }
-
-            // Add content before the list
-            result += html.substring(position, nextListIndex);
-
-            // Find matching closing tag with depth tracking
-            const openTag = listType === 'ordered' ? '<ol>' : '<ul>';
-            const closeTag = listType === 'ordered' ? '</ol>' : '</ul>';
-
-            let depth = 1;
-            let searchPos = nextListIndex + openTag.length;
-            let closeIndex = -1;
-
-            while (searchPos < html.length && depth > 0) {
-                const nextOpen = html.indexOf(openTag, searchPos);
-                const nextClose = html.indexOf(closeTag, searchPos);
-
-                if (nextClose === -1) {
-                    // No closing tag found - malformed HTML
-                    break;
-                }
-
-                if (nextOpen !== -1 && nextOpen < nextClose) {
-                    // Found nested opening tag
-                    depth++;
-                    searchPos = nextOpen + openTag.length;
-                } else {
-                    // Found closing tag
-                    depth--;
-                    if (depth === 0) {
-                        closeIndex = nextClose;
-                        break;
-                    }
-                    searchPos = nextClose + closeTag.length;
-                }
-            }
-
-            if (closeIndex === -1) {
-                // Malformed HTML - no matching close tag
-                result += html.substring(nextListIndex);
-                break;
-            }
-
-            // Extract list content (between opening and closing tags)
-            const listContent = html.substring(nextListIndex + openTag.length, closeIndex);
-
-            // Process the list content
-            const asciiDocList = this._processListItems(listContent, listType, listDepth);
-            result += asciiDocList;
-
-            // Add newline after list block to ensure separation from following content
-            // This prevents "...item.\n<p>Text</p>" from becoming "...item.\nText"
-            // Instead becomes "...item.\n\n<p>Text</p>" → "...item.\n\nText\n\n"
-            result += '\n';
-
-            // Move position past the closing tag
-            position = closeTag.length + closeIndex;
-        }
-
-        return result;
-    }
-
-    /**
-     * Process list items with depth tracking for nested lists
-     * @param {string} content - HTML content inside <ol> or <ul>
-     * @param {string} listType - 'ordered' or 'bullet'
-     * @param {number} depth - Current nesting depth (0-2, max 3 levels)
-     * @returns {string} AsciiDoc formatted list items
-     * @private
-     */
-    /**
-     * Process list items with depth tracking for nested lists
-     * @param {string} content - HTML content inside <ol> or <ul>
-     * @param {string} listType - 'ordered' or 'bullet'
-     * @param {number} depth - Current nesting depth (0-2, max 3 levels)
-     * @returns {string} AsciiDoc formatted list items
-     * @private
-     */
-    _processListItems(content, listType, depth) {
-        const maxDepth = 2; // 0, 1, 2 = 3 levels total
-        const currentDepth = Math.min(depth, maxDepth);
-
-        // Generate prefix based on type and depth
-        const prefix = listType === 'ordered'
-            ? '.'.repeat(currentDepth + 1) + ' '
-            : '*'.repeat(currentDepth + 1) + ' ';
-
-        const items = [];
-
-        // Process content sequentially, looking for <li> and nested <ol>/<ul> as siblings
-        let position = 0;
-
-        while (position < content.length) {
-            // Try to match <li>...</li>
-            const liRegex = /<li>(.*?)<\/li>/gis;
-            liRegex.lastIndex = position;
-            const liMatch = liRegex.exec(content);
-
-            // Try to match nested <ol>...</ol> or <ul>...</ul>
-            const nestedListRegex = /<(ol|ul)>(.*?)<\/\1>/gis;
-            nestedListRegex.lastIndex = position;
-            const nestedMatch = nestedListRegex.exec(content);
-
-            // Determine which comes first
-            const liIndex = liMatch ? liMatch.index : Infinity;
-            const nestedIndex = nestedMatch ? nestedMatch.index : Infinity;
-
-            if (liIndex === Infinity && nestedIndex === Infinity) {
-                // No more matches
-                break;
-            }
-
-            if (liIndex < nestedIndex) {
-                // Process <li> item
-                const itemHtml = liMatch[1];
-                const itemContent = this._htmlToAsciiDoc(itemHtml, currentDepth + 1);
-
-                // Split on double newlines to handle multiple paragraphs within single <li>
-                // Each paragraph becomes a separate list item with the same prefix
-                const paragraphs = itemContent.split('\n\n').filter(p => p.trim());
-
-                paragraphs.forEach(para => {
-                    items.push(prefix + para.trim());
-                });
-
-                position = liRegex.lastIndex;
-            } else {
-                // Process nested list
-                const nestedType = nestedMatch[1] === 'ol' ? 'ordered' : 'bullet';
-                const nestedContent = nestedMatch[2];
-
-                // Recursively process nested list with incremented depth
-                const nestedItems = this._processListItems(nestedContent, nestedType, currentDepth + 1);
-                items.push(nestedItems);
-
-                position = nestedListRegex.lastIndex;
-            }
-        }
-
-        return items.join('\n');
-    }
-
-    /**
-     * Extract all content elements (headings, paragraphs, lists, tables) from HTML
-     * in document order
-     * @param {string} html - HTML content
-     * @returns {Array} Array of elements with type and content
-     */
-    /**
      * Extract all content elements (headings, paragraphs, lists, tables) from HTML
      * in document order
      * Supports heading levels 1-9 for backward compatibility and extended hierarchy
@@ -619,21 +568,85 @@ class DocxExtractor {
             });
         }
 
-        // Extract list blocks (ordered and unordered)
-        const listRegex = /<(ol|ul)>(.*?)<\/\1>/gis;
-        while ((match = listRegex.exec(html)) !== null) {
-            const listHtml = match[0]; // Complete <ol>...</ol> or <ul>...</ul>
+        // Extract list blocks (ordered and unordered) with proper depth tracking
+        // Note: Can't use regex because nested lists like <ul><ul>...</ul><li>...</li></ul>
+        // would match only up to the first </ul>, losing the following <li> items
+        let position = 0;
+        while (position < html.length) {
+            // Find next list opening tag
+            const olIndex = html.indexOf('<ol>', position);
+            const ulIndex = html.indexOf('<ul>', position);
 
-            // Convert to AsciiDoc format
-            const asciiDocContent = this._htmlToAsciiDoc(listHtml);
+            // Determine which comes first
+            let nextListIndex = -1;
+            let listType = null;
 
-            elements.push({
-                type: 'paragraph',
-                content: asciiDocContent,
-                hasImage: false,
-                isList: true,
-                position: match.index
-            });
+            if (olIndex !== -1 && (ulIndex === -1 || olIndex < ulIndex)) {
+                nextListIndex = olIndex;
+                listType = 'ol';
+            } else if (ulIndex !== -1) {
+                nextListIndex = ulIndex;
+                listType = 'ul';
+            }
+
+            // No more lists found
+            if (nextListIndex === -1) {
+                break;
+            }
+
+            // Find matching closing tag with depth tracking
+            const openTag = `<${listType}>`;
+            const closeTag = `</${listType}>`;
+
+            let depth = 1;
+            let searchPos = nextListIndex + openTag.length;
+            let closeIndex = -1;
+
+            while (searchPos < html.length && depth > 0) {
+                const nextOpen = html.indexOf(openTag, searchPos);
+                const nextClose = html.indexOf(closeTag, searchPos);
+
+                if (nextClose === -1) {
+                    // No closing tag found - malformed HTML
+                    break;
+                }
+
+                if (nextOpen !== -1 && nextOpen < nextClose) {
+                    // Found nested opening tag
+                    depth++;
+                    searchPos = nextOpen + openTag.length;
+                } else {
+                    // Found closing tag
+                    depth--;
+                    if (depth === 0) {
+                        closeIndex = nextClose;
+                        break;
+                    }
+                    searchPos = nextClose + closeTag.length;
+                }
+            }
+
+            if (closeIndex !== -1) {
+                // Extract complete list HTML including all nested content
+                const listHtml = html.substring(nextListIndex, closeIndex + closeTag.length);
+
+                // Convert to AsciiDoc format
+                const asciiDocContent = this._htmlToAsciiDoc(listHtml);
+
+                elements.push({
+                    type: 'paragraph',
+                    content: asciiDocContent,
+                    hasImage: false,
+                    isList: true,
+                    position: nextListIndex
+                });
+
+                // Move past this list
+                position = closeIndex + closeTag.length;
+            } else {
+                // Malformed HTML - skip this tag
+                position = nextListIndex + openTag.length;
+            }
         }
 
         // Extract tables
@@ -893,48 +906,6 @@ class DocxExtractor {
         }
 
         return sections;
-    }
-
-    /**
-     * Split concatenated list items into separate items
-     * Handles numbered lists (1. 2. 3.) and bullet points (· •)
-     */
-    _splitListItems(text) {
-        // Pattern for numbered lists with full stops: "1. Item 2. Item 3. Item"
-        const numberedFullStopPattern = /(\d+\.\s+[^0-9]+?)(?=\d+\.\s+|$)/g;
-        // Pattern for bullet lists: "· Item· Item" or "• Item• Item"
-        const bulletPattern = /[·•]\s*([^·•]+)/g;
-
-        let items = [];
-
-        // Try numbered list pattern first (most specific)
-        let matches = text.match(numberedFullStopPattern);
-        if (matches && matches.length > 1) {
-            items = matches.map(item => item.trim());
-            return items;
-        }
-
-        // Try bullet pattern
-        matches = [];
-        let match;
-        while ((match = bulletPattern.exec(text)) !== null) {
-            items.push(match[1].trim());
-        }
-
-        if (items.length > 1) {
-            return items;
-        }
-
-        // Fallback: split by semicolon if present and multiple items
-        if (text.includes(';')) {
-            const parts = text.split(';').map(item => item.trim()).filter(item => item.length > 0);
-            if (parts.length > 1) {
-                return parts;
-            }
-        }
-
-        // Single item or couldn't split
-        return [text];
     }
 
     /**
