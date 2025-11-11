@@ -64,8 +64,6 @@ export class OperationalRequirementService extends VersionedItemService {
     }
 
     async _validateUpdatePayload(payload) {
-        const jsonPayload = JSON.stringify(payload);
-        console.log(`OperationalRequirementService._validateUpdatePayload() payload: ${jsonPayload}`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateDRG(payload.drg);

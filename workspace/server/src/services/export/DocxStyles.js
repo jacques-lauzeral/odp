@@ -14,6 +14,12 @@ export const DOCUMENT_STYLES = {
                 font: "Aptos Display",
                 size: 32,  // 16pt
                 bold: true
+            },
+            paragraph: {
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 0
+                }
             }
         },
         heading2: {
@@ -21,6 +27,12 @@ export const DOCUMENT_STYLES = {
                 font: "Aptos Display",
                 size: 26,  // 13pt
                 bold: true
+            },
+            paragraph: {
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 1
+                }
             }
         },
         heading3: {
@@ -28,6 +40,12 @@ export const DOCUMENT_STYLES = {
                 font: "Aptos",
                 size: 24,  // 12pt
                 bold: true
+            },
+            paragraph: {
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 2
+                }
             }
         },
         heading4: {
@@ -36,6 +54,12 @@ export const DOCUMENT_STYLES = {
                 size: 22,  // 11pt
                 bold: true,
                 italics: true
+            },
+            paragraph: {
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 3
+                }
             }
         },
         heading5: {
@@ -43,6 +67,12 @@ export const DOCUMENT_STYLES = {
                 font: "Aptos",
                 size: 22,  // 11pt
                 bold: true
+            },
+            paragraph: {
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 4
+                }
             }
         },
         heading6: {
@@ -50,6 +80,12 @@ export const DOCUMENT_STYLES = {
                 font: "Aptos",
                 size: 22,  // 11pt
                 italics: true
+            },
+            paragraph: {
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 5
+                }
             }
         },
         // Custom styles for deeper heading levels (7-9)
@@ -60,7 +96,11 @@ export const DOCUMENT_STYLES = {
                 bold: true
             },
             paragraph: {
-                spacing: { before: 120, after: 200 }
+                spacing: { before: 120, after: 200 },
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 6
+                }
             }
         },
         heading8: {
@@ -70,7 +110,11 @@ export const DOCUMENT_STYLES = {
                 bold: true
             },
             paragraph: {
-                spacing: { before: 120, after: 200 }
+                spacing: { before: 120, after: 200 },
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 7
+                }
             }
         },
         heading9: {
@@ -80,7 +124,11 @@ export const DOCUMENT_STYLES = {
                 bold: true
             },
             paragraph: {
-                spacing: { before: 120, after: 200 }
+                spacing: { before: 120, after: 200 },
+                numbering: {
+                    reference: 'outline-numbering',
+                    level: 8
+                }
             }
         },
         title: {

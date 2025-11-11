@@ -341,8 +341,6 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     async _validateUpdatePayload(payload) {
-        const jsonPayload = JSON.stringify(payload);
-        console.log(`OperationalChangeService._validateUpdatePayload() payload: ${jsonPayload}`);
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateVisibility(payload.visibility);

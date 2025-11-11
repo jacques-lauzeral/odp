@@ -35,22 +35,20 @@ class DocxGenerator {
     /**
      * Create numbered heading using Word's outline numbering
      * Supports levels 1-9: levels 1-6 use native heading styles, 7-9 use custom styles
+     * Note: Numbering is now defined in the style itself (via DOCUMENT_STYLES) for levels 1-6
+     *       For levels 7-9, numbering must be applied explicitly since custom styles don't inherit it automatically
      */
     _createNumberedHeading(title, level) {
-        // For levels 1-6, use native heading styles
+        // For levels 1-6, use native heading styles (numbering comes from style definition)
         if (level <= 6) {
             return new Paragraph({
                 text: title,
                 heading: this._getHeadingLevel(level),
-                spacing: this._getSpacingForLevel(level),
-                numbering: {
-                    reference: 'outline-numbering',
-                    level: level - 1  // Word levels are 0-indexed
-                }
+                spacing: this._getSpacingForLevel(level)
             });
         }
 
-        // For levels 7-9, use custom style names
+        // For levels 7-9, use custom style names and apply numbering explicitly
         const styleName = `Heading${level}`;
         return new Paragraph({
             text: title,
@@ -243,7 +241,7 @@ class DocxGenerator {
                     },
                     {
                         level: 1,
-                        format: LevelFormat.DECIMAL,
+                        format: LevelFormat.LOWER_LETTER,
                         text: '%2.',
                         alignment: AlignmentType.START,
                         style: {
@@ -254,7 +252,7 @@ class DocxGenerator {
                     },
                     {
                         level: 2,
-                        format: LevelFormat.DECIMAL,
+                        format: LevelFormat.LOWER_ROMAN,
                         text: '%3.',
                         alignment: AlignmentType.START,
                         style: {
@@ -324,6 +322,10 @@ class DocxGenerator {
                             spacing: {
                                 before: 120,
                                 after: 200
+                            },
+                            numbering: {
+                                reference: 'outline-numbering',
+                                level: 6
                             }
                         }
                     },
@@ -342,6 +344,10 @@ class DocxGenerator {
                             spacing: {
                                 before: 120,
                                 after: 200
+                            },
+                            numbering: {
+                                reference: 'outline-numbering',
+                                level: 7
                             }
                         }
                     },
@@ -360,6 +366,10 @@ class DocxGenerator {
                             spacing: {
                                 before: 120,
                                 after: 200
+                            },
+                            numbering: {
+                                reference: 'outline-numbering',
+                                level: 8
                             }
                         }
                     }

@@ -114,7 +114,10 @@ class DocxEntityRenderer {
                         text: text,
                         ...TABLE_VALUE_STYLE
                     })],
-                    bullet: { level: 0 },
+                    numbering: {
+                        reference: 'default-bullet',
+                        level: 0
+                    },
                     spacing: { after: 60 }
                 }));
             });
@@ -165,7 +168,10 @@ class DocxEntityRenderer {
                         text: text,
                         ...TABLE_VALUE_STYLE
                     })],
-                    bullet: { level: 0 },
+                    numbering: {
+                        reference: 'default-bullet',
+                        level: 0
+                    },
                     spacing: { after: 60 }
                 }));
             });
