@@ -756,6 +756,32 @@ class DocxExtractor {
         return [section];
     }
 
+    _extractImagesFromContent(content) {
+        const images = [];
+        const imageRegex = /<img\s+src="([^"]+)"[^>]*>/gi;
+        let match;
+
+        while ((match = imageRegex.exec(content)) !== null) {
+            const src = match[1];
+
+            // Parse data URL to get content type and base64 data
+            if (src.startsWith('data:')) {
+                const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
+                const dataMatch = src.match(dataUrlPattern);
+
+                if (dataMatch) {
+                    images.push({
+                        contentType: dataMatch[1],
+                        data: dataMatch[2],
+                        encoding: 'base64'
+                    });
+                }
+            }
+        }
+
+        return images;
+    }
+
     /**
      * Build hierarchical section structure from flat list of elements
      * Supports heading levels 1-9
