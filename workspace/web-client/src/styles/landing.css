@@ -126,9 +126,9 @@
 /* Activity Grid */
 .activity-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: var(--space-8);
-    max-width: 1200px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-6);
+    max-width: 1400px;
     margin: 0 auto;
 }
 
@@ -247,6 +247,13 @@
 }
 
 /* Responsive Design */
+@media (max-width: 1200px) {
+    .activity-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--space-6);
+    }
+}
+
 @media (max-width: 768px) {
     .landing-header {
         padding: var(--space-8) var(--space-4) var(--space-6);
