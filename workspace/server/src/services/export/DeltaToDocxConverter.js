@@ -1,5 +1,6 @@
 // workspace/server/src/services/DeltaToDocxConverter.js
 import { Paragraph, TextRun, ImageRun } from 'docx';
+import sizeOf from 'image-size';
 
 /**
  * Converts Quill Delta JSON format to docx Paragraph arrays.
@@ -313,13 +314,18 @@ class DeltaToDocxConverter {
             // Convert base64 to buffer
             const imageBuffer = Buffer.from(base64Data, 'base64');
 
+            const dimensions = sizeOf(imageBuffer);
+            const aspectRatio = dimensions.height / dimensions.width;
+            const targetWidth = 454;
+            const targetHeight = Math.round(targetWidth * aspectRatio);
+
             // Create ImageRun with reasonable default dimensions
             // Note: docx library will handle the image size, but we can specify max dimensions
             return new ImageRun({
                 data: imageBuffer,
                 transformation: {
-                    width: 600,  // Max width in pixels (can be adjusted)
-                    height: 450  // Max height in pixels (can be adjusted)
+                    width: targetWidth,
+                    height: targetHeight
                 }
             });
 
