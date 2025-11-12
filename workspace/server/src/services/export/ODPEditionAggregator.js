@@ -85,11 +85,11 @@ export class ODPEditionAggregator {
     }
 
     async _buildExportData(waves, changes, requirements, title, userId) {
-        // Enrich waves with milestones grouped by wave
-        const enrichedWaves = await this._enrichWavesWithMilestones(waves, changes, userId);
-
-        // Enrich operational changes with their milestones
+        // Enrich operational changes with their milestones (this also converts rich text fields)
         const enrichedChanges = await this._enrichChangesWithMilestones(changes, userId);
+
+        // Enrich waves with milestones grouped by wave (uses already-converted change data)
+        const enrichedWaves = await this._enrichWavesWithMilestones(waves, enrichedChanges, userId);
 
         // Build reverse lookup: requirement -> satisfying change
         const reqToChangeMap = new Map();
