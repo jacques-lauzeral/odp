@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
+import sharp from 'sharp';
 
 class DocxExtractor {
     /**
@@ -86,7 +87,7 @@ class DocxExtractor {
             console.log(`Raw HTML logged to: ${logFile}`);
 
             // Parse HTML to extract structured sections
-            const sections = this._parseHtmlToSections(result.value);
+            const sections = await this._parseHtmlToSections(result.value);
 
             return {
                 documentType: 'word',
@@ -105,20 +106,20 @@ class DocxExtractor {
     /**
      * Parse HTML content into hierarchical sections
      * @param {string} html - HTML content from mammoth
-     * @returns {Array} Array of section objects
+     * @returns {Promise<Array>} Array of section objects
      */
-    _parseHtmlToSections(html) {
+    async _parseHtmlToSections(html) {
         // Clean HTML to remove TOC before processing
         const cleanedHtml = this._removeTOC(html);
 
         // Extract elements from cleaned HTML
-        const elements = this._extractAllElements(cleanedHtml);
-        const sections = this._buildSectionHierarchy(elements);
+        const elements = await this._extractAllElements(cleanedHtml);
+        const sections = await this._buildSectionHierarchy(elements);
 
         // If no sections found but content exists, create default section
         if (sections.length === 0 && elements.length > 0) {
             console.log('No headings found, creating default root section');
-            return this._createDefaultSection(elements);
+            return await this._createDefaultSection(elements);
         }
 
         return sections;
@@ -201,10 +202,10 @@ class DocxExtractor {
      * Convert HTML to AsciiDoc using stack-based linear algorithm
      * Handles nested lists, formatting tags, and images in a single pass
      * @param {string} html - HTML fragment from mammoth
-     * @returns {string} AsciiDoc-style plain text
+     * @returns {Promise<string>} AsciiDoc-style plain text
      * @private
      */
-    _htmlToAsciiDoc(html) {
+    async _htmlToAsciiDoc(html) {
         if (!html || html.trim() === '') {
             return '';
         }
@@ -327,7 +328,7 @@ class DocxExtractor {
                         // Handle images immediately (self-closing)
                         const src = extractAttribute(tagString, 'src');
                         if (src) {
-                            // Check if EMF and convert
+                            // Check if data URL (base64 embedded image)
                             const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
                             const dataMatch = src.match(dataUrlPattern);
 
@@ -335,6 +336,7 @@ class DocxExtractor {
                                 let contentType = dataMatch[1];
                                 let imageData = dataMatch[2];
 
+                                // Step 1: Convert EMF to PNG if needed
                                 if (contentType === 'image/x-emf') {
                                     try {
                                         imageData = this._convertEmfToPng(imageData);
@@ -344,6 +346,14 @@ class DocxExtractor {
                                         imageData = this._getMissingImagePlaceholder();
                                         contentType = 'image/png';
                                     }
+                                }
+
+                                // Step 2: Resize image to 12cm width (454px) for ALL image types
+                                try {
+                                    imageData = await this._resizeImage(imageData, contentType);
+                                } catch (error) {
+                                    console.warn('Failed to resize image:', error.message);
+                                    // Continue with original image data
                                 }
 
                                 result += `\n\nimage::data:${contentType};base64,${imageData}[]`;
@@ -484,6 +494,53 @@ class DocxExtractor {
         return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     }
 
+    /**
+     * Resize image to normalized width while preserving aspect ratio
+     * Target width: 12cm = 454 pixels at 96 DPI
+     * @param {string} base64Image - Base64 encoded image data
+     * @param {string} contentType - MIME type (e.g., 'image/png', 'image/jpeg')
+     * @returns {Promise<string>} Base64 encoded resized image
+     * @private
+     */
+    async _resizeImage(base64Image, contentType) {
+        const TARGET_WIDTH = 454; // 12cm at 96 DPI
+
+        try {
+            // Decode base64 to buffer
+            const imageBuffer = Buffer.from(base64Image, 'base64');
+
+            // Get image metadata to calculate aspect ratio
+            const metadata = await sharp(imageBuffer).metadata();
+
+            if (!metadata.width || !metadata.height) {
+                console.warn('Unable to read image dimensions, returning original');
+                return base64Image;
+            }
+
+            // Calculate proportional height based on target width
+            const aspectRatio = metadata.height / metadata.width;
+            const targetHeight = Math.round(TARGET_WIDTH * aspectRatio);
+
+            console.log(`Resizing image: ${metadata.width}x${metadata.height} → ${TARGET_WIDTH}x${targetHeight}`);
+
+            // Resize image maintaining aspect ratio
+            const resizedBuffer = await sharp(imageBuffer)
+                .resize(TARGET_WIDTH, targetHeight, {
+                    fit: 'fill', // Exact dimensions (aspect ratio already calculated)
+                    withoutEnlargement: false // Allow enlargement for small images
+                })
+                .toBuffer();
+
+            // Convert back to base64
+            return resizedBuffer.toString('base64');
+
+        } catch (error) {
+            console.error('Image resize failed:', error.message);
+            // Return original image on error
+            return base64Image;
+        }
+    }
+
     _decodeHtmlEntities(text) {
         const entities = {
             '&amp;': '&',
@@ -505,9 +562,9 @@ class DocxExtractor {
      * in document order
      * Supports heading levels 1-9 for backward compatibility and extended hierarchy
      * @param {string} html - HTML content
-     * @returns {Array} Array of elements with type and content
+     * @returns {Promise<Array>} Array of elements with type and content
      */
-    _extractAllElements(html) {
+    async _extractAllElements(html) {
         const elements = [];
 
         // Extract headings with their anchor IDs (levels 1-9)
@@ -552,7 +609,7 @@ class DocxExtractor {
             const hasImage = /<img\s/.test(content);
 
             // Convert to AsciiDoc format
-            const asciiDocContent = this._htmlToAsciiDoc('<p>' + content + '</p>');
+            const asciiDocContent = await this._htmlToAsciiDoc('<p>' + content + '</p>');
 
             // Debug logging for images
             if (hasImage) {
@@ -631,7 +688,7 @@ class DocxExtractor {
                 const listHtml = html.substring(nextListIndex, closeIndex + closeTag.length);
 
                 // Convert to AsciiDoc format
-                const asciiDocContent = this._htmlToAsciiDoc(listHtml);
+                const asciiDocContent = await this._htmlToAsciiDoc(listHtml);
 
                 elements.push({
                     type: 'paragraph',
@@ -672,7 +729,7 @@ class DocxExtractor {
      * @param {Array} elements - All extracted elements (paragraphs, tables, images)
      * @returns {Array} Array with single root section containing all content
      */
-    _createDefaultSection(elements) {
+    async _createDefaultSection(elements) {
         // Try to extract title from first paragraph
         let title = 'Content';
         const firstParagraph = elements.find(el => el.type === 'paragraph');
@@ -746,7 +803,7 @@ class DocxExtractor {
                     section.content.tables = [];
                 }
 
-                const tableData = this._parseSimpleTable(element.content);
+                const tableData = await this._parseSimpleTable(element.content);
                 section.content.tables.push(tableData);
             }
         }
@@ -786,9 +843,9 @@ class DocxExtractor {
      * Build hierarchical section structure from flat list of elements
      * Supports heading levels 1-9
      * @param {Array} elements - Flat list of elements
-     * @returns {Array} Hierarchical array of sections
+     * @returns {Promise<Array>} Hierarchical array of sections
      */
-    _buildSectionHierarchy(elements) {
+    async _buildSectionHierarchy(elements) {
         const sections = [];
         const sectionsByLevel = {}; // Track current section at each level
         const counters = [0, 0, 0, 0, 0, 0, 0, 0, 0]; // Counters for h1-h9
@@ -925,7 +982,7 @@ class DocxExtractor {
                         currentSection.content.tables = [];
                     }
 
-                    const tableData = this._parseSimpleTable(element.content);
+                    const tableData = await this._parseSimpleTable(element.content);
                     currentSection.content.tables.push(tableData);
                 }
             }
@@ -937,10 +994,10 @@ class DocxExtractor {
     /**
      * Parse table HTML and convert cell content to AsciiDoc format
      * @param {string} tableHtml - HTML table content
-     * @returns {Object} Table data with AsciiDoc-formatted cells
+     * @returns {Promise<Object>} Table data with AsciiDoc-formatted cells
      * @private
      */
-    _parseSimpleTable(tableHtml) {
+    async _parseSimpleTable(tableHtml) {
         const rows = [];
         const rowRegex = /<tr>(.*?)<\/tr>/gis;
         let rowMatch;
@@ -953,7 +1010,7 @@ class DocxExtractor {
             while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
                 const cellHtml = cellMatch[1].trim();
                 // Convert cell HTML to AsciiDoc format
-                const asciiDocContent = this._htmlToAsciiDoc(cellHtml);
+                const asciiDocContent = await this._htmlToAsciiDoc(cellHtml);
                 cells.push(asciiDocContent);
             }
 
