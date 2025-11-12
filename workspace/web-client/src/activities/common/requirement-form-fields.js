@@ -75,6 +75,20 @@ export const requirementFieldDefinitions = [
                 optionsKey: 'getDraftingGroupOptions',
                 helpText: 'Select the drafting group responsible for this requirement',
                 formatKey: 'formatDraftingGroup'
+            },
+            {
+                key: 'path',
+                label: 'Path',
+                type: 'textarea',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                rows: 2,
+                placeholder: 'Enter path elements separated by commas (e.g., "Technical Aspects, Service Lifecycle, Versioning")',
+                helpText: 'Organizational path for this requirement (comma-separated)',
+                format: (value) => {
+                    if (!value || !Array.isArray(value) || value.length === 0) return 'No path';
+                    return value.join(' > ');
+                }
             }
         ]
     },
@@ -128,20 +142,6 @@ export const requirementFieldDefinitions = [
                 rows: 3,
                 placeholder: 'Internal notes (not for publication)...',
                 helpText: 'Private notes for internal use only'
-            },
-            {
-                key: 'path',
-                label: 'Path',
-                type: 'textarea',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                rows: 2,
-                placeholder: 'Enter path elements separated by commas (e.g., "Technical Aspects, Service Lifecycle, Versioning")',
-                helpText: 'Organizational path for this requirement (comma-separated)',
-                format: (value) => {
-                    if (!value || !Array.isArray(value) || value.length === 0) return 'No path';
-                    return value.join(' > ');
-                }
             }
         ]
     },
