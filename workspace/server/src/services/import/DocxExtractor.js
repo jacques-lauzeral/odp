@@ -346,9 +346,9 @@ class DocxExtractor {
                                     }
                                 }
 
-                                result += `image::data:${contentType};base64,${imageData}[]`;
+                                result += `\n\nimage::data:${contentType};base64,${imageData}[]`;
                             } else {
-                                result += `image::${src}[]`;
+                                result += `\n\nimage::${src}[]`;
                             }
                         }
 
