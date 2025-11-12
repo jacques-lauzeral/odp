@@ -3,7 +3,7 @@
 /* Setup Activity Layout */
 .setup-activity {
     padding: 0;
-    height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
 }

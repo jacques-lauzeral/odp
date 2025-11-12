@@ -4,9 +4,9 @@ import { App } from './app.js';
 // Initialize application when DOM is ready
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const appContainer = document.getElementById('app');
+        const appContainer = document.getElementById('activity-container');
         if (!appContainer) {
-            throw new Error('App container not found');
+            throw new Error('Activity container not found');
         }
 
         // Initialize and start the application
@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Failed to initialize ODP Web Client:', error);
 
         // Show error message to user
-        const appContainer = document.getElementById('app');
+        const appContainer = document.getElementById('activity-container');
         if (appContainer) {
             appContainer.innerHTML = `
                 <div class="error-container">

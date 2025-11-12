@@ -2,10 +2,11 @@
 
 /* Landing Page Layout */
 .landing-page {
-    min-height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
     background: linear-gradient(135deg, var(--primary-50) 0%, white 100%);
+    overflow: hidden;
 }
 
 .landing-header {
@@ -14,6 +15,7 @@
     background: white;
     border-bottom: 1px solid var(--border-primary);
     box-shadow: var(--shadow-sm);
+    flex-shrink: 0;  /* CRITICAL: Prevent header from shrinking */
 }
 
 .landing-header h1 {
@@ -36,6 +38,8 @@
     align-items: center;
     justify-content: center;
     padding: var(--space-8) var(--space-4);
+    overflow-y: auto;  /* CRITICAL: Internal scrollbar */
+    min-height: 0;  /* CRITICAL: Allow flex child to shrink below content size */
 }
 
 .user-card {
@@ -91,6 +95,8 @@
 .activity-section {
     flex: 1;
     padding: var(--space-8) var(--space-4);
+    overflow-y: auto;  /* CRITICAL: Internal scrollbar */
+    min-height: 0;  /* CRITICAL: Allow flex child to shrink below content size */
 }
 
 .activity-header {

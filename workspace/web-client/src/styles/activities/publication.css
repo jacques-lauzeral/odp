@@ -4,7 +4,7 @@
 /* Update Base Activity Layout selector to include publication */
 .elaboration-activity, .review-activity, .publication-activity {
     padding: 0;
-    height: 100vh;
+    height: 100%;
     display: flex;
     flex-direction: column;
 }
