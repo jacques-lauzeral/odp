@@ -343,7 +343,7 @@ export default class RequirementForm extends CollectionEntityForm {
             const options = requirements
                 .map(req => ({
                     value: parseInt(req.itemId || req.id, 10),
-                    label: `[${req.type}] ${req.itemId}: ${req.title}`,
+                    label: `${req.code}: ${req.title}`,
                     group: req.type
                 }))
                 .sort((a, b) => {
@@ -382,7 +382,7 @@ export default class RequirementForm extends CollectionEntityForm {
             const options = onRequirements
                 .map(req => ({
                     value: parseInt(req.itemId || req.id, 10),
-                    label: `[ON] ${req.itemId}: ${req.title}`
+                    label: `${req.code}: ${req.title}`
                 }))
                 .sort((a, b) => a.label.localeCompare(b.label));
 
@@ -413,7 +413,7 @@ export default class RequirementForm extends CollectionEntityForm {
             const options = requirements
                 .map(req => ({
                     value: parseInt(req.itemId || req.id, 10),
-                    label: `[${req.type}] ${req.itemId}: ${req.title}`,
+                    label: `${req.code}: ${req.title}`,
                     group: req.type
                 }))
                 .sort((a, b) => {

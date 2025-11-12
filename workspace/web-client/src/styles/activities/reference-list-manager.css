@@ -1,0 +1,194 @@
+/**
+ * reference-list-manager.css
+ * Styles for the ReferenceListManager component
+ * Inline chip list with search popup
+ */
+
+.reference-list-manager {
+    display: block;
+    width: 100%;
+}
+
+/* Inline List Container */
+.reference-list-inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    min-height: 40px;
+}
+
+.empty-state-inline {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* Selected Chip */
+.selected-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 4px 8px;
+    background: var(--color-primary-light);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.selected-chip .chip-remove {
+    background: none;
+    border: none;
+    color: var(--color-danger);
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.2s;
+}
+
+.selected-chip .chip-remove:hover {
+    background: var(--color-danger-light);
+}
+
+/* Read-only variant */
+.selected-chip:not(:has(.chip-remove)) {
+    background: var(--color-muted);
+    border-color: var(--border-color);
+}
+
+/* Inline Buttons */
+.btn-add-inline,
+.btn-clear-inline {
+    flex-shrink: 0;
+}
+
+/* Search Popup Overlay */
+.search-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+/* Search Popup Content */
+.search-popup {
+    background: white;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.search-popup-header {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.search-popup-header .search-input {
+    flex: 1;
+}
+
+.search-popup-header .btn-cancel-search {
+    flex-shrink: 0;
+}
+
+.search-popup-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2);
+}
+
+/* Search Results */
+.search-result-item {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background: var(--color-primary-light);
+}
+
+.search-result-item:active {
+    background: var(--color-primary);
+    color: white;
+}
+
+.search-result-empty,
+.search-result-more {
+    padding: var(--space-3);
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.search-result-more {
+    background: var(--color-muted);
+    cursor: default;
+}
+
+/* Focus styles */
+.search-input:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .search-popup {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .search-popup-header {
+        flex-direction: column;
+    }
+}
+
+/* Scrollbar for results */
+.search-popup-results::-webkit-scrollbar {
+    width: 8px;
+}
+
+.search-popup-results::-webkit-scrollbar-track {
+    background: var(--color-muted);
+    border-radius: var(--radius-sm);
+}
+
+.search-popup-results::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.search-popup-results::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}

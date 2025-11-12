@@ -299,7 +299,7 @@ export default class ChangeForm extends CollectionEntityForm {
 
             const options = requirements.map(req => ({
                 value: parseInt(req.itemId || req.id, 10),
-                label: `[${req.type}] ${req.itemId}: ${req.title}`
+                label: `${req.code}: ${req.title}`
             }));
 
             // Cache the results
@@ -328,7 +328,7 @@ export default class ChangeForm extends CollectionEntityForm {
 
             const options = changes.map(change => ({
                 value: parseInt(change.itemId || change.id, 10),
-                label: `${change.itemId}: ${change.title}`
+                label: `${change.code}: ${change.title}`
             }));
 
             // Cache the results

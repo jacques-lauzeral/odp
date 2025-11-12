@@ -335,17 +335,11 @@ export class OperationalChangeStore extends VersionedItemStore {
             const dependsOnResult = await transaction.run(`
             MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(changeItem:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
             WHERE id(version) = $versionId
-            RETURN id(changeItem) as itemId, changeItem.title as title, changeItem.code as code, id(changeVersion) as versionId, changeVersion.version as version
+            RETURN id(changeItem) as id, changeItem.title as title, changeItem.code as code
             ORDER BY changeItem.title
         `, { versionId });
 
-            const dependsOnChanges = dependsOnResult.records.map(record => ({
-                itemId: this.normalizeId(record.get('itemId')),
-                title: record.get('title'),
-                code: record.get('code'),
-                versionId: this.normalizeId(record.get('versionId')),
-                version: this.normalizeId(record.get('version'))
-            }));
+            const dependsOnChanges = dependsOnResult.records.map(record => this._buildReference(record));
 
             // Delegate milestone building to milestoneStore
             const milestones = await this.milestoneStore.getMilestonesWithReferences(versionId, transaction);

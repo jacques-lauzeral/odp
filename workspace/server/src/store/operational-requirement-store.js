@@ -180,7 +180,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     ELSE NULL END) as documentReferences,
                 
                 collect(DISTINCT CASE WHEN depReq IS NOT NULL 
-                    THEN {itemId: id(depReq), code: depReq.code, title: depReq.title, versionId: id(depReqVersion), version: depReqVersion.version} 
+                    THEN {id: id(depReq), code: depReq.code, title: depReq.title} 
                     ELSE NULL END) as dependsOnRequirements
                 
             ORDER BY item.title
@@ -397,17 +397,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const dependsOnResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(reqItem:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId
-                RETURN id(reqItem) as itemId, reqItem.title as title, reqItem.code as code, id(reqVersion) as versionId, reqVersion.version as version
+                RETURN id(reqItem) as id, reqItem.title as title, reqItem.code as code
                 ORDER BY reqItem.title
             `, { versionId });
 
-            const dependsOnRequirements = dependsOnResult.records.map(record => ({
-                itemId: this.normalizeId(record.get('itemId')),
-                title: record.get('title'),
-                code: record.get('code'),
-                versionId: this.normalizeId(record.get('versionId')),
-                version: this.normalizeId(record.get('version'))
-            }));
+            const dependsOnRequirements = dependsOnResult.records.map(record => this._buildReference(record));
 
             return {
                 refinesParents,
