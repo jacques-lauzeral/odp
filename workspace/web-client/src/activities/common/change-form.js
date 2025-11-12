@@ -151,25 +151,6 @@ export default class ChangeForm extends CollectionEntityForm {
 
         const transformed = { ...item };
 
-        // Handle path display - keep as array for format function
-        // No transformation needed for read mode
-
-        // Extract IDs from object references
-        const referenceFields = ['satisfiesRequirements', 'supersedsRequirements', 'dependsOnChanges'];
-
-        referenceFields.forEach(field => {
-            if (transformed[field] && Array.isArray(transformed[field])) {
-                transformed[field] = transformed[field].map(ref => {
-                    if (typeof ref === 'object' && ref !== null) {
-                        return ref.itemTitle || ref.title || ref;
-                    }
-                    return typeof ref === 'string' && /^\d+$/.test(ref) ? parseInt(ref, 10) : ref;
-                });
-            }
-        });
-
-        // documentReferences - keep full structure for annotated-multiselect
-        // No transformation needed, keep {id, title, note} structure
 
         // Store milestones in milestone manager
         this.milestoneManager.setMilestones(transformed.milestones || []);
@@ -372,8 +353,8 @@ export default class ChangeForm extends CollectionEntityForm {
 
         return values.map(ref => {
             if (typeof ref === 'object' && ref !== null) {
-                const prefix = type === 'requirement' && ref.type ? `[${ref.type}] ` : '';
-                return `${prefix}${ref.title || ref.name || ref.id}`;
+                const code = ref.code ? `[${ref.code}] ` : '[...]';
+                return `${code} ${ref.title}`;
             }
             return ref;
         }).join(', ');

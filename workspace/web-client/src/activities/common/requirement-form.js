@@ -162,17 +162,6 @@ export default class RequirementForm extends CollectionEntityForm {
             'dependsOnRequirements'
         ];
 
-        relationshipFields.forEach(field => {
-            if (transformed[field] && Array.isArray(transformed[field])) {
-                transformed[field] = transformed[field].map(value => {
-                    if (typeof value === 'object' && value !== null) {
-                        return value.itemTitle || value.title || value;
-                    }
-                    return typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value, 10) : value;
-                });
-            }
-        });
-
         // Impact fields and documentReferences - keep full {id, title, note} structure for annotated-multiselect
         // No transformation needed
 
@@ -466,9 +455,9 @@ export default class RequirementForm extends CollectionEntityForm {
 
         return values.map(ref => {
             if (typeof ref === 'object' && ref !== null) {
-                const type = ref.type ? `[${ref.type}] ` : '';
+                const code = ref.code ? `[${ref.code}] ` : '[...]';
                 const title = ref.title || ref.name || ref.id;
-                return `${type}${title}`;
+                return `${code} ${title}`;
             }
             return ref;
         }).join(', ');
