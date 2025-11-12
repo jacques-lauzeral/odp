@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import Table from 'cli-table3';
 import fetch from 'node-fetch';
+import fs from 'fs';
 
 /**
  * EditionCommands provides ODP Edition-specific commands.
@@ -220,8 +221,9 @@ class EditionCommands {
     addExportCommand(editionCommand) {
         editionCommand
             .command('export <id>')
-            .description('Export a specific ODP edition as AsciiDoc')
-            .action(async (id) => {
+            .description('Export a specific ODP edition as ZIP archive')
+            .requiredOption('-o, --output <path>', 'Output file path for ZIP archive')
+            .action(async (id, options) => {
                 try {
                     const response = await fetch(`${this.baseUrl}/odp-editions/${id}/export`, {
                         headers: this.createExportHeaders()
@@ -237,10 +239,11 @@ class EditionCommands {
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
                     }
 
-                    const asciiDoc = await response.text();
+                    const zipBuffer = await response.buffer();
 
-                    // Output to stdout - let shell handle redirection
-                    process.stdout.write(asciiDoc);
+                    // Write ZIP to file
+                    fs.writeFileSync(options.output, zipBuffer);
+                    console.log(`✓ Edition exported to: ${options.output}`);
                 } catch (error) {
                     console.error('Error exporting ODP edition:', error.message);
                     process.exit(1);
@@ -251,8 +254,9 @@ class EditionCommands {
     addExportAllCommand(editionCommand) {
         editionCommand
             .command('export-all')
-            .description('Export entire ODP repository as AsciiDoc')
-            .action(async () => {
+            .description('Export entire ODP repository as ZIP archive')
+            .requiredOption('-o, --output <path>', 'Output file path for ZIP archive')
+            .action(async (options) => {
                 try {
                     const response = await fetch(`${this.baseUrl}/odp-editions/export`, {
                         headers: this.createExportHeaders()
@@ -263,10 +267,11 @@ class EditionCommands {
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
                     }
 
-                    const asciiDoc = await response.text();
+                    const zipBuffer = await response.buffer();
 
-                    // Output to stdout - let shell handle redirection
-                    process.stdout.write(asciiDoc);
+                    // Write ZIP to file
+                    fs.writeFileSync(options.output, zipBuffer);
+                    console.log(`✓ Repository exported to: ${options.output}`);
                 } catch (error) {
                     console.error('Error exporting ODP repository:', error.message);
                     process.exit(1);

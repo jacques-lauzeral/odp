@@ -26,7 +26,8 @@
     "neo4j-driver": "^5.15.0",
     "sharp": "^0.33.5",
     "uuid": "^9.0.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "archiver": "^7.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"

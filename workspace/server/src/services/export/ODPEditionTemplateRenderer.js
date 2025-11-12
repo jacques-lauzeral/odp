@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 class ODPEditionTemplateRenderer {
     constructor() {
         // Load the template once and cache it
-        this.templatePath = path.join(__dirname, '../templates/odp-edition.mustache');
+        this.templatePath = path.join(__dirname, './templates/odp-edition.mustache');
         this.template = null;
     }
 

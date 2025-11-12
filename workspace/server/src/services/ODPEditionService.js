@@ -1,4 +1,5 @@
 import ODPEditionTemplateRenderer from './export/ODPEditionTemplateRenderer.js';
+import archiver from 'archiver';
 import {
     createTransaction,
     commitTransaction,
@@ -158,10 +159,10 @@ export class ODPEditionService {
     }
 
     /**
-     * Export ODP Edition or entire repository as AsciiDoc
+     * Export ODP Edition or entire repository as ZIP archive
      * @param {string|null} editionId - Edition ID for specific edition, null for entire repository
      * @param {string} userId - User ID for transaction
-     * @returns {string} - AsciiDoc formatted content
+     * @returns {Promise<Buffer>} - ZIP file buffer
      */
     async exportAsAsciiDoc(editionId, userId) {
         const ODPEditionAggregator = (await import('./export/ODPEditionAggregator.js')).default;
@@ -173,7 +174,41 @@ export class ODPEditionService {
             ? await aggregator.buildEditionExportData(editionId, userId)
             : await aggregator.buildRepositoryExportData(userId);
 
-        return renderer.render(data);
+        const images = aggregator.getExtractedImages();
+        const filename = editionId ? 'edition.adoc' : 'repository.adoc';
+        const asciidocContent = renderer.render(data);
+
+        return this._createZipArchive(asciidocContent, images, filename);
+    }
+
+    /**
+     * Create ZIP archive with AsciiDoc content and images
+     * @private
+     */
+    async _createZipArchive(asciidocContent, images, filename) {
+        return new Promise((resolve, reject) => {
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            const chunks = [];
+
+            archive.on('data', (chunk) => chunks.push(chunk));
+            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            archive.on('error', (err) => reject(new Error(`ZIP creation failed: ${err.message}`)));
+
+            archive.append(asciidocContent, { name: filename });
+
+            if (images && images.length > 0) {
+                for (const image of images) {
+                    try {
+                        const imageBuffer = Buffer.from(image.data, 'base64');
+                        archive.append(imageBuffer, { name: `images/${image.filename}` });
+                    } catch (error) {
+                        console.warn(`Failed to add image ${image.filename} to ZIP: ${error.message}`);
+                    }
+                }
+            }
+
+            archive.finalize();
+        });
     }
 }
 

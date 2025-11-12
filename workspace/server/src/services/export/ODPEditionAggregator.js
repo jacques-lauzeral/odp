@@ -6,6 +6,7 @@ import {
 } from '../../store/index.js';
 import {DraftingGroupKeys, getDraftingGroupDisplay, MilestoneEventOrder} from "../../../../shared/src/index.js";
 import baseline from "../../routes/baseline.js";
+import DeltaToAsciidocConverter from './DeltaToAsciidocConverter.js';
 
 /**
  * ODPEditionAggregator handles complex data assembly for ODP Edition exports.
@@ -13,6 +14,43 @@ import baseline from "../../routes/baseline.js";
  * needed for AsciiDoc rendering.
  */
 export class ODPEditionAggregator {
+
+    constructor() {
+        this.deltaConverter = new DeltaToAsciidocConverter();
+    }
+
+    /**
+     * Get all images extracted during the last export data build
+     * @returns {Array<{filename: string, data: string, mediaType: string}>}
+     */
+    getExtractedImages() {
+        return this.deltaConverter.getExtractedImages();
+    }
+
+    /**
+     * Convert rich text fields from Delta JSON to AsciiDoc
+     * @param {Object} entity - Entity with rich text fields
+     * @param {Array<string>} fieldNames - Names of fields to convert
+     * @returns {Object} Entity with converted fields
+     * @private
+     */
+    _convertRichTextFields(entity, fieldNames) {
+        const converted = { ...entity };
+
+        for (const fieldName of fieldNames) {
+            if (converted[fieldName]) {
+                try {
+                    converted[fieldName] = this.deltaConverter.deltaToAsciidoc(converted[fieldName]);
+                } catch (error) {
+                    // If conversion fails, leave field as-is or set to empty
+                    console.warn(`Failed to convert ${fieldName} for entity ${entity.itemId || entity.id}: ${error.message}`);
+                    converted[fieldName] = '';
+                }
+            }
+        }
+
+        return converted;
+    }
 
     /**
      * Group items by their DRG (Drafting Group) field
@@ -92,18 +130,26 @@ export class ODPEditionAggregator {
         // Process requirements with relationships
         const processedORs = requirements
             .filter(req => req.type === 'OR')
-            .map(or => ({
-                ...or,
-                satisfiedByChange: reqToChangeMap.get(or.itemId) || null
-            }));
+            .map(or => {
+                // Convert rich text fields to AsciiDoc
+                const converted = this._convertRichTextFields(or, ['statement', 'rationale', 'flows', 'privateNotes']);
+                return {
+                    ...converted,
+                    satisfiedByChange: reqToChangeMap.get(or.itemId) || null
+                };
+            });
 
         const processedONs = requirements
             .filter(req => req.type === 'ON')
-            .map(on => ({
-                ...on,
-                implementingORs: onToORsMap.get(on.itemId) || [],
-                satisfiedByChange: reqToChangeMap.get(on.itemId) || null
-            }));
+            .map(on => {
+                // Convert rich text fields to AsciiDoc
+                const converted = this._convertRichTextFields(on, ['statement', 'rationale', 'flows', 'privateNotes']);
+                return {
+                    ...converted,
+                    implementingORs: onToORsMap.get(on.itemId) || [],
+                    satisfiedByChange: reqToChangeMap.get(on.itemId) || null
+                };
+            });
 
         return {
             title: title,
@@ -115,6 +161,9 @@ export class ODPEditionAggregator {
     }
 
     async buildEditionExportData(editionId, userId) {
+        // Reset image tracking for this export
+        this.deltaConverter.resetImageTracking();
+
         // Get the edition first
         let edition;
         const tx = createTransaction(userId);
@@ -159,6 +208,9 @@ export class ODPEditionAggregator {
     }
 
     async buildRepositoryExportData(userId) {
+        // Reset image tracking for this export
+        this.deltaConverter.resetImageTracking();
+
         // Import services
         const { default: waveService } = await import('../WaveService.js');
         const { default: operationalChangeService } = await import('../OperationalChangeService.js');
@@ -201,8 +253,20 @@ export class ODPEditionAggregator {
 
                 // Group each milestone by its event types
                 waveMilestones.forEach(milestone => {
+                    // Convert milestone description to AsciiDoc
+                    let description = milestone.description;
+                    if (description) {
+                        try {
+                            description = this.deltaConverter.deltaToAsciidoc(description);
+                        } catch (error) {
+                            console.warn(`Failed to convert description for milestone ${milestone.id}: ${error.message}`);
+                            description = '';
+                        }
+                    }
+
                     const enrichedMilestone = {
                         ...milestone,
+                        description: description,
                         operationalChange: {
                             id: change.itemId,
                             drg: change.drg,
@@ -251,6 +315,19 @@ export class ODPEditionAggregator {
         const { default: operationalChangeService } = await import('../OperationalChangeService.js');
 
         for (const change of operationalChanges) {
+            // Convert rich text fields to AsciiDoc
+            const richTextFields = ['purpose', 'initialState', 'finalState', 'details', 'privateNotes'];
+            for (const fieldName of richTextFields) {
+                if (change[fieldName]) {
+                    try {
+                        change[fieldName] = this.deltaConverter.deltaToAsciidoc(change[fieldName]);
+                    } catch (error) {
+                        console.warn(`Failed to convert ${fieldName} for change ${change.itemId}: ${error.message}`);
+                        change[fieldName] = '';
+                    }
+                }
+            }
+
             const milestones = await operationalChangeService.getMilestones(change.itemId, userId);
 
             // Sort milestones chronologically by wave year and quarter
@@ -267,6 +344,18 @@ export class ODPEditionAggregator {
 
                 // Then by quarter if same year
                 return a.wave.quarter - b.wave.quarter;
+            });
+
+            // Convert milestone descriptions to AsciiDoc
+            change.milestones.forEach(milestone => {
+                if (milestone.description) {
+                    try {
+                        milestone.description = this.deltaConverter.deltaToAsciidoc(milestone.description);
+                    } catch (error) {
+                        console.warn(`Failed to convert description for milestone ${milestone.id}: ${error.message}`);
+                        milestone.description = '';
+                    }
+                }
             });
         }
 
