@@ -10,7 +10,7 @@ NM
 == Waves
 {{#waves}}
 [#wave-{{id}}]
-=== {{name}} ({{date}})
+=== {{name}}
 
 {{#eventTypeGroups}}
 
@@ -63,7 +63,12 @@ Milestones::
 |====================
 | Wave | Milestone | Events | Description
 {{#milestones}}
+    {{#isBeforeEditionStart}}
+| {{wave.name}} | {{title}} | {{#eventTypes}}{{.}}{{^last}}, {{/last}}{{/eventTypes}} | {{description}}
+    {{/isBeforeEditionStart}}
+    {{^isBeforeEditionStart}}
 | <<wave-{{wave.id}},{{wave.name}}>> | {{title}} | {{#eventTypes}}{{.}}{{^last}}, {{/last}}{{/eventTypes}} | {{description}}
+    {{/isBeforeEditionStart}}
 {{/milestones}}
 |====================
 

@@ -53,6 +53,20 @@ export class ODPEditionAggregator {
     }
 
     /**
+     * Check if wave A is chronologically before wave B
+     * @private
+     */
+    _isWaveBefore(waveA, waveB) {
+        if (waveA.year < waveB.year) return true;
+        if (waveA.year > waveB.year) return false;
+
+        // Same year - compare quarters (treat undefined as 0)
+        const quarterA = waveA.quarter ?? 0;
+        const quarterB = waveB.quarter ?? 0;
+        return quarterA < quarterB;
+    }
+
+    /**
      * Group items by their DRG (Drafting Group) field
      */
     _groupByDRG(items) {
@@ -84,9 +98,9 @@ export class ODPEditionAggregator {
             }));
     }
 
-    async _buildExportData(waves, changes, requirements, title, userId) {
+    async _buildExportData(waves, changes, requirements, title, userId, startingWave = null) {
         // Enrich operational changes with their milestones (this also converts rich text fields)
-        const enrichedChanges = await this._enrichChangesWithMilestones(changes, userId);
+        const enrichedChanges = await this._enrichChangesWithMilestones(changes, userId, startingWave);
 
         // Enrich waves with milestones grouped by wave (uses already-converted change data)
         const enrichedWaves = await this._enrichWavesWithMilestones(waves, enrichedChanges, userId);
@@ -196,7 +210,14 @@ export class ODPEditionAggregator {
         // Filter waves chronologically
         const editionWaves = allWaves.filter(w => {
             if (w.year > startingWave.year) return true;
-            if (w.year === startingWave.year && w.quarter >= startingWave.quarter) return true;
+            if (w.year === startingWave.year) {
+                // If starting wave has no quarter, include all waves from that year
+                if (startingWave.quarter === null || startingWave.quarter === undefined) return true;
+                // If starting wave has quarter, compare quarters (treat undefined as 0)
+                const wQuarter = w.quarter ?? 0;
+                const startQuarter = startingWave.quarter ?? 0;
+                return wQuarter >= startQuarter;
+            }
             return false;
         });
 
@@ -204,7 +225,7 @@ export class ODPEditionAggregator {
         const editionChanges = await operationalChangeService.getAll(userId, edition.baseline.id, edition.startsFromWave.id);
         const editionRequirements = await operationalRequirementService.getAll(userId, edition.baseline.id, edition.startsFromWave.id);
 
-        return this._buildExportData(allWaves, editionChanges, editionRequirements, `ODP Edition ${edition.title}`, userId);
+        return this._buildExportData(editionWaves, editionChanges, editionRequirements, `ODP Edition ${edition.title}`, userId, startingWave);
     }
 
     async buildRepositoryExportData(userId) {
@@ -221,7 +242,7 @@ export class ODPEditionAggregator {
         const allChanges = await operationalChangeService.getAll(userId);
         const allRequirements = await operationalRequirementService.getAll(userId);
 
-        return this._buildExportData(allWaves, allChanges, allRequirements, 'ODP Repository', userId);
+        return this._buildExportData(allWaves, allChanges, allRequirements, 'ODP Repository', userId, null);
     }
 
     /**
@@ -311,7 +332,7 @@ export class ODPEditionAggregator {
     /**
      * Enrich operational changes with their milestones
      */
-    async _enrichChangesWithMilestones(operationalChanges, userId) {
+    async _enrichChangesWithMilestones(operationalChanges, userId, startingWave = null) {
         const { default: operationalChangeService } = await import('../OperationalChangeService.js');
 
         for (const change of operationalChanges) {
@@ -346,7 +367,7 @@ export class ODPEditionAggregator {
                 return a.wave.quarter - b.wave.quarter;
             });
 
-            // Convert milestone descriptions to AsciiDoc
+            // Convert milestone descriptions to AsciiDoc and mark if before edition start
             change.milestones.forEach(milestone => {
                 if (milestone.description) {
                     try {
@@ -355,6 +376,13 @@ export class ODPEditionAggregator {
                         console.warn(`Failed to convert description for milestone ${milestone.id}: ${error.message}`);
                         milestone.description = '';
                     }
+                }
+
+                // Mark milestone if its wave is before edition starting wave
+                if (startingWave && milestone.wave) {
+                    milestone.isBeforeEditionStart = this._isWaveBefore(milestone.wave, startingWave);
+                } else {
+                    milestone.isBeforeEditionStart = false;
                 }
             });
         }
