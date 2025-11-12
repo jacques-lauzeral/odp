@@ -82,6 +82,33 @@
     color: white;
 }
 
+/* Entity Component Wrappers - CRITICAL for scroll behavior */
+.tree-entity,
+.list-entity {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* List Entity Structure */
+.list-entity .entity-header {
+    flex-shrink: 0;
+}
+
+.list-entity .entity-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.list-entity .table-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4);
+}
+
 /* Entity Workspace */
 .entity-workspace {
     flex: 1;
@@ -224,6 +251,7 @@
 .actions-container {
     flex: 1;
     padding: var(--space-4);
+    overflow-y: auto;  /* ADD THIS LINE */
 }
 
 .action-buttons {
