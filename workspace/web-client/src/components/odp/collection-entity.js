@@ -221,7 +221,11 @@ export default class CollectionEntity {
 
     renderGroup(groupKey, items) {
         const column = this.columnConfig.find(col => col.key === this.currentGrouping);
-        const groupTitle = this.getGroupTitle(groupKey, column);
+
+        // Get the actual field value from first item for proper title resolution
+        // This allows column type's getGroupTitle to work with the original data structure
+        const firstItemValue = items.length > 0 ? this.getItemValue(items[0], column) : null;
+        const groupTitle = this.getGroupTitle(firstItemValue, column, groupKey);
 
         return `
             <div class="collection-group">
@@ -314,7 +318,7 @@ export default class CollectionEntity {
 
         data.forEach(item => {
             const value = this.getItemValue(item, column);
-            const key = value?.toString() || 'none';
+            const key = this.getGroupingKey(value, column);
 
             if (!groups[key]) {
                 groups[key] = [];
@@ -337,7 +341,12 @@ export default class CollectionEntity {
         return groups;
     }
 
-    getGroupTitle(value, column) {
+    getGroupTitle(value, column, groupKey = null) {
+        // Handle 'none' group explicitly
+        if (groupKey === 'none' || value === null || value === undefined) {
+            return column?.noneLabel || 'Not Specified';
+        }
+
         const columnType = this.columnTypes[column?.type || 'text'];
 
         if (columnType && columnType.getGroupTitle) {
@@ -347,6 +356,11 @@ export default class CollectionEntity {
         // For enum types, use the label
         if (column.enumLabels && column.enumLabels[value]) {
             return column.enumLabels[value];
+        }
+
+        // Fallback to groupKey if value can't be stringified nicely
+        if (groupKey) {
+            return groupKey.toString();
         }
 
         return value.toString();
@@ -365,6 +379,47 @@ export default class CollectionEntity {
         }
 
         return 0;
+    }
+
+    /**
+     * Extract a grouping key from a value, handling arrays by using first element.
+     * For reference lists (arrays of {id, title} objects), uses the first item's id.
+     * @param {*} value - The raw value from getItemValue
+     * @param {Object} column - Column configuration
+     * @returns {string} A string key suitable for grouping
+     */
+    getGroupingKey(value, column) {
+        // No value -> 'none' group
+        if (value === null || value === undefined) {
+            return 'none';
+        }
+
+        // Handle arrays (reference lists like implementedONs, refinesParents, etc.)
+        if (Array.isArray(value)) {
+            if (value.length === 0) {
+                return 'none';
+            }
+
+            // Use first element for grouping
+            const first = value[0];
+
+            // If first element is an object (EntityReference format), extract id
+            if (typeof first === 'object' && first !== null) {
+                // Prefer id for stable grouping key, fall back to title/name
+                return (first.id ?? first.itemId ?? first.title ?? first.name ?? 'unknown').toString();
+            }
+
+            // Primitive array element
+            return first.toString();
+        }
+
+        // Handle single object values (EntityReference format)
+        if (typeof value === 'object' && value !== null) {
+            return (value.id ?? value.itemId ?? value.title ?? value.name ?? 'unknown').toString();
+        }
+
+        // Primitive values
+        return value.toString();
     }
 
     // ====================
