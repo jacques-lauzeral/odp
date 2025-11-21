@@ -14,27 +14,28 @@ import {textStartsWith} from "./utils.js";
  * -----------------------------------
  * The iDL document uses numbered sections to organize requirements:
  *
- * - Section 6: "Operational Needs" (all subsections become ONs)
- *   - 6.x: Organizational grouping (e.g., "Delivery to Operations and Publication")
- *     - 6.x.y: Entity subsection (contains Statement: paragraph → becomes ON)
- *       - 6.x.y.z: Child entity subsection (refines parent via parent-child relationship)
+ * - Section 4: "Operational Needs" (all subsections become ONs)
+ *   - 4.x: Organizational grouping (e.g., "Delivery to Operations and Publication")
+ *     - 4.x.y: Entity subsection (contains Statement: paragraph → becomes ON)
+ *       - 4.x.y.z: Child entity subsection (refines parent via parent-child relationship)
  *
- * - Section 7: "Operational Requirements" (all subsections become ORs)
- *   - 7.x: Organizational grouping
- *     - 7.x.y: Entity subsection (contains Statement: paragraph → becomes OR)
- *       - 7.x.y.z: Child entity subsection (refines parent via parent-child relationship)
+ * - Section 5: "Operational Requirements" (all subsections become ORs)
+ *   - 5.x: Organizational grouping
+ *     - 5.x.y: Entity subsection (contains Statement: paragraph → becomes OR)
+ *       - 5.x.y.z: Child entity subsection (refines parent via parent-child relationship)
  *
  * Any subsection containing a "Statement:" paragraph is extracted as a requirement.
- * Entity type determined by top-level section number (6 = ON, 7 = OR).
+ * Entity type determined by top-level section number (4 = ON, 5 = OR).
  *
  * Path Construction:
  * ------------------
  * - Path built from section title hierarchy (not section numbers)
  * - Level 1 section title ("Operational Needs" or "Operational Requirements") removed
+ * - 'iDLADP' (iDL AIRAC Data Definition Process) prepended as first path segment
  * - Requirement title excluded from path (stored separately)
  * - External ID built from: drg + path + title
- * - Example: "6.1.5 Operational Change via Instant Data Amendment"
- *   → path: ["Delivery to Operations and Publication"]
+ * - Example: "4.1.5 Operational Change via Instant Data Amendment"
+ *   → path: ["iDLADP", "Delivery to Operations and Publication"]
  *   → title: "Operational Change via Instant Data Amendment"
  *
  * Entity Hierarchy:
@@ -67,8 +68,10 @@ import {textStartsWith} from "./utils.js";
  *
  * External ID Format:
  * -------------------
- * - ON: on:idl/{path_normalized}/{title_normalized}
- * - OR: or:idl/{path_normalized}/{title_normalized}
+ * - ON: on:idl/idladp/{path_normalized}/{title_normalized}
+ * - OR: or:idl/idladp/{path_normalized}/{title_normalized}
+ * - Note: 'iDLADP' prefix distinguishes AIRAC Data Definition Process requirements
+ *   from future imports (e.g., iDLADM for AIRAC Data Model)
  *
  * Reference Documents:
  * --------------------
@@ -107,11 +110,11 @@ class iDL_Mapper extends Mapper {
         // Add reference documents
         this._addReferenceDocuments(context);
 
-        // Process sections 6 (ONs) and 7 (ORs)
+        // Process sections 4 (ONs) and 5 (ORs)
         for (const section of rawData.sections || []) {
-            if (section.sectionNumber?.startsWith('6')) {
+            if (section.sectionNumber?.startsWith('4')) {
                 this._processRequirementsSection(section, 'ON', context, null);
-            } else if (section.sectionNumber?.startsWith('7')) {
+            } else if (section.sectionNumber?.startsWith('5')) {
                 this._processRequirementsSection(section, 'OR', context, null);
             }
         }
@@ -229,6 +232,9 @@ class iDL_Mapper extends Mapper {
         if (cleanPath.length > 0) {
             cleanPath = cleanPath.slice(0, -1);
         }
+
+        // Prepend iDLADP (iDL AIRAC Data Definition Process) as first path segment
+        cleanPath = ['iDLADP', ...cleanPath];
 
         return cleanPath;
     }
@@ -421,12 +427,12 @@ class iDL_Mapper extends Mapper {
             const cleanedPath = this._getCleanedPath(currentPath);
             pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize
+            // Absolute: parse path and normalize, prepend iDLADP
             const pathString = reference.substring(1);
-            pathTokens = pathString.split('/').map(s => s.trim());
+            pathTokens = ['iDLADP', ...pathString.split('/').map(s => s.trim())];
         } else {
-            // Fallback: parse path and normalize
-            pathTokens = reference.split('/').map(s => s.trim());
+            // Fallback: parse path and normalize, prepend iDLADP
+            pathTokens = ['iDLADP', ...reference.split('/').map(s => s.trim())];
         }
 
         // Build ON object and get external ID
@@ -453,12 +459,12 @@ class iDL_Mapper extends Mapper {
             const cleanedPath = this._getCleanedPath(currentPath);
             pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize
+            // Absolute: parse path and normalize, prepend iDLADP
             const pathString = reference.substring(1);
-            pathTokens = pathString.split('/').map(s => s.trim());
+            pathTokens = ['iDLADP', ...pathString.split('/').map(s => s.trim())];
         } else {
-            // Fallback: parse path and normalize
-            pathTokens = reference.split('/').map(s => s.trim());
+            // Fallback: parse path and normalize, prepend iDLADP
+            pathTokens = ['iDLADP', ...reference.split('/').map(s => s.trim())];
         }
 
         // Build OR object and get external ID
