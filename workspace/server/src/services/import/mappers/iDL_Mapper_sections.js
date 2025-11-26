@@ -4,7 +4,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 import {textStartsWith} from "./utils.js";
 
 /**
- * Mapper for iDL AIRAC Data Definition Process Word documents
+ * Mapper for iDL section-based Word documents
  * Transforms hierarchical section structure into ODP entities
  *
  * DOCUMENT STRUCTURE INTERPRETATION:
@@ -31,10 +31,10 @@ import {textStartsWith} from "./utils.js";
  * ------------------
  * - Path built from section title hierarchy (not section numbers)
  * - Level 1 section title ("Operational Needs" or "Operational Requirements") removed
- * - 'iDLADP' (iDL AIRAC Data Definition Process) prepended as first path segment
+ * - Target folder (e.g., 'iDLADP', 'iDLADMM') prepended as first path segment
  * - Requirement title excluded from path (stored separately)
  * - External ID built from: drg + path + title
- * - Example: "4.1.5 Operational Change via Instant Data Amendment"
+ * - Example: "4.1.5 Operational Change via Instant Data Amendment" with folder 'iDLADP'
  *   → path: ["iDLADP", "Delivery to Operations and Publication"]
  *   → title: "Operational Change via Instant Data Amendment"
  *
@@ -68,10 +68,10 @@ import {textStartsWith} from "./utils.js";
  *
  * External ID Format:
  * -------------------
- * - ON: on:idl/idladp/{path_normalized}/{title_normalized}
- * - OR: or:idl/idladp/{path_normalized}/{title_normalized}
- * - Note: 'iDLADP' prefix distinguishes AIRAC Data Definition Process requirements
- *   from future imports (e.g., iDLADM for AIRAC Data Model)
+ * - ON: on:idl/{folder_normalized}/{path_normalized}/{title_normalized}
+ * - OR: or:idl/{folder_normalized}/{path_normalized}/{title_normalized}
+ * - Note: folder prefix distinguishes requirements from different iDL documents
+ *   (e.g., iDLADP for AIRAC Data Definition Process, iDLADMM for AIRAC Data Meta Model)
  *
  * Reference Documents:
  * --------------------
@@ -92,7 +92,7 @@ import {textStartsWith} from "./utils.js";
  * - Placeholder references like "<to be completed>"
  * - Subsections without "Statement:" paragraph (organizational only, not requirements)
  */
-class iDL_Mapper extends Mapper {
+class iDL_Mapper_sections extends Mapper {
     constructor() {
         super();
         this.converter = new AsciidocToDeltaConverter();
@@ -101,11 +101,18 @@ class iDL_Mapper extends Mapper {
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
+     * @param {Object} [options] - Mapping options
+     * @param {string} [options.folder] - Target folder (e.g., 'iDLADP', 'iDLADMM')
      * @returns {Object} StructuredImportData with all entity collections
      */
-    map(rawData) {
-        console.log('iDL_Mapper mapping raw data');
-        const context = this._initContext();
+    map(rawData, options = {}) {
+        const folder = options.folder;
+        if (!folder) {
+            throw new Error('iDL_Mapper_sections requires options.folder');
+        }
+
+        console.log(`iDL_Mapper_sections mapping raw data to folder: ${folder}`);
+        const context = this._initContext(folder);
 
         // Add reference documents
         this._addReferenceDocuments(context);
@@ -124,10 +131,12 @@ class iDL_Mapper extends Mapper {
 
     /**
      * Initialize mapping context with entity maps
+     * @param {string} folder - Target folder
      * @private
      */
-    _initContext() {
+    _initContext(folder) {
         return {
+            folder,
             onMap: new Map(),
             orMap: new Map(),
             documentMap: new Map(),
@@ -177,7 +186,7 @@ class iDL_Mapper extends Mapper {
                 title: subsection.title,
                 type: type, // 'ON' or 'OR'
                 drg: 'IDL',
-                path: parentReq ? null : this._getCleanedPath(subsection.path),
+                path: parentReq ? null : this._getCleanedPath(subsection.path, context),
                 parent: parentReq ? { externalId: parentReq.externalId } : null,
                 ...this._extractRequirementDetails(subsection, type, context)
             };
@@ -216,10 +225,11 @@ class iDL_Mapper extends Mapper {
      * Clean and normalize path for external ID generation
      * Removes level 1 (Operational Needs/Requirements)
      * @param {Array<string>} path - Raw path from document structure
+     * @param {Object} context - Mapping context with folder
      * @returns {Array<string>} Cleaned path segments
      * @private
      */
-    _getCleanedPath(path) {
+    _getCleanedPath(path, context) {
         let cleanPath = [...path];
 
         // Remove level 1 (Operational Needs or Operational Requirements)
@@ -233,8 +243,8 @@ class iDL_Mapper extends Mapper {
             cleanPath = cleanPath.slice(0, -1);
         }
 
-        // Prepend iDLADP (iDL AIRAC Data Definition Process) as first path segment
-        cleanPath = ['iDLADP', ...cleanPath];
+        // Prepend folder as first path segment
+        cleanPath = [context.folder, ...cleanPath];
 
         return cleanPath;
     }
@@ -314,7 +324,7 @@ class iDL_Mapper extends Mapper {
                 for (const line of lines) {
                     if (line.startsWith('* ')) {
                         const reference = line.substring(2).trim();
-                        const normalizedId = this._normalizeONReference(reference, subsection.path);
+                        const normalizedId = this._normalizeONReference(reference, subsection.path, context);
                         if (normalizedId) {
                             implementedONs.push(normalizedId);
                         }
@@ -325,7 +335,7 @@ class iDL_Mapper extends Mapper {
                 for (const line of lines) {
                     if (line.startsWith('* ')) {
                         const reference = line.substring(2).trim();
-                        const normalizedId = this._normalizeORReference(reference, subsection.path);
+                        const normalizedId = this._normalizeORReference(reference, subsection.path, context);
                         if (normalizedId) {
                             dependsOnRequirements.push(normalizedId);
                         }
@@ -415,29 +425,30 @@ class iDL_Mapper extends Mapper {
      * Normalize ON reference to external ID
      * @param {string} reference - './Title' or '/Absolute/Path/Title'
      * @param {Array<string>} currentPath - Current OR's path
+     * @param {Object} context - Mapping context with folder
      * @returns {string} External ID with on: prefix
      * @private
      */
-    _normalizeONReference(reference, currentPath) {
+    _normalizeONReference(reference, currentPath, context) {
         let pathTokens;
 
         if (reference.startsWith('./')) {
             // Relative: same organizational path as current OR
             const title = reference.substring(2);
-            const cleanedPath = this._getCleanedPath(currentPath);
+            const cleanedPath = this._getCleanedPath(currentPath, context);
             pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize, prepend iDLADP
+            // Absolute: parse path and normalize, prepend folder
             const pathString = reference.substring(1);
-            pathTokens = ['iDLADP', ...pathString.split('/').map(s => s.trim())];
+            pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim())];
         } else {
-            // Fallback: parse path and normalize, prepend iDLADP
-            pathTokens = ['iDLADP', ...reference.split('/').map(s => s.trim())];
+            // Fallback: parse path and normalize, prepend folder
+            pathTokens = [context.folder, ...reference.split('/').map(s => s.trim())];
         }
 
         // Build ON object and get external ID
         return ExternalIdBuilder.buildExternalId({
-            drg: 'iDL',
+            drg: 'IDL',
             path: pathTokens.slice(0, -1), // Path without title
             title: pathTokens[pathTokens.length - 1] // Last segment as title
         }, 'on');
@@ -447,29 +458,30 @@ class iDL_Mapper extends Mapper {
      * Normalize OR reference to external ID
      * @param {string} reference - './Title' or '/Absolute/Path/Title'
      * @param {Array<string>} currentPath - Current OR's path
+     * @param {Object} context - Mapping context with folder
      * @returns {string} External ID with or: prefix
      * @private
      */
-    _normalizeORReference(reference, currentPath) {
+    _normalizeORReference(reference, currentPath, context) {
         let pathTokens;
 
         if (reference.startsWith('./')) {
             // Relative: same organizational path as current OR
             const title = reference.substring(2);
-            const cleanedPath = this._getCleanedPath(currentPath);
+            const cleanedPath = this._getCleanedPath(currentPath, context);
             pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize, prepend iDLADP
+            // Absolute: parse path and normalize, prepend folder
             const pathString = reference.substring(1);
-            pathTokens = ['iDLADP', ...pathString.split('/').map(s => s.trim())];
+            pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim())];
         } else {
-            // Fallback: parse path and normalize, prepend iDLADP
-            pathTokens = ['iDLADP', ...reference.split('/').map(s => s.trim())];
+            // Fallback: parse path and normalize, prepend folder
+            pathTokens = [context.folder, ...reference.split('/').map(s => s.trim())];
         }
 
         // Build OR object and get external ID
         return ExternalIdBuilder.buildExternalId({
-            drg: 'iDL',
+            drg: 'IDL',
             path: pathTokens.slice(0, -1), // Path without title
             title: pathTokens[pathTokens.length - 1] // Last segment as title
         }, 'or');
@@ -589,4 +601,4 @@ class iDL_Mapper extends Mapper {
 
 }
 
-export default iDL_Mapper;
+export default iDL_Mapper_sections;

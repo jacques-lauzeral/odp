@@ -140,6 +140,12 @@ paths:
             type: string
             enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
           description: Drafting group identifier
+        - name: folder
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Target folder within DrG (required for some DrGs like IDL)
         - name: specific
           in: query
           required: false

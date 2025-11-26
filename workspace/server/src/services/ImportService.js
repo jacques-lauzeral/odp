@@ -42,13 +42,14 @@ class ImportService {
      * @param {Object} rawData - RawExtractedData from extraction
      * @param {string} drg - Drafting group identifier
      * @param {boolean} specific - Specifies whether the drg specific mapper has to be used instead of standard one
+     * @param {string} [folder] - Target folder within DrG (required for some DrGs like IDL)
      * @returns {Promise<Object>} StructuredImportData
      */
-    async mapToStructuredData(rawData, drg, specific = false) {
+    async mapToStructuredData(rawData, drg, specific = false, folder = null) {
         if (specific) {
             // Use DrG-specific mapper from registry
-            const mapper = MapperRegistry.getMapper(drg);
-            return mapper.map(rawData);
+            const mapper = MapperRegistry.getMapper(drg, folder);
+            return mapper.map(rawData, { folder });
         } else {
             // Use standard format mapper (default for round-trip)
             const mapper = new StandardMapper(drg);

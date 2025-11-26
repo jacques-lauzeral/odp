@@ -207,6 +207,7 @@ export class ImportCommands {
             .description('Extract raw data from hierarchical Word documents (ZIP)')
             .requiredOption('-f, --file <path>', 'Path to ZIP file')
             .option('-o, --output <path>', 'Output JSON file (default: stdout)')
+            .option('-v, --verbose', 'Show detailed extraction progress')
             .action(async (options) => {
                 try {
                     console.log(`Reading file: ${options.file}`);
@@ -214,16 +215,10 @@ export class ImportCommands {
                         throw new Error(`File not found: ${options.file}`);
                     }
 
-                    if (!options.file.toLowerCase().endsWith('.zip')) {
-                        throw new Error(`File must be a ZIP archive: ${options.file}`);
-                    }
-
                     const fileBuffer = fs.readFileSync(options.file);
                     const fileName = path.basename(options.file);
                     const formData = new FormData();
                     formData.append('file', fileBuffer, fileName);
-
-                    console.log('Extracting hierarchical Word documents...');
 
                     const response = await fetch(`${this.baseUrl}/import/extract/word-hierarchy`, {
                         method: 'POST',
@@ -241,9 +236,10 @@ export class ImportCommands {
 
                     const rawData = await response.json();
 
-                    if (options.output) {
+                    if (options.verbose) {
+                        console.log(`Extracted ${rawData.metadata?.zipEntryCount || 0} files from ZIP`);
+                        console.log(`Found ${rawData.sections?.length || 0} top-level sections`);
                         this.writeOutput(rawData, options.output);
-                        console.log(`✓ Extracted ${rawData.metadata.zipEntryCount} documents from ZIP`);
                     } else {
                         this.writeOutput(rawData, options.output);
                     }
@@ -303,6 +299,7 @@ export class ImportCommands {
             .requiredOption('-d, --drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('-o, --output <path>', 'Output JSON file (default: stdout)')
             .option('-s, --specific', 'Use DrG-specific mapper (default: standard format for round-trip editing)')
+            .option('--folder <name>', 'Target folder within DrG (required for some DrGs like IDL)')
             .action(async (options) => {
                 try {
                     // Validate DRG
@@ -314,14 +311,20 @@ export class ImportCommands {
 
                     console.log(`Reading raw data from: ${options.file}`);
                     console.log(`Mapping with DrG: ${options.drg}`);
+                    if (options.folder) {
+                        console.log(`Target folder: ${options.folder}`);
+                    }
                     console.log(`Mapper mode: ${options.specific ? 'DrG-specific' : 'standard (round-trip)'}`);
 
                     const rawData = JSON.parse(this.readFile(options.file));
 
-                    // Build URL with query parameter
+                    // Build URL with query parameters
                     const url = new URL(`${this.baseUrl}/import/map/${options.drg}`);
                     if (options.specific) {
                         url.searchParams.set('specific', 'true');
+                    }
+                    if (options.folder) {
+                        url.searchParams.set('folder', options.folder);
                     }
 
                     const response = await fetch(url.toString(), {
@@ -401,24 +404,33 @@ odp import structured --file structured.json
 # Import original DrG materials with specialized mappers
 odp import extract-word --file NM_B2B_Requirements.docx --output raw.json
 odp import map --file raw.json --drg NM_B2B --specific --output structured.json
-odp import structured --file structured.json
+odp import structured --file structured.json --specific
+
+# IDL IMPORT WITH FOLDER (section-based format)
+odp import extract-word --file iDL_ADP_Requirements.docx --output raw.json
+odp import map --file raw.json --drg IDL --folder iDLADP --specific --output structured.json
+odp import structured --file structured.json --specific
+
+# IDL IMPORT WITH FOLDER (table-based format)
+odp import extract-word --file iDL_ADM_Requirements.docx --output raw.json
+odp import map --file raw.json --drg IDL --folder iDLADM --specific --output structured.json
+odp import structured --file structured.json --specific
 
 # Three-step workflow for hierarchical Word documents (ZIP)
 odp import extract-word-hierarchy --file FLOW_Requirements.zip --output raw.json
 odp import map --file raw.json --drg FLOW --specific --output structured.json
-odp import structured --file structured.json
+odp import structured --file structured.json --specific
 
 # Three-step workflow for Excel documents
 odp import extract-excel --file 4dt-requirements.xlsx --output raw.json
 odp import map --file raw.json --drg 4DT --specific --output structured.json
-odp import structured --file structured.json
-
-# Piping workflow (extract to stdout, pipe to file)
-odp import extract-word --file exported.docx | tee raw.json
-odp import map --file raw.json --drg AIRPORT | tee structured.json
-odp import structured --file structured.json
+odp import structured --file structured.json --specific
 
 # Available DRG values: ${DraftingGroupKeys.join(', ')}
+
+# IDL FOLDERS:
+# Section-based: iDLADP, iDLADMM
+# Table-based: iDLADM, AURA, TCF, NET, LoA, IAM, MAP, NFR, HMI, TCT
 
 # MAPPER MODES:
 # --specific flag OFF (default): Standard format mapper for round-trip editing
@@ -426,7 +438,7 @@ odp import structured --file structured.json
 #   - Code field preserves entity identity
 # --specific flag ON: DrG-specific mapper for original source documents
 #   - Uses specialized parser for each DrG's unique format
-#   - NM_B2B_Mapper, AirportMapper, ReroutingMapper, etc.
+#   - NM_B2B_Mapper, AirportMapper, iDL_Mapper_sections, iDL_Mapper_tables, etc.
 `);
             });
 
