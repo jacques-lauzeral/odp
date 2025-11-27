@@ -64,6 +64,12 @@
       "parentExternalId": "stakeholder:network/nm"
     },
     {
+      "externalId": "stakeholder:network/nm/nmoc/nos_airspace_validation_team",
+      "name": "NOS Airspace Validation Team",
+      "description": "Network Operations Airspace Validation Team",
+      "parentExternalId": "stakeholder:network/nm/nmoc"
+    },
+    {
       "externalId": "stakeholder:network/nm/crisis_management_team",
       "description": "Network Manager Crisis Management Team",
       "name": "Crisis Management Team",
@@ -91,6 +97,24 @@
       "externalId": "stakeholder:network/nm/woc",
       "name": "WOC",
       "description": "Weather Operations Centre within Network Manager",
+      "parentExternalId": "stakeholder:network/nm"
+    },
+    {
+      "externalId": "stakeholder:network/nm/nm_rad_team",
+      "name": "NM RAD Team",
+      "description": "Network Manager RAD Team",
+      "parentExternalId": "stakeholder:network/nm"
+    },
+    {
+      "externalId": "stakeholder:network/nm/nmad",
+      "name": "NMAD",
+      "description": "Network Manager Airspace Design Team",
+      "parentExternalId": "stakeholder:network/nm"
+    },
+    {
+      "externalId": "stakeholder:network/nm/tcf",
+      "name": "NM TCF",
+      "description": "Network Manager Transponder Code Function Team",
       "parentExternalId": "stakeholder:network/nm"
     },
     {
@@ -127,6 +151,12 @@
       "externalId": "stakeholder:network/ansp/nec",
       "name": "NEC",
       "description": "National ENV Coordinator",
+      "parentExternalId": "stakeholder:network/ansp"
+    },
+    {
+      "externalId": "stakeholder:network/ansp/lec",
+      "name": "LEC",
+      "description": "Local ENV Coordinator",
       "parentExternalId": "stakeholder:network/ansp"
     },
     {
@@ -211,6 +241,30 @@
       "externalId": "stakeholder:network/surveillance_data_provider",
       "name": "Surveillance Data Provider",
       "description": "Providers of surveillance data for aircraft tracking",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/icao",
+      "name": "ICAO",
+      "description": "International Civil Aviation Organization",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/icao/eanpg",
+      "name": "ICAO EANPG",
+      "description": "ICAO European Air Navigation Planning Group",
+      "parentExternalId": "stakeholder:network/icao"
+    },
+    {
+      "externalId": "stakeholder:network/scpg",
+      "name": "SCPG",
+      "description": "SSR Code Planning Group",
+      "parentExternalId": "stakeholder:network"
+    },
+    {
+      "externalId": "stakeholder:network/ccams_users",
+      "name": "CCAMS Users",
+      "description": "CCAMS Operational Users",
       "parentExternalId": "stakeholder:network"
     }
   ],

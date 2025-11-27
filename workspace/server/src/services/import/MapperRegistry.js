@@ -75,11 +75,11 @@ class MapperRegistry {
         MapperRegistry.register('CRISIS_FAAS', CRISIS_FAAS_Mapper);
 
         // IDL section-based folders
-        MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'iDLADP' });
-        MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'iDLADMM' });
+        MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'ADP' });
+        MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'ADMM' });
 
         // IDL table-based folders
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'iDLADM' });
+        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'ADM' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'AURA' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'TCF' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'NET' });
