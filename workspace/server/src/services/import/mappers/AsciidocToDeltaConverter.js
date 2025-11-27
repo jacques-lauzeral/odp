@@ -75,10 +75,10 @@ class AsciidocToDeltaConverter {
                 continue;
             }
 
-            // Check for image syntax: image::data:...[]
-            const imageMatch = trimmedLine.match(/^image::(data:[^[\]]+)\[\]$/);
-            if (imageMatch) {
-                const dataUrl = imageMatch[1];
+            // Check for standalone image syntax: image::data:...[]
+            const standaloneImageMatch = trimmedLine.match(/^image::(data:[^[\]]+)\[\]$/);
+            if (standaloneImageMatch) {
+                const dataUrl = standaloneImageMatch[1];
 
                 // Insert image as Delta image op
                 ops.push({
@@ -109,19 +109,8 @@ class AsciidocToDeltaConverter {
 
                     const content = currentLine.substring(currentMatch[0].length);
 
-                    // Parse inline formatting in list item
-                    const runs = this._parseInlineFormatting(content);
-
-                    // Add text runs
-                    for (const run of runs) {
-                        if (run.text) {
-                            const op = { insert: run.text };
-                            if (Object.keys(run.attributes).length > 0) {
-                                op.attributes = run.attributes;
-                            }
-                            ops.push(op);
-                        }
-                    }
+                    // Process content (may contain inline images)
+                    this._processContentWithImages(content, ops);
 
                     // Add newline with list attribute and indent
                     const listAttributes = { list: listType };
@@ -136,19 +125,8 @@ class AsciidocToDeltaConverter {
                     i++;
                 }
             } else {
-                // Normal text line - parse inline formatting
-                const runs = this._parseInlineFormatting(line);
-
-                // Add text runs
-                for (const run of runs) {
-                    if (run.text) {
-                        const op = { insert: run.text };
-                        if (Object.keys(run.attributes).length > 0) {
-                            op.attributes = run.attributes;
-                        }
-                        ops.push(op);
-                    }
-                }
+                // Normal text line - process content (may contain inline images)
+                this._processContentWithImages(line, ops);
 
                 // Add newline (normal paragraph)
                 ops.push({ insert: '\n' });
@@ -158,6 +136,61 @@ class AsciidocToDeltaConverter {
         }
 
         return JSON.stringify({ ops });
+    }
+
+    /**
+     * Process content that may contain inline images
+     * Splits around image::...[] syntax and processes each segment
+     * @param {string} content - Text content possibly containing images
+     * @param {Array} ops - Delta ops array to append to
+     * @private
+     */
+    _processContentWithImages(content, ops) {
+        // Pattern to find inline images: image::data:...[]
+        const imagePattern = /image::(data:[^[\]]+)\[\]/g;
+
+        let lastIndex = 0;
+        let match;
+
+        while ((match = imagePattern.exec(content)) !== null) {
+            // Process text before this image
+            const textBefore = content.substring(lastIndex, match.index);
+            if (textBefore) {
+                const runs = this._parseInlineFormatting(textBefore);
+                for (const run of runs) {
+                    if (run.text) {
+                        const op = { insert: run.text };
+                        if (Object.keys(run.attributes).length > 0) {
+                            op.attributes = run.attributes;
+                        }
+                        ops.push(op);
+                    }
+                }
+            }
+
+            // Insert the image
+            const dataUrl = match[1];
+            ops.push({
+                insert: { image: dataUrl }
+            });
+
+            lastIndex = imagePattern.lastIndex;
+        }
+
+        // Process remaining text after last image (or all text if no images)
+        const textAfter = content.substring(lastIndex);
+        if (textAfter) {
+            const runs = this._parseInlineFormatting(textAfter);
+            for (const run of runs) {
+                if (run.text) {
+                    const op = { insert: run.text };
+                    if (Object.keys(run.attributes).length > 0) {
+                        op.attributes = run.attributes;
+                    }
+                    ops.push(op);
+                }
+            }
+        }
     }
 
     /**

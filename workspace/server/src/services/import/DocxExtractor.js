@@ -496,14 +496,15 @@ class DocxExtractor {
 
     /**
      * Resize image to normalized width while preserving aspect ratio
-     * Target width: 12cm = 454 pixels at 96 DPI
+     * Only resizes images LARGER than max width - small icons preserved as-is
+     * Max width: 12.5cm = 472 pixels at 96 DPI
      * @param {string} base64Image - Base64 encoded image data
      * @param {string} contentType - MIME type (e.g., 'image/png', 'image/jpeg')
-     * @returns {Promise<string>} Base64 encoded resized image
+     * @returns {Promise<string>} Base64 encoded resized image (or original if smaller)
      * @private
      */
     async _resizeImage(base64Image, contentType) {
-        const TARGET_WIDTH = 454; // 12cm at 96 DPI
+        const MAX_WIDTH = 472; // 12.5cm at 96 DPI
 
         try {
             // Decode base64 to buffer
@@ -517,17 +518,24 @@ class DocxExtractor {
                 return base64Image;
             }
 
-            // Calculate proportional height based on target width
-            const aspectRatio = metadata.height / metadata.width;
-            const targetHeight = Math.round(TARGET_WIDTH * aspectRatio);
+            // Only resize if image is LARGER than max width
+            // Small images (icons, inline graphics) preserved at original size
+            if (metadata.width <= MAX_WIDTH) {
+                console.log(`Keeping original size: ${metadata.width}x${metadata.height} (≤${MAX_WIDTH}px)`);
+                return base64Image;
+            }
 
-            console.log(`Resizing image: ${metadata.width}x${metadata.height} → ${TARGET_WIDTH}x${targetHeight}`);
+            // Calculate proportional height based on max width
+            const aspectRatio = metadata.height / metadata.width;
+            const targetHeight = Math.round(MAX_WIDTH * aspectRatio);
+
+            console.log(`Resizing large image: ${metadata.width}x${metadata.height} → ${MAX_WIDTH}x${targetHeight}`);
 
             // Resize image maintaining aspect ratio
             const resizedBuffer = await sharp(imageBuffer)
-                .resize(TARGET_WIDTH, targetHeight, {
+                .resize(MAX_WIDTH, targetHeight, {
                     fit: 'fill', // Exact dimensions (aspect ratio already calculated)
-                    withoutEnlargement: false // Allow enlargement for small images
+                    withoutEnlargement: true // Never enlarge - safety check
                 })
                 .toBuffer();
 

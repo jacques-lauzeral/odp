@@ -113,7 +113,7 @@
     },
     {
       "externalId": "stakeholder:network/nm/tcf",
-      "name": "NM TCF",
+      "name": "TCF",
       "description": "Network Manager Transponder Code Function Team",
       "parentExternalId": "stakeholder:network/nm"
     },
@@ -251,7 +251,7 @@
     },
     {
       "externalId": "stakeholder:network/icao/eanpg",
-      "name": "ICAO EANPG",
+      "name": "EANPG",
       "description": "ICAO European Air Navigation Planning Group",
       "parentExternalId": "stakeholder:network/icao"
     },

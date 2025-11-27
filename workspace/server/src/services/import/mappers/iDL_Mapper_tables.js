@@ -95,6 +95,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - "Data Originators" stakeholder (too generic)
  * - References to "All iDL Stakeholders..." (CONOPS reference, not specific)
  * - Empty field values
+ * - Word placeholder text ("Click or tap here to enter text.")
  */
 
 /**
@@ -135,7 +136,7 @@ const STAKEHOLDER_SYNONYMS = {
     'lec': 'stakeholder:network/ansp/lec',
     'local env coordinator': 'stakeholder:network/ansp/lec',
     'local env coordinator (lec)': 'stakeholder:network/ansp/lec',
-    'national/local environment coordinator (nec/lec)': 'stakeholder:network/ansp/nec', // Map to NEC as primary
+    'national/local environment coordinator (nec/lec)': ['stakeholder:network/ansp/nec', 'stakeholder:network/ansp/lec'],
     'nrc': 'stakeholder:network/ansp/nrc',
     'national rad coordinator': 'stakeholder:network/ansp/nrc',
     'national rad coordinator (nrc)': 'stakeholder:network/ansp/nrc',
@@ -378,6 +379,10 @@ class iDL_Mapper_tables extends Mapper {
                     trimmed === 'Use Case (UC)') {
                     continue;
                 }
+                // Skip Word placeholder text
+                if (trimmed.toLowerCase().includes('click or tap here to enter text')) {
+                    continue;
+                }
                 fieldContent.push(trimmed);
             }
         }
@@ -430,7 +435,12 @@ class iDL_Mapper_tables extends Mapper {
         if (!row || row.length < 1) return;
 
         const key = (row[0] || '').trim();
-        const value = (row[1] || '').trim();
+        let value = (row[1] || '').trim();
+
+        // Skip Word placeholder text
+        if (value.toLowerCase().includes('click or tap here to enter text')) {
+            value = '';
+        }
 
         // Check for entity type marker
         for (const [marker, config] of Object.entries(FIELD_MARKERS)) {
@@ -825,12 +835,16 @@ class iDL_Mapper_tables extends Mapper {
 
             // Normalize and lookup
             const normalized = text.toLowerCase().trim();
-            const externalId = STAKEHOLDER_SYNONYMS[normalized];
+            const match = STAKEHOLDER_SYNONYMS[normalized];
 
-            if (externalId) {
-                if (!seenIds.has(externalId)) {
-                    seenIds.add(externalId);
-                    resolved.push({ externalId });
+            if (match) {
+                // Handle both single string and array of externalIds
+                const externalIds = Array.isArray(match) ? match : [match];
+                for (const externalId of externalIds) {
+                    if (!seenIds.has(externalId)) {
+                        seenIds.add(externalId);
+                        resolved.push({ externalId });
+                    }
                 }
             } else {
                 // Unknown stakeholder - add to unresolved
