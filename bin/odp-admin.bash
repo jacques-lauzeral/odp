@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# odp-bin - Neo4j backup/restore utility for ODP
-
-set -e
+# odp-admin - Neo4j backup/restore utility for ODP
 
 # Defaults
 CONTAINER="odp-neo4j-1"
@@ -11,20 +9,27 @@ NEO4J_IMAGE="neo4j:5.15"
 BACKUP_DIR_SET=false
 
 usage() {
-    echo "Usage: odp-admin <command> [options]"
-    echo ""
-    echo "Commands:"
-    echo "  dump    Stop DB, dump to backup dir, restart DB"
-    echo "  load    Stop DB, load from backup dir, restart DB"
-    echo ""
-    echo "Options:"
-    echo "  -c, --container <name>    Container name (default: odp-neo4j-1)"
-    echo "  -b, --backup-dir <path>   Backup directory"
-    echo "                            dump: default ~/odp-backups/<timestamp>"
-    echo "                            load: required"
-    echo "  -h, --help                Show this help"
-    exit 1
+    cat << 'EOF'
+Usage: odp-admin <command> [options]
+
+Commands:
+  dump    Stop DB, dump to backup dir, restart DB
+  load    Stop DB, load from backup dir, restart DB
+
+Options:
+  -c, --container <name>    Container name (default: odp-neo4j-1)
+  -b, --backup-dir <path>   Backup directory
+                            dump: default ~/odp-backups/<timestamp>
+                            load: required
+  -h, --help                Show this help
+EOF
 }
+
+# Show help if no arguments
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
 
 # Parse arguments
 COMMAND=""
@@ -47,10 +52,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             usage
+            exit 0
             ;;
         *)
             echo "Unknown option: $1"
             usage
+            exit 1
             ;;
     esac
 done
@@ -58,7 +65,10 @@ done
 if [[ -z "$COMMAND" ]]; then
     echo "Error: No command specified"
     usage
+    exit 1
 fi
+
+set -e
 
 do_dump() {
     # Set default backup dir with timestamp for dump
@@ -74,11 +84,12 @@ do_dump() {
     docker stop "$CONTAINER"
 
     echo "==> Dumping database to: $BACKUP_DIR"
-    docker run --rm \
+    docker run --rm --user root \
+        --entrypoint neo4j-admin \
         -v "$VOLUME":/data \
         -v "$BACKUP_DIR":/backup \
         "$NEO4J_IMAGE" \
-        neo4j-bin database dump neo4j --to-path=/backup
+        database dump neo4j --to-path=/backup
 
     echo "==> Starting container: $CONTAINER"
     docker start "$CONTAINER"
@@ -102,11 +113,12 @@ do_load() {
     docker stop "$CONTAINER"
 
     echo "==> Loading database from: $BACKUP_DIR"
-    docker run --rm \
+    docker run --rm --user root \
+        --entrypoint neo4j-admin \
         -v "$VOLUME":/data \
         -v "$BACKUP_DIR":/backup \
         "$NEO4J_IMAGE" \
-        neo4j-bin database load neo4j --from-path=/backup --overwrite-destination=true
+        database load neo4j --from-path=/backup --overwrite-destination=true
 
     echo "==> Starting container: $CONTAINER"
     docker start "$CONTAINER"
