@@ -487,7 +487,7 @@ class DocxGenerator {
     _renderON(on, hierarchy, level) {
         const elements = [];
 
-        elements.push(this._createNumberedHeading(on.title, level));
+        elements.push(this._createNumberedHeading(`[${on.code}] ${on.title}`, level));
         elements.push(...this.renderer.renderON(on, level));
 
         // Child ONs
@@ -505,7 +505,7 @@ class DocxGenerator {
     _renderOR(or, hierarchy, level) {
         const elements = [];
 
-        elements.push(this._createNumberedHeading(or.title, level));
+        elements.push(this._createNumberedHeading(`[${or.code}] ${or.title}`, level));
         elements.push(...this.renderer.renderOR(or, level));
 
         // Child ORs
@@ -523,7 +523,7 @@ class DocxGenerator {
     _renderOC(oc, level) {
         const elements = [];
 
-        elements.push(this._createNumberedHeading(oc.title, level));
+        elements.push(this._createNumberedHeading(`[${oc.code}] ${oc.title}`, level));
         elements.push(...this.renderer.renderOC(oc, level));
 
         return elements;

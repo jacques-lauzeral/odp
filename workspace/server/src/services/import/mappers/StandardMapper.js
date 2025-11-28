@@ -449,17 +449,21 @@ export class StandardMapper {
 
     /**
      * Add entity references (simple array of external IDs)
-     * Removes bracketed helper text like [Title Here] and trims the result
+     * Extracts code from format "[CODE] Title"
      */
     _addEntityReferences(entity, fieldName, text) {
         if (!text) return;
 
         const items = this._extractListItems(text);
         if (items.length > 0) {
-            // Remove bracketed text and trim each item
             entity[fieldName] = items.map(item => {
-                // Remove anything in brackets: "ON-RRT-0001 [Title]" -> "ON-RRT-0001"
-                return item.replace(/\s*\[.*?\]\s*$/, '').trim();
+                // Format: "[CODE] Title" -> extract CODE from brackets at start
+                const match = item.match(/^\[([^\]]+)\]/);
+                if (match) {
+                    return match[1].trim();
+                }
+                // Fallback: return whole item trimmed
+                return item.trim();
             });
         }
     }

@@ -98,7 +98,7 @@ class DocxEntityRenderer {
 
     /**
      * Create a row for an entity reference array as bullet list
-     * Format: • CODE [Title]
+     * Format: • [CODE] Title
      */
     _createEntityReferencesRow(label, references) {
         const margins = this._getCellMargins();
@@ -108,7 +108,7 @@ class DocxEntityRenderer {
 
         if (references && references.length > 0) {
             references.forEach(ref => {
-                const text = `${ref.code} [${ref.title}]`;
+                const text = `[${ref.code}] ${ref.title}`;
                 valueParagraphs.push(new Paragraph({
                     children: [new TextRun({
                         text: text,
@@ -207,6 +207,7 @@ class DocxEntityRenderer {
     renderON(on, level) {
         const rows = [
             this._createRow("Code", String(on.code)),
+            this._createRow("Title", on.title),
             this._createRichTextRow("Statement", on.statement),
             this._createRichTextRow("Rationale", on.rationale),
             this._createAnnotatedReferencesRow("References", on.documentReferences),
@@ -232,6 +233,7 @@ class DocxEntityRenderer {
     renderOR(or, level) {
         const rows = [
             this._createRow("Code", String(or.code)),
+            this._createRow("Title", or.title),
             this._createRichTextRow("Statement", or.statement),
             this._createRichTextRow("Rationale", or.rationale),
             this._createRichTextRow("Flows", or.flows),
