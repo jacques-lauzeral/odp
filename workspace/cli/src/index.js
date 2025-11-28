@@ -33,10 +33,10 @@ program
             console.error('Examples:');
             console.error('  npm run dev -- --user john.doe stakeholder-category list');
             console.error('  npm run dev -- --user jane.smith service create "API Gateway" "Main API service"');
-            console.error('  npm run dev -- --user admin operational-requirement show 123');
-            console.error('  npm run dev -- --user admin baseline create "Q1 2025 Release"');
-            console.error('  npm run dev -- --user admin requirement list --baseline 456');
-            console.error('  npm run dev -- --user admin odp create "Q1 Edition" 123 DRAFT 456');
+            console.error('  npm run dev -- --user bin operational-requirement show 123');
+            console.error('  npm run dev -- --user bin baseline create "Q1 2025 Release"');
+            console.error('  npm run dev -- --user bin requirement list --baseline 456');
+            console.error('  npm run dev -- --user bin odp create "Q1 Edition" 123 DRAFT 456');
             process.exit(1);
         }
     });
