@@ -18,6 +18,13 @@ paths:
           schema:
             $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
           description: "Drafting Group to export requirements for"
+        - name: folder
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Folder path filter (e.g., 'ADP' or 'ADP/SubFolder'). Exports items where path starts with specified folder hierarchy. Omit to export all."
+          example: "ADP/Planning"
       responses:
         '200':
           description: Word document generated successfully

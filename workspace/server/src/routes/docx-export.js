@@ -20,6 +20,7 @@ router.get('/export', async (req, res) => {
     try {
         const userId = getUserId(req);
         const drg = req.query.drg;
+        const folder = req.query.folder || null;
 
         // Validate DRG parameter
         if (!drg) {
@@ -31,15 +32,19 @@ router.get('/export', async (req, res) => {
             });
         }
 
-        console.log(`DocxExportService.exportRequirementsAndChanges() userId: ${userId}, drg: ${drg}`);
+        console.log(`DocxExportService.exportRequirementsAndChanges() userId: ${userId}, drg: ${drg}${folder ? `, folder: ${folder}` : ''}`);
 
-        const buffer = await DocxExportService.exportRequirementsAndChanges(drg, userId);
+        const buffer = await DocxExportService.exportRequirementsAndChanges(drg, folder, userId);
+
+        // Build filename
+        const folderSuffix = folder ? `-${folder.replace(/\//g, '-').toLowerCase()}` : '';
+        const filename = `on-or-oc-${drg.toLowerCase()}${folderSuffix}.docx`;
 
         // Set response headers for Word document
         res.setHeader('Content-Type',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.setHeader('Content-Disposition',
-            `attachment; filename="on-or-oc-${drg.toLowerCase()}.docx"`);
+            `attachment; filename="${filename}"`);
 
         // Send binary buffer
         res.send(buffer);

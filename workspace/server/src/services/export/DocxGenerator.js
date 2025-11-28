@@ -300,10 +300,13 @@ class DocxGenerator {
         // Build numbering config with dynamic instances
         const numberingConfig = this._buildNumberingConfig(usedInstances);
 
+        // Build title suffix for folder filter
+        const folderSuffix = metadata.folder ? ` / ${metadata.folder}` : '';
+
         const doc = new Document({
             creator: metadata.userId || 'ODP System',
-            title: `Requirements Export - ${metadata.drg}`,
-            description: `Operational requirements for DRG: ${metadata.drg}`,
+            title: `Requirements Export - ${metadata.drg}${folderSuffix}`,
+            description: `Operational requirements for DRG: ${metadata.drg}${metadata.folder ? `, folder: ${metadata.folder}` : ''}`,
             styles: {
                 default: DOCUMENT_STYLES.default,
                 paragraphStyles: [
@@ -391,10 +394,11 @@ class DocxGenerator {
     _buildDocumentContent(hierarchy, metadata) {
         const children = [];
 
-        // Title
+        // Title - include folder if specified
+        const folderSuffix = metadata.folder ? ` / ${metadata.folder}` : '';
         children.push(
             this._createParagraph(
-                `${getDraftingGroupDisplay(metadata.drg)} Operational Needs, Requirements and Changes`,
+                `${getDraftingGroupDisplay(metadata.drg)}${folderSuffix} Operational Needs, Requirements and Changes`,
                 null,
                 'title'
             )

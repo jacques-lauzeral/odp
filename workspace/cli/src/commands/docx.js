@@ -12,13 +12,19 @@ export function docxCommands(program, config) {
     docxCommand
         .command('export <drg>')
         .description('Export operational requirements and changes for a DRG as Word document')
-        .option('-o, --output <filename>', 'Output filename (default: ${drg.toLowerCase()}-on-or-oc.docx)')
+        .option('-f, --folder <path>', 'Folder path filter (e.g., "ADP" or "ADP/SubFolder")')
+        .option('-o, --output <filename>', 'Output filename (default: auto-generated based on drg and folder)')
         .action(async (drg, options) => {
             try {
                 const userId = program.opts().user;
-                const url = `${config.server.baseUrl}/docx/export?drg=${drg}`;
 
-                console.log(`Exporting requirements and changes for DRG: ${drg}...`);
+                // Build URL with optional folder parameter
+                let url = `${config.server.baseUrl}/docx/export?drg=${encodeURIComponent(drg)}`;
+                if (options.folder) {
+                    url += `&folder=${encodeURIComponent(options.folder)}`;
+                }
+
+                console.log(`Exporting requirements and changes for DRG: ${drg}${options.folder ? `, folder: ${options.folder}` : ''}...`);
 
                 const response = await fetch(url, {
                     headers: {
@@ -35,8 +41,11 @@ export function docxCommands(program, config) {
                 }
 
                 // Generate filename
+                const folderSuffix = options.folder
+                    ? `-${options.folder.replace(/\//g, '-').toLowerCase()}`
+                    : '';
                 const filename = options.output ||
-                    `${drg.toLowerCase()}-on-or-oc.docx`;
+                    `${drg.toLowerCase()}${folderSuffix}-on-or-oc.docx`;
 
                 // Save the file
                 const buffer = await response.buffer();
