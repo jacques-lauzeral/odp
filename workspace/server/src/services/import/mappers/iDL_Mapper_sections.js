@@ -1,6 +1,6 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
-import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
+import HtmlToDeltaConverter from './HtmlToDeltaConverter.js';
 import {textStartsWith} from "./utils.js";
 
 /**
@@ -91,11 +91,22 @@ import {textStartsWith} from "./utils.js";
  * - Any content not within recognized field markers
  * - Placeholder references like "<to be completed>"
  * - Subsections without "Statement:" paragraph (organizational only, not requirements)
+ *
+ * IMPLEMENTATION NOTE (HTML-based paragraph format):
+ * ==================================================
+ * Paragraphs from DocxExtractor are objects with { html, plainText }:
+ * - plainText: Used for keyword detection (Statement:, Rationale:, etc.)
+ * - html: Aggregated and converted to Delta at output
+ *
+ * Aggregation pattern:
+ *   htmlFragments.push(p.html)
+ *   ...
+ *   this.converter.htmlToDelta(htmlFragments.join(''))
  */
 class iDL_Mapper_sections extends Mapper {
     constructor() {
         super();
-        this.converter = new AsciidocToDeltaConverter();
+        this.converter = new HtmlToDeltaConverter();
     }
 
     /**
@@ -211,14 +222,36 @@ class iDL_Mapper_sections extends Mapper {
 
     /**
      * Check if subsection has a Statement paragraph
+     * Uses plainText for keyword detection
      * @private
      */
     _hasStatement(subsection) {
         const paragraphs = subsection.content?.paragraphs || [];
         return paragraphs.some(p => {
-            const text = typeof p === 'string' ? p : p.text;
+            // Handle both old format (string) and new format ({ html, plainText })
+            const text = typeof p === 'string' ? p : p.plainText;
             return text?.trim().startsWith('Statement:');
         });
+    }
+
+    /**
+     * Get plain text from paragraph (handles both formats)
+     * @param {string|Object} p - Paragraph (string or { html, plainText })
+     * @returns {string} Plain text content
+     * @private
+     */
+    _getPlainText(p) {
+        return typeof p === 'string' ? p : (p.plainText || '');
+    }
+
+    /**
+     * Get HTML from paragraph (handles both formats)
+     * @param {string|Object} p - Paragraph (string or { html, plainText })
+     * @returns {string} HTML content
+     * @private
+     */
+    _getHtml(p) {
+        return typeof p === 'string' ? `<p>${p}</p>` : (p.html || '');
     }
 
     /**
@@ -251,14 +284,25 @@ class iDL_Mapper_sections extends Mapper {
 
     /**
      * Extract requirement details from subsection paragraphs
-     * Paragraphs are now AsciiDoc-formatted plain text from DocxExtractor
+     * Paragraphs are now { html, plainText } objects from DocxExtractor
+     *
+     * Pattern:
+     * - Use plainText for keyword detection
+     * - Accumulate html fragments for rich text fields
+     * - Join html fragments with <br> separator
+     * - Convert to Delta at the end
+     *
      * @private
      */
     _extractRequirementDetails(subsection, type, context) {
         const paragraphs = subsection.content?.paragraphs || [];
-        let statement = '';
-        let rationale = '';
-        let flows = '';
+
+        // HTML fragment accumulators for rich text fields
+        let statementHtml = [];
+        let rationaleHtml = [];
+        let flowsHtml = [];
+
+        // Plain values for reference fields
         let implementedONs = [];
         let dependsOnRequirements = [];
         let documentReferences = [];
@@ -279,30 +323,42 @@ class iDL_Mapper_sections extends Mapper {
         ];
 
         for (const p of paragraphs) {
-            const text = (typeof p === 'string' ? p : p.text)?.trim() || '';
+            const text = this._getPlainText(p).trim();
+            const html = this._getHtml(p);
 
-            // Check for section markers
+            // Check for section markers (using plainText)
             if (textStartsWith(text, 'Statement:')) {
                 currentSection = 'statement';
-                statement = text.substring(text.toLowerCase().indexOf('statement:') + 'statement:'.length).trim();
+                // Extract content after marker from HTML
+                // For first paragraph, we need to strip the "Statement:" prefix from HTML too
+                const contentAfterMarker = this._stripPrefixFromHtml(html, 'Statement:');
+                if (contentAfterMarker) {
+                    statementHtml.push(contentAfterMarker);
+                }
             } else if (textStartsWith(text, 'Rationale:')) {
                 currentSection = 'rationale';
-                rationale = text.substring(text.toLowerCase().indexOf('rationale:') + 'rationale:'.length).trim();
+                const contentAfterMarker = this._stripPrefixFromHtml(html, 'Rationale:');
+                if (contentAfterMarker) {
+                    rationaleHtml.push(contentAfterMarker);
+                }
             } else if (textStartsWith(text, 'Flow:', 'Flows:', 'Flow example', 'Flow examples')) {
                 if (currentSection === 'flows') {
-                    flows += '\n\n' + text;
+                    // Already in flows section, append
+                    flowsHtml.push(html);
                 } else {
                     currentSection = 'flows';
-                    // Determine which prefix to remove
+                    // Determine which prefix to strip
                     let prefix;
-                    if (textStartsWith(text, 'Flow:')) prefix = 'Flow:';
-                    else if (textStartsWith(text, 'Flow examples')) prefix = 'Flow examples';
+                    if (textStartsWith(text, 'Flow examples')) prefix = 'Flow examples:';
                     else if (textStartsWith(text, 'Flow example:')) prefix = 'Flow example:';
                     else if (textStartsWith(text, 'Flow example')) prefix = 'Flow example';
                     else if (textStartsWith(text, 'Flows:')) prefix = 'Flows:';
                     else prefix = 'Flow:';
 
-                    flows = text.substring(text.toLowerCase().indexOf(prefix.toLowerCase()) + prefix.length).trim();
+                    const contentAfterMarker = this._stripPrefixFromHtml(html, prefix);
+                    if (contentAfterMarker) {
+                        flowsHtml.push(contentAfterMarker);
+                    }
                 }
             } else if (textStartsWith(text, 'Implemented ONs:', 'Implemented Operational Needs:')) {
                 currentSection = 'implementedONs';
@@ -314,15 +370,16 @@ class iDL_Mapper_sections extends Mapper {
                 // Hit a terminator, stop capturing rationale
                 currentSection = null;
             } else if (currentSection === 'statement' && text) {
-                statement += '\n\n' + text;
+                statementHtml.push(html);
             } else if (currentSection === 'rationale' && text) {
-                rationale += '\n\n' + text;
+                rationaleHtml.push(html);
             } else if (currentSection === 'flows' && text) {
-                flows += '\n\n' + text;
+                flowsHtml.push(html);
             } else if (currentSection === 'implementedONs') {
+                // Parse bullet list items from plainText
                 const lines = text.split('\n');
                 for (const line of lines) {
-                    if (line.startsWith('* ')) {
+                    if (line.startsWith('* ') || line.startsWith('. ')) {
                         const reference = line.substring(2).trim();
                         const normalizedId = this._normalizeONReference(reference, subsection.path, context);
                         if (normalizedId) {
@@ -333,7 +390,7 @@ class iDL_Mapper_sections extends Mapper {
             } else if (currentSection === 'dependsOnRequirements') {
                 const lines = text.split('\n');
                 for (const line of lines) {
-                    if (line.startsWith('* ')) {
+                    if (line.startsWith('* ') || line.startsWith('. ')) {
                         const reference = line.substring(2).trim();
                         const normalizedId = this._normalizeORReference(reference, subsection.path, context);
                         if (normalizedId) {
@@ -344,7 +401,7 @@ class iDL_Mapper_sections extends Mapper {
             } else if (currentSection === 'conopsReferences') {
                 const lines = text.split('\n');
                 for (const line of lines) {
-                    if (line.startsWith('* ')) {
+                    if (line.startsWith('* ') || line.startsWith('. ')) {
                         const reference = this._parseDocumentReference(line.substring(2).trim());
                         if (reference) {
                             documentReferences.push(reference);
@@ -354,10 +411,12 @@ class iDL_Mapper_sections extends Mapper {
             }
         }
 
+        // Convert aggregated HTML to Delta
+        // Join fragments with <br> to create blank line between blocks
         const result = {
-            statement: this.converter.asciidocToDelta(statement),
-            rationale: this.converter.asciidocToDelta(rationale),
-            flows: this.converter.asciidocToDelta(flows),
+            statement: this._htmlFragmentsToDelta(statementHtml),
+            rationale: this._htmlFragmentsToDelta(rationaleHtml),
+            flows: this._htmlFragmentsToDelta(flowsHtml),
             implementedONs: type === 'OR' ? implementedONs : [],
             dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
         };
@@ -371,11 +430,57 @@ class iDL_Mapper_sections extends Mapper {
     }
 
     /**
+     * Strip a text prefix from HTML content
+     * Handles cases where prefix may be in plain text or wrapped in tags
+     * @param {string} html - HTML content
+     * @param {string} prefix - Text prefix to strip (e.g., "Statement:")
+     * @returns {string} HTML with prefix removed
+     * @private
+     */
+    _stripPrefixFromHtml(html, prefix) {
+        if (!html) return '';
+
+        // Try to find and remove prefix (case-insensitive)
+        const prefixLower = prefix.toLowerCase();
+        const htmlLower = html.toLowerCase();
+
+        // Find prefix position (might be after opening tags)
+        const prefixIndex = htmlLower.indexOf(prefixLower);
+        if (prefixIndex === -1) {
+            return html; // Prefix not found, return original
+        }
+
+        // Remove prefix and any following whitespace
+        let result = html.substring(0, prefixIndex) + html.substring(prefixIndex + prefix.length);
+
+        // Clean up: remove leading whitespace after tags
+        result = result.replace(/^(\s*<[^>]+>\s*)(\s+)/g, '$1');
+
+        return result.trim();
+    }
+
+    /**
+     * Convert array of HTML fragments to Delta JSON string
+     * @param {string[]} htmlFragments - Array of HTML fragments
+     * @returns {string|null} Delta JSON string or null if empty
+     * @private
+     */
+    _htmlFragmentsToDelta(htmlFragments) {
+        if (!htmlFragments || htmlFragments.length === 0) {
+            return null;
+        }
+
+        // Filter out empty fragments
+        const nonEmpty = htmlFragments.filter(h => h && h.trim());
+        if (nonEmpty.length === 0) {
+            return null;
+        }
+
+        return this.converter.htmlToDelta(nonEmpty.join(''));
+    }
+
+    /**
      * Parse document reference from text
-     * Handles three formats:
-     * 1. Full external ID: "document:idl_conops_v2.1" or "document:idl_conops_v2.1: note"
-     * 2. Section reference: "Section 4.1.1 - Title" (auto-maps to ConOPS)
-     * 3. Placeholder: "<to be completed>" (ignored)
      * @private
      */
     _parseDocumentReference(text) {
@@ -388,12 +493,10 @@ class iDL_Mapper_sections extends Mapper {
 
         // Check if this is a full external ID (starts with "document:")
         if (trimmedText.startsWith('document:')) {
-            // Find the second colon (first is part of external ID like "document:...")
             const firstColonIndex = trimmedText.indexOf(':');
             const secondColonIndex = trimmedText.indexOf(':', firstColonIndex + 1);
 
             if (secondColonIndex > 0) {
-                // Has a third colon, extract note
                 const thirdColonIndex = trimmedText.indexOf(':', secondColonIndex + 1);
                 if (thirdColonIndex > 0) {
                     return {
@@ -402,14 +505,12 @@ class iDL_Mapper_sections extends Mapper {
                     };
                 }
             }
-            // No note, just the document external ID
             return {
                 documentExternalId: trimmedText
             };
         }
 
         // Otherwise, treat as section reference - auto-map to ConOPS document
-        // Get the ConOPS document external ID from context
         const conopsExternalId = ExternalIdBuilder.buildExternalId({
             name: "iDL ConOPS",
             version: "2.1"
@@ -423,67 +524,51 @@ class iDL_Mapper_sections extends Mapper {
 
     /**
      * Normalize ON reference to external ID
-     * @param {string} reference - './Title' or '/Absolute/Path/Title'
-     * @param {Array<string>} currentPath - Current OR's path
-     * @param {Object} context - Mapping context with folder
-     * @returns {string} External ID with on: prefix
      * @private
      */
     _normalizeONReference(reference, currentPath, context) {
         let pathTokens;
 
         if (reference.startsWith('./')) {
-            // Relative: same organizational path as current OR
             const title = reference.substring(2);
             const cleanedPath = this._getCleanedPath(currentPath, context);
             pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize, prepend folder
             const pathString = reference.substring(1);
             pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim())];
         } else {
-            // Fallback: parse path and normalize, prepend folder
             pathTokens = [context.folder, ...reference.split('/').map(s => s.trim())];
         }
 
-        // Build ON object and get external ID
         return ExternalIdBuilder.buildExternalId({
             drg: 'IDL',
-            path: pathTokens.slice(0, -1), // Path without title
-            title: pathTokens[pathTokens.length - 1] // Last segment as title
+            path: pathTokens.slice(0, -1),
+            title: pathTokens[pathTokens.length - 1]
         }, 'on');
     }
 
     /**
      * Normalize OR reference to external ID
-     * @param {string} reference - './Title' or '/Absolute/Path/Title'
-     * @param {Array<string>} currentPath - Current OR's path
-     * @param {Object} context - Mapping context with folder
-     * @returns {string} External ID with or: prefix
      * @private
      */
     _normalizeORReference(reference, currentPath, context) {
         let pathTokens;
 
         if (reference.startsWith('./')) {
-            // Relative: same organizational path as current OR
             const title = reference.substring(2);
             const cleanedPath = this._getCleanedPath(currentPath, context);
             pathTokens = [...cleanedPath, title];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize, prepend folder
             const pathString = reference.substring(1);
             pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim())];
         } else {
-            // Fallback: parse path and normalize, prepend folder
             pathTokens = [context.folder, ...reference.split('/').map(s => s.trim())];
         }
 
-        // Build OR object and get external ID
         return ExternalIdBuilder.buildExternalId({
             drg: 'IDL',
-            path: pathTokens.slice(0, -1), // Path without title
-            title: pathTokens[pathTokens.length - 1] // Last segment as title
+            path: pathTokens.slice(0, -1),
+            title: pathTokens[pathTokens.length - 1]
         }, 'or');
     }
 

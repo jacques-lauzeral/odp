@@ -5,6 +5,39 @@ import { execSync } from 'child_process';
 import crypto from 'crypto';
 import sharp from 'sharp';
 
+/**
+ * DocxExtractor
+ *
+ * Extracts structured content from Word documents using mammoth.
+ *
+ * OUTPUT FORMAT CHANGE (v2):
+ * ==========================
+ * Paragraphs are now stored as objects with both HTML and plain text:
+ *
+ *   section.content.paragraphs = [
+ *     { html: '<p>Statement: <strong>text</strong></p>', plainText: 'Statement: text' },
+ *     { html: '<ol><li>First</li><li>Second</li></ol>', plainText: '. First\n. Second' },
+ *     ...
+ *   ]
+ *
+ * Table cells follow the same format:
+ *
+ *   table.rows = [
+ *     [{ html: '...', plainText: '...' }, { html: '...', plainText: '...' }],
+ *     ...
+ *   ]
+ *
+ * This enables:
+ * - Keyword detection on plainText (fast, no HTML parsing)
+ * - Rich text conversion from HTML (preserves formatting)
+ * - Single-step HTML → Delta conversion (no lossy AsciiDoc intermediate)
+ *
+ * IMAGE HANDLING:
+ * ===============
+ * - EMF images converted to PNG at extraction time
+ * - Large images resized to max 12.5cm width
+ * - Images embedded as data URLs in HTML: <img src="data:image/png;base64,...">
+ */
 class DocxExtractor {
     /**
      * Extract raw data from Word document
@@ -47,10 +80,6 @@ class DocxExtractor {
                     "p[style-name='heading9'] => h9:fresh",
                     "p[style-name='heading 9'] => h9:fresh",
 
-                    // Normal paragraph
-                    // "p => p:fresh"
-                    //"p:not(numbering) => p:fresh"
-
                     // Explicitly preserve ordered list items with nesting
                     "p[style-name='List Paragraph']:ordered-list(1) => ol > li:fresh",
                     "p[style-name='List Paragraph']:ordered-list(2) => ol > ol > li:fresh",
@@ -72,8 +101,6 @@ class DocxExtractor {
             });
 
             // Log complete HTML to file for debugging
-            const fs = await import('fs');
-            const path = await import('path');
             const logDir = path.join(process.cwd(), 'logs');
 
             // Ensure logs directory exists
@@ -169,254 +196,168 @@ class DocxExtractor {
     }
 
     /**
-     * Convert HTML to AsciiDoc-style plain text
-     *
-     * DESIGN DECISION: Unified text format with AsciiDoc markers
-     * ===========================================================
-     * This method normalizes HTML from mammoth into plain text with AsciiDoc-style
-     * formatting markers, providing a consistent format for all mappers.
-     *
-     * Supported conversions:
-     * - <p>text</p> → "text\n\n" (paragraph with double newline separator)
-     * - <strong>text</strong> → "**text**" (bold)
-     * - <em>text</em> or <i>text</i> → "*text*" (italic)
-     * - <u>text</u> → "__text__" (underline)
-     * - <ol><li>item</li></ol> → ". item" (ordered list, one per line)
-     * - <ul><li>item</li></ul> → "* item" (unordered list, one per line)
-     * - <img src="data:..."> → "image::data:...[]" (AsciiDoc image syntax, EMF converted to PNG)
-     * - Nested formatting preserved: <strong><em>text</em></strong> → "***text***"
-     *
-     * Rationale:
-     * - Simple text processing for mappers (no HTML parsing needed)
-     * - Consistent format from both Word and Excel sources
-     * - AsciiDoc is well-established, readable convention
-     * - Single converter (textToDelta) handles all text → Delta conversion
-     * - Double newlines preserve paragraph structure from Word documents
-     * - EMF images converted to PNG at extraction time for web compatibility
-     *
+     * Process HTML content: preprocess images (EMF→PNG, resize) and return both HTML and plainText
      * @param {string} html - HTML fragment from mammoth
-     * @returns {string} AsciiDoc-style plain text
-     * @private
+     * @returns {Promise<{html: string, plainText: string}>} Processed HTML and plain text extraction
      */
-    /**
-     * Convert HTML to AsciiDoc using stack-based linear algorithm
-     * Handles nested lists, formatting tags, and images in a single pass
-     * @param {string} html - HTML fragment from mammoth
-     * @returns {Promise<string>} AsciiDoc-style plain text
-     * @private
-     */
-    async _htmlToAsciiDoc(html) {
+    async _processHtmlContent(html) {
         if (!html || html.trim() === '') {
-            return '';
+            return { html: '', plainText: '' };
         }
 
-        const stack = [];
+        // Step 1: Preprocess images in HTML
+        const processedHtml = await this._preprocessImages(html);
+
+        // Step 2: Extract plain text for keyword detection
+        const plainText = this._extractPlainText(processedHtml);
+
+        return { html: processedHtml, plainText };
+    }
+
+    /**
+     * Preprocess images in HTML: convert EMF to PNG, resize large images
+     * @param {string} html - HTML content
+     * @returns {Promise<string>} HTML with processed images
+     */
+    async _preprocessImages(html) {
+        // Find all img tags
+        const imgRegex = /<img\s+src="([^"]+)"[^>]*>/gi;
+        let result = html;
+        let match;
+
+        // Collect all matches first (to avoid regex state issues during async replacement)
+        const matches = [];
+        while ((match = imgRegex.exec(html)) !== null) {
+            matches.push({
+                fullMatch: match[0],
+                src: match[1],
+                index: match.index
+            });
+        }
+
+        // Process each image (in reverse order to preserve indices)
+        for (let i = matches.length - 1; i >= 0; i--) {
+            const imgMatch = matches[i];
+            const src = imgMatch.src;
+
+            // Check if data URL (base64 embedded image)
+            const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
+            const dataMatch = src.match(dataUrlPattern);
+
+            if (dataMatch) {
+                let contentType = dataMatch[1];
+                let imageData = dataMatch[2];
+
+                // Step 1: Convert EMF to PNG if needed
+                if (contentType === 'image/x-emf') {
+                    try {
+                        imageData = this._convertEmfToPng(imageData);
+                        contentType = 'image/png';
+                    } catch (error) {
+                        console.warn('Failed to convert EMF:', error.message);
+                        imageData = this._getMissingImagePlaceholder();
+                        contentType = 'image/png';
+                    }
+                }
+
+                // Step 2: Resize large images
+                try {
+                    imageData = await this._resizeImage(imageData, contentType);
+                } catch (error) {
+                    console.warn('Failed to resize image:', error.message);
+                    // Continue with original image data
+                }
+
+                // Build new img tag
+                const newImgTag = `<img src="data:${contentType};base64,${imageData}">`;
+                result = result.substring(0, imgMatch.index) +
+                    newImgTag +
+                    result.substring(imgMatch.index + imgMatch.fullMatch.length);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Extract plain text from HTML for keyword detection
+     * Preserves list structure with AsciiDoc-style markers for readability
+     * @param {string} html - HTML content
+     * @returns {string} Plain text
+     */
+    _extractPlainText(html) {
+        if (!html) return '';
+
         let result = '';
         let position = 0;
-        let textBuffer = '';
+        const stack = [];
 
-        // Helper: Calculate list prefix based on stack depth
+        // Helper: Get list prefix based on stack
         const getListPrefix = () => {
-            let ulDepth = 0;
-            let olDepth = 0;
-            let inListItem = false;
-
-            for (const item of stack) {
-                if (item.tag === 'ul') ulDepth++;
-                else if (item.tag === 'ol') olDepth++;
-                else if (item.tag === 'li') inListItem = true;
-            }
-
-            if (!inListItem) return '';
-
-            // Determine if we're in ordered or unordered list
-            // Count from outermost to current position
             let depth = 0;
             let isOrdered = false;
             for (const item of stack) {
-                if (item.tag === 'ul' || item.tag === 'ol') {
+                if (item === 'ol' || item === 'ul') {
                     depth++;
-                    isOrdered = (item.tag === 'ol');
+                    isOrdered = (item === 'ol');
                 }
             }
-
-            if (isOrdered) {
-                return '.'.repeat(depth) + ' ';
-            } else {
-                return '*'.repeat(depth) + ' ';
-            }
+            if (depth === 0) return '';
+            return isOrdered ? '.'.repeat(depth) + ' ' : '*'.repeat(depth) + ' ';
         };
 
-        // Helper: Flush accumulated text buffer
-        const flushTextBuffer = () => {
-            if (textBuffer) {
-                result += textBuffer;
-                textBuffer = '';
-            }
-        };
-
-        // Helper: Extract attribute value from tag string
-        const extractAttribute = (tagString, attrName) => {
-            const regex = new RegExp(`${attrName}=["']([^"']+)["']`, 'i');
-            const match = tagString.match(regex);
-            return match ? match[1] : null;
-        };
-
-        // Main parsing loop
         while (position < html.length) {
             const char = html[position];
 
             if (char === '<') {
-                // Flush any accumulated text before processing tag
-                flushTextBuffer();
-
-                // Find the end of the tag
                 const tagEnd = html.indexOf('>', position);
                 if (tagEnd === -1) {
-                    // Malformed HTML - no closing >
-                    textBuffer += html.substring(position);
+                    result += html.substring(position);
                     break;
                 }
 
                 const tagString = html.substring(position + 1, tagEnd);
                 const isClosingTag = tagString.startsWith('/');
-                const isSelfClosing = tagString.endsWith('/');
-
-                // Extract tag name
-                let tagName = isClosingTag ? tagString.substring(1).trim() : tagString.split(/\s+/)[0].replace('/', '');
+                const tagName = isClosingTag
+                    ? tagString.substring(1).trim().toLowerCase().split(/[\s/>]/)[0]
+                    : tagString.split(/[\s/>]/)[0].toLowerCase();
 
                 if (isClosingTag) {
-                    // Closing tag
-                    const openTag = stack.pop();
-
-                    if (!openTag || openTag.tag !== tagName) {
-                        console.warn(`Mismatched closing tag: expected ${openTag?.tag}, got ${tagName}`);
+                    // Pop from stack
+                    const lastIndex = stack.lastIndexOf(tagName);
+                    if (lastIndex !== -1) {
+                        stack.splice(lastIndex, 1);
                     }
 
-                    // Emit closing markers based on tag type
-                    switch (tagName) {
-                        case 'strong':
-                        case 'b':
-                            result += '**';
-                            break;
-                        case 'em':
-                        case 'i':
-                            result += '*';
-                            break;
-                        case 'u':
-                            result += '__';
-                            break;
-                        case 's':
-                            result += '~~';
-                            break;
-                        case 'p':
-                            result += '\n\n';
-                            break;
-                        case 'li':
-                            // Nothing to emit - newline was emitted at opening
-                            break;
-                        case 'ul':
-                        case 'ol':
-                            // Nothing to emit
-                            break;
+                    // Add newlines for block elements
+                    if (tagName === 'p' || tagName === 'li') {
+                        result += '\n';
                     }
+                } else if (!tagString.endsWith('/') && tagName !== 'img' && tagName !== 'br') {
+                    // Push to stack (non-self-closing)
+                    stack.push(tagName);
 
-                } else {
-                    // Opening tag or self-closing tag
-
-                    if (tagName === 'img') {
-                        // Handle images immediately (self-closing)
-                        const src = extractAttribute(tagString, 'src');
-                        if (src) {
-                            // Check if data URL (base64 embedded image)
-                            const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
-                            const dataMatch = src.match(dataUrlPattern);
-
-                            if (dataMatch) {
-                                let contentType = dataMatch[1];
-                                let imageData = dataMatch[2];
-
-                                // Step 1: Convert EMF to PNG if needed
-                                if (contentType === 'image/x-emf') {
-                                    try {
-                                        imageData = this._convertEmfToPng(imageData);
-                                        contentType = 'image/png';
-                                    } catch (error) {
-                                        console.warn('Failed to convert EMF:', error.message);
-                                        imageData = this._getMissingImagePlaceholder();
-                                        contentType = 'image/png';
-                                    }
-                                }
-
-                                // Step 2: Resize image to 12cm width (454px) for ALL image types
-                                try {
-                                    imageData = await this._resizeImage(imageData, contentType);
-                                } catch (error) {
-                                    console.warn('Failed to resize image:', error.message);
-                                    // Continue with original image data
-                                }
-
-                                result += `\n\nimage::data:${contentType};base64,${imageData}[]`;
-                            } else {
-                                result += `\n\nimage::${src}[]`;
-                            }
-                        }
-
-                    } else if (!isSelfClosing) {
-                        // Push opening tag to stack
-                        stack.push({ tag: tagName, attributes: {} });
-
-                        // Emit opening markers based on tag type
-                        switch (tagName) {
-                            case 'li':
-                                result += '\n' + getListPrefix();
-                                break;
-                            case 'strong':
-                            case 'b':
-                                result += '**';
-                                break;
-                            case 'em':
-                            case 'i':
-                                result += '*';
-                                break;
-                            case 'u':
-                                result += '__';
-                                break;
-                            case 's':
-                                result += '~~';
-                                break;
-                            case 'ul':
-                            case 'ol':
-                            case 'p':
-                                // No immediate emission
-                                break;
-                        }
+                    // Add list prefix at start of li
+                    if (tagName === 'li') {
+                        result += getListPrefix();
                     }
+                } else if (tagName === 'br') {
+                    result += '\n';
                 }
+                // Skip img tags entirely (no text representation)
 
                 position = tagEnd + 1;
-
             } else {
-                // Regular text content - accumulate
-                textBuffer += char;
+                result += char;
                 position++;
             }
         }
 
-        // Flush any remaining text
-        flushTextBuffer();
-
-        // Clean up: decode HTML entities
+        // Decode HTML entities and clean up
         result = this._decodeHtmlEntities(result);
-
-        // Trim leading/trailing whitespace
+        result = result.replace(/[^\S\n]+/g, ' '); // Collapse whitespace
+        result = result.replace(/\n{3,}/g, '\n\n'); // Max 2 consecutive newlines
         result = result.trim();
-
-        // Collapse multiple spaces into single space (but preserve newlines)
-        result = result.replace(/[^\S\n]+/g, ' ');
-
-        // Collapse more than 2 consecutive newlines into exactly 2
-        result = result.replace(/\n{3,}/g, '\n\n');
 
         return result;
     }
@@ -446,17 +387,12 @@ class DocxExtractor {
             fs.writeFileSync(emfPath, emfBuffer);
 
             // Convert using LibreOffice (synchronous)
-            // --headless: Run without GUI
-            // --convert-to png: Output format
-            // --outdir: Output directory
             execSync(`libreoffice --headless --convert-to png --outdir "${tempDir}" "${emfPath}"`, {
                 timeout: 30000,
-                stdio: 'pipe' // Suppress LibreOffice verbose output
+                stdio: 'pipe'
             });
 
             // Trim whitespace using ImageMagick
-            // -trim: Remove edges that are the background color
-            // +repage: Reset the page canvas and position
             execSync(`convert "${pngPath}" -trim +repage "${trimmedPngPath}"`, {
                 timeout: 10000,
                 stdio: 'pipe'
@@ -471,7 +407,7 @@ class DocxExtractor {
 
         } catch (error) {
             console.error('EMF conversion failed:', error.message);
-            throw error; // Re-throw to trigger placeholder fallback
+            throw error;
         } finally {
             // Clean up temp files
             try {
@@ -499,18 +435,15 @@ class DocxExtractor {
      * Only resizes images LARGER than max width - small icons preserved as-is
      * Max width: 12.5cm = 472 pixels at 96 DPI
      * @param {string} base64Image - Base64 encoded image data
-     * @param {string} contentType - MIME type (e.g., 'image/png', 'image/jpeg')
+     * @param {string} contentType - MIME type
      * @returns {Promise<string>} Base64 encoded resized image (or original if smaller)
      * @private
      */
     async _resizeImage(base64Image, contentType) {
-        const MAX_WIDTH = 472; // 12.5cm at 96 DPI
+        const MAX_WIDTH = 472;
 
         try {
-            // Decode base64 to buffer
             const imageBuffer = Buffer.from(base64Image, 'base64');
-
-            // Get image metadata to calculate aspect ratio
             const metadata = await sharp(imageBuffer).metadata();
 
             if (!metadata.width || !metadata.height) {
@@ -518,37 +451,37 @@ class DocxExtractor {
                 return base64Image;
             }
 
-            // Only resize if image is LARGER than max width
-            // Small images (icons, inline graphics) preserved at original size
             if (metadata.width <= MAX_WIDTH) {
                 console.log(`Keeping original size: ${metadata.width}x${metadata.height} (≤${MAX_WIDTH}px)`);
                 return base64Image;
             }
 
-            // Calculate proportional height based on max width
             const aspectRatio = metadata.height / metadata.width;
             const targetHeight = Math.round(MAX_WIDTH * aspectRatio);
 
             console.log(`Resizing large image: ${metadata.width}x${metadata.height} → ${MAX_WIDTH}x${targetHeight}`);
 
-            // Resize image maintaining aspect ratio
             const resizedBuffer = await sharp(imageBuffer)
                 .resize(MAX_WIDTH, targetHeight, {
-                    fit: 'fill', // Exact dimensions (aspect ratio already calculated)
-                    withoutEnlargement: true // Never enlarge - safety check
+                    fit: 'fill',
+                    withoutEnlargement: true
                 })
                 .toBuffer();
 
-            // Convert back to base64
             return resizedBuffer.toString('base64');
 
         } catch (error) {
             console.error('Image resize failed:', error.message);
-            // Return original image on error
             return base64Image;
         }
     }
 
+    /**
+     * Decode HTML entities
+     * @param {string} text - Text with HTML entities
+     * @returns {string} Decoded text
+     * @private
+     */
     _decodeHtmlEntities(text) {
         const entities = {
             '&amp;': '&',
@@ -557,18 +490,50 @@ class DocxExtractor {
             '&quot;': '"',
             '&apos;': "'",
             '&#39;': "'",
-            '&nbsp;': ' '
+            '&nbsp;': ' ',
+            '&#160;': ' ',
+            '&ndash;': '–',
+            '&mdash;': '—',
+            '&lsquo;': "'",
+            '&rsquo;': "'",
+            '&ldquo;': '"',
+            '&rdquo;': '"',
+            '&hellip;': '…',
+            '&bull;': '•',
+            '&copy;': '©',
+            '&reg;': '®',
+            '&trade;': '™',
+            '&euro;': '€',
+            '&pound;': '£',
+            '&yen;': '¥',
+            '&cent;': '¢',
+            '&deg;': '°',
+            '&plusmn;': '±',
+            '&times;': '×',
+            '&divide;': '÷',
+            '&frac12;': '½',
+            '&frac14;': '¼',
+            '&frac34;': '¾'
         };
 
         return text.replace(/&[#\w]+;/g, (entity) => {
-            return entities[entity] || entity;
+            if (entities[entity]) {
+                return entities[entity];
+            }
+            // Handle numeric entities
+            if (entity.startsWith('&#x')) {
+                const code = parseInt(entity.slice(3, -1), 16);
+                return String.fromCodePoint(code);
+            } else if (entity.startsWith('&#')) {
+                const code = parseInt(entity.slice(2, -1), 10);
+                return String.fromCodePoint(code);
+            }
+            return entity;
         });
     }
 
     /**
      * Extract all content elements (headings, paragraphs, lists, tables) from HTML
-     * in document order
-     * Supports heading levels 1-9 for backward compatibility and extended hierarchy
      * @param {string} html - HTML content
      * @returns {Promise<Array>} Array of elements with type and content
      */
@@ -576,8 +541,6 @@ class DocxExtractor {
         const elements = [];
 
         // Extract headings with their anchor IDs (levels 1-9)
-        // Levels 1-6 are standard Word headings
-        // Levels 7-9 are custom styles mapped via mammoth styleMap
         const headingRegex = /<h([1-9])>(.*?)<\/h\1>/gis;
         let match;
 
@@ -616,17 +579,18 @@ class DocxExtractor {
             // Check if paragraph contains an image
             const hasImage = /<img\s/.test(content);
 
-            // Convert to AsciiDoc format
-            const asciiDocContent = await this._htmlToAsciiDoc('<p>' + content + '</p>');
+            // Process HTML content: preprocess images and extract plain text
+            const processed = await this._processHtmlContent('<p>' + content + '</p>');
 
             // Debug logging for images
             if (hasImage) {
-                console.log('Paragraph with image - AsciiDoc output:', asciiDocContent.substring(0, 100));
+                console.log('Paragraph with image - plainText preview:', processed.plainText.substring(0, 100));
             }
 
             elements.push({
                 type: 'paragraph',
-                content: asciiDocContent,
+                html: processed.html,
+                plainText: processed.plainText,
                 hasImage: hasImage,
                 isList: false,
                 position: match.index
@@ -634,8 +598,6 @@ class DocxExtractor {
         }
 
         // Extract list blocks (ordered and unordered) with proper depth tracking
-        // Note: Can't use regex because nested lists like <ul><ul>...</ul><li>...</li></ul>
-        // would match only up to the first </ul>, losing the following <li> items
         let position = 0;
         while (position < html.length) {
             // Find next list opening tag
@@ -654,7 +616,6 @@ class DocxExtractor {
                 listType = 'ul';
             }
 
-            // No more lists found
             if (nextListIndex === -1) {
                 break;
             }
@@ -672,16 +633,13 @@ class DocxExtractor {
                 const nextClose = html.indexOf(closeTag, searchPos);
 
                 if (nextClose === -1) {
-                    // No closing tag found - malformed HTML
                     break;
                 }
 
                 if (nextOpen !== -1 && nextOpen < nextClose) {
-                    // Found nested opening tag
                     depth++;
                     searchPos = nextOpen + openTag.length;
                 } else {
-                    // Found closing tag
                     depth--;
                     if (depth === 0) {
                         closeIndex = nextClose;
@@ -692,24 +650,23 @@ class DocxExtractor {
             }
 
             if (closeIndex !== -1) {
-                // Extract complete list HTML including all nested content
+                // Extract complete list HTML
                 const listHtml = html.substring(nextListIndex, closeIndex + closeTag.length);
 
-                // Convert to AsciiDoc format
-                const asciiDocContent = await this._htmlToAsciiDoc(listHtml);
+                // Process HTML content
+                const processed = await this._processHtmlContent(listHtml);
 
                 elements.push({
                     type: 'paragraph',
-                    content: asciiDocContent,
+                    html: processed.html,
+                    plainText: processed.plainText,
                     hasImage: false,
                     isList: true,
                     position: nextListIndex
                 });
 
-                // Move past this list
                 position = closeIndex + closeTag.length;
             } else {
-                // Malformed HTML - skip this tag
                 position = nextListIndex + openTag.length;
             }
         }
@@ -719,7 +676,7 @@ class DocxExtractor {
         while ((match = tableRegex.exec(html)) !== null) {
             elements.push({
                 type: 'table',
-                content: match[0], // Keep tables as HTML (they're processed differently)
+                content: match[0], // Keep tables as HTML for separate processing
                 position: match.index
             });
         }
@@ -732,146 +689,26 @@ class DocxExtractor {
     }
 
     /**
-     * Create a default root section when no headings are found
-     * Extracts title from first paragraph or uses "Content" as fallback
-     * @param {Array} elements - All extracted elements (paragraphs, tables, images)
-     * @returns {Array} Array with single root section containing all content
-     */
-    async _createDefaultSection(elements) {
-        // Try to extract title from first paragraph
-        let title = 'Content';
-        const firstParagraph = elements.find(el => el.type === 'paragraph');
-
-        if (firstParagraph) {
-            // Check if first paragraph contains bold/strong text - likely a title
-            const strongMatch = firstParagraph.content.match(/<strong>([^<]+)<\/strong>/i);
-            if (strongMatch) {
-                title = strongMatch[1].trim();
-            } else {
-                // Use first paragraph as title (limit length)
-                const plainText = firstParagraph.content.replace(/<[^>]+>/g, '').trim();
-                if (plainText.length > 0 && plainText.length <= 100) {
-                    title = plainText;
-                }
-            }
-        }
-
-        console.log(`Using title for default section: "${title}"`);
-
-        // Create root section
-        const section = {
-            level: 1,
-            title: title,
-            path: [title],
-            content: {}
-        };
-
-        // Assign all content to this section
-        for (const element of elements) {
-            if (element.type === 'paragraph') {
-                // Handle images in paragraphs
-                if (element.hasImage) {
-                    // Extract images separately
-                    const images = this._extractImagesFromContent(element.content);
-                    if (images.length > 0) {
-                        if (!section.content.images) {
-                            section.content.images = [];
-                        }
-                        section.content.images.push(...images);
-                    }
-
-                    // Also add text content if any (strip image tags)
-                    const textContent = element.content.replace(/<img[^>]*>/gi, '').trim();
-                    if (textContent) {
-                        if (!section.content.paragraphs) {
-                            section.content.paragraphs = [];
-                        }
-
-                        if (element.isList) {
-                            // List items are already extracted individually
-                            section.content.paragraphs.push(textContent);
-                        } else {
-                            section.content.paragraphs.push(textContent);
-                        }
-                    }
-                } else {
-                    if (!section.content.paragraphs) {
-                        section.content.paragraphs = [];
-                    }
-
-                    if (element.isList) {
-                        // List items are already extracted individually
-                        section.content.paragraphs.push(element.content);
-                    } else {
-                        section.content.paragraphs.push(element.content);
-                    }
-                }
-            } else if (element.type === 'table') {
-                if (!section.content.tables) {
-                    section.content.tables = [];
-                }
-
-                const tableData = await this._parseSimpleTable(element.content);
-                section.content.tables.push(tableData);
-            }
-        }
-
-        console.log(`Default section created with ${section.content.paragraphs?.length || 0} paragraphs and ${section.content.tables?.length || 0} tables`);
-
-        return [section];
-    }
-
-    _extractImagesFromContent(content) {
-        const images = [];
-        const imageRegex = /<img\s+src="([^"]+)"[^>]*>/gi;
-        let match;
-
-        while ((match = imageRegex.exec(content)) !== null) {
-            const src = match[1];
-
-            // Parse data URL to get content type and base64 data
-            if (src.startsWith('data:')) {
-                const dataUrlPattern = /^data:([^;]+);base64,(.+)$/;
-                const dataMatch = src.match(dataUrlPattern);
-
-                if (dataMatch) {
-                    images.push({
-                        contentType: dataMatch[1],
-                        data: dataMatch[2],
-                        encoding: 'base64'
-                    });
-                }
-            }
-        }
-
-        return images;
-    }
-
-    /**
      * Build hierarchical section structure from flat list of elements
-     * Supports heading levels 1-9
      * @param {Array} elements - Flat list of elements
      * @returns {Promise<Array>} Hierarchical array of sections
      */
     async _buildSectionHierarchy(elements) {
         const sections = [];
-        const sectionsByLevel = {}; // Track current section at each level
-        const counters = [0, 0, 0, 0, 0, 0, 0, 0, 0]; // Counters for h1-h9
+        const sectionsByLevel = {};
+        const counters = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
         for (const element of elements) {
             if (element.type === 'heading') {
                 const level = element.level;
 
-                // Auto-generate section number based on hierarchy
-                counters[level - 1]++; // Increment counter at current level
-                // Reset all deeper level counters
+                // Auto-generate section number
+                counters[level - 1]++;
                 for (let i = level; i < 9; i++) {
                     counters[i] = 0;
                 }
-                // Build section number from counters
                 const sectionNumber = counters.slice(0, level).join('.');
 
-                // Create new section
                 const section = {
                     level: level,
                     sectionNumber: sectionNumber,
@@ -885,7 +722,7 @@ class DocxExtractor {
                     section._anchorId = element.anchorId;
                 }
 
-                // Clear all deeper level sections
+                // Clear deeper level sections
                 for (let l = level + 1; l <= 9; l++) {
                     delete sectionsByLevel[l];
                 }
@@ -904,17 +741,14 @@ class DocxExtractor {
                         section.path = [...parentSection.path, element.content];
                         parentSection.subsections.push(section);
                     } else {
-                        // No parent found, treat as root
                         section.path = [element.content];
                         sections.push(section);
                     }
                 } else {
-                    // Root level section
                     section.path = [element.content];
                     sections.push(section);
                 }
 
-                // Register this section at its level
                 sectionsByLevel[level] = section;
 
             } else if (element.type === 'paragraph') {
@@ -928,25 +762,11 @@ class DocxExtractor {
                 }
 
                 if (currentSection) {
-                    // Strip Unicode placeholder character but preserve image syntax
-                    const textContent = element.content
-                        .replace(/\uFFFC/g, '')  // Remove Unicode object replacement character
-                        .trim();
+                    // Check for content: plainText or image in html
+                    const hasContent = element.plainText.trim() ||
+                        (element.html && /<img\s/.test(element.html));
 
-                    // Keep paragraphs that have content OR contain image syntax
-                    const hasImageSyntax = /image::[^\[\]]+\[\]/.test(textContent);
-
-                    // Debug logging
-                    if (element.hasImage || hasImageSyntax) {
-                        console.log('Processing image paragraph:');
-                        console.log('  hasImage flag:', element.hasImage);
-                        console.log('  hasImageSyntax:', hasImageSyntax);
-                        console.log('  textContent length:', textContent.length);
-                        console.log('  textContent preview:', textContent.substring(0, 100));
-                    }
-
-                    if (textContent || hasImageSyntax) {
-                        // Lazy create content and paragraphs
+                    if (hasContent) {
                         if (!currentSection.content) {
                             currentSection.content = {};
                         }
@@ -954,25 +774,19 @@ class DocxExtractor {
                             currentSection.content.paragraphs = [];
                         }
 
-                        if (element.isList) {
-                            // List items are already extracted individually
-                            currentSection.content.paragraphs.push(textContent);
-                        } else {
-                            currentSection.content.paragraphs.push(textContent);
-                        }
+                        // Store as { html, plainText } object
+                        currentSection.content.paragraphs.push({
+                            html: element.html,
+                            plainText: element.plainText
+                        });
 
-                        if (element.hasImage || hasImageSyntax) {
-                            console.log('  -> Paragraph ADDED to section');
-                        }
-                    } else {
-                        if (element.hasImage || hasImageSyntax) {
-                            console.log('  -> Paragraph SKIPPED (failed condition)');
+                        if (element.hasImage) {
+                            console.log('  -> Paragraph with image ADDED to section');
                         }
                     }
                 }
 
             } else if (element.type === 'table') {
-                // Find the most recent section at any level
                 let currentSection = null;
                 for (let l = 9; l >= 1; l--) {
                     if (sectionsByLevel[l]) {
@@ -982,7 +796,6 @@ class DocxExtractor {
                 }
 
                 if (currentSection) {
-                    // Lazy create content and tables
                     if (!currentSection.content) {
                         currentSection.content = {};
                     }
@@ -990,7 +803,7 @@ class DocxExtractor {
                         currentSection.content.tables = [];
                     }
 
-                    const tableData = await this._parseSimpleTable(element.content);
+                    const tableData = await this._parseTable(element.content);
                     currentSection.content.tables.push(tableData);
                 }
             }
@@ -1000,12 +813,12 @@ class DocxExtractor {
     }
 
     /**
-     * Parse table HTML and convert cell content to AsciiDoc format
+     * Parse table HTML and convert cell content to { html, plainText } format
      * @param {string} tableHtml - HTML table content
-     * @returns {Promise<Object>} Table data with AsciiDoc-formatted cells
+     * @returns {Promise<Object>} Table data with processed cells
      * @private
      */
-    async _parseSimpleTable(tableHtml) {
+    async _parseTable(tableHtml) {
         const rows = [];
         const rowRegex = /<tr>(.*?)<\/tr>/gis;
         let rowMatch;
@@ -1017,9 +830,9 @@ class DocxExtractor {
 
             while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
                 const cellHtml = cellMatch[1].trim();
-                // Convert cell HTML to AsciiDoc format
-                const asciiDocContent = await this._htmlToAsciiDoc(cellHtml);
-                cells.push(asciiDocContent);
+                // Process cell content
+                const processed = await this._processHtmlContent(cellHtml);
+                cells.push(processed);
             }
 
             if (cells.length > 0) {
@@ -1032,6 +845,57 @@ class DocxExtractor {
             rowCount: rows.length,
             columnCount: rows.length > 0 ? rows[0].length : 0
         };
+    }
+
+    /**
+     * Create a default root section when no headings are found
+     * @param {Array} elements - All extracted elements
+     * @returns {Promise<Array>} Array with single root section
+     */
+    async _createDefaultSection(elements) {
+        // Try to extract title from first paragraph
+        let title = 'Content';
+        const firstParagraph = elements.find(el => el.type === 'paragraph');
+
+        if (firstParagraph && firstParagraph.plainText) {
+            const plainText = firstParagraph.plainText.trim();
+            if (plainText.length > 0 && plainText.length <= 100) {
+                title = plainText;
+            }
+        }
+
+        console.log(`Using title for default section: "${title}"`);
+
+        const section = {
+            level: 1,
+            title: title,
+            path: [title],
+            content: {
+                paragraphs: [],
+                tables: []
+            }
+        };
+
+        // Assign all content to this section
+        for (const element of elements) {
+            if (element.type === 'paragraph') {
+                const hasContent = element.plainText.trim() ||
+                    (element.html && /<img\s/.test(element.html));
+                if (hasContent) {
+                    section.content.paragraphs.push({
+                        html: element.html,
+                        plainText: element.plainText
+                    });
+                }
+            } else if (element.type === 'table') {
+                const tableData = await this._parseTable(element.content);
+                section.content.tables.push(tableData);
+            }
+        }
+
+        console.log(`Default section created with ${section.content.paragraphs.length} paragraphs and ${section.content.tables.length} tables`);
+
+        return [section];
     }
 }
 
