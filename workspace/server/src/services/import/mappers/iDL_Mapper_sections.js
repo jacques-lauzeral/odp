@@ -53,13 +53,13 @@ import {textStartsWith} from "./utils.js";
  * - "Implemented ONs:" / "Implemented Operational Needs:" → implementedONs array (OR-type only)
  *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
  *   - Relative references resolved using current entity's organizational path
+ * - "Private notes:" / "NM private notes:" → nmPrivateNotes
  * - "Dependencies:" → dependsOnRequirements array (OR-type only)
  *   - Same reference format as implementedONs, resolves to OR external IDs
  * - "ConOPS Reference:" / "ConOPS References:" → documentReferences array
  *   - Full external ID: "- document:idl_conops_v2.1" or "- document:idl_conops_v2.1: note"
  *   - Section reference: "- Section 4.1.1 - Title" (auto-maps to iDL ConOPS)
  *   - Placeholder "<to be completed>" ignored
- *
  * Document References (Auto-Mapping):
  * ------------------------------------
  * - Section references (e.g., "Section 4.1.1 - Title") automatically mapped to iDL ConOPS document
@@ -259,6 +259,7 @@ class iDL_Mapper_sections extends Mapper {
         let statement = '';
         let rationale = '';
         let flows = '';
+        let privateNotes = '';
         let implementedONs = [];
         let dependsOnRequirements = [];
         let documentReferences = [];
@@ -275,7 +276,9 @@ class iDL_Mapper_sections extends Mapper {
             'Flow example:',
             'Flow examples:',
             'ConOPS Reference:',
-            'ConOPS References:'
+            'ConOPS References:',
+            'Private notes:',
+            'NM private notes:'
         ];
 
         for (const p of paragraphs) {
@@ -308,6 +311,8 @@ class iDL_Mapper_sections extends Mapper {
                 currentSection = 'implementedONs';
             } else if (textStartsWith(text, 'Dependencies:')) {
                 currentSection = 'dependsOnRequirements';
+            } else if (textStartsWith(text, 'Private notes:', 'NM private notes:')) {
+                currentSection = 'privateNotes';
             } else if (textStartsWith(text, 'ConOPS Reference:', 'ConOPS References:')) {
                 currentSection = 'conopsReferences';
             } else if (rationaleTerminators.some(term => textStartsWith(text, term))) {
@@ -319,6 +324,8 @@ class iDL_Mapper_sections extends Mapper {
                 rationale += '\n\n' + text;
             } else if (currentSection === 'flows' && text) {
                 flows += '\n\n' + text;
+            }  else if (currentSection === 'privateNotes' && text) {
+                privateNotes += '\n\n' + text;
             } else if (currentSection === 'implementedONs') {
                 const lines = text.split('\n');
                 for (const line of lines) {
@@ -358,6 +365,7 @@ class iDL_Mapper_sections extends Mapper {
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale),
             flows: this.converter.asciidocToDelta(flows),
+            privateNotes: this.converter.asciidocToDelta(privateNotes),
             implementedONs: type === 'OR' ? implementedONs : [],
             dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
         };

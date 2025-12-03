@@ -1,5 +1,5 @@
 // workspace/server/src/services/DocxGenerator.js
-import { Document, Packer, Paragraph, HeadingLevel, AlignmentType, LevelFormat } from 'docx';
+import { Document, Packer, Paragraph, HeadingLevel, AlignmentType, LevelFormat, Footer, PageNumber, TextRun } from 'docx';
 import { getDraftingGroupDisplay } from '../../../../shared/src/index.js';
 import DocxEntityRenderer from './DocxEntityRenderer.js';
 import { DOCUMENT_STYLES, SPACING } from './DocxStyles.js';
@@ -308,7 +308,18 @@ class DocxGenerator {
             title: `Requirements Export - ${metadata.drg}${folderSuffix}`,
             description: `Operational requirements for DRG: ${metadata.drg}${metadata.folder ? `, folder: ${metadata.folder}` : ''}`,
             styles: {
-                default: DOCUMENT_STYLES.default,
+                default: {
+                    ...DOCUMENT_STYLES.default,
+                    document: {
+                        run: {
+                            font: "Aptos",
+                            size: 22,  // 11pt
+                            language: {
+                                value: "en-GB"
+                            }
+                        }
+                    }
+                },
                 paragraphStyles: [
                     {
                         id: "Heading7",
@@ -381,6 +392,20 @@ class DocxGenerator {
             numbering: numberingConfig,
             sections: [{
                 properties: {},
+                footers: {
+                    default: new Footer({
+                        children: [
+                            new Paragraph({
+                                alignment: AlignmentType.CENTER,
+                                children: [
+                                    new TextRun({
+                                        children: ["Page ", PageNumber.CURRENT, " of ", PageNumber.TOTAL_PAGES]
+                                    })
+                                ]
+                            })
+                        ]
+                    })
+                },
                 children: content
             }]
         });
@@ -414,21 +439,15 @@ class DocxGenerator {
             });
         }
 
-        // Root ONs
-        if (hierarchy.rootONs.length > 0) {
-            children.push(this._createNumberedHeading('Operational Needs', 2));
-            hierarchy.rootONs.forEach(on => {
-                children.push(...this._renderON(on, hierarchy, 3));
-            });
-        }
+        // Root ONs (no path AND no parent) - directly under main section, ONs first
+        hierarchy.rootONs.forEach(on => {
+            children.push(...this._renderON(on, hierarchy, 2));
+        });
 
-        // Root ORs
-        if (hierarchy.rootORs.length > 0) {
-            children.push(this._createNumberedHeading('Operational Requirements', 2));
-            hierarchy.rootORs.forEach(or => {
-                children.push(...this._renderOR(or, hierarchy, 3));
-            });
-        }
+        // Root ORs (no path AND no parent) - directly under main section, ORs second
+        hierarchy.rootORs.forEach(or => {
+            children.push(...this._renderOR(or, hierarchy, 2));
+        });
 
         // Section 2: Operational Changes (separate top-level section)
         if (hierarchy.rootOCs.length > 0) {
@@ -444,6 +463,12 @@ class DocxGenerator {
     /**
      * Render a path node recursively (organizational structure)
      * Handles nested path hierarchies with intermediate nodes
+     *
+     * Rendering order within each folder:
+     * 1. ONs first (ordered by code), with refinement children nested
+     * 2. ORs second (ordered by code), with refinement children nested
+     * 3. Sub-folders last (alphabetically)
+     *
      * @param {Object} node - Path node with name, children, ons, ors
      * @param {Object} hierarchy - Complete hierarchy structure
      * @param {number} level - Current heading level
@@ -455,21 +480,15 @@ class DocxGenerator {
         // Render this node's heading
         paragraphs.push(this._createNumberedHeading(node.name, level));
 
-        // First: Render this node's ONs (if any)
-        if (node.ons.length > 0) {
-            paragraphs.push(this._createNumberedHeading('Operational Needs', level + 1));
-            node.ons.forEach(on => {
-                paragraphs.push(...this._renderON(on, hierarchy, level + 2));
-            });
-        }
+        // First: Render this node's ONs (if any) - directly, no intermediate heading
+        node.ons.forEach(on => {
+            paragraphs.push(...this._renderON(on, hierarchy, level + 1));
+        });
 
-        // Second: Render this node's ORs (if any)
-        if (node.ors.length > 0) {
-            paragraphs.push(this._createNumberedHeading('Operational Requirements', level + 1));
-            node.ors.forEach(or => {
-                paragraphs.push(...this._renderOR(or, hierarchy, level + 2));
-            });
-        }
+        // Second: Render this node's ORs (if any) - directly, no intermediate heading
+        node.ors.forEach(or => {
+            paragraphs.push(...this._renderOR(or, hierarchy, level + 1));
+        });
 
         // Third: Recursively render child nodes (organizational sub-sections, already sorted alphabetically)
         if (node.children.size > 0) {
