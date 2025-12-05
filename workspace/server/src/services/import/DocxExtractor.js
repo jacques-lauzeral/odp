@@ -5,6 +5,27 @@ import { execSync } from 'child_process';
 import crypto from 'crypto';
 import sharp from 'sharp';
 
+/**
+ * Set of known monospace font names (lowercase for comparison)
+ */
+const MONOSPACE_FONTS = new Set([
+    'courier new', 'consolas', 'courier', 'lucida console',
+    'monaco', 'menlo', 'dejavu sans mono', 'source code pro',
+    'fira code', 'ubuntu mono', 'andale mono', 'liberation mono',
+    'sf mono', 'roboto mono', 'ibm plex mono', 'jetbrains mono',
+    'cascadia code', 'cascadia mono', 'droid sans mono', 'inconsolata'
+]);
+
+/**
+ * Check if a font name is a monospace font
+ * @param {string|undefined} fontName - Font name to check
+ * @returns {boolean}
+ */
+function isMonospaceFont(fontName) {
+    if (!fontName || typeof fontName !== 'string') return false;
+    return MONOSPACE_FONTS.has(fontName.toLowerCase().trim());
+}
+
 class DocxExtractor {
     /**
      * Extract raw data from Word document
@@ -73,9 +94,20 @@ class DocxExtractor {
                     "r[style-name='Inline Code'] => code",
                     "r[style-name='inline code'] => code",
                     "r[style-name='Verbatim Char'] => code",
-                    "r[style-name='HTML Code'] => code"
+                    "r[style-name='HTML Code'] => code",
+                    // Special marker for font-detected monospace (set by transformDocument)
+                    "r[style-name='_MonospaceFont'] => code"
 
                 ],
+                // Transform document to detect monospace fonts and mark them
+                transformDocument: mammoth.transforms.run(function(run) {
+                    // Check if run uses a monospace font (by direct font property)
+                    if (run.font && isMonospaceFont(run.font)) {
+                        // Mark with special style name so styleMap converts to <code>
+                        return { ...run, styleName: '_MonospaceFont' };
+                    }
+                    return run;
+                }),
                 convertImage: mammoth.images.imgElement(function(image) {
                     return image.read("base64").then(function(imageBuffer) {
                         return {
@@ -196,10 +228,17 @@ class DocxExtractor {
      * - <em>text</em> or <i>text</i> → "*text*" (italic)
      * - <u>text</u> → "__text__" (underline)
      * - <code>text</code> → "`text`" (inline code/monospace)
+     * - <p><code>full line</code></p> → code block with ---- delimiters (preserves indentation)
      * - <ol><li>item</li></ol> → ". item" (ordered list, one per line)
      * - <ul><li>item</li></ul> → "* item" (unordered list, one per line)
      * - <img src="data:..."> → "image::data:...[]" (AsciiDoc image syntax, EMF converted to PNG)
      * - Nested formatting preserved: <strong><em>text</em></strong> → "***text***"
+     *
+     * Code block detection:
+     * - If a paragraph contains ONLY <code> content, it's treated as a code block line
+     * - Consecutive code block lines are grouped into a single ---- delimited block
+     * - Mixed content paragraphs use inline `backticks` for code spans
+     * - Code blocks preserve all whitespace including indentation
      *
      * Rationale:
      * - Simple text processing for mappers (no HTML parsing needed)
@@ -215,7 +254,7 @@ class DocxExtractor {
      */
     /**
      * Convert HTML to AsciiDoc using stack-based linear algorithm
-     * Handles nested lists, formatting tags, and images in a single pass
+     * Handles nested lists, formatting tags, code blocks, and images in a single pass
      * @param {string} html - HTML fragment from mammoth
      * @returns {Promise<string>} AsciiDoc-style plain text
      * @private
@@ -229,6 +268,10 @@ class DocxExtractor {
         let result = '';
         let position = 0;
         let textBuffer = '';
+
+        // Code block tracking state
+        let codeBlockOpen = false;
+        let paragraphState = null; // { content: '', isCodeOnly: true, inCode: false }
 
         // Helper: Calculate list prefix based on stack depth
         const getListPrefix = () => {
@@ -244,22 +287,23 @@ class DocxExtractor {
 
             if (!inListItem) return '';
 
-            // Determine if we're in ordered or unordered list
-            // Count from outermost to current position
-            let depth = 0;
-            let isOrdered = false;
+            // Build marker from the type at each nesting level
+            // e.g., ol > ul > ol produces ".*."
+            let marker = '';
             for (const item of stack) {
-                if (item.tag === 'ul' || item.tag === 'ol') {
-                    depth++;
-                    isOrdered = (item.tag === 'ol');
+                if (item.tag === 'ol') {
+                    marker += '.';
+                } else if (item.tag === 'ul') {
+                    marker += '*';
                 }
             }
 
-            if (isOrdered) {
-                return '.'.repeat(depth) + ' ';
-            } else {
-                return '*'.repeat(depth) + ' ';
-            }
+            return marker + ' ';
+        };
+
+        // Helper: Check if we're inside a list
+        const isInList = () => {
+            return stack.some(item => item.tag === 'li');
         };
 
         // Helper: Flush accumulated text buffer
@@ -267,6 +311,14 @@ class DocxExtractor {
             if (textBuffer) {
                 result += textBuffer;
                 textBuffer = '';
+            }
+        };
+
+        // Helper: Close code block if open
+        const closeCodeBlockIfNeeded = () => {
+            if (codeBlockOpen) {
+                result += '----\n\n';
+                codeBlockOpen = false;
             }
         };
 
@@ -312,30 +364,81 @@ class DocxExtractor {
                     switch (tagName) {
                         case 'strong':
                         case 'b':
-                            result += '**';
+                            if (paragraphState) {
+                                paragraphState.content += '**';
+                            } else {
+                                result += '**';
+                            }
                             break;
                         case 'em':
                         case 'i':
-                            result += '*';
+                            if (paragraphState) {
+                                paragraphState.content += '*';
+                            } else {
+                                result += '*';
+                            }
                             break;
                         case 'u':
-                            result += '__';
+                            if (paragraphState) {
+                                paragraphState.content += '__';
+                            } else {
+                                result += '__';
+                            }
                             break;
                         case 's':
-                            result += '~~';
+                            if (paragraphState) {
+                                paragraphState.content += '~~';
+                            } else {
+                                result += '~~';
+                            }
                             break;
                         case 'code':
-                            result += '`';
+                            if (paragraphState) {
+                                paragraphState.inCode = false;
+                                // Don't emit backtick - will be handled at paragraph close
+                            } else {
+                                result += '`';
+                            }
                             break;
                         case 'p':
-                            result += '\n\n';
+                            // Handle paragraph close with code block detection
+                            if (paragraphState) {
+                                if (paragraphState.isCodeOnly && paragraphState.content.trim()) {
+                                    // Entire paragraph is code - use code block
+                                    if (!codeBlockOpen) {
+                                        // Ensure blank line before opening ----
+                                        if (result.length > 0 && !result.endsWith('\n\n')) {
+                                            if (result.endsWith('\n')) {
+                                                result += '\n';
+                                            } else {
+                                                result += '\n\n';
+                                            }
+                                        }
+                                        result += '----\n';
+                                        codeBlockOpen = true;
+                                    }
+                                    result += paragraphState.content + '\n';
+                                } else if (paragraphState.content.trim()) {
+                                    // Mixed content or no code - close any code block and emit normally
+                                    closeCodeBlockIfNeeded();
+                                    result += paragraphState.content + '\n\n';
+                                } else {
+                                    // Empty paragraph - might be spacing, close code block
+                                    closeCodeBlockIfNeeded();
+                                    result += '\n\n';
+                                }
+                                paragraphState = null;
+                            } else {
+                                result += '\n\n';
+                            }
                             break;
                         case 'li':
                             // Nothing to emit - newline was emitted at opening
                             break;
                         case 'ul':
                         case 'ol':
-                            // Nothing to emit
+                            // Close code block when exiting list context
+                            closeCodeBlockIfNeeded();
                             break;
                     }
 
@@ -387,29 +490,58 @@ class DocxExtractor {
                         // Emit opening markers based on tag type
                         switch (tagName) {
                             case 'li':
+                                // Close any code block when entering a list item
+                                closeCodeBlockIfNeeded();
                                 result += '\n' + getListPrefix();
                                 break;
                             case 'strong':
                             case 'b':
-                                result += '**';
+                                if (paragraphState) {
+                                    paragraphState.content += '**';
+                                } else {
+                                    result += '**';
+                                }
                                 break;
                             case 'em':
                             case 'i':
-                                result += '*';
+                                if (paragraphState) {
+                                    paragraphState.content += '*';
+                                } else {
+                                    result += '*';
+                                }
                                 break;
                             case 'u':
-                                result += '__';
+                                if (paragraphState) {
+                                    paragraphState.content += '__';
+                                } else {
+                                    result += '__';
+                                }
                                 break;
                             case 's':
-                                result += '~~';
+                                if (paragraphState) {
+                                    paragraphState.content += '~~';
+                                } else {
+                                    result += '~~';
+                                }
                                 break;
                             case 'code':
-                                result += '`';
+                                if (paragraphState) {
+                                    paragraphState.inCode = true;
+                                    // Don't emit backtick - will be handled at paragraph close
+                                } else {
+                                    result += '`';
+                                }
+                                break;
+                            case 'p':
+                                // Start paragraph tracking (but not inside lists)
+                                if (!isInList()) {
+                                    paragraphState = { content: '', isCodeOnly: true, inCode: false };
+                                }
                                 break;
                             case 'ul':
                             case 'ol':
-                            case 'p':
-                                // No immediate emission
+                                // Close code block when entering list
+                                closeCodeBlockIfNeeded();
                                 break;
                         }
                     }
@@ -419,7 +551,22 @@ class DocxExtractor {
 
             } else {
                 // Regular text content - accumulate
-                textBuffer += char;
+                if (paragraphState) {
+                    // We're in paragraph tracking mode
+                    if (paragraphState.inCode) {
+                        // Inside code - accumulate to paragraph content
+                        paragraphState.content += char;
+                    } else {
+                        // Outside code in paragraph - mark as not code-only
+                        // Only non-whitespace content breaks code-only status
+                        if (char.trim()) {
+                            paragraphState.isCodeOnly = false;
+                        }
+                        paragraphState.content += char;
+                    }
+                } else {
+                    textBuffer += char;
+                }
                 position++;
             }
         }
@@ -427,19 +574,81 @@ class DocxExtractor {
         // Flush any remaining text
         flushTextBuffer();
 
+        // Close any remaining open code block
+        closeCodeBlockIfNeeded();
+
         // Clean up: decode HTML entities
         result = this._decodeHtmlEntities(result);
 
         // Trim leading/trailing whitespace
         result = result.trim();
 
-        // Collapse multiple spaces into single space (but preserve newlines)
-        result = result.replace(/[^\S\n]+/g, ' ');
+        // Collapse multiple spaces into single space, but preserve indentation in code blocks
+        result = this._collapseWhitespacePreservingCodeBlocks(result);
 
-        // Collapse more than 2 consecutive newlines into exactly 2
-        result = result.replace(/\n{3,}/g, '\n\n');
+        // Collapse more than 2 consecutive newlines into exactly 2 (outside code blocks)
+        result = this._collapseNewlinesPreservingCodeBlocks(result);
+
+        // Collapse redundant formatting markers (e.g., **** from nested bold)
+        result = this._collapseRedundantFormatting(result);
 
         return result;
+    }
+
+    /**
+     * Collapse redundant AsciiDoc formatting markers
+     * Handles cases like **** (nested bold) -> **, ____ -> __, etc.
+     * @param {string} text - Text to process
+     * @returns {string} Processed text
+     * @private
+     */
+    _collapseRedundantFormatting(text) {
+        // Collapse 4+ consecutive asterisks to 2 (handles nested bold like ****)
+        text = text.replace(/\*{4,}/g, '**');
+
+        // Collapse 4+ consecutive underscores to 2 (handles nested underline)
+        text = text.replace(/_{4,}/g, '__');
+
+        // Collapse 4+ consecutive tildes to 2 (handles nested strikethrough)
+        text = text.replace(/~{4,}/g, '~~');
+
+        return text;
+    }
+
+    /**
+     * Collapse multiple spaces to single space, preserving whitespace inside code blocks
+     * @param {string} text - Text to process
+     * @returns {string} Processed text
+     * @private
+     */
+    _collapseWhitespacePreservingCodeBlocks(text) {
+        const parts = text.split(/(----\n[\s\S]*?\n----)/);
+        return parts.map((part, index) => {
+            // Odd indices are code blocks (captured groups)
+            if (index % 2 === 1) {
+                return part; // Preserve code block as-is
+            }
+            // Even indices are regular text - collapse whitespace
+            return part.replace(/[^\S\n]+/g, ' ');
+        }).join('');
+    }
+
+    /**
+     * Collapse multiple newlines to two, preserving line breaks inside code blocks
+     * @param {string} text - Text to process
+     * @returns {string} Processed text
+     * @private
+     */
+    _collapseNewlinesPreservingCodeBlocks(text) {
+        const parts = text.split(/(----\n[\s\S]*?\n----)/);
+        return parts.map((part, index) => {
+            // Odd indices are code blocks (captured groups)
+            if (index % 2 === 1) {
+                return part; // Preserve code block as-is
+            }
+            // Even indices are regular text - collapse newlines
+            return part.replace(/\n{3,}/g, '\n\n');
+        }).join('');
     }
 
     /**

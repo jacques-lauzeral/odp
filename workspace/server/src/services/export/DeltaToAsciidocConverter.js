@@ -15,10 +15,16 @@
  * - { code: true } → `text`
  * - Combined: { bold: true, italic: true } → ***text***
  *
- * List attributes on newlines:
+ * Code blocks (multi-line, preserves whitespace):
+ * - { insert: "\n", attributes: { "code-block": true } } → ---- delimited block
+ * - Content emitted verbatim (no formatting applied)
+ * - Blank lines preserved before/after ---- delimiters
+ *
+ * List attributes on newlines (supports mixed list types):
  * - { list: "ordered" } → . item
  * - { list: "bullet" } → * item
- * - { indent: 1 } → .. item or ** item (adds depth)
+ * - { list: "bullet", indent: 1 } under ordered → .* item
+ * - { list: "ordered", indent: 2 } under bullet → .*. item
  * - Max indent depth: 4 (5 levels total)
  *
  * Images:
@@ -34,6 +40,7 @@
  *   ops: [
  *     { insert: "text", attributes: { bold: true } },
  *     { insert: "\n", attributes: { list: "ordered" } },
+ *     { insert: "\n", attributes: { "code-block": true } },
  *     { insert: { image: "data:image/png;base64,..." } }
  *   ]
  * }
@@ -96,12 +103,26 @@ class DeltaToAsciidocConverter {
 
         const lines = [];
         let currentLine = '';
+        let inCodeBlock = false;
+        let listTypeStack = []; // Track list types at each level for mixed lists
+
+        // Helper: Close code block if open
+        const closeCodeBlockIfNeeded = () => {
+            if (inCodeBlock) {
+                lines.push('----');
+                lines.push(''); // Blank line after code block
+                inCodeBlock = false;
+            }
+        };
 
         for (let i = 0; i < delta.ops.length; i++) {
             const op = delta.ops[i];
 
             // Handle image insert
             if (op.insert && typeof op.insert === 'object' && op.insert.image) {
+                // Close any open code block
+                closeCodeBlockIfNeeded();
+
                 // Flush current line if any
                 if (currentLine) {
                     lines.push(currentLine);
@@ -147,28 +168,65 @@ class DeltaToAsciidocConverter {
 
                 // Check if this is a newline
                 if (text === '\n') {
-                    // Check for list attributes
-                    const listType = op.attributes?.list; // 'ordered' or 'bullet'
-                    const indent = op.attributes?.indent || 0;
+                    // Check for code-block attribute
+                    const isCodeBlock = op.attributes?.['code-block'] === true;
 
-                    if (listType) {
-                        // Build list marker
-                        const marker = this._buildListMarker(listType, indent);
-                        lines.push(`${marker} ${currentLine}`);
-                    } else {
-                        // Regular paragraph - add empty line for paragraph separation
+                    if (isCodeBlock) {
+                        // Opening code block if not already in one
+                        if (!inCodeBlock) {
+                            // Ensure blank line before code block
+                            if (lines.length > 0 && lines[lines.length - 1] !== '') {
+                                lines.push('');
+                            }
+                            lines.push('----');
+                            inCodeBlock = true;
+                        }
+                        // Emit line verbatim (no formatting)
                         lines.push(currentLine);
-                        lines.push(''); // Empty line creates paragraph break in AsciiDoc
-                    }
+                        currentLine = '';
+                    } else {
+                        // Not a code block line - close any open code block first
+                        closeCodeBlockIfNeeded();
 
-                    currentLine = '';
+                        // Check for list attributes
+                        const listType = op.attributes?.list; // 'ordered' or 'bullet'
+                        const indent = op.attributes?.indent || 0;
+
+                        if (listType) {
+                            // Update list type stack for mixed list support
+                            // Truncate stack to current indent level
+                            listTypeStack = listTypeStack.slice(0, indent);
+                            // Set type at current level
+                            listTypeStack[indent] = listType;
+
+                            // Build list marker from stack
+                            const marker = this._buildListMarkerFromStack(listTypeStack);
+                            lines.push(`${marker} ${currentLine}`);
+                        } else {
+                            // Regular paragraph - reset list stack
+                            listTypeStack = [];
+                            // Add empty line for paragraph separation
+                            lines.push(currentLine);
+                            lines.push(''); // Empty line creates paragraph break in AsciiDoc
+                        }
+
+                        currentLine = '';
+                    }
                 } else {
-                    // Regular text - apply formatting
-                    const formattedText = this._applyFormatting(text, op.attributes || {});
-                    currentLine += formattedText;
+                    // Regular text - apply formatting only if not in code block
+                    if (inCodeBlock) {
+                        // Inside code block - keep text verbatim
+                        currentLine += text;
+                    } else {
+                        const formattedText = this._applyFormatting(text, op.attributes || {});
+                        currentLine += formattedText;
+                    }
                 }
             }
         }
+
+        // Close any remaining open code block
+        closeCodeBlockIfNeeded();
 
         // Flush any remaining line
         if (currentLine) {
@@ -224,16 +282,18 @@ class DeltaToAsciidocConverter {
     }
 
     /**
-     * Build list marker based on type and indent level
-     * @param {string} listType - 'ordered' or 'bullet'
-     * @param {number} indent - Indent level (0 to 4)
-     * @returns {string} List marker (., .., ..., ...., ....., *, **, ***, ****, *****)
+     * Build list marker from type stack for mixed list support
+     * @param {Array<string>} typeStack - Array of list types at each level ('ordered' or 'bullet')
+     * @returns {string} List marker (e.g., '.', '.*', '.*.', etc.)
      * @private
      */
-    _buildListMarker(listType, indent) {
-        const depth = Math.min(indent + 1, 5); // Max 5 levels
-        const char = listType === 'ordered' ? '.' : '*';
-        return char.repeat(depth);
+    _buildListMarkerFromStack(typeStack) {
+        if (typeStack.length === 0) {
+            return '.'; // Default to ordered if somehow empty
+        }
+
+        // Build marker from each level's type
+        return typeStack.map(type => type === 'ordered' ? '.' : '*').join('');
     }
 
     /**

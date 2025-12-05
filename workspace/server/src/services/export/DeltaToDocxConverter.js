@@ -4,7 +4,8 @@ import sizeOf from 'image-size';
 
 /**
  * Converts Quill Delta JSON format to docx Paragraph arrays.
- * Supports inline formatting (bold, italic, underline, code), lists (bullet/ordered), and embedded images.
+ * Supports inline formatting (bold, italic, underline, code), code blocks,
+ * lists (bullet/ordered), and embedded images.
  */
 class DeltaToDocxConverter {
     constructor() {
@@ -48,7 +49,8 @@ class DeltaToDocxConverter {
             const paragraphs = paragraphSegments.map(segment => this._createParagraph(segment));
 
             // Insert blank line separators between paragraphs for better visibility
-            return this._insertBlankLineSeparators(paragraphs);
+            // Pass segments to allow intelligent handling of code blocks
+            return this._insertBlankLineSeparators(paragraphs, paragraphSegments);
 
         } catch (error) {
             // Fallback: return error message as plain text
@@ -64,10 +66,12 @@ class DeltaToDocxConverter {
 
     /**
      * Insert blank line separators between paragraphs
+     * Skips insertion between consecutive code-block lines
      * @param {Paragraph[]} paragraphs - Array of content paragraphs
+     * @param {Object[]} segments - Array of paragraph segments with attributes
      * @returns {Paragraph[]} - Array with blank lines inserted between content
      */
-    _insertBlankLineSeparators(paragraphs) {
+    _insertBlankLineSeparators(paragraphs, segments = []) {
         if (paragraphs.length <= 1) {
             return paragraphs;
         }
@@ -78,6 +82,15 @@ class DeltaToDocxConverter {
 
             // Add blank line separator after each paragraph except the last
             if (i < paragraphs.length - 1) {
+                // Check if current and next are both code-block lines
+                const currentIsCodeBlock = segments[i]?.attributes?.['code-block'] === true;
+                const nextIsCodeBlock = segments[i + 1]?.attributes?.['code-block'] === true;
+
+                // Skip blank line between consecutive code block lines
+                if (currentIsCodeBlock && nextIsCodeBlock) {
+                    continue;
+                }
+
                 result.push(new Paragraph({ text: '' }));
             }
         }
@@ -225,12 +238,20 @@ class DeltaToDocxConverter {
     _createParagraph(segment) {
         const { runs, attributes, numberingInstanceId } = segment;
 
+        // Check if this is a code block line
+        const isCodeBlock = attributes['code-block'] === true;
+
         // Build children (TextRuns/ImageRuns) from runs
-        const children = runs.map(run => this._createRun(run)).filter(run => run !== null);
+        const children = runs.map(run => this._createRun(run, isCodeBlock)).filter(run => run !== null);
 
         // If no children, add empty text run to prevent docx errors
         if (children.length === 0) {
-            children.push(new TextRun({ text: '' }));
+            const emptyRunOptions = { text: '' };
+            if (isCodeBlock) {
+                emptyRunOptions.font = 'Courier New';
+                emptyRunOptions.size = 22; // 11pt
+            }
+            children.push(new TextRun(emptyRunOptions));
         }
 
         // Determine paragraph type and properties
@@ -255,8 +276,8 @@ class DeltaToDocxConverter {
             }
         }
 
-        // Handle other line-level formatting (future extension point)
-        // Examples: header, blockquote, code-block, align, etc.
+        // Handle code block formatting - no additional paragraph styling needed
+        // The monospace font is applied at the TextRun level
 
         return new Paragraph(paragraphOptions);
     }
@@ -264,16 +285,17 @@ class DeltaToDocxConverter {
     /**
      * Create a TextRun or ImageRun from a Delta insert operation
      * @param {Object} op - Delta insert operation
+     * @param {boolean} isCodeBlock - Whether this run is inside a code block
      * @returns {TextRun|ImageRun|null} - docx Run object or null if unsupported
      */
-    _createRun(op) {
+    _createRun(op, isCodeBlock = false) {
         // Check if this is an image embed
         if (this._isImageEmbed(op)) {
             return this._createImageRun(op);
         }
 
         // Otherwise, create a text run
-        return this._createTextRun(op);
+        return this._createTextRun(op, isCodeBlock);
     }
 
     /**
@@ -343,9 +365,10 @@ class DeltaToDocxConverter {
     /**
      * Create a TextRun from a Delta insert operation
      * @param {Object} op - Delta insert operation
+     * @param {boolean} isCodeBlock - Whether this run is inside a code block
      * @returns {TextRun} - docx TextRun object
      */
-    _createTextRun(op) {
+    _createTextRun(op, isCodeBlock = false) {
         const attributes = op.attributes || {};
 
         // Extract text content
@@ -355,6 +378,13 @@ class DeltaToDocxConverter {
         const runOptions = {
             text
         };
+
+        // Code block: apply monospace font, skip other formatting
+        if (isCodeBlock) {
+            runOptions.font = 'Courier New';
+            runOptions.size = 22; // 11pt in half-points
+            return new TextRun(runOptions);
+        }
 
         // Apply inline formatting
         if (attributes.bold) {
@@ -367,7 +397,8 @@ class DeltaToDocxConverter {
             runOptions.underline = {};
         }
         if (attributes.code) {
-            runOptions.font = 'Consolas';
+            runOptions.font = 'Courier New';
+            runOptions.size = 22; // 11pt in half-points
         }
 
         // Future extension points for other formatting:

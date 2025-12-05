@@ -8,14 +8,15 @@
  * Supported AsciiDoc structures:
  * ===============================
  *
- * Lists (up to 5 levels of nesting):
+ * Lists (up to 5 levels of nesting, supports mixed types):
  * - ". item" → ordered list item (level 1)
  * - ".. item" → ordered list item (level 2)
- * - "... item" → ordered list item (level 3), etc.
+ * - ".* item" → bullet item nested under ordered (level 2)
+ * - ".*. item" → ordered item nested under bullet under ordered (level 3)
  * - "* item" → bullet list item (level 1)
  * - "** item" → bullet list item (level 2)
- * - "*** item" → bullet list item (level 3), etc.
- * - Multiple consecutive items grouped into single list
+ * - Type determined by LAST character of marker (. = ordered, * = bullet)
+ * - Depth/indent = marker length - 1
  *
  * Inline formatting:
  * - "**text**" → bold
@@ -23,6 +24,11 @@
  * - "__text__" → underline
  * - "`text`" → code (monospace)
  * - Nested formatting: "***text***" → bold + italic
+ *
+ * Code blocks (multi-line, preserves whitespace):
+ * - "----" on its own line → start/end code block delimiter
+ * - Lines between delimiters → { insert: "\n", attributes: { "code-block": true } }
+ * - Whitespace and indentation preserved exactly
  *
  * Images:
  * - "image::data:image/png;base64,...[]" → embedded image
@@ -36,6 +42,7 @@
  *   ops: [
  *     { insert: "text", attributes: { bold: true } },
  *     { insert: "\n", attributes: { list: "ordered" } },
+ *     { insert: "\n", attributes: { "code-block": true } },
  *     { insert: { image: "data:image/png;base64,..." } }
  *   ]
  * }
@@ -69,10 +76,32 @@ class AsciidocToDeltaConverter {
         // Build Delta ops from lines
         const ops = [];
         let i = 0;
+        let inCodeBlock = false;
 
         while (i < lines.length) {
             const line = lines[i];
             const trimmedLine = line.trimStart();
+
+            // Check for code block delimiter
+            if (trimmedLine === '----') {
+                inCodeBlock = !inCodeBlock;
+                i++;
+                continue;
+            }
+
+            // Inside code block - emit verbatim with code-block attribute
+            if (inCodeBlock) {
+                // Preserve the line exactly (including leading whitespace)
+                if (line) {
+                    ops.push({ insert: line });
+                }
+                ops.push({
+                    insert: '\n',
+                    attributes: { 'code-block': true }
+                });
+                i++;
+                continue;
+            }
 
             // Skip empty lines (they're paragraph separators)
             if (trimmedLine === '') {
@@ -101,34 +130,27 @@ class AsciidocToDeltaConverter {
             const listMatch = trimmedLine.match(/^([.*]{1,5})\s+/);
             if (listMatch) {
                 const marker = listMatch[1];
-                const listType = marker.includes('.') ? 'ordered' : 'bullet';
-                const indent = marker.length - 1; // 0, 1, or 2 for max 3 levels
+                // Type is determined by the LAST character of the marker
+                const lastChar = marker.charAt(marker.length - 1);
+                const listType = lastChar === '.' ? 'ordered' : 'bullet';
+                const indent = marker.length - 1;
 
-                // Process consecutive list items of same type and depth
-                while (i < lines.length) {
-                    const currentLine = lines[i].trimStart();
-                    const currentMatch = currentLine.match(/^([.*]{1,5})\s+/);
+                const content = trimmedLine.substring(listMatch[0].length);
 
-                    // Stop if not a list item or different marker pattern
-                    if (!currentMatch || currentMatch[1] !== marker) break;
+                // Process content (may contain inline images)
+                this._processContentWithImages(content, ops);
 
-                    const content = currentLine.substring(currentMatch[0].length);
-
-                    // Process content (may contain inline images)
-                    this._processContentWithImages(content, ops);
-
-                    // Add newline with list attribute and indent
-                    const listAttributes = { list: listType };
-                    if (indent > 0) {
-                        listAttributes.indent = indent;
-                    }
-                    ops.push({
-                        insert: '\n',
-                        attributes: listAttributes
-                    });
-
-                    i++;
+                // Add newline with list attribute and indent
+                const listAttributes = { list: listType };
+                if (indent > 0) {
+                    listAttributes.indent = indent;
                 }
+                ops.push({
+                    insert: '\n',
+                    attributes: listAttributes
+                });
+
+                i++;
             } else {
                 // Normal text line - process content (may contain inline images)
                 this._processContentWithImages(line, ops);
