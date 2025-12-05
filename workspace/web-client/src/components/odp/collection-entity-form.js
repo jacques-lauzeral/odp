@@ -833,7 +833,7 @@ export class CollectionEntityForm {
                 placeholder: placeholder,
                 modules: {
                     toolbar: [
-                        ['bold', 'italic', 'underline'],
+                        ['bold', 'italic', 'underline', 'code'],
                         ['link'],
                         [{'list': 'ordered'}, {'list': 'bullet'}]
                     ]

@@ -21,6 +21,7 @@
  * - "**text**" → bold
  * - "*text*" → italic
  * - "__text__" → underline
+ * - "`text`" → code (monospace)
  * - Nested formatting: "***text***" → bold + italic
  *
  * Images:
@@ -199,7 +200,7 @@ class AsciidocToDeltaConverter {
 
     /**
      * Parse inline formatting from AsciiDoc text
-     * Handles: **bold**, *italic*, __underline__, and nested combinations
+     * Handles: **bold**, *italic*, __underline__, `code`, and nested combinations
      *
      * @param {string} text - Line of text with AsciiDoc formatting
      * @returns {Array<{text: string, attributes: Object}>} Text runs with formatting
@@ -265,6 +266,33 @@ class AsciidocToDeltaConverter {
                     }
 
                     i = closeIndex + 2;
+                    continue;
+                }
+            } else if (this._matchesAt(text, i, '`')) {
+                // Backtick for inline code
+                // Save current run if any
+                if (currentText) {
+                    runs.push({
+                        text: currentText,
+                        attributes: { ...currentAttributes }
+                    });
+                    currentText = '';
+                }
+
+                // Find closing `
+                const closeIndex = text.indexOf('`', i + 1);
+                if (closeIndex !== -1) {
+                    const codeText = text.substring(i + 1, closeIndex);
+
+                    // Code is not recursively parsed (no nested formatting inside code)
+                    if (codeText) {
+                        runs.push({
+                            text: codeText,
+                            attributes: { code: true }
+                        });
+                    }
+
+                    i = closeIndex + 1;
                     continue;
                 }
             } else if (this._matchesAt(text, i, '*') && !this._matchesAt(text, i, '**')) {

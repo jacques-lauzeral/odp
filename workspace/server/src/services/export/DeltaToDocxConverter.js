@@ -4,7 +4,7 @@ import sizeOf from 'image-size';
 
 /**
  * Converts Quill Delta JSON format to docx Paragraph arrays.
- * Supports inline formatting (bold, italic, underline), lists (bullet/ordered), and embedded images.
+ * Supports inline formatting (bold, italic, underline, code), lists (bullet/ordered), and embedded images.
  */
 class DeltaToDocxConverter {
     constructor() {
@@ -365,6 +365,9 @@ class DeltaToDocxConverter {
         }
         if (attributes.underline) {
             runOptions.underline = {};
+        }
+        if (attributes.code) {
+            runOptions.font = 'Consolas';
         }
 
         // Future extension points for other formatting:

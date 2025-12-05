@@ -12,13 +12,14 @@
  * - { bold: true } → **text**
  * - { italic: true } → *text*
  * - { underline: true } → __text__
+ * - { code: true } → `text`
  * - Combined: { bold: true, italic: true } → ***text***
  *
  * List attributes on newlines:
  * - { list: "ordered" } → . item
  * - { list: "bullet" } → * item
  * - { indent: 1 } → .. item or ** item (adds depth)
- * - Max indent depth: 2 (3 levels total)
+ * - Max indent depth: 4 (5 levels total)
  *
  * Images:
  * - { insert: { image: "data:..." } } → image::images/image-NNN.png[]
@@ -225,12 +226,12 @@ class DeltaToAsciidocConverter {
     /**
      * Build list marker based on type and indent level
      * @param {string} listType - 'ordered' or 'bullet'
-     * @param {number} indent - Indent level (0, 1, or 2)
-     * @returns {string} List marker (., .., ..., *, **, ***)
+     * @param {number} indent - Indent level (0 to 4)
+     * @returns {string} List marker (., .., ..., ...., ....., *, **, ***, ****, *****)
      * @private
      */
     _buildListMarker(listType, indent) {
-        const depth = Math.min(indent + 1, 3); // Max 3 levels
+        const depth = Math.min(indent + 1, 5); // Max 5 levels
         const char = listType === 'ordered' ? '.' : '*';
         return char.repeat(depth);
     }
@@ -238,12 +239,17 @@ class DeltaToAsciidocConverter {
     /**
      * Apply inline formatting to text based on attributes
      * @param {string} text - Text to format
-     * @param {Object} attributes - Quill attributes (bold, italic, underline)
+     * @param {Object} attributes - Quill attributes (bold, italic, underline, code)
      * @returns {string} Formatted text with AsciiDoc markers
      * @private
      */
     _applyFormatting(text, attributes) {
         let result = text;
+
+        // Code formatting takes precedence (no nested formatting inside code)
+        if (attributes.code === true) {
+            return `\`${result}\``;
+        }
 
         // Apply formatting in specific order for proper nesting
         // Order: bold+italic (outermost), then individual formats

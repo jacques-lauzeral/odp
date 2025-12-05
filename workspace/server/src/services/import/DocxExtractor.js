@@ -63,7 +63,17 @@ class DocxExtractor {
                     "p[style-name='List Paragraph']:unordered-list(2) => ul > ul > li:fresh",
                     "p[style-name='List Paragraph']:unordered-list(3) => ul > ul > ul > li:fresh",
                     "p[style-name='List Paragraph']:unordered-list(4) => ul > ul > ul > ul > li:fresh",
-                    "p[style-name='List Paragraph']:unordered-list(5) => ul > ul > ul > ul > ul > li:fresh"
+                    "p[style-name='List Paragraph']:unordered-list(5) => ul > ul > ul > ul > ul > li:fresh",
+
+                    // Code/monospace character styles (inline code)
+                    "r[style-name='Code'] => code",
+                    "r[style-name='code'] => code",
+                    "r[style-name='Source Code'] => code",
+                    "r[style-name='source code'] => code",
+                    "r[style-name='Inline Code'] => code",
+                    "r[style-name='inline code'] => code",
+                    "r[style-name='Verbatim Char'] => code",
+                    "r[style-name='HTML Code'] => code"
 
                 ],
                 convertImage: mammoth.images.imgElement(function(image) {
@@ -185,6 +195,7 @@ class DocxExtractor {
      * - <strong>text</strong> → "**text**" (bold)
      * - <em>text</em> or <i>text</i> → "*text*" (italic)
      * - <u>text</u> → "__text__" (underline)
+     * - <code>text</code> → "`text`" (inline code/monospace)
      * - <ol><li>item</li></ol> → ". item" (ordered list, one per line)
      * - <ul><li>item</li></ul> → "* item" (unordered list, one per line)
      * - <img src="data:..."> → "image::data:...[]" (AsciiDoc image syntax, EMF converted to PNG)
@@ -313,6 +324,9 @@ class DocxExtractor {
                         case 's':
                             result += '~~';
                             break;
+                        case 'code':
+                            result += '`';
+                            break;
                         case 'p':
                             result += '\n\n';
                             break;
@@ -388,6 +402,9 @@ class DocxExtractor {
                                 break;
                             case 's':
                                 result += '~~';
+                                break;
+                            case 'code':
+                                result += '`';
                                 break;
                             case 'ul':
                             case 'ol':
