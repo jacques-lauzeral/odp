@@ -51,15 +51,19 @@ class DocxExtractor {
                     // "p => p:fresh"
                     //"p:not(numbering) => p:fresh"
 
-                    // Explicitly preserve ordered list items with nesting
+                    // Explicitly preserve ordered list items with nesting (levels 1-5)
                     "p[style-name='List Paragraph']:ordered-list(1) => ol > li:fresh",
                     "p[style-name='List Paragraph']:ordered-list(2) => ol > ol > li:fresh",
                     "p[style-name='List Paragraph']:ordered-list(3) => ol > ol > ol > li:fresh",
+                    "p[style-name='List Paragraph']:ordered-list(4) => ol > ol > ol > ol > li:fresh",
+                    "p[style-name='List Paragraph']:ordered-list(5) => ol > ol > ol > ol > ol > li:fresh",
 
-                    // Explicitly preserve unordered list items with nesting
+                    // Explicitly preserve unordered list items with nesting (levels 1-5)
                     "p[style-name='List Paragraph']:unordered-list(1) => ul > li:fresh",
                     "p[style-name='List Paragraph']:unordered-list(2) => ul > ul > li:fresh",
-                    "p[style-name='List Paragraph']:unordered-list(3) => ul > ul > ul > li:fresh"
+                    "p[style-name='List Paragraph']:unordered-list(3) => ul > ul > ul > li:fresh",
+                    "p[style-name='List Paragraph']:unordered-list(4) => ul > ul > ul > ul > li:fresh",
+                    "p[style-name='List Paragraph']:unordered-list(5) => ul > ul > ul > ul > ul > li:fresh"
 
                 ],
                 convertImage: mammoth.images.imgElement(function(image) {

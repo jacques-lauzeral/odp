@@ -8,9 +8,13 @@
  * Supported AsciiDoc structures:
  * ===============================
  *
- * Lists:
- * - ". item" → ordered list item
- * - "* item" → bullet list item
+ * Lists (up to 5 levels of nesting):
+ * - ". item" → ordered list item (level 1)
+ * - ".. item" → ordered list item (level 2)
+ * - "... item" → ordered list item (level 3), etc.
+ * - "* item" → bullet list item (level 1)
+ * - "** item" → bullet list item (level 2)
+ * - "*** item" → bullet list item (level 3), etc.
  * - Multiple consecutive items grouped into single list
  *
  * Inline formatting:
@@ -93,7 +97,7 @@ class AsciidocToDeltaConverter {
             }
 
             // Check for list items (with depth support: ., .., ... or *, **, ***)
-            const listMatch = trimmedLine.match(/^([.*]{1,3})\s+/);
+            const listMatch = trimmedLine.match(/^([.*]{1,5})\s+/);
             if (listMatch) {
                 const marker = listMatch[1];
                 const listType = marker.includes('.') ? 'ordered' : 'bullet';
@@ -102,7 +106,7 @@ class AsciidocToDeltaConverter {
                 // Process consecutive list items of same type and depth
                 while (i < lines.length) {
                     const currentLine = lines[i].trimStart();
-                    const currentMatch = currentLine.match(/^([.*]{1,3})\s+/);
+                    const currentMatch = currentLine.match(/^([.*]{1,5})\s+/);
 
                     // Stop if not a list item or different marker pattern
                     if (!currentMatch || currentMatch[1] !== marker) break;
