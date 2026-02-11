@@ -1,4 +1,7 @@
 // workspace/server/src/services/PublicationService.js
+import path from 'path';
+import fs from 'fs/promises';
+import archiver from 'archiver';
 
 /**
  * PublicationService handles generation of ODIP publications
@@ -10,6 +13,12 @@
  */
 class PublicationService {
 
+    constructor() {
+        // Use environment variable for static content path, with fallback
+        this.staticContentPath = process.env.STATIC_CONTENT_PATH ||
+            '/home/jacques/odp-tool/odp-publication/static';
+    }
+
     /**
      * Generate Antora multipage website artifacts
      * @param {string|null} editionId - Edition ID or null for repository mode
@@ -17,8 +26,123 @@ class PublicationService {
      * @returns {Promise<Buffer>} - ZIP archive containing Antora module structure
      */
     async generateAntoraSite(editionId, userId) {
-        // TODO: Implement
-        throw new Error('Antora site generation not yet implemented');
+        try {
+            console.log(`Generating Antora site for ${editionId ? `edition ${editionId}` : 'entire repository'}`);
+            console.log(`Static content path: ${this.staticContentPath}`);
+
+            // Read static content files
+            const introPath = path.join(this.staticContentPath, 'introduction/_main.adoc');
+            const portfolioPath = path.join(this.staticContentPath, 'portfolio/_main.adoc');
+
+            let introContent, portfolioContent;
+            try {
+                introContent = await fs.readFile(introPath, 'utf-8');
+            } catch (error) {
+                console.warn(`Warning: Could not read introduction file at ${introPath}: ${error.message}`);
+                introContent = '= Introduction\n\nIntroduction content not available.';
+            }
+
+            try {
+                portfolioContent = await fs.readFile(portfolioPath, 'utf-8');
+            } catch (error) {
+                console.warn(`Warning: Could not read portfolio file at ${portfolioPath}: ${error.message}`);
+                portfolioContent = '= Portfolio Overview\n\nPortfolio overview content not available.';
+            }
+
+            // Generate Antora structure and package as ZIP
+            const zipBuffer = await this._createAntoraZip(introContent, portfolioContent);
+
+            console.log(`Antora site generated successfully (${zipBuffer.length} bytes)`);
+            return zipBuffer;
+
+        } catch (error) {
+            console.error(`Failed to generate Antora site: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Create ZIP archive with Antora module structure
+     * @private
+     */
+    async _createAntoraZip(introContent, portfolioContent) {
+        return new Promise((resolve, reject) => {
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            const chunks = [];
+
+            archive.on('data', (chunk) => chunks.push(chunk));
+            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            archive.on('error', (err) => reject(new Error(`ZIP creation failed: ${err.message}`)));
+
+            // Create Antora structure with single component:
+            // antora.yml (component root)
+            // modules/
+            //   ROOT/
+            //     nav.adoc
+            //     pages/
+            //       introduction.adoc
+            //   portfolio/
+            //     pages/
+            //       overview.adoc
+
+            // Component descriptor at root
+            const componentDescriptor = `name: odip
+version: ~
+title: ODIP
+nav:
+- modules/ROOT/nav.adoc
+- modules/portfolio/nav.adoc
+`;
+            archive.append(componentDescriptor, {
+                name: 'antora.yml'
+            });
+
+            // Add introduction to ROOT module
+            archive.append(introContent, {
+                name: 'modules/ROOT/pages/introduction.adoc'
+            });
+
+            // Generate simple navigation for ROOT module
+            const rootNav = `* xref:introduction.adoc[Introduction]
+* xref:portfolio:overview.adoc[Portfolio Overview]
+`;
+            archive.append(rootNav, {
+                name: 'modules/ROOT/nav.adoc'
+            });
+
+            // Add portfolio overview to portfolio module
+            archive.append(portfolioContent, {
+                name: 'modules/portfolio/pages/overview.adoc'
+            });
+
+            // Generate navigation for portfolio module
+            const portfolioNav = `* xref:overview.adoc[Overview]
+`;
+            archive.append(portfolioNav, {
+                name: 'modules/portfolio/nav.adoc'
+            });
+
+            // Generate minimal Antora playbook
+            const playbook = `site:
+  title: ODIP
+  start_page: odip::introduction.adoc
+
+content:
+  sources:
+  - url: .
+    branches: HEAD
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+`;
+            archive.append(playbook, {
+                name: 'antora-playbook.yml'
+            });
+
+            archive.finalize();
+        });
     }
 
     /**
