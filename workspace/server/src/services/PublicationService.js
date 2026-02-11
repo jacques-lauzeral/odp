@@ -164,7 +164,6 @@ ui:
      */
     async generateDocx(editionId, userId) {
         // TODO: Implement
-        //
         throw new Error('Word document generation not yet implemented');
     }
 }
