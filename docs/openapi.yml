@@ -45,10 +45,6 @@ paths:
   /waves/{id}:
     $ref: 'openapi-setup.yml#/paths/~1waves~1{id}'
 
-  # DocX Export endpoints
-  /docx/export/requirements:
-    $ref: 'openapi-docx.yml#/paths/~1docx~1export~1requirements'
-
   # Import endpoints
   /import/setup:
     $ref: 'openapi-import.yml#/paths/~1import~1setup'
@@ -86,6 +82,14 @@ paths:
   /baselines/{id}:
     $ref: 'openapi-baseline.yml#/paths/~1baselines~1{id}'
 
+  # Publication endpoints
+  /publications/antora:
+    $ref: 'openapi-publication.yml#/paths/~1publications~1antora'
+  /publications/pdf:
+    $ref: 'openapi-publication.yml#/paths/~1publications~1pdf'
+  /publications/docx:
+    $ref: 'openapi-publication.yml#/paths/~1publications~1docx'
+
 tags:
   - name: Stakeholder Categories
     description: Stakeholder category management
@@ -107,3 +111,5 @@ tags:
     description: Milestone management within operational changes
   - name: Baselines
     description: Baseline management for deployment planning
+  - name: Publications
+    description: Edition publication operations for generating ODIP documents

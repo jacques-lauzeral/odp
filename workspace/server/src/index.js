@@ -11,6 +11,7 @@ import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
+import publicationRoutes from './routes/publication.js';
 import MapperRegistry from './services/import/MapperRegistry.js';
 
 const app = express();
@@ -98,6 +99,9 @@ app.use('/operational-changes', operationalChangeRoutes);
 app.use('/baselines', baselineRoutes);
 app.use('/odp-editions', odpEditionRoutes);
 
+// Publication API Routes
+app.use('/publications', publicationRoutes);
+
 // Error handling
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
@@ -146,6 +150,10 @@ async function startServer() {
             console.log(`Management Entities:`);
             console.log(`  - http://localhost:${PORT}/baselines`);
             console.log(`  - http://localhost:${PORT}/odp-editions`);
+            console.log(`Publication Operations:`);
+            console.log(`  - POST http://localhost:${PORT}/publications/antora?editionId=<id>`);
+            console.log(`  - POST http://localhost:${PORT}/publications/pdf?editionId=<id>`);
+            console.log(`  - POST http://localhost:${PORT}/publications/docx?editionId=<id>`);
             console.log(`Baseline-aware queries:`);
             console.log(`  - http://localhost:${PORT}/operational-requirements?baseline=<id>`);
             console.log(`  - http://localhost:${PORT}/operational-changes?baseline=<id>`);

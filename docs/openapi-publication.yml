@@ -1,0 +1,146 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Edition Publication
+  description: Edition Publication Operations for generating ODIP documents in multiple formats
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  # Publication Endpoints
+  /publications/antora:
+    post:
+      summary: Generate Antora multipage website artifacts
+      tags: [Publications]
+      description: |
+        Generates a ZIP archive containing Antora module structure for multipage HTML website.
+        - If editionId is provided: generates content for specific edition
+        - If editionId is omitted: generates content for entire repository
+        
+        Output includes:
+        - modules/ directory with DrG-specific modules
+        - antora-playbook.yml configuration
+        - nav.adoc files for navigation
+        - images/ directory with embedded images
+      parameters:
+        - name: editionId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Edition ID for specific edition. Omit for entire repository publication."
+          example: "edition-123"
+      responses:
+        '200':
+          description: Success - ZIP archive with Antora artifacts
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Edition not found (when editionId provided)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /publications/pdf:
+    post:
+      summary: Generate single PDF document
+      tags: [Publications]
+      description: |
+        Generates a single PDF document via AsciiDoctor processing.
+        - If editionId is provided: generates PDF for specific edition
+        - If editionId is omitted: generates PDF for entire repository
+        
+        The PDF includes:
+        - Table of contents
+        - Introduction sections (if edition-specific)
+        - Portfolio overview and readiness dashboard (if edition-specific)
+        - All DrG sections with hierarchical ON/OR structure
+        - Cross-references as hyperlinks
+      parameters:
+        - name: editionId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Edition ID for specific edition. Omit for entire repository publication."
+          example: "edition-123"
+      responses:
+        '200':
+          description: Success - PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Edition not found (when editionId provided)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /publications/docx:
+    post:
+      summary: Generate single Word document
+      tags: [Publications]
+      description: |
+        Generates a single Microsoft Word document (.docx).
+        - If editionId is provided: generates Word doc for specific edition
+        - If editionId is omitted: generates Word doc for entire repository
+        
+        The document includes:
+        - Formatted headings with proper hierarchy
+        - Introduction sections (if edition-specific)
+        - Portfolio overview and readiness dashboard (if edition-specific)
+        - All DrG sections with hierarchical ON/OR structure
+        - Rich text formatting preserved from Quill deltas
+        - Embedded images
+      parameters:
+        - name: editionId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Edition ID for specific edition. Omit for entire repository publication."
+          example: "edition-123"
+      responses:
+        '200':
+          description: Success - Word document
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Edition not found (when editionId provided)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+tags:
+  - name: Publications
+    description: Edition publication operations for generating ODIP documents in multiple formats
