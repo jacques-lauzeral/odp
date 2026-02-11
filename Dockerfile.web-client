@@ -1,0 +1,22 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy entire codebase
+COPY . .
+
+# Pre-create the shared source structure
+RUN mkdir -p workspace/web-client/src/shared/src && \
+    cp -r workspace/shared/src/* workspace/web-client/src/shared/src/
+
+# Set working directory to web-client
+WORKDIR /app/workspace/web-client
+
+# Install dependencies (including http-server)
+RUN npm install
+
+# Expose port
+EXPOSE 3000
+
+# Start web server
+CMD ["npm", "run", "dev"]

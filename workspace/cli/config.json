@@ -1,6 +1,6 @@
 {
   "server": {
-    "baseUrl": "http://localhost",
+    "baseUrl": "http://localhost:8080",
     "timeout": 30000
   },
   "output": {

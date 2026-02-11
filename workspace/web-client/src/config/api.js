@@ -1,7 +1,7 @@
 // API configuration for ODP Web Client
 export const apiConfig = {
     // Base API URL - defaults to same origin in development
-    baseUrl: window.location.hostname === 'localhost' ? 'http://localhost' : window.location.origin,
+    baseUrl: 'http://' + window.location.hostname + ':8080',
 
     // Request timeout in milliseconds
     timeout: 30000,
