@@ -30,36 +30,8 @@ class PublicationService {
             console.log(`Generating Antora site for ${editionId ? `edition ${editionId}` : 'entire repository'}`);
             console.log(`Static content path: ${this.staticContentPath}`);
 
-            // Read static content files
-            const homePath = path.join(this.staticContentPath, 'home/_main.adoc');
-            const introPath = path.join(this.staticContentPath, 'introduction/_main.adoc');
-            const portfolioPath = path.join(this.staticContentPath, 'portfolio/_main.adoc');
-
-            let homeContent, introContent, portfolioContent;
-
-            try {
-                homeContent = await fs.readFile(homePath, 'utf-8');
-            } catch (error) {
-                console.warn(`Warning: Could not read home file at ${homePath}: ${error.message}`);
-                homeContent = '= Home\n\nHome content not available.';
-            }
-
-            try {
-                introContent = await fs.readFile(introPath, 'utf-8');
-            } catch (error) {
-                console.warn(`Warning: Could not read introduction file at ${introPath}: ${error.message}`);
-                introContent = '= Introduction\n\nIntroduction content not available.';
-            }
-
-            try {
-                portfolioContent = await fs.readFile(portfolioPath, 'utf-8');
-            } catch (error) {
-                console.warn(`Warning: Could not read portfolio file at ${portfolioPath}: ${error.message}`);
-                portfolioContent = '= Portfolio Overview\n\nPortfolio overview content not available.';
-            }
-
-            // Generate Antora structure and package as ZIP
-            const zipBuffer = await this._createAntoraZip(homeContent, introContent, portfolioContent);
+            // Generate Antora structure by copying static directory tree as-is
+            const zipBuffer = await this._createAntoraZip();
 
             console.log(`Antora site generated successfully (${zipBuffer.length} bytes)`);
             return zipBuffer;
@@ -71,11 +43,11 @@ class PublicationService {
     }
 
     /**
-     * Create ZIP archive with Antora module structure
+     * Create ZIP archive by copying static directory tree
      * @private
      */
-    async _createAntoraZip(homeContent, introContent, portfolioContent) {
-        return new Promise((resolve, reject) => {
+    async _createAntoraZip() {
+        return new Promise(async (resolve, reject) => {
             const archive = archiver('zip', { zlib: { level: 9 } });
             const chunks = [];
 
@@ -83,88 +55,22 @@ class PublicationService {
             archive.on('end', () => resolve(Buffer.concat(chunks)));
             archive.on('error', (err) => reject(new Error(`ZIP creation failed: ${err.message}`)));
 
-            // Create Antora structure with three peer modules:
-            // antora.yml (component root)
-            // modules/
-            //   ROOT/            (home - becomes /odip/)
-            //     pages/
-            //       index.adoc
-            //   introduction/    (becomes /odip/introduction/)
-            //     pages/
-            //       index.adoc
-            //   portfolio/       (becomes /odip/portfolio/)
-            //     pages/
-            //       index.adoc
+            try {
+                // Add entire static directory tree to archive
+                // This copies the complete Antora structure as-is:
+                // - antora-playbook.yml
+                // - antora.yml
+                // - modules/ROOT/nav.adoc
+                // - modules/ROOT/pages/index.adoc
+                // - modules/introduction/pages/index.adoc
+                // - modules/portfolio/pages/index.adoc
 
-            // Component descriptor at root
-            const componentDescriptor = `name: odip
-version: ~
-title: ODIP
-nav:
-- modules/ROOT/nav.adoc
-`;
-            archive.append(componentDescriptor, {
-                name: 'antora.yml'
-            });
+                archive.directory(this.staticContentPath, false);
 
-            // ROOT module (home)
-            archive.append(homeContent, {
-                name: 'modules/ROOT/pages/index.adoc'
-            });
-            const rootNav = `* xref:index.adoc[Home]
-* xref:introduction:index.adoc[Introduction]
-* xref:portfolio:index.adoc[Portfolio Overview]
-`;
-            archive.append(rootNav, {
-                name: 'modules/ROOT/nav.adoc'
-            });
-
-            // Introduction module (no nav needed)
-            archive.append(introContent, {
-                name: 'modules/introduction/pages/index.adoc'
-            });
-
-            // Portfolio module (no nav needed)
-            archive.append(portfolioContent, {
-                name: 'modules/portfolio/pages/index.adoc'
-            });
-
-            // Generate minimal Antora playbook
-            const playbook = `site:
-  title: ODIP
-  url: http://localhost:8081
-  start_page: odip:ROOT:index.adoc
-
-content:
-  sources:
-  - url: .
-    branches: HEAD
-
-ui:
-  bundle:
-    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
-    snapshot: true
-  supplemental_files:
-  - path: ui.yml
-    contents: |
-      static_files:
-      - .nojekyll
-      supplemental_ui: true
-  - path: partials/header-content.hbs
-    contents: |
-      <header class="header">
-        <nav class="navbar">
-          <div class="navbar-brand">
-            <a class="navbar-item" href="{{{or site.url (or siteRootUrl (or siteRootPath '/'))}}}">{{site.title}}</a>
-          </div>
-        </nav>
-      </header>
-`;
-            archive.append(playbook, {
-                name: 'antora-playbook.yml'
-            });
-
-            archive.finalize();
+                await archive.finalize();
+            } catch (error) {
+                reject(new Error(`Failed to archive static content: ${error.message}`));
+            }
         });
     }
 
