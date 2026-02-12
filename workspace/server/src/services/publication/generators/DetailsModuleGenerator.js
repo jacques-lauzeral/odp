@@ -371,6 +371,10 @@ export class DetailsModuleGenerator {
             }
         }
 
+        // Sort root entities by itemId
+        tree.ons.sort((a, b) => a.itemId - b.itemId);
+        tree.ors.sort((a, b) => a.itemId - b.itemId);
+
         // Fourth pass: handle refinement relationships
         // Build item nodes with children arrays
         this._buildRefinementTree(tree, refinementEntities);
@@ -408,10 +412,14 @@ export class DetailsModuleGenerator {
                     }
                     if (type === 'on') {
                         parentNode.children.ons.push(entity);
+                        // Sort children by itemId
+                        parentNode.children.ons.sort((a, b) => a.itemId - b.itemId);
                         // Initialize children for this entity too
                         entity.children = { ons: [], ors: [] };
                     } else {
                         parentNode.children.ors.push(entity);
+                        // Sort children by itemId
+                        parentNode.children.ors.sort((a, b) => a.itemId - b.itemId);
                         // Initialize children for this entity too
                         entity.children = { ons: [], ors: [] };
                     }
@@ -434,6 +442,9 @@ export class DetailsModuleGenerator {
                         entity.children = { ons: [], ors: [] };
                     }
                 }
+                // Sort after adding orphans
+                tree.ons.sort((a, b) => a.itemId - b.itemId);
+                tree.ors.sort((a, b) => a.itemId - b.itemId);
                 break;
             }
 
@@ -542,11 +553,13 @@ export class DetailsModuleGenerator {
             current = current.folders[slugified];
         }
 
-        // Add entity to final folder
+        // Add entity to final folder and sort by itemId
         if (type === 'on') {
             current.ons.push(entity);
+            current.ons.sort((a, b) => a.itemId - b.itemId);
         } else {
             current.ors.push(entity);
+            current.ors.sort((a, b) => a.itemId - b.itemId);
         }
     }
 
@@ -725,16 +738,19 @@ export class DetailsModuleGenerator {
         // Don't reset - use global counter to avoid collisions
         // this.deltaConverter.resetImageTracking();
 
-        // Convert statement and rationale
+        // Convert statement, rationale, and flows
         const statement = on.statement ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.statement)) : null;
         const statementImages = [...this.deltaConverter.getExtractedImages()];
 
-        // Don't reset between statement and rationale either
+        // Don't reset between fields
         const rationale = on.rationale ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.rationale)) : null;
         const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
+        const flows = on.flows ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.flows)) : null;
+        const flowsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length)];
+
         // Collect all images
-        this.allImages.push(...statementImages, ...rationaleImages);
+        this.allImages.push(...statementImages, ...rationaleImages, ...flowsImages);
 
         return {
             title: on.title,
@@ -743,6 +759,7 @@ export class DetailsModuleGenerator {
             path: on.path ? on.path.join(' / ') : null,
             statement: statement,
             rationale: rationale,
+            flows: flows,
             refinesParents: on.refinesParents && on.refinesParents.length > 0 ? (() => {
                 const parent = on.refinesParents[0];
                 const parentInfo = this.onLookup.get(parent.id);
@@ -827,16 +844,19 @@ export class DetailsModuleGenerator {
         // Don't reset - use global counter to avoid collisions
         // this.deltaConverter.resetImageTracking();
 
-        // Convert statement and rationale
+        // Convert statement, rationale, and flows
         const statement = or.statement ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.statement)) : null;
         const statementImages = [...this.deltaConverter.getExtractedImages()];
 
-        // Don't reset between statement and rationale either
+        // Don't reset between fields
         const rationale = or.rationale ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.rationale)) : null;
         const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
+        const flows = or.flows ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.flows)) : null;
+        const flowsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length)];
+
         // Collect all images
-        this.allImages.push(...statementImages, ...rationaleImages);
+        this.allImages.push(...statementImages, ...rationaleImages, ...flowsImages);
 
         return {
             title: or.title,
@@ -845,6 +865,7 @@ export class DetailsModuleGenerator {
             path: or.path ? or.path.join(' / ') : null,
             statement: statement,
             rationale: rationale,
+            flows: flows,
             implementedONs: or.implementedONs && or.implementedONs.length > 0 ? {
                 ons: or.implementedONs.map(on => {
                     const onInfo = this.onLookup.get(on.id);
