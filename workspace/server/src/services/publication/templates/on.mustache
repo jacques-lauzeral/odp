@@ -26,6 +26,22 @@
 *Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
 
 {{/refinesParents}}
+{{#refinedBy}}
+
+== Refined By
+
+{{#items}}
+* xref:{{{path}}}/{{{file}}}[{{type}}-{{id}}: {{title}}]
+{{/items}}
+{{/refinedBy}}
+{{#implementedBy}}
+
+== Implemented By
+
+{{#items}}
+* xref:{{{path}}}/{{{file}}}[OR-{{id}}: {{title}}]
+{{/items}}
+{{/implementedBy}}
 {{#implementingORs}}
 
 == Implementing Requirements

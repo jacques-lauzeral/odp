@@ -24,6 +24,17 @@ export class DetailsModuleGenerator {
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
         this.deltaConverter = new DeltaToAsciidocConverter();
+        // Never reset the converter - keep global counter for unique filenames
+    }
+
+    /**
+     * Fix image paths for Antora (remove ./images/ prefix)
+     * @private
+     */
+    _fixAntoraImagePaths(asciidoc) {
+        if (!asciidoc) return asciidoc;
+        // Replace image::./images/filename with image::filename
+        return asciidoc.replace(/image::\.\/images\//g, 'image::');
     }
 
     /**
@@ -57,6 +68,9 @@ export class DetailsModuleGenerator {
                 this.orLookup.set(or.itemId, { drg: or.drg, path: or.path });
             }
 
+            // Build reverse relationship maps
+            this._buildReverseRelationships(ons, ors);
+
             // Group by DrG
             const onsByDrg = this._groupByDrg(ons);
             const orsByDrg = this._groupByDrg(ors);
@@ -84,10 +98,10 @@ export class DetailsModuleGenerator {
                 Object.assign(files, drgFiles);
             }
 
-            // Add extracted images to files
+            // Add extracted images to files (Antora expects them in assets/images)
             for (const image of this.allImages) {
                 const imageBuffer = Buffer.from(image.data, 'base64');
-                files[`details/images/${image.filename}`] = imageBuffer;
+                files[`details/assets/images/${image.filename}`] = imageBuffer;
             }
 
             // Generate details module navigation
@@ -199,6 +213,60 @@ export class DetailsModuleGenerator {
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
+        }
+    }
+
+    /**
+     * Build reverse relationship maps (refinedBy, implementedBy)
+     * @private
+     */
+    _buildReverseRelationships(ons, ors) {
+        // Initialize reverse relationship arrays on all entities
+        for (const on of ons) {
+            on.refinedBy = [];      // ONs/ORs that refine this ON
+            on.implementedBy = [];  // ORs that implement this ON
+        }
+        for (const or of ors) {
+            or.refinedBy = [];      // ORs that refine this OR
+        }
+
+        // Build refinedBy from refinesParents
+        for (const on of ons) {
+            if (on.refinesParents && on.refinesParents.length > 0) {
+                const parentId = on.refinesParents[0].id;
+                // Find parent (could be ON or OR based on type)
+                const parentOn = ons.find(o => o.itemId === parentId);
+                if (parentOn) {
+                    parentOn.refinedBy.push({ id: on.itemId, title: on.title, type: 'ON' });
+                }
+            }
+        }
+
+        for (const or of ors) {
+            if (or.refinesParents && or.refinesParents.length > 0) {
+                const parentId = or.refinesParents[0].id;
+                // Parent could be ON or OR
+                const parentOn = ons.find(o => o.itemId === parentId);
+                const parentOr = ors.find(o => o.itemId === parentId);
+
+                if (parentOn) {
+                    parentOn.refinedBy.push({ id: or.itemId, title: or.title, type: 'OR' });
+                } else if (parentOr) {
+                    parentOr.refinedBy.push({ id: or.itemId, title: or.title, type: 'OR' });
+                }
+            }
+        }
+
+        // Build implementedBy from implementedONs
+        for (const or of ors) {
+            if (or.implementedONs && or.implementedONs.length > 0) {
+                for (const implementedOn of or.implementedONs) {
+                    const on = ons.find(o => o.itemId === implementedOn.id);
+                    if (on) {
+                        on.implementedBy.push({ id: or.itemId, title: or.title });
+                    }
+                }
+            }
         }
     }
 
@@ -654,16 +722,16 @@ export class DetailsModuleGenerator {
      * @private
      */
     _prepareONData(on, currentPath, drg) {
-        // Reset image tracking before processing
-        this.deltaConverter.resetImageTracking();
+        // Don't reset - use global counter to avoid collisions
+        // this.deltaConverter.resetImageTracking();
 
         // Convert statement and rationale
-        const statement = on.statement ? this.deltaConverter.deltaToAsciidoc(on.statement) : null;
+        const statement = on.statement ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.statement)) : null;
         const statementImages = [...this.deltaConverter.getExtractedImages()];
 
-        this.deltaConverter.resetImageTracking();
-        const rationale = on.rationale ? this.deltaConverter.deltaToAsciidoc(on.rationale) : null;
-        const rationaleImages = [...this.deltaConverter.getExtractedImages()];
+        // Don't reset between statement and rationale either
+        const rationale = on.rationale ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.rationale)) : null;
+        const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
         // Collect all images
         this.allImages.push(...statementImages, ...rationaleImages);
@@ -688,6 +756,38 @@ export class DetailsModuleGenerator {
                     parentTitle: parent.title
                 };
             })() : null,
+            refinedBy: on.refinedBy && on.refinedBy.length > 0 ? {
+                items: on.refinedBy.map(child => {
+                    const lookupMap = child.type === 'ON' ? this.onLookup : this.orLookup;
+                    const childInfo = lookupMap.get(child.id);
+                    if (!childInfo) {
+                        console.warn(`ON ${on.itemId} is refined by ${child.type} ${child.id} which was not found in lookup`);
+                        return null;
+                    }
+                    return {
+                        id: child.id,
+                        title: child.title,
+                        type: child.type,
+                        path: this._buildEntityPath(childInfo.drg, childInfo.path),
+                        file: `${child.type.toLowerCase()}-${child.id}.adoc`
+                    };
+                }).filter(Boolean)
+            } : null,
+            implementedBy: on.implementedBy && on.implementedBy.length > 0 ? {
+                items: on.implementedBy.map(or => {
+                    const orInfo = this.orLookup.get(or.id);
+                    if (!orInfo) {
+                        console.warn(`ON ${on.itemId} is implemented by OR ${or.id} which was not found in lookup`);
+                        return null;
+                    }
+                    return {
+                        id: or.id,
+                        title: or.title,
+                        path: this._buildEntityPath(orInfo.drg, orInfo.path),
+                        file: `or-${or.id}.adoc`
+                    };
+                }).filter(Boolean)
+            } : null,
             implementingORs: on.implementingORs && on.implementingORs.length > 0 ? {
                 ors: on.implementingORs.map(or => {
                     const orInfo = this.orLookup.get(or.id);
@@ -724,16 +824,16 @@ export class DetailsModuleGenerator {
      * @private
      */
     _prepareORData(or, currentPath, drg) {
-        // Reset image tracking before processing
-        this.deltaConverter.resetImageTracking();
+        // Don't reset - use global counter to avoid collisions
+        // this.deltaConverter.resetImageTracking();
 
         // Convert statement and rationale
-        const statement = or.statement ? this.deltaConverter.deltaToAsciidoc(or.statement) : null;
+        const statement = or.statement ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.statement)) : null;
         const statementImages = [...this.deltaConverter.getExtractedImages()];
 
-        this.deltaConverter.resetImageTracking();
-        const rationale = or.rationale ? this.deltaConverter.deltaToAsciidoc(or.rationale) : null;
-        const rationaleImages = [...this.deltaConverter.getExtractedImages()];
+        // Don't reset between statement and rationale either
+        const rationale = or.rationale ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.rationale)) : null;
+        const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
         // Collect all images
         this.allImages.push(...statementImages, ...rationaleImages);
@@ -771,7 +871,22 @@ export class DetailsModuleGenerator {
                     parentFile: `or-${parent.id}.adoc`,
                     parentTitle: parent.title
                 };
-            })() : null
+            })() : null,
+            refinedBy: or.refinedBy && or.refinedBy.length > 0 ? {
+                items: or.refinedBy.map(childOr => {
+                    const childInfo = this.orLookup.get(childOr.id);
+                    if (!childInfo) {
+                        console.warn(`OR ${or.itemId} is refined by OR ${childOr.id} which was not found in lookup`);
+                        return null;
+                    }
+                    return {
+                        id: childOr.id,
+                        title: childOr.title,
+                        path: this._buildEntityPath(childInfo.drg, childInfo.path),
+                        file: `or-${childOr.id}.adoc`
+                    };
+                }).filter(Boolean)
+            } : null
         };
     }
 
