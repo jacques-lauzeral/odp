@@ -36,7 +36,12 @@ export class DetailsModuleGenerator {
             // Fetch all ONs and ORs from database
             const { ons, ors } = await this._fetchONsAndORs();
 
+            // Store for nav generation
+            this.allOns = ons;
+            this.allOrs = ors;
+
             // Build lookup maps for cross-references (by itemId)
+            // For refining children, we'll update their paths after tree building
             this.onLookup = new Map();
             this.orLookup = new Map();
 
@@ -54,7 +59,17 @@ export class DetailsModuleGenerator {
             // Get list of all DrGs that have content
             const drgs = new Set([...Object.keys(onsByDrg), ...Object.keys(orsByDrg)]);
 
-            // Generate files for each DrG
+            // Build trees and update lookup paths for refining children
+            for (const drg of drgs) {
+                const drgOns = onsByDrg[drg] || [];
+                const drgOrs = orsByDrg[drg] || [];
+                const tree = this._buildHierarchy(drgOns, drgOrs);
+
+                // Update lookup paths for refining children
+                this._updateRefiningChildrenPaths(tree, []);
+            }
+
+            // Generate files for each DrG (rebuild trees since we modified lookups)
             const files = {};
             for (const drg of drgs) {
                 const drgOns = onsByDrg[drg] || [];
@@ -72,6 +87,58 @@ export class DetailsModuleGenerator {
         } catch (error) {
             console.error('Failed to generate details module:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Update lookup paths for refining children to use parent's path
+     * @private
+     */
+    _updateRefiningChildrenPaths(node, currentPath) {
+        // Update ONs and their children
+        for (const on of node.ons) {
+            if (on.children) {
+                this._updateChildrenPaths(on.children, currentPath);
+            }
+        }
+
+        // Update ORs and their children
+        for (const or of node.ors) {
+            if (or.children) {
+                this._updateChildrenPaths(or.children, currentPath);
+            }
+        }
+
+        // Recurse into folders
+        for (const [slug, folder] of Object.entries(node.folders)) {
+            const newPath = [...currentPath, slug];
+            this._updateRefiningChildrenPaths(folder, newPath);
+        }
+    }
+
+    /**
+     * Update children paths recursively
+     * @private
+     */
+    _updateChildrenPaths(children, parentPath) {
+        for (const childOn of children.ons) {
+            const lookup = this.onLookup.get(childOn.itemId);
+            if (lookup) {
+                lookup.path = parentPath; // Use parent's path
+            }
+            if (childOn.children) {
+                this._updateChildrenPaths(childOn.children, parentPath);
+            }
+        }
+
+        for (const childOr of children.ors) {
+            const lookup = this.orLookup.get(childOr.itemId);
+            if (lookup) {
+                lookup.path = parentPath; // Use parent's path
+            }
+            if (childOr.children) {
+                this._updateChildrenPaths(childOr.children, parentPath);
+            }
         }
     }
 
@@ -161,39 +228,147 @@ export class DetailsModuleGenerator {
     }
 
     /**
-     * Build hierarchy tree from paths and entities
+     * Build hierarchy tree from paths and refinement relationships
      * @private
      */
     _buildHierarchy(ons, ors) {
         const tree = {
             folders: {},
             ons: [],
-            ors: []
+            ors: [],
+            items: {} // Map of itemId -> node for refinement nesting
         };
 
-        // Process ONs
+        // First pass: validate and categorize entities
+        const pathEntities = [];
+        const refinementEntities = [];
+        const rootEntities = [];
+
         for (const on of ons) {
-            if (!on.path || on.path.length === 0) {
-                // Root level ON
-                tree.ons.push(on);
+            const hasPath = on.path && on.path.length > 0;
+            const hasRefines = on.refinesParents && on.refinesParents.length > 0;
+
+            if (hasPath && hasRefines) {
+                console.warn(`ON ${on.itemId} has both path and refinesParents - ignoring path, using refinement`);
+                refinementEntities.push({ entity: on, type: 'on' });
+            } else if (hasPath) {
+                pathEntities.push({ entity: on, type: 'on' });
+            } else if (hasRefines) {
+                refinementEntities.push({ entity: on, type: 'on' });
             } else {
-                // Nested ON - add to folder structure
-                this._addToTree(tree, on.path, on, 'on');
+                rootEntities.push({ entity: on, type: 'on' });
             }
         }
 
-        // Process ORs
         for (const or of ors) {
-            if (!or.path || or.path.length === 0) {
-                // Root level OR
-                tree.ors.push(or);
+            const hasPath = or.path && or.path.length > 0;
+            const hasRefines = or.refinesParents && or.refinesParents.length > 0;
+
+            if (hasPath && hasRefines) {
+                console.warn(`OR ${or.itemId} has both path and refinesParents - ignoring path, using refinement`);
+                refinementEntities.push({ entity: or, type: 'or' });
+            } else if (hasPath) {
+                pathEntities.push({ entity: or, type: 'or' });
+            } else if (hasRefines) {
+                refinementEntities.push({ entity: or, type: 'or' });
             } else {
-                // Nested OR - add to folder structure
-                this._addToTree(tree, or.path, or, 'or');
+                rootEntities.push({ entity: or, type: 'or' });
             }
         }
+
+        // Second pass: add path-based entities to tree
+        for (const { entity, type } of pathEntities) {
+            this._addToTree(tree, entity.path, entity, type);
+        }
+
+        // Third pass: add root entities (no path, no refines)
+        for (const { entity, type } of rootEntities) {
+            if (type === 'on') {
+                tree.ons.push(entity);
+            } else {
+                tree.ors.push(entity);
+            }
+        }
+
+        // Fourth pass: handle refinement relationships
+        // Build item nodes with children arrays
+        this._buildRefinementTree(tree, refinementEntities);
 
         return tree;
+    }
+
+    /**
+     * Build refinement-based hierarchy by nesting children under parents
+     * @private
+     */
+    _buildRefinementTree(tree, refinementEntities) {
+        // Add children arrays to all entities in tree
+        this._addChildrenArrays(tree);
+
+        // Process refinement entities - attach them to their parents
+        for (const { entity, type } of refinementEntities) {
+            const parentId = entity.refinesParents[0].id;
+            const parentNode = this._findEntityInTree(tree, parentId);
+
+            if (!parentNode) {
+                console.warn(`${type.toUpperCase()} ${entity.itemId} refines ${parentId} which was not found in tree - adding to root`);
+                if (type === 'on') {
+                    tree.ons.push(entity);
+                } else {
+                    tree.ors.push(entity);
+                }
+            } else {
+                // Add to parent's children
+                if (!parentNode.children) {
+                    parentNode.children = { ons: [], ors: [] };
+                }
+                if (type === 'on') {
+                    parentNode.children.ons.push(entity);
+                } else {
+                    parentNode.children.ors.push(entity);
+                }
+            }
+        }
+    }
+
+    /**
+     * Recursively add children arrays to all entities in tree
+     * @private
+     */
+    _addChildrenArrays(node) {
+        // Add children to ONs
+        for (const on of node.ons || []) {
+            on.children = { ons: [], ors: [] };
+        }
+        // Add children to ORs
+        for (const or of node.ors || []) {
+            or.children = { ons: [], ors: [] };
+        }
+        // Recurse into folders
+        for (const folder of Object.values(node.folders || {})) {
+            this._addChildrenArrays(folder);
+        }
+    }
+
+    /**
+     * Find an entity by itemId anywhere in the tree
+     * @private
+     */
+    _findEntityInTree(node, itemId) {
+        // Check ONs at this level
+        for (const on of node.ons || []) {
+            if (on.itemId === itemId) return on;
+        }
+        // Check ORs at this level
+        for (const or of node.ors || []) {
+            if (or.itemId === itemId) return or;
+        }
+        // Recurse into folders
+        for (const folder of Object.values(node.folders || {})) {
+            const found = this._findEntityInTree(folder, itemId);
+            if (found) return found;
+        }
+        return null;
     }
 
     /**
@@ -256,6 +431,11 @@ export class DetailsModuleGenerator {
             const fileName = `on-${on.itemId}.adoc`;
             files[`${fullPath}/${fileName}`] =
                 Mustache.render(this.templates['on'], onData);
+
+            // Generate files for refining children (they go in same folder as parent)
+            if (on.children) {
+                this._generateRefiningChildrenFiles(drg, on.children, currentPath, files);
+            }
         }
 
         // Generate OR pages
@@ -264,12 +444,52 @@ export class DetailsModuleGenerator {
             const fileName = `or-${or.itemId}.adoc`;
             files[`${fullPath}/${fileName}`] =
                 Mustache.render(this.templates['or'], orData);
+
+            // Generate files for refining children (they go in same folder as parent)
+            if (or.children) {
+                this._generateRefiningChildrenFiles(drg, or.children, currentPath, files);
+            }
         }
 
         // Recurse into subfolders using slugified names
         for (const [slugKey, subNode] of Object.entries(node.folders)) {
             const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
             this._generateTreeFiles(drg, subNode, newPath, files);
+        }
+    }
+
+    /**
+     * Generate files for refining children (placed in parent's folder)
+     * @private
+     */
+    _generateRefiningChildrenFiles(drg, children, parentPath, files) {
+        const basePath = `details/pages/${drg.toLowerCase()}`;
+        const fullPath = parentPath ? `${basePath}/${parentPath}` : basePath;
+
+        // Generate ON children
+        for (const childOn of children.ons) {
+            const onData = this._prepareONData(childOn, parentPath, drg);
+            const fileName = `on-${childOn.itemId}.adoc`;
+            files[`${fullPath}/${fileName}`] =
+                Mustache.render(this.templates['on'], onData);
+
+            // Recurse for nested refinements
+            if (childOn.children) {
+                this._generateRefiningChildrenFiles(drg, childOn.children, parentPath, files);
+            }
+        }
+
+        // Generate OR children
+        for (const childOr of children.ors) {
+            const orData = this._prepareORData(childOr, parentPath, drg);
+            const fileName = `or-${childOr.itemId}.adoc`;
+            files[`${fullPath}/${fileName}`] =
+                Mustache.render(this.templates['or'], orData);
+
+            // Recurse for nested refinements
+            if (childOr.children) {
+                this._generateRefiningChildrenFiles(drg, childOr.children, parentPath, files);
+            }
         }
     }
 
@@ -478,15 +698,104 @@ export class DetailsModuleGenerator {
     }
 
     /**
-     * Generate navigation for details module
+     * Generate navigation for details module with full hierarchy
      * @private
      */
     _generateDetailsNav(drgs) {
         const sortedDrgs = drgs.sort();
         let nav = '* xref:index.adoc[Operational Needs and Requirements]\n\n';
 
+        // Get the full data structures for each DrG
         for (const drg of sortedDrgs) {
-            nav += `** xref:${drg.toLowerCase()}/index.adoc[${drg}]\n`;
+            const drgSlug = this._slugify(drg);
+            nav += `** xref:${drgSlug}/index.adoc[${drg}]\n`;
+
+            // Get the tree structure for this DrG
+            const drgOns = this.allOns.filter(on => on.drg === drg);
+            const drgOrs = this.allOrs.filter(or => or.drg === drg);
+            const tree = this._buildHierarchy(drgOns, drgOrs);
+
+            // Generate nav for this DrG's tree
+            nav += this._generateTreeNav(tree, drgSlug, '', 3);
+        }
+
+        return nav;
+    }
+
+    /**
+     * Generate navigation entries recursively for a tree structure
+     * @private
+     */
+    _generateTreeNav(node, drgSlug, currentPath, depth) {
+        let nav = '';
+        const indent = '*'.repeat(depth);
+
+        // Generate entries for folders
+        for (const [folderSlug, folder] of Object.entries(node.folders)) {
+            const folderPath = currentPath ? `${currentPath}/${folderSlug}` : folderSlug;
+            const fullPath = `${drgSlug}/${folderPath}`;
+
+            nav += `${indent} xref:${fullPath}/index.adoc[${folder.name}]\n`;
+
+            // Recurse into subfolders and items
+            nav += this._generateTreeNav(folder, drgSlug, folderPath, depth + 1);
+        }
+
+        // Generate entries for ONs at this level
+        for (const on of node.ons) {
+            const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+            nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON-${on.itemId}: ${on.title}]\n`;
+
+            // Recursively add refining children
+            if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
+                nav += this._generateChildrenNav(on.children, drgSlug, depth + 1);
+            }
+        }
+
+        // Generate entries for ORs at this level
+        for (const or of node.ors) {
+            const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+            nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR-${or.itemId}: ${or.title}]\n`;
+
+            // Recursively add refining children
+            if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
+                nav += this._generateChildrenNav(or.children, drgSlug, depth + 1);
+            }
+        }
+
+        return nav;
+    }
+
+    /**
+     * Generate navigation entries for refining children
+     * @private
+     */
+    _generateChildrenNav(children, drgSlug, depth) {
+        let nav = '';
+        const indent = '*'.repeat(depth);
+
+        // Children have no path - they're positioned by refinement
+        // We need to look up their actual location
+        for (const childOn of children.ons) {
+            const childInfo = this.onLookup.get(childOn.itemId);
+            const fullPath = this._buildEntityPath(childInfo.drg, childInfo.path);
+            nav += `${indent} xref:${fullPath}/on-${childOn.itemId}.adoc[ON-${childOn.itemId}: ${childOn.title}]\n`;
+
+            // Recurse for nested refinements
+            if (childOn.children && (childOn.children.ons.length > 0 || childOn.children.ors.length > 0)) {
+                nav += this._generateChildrenNav(childOn.children, drgSlug, depth + 1);
+            }
+        }
+
+        for (const childOr of children.ors) {
+            const childInfo = this.orLookup.get(childOr.itemId);
+            const fullPath = this._buildEntityPath(childInfo.drg, childInfo.path);
+            nav += `${indent} xref:${fullPath}/or-${childOr.itemId}.adoc[OR-${childOr.itemId}: ${childOr.title}]\n`;
+
+            // Recurse for nested refinements
+            if (childOr.children && (childOr.children.ons.length > 0 || childOr.children.ors.length > 0)) {
+                nav += this._generateChildrenNav(childOr.children, drgSlug, depth + 1);
+            }
         }
 
         return nav;
