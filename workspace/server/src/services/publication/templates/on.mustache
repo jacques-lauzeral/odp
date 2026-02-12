@@ -1,0 +1,32 @@
+= {{title}}
+
+[.metadata]
+--
+*Type:* ON +
+*ID:* {{itemId}} +
+*DRG:* {{drg}} +
+{{#path}}
+*Path:* {{path}} +
+{{/path}}
+--
+
+{{#refinesParents}}
+*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
+
+{{/refinesParents}}
+{{#implementingORs}}
+
+== Implementing Requirements
+
+{{#ors}}
+* xref:{{{path}}}/{{{file}}}[{{title}}]
+{{/ors}}
+{{/implementingORs}}
+{{#subONs}}
+
+== Sub-ONs
+
+{{#ons}}
+* xref:{{{path}}}/{{{file}}}[{{title}}]
+{{/ons}}
+{{/subONs}}

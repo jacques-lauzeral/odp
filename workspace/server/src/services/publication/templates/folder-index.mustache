@@ -1,0 +1,29 @@
+= {{folderName}}
+
+{{#description}}
+{{description}}
+
+{{/description}}
+{{#subfolders}}
+== Subfolders
+
+{{#folders}}
+* xref:{{{path}}}/index.adoc[{{name}}]
+{{/folders}}
+
+{{/subfolders}}
+{{#ons}}
+== Operational Needs
+
+{{#items}}
+* xref:{{{path}}}/{{{file}}}[{{title}}]
+{{/items}}
+
+{{/ons}}
+{{#ors}}
+== Operational Requirements
+
+{{#items}}
+* xref:{{{path}}}/{{{file}}}[{{title}}]
+{{/items}}
+{{/ors}}

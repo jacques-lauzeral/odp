@@ -1,0 +1,33 @@
+= {{drgName}}
+
+{{#description}}
+{{description}}
+
+{{/description}}
+== Content Organization
+
+This section contains {{onCount}} Operational Needs and {{orCount}} Operational Requirements organized by functional area.
+
+{{#rootFolders}}
+=== Folders
+
+{{#items}}
+* xref:{{{path}}}/index.adoc[{{name}}]
+{{/items}}
+
+{{/rootFolders}}
+{{#rootONs}}
+=== Root Operational Needs
+
+{{#items}}
+* xref:{{{path}}}/{{{file}}}[{{title}}]
+{{/items}}
+
+{{/rootONs}}
+{{#rootORs}}
+=== Root Operational Requirements
+
+{{#items}}
+* xref:{{{path}}}/{{{file}}}[{{title}}]
+{{/items}}
+{{/rootORs}}

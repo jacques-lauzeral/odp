@@ -2,6 +2,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import archiver from 'archiver';
+import { DetailsModuleGenerator } from './publication/generators/DetailsModuleGenerator.js';
 
 /**
  * PublicationService handles generation of ODIP publications
@@ -30,8 +31,14 @@ class PublicationService {
             console.log(`Generating Antora site for ${editionId ? `edition ${editionId}` : 'entire repository'}`);
             console.log(`Static content path: ${this.staticContentPath}`);
 
-            // Generate Antora structure by copying static directory tree as-is
-            const zipBuffer = await this._createAntoraZip();
+            // Generate dynamic content (details module with DrG pages)
+            console.log('Generating details module...');
+            const detailsGenerator = new DetailsModuleGenerator(userId);
+            const detailsFiles = await detailsGenerator.generate();
+            console.log(`Generated ${Object.keys(detailsFiles).length} details module files`);
+
+            // Generate Antora structure by copying static + adding dynamic content
+            const zipBuffer = await this._createAntoraZip(detailsFiles);
 
             console.log(`Antora site generated successfully (${zipBuffer.length} bytes)`);
             return zipBuffer;
@@ -43,10 +50,10 @@ class PublicationService {
     }
 
     /**
-     * Create ZIP archive by copying static directory tree
+     * Create ZIP archive by copying static directory tree and adding dynamic content
      * @private
      */
-    async _createAntoraZip() {
+    async _createAntoraZip(detailsFiles) {
         return new Promise(async (resolve, reject) => {
             const archive = archiver('zip', { zlib: { level: 9 } });
             const chunks = [];
@@ -67,9 +74,14 @@ class PublicationService {
 
                 archive.directory(this.staticContentPath, false);
 
+                // Add generated details module files
+                for (const [filePath, content] of Object.entries(detailsFiles)) {
+                    archive.append(content, { name: `modules/${filePath}` });
+                }
+
                 await archive.finalize();
             } catch (error) {
-                reject(new Error(`Failed to archive static content: ${error.message}`));
+                reject(new Error(`Failed to archive content: ${error.message}`));
             }
         });
     }
