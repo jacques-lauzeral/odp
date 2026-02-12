@@ -9,6 +9,7 @@ import {
     rollbackTransaction,
     operationalRequirementStore
 } from '../../../store/index.js';
+import DeltaToAsciidocConverter from '../../export/DeltaToAsciidocConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,7 @@ export class DetailsModuleGenerator {
         this.userId = userId;
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
+        this.deltaConverter = new DeltaToAsciidocConverter();
     }
 
     /**
@@ -39,6 +41,9 @@ export class DetailsModuleGenerator {
             // Store for nav generation
             this.allOns = ons;
             this.allOrs = ors;
+
+            // Initialize image collection
+            this.allImages = [];
 
             // Build lookup maps for cross-references (by itemId)
             // For refining children, we'll update their paths after tree building
@@ -79,8 +84,16 @@ export class DetailsModuleGenerator {
                 Object.assign(files, drgFiles);
             }
 
+            // Add extracted images to files
+            for (const image of this.allImages) {
+                const imageBuffer = Buffer.from(image.data, 'base64');
+                files[`details/images/${image.filename}`] = imageBuffer;
+            }
+
             // Generate details module navigation
             files['details/nav.adoc'] = this._generateDetailsNav(Array.from(drgs));
+
+            console.log(`Extracted ${this.allImages.length} images from statements/rationales`);
 
             return files;
 
@@ -299,35 +312,64 @@ export class DetailsModuleGenerator {
 
     /**
      * Build refinement-based hierarchy by nesting children under parents
+     * Processes in multiple passes to handle multi-level refinements
      * @private
      */
     _buildRefinementTree(tree, refinementEntities) {
         // Add children arrays to all entities in tree
         this._addChildrenArrays(tree);
 
-        // Process refinement entities - attach them to their parents
-        for (const { entity, type } of refinementEntities) {
-            const parentId = entity.refinesParents[0].id;
-            const parentNode = this._findEntityInTree(tree, parentId);
+        // Process refinements in multiple passes until all are placed
+        let unprocessed = [...refinementEntities];
+        let previousCount = unprocessed.length;
 
-            if (!parentNode) {
-                console.warn(`${type.toUpperCase()} ${entity.itemId} refines ${parentId} which was not found in tree - adding to root`);
-                if (type === 'on') {
-                    tree.ons.push(entity);
+        while (unprocessed.length > 0) {
+            const stillUnprocessed = [];
+
+            for (const { entity, type } of unprocessed) {
+                const parentId = entity.refinesParents[0].id;
+                const parentNode = this._findEntityInTree(tree, parentId);
+
+                if (!parentNode) {
+                    // Parent not yet in tree - try again next pass
+                    stillUnprocessed.push({ entity, type });
                 } else {
-                    tree.ors.push(entity);
-                }
-            } else {
-                // Add to parent's children
-                if (!parentNode.children) {
-                    parentNode.children = { ons: [], ors: [] };
-                }
-                if (type === 'on') {
-                    parentNode.children.ons.push(entity);
-                } else {
-                    parentNode.children.ors.push(entity);
+                    // Add to parent's children
+                    if (!parentNode.children) {
+                        parentNode.children = { ons: [], ors: [] };
+                    }
+                    if (type === 'on') {
+                        parentNode.children.ons.push(entity);
+                        // Initialize children for this entity too
+                        entity.children = { ons: [], ors: [] };
+                    } else {
+                        parentNode.children.ors.push(entity);
+                        // Initialize children for this entity too
+                        entity.children = { ons: [], ors: [] };
+                    }
                 }
             }
+
+            unprocessed = stillUnprocessed;
+
+            // Check if we made progress - if not, we have orphaned refinements
+            if (unprocessed.length === previousCount) {
+                // No progress made - log warnings and add to root
+                for (const { entity, type } of unprocessed) {
+                    const parentId = entity.refinesParents[0].id;
+                    console.warn(`${type.toUpperCase()} ${entity.itemId} refines ${parentId} which was not found in tree - adding to root`);
+                    if (type === 'on') {
+                        tree.ons.push(entity);
+                        entity.children = { ons: [], ors: [] };
+                    } else {
+                        tree.ors.push(entity);
+                        entity.children = { ons: [], ors: [] };
+                    }
+                }
+                break;
+            }
+
+            previousCount = unprocessed.length;
         }
     }
 
@@ -351,22 +393,58 @@ export class DetailsModuleGenerator {
     }
 
     /**
-     * Find an entity by itemId anywhere in the tree
+     * Find an entity by itemId anywhere in the tree (including in children)
      * @private
      */
     _findEntityInTree(node, itemId) {
         // Check ONs at this level
         for (const on of node.ons || []) {
             if (on.itemId === itemId) return on;
+            // Search in children recursively
+            if (on.children) {
+                const found = this._findEntityInChildren(on.children, itemId);
+                if (found) return found;
+            }
         }
         // Check ORs at this level
         for (const or of node.ors || []) {
             if (or.itemId === itemId) return or;
+            // Search in children recursively
+            if (or.children) {
+                const found = this._findEntityInChildren(or.children, itemId);
+                if (found) return found;
+            }
         }
         // Recurse into folders
         for (const folder of Object.values(node.folders || {})) {
             const found = this._findEntityInTree(folder, itemId);
             if (found) return found;
+        }
+        return null;
+    }
+
+    /**
+     * Find entity in children structure
+     * @private
+     */
+    _findEntityInChildren(children, itemId) {
+        // Check child ONs
+        for (const on of children.ons || []) {
+            if (on.itemId === itemId) return on;
+            // Recurse into this child's children
+            if (on.children) {
+                const found = this._findEntityInChildren(on.children, itemId);
+                if (found) return found;
+            }
+        }
+        // Check child ORs
+        for (const or of children.ors || []) {
+            if (or.itemId === itemId) return or;
+            // Recurse into this child's children
+            if (or.children) {
+                const found = this._findEntityInChildren(or.children, itemId);
+                if (found) return found;
+            }
         }
         return null;
     }
@@ -575,16 +653,28 @@ export class DetailsModuleGenerator {
      * Prepare data for ON template
      * @private
      */
-    /**
-     * Prepare data for ON template
-     * @private
-     */
     _prepareONData(on, currentPath, drg) {
+        // Reset image tracking before processing
+        this.deltaConverter.resetImageTracking();
+
+        // Convert statement and rationale
+        const statement = on.statement ? this.deltaConverter.deltaToAsciidoc(on.statement) : null;
+        const statementImages = [...this.deltaConverter.getExtractedImages()];
+
+        this.deltaConverter.resetImageTracking();
+        const rationale = on.rationale ? this.deltaConverter.deltaToAsciidoc(on.rationale) : null;
+        const rationaleImages = [...this.deltaConverter.getExtractedImages()];
+
+        // Collect all images
+        this.allImages.push(...statementImages, ...rationaleImages);
+
         return {
             title: on.title,
             itemId: on.itemId,
             drg: drg,
             path: on.path ? on.path.join(' / ') : null,
+            statement: statement,
+            rationale: rationale,
             refinesParents: on.refinesParents && on.refinesParents.length > 0 ? (() => {
                 const parent = on.refinesParents[0];
                 const parentInfo = this.onLookup.get(parent.id);
@@ -633,16 +723,28 @@ export class DetailsModuleGenerator {
      * Prepare data for OR template
      * @private
      */
-    /**
-     * Prepare data for OR template
-     * @private
-     */
     _prepareORData(or, currentPath, drg) {
+        // Reset image tracking before processing
+        this.deltaConverter.resetImageTracking();
+
+        // Convert statement and rationale
+        const statement = or.statement ? this.deltaConverter.deltaToAsciidoc(or.statement) : null;
+        const statementImages = [...this.deltaConverter.getExtractedImages()];
+
+        this.deltaConverter.resetImageTracking();
+        const rationale = or.rationale ? this.deltaConverter.deltaToAsciidoc(or.rationale) : null;
+        const rationaleImages = [...this.deltaConverter.getExtractedImages()];
+
+        // Collect all images
+        this.allImages.push(...statementImages, ...rationaleImages);
+
         return {
             title: or.title,
             itemId: or.itemId,
             drg: drg,
             path: or.path ? or.path.join(' / ') : null,
+            statement: statement,
+            rationale: rationale,
             implementedONs: or.implementedONs && or.implementedONs.length > 0 ? {
                 ons: or.implementedONs.map(on => {
                     const onInfo = this.onLookup.get(on.id);
