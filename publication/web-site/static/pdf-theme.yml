@@ -1,0 +1,13 @@
+extends: default
+base:
+  font-color: #333333
+  font-family: Noto Serif
+heading:
+  font-color: #0066cc
+  font-family: Noto Sans
+  font-weight: bold
+link:
+  font-color: #0066cc
+code:
+  font-color: #c7254e
+  background-color: #f9f2f4

@@ -1,0 +1,16 @@
+component_versions: '**'
+asciidoc:
+  attributes:
+    allow-uri-read: ''
+    source-highlighter: rouge
+    toc: ''
+    toclevels: 3
+    sectnums: ''
+    sectnumlevels: 7
+    revnumber: '0.1'                    # ← Edition number
+    revdate: '2026-02-13'               # ← Date
+    revremark: 'DRAFT'                  # ← Status
+    version-label: 'Edition'            # ← Changes "Version" to "Edition"
+pdf-theme: ./pdf-theme.yml
+build:
+  command: bundle exec asciidoctor-pdf
