@@ -8,6 +8,9 @@
 {{#path}}
 *Path:* {{path}} +
 {{/path}}
+{{#refinesParents}}
+*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
+{{/refinesParents}}
 --
 
 {{#statement}}
@@ -28,10 +31,6 @@
 {{{flows}}}
 
 {{/flows}}
-{{#refinesParents}}
-*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
-
-{{/refinesParents}}
 {{#refinedBy}}
 
 == Refined By
@@ -48,19 +47,3 @@
 * xref:{{{path}}}/{{{file}}}[OR-{{id}}: {{title}}]
 {{/items}}
 {{/implementedBy}}
-{{#implementingORs}}
-
-== Implementing Requirements
-
-{{#ors}}
-* xref:{{{path}}}/{{{file}}}[{{title}}]
-{{/ors}}
-{{/implementingORs}}
-{{#subONs}}
-
-== Sub-ONs
-
-{{#ons}}
-* xref:{{{path}}}/{{{file}}}[{{title}}]
-{{/ons}}
-{{/subONs}}

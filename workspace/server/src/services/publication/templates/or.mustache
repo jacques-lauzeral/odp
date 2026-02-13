@@ -8,6 +8,12 @@
 {{#path}}
 *Path:* {{path}} +
 {{/path}}
+{{#implementedONs}}
+*Implements:* {{#ons}}xref:{{{path}}}/{{{file}}}[{{title}}]{{^last}}, {{/last}}{{/ons}} +
+{{/implementedONs}}
+{{#refinesParents}}
+*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
+{{/refinesParents}}
 --
 
 {{#statement}}
@@ -28,14 +34,7 @@
 {{{flows}}}
 
 {{/flows}}
-{{#implementedONs}}
-*Implements:* {{#ons}}xref:{{{path}}}/{{{file}}}[{{title}}]{{^last}}, {{/last}}{{/ons}}
 
-{{/implementedONs}}
-{{#refinesParents}}
-*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
-
-{{/refinesParents}}
 {{#refinedBy}}
 
 == Refined By
