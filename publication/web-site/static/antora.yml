@@ -1,0 +1,6 @@
+name: odip
+version: ~
+title: ODIP
+nav:
+  - modules/ROOT/nav.adoc
+  - modules/details/nav.adoc

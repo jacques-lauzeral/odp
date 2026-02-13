@@ -1,0 +1,68 @@
+site:
+  title: ODIP
+  url: http://localhost:8081
+  start_page: odip:ROOT:index.adoc
+
+content:
+  sources:
+  - url: .
+    branches: HEAD
+
+antora:
+  extensions:
+  - '@antora/lunr-extension'
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+  supplemental_files:
+  - path: ui.yml
+    contents: |
+      static_files:
+      - .nojekyll
+      supplemental_ui: true
+  - path: partials/head-styles.hbs
+    contents: |
+      <link rel="stylesheet" href="{{{uiRootPath}}}/css/site.css">
+      <style>
+        .edit-this-page {
+          display: none !important;
+        }
+      </style>
+  - path: partials/footer-content.hbs
+    contents: |
+      <footer class="footer">
+        <p>© EUROCONTROL - All rights reserved</p>
+        <p>This page was built using the Antora default UI.</p>
+        <p>The source code for this UI is licensed under the terms of the MPL-2.0 license.</p>
+      </footer>
+  - path: partials/header-content.hbs
+    contents: |
+      <header class="header">
+        <nav class="navbar">
+          <div class="navbar-brand">
+            <a class="navbar-item" href="{{{or siteRootUrl (relativize siteRootPath)}}}/index.html">NM Operational Development and Implementation Plan (ODIP)</a>
+          </div>
+          <div class="navbar-menu">
+            <div class="navbar-end">
+              <div class="navbar-item">
+                <div class="search">
+                  <input id="search-input" type="text" placeholder="Search docs">
+                </div>
+              </div>
+              <div class="navbar-item has-dropdown is-hoverable">
+                <a class="navbar-link">Download</a>
+                <div class="navbar-dropdown">
+                  <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/downloads/odip-complete.pdf">PDF Version</a>
+                  <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/downloads/odip-complete.docx">Word Version</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </nav>
+      </header>
+
+asciidoc:
+  attributes:
+    page-pagination: ''

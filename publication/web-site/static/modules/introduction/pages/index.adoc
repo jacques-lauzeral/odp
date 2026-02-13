@@ -1,0 +1,52 @@
+= Introduction
+
+== Purpose of the ODIP
+
+
+The NM Operational Development and Implementation Plan (ODIP) aims at...
+
+== Underlying Concepts and Definitions
+
+Operational Need (ON)::
++
+--
+An ON expresses a need agreed between NM and operational stakeholders via appropriate Working Arrangements. 
+
+An ON is in general stable over time: while operational solutions (framed by ORs) may evolve to reflect changing constraints, the underlying ON typically remains valid across time.
+
+ONs are the starting point of dialogue with operational stakeholders. 
+
+From NMB decision, it is imperative that the ON traces back to at least one Reference Document. 
+--
+
+Operational Requirement (OR)::
++
+--
+The OR is a brick of the ON implementation.
+The OR details a part of the ON implementation that makes sense from the operational point of view. 
+
+The granularity of the OR and its level of details must be chosen to enable flexibility for its development and deployment planning in a later stage (see OC and ODP below), as well as its understanding by software providers and iCDM as well. I.e., for a given ON, it is strongly recommended to rather have more and smaller ORs than a single large one implementing the entire ON in one shot.
+
+The OR is meant to be detailed enough for the technical team to be able to derive technical solutions without making assumptions on the OR meaning.
+--
+
+
+== Audience
+
+...
+
+== Scope and Assumptions
+
+...
+ 
+== Organisation
+
+...
+
+== Document maturity model 
+
+(Conceptual / Defined / Advanced) + how it is applied
+
+== Change Log 
+
+...
