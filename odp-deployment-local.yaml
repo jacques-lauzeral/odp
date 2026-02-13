@@ -40,12 +40,12 @@ spec:
         - name: NEO4J_PASSWORD
           value: "password123"
         - name: STATIC_CONTENT_PATH
-          value: "/home/jacques/odp-tool/odp-publication/static"
+          value: "/home/jacques/works/github/odp/publication/web-site/static"
       volumeMounts:
         - name: odp-code
           mountPath: /app
         - name: static-content
-          mountPath: /home/jacques/odp-tool/odp-publication/static
+          mountPath: /home/jacques/works/github/odp/publication/web-site/static
 
     # Web Client
     - name: web-client
@@ -69,5 +69,5 @@ spec:
         type: Directory
     - name: static-content
       hostPath:
-        path: /home/jacques/odp-tool/odp-publication/static
+        path: /home/jacques/works/github/odp/publication/web-site/static
         type: Directory

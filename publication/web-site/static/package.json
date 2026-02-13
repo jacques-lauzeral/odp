@@ -1,0 +1,13 @@
+{
+  "name": "odip-web-site",
+  "version": "1.0.0",
+  "description": "ODIP documentation website",
+  "scripts": {
+    "build": "antora antora-playbook.yml"
+  },
+  "devDependencies": {
+    "@antora/cli": "^3.1.0",
+    "@antora/site-generator": "^3.1.0",
+    "@antora/lunr-extension": "^1.0.0-alpha.13"
+  }
+}

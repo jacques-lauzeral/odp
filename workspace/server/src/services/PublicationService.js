@@ -17,7 +17,7 @@ class PublicationService {
     constructor() {
         // Use environment variable for static content path, with fallback
         this.staticContentPath = process.env.STATIC_CONTENT_PATH ||
-            '/home/jacques/odp-tool/odp-publication/static';
+            path.join(__dirname, '../../publication/web-site/static');
     }
 
     /**
