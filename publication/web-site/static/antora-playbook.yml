@@ -56,7 +56,7 @@ ui:
                 <div class="navbar-item has-dropdown is-hoverable">
                   <a class="navbar-link">Download</a>
                   <div class="navbar-dropdown">
-                    <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/_exports/index.pdf">PDF Version</a>
+                    <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/odip/_exports/index.pdf">PDF Version</a>
                     <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/downloads/odip-complete.docx">Word Version</a>
                   </div>
                 </div>
