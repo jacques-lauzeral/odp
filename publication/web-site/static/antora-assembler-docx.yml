@@ -1,0 +1,15 @@
+component_versions: '**'
+asciidoc:
+  attributes:
+    allow-uri-read: ''
+    source-highlighter: rouge
+    toc: ''
+    toclevels: 3
+    sectnums: ''
+    sectnumlevels: 7
+    revnumber: '0.1'
+    revdate: '2026-02-13'
+    revremark: 'DRAFT'
+    version-label: 'Edition'
+build:
+  command: bundle exec asciidoctor -b docbook

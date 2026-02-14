@@ -11,8 +11,8 @@ content:
 antora:
   extensions:
     - '@antora/lunr-extension'
-    - require: '@antora/pdf-extension'
-      assembler_config: ./antora-assembler.yml
+    - require: './antora-docx-extension.js'
+      assembler_config: ./antora-assembler-docx.yml
 
 ui:
   bundle:
