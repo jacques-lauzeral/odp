@@ -6,6 +6,8 @@
 
 The purpose of this note is to centralise the ODP tooling reported issues.
 
+See also deprecated document 'Known Issues'.
+
 ## Overview
 
 | `####` | `S/C/W/P` | Title                                                                        | `S/E/P` | Status |
