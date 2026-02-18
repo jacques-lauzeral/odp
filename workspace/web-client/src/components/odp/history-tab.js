@@ -163,7 +163,8 @@ export class HistoryTab {
 
         // versions[0] = latest (newest-first from API)
         const rows = versions.map((v, idx) => {
-            const isLatest     = idx === 0;
+            const isLatest  = idx === 0;
+            const isOldest  = idx === versions.length - 1;
             const versionLabel = `v${v.version}`;
 
             return `
@@ -175,6 +176,7 @@ export class HistoryTab {
                         <span class="history-row-author">${this._escape(v.createdBy || '—')}</span>
                     </div>
                     <div class="history-row-actions">
+                        ${!isOldest ? `
                         <button
                             type="button"
                             class="btn btn-sm btn-secondary history-btn-diff"
@@ -183,6 +185,7 @@ export class HistoryTab {
                         >
                             Diff
                         </button>
+                        ` : ''}
                         ${!isLatest ? `
                         <button
                             type="button"
@@ -260,15 +263,16 @@ export class HistoryTab {
 
         const versions  = this._versions;
 
-        // Find target index by versionNumber (stored in data-version-number on the button)
+        // Find target index by versionNumber
         const targetIdx = versions.findIndex(v => String(v.version) === String(versionNumber));
-        const prevVersion = versions[targetIdx + 1]; // newest-first, so +1 = older = previous
 
-        // All versions except the target, with previous pre-selected
-        const compareSelectOptions = versions
-            .filter(v => String(v.version) !== String(versionNumber))
-            .map(v => {
-                const isPreselected = prevVersion && String(v.version) === String(prevVersion.version);
+        // Only versions older than the target (higher index = older in newest-first array)
+        const olderVersions = versions.slice(targetIdx + 1);
+
+        // All older versions, first one (previous) pre-selected
+        const compareSelectOptions = olderVersions
+            .map((v, idx) => {
+                const isPreselected = idx === 0;
                 return `<option value="${this._escape(String(v.version))}" ${isPreselected ? 'selected' : ''}>v${this._escape(String(v.version))} — ${this._formatDate(v.createdAt)} · ${this._escape(v.createdBy || '—')}</option>`;
             }).join('');
 
@@ -333,7 +337,7 @@ export class HistoryTab {
                             <p>
                                 Restoring <strong>v${this._escape(versionNumber)}</strong> will create a new version
                                 based on this snapshot, overriding the current content
-                                ${latestVersion ? `(<strong>v${this._escape(String(latestVersion.versionNumber))}</strong>)` : ''}.
+                                ${latestVersion ? `(<strong>v${this._escape(String(latestVersion.version))}</strong>)` : ''}.
                                 This action cannot be undone.
                             </p>
                         </div>
