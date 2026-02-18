@@ -39,6 +39,7 @@ export default class RequirementForm extends CollectionEntityForm {
         this.cacheTimeout = 60000; // 1 minute cache
 
         // HistoryTab – lazy-loads version history when the History tab is activated
+        // readOnly is set dynamically via loadHistory() based on the calling context
         this.historyTab = new HistoryTab(apiClient);
     }
 
@@ -93,11 +94,11 @@ export default class RequirementForm extends CollectionEntityForm {
      * (after the caller injects the generated HTML), then renders immediately.
      * Works in both modal and detail-panel (non-modal) mode.
      */
-    loadHistory(item) {
+    loadHistory(item, readOnly = false) {
         if (!item?.itemId) return;
 
-        // Reset previous state
-        this.historyTab.reset();
+        // Reset previous state and re-create with correct readOnly mode
+        this.historyTab = new HistoryTab(apiClient, { readOnly });
 
         // Start fetching immediately — data will be ready when container appears
         this.historyTab.preload('operational-requirements', item.itemId);
@@ -572,7 +573,7 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     async showEditModal(item) {
-        this.loadHistory(item);
+        this.loadHistory(item, false);
         // Set up the callback to execute after modal is fully initialized
         this.context.onModalReady = () => {
             this.bindTypeChangeEvents();
@@ -587,12 +588,12 @@ export default class RequirementForm extends CollectionEntityForm {
     // ====================
 
     async showReadOnlyModal(item) {
-        this.loadHistory(item);
+        this.loadHistory(item, true);
         await super.showReadOnlyModal(item);
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
-        this.loadHistory(item);
+        this.loadHistory(item, true);
         return await super.generateReadOnlyView(item, preserveTabIndex);
     }
 }

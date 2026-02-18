@@ -31,6 +31,7 @@ export class HistoryTab {
 
         this.onDiff    = callbacks.onDiff    || ((vId, cId) => console.log(`[HistoryTab] Diff: version=${vId} vs compare=${cId}`));
         this.onRestore = callbacks.onRestore || ((vId)      => console.log(`[HistoryTab] Restore: version=${vId}`));
+        this.readOnly  = callbacks.readOnly  || false;
 
         // State
         this._container  = null;
@@ -186,7 +187,7 @@ export class HistoryTab {
                             Diff
                         </button>
                         ` : ''}
-                        ${!isLatest ? `
+                        ${(!isLatest && !this.readOnly) ? `
                         <button
                             type="button"
                             class="btn btn-sm btn-warning history-btn-restore"

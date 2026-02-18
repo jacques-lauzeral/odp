@@ -48,6 +48,7 @@ export default class ChangeForm extends CollectionEntityForm {
         );
 
         // HistoryTab - lazy-loads version history when the History tab is activated
+        // readOnly is set dynamically via loadHistory() based on the calling context
         this.historyTab = new HistoryTab(apiClient);
 
 
@@ -105,11 +106,11 @@ export default class ChangeForm extends CollectionEntityForm {
      * Uses a MutationObserver to detect when #history-tab-container enters the DOM,
      * then renders immediately. Works in both modal and detail-panel (non-modal) mode.
      */
-    loadHistory(item) {
+    loadHistory(item, readOnly = false) {
         if (!item?.itemId) return;
 
-        // Reset previous state
-        this.historyTab.reset();
+        // Reset previous state and re-create with correct readOnly mode
+        this.historyTab = new HistoryTab(apiClient, { readOnly });
 
         // Start fetching immediately
         this.historyTab.preload('operational-changes', item.itemId);
@@ -432,7 +433,7 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
 
     async showEditModal(item) {
-        this.loadHistory(item);
+        this.loadHistory(item, false);
         console.log('ChangeForm.showEditModal - item:', item?.itemId);
         await super.showEditModal(item);
 
@@ -448,7 +449,7 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     async showReadOnlyModal(item) {
-        this.loadHistory(item);
+        this.loadHistory(item, true);
         await super.showReadOnlyModal(item);
 
         // Load milestones for read-only view
@@ -510,7 +511,7 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
-        this.loadHistory(item);
+        this.loadHistory(item, true);
         return await super.generateReadOnlyView(item, preserveTabIndex);
     }
 
