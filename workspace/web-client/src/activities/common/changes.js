@@ -74,6 +74,7 @@ export default class ChangesEntity {
             context: { setupData },
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
+            filterMatchers: this.getFilterMatchers(),
             onItemSelect: (item) => this.handleItemSelect(item),
             getEmptyStateMessage: () => ({
                 icon: '🔄',
@@ -227,7 +228,7 @@ export default class ChangesEntity {
         console.log('ChangesEntity.applySharedState:', sharedState);
 
         if (sharedState.filters && this.collection) {
-            this.collection.currentFilters = { ...sharedState.filters };
+            this.collection.applyFilters(sharedState.filters);
         }
 
         if (sharedState.selectedItem && this.collection) {
@@ -256,8 +257,9 @@ export default class ChangesEntity {
         }
 
         if (this.currentPerspective === 'collection') {
-            this.collection.applyFilters();
+            this.collection.renderContent();
         } else if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+            // collection.filteredData is now correctly filtered before feeding timeline
             this.timelineGrid.setData(this.collection.filteredData || this.data);
         }
     }
@@ -370,7 +372,7 @@ export default class ChangesEntity {
 
         if (sharedState) {
             if (sharedState.filters) {
-                this.collection.currentFilters = { ...sharedState.filters };
+                this.collection.applyFilters(sharedState.filters);
             }
             if (sharedState.grouping) {
                 this.collection.currentGrouping = sharedState.grouping;
@@ -417,6 +419,149 @@ export default class ChangesEntity {
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
+    }
+
+    // ====================
+    // FILTER MATCHERS
+    // ====================
+
+    /**
+     * Called by the activity when FilterBar fires 'filtersChanged'.
+     * Propagates the new filter array to the collection perspective and,
+     * if temporal is active, re-feeds the timeline with the filtered data.
+     *
+     * @param {Array} activeFilters  Array of { key, label, value, displayValue }
+     */
+    handleFilterChange(activeFilters) {
+        // Store on shared state so perspective switches preserve filters
+        this.sharedState.filters = activeFilters;
+
+        // Always update collection (it is the source of truth for filteredData)
+        this.collection.applyFilters(activeFilters);
+
+        // If temporal is active, refresh timeline with the freshly filtered data
+        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
+            let dataToShow = this.collection.filteredData;
+            if (this.sharedState.timeWindow) {
+                dataToShow = this.filterChangesByTimeWindow(dataToShow, this.sharedState.timeWindow);
+            }
+            this.timelineGrid.setData(dataToShow);
+        }
+    }
+
+    /**
+     * Filter predicates for changes.
+     * One entry per filter key defined in AbstractInteractionActivity.getFilterConfig().
+     * Each function: (item, filterValue, context) => boolean
+     *
+     * Rules:
+     *   - Return true  => item passes (keep it)
+     *   - Return false => item is hidden
+     *   - All active matchers are ANDed together by CollectionEntity._applyFiltersToData()
+     */
+    getFilterMatchers() {
+        return {
+
+            // -- Drafting Group -----------------------------------------------
+            drg: (item, value) => {
+                if (!value) return true;
+                return item.drg === value;
+            },
+
+            // -- Full-text: title, code, purpose, details ---------------------
+            text: (item, value) => {
+                if (!value) return true;
+                const q = value.toLowerCase();
+                return [
+                    item.title,
+                    item.code,
+                    item.purpose,
+                    item.details,
+                    item.initialState,
+                    item.finalState
+                ].some(field => field && field.toLowerCase().includes(q));
+            },
+
+            // -- Stakeholder Impact -------------------------------------------
+            stakeholderCategory: (item, value) => {
+                if (!value) return true;
+                const arr = item.impactsStakeholderCategories || [];
+                return arr.some(v => this._matchesSetupRef(v, value));
+            },
+
+            // -- Data Impact --------------------------------------------------
+            dataCategory: (item, value) => {
+                if (!value) return true;
+                const arr = item.impactsData || [];
+                return arr.some(v => this._matchesSetupRef(v, value));
+            },
+
+            // -- Service Impact -----------------------------------------------
+            service: (item, value) => {
+                if (!value) return true;
+                const arr = item.impactsServices || [];
+                return arr.some(v => this._matchesSetupRef(v, value));
+            },
+
+            // -- Document Reference ------------------------------------------
+            document: (item, value) => {
+                if (!value) return true;
+                const arr = item.documentReferences || [];
+                const q = value.toString().toLowerCase();
+                return arr.some(ref => {
+                    const doc = ref?.document || ref;
+                    if (!doc) return false;
+                    const id = (doc.id ?? doc).toString().toLowerCase();
+                    const name = (doc.name || doc.title || '').toLowerCase();
+                    return id === q || id.includes(q) || name.includes(q);
+                });
+            },
+
+            // -- Wave: match any milestone whose wave matches the filter ------
+            wave: (item, value) => {
+                if (!value) return true;
+                const waves = this.extractAllWavesFromMilestones(item);
+                return waves.some(w => {
+                    const id = (typeof w === 'object' ? w.id : w)?.toString();
+                    return id === value.toString();
+                });
+            },
+
+            // -- Satisfies (entity reference array) ---------------------------
+            satisfies: (item, value) => {
+                if (!value) return true;
+                const arr = item.satisfiesRequirements || [];
+                return arr.some(ref => this._matchesEntityRef(ref, value));
+            }
+        };
+    }
+
+    /**
+     * Match a setup-data reference value against a filter value.
+     * Handles both plain ID strings and { id, name } objects.
+     */
+    _matchesSetupRef(ref, filterValue) {
+        if (!ref) return false;
+        const fv = filterValue.toString().toLowerCase();
+        if (typeof ref === 'object') {
+            return (ref.id?.toString().toLowerCase() === fv) ||
+                (ref.name?.toLowerCase().includes(fv)) ||
+                (ref.title?.toLowerCase().includes(fv));
+        }
+        return ref.toString().toLowerCase() === fv;
+    }
+
+    /**
+     * Match an entity reference against a filter value.
+     * Tries id, itemId, title, and code fields.
+     */
+    _matchesEntityRef(ref, filterValue) {
+        if (!ref) return false;
+        const fv = filterValue.toString().toLowerCase();
+        const id    = (ref.itemId ?? ref.id ?? ref)?.toString().toLowerCase();
+        const title = (ref.title || ref.name || '').toLowerCase();
+        const code  = (ref.code || '').toLowerCase();
+        return id === fv || title.includes(fv) || code.includes(fv);
     }
 
     // ====================

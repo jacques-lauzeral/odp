@@ -1,4 +1,5 @@
 import { async as asyncUtils } from '../../shared/utils.js';
+import FilterBar from '../../components/odp/filter-bar.js';
 import { apiClient } from '../../shared/api-client.js';
 import {
     DraftingGroup,
@@ -49,12 +50,16 @@ export default class AbstractInteractionActivity {
 
         // Centralized state management for perspective coordination
         this.sharedState = {
-            filters: {},
+            filters: [],   // now an array of { key, label, value, displayValue }
             selectedItem: null,
             grouping: 'none',
             // Temporal-specific state (milestone event type filters only)
             eventTypeFilters: ['ANY']
         };
+
+        // FilterBar instance – created in renderDynamicControls, held here so
+        // preserveCurrentState and clearAllFilters can reach it without a DOM query.
+        this.filterBar = null;
 
         // Available event types from shared enum (5 specific milestone events)
         this.availableEventTypes = Object.keys(MilestoneEventType);
@@ -181,26 +186,10 @@ export default class AbstractInteractionActivity {
 
     // State preservation methods
     preserveCurrentState() {
-        // Read current filter values from UI inputs (the actual source of truth)
-        const filterInputs = this.container.querySelectorAll('[data-filter-key]');
-        const currentFilters = {};
-
-        filterInputs.forEach(input => {
-            const filterKey = input.dataset.filterKey;
-            let filterValue = '';
-
-            if (input.type === 'text') {
-                filterValue = input.value;
-            } else if (input.tagName === 'SELECT') {
-                filterValue = input.value;
-            }
-
-            if (filterValue && filterValue !== '') {
-                currentFilters[filterKey] = filterValue;
-            }
-        });
-
-        this.sharedState.filters = currentFilters;
+        // Read filter state directly from FilterBar (single source of truth)
+        if (this.filterBar) {
+            this.sharedState.filters = this.filterBar.getFilters();
+        }
 
         // Preserve selection and grouping from collection if available
         if (this.currentEntityComponent?.collection) {
@@ -209,7 +198,6 @@ export default class AbstractInteractionActivity {
         }
 
         console.log('Preserved shared state:', this.sharedState);
-        console.log('Preserved filters from UI:', currentFilters);
     }
 
     updateSharedSelection(selectedItem) {
@@ -578,59 +566,97 @@ export default class AbstractInteractionActivity {
      * All filters are always shown regardless of current entity
      * Entities ignore filters they don't understand
      */
+    /**
+     * Filter type definitions consumed by FilterBar.
+     *
+     * inputType values:
+     *   'select'  – low-cardinality: renders a dropdown of static options
+     *   'text'    – free text input with no suggestions
+     *   'suggest' – text input with debounced suggestion box
+     *              (options[] used for client-side matching;
+     *               fetchSuggestionsCallback used for entity-search keys)
+     *
+     * These definitions are shared across all entity types (requirements + changes).
+     * Entity-specific filter matchers in requirements.js / changes.js silently
+     * ignore keys that don't apply to their data model.
+     */
     getFilterConfig() {
         return [
             {
                 key: 'type',
                 label: 'Type',
-                type: 'select',
+                inputType: 'select',
                 options: [
-                    { value: '', label: 'Any' },
                     { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
                     { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
                 ]
             },
             {
                 key: 'text',
-                label: 'Full Text Search',
-                type: 'text',
-                placeholder: 'Search across title, statement, rationale...'
+                label: 'Full Text',
+                inputType: 'text',
+                placeholder: 'Search title, code, statement...'
             },
             {
                 key: 'drg',
                 label: 'Drafting Group',
-                type: 'select',
+                inputType: 'select',
                 options: this.buildDraftingGroupOptions()
-            },
-            {
-                key: 'dataCategory',
-                label: 'Data Impact',
-                type: 'select',
-                options: this.buildOptionsFromSetupData('dataCategories')
             },
             {
                 key: 'stakeholderCategory',
                 label: 'Stakeholder Impact',
-                type: 'select',
+                inputType: 'suggest',
+                placeholder: 'Type to search stakeholders...',
                 options: this.buildOptionsFromSetupData('stakeholderCategories')
             },
             {
                 key: 'service',
-                label: 'Services Impact',
-                type: 'select',
+                label: 'Service Impact',
+                inputType: 'suggest',
+                placeholder: 'Type to search services...',
                 options: this.buildOptionsFromSetupData('services')
+            },
+            {
+                key: 'dataCategory',
+                label: 'Data Impact',
+                inputType: 'suggest',
+                placeholder: 'Type to search data categories...',
+                options: this.buildOptionsFromSetupData('dataCategories')
             },
             {
                 key: 'document',
                 label: 'Document Reference',
-                type: 'select',
+                inputType: 'suggest',
+                placeholder: 'Type to search documents...',
                 options: this.buildOptionsFromSetupData('documents')
             },
             {
                 key: 'wave',
                 label: 'Wave',
-                type: 'select',
+                inputType: 'select',
                 options: this.buildOptionsFromSetupData('waves', 'Any Wave')
+            },
+            {
+                key: 'refines',
+                label: 'Refines',
+                inputType: 'suggest',
+                placeholder: 'Search by code or title...',
+                options: []   // populated via fetchSuggestionsCallback
+            },
+            {
+                key: 'dependsOn',
+                label: 'Depends On',
+                inputType: 'suggest',
+                placeholder: 'Search by code or title...',
+                options: []
+            },
+            {
+                key: 'satisfies',
+                label: 'Satisfies',
+                inputType: 'suggest',
+                placeholder: 'Search by code or title...',
+                options: []
             }
         ];
     }
@@ -665,97 +691,28 @@ export default class AbstractInteractionActivity {
     renderDynamicControls() {
         if (!this.currentEntityComponent) return;
 
-        // Get filter configuration from activity (shared across all entities)
-        const filterConfig = this.getFilterConfig();
-
         // ===== ACTIVITY-LEVEL FILTERS (Full Width) =====
         const activityFiltersContainer = this.container.querySelector('#activityFilters');
         if (activityFiltersContainer) {
-            activityFiltersContainer.innerHTML = `
-                <div class="filter-controls">
-                    ${filterConfig.map(filter => this.renderFilterControl(filter)).join('')}
-                    <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
-                </div>
-            `;
+            // Build FilterBar with current entity's filter config and setup data
+            this.filterBar = new FilterBar(this.getFilterConfig(), this.setupData);
 
-            // Populate filter inputs with preserved values
-            Object.entries(this.sharedState.filters).forEach(([filterKey, filterValue]) => {
-                if (filterValue) {
-                    const input = activityFiltersContainer.querySelector(`[data-filter-key="${filterKey}"]`);
-                    if (input) {
-                        input.value = filterValue;
-                    }
-                }
-            });
-        }
+            // Wire entity-search suggestions for high-cardinality filters
+            this.filterBar.fetchSuggestionsCallback = (key, query) =>
+                this._fetchFilterSuggestions(key, query);
 
-        // Bind events for filter controls
-        this.bindFilterEvents();
-    }
-
-    renderFilterControl(filter) {
-        switch (filter.type) {
-            case 'text':
-                return `
-                    <div class="filter-group">
-                        <label for="filter-${filter.key}">${filter.label}:</label>
-                        <input 
-                            type="text" 
-                            id="filter-${filter.key}"
-                            data-filter-key="${filter.key}"
-                            class="form-control filter-input" 
-                            placeholder="${filter.placeholder || `Filter by ${filter.label.toLowerCase()}...`}"
-                        >
-                    </div>
-                `;
-            case 'select':
-                return `
-                    <div class="filter-group">
-                        <label for="filter-${filter.key}">${filter.label}:</label>
-                        <select 
-                            id="filter-${filter.key}"
-                            data-filter-key="${filter.key}"
-                            class="form-control filter-select"
-                        >
-                            ${filter.options.map(option => {
-                    if (typeof option === 'string') {
-                        return `<option value="${option}">${option}</option>`;
-                    } else {
-                        return `<option value="${option.value}">${option.label}</option>`;
-                    }
-                }).join('')}
-                        </select>
-                    </div>
-                `;
-            default:
-                return '';
-        }
-    }
-
-    bindFilterEvents() {
-        // Filter controls only - entity controls handled by entity views
-
-        // Filter inputs
-        const filterInputs = this.container.querySelectorAll('[data-filter-key]');
-        filterInputs.forEach(input => {
-            const filterKey = input.dataset.filterKey;
-
-            if (input.type === 'text') {
-                input.addEventListener('input', asyncUtils.debounce((e) => {
-                    this.handleSpecificFilter(filterKey, e.target.value);
-                }, 300));
-            } else if (input.tagName === 'SELECT') {
-                input.addEventListener('change', (e) => {
-                    this.handleSpecificFilter(filterKey, e.target.value);
-                });
+            // Restore preserved filter state
+            if (this.sharedState.filters && this.sharedState.filters.length > 0) {
+                this.filterBar.setFilters(this.sharedState.filters);
             }
-        });
 
-        // Clear all filters
-        const clearAllBtn = this.container.querySelector('#clearAllFilters');
-        if (clearAllBtn) {
-            clearAllBtn.addEventListener('click', () => {
-                this.clearAllFilters();
+            // Render the bar into the container
+            this.filterBar.render(activityFiltersContainer);
+
+            // Listen for filter changes and propagate to current entity
+            activityFiltersContainer.addEventListener('filtersChanged', (e) => {
+                this.sharedState.filters = e.detail.filtersArray;
+                this._applyFiltersToEntities(e.detail.filters);
             });
         }
     }
@@ -921,38 +878,32 @@ export default class AbstractInteractionActivity {
         return queryParams;
     }
 
-    handleSpecificFilter(filterKey, filterValue) {
-        // Update shared state
-        this.sharedState.filters[filterKey] = filterValue;
+    /**
+     * Propagate the current filter state (flat object form) to the active entity
+     * and trigger a server-side reload via updateAllBadges.
+     *
+     * Called by FilterBar's filtersChanged event and by clearAllFilters.
+     *
+     * @param {Object} filtersObject  Plain { key: value } map for buildQueryParams
+     */
+    _applyFiltersToEntities(filtersObject) {
+        // Propagate to the active entity component (client-side predicate filtering)
+        if (this.currentEntityComponent?.handleFilterChange) {
+            const filtersArray = this.sharedState.filters;
+            this.currentEntityComponent.handleFilterChange(filtersArray);
+        }
 
-        // Update all badges with current filters (this also injects filtered data to visible entity)
-        this.updateAllBadges(this.sharedState.filters);
+        // Trigger server-side reload with the flat filter object
+        // (buildQueryParams already knows how to consume this format)
+        this.updateAllBadges(filtersObject);
     }
 
     clearAllFilters() {
-        // Clear all filter inputs
-        const filterInputs = this.container.querySelectorAll('[data-filter-key]');
-        filterInputs.forEach(input => {
-            if (input.type === 'text') {
-                input.value = '';
-            } else if (input.tagName === 'SELECT') {
-                input.selectedIndex = 0;
-            }
-
-            // Trigger clear for each filter
-            const filterKey = input.dataset.filterKey;
-            this.handleSpecificFilter(filterKey, '');
-        });
-
-        // Update all badges with no filters
-        this.updateAllBadges({});
-    }
-
-    handleFilter(filterText) {
-        // Legacy method - now handled by handleSpecificFilter
-        if (this.currentEntityComponent?.handleTextFilter) {
-            this.currentEntityComponent.handleTextFilter(filterText);
+        if (this.filterBar) {
+            this.filterBar.clearAll();
+            // filtersChanged event fires automatically, which calls _applyFiltersToEntities
         }
+        this.updateAllBadges({});
     }
 
     handleGrouping(groupBy) {
@@ -1057,6 +1008,47 @@ export default class AbstractInteractionActivity {
         return this.setupData;
     }
 
+    /**
+     * Fetch entity-search suggestions for high-cardinality filter types.
+     * Called by FilterBar.fetchSuggestionsCallback.
+     *
+     * For setup-data-backed types (stakeholder, service, etc.) suggestions come
+     * from the static options list already built into getFilterConfig() – FilterBar
+     * handles those itself.  This method handles entity-reference searches
+     * (refines, dependsOn, satisfies) that need a live query.
+     *
+     * @param {string} key    Filter key (e.g. 'refines', 'dependsOn', 'satisfies')
+     * @param {string} query  Current text input value
+     * @returns {Array}       Array of { value, label }
+     */
+    async _fetchFilterSuggestions(key, query) {
+        if (!query || query.length < 2) return [];
+
+        try {
+            // Map filter key to the appropriate search endpoint
+            const endpointMap = {
+                refines: '/operational-requirements',
+                dependsOn: '/operational-requirements',
+                satisfies: '/operational-requirements'
+            };
+
+            const endpoint = endpointMap[key];
+            if (!endpoint) return [];
+
+            const results = await apiClient.get(
+                `${endpoint}?text=${encodeURIComponent(query)}&limit=10`
+            );
+
+            return (results || []).map(item => ({
+                value: (item.itemId || item.id).toString(),
+                label: `[${item.type || '?'}] ${item.code ? item.code + ' – ' : ''}${item.title}`
+            }));
+        } catch (e) {
+            console.warn('FilterBar suggestion fetch failed:', e);
+            return [];
+        }
+    }
+
     cleanup() {
         if (this.currentEntityComponent?.cleanup) {
             this.currentEntityComponent.cleanup();
@@ -1066,5 +1058,6 @@ export default class AbstractInteractionActivity {
         this.container = null;
         this.currentEntityComponent = null;
         this.setupData = null;
+        this.filterBar = null;
     }
 }

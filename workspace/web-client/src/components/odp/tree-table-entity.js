@@ -1,5 +1,3 @@
-import { async as asyncUtils } from '../../shared/utils.js';
-
 /**
  * TreeTableEntity - Tree-table visualization with virtual hierarchy
  * Builds tree structure from flat entity lists using configurable path builders
@@ -18,7 +16,7 @@ export default class TreeTableEntity {
         this.requirementMap = null;        // ID - Entity map
         this.treeData = null;              // Built tree structure
         this.selectedItem = null;          // Currently selected item
-        this.currentFilters = {};          // Current filter values
+        this.currentFilters = [];          // Active filters – array of { key, value, ... }
         this.expandedNodes = new Set();    // IDs of expanded nodes
 
         // Configuration callbacks (provided by parent entity)
@@ -27,19 +25,20 @@ export default class TreeTableEntity {
         this.columns = options.columns || [];
         this.context = options.context || {};
 
-        // NEW: Column types for rendering delegation (shared with CollectionEntity)
+        // Column types for rendering delegation (shared with CollectionEntity)
         this.columnTypes = options.columnTypes || {};
+
+        /**
+         * filterMatchers: same map injected into CollectionEntity.
+         * (item, filterValue, context) => boolean
+         * RequirementsEntity passes this.getFilterMatchers() here too.
+         */
+        this.filterMatchers = options.filterMatchers || {};
 
         // Event handlers (shared with collection perspective)
         this.onItemSelect = options.onItemSelect || (() => {});
         this.onCreate = options.onCreate || (() => {});
         this.onDataLoaded = options.onDataLoaded || (() => {});
-
-        // Debounced filter application
-        this.debouncedFilter = asyncUtils.debounce(
-            () => this.applyFilters(),
-            300
-        );
     }
 
     // ====================
@@ -140,14 +139,15 @@ export default class TreeTableEntity {
     // ====================
 
     /**
-     * Apply filters to tree nodes
-     * Hides nodes that don't match filters
-     * Shows parent paths for matching nodes
+     * Apply filters to tree nodes and re-render.
+     * Mirrors CollectionEntity.applyFilters() signature so both perspectives
+     * can be driven by the same call from RequirementsEntity.handleFilterChange().
+     *
+     * @param {Array} activeFilters  Array of { key, label, value, displayValue }
      */
-    applyFilters() {
+    applyFilters(activeFilters = []) {
+        this.currentFilters = activeFilters;
         if (!this.treeData) return;
-
-        console.log('TreeTableEntity.applyFilters:', this.currentFilters);
 
         // First pass: mark all leaf nodes based on filter criteria
         this.markLeafNodeVisibility(this.treeData);
@@ -176,39 +176,27 @@ export default class TreeTableEntity {
     }
 
     /**
-     * Check if entity matches current filters
+     * Check if entity matches all active filters.
+     * Delegates to filterMatchers (same predicates used by CollectionEntity)
+     * so filter behaviour is identical across Collection and Tree perspectives.
+     *
      * @param {Object} entity - Entity to check
-     * @returns {boolean} - True if entity matches filters
+     * @returns {boolean} - True if entity passes all active filters
      */
     entityMatchesFilters(entity) {
-        // If no filters, show all
-        if (Object.keys(this.currentFilters).length === 0) {
-            return true;
-        }
+        if (!this.currentFilters || this.currentFilters.length === 0) return true;
 
-        // Apply each filter
-        for (const [key, value] of Object.entries(this.currentFilters)) {
-            if (!value) continue; // Skip empty filters
+        return this.currentFilters.every(({ key, value }) => {
+            if (!value || value === '') return true;
 
-            const entityValue = entity[key];
-
-            // Text search across multiple fields
-            if (key === 'text') {
-                const searchFields = ['title', 'statement', 'rationale', 'flows'];
-                const searchLower = value.toLowerCase();
-                const found = searchFields.some(field => {
-                    const fieldValue = entity[field];
-                    return fieldValue && fieldValue.toLowerCase().includes(searchLower);
-                });
-                if (!found) return false;
+            const matcher = this.filterMatchers[key];
+            if (typeof matcher !== 'function') {
+                // No matcher for this key – pass through (fail-safe)
+                return true;
             }
-            // Exact match for other filters
-            else if (entityValue !== value) {
-                return false;
-            }
-        }
 
-        return true;
+            return matcher(entity, value, this.context);
+        });
     }
 
     /**
@@ -240,15 +228,6 @@ export default class TreeTableEntity {
         }
 
         return hasVisibleDescendant;
-    }
-
-    /**
-     * Update filters and re-apply
-     * @param {Object} filters - New filter values
-     */
-    setFilters(filters) {
-        this.currentFilters = filters;
-        this.debouncedFilter();
     }
 
     // ====================
@@ -599,7 +578,7 @@ export default class TreeTableEntity {
     refresh() {
         if (this.data && this.data.length > 0) {
             this.buildTree(this.data);
-            this.applyFilters();
+            this.applyFilters(this.currentFilters);
         }
     }
 }

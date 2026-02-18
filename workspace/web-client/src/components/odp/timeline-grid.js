@@ -87,21 +87,6 @@ export default class TimelineGrid {
         this.renderContent();
     }
 
-    syncWithCollectionData(collectionData, collectionFilters = {}) {
-        // Apply collection-level filters to timeline data
-        let filteredData = collectionData || [];
-
-        // Apply any additional collection filters that affect timeline
-        // (This allows timeline to stay in sync with collection filtering)
-        this.setData(filteredData);
-    }
-
-    setFilters(filters) {
-        // Apply filters to data (for now, just copy all data)
-        this.filteredData = [...this.data];
-        this.renderContent();
-    }
-
     updateTimeWindow(startDate, endDate) {
         this.timeWindow.start = startDate;
         this.timeWindow.end = endDate;
@@ -547,29 +532,7 @@ export default class TimelineGrid {
     }
 
     // ====================
-    // EXTERNAL STATE CONTROL
-    // ====================
-
-    setFiltersFromExternal(filters) {
-        // Apply collection filters to timeline data
-        this.setData(this.data); // Re-filter current data
-    }
-
-    setSelectedItemFromExternal(item) {
-        if (!item) return;
-
-        const itemId = this.getItemId(item);
-        if (itemId) {
-            this.selectItem(itemId);
-        }
-    }
-
-    setMilestoneFiltersFromExternal(eventTypeFilters) {
-        this.setMilestoneFilters(eventTypeFilters);
-    }
-
-    // ====================
-    // EVENT TYPE VALIDATION (NEW)
+    // EVENT TYPE VALIDATION
     // ====================
 
     /**
@@ -585,13 +548,6 @@ export default class TimelineGrid {
     filterValidEventTypes(eventTypes) {
         if (!Array.isArray(eventTypes)) return [];
         return eventTypes.filter(eventType => this.isValidEventType(eventType));
-    }
-
-    /**
-     * Get display name for event type using shared enum
-     */
-    getEventTypeDisplay(eventType) {
-        return getMilestoneEventTypeDisplay(eventType);
     }
 
     /**
