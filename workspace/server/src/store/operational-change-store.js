@@ -135,6 +135,15 @@ export class OperationalChangeStore extends VersionedItemStore {
                     }`);
                     params.service = filters.service.map(id => this.normalizeId(id));
                 }
+
+                // Relationship-based filtering
+                if (filters.satisfiesOR !== undefined && filters.satisfiesOR !== null) {
+                    whereConditions.push(`EXISTS {
+                        MATCH (version)-[:SATISFIES|SUPERSEDS]->(req:OperationalRequirement)
+                        WHERE id(req) = $satisfiesOR
+                    }`);
+                    params.satisfiesOR = this.normalizeId(filters.satisfiesOR, 'satisfiesOR');
+                }
             }
 
             // Combine WHERE conditions

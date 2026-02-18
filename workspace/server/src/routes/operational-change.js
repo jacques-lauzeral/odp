@@ -60,6 +60,11 @@ class OperationalChangeRouter extends VersionedItemRouter {
             filters.service = req.query.service.split(',').map(id => parseInt(id));
         }
 
+        // Relationship-based filters (single Item ID)
+        if (req.query.satisfiesOR) {
+            filters.satisfiesOR = parseInt(req.query.satisfiesOR);
+        }
+
         return filters;
     }
 }

@@ -40,7 +40,6 @@ export default class RequirementsEntity {
             context: { setupData },
             getColumnConfig: () => this.getColumnConfig(),
             getGroupingConfig: () => this.getGroupingConfig(),
-            filterMatchers: this.getFilterMatchers(),
             onItemSelect: (item) => this.handleItemSelect(item),
             getEmptyStateMessage: () => ({
                 icon: '📋',
@@ -80,11 +79,6 @@ export default class RequirementsEntity {
     applySharedState(sharedState) {
         console.log('RequirementsEntity.applySharedState:', sharedState);
 
-        // Apply filters to both perspectives
-        if (sharedState.filters) {
-            this.collection.applyFilters(sharedState.filters);
-            this.tree.currentFilters = sharedState.filters;
-        }
 
         // Apply selection (shared across perspectives)
         if (sharedState.selectedItem) {
@@ -481,147 +475,11 @@ export default class RequirementsEntity {
      * @param {Array} activeFilters  Array of { key, label, value, displayValue }
      */
     handleFilterChange(activeFilters) {
-        // Store on shared state so perspective switches preserve filters
+        // Store on shared state so perspective switches preserve filters.
+        // No client-side filtering: the activity's _applyFiltersToEntities already
+        // triggers a server-side reload via updateAllBadges, which returns
+        // pre-filtered data. applyFilters() on the collection is therefore a no-op here.
         this.sharedState.filters = activeFilters;
-
-        // Push to both perspectives immediately
-        this.collection.applyFilters(activeFilters);
-        this.tree.currentFilters = activeFilters;  // tree re-reads on next render
-        if (this.currentPerspective === 'tree') {
-            this.tree.render(this.container);
-        }
-    }
-
-    /**
-     * Filter predicates for requirements.
-     * One entry per filter key defined in AbstractInteractionActivity.getFilterConfig().
-     * Each function: (item, filterValue, context) => boolean
-     *
-     * Rules:
-     *   - Return true  => item passes (keep it)
-     *   - Return false => item is hidden
-     *   - All active matchers are ANDed together by CollectionEntity._applyFiltersToData()
-     */
-    getFilterMatchers() {
-        return {
-
-            // -- Type: ON | OR ------------------------------------------------
-            type: (item, value) => {
-                if (!value) return true;
-                return item.type === value;
-            },
-
-            // -- Drafting Group -----------------------------------------------
-            drg: (item, value) => {
-                if (!value) return true;
-                return item.drg === value;
-            },
-
-            // -- Full-text: title, code, statement, rationale -----------------
-            text: (item, value) => {
-                if (!value) return true;
-                const q = value.toLowerCase();
-                return [
-                    item.title,
-                    item.code,
-                    item.statement,
-                    item.rationale,
-                    item.purpose
-                ].some(field => field && field.toLowerCase().includes(q));
-            },
-
-            // -- Stakeholder Impact (array of setup-data IDs or refs) ---------
-            stakeholderCategory: (item, value) => {
-                if (!value) return true;
-                const arr = item.impactsStakeholderCategories || [];
-                return arr.some(v => this._matchesSetupRef(v, value));
-            },
-
-            // -- Data Impact --------------------------------------------------
-            dataCategory: (item, value) => {
-                if (!value) return true;
-                const arr = item.impactsData || [];
-                return arr.some(v => this._matchesSetupRef(v, value));
-            },
-
-            // -- Service Impact -----------------------------------------------
-            service: (item, value) => {
-                if (!value) return true;
-                const arr = item.impactsServices || [];
-                return arr.some(v => this._matchesSetupRef(v, value));
-            },
-
-            // -- Document Reference ------------------------------------------
-            // documentReferences is an array of { document: {id,name}, note? }
-            // or plain ID strings - match on id or name
-            document: (item, value) => {
-                if (!value) return true;
-                const arr = item.documentReferences || [];
-                const q = value.toString().toLowerCase();
-                return arr.some(ref => {
-                    const doc = ref?.document || ref;
-                    if (!doc) return false;
-                    const id = (doc.id ?? doc).toString().toLowerCase();
-                    const name = (doc.name || doc.title || '').toLowerCase();
-                    return id === q || id.includes(q) || name.includes(q);
-                });
-            },
-
-            // -- Wave --------------------------------------------------------
-            wave: (item, value) => {
-                if (!value) return true;
-                const w = item.wave || item.startsFromWave;
-                if (!w) return false;
-                const id = (typeof w === 'object' ? w.id : w)?.toString();
-                return id === value.toString();
-            },
-
-            // -- Refines parent (entity reference array) ----------------------
-            refines: (item, value) => {
-                if (!value) return true;
-                console.log(`Requirements.refines: item title=`, item.title);
-                const arr = item.refinesParents || [];
-                return arr.some(ref => {
-                    console.log(`Requirements.refines: ref=`, ref, `value=`, value);
-                    return this._matchesEntityRef(ref, value);
-                });
-            },
-
-            // -- Depends On (entity reference array) --------------------------
-            dependsOn: (item, value) => {
-                if (!value) return true;
-                const arr = item.dependsOnRequirements || [];
-                return arr.some(ref => this._matchesEntityRef(ref, value));
-            }
-        };
-    }
-
-    /**
-     * Match a setup-data reference value against a filter value.
-     * Handles both plain ID strings and { id, name } objects.
-     */
-    _matchesSetupRef(ref, filterValue) {
-        if (!ref) return false;
-        const fv = filterValue.toString().toLowerCase();
-        if (typeof ref === 'object') {
-            return (ref.id?.toString().toLowerCase() === fv) ||
-                (ref.name?.toLowerCase().includes(fv)) ||
-                (ref.title?.toLowerCase().includes(fv));
-        }
-        return ref.toString().toLowerCase() === fv;
-    }
-
-    /**
-     * Match an entity reference against a filter value.
-     * Tries id, itemId, title, and code fields.
-     */
-    _matchesEntityRef(ref, filterValue) {
-        if (!ref) return false;
-        const fv = filterValue.toString().toLowerCase();
-        const id    = (ref.itemId ?? ref.id ?? ref)?.toString().toLowerCase();
-        const title = (ref.title || ref.name || '').toLowerCase();
-        const code  = (ref.code || '').toLowerCase();
-        return id === fv || title.includes(fv) || code.includes(fv);
     }
 
     // ====================

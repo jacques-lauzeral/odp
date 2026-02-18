@@ -109,6 +109,29 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }`);
                     params.service = filters.service.map(id => this.normalizeId(id));
                 }
+
+                // Relationship-based filtering
+                if (filters.refinesParent !== undefined && filters.refinesParent !== null) {
+                    whereConditions.push(`EXISTS {
+                    MATCH (version)-[:REFINES]->(parent:${this.nodeLabel})
+                    WHERE id(parent) = $refinesParent
+                }`);
+                    params.refinesParent = this.normalizeId(filters.refinesParent, 'refinesParent');
+                }
+                if (filters.dependsOn !== undefined && filters.dependsOn !== null) {
+                    whereConditions.push(`EXISTS {
+                    MATCH (version)-[:DEPENDS_ON]->(dep:${this.nodeLabel})
+                    WHERE id(dep) = $dependsOn
+                }`);
+                    params.dependsOn = this.normalizeId(filters.dependsOn, 'dependsOn');
+                }
+                if (filters.implementedON !== undefined && filters.implementedON !== null) {
+                    whereConditions.push(`EXISTS {
+                    MATCH (version)-[:IMPLEMENTS]->(on:${this.nodeLabel})
+                    WHERE id(on) = $implementedON
+                }`);
+                    params.implementedON = this.normalizeId(filters.implementedON, 'implementedON');
+                }
             }
 
             // Combine WHERE conditions

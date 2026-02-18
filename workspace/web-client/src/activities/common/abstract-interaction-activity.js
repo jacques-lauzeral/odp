@@ -632,12 +632,6 @@ export default class AbstractInteractionActivity {
                 options: this.buildOptionsFromSetupData('documents')
             },
             {
-                key: 'wave',
-                label: 'Wave',
-                inputType: 'select',
-                options: this.buildOptionsFromSetupData('waves', 'Any Wave')
-            },
-            {
                 key: 'refines',
                 label: 'Refines',
                 inputType: 'suggest',
@@ -657,6 +651,13 @@ export default class AbstractInteractionActivity {
                 inputType: 'suggest',
                 placeholder: 'Search by code or title...',
                 options: []
+            },
+            {
+                key: 'implementedON',
+                label: 'Implements',
+                inputType: 'suggest',
+                placeholder: 'Search by code or title...',
+                options: []   // populated via fetchSuggestionsCallback
             }
         ];
     }
@@ -863,13 +864,23 @@ export default class AbstractInteractionActivity {
         }
 
         // Add content filters
+        // Some FilterBar keys differ from API parameter names - map them here.
+        const keyMap = {
+            refines: 'refinesParent',   // FilterBar: 'refines' → API: 'refinesParent'
+            satisfies: 'satisfiesOR'    // FilterBar: 'satisfies' → API: 'satisfiesOR'
+        };
+        // Keys that should never be forwarded as content filters
+        const skipKeys = new Set();
+
         if (filters && Object.keys(filters).length > 0) {
             Object.entries(filters).forEach(([key, value]) => {
+                if (skipKeys.has(key)) return;
                 if (value && value !== '') {
+                    const apiKey = keyMap[key] || key;
                     if (Array.isArray(value)) {
-                        queryParams[key] = value.join(',');
+                        queryParams[apiKey] = value.join(',');
                     } else {
-                        queryParams[key] = value;
+                        queryParams[apiKey] = value;
                     }
                 }
             });
@@ -887,14 +898,7 @@ export default class AbstractInteractionActivity {
      * @param {Object} filtersObject  Plain { key: value } map for buildQueryParams
      */
     _applyFiltersToEntities(filtersObject) {
-        // Propagate to the active entity component (client-side predicate filtering)
-        if (this.currentEntityComponent?.handleFilterChange) {
-            const filtersArray = this.sharedState.filters;
-            this.currentEntityComponent.handleFilterChange(filtersArray);
-        }
-
-        // Trigger server-side reload with the flat filter object
-        // (buildQueryParams already knows how to consume this format)
+        // Trigger server-side reload; buildQueryParams maps filter keys to API params.
         this.updateAllBadges(filtersObject);
     }
 
@@ -1029,7 +1033,8 @@ export default class AbstractInteractionActivity {
             const endpointMap = {
                 refines: '/operational-requirements',
                 dependsOn: '/operational-requirements',
-                satisfies: '/operational-requirements'
+                satisfies: '/operational-requirements',
+                implementedON: '/operational-requirements'
             };
 
             const endpoint = endpointMap[key];

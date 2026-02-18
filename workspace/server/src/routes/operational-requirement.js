@@ -58,6 +58,19 @@ class OperationalRequirementRouter extends VersionedItemRouter {
             filters.service = req.query.service.split(',').map(id => parseInt(id));
         }
 
+        // Relationship-based filters (single Item ID)
+        if (req.query.refinesParent) {
+            filters.refinesParent = parseInt(req.query.refinesParent);
+        }
+
+        if (req.query.dependsOn) {
+            filters.dependsOn = parseInt(req.query.dependsOn);
+        }
+
+        if (req.query.implementedON) {
+            filters.implementedON = parseInt(req.query.implementedON);
+        }
+
         return filters;
     }
 }

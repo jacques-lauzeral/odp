@@ -87,6 +87,29 @@ paths:
             type: string
           description: "Filter by regulatory aspect ID(s). Comma-separated for OR logic."
           example: "234,567"
+
+        # Relationship-based filtering parameters
+        - name: refinesParent
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by parent Item ID: return ORs/ONs that refine the given parent requirement (REFINES relationship). Single Item ID."
+          example: "42"
+        - name: dependsOn
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by dependency Item ID: return ORs that depend on the given requirement (DEPENDS_ON relationship). Single Item ID."
+          example: "42"
+        - name: implementedON
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by ON Item ID: return ORs that implement the given ON requirement (IMPLEMENTS relationship). Single Item ID."
+          example: "42"
       responses:
         '200':
           description: Success
@@ -374,6 +397,15 @@ paths:
             type: string
           description: "Filter by regulatory aspect ID(s) via SATISFIES/SUPERSEDES requirements. Comma-separated for OR logic."
           example: "345,678"
+
+        # Relationship-based filtering parameters
+        - name: satisfiesOR
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by OR Item ID: return OCs that satisfy the given operational requirement (SATISFIES relationship). Single Item ID."
+          example: "42"
       responses:
         '200':
           description: Success

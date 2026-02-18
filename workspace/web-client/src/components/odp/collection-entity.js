@@ -2,7 +2,7 @@
  * CollectionEntity - Pure table/list rendering engine
  * Business-agnostic collection management with pluggable column types
  * Data is always injected by parent (activity level)
- * Parent manages: data fetching, filtering, edition context
+ * Parent manages: data fetching (server-side filtered), edition context
  * Collection manages: display, rendering, client-side operations
  */
 export default class CollectionEntity {
@@ -13,25 +13,12 @@ export default class CollectionEntity {
 
         // Collection state
         this.data = [];
-        this.filteredData = [];
         this.selectedItem = null;
         this.currentGrouping = 'none';
 
         // Options and injected dependencies
         this.columnTypes = { ...this.getDefaultColumnTypes(), ...(options.columnTypes || {}) };
         this.context = options.context || {};
-
-        /**
-         * filterMatchers: injected by the parent entity (requirements.js / changes.js).
-         * Maps a filter key (e.g. 'type', 'drg', 'text') to a predicate function:
-         *   (item, filterValue, context) => boolean
-         * Keeping this pluggable preserves CollectionEntity's business-agnostic design.
-         */
-        this.filterMatchers = options.filterMatchers || {};
-
-        // Active filters – array of { key, label, value, displayValue }
-        // Kept in sync by the activity via applyFilters(activeFilters).
-        this.currentFilters = [];
 
         // Configuration methods (to be provided by subclasses)
         this.getColumnConfig = options.getColumnConfig || (() => []);
@@ -127,8 +114,6 @@ export default class CollectionEntity {
      */
     setData(entities) {
         this.data = Array.isArray(entities) ? entities : [];
-        // Re-apply current filters so the view stays consistent after a data reload
-        this._applyFiltersToData();
         if (this.container) {
             this.renderContent();
         }
@@ -180,7 +165,7 @@ export default class CollectionEntity {
         }
 
         // Apply current grouping strategy
-        const groupedData = this.groupData(this.filteredData);
+        const groupedData = this.groupData(this.data);
 
         let html = '<div class="collection-content">';
 
@@ -294,51 +279,6 @@ export default class CollectionEntity {
         }
 
         return this.escapeHtml(value);
-    }
-
-    // ====================
-    // CLIENT-SIDE DISPLAY
-    // ====================
-
-    /**
-     * Apply a new set of active filters and re-render.
-     * Called by the activity (via FilterBar's filtersChanged event) with the
-     * current array of { key, value } chips.
-     *
-     * @param {Array} activeFilters  Array of { key, label, value, displayValue }
-     */
-    applyFilters(activeFilters = []) {
-        this.currentFilters = activeFilters;
-        this._applyFiltersToData();
-        this.renderContent();
-    }
-
-    /**
-     * Internal: filter this.data → this.filteredData using this.currentFilters.
-     * Each active filter must pass (AND semantics across filter types).
-     * Items with no matching filterMatcher for a key are passed through
-     * (fail-safe: unknown filters don't hide data).
-     */
-    _applyFiltersToData() {
-        if (!this.currentFilters || this.currentFilters.length === 0) {
-            this.filteredData = [...this.data];
-            return;
-        }
-
-        this.filteredData = this.data.filter(item =>
-            this.currentFilters.every(({ key, value }) => {
-                if (!value || value === '') return true;
-
-                const matcher = this.filterMatchers[key];
-                if (typeof matcher !== 'function') {
-                    // No matcher registered for this key – pass the item through
-                    console.warn(`CollectionEntity: no filterMatcher for key '${key}'`);
-                    return true;
-                }
-
-                return matcher(item, value, this.context);
-            })
-        );
     }
 
     // ====================
@@ -491,7 +431,7 @@ export default class CollectionEntity {
 
         const columnType = this.columnTypes[column.type || 'text'];
 
-        this.filteredData.sort((a, b) => {
+        this.data.sort((a, b) => {
             const valueA = this.getItemValue(a, column);
             const valueB = this.getItemValue(b, column);
 
@@ -626,11 +566,9 @@ export default class CollectionEntity {
     cleanup() {
         this.container = null;
         this.data = [];
-        this.filteredData = [];
         this.selectedItem = null;
         this.currentGrouping = 'none';
         this.currentSort = null;
-        this.currentFilters = [];
     }
 
     // ====================
