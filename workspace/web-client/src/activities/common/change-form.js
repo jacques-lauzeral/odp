@@ -109,7 +109,7 @@ export default class ChangeForm extends CollectionEntityForm {
     loadHistory(item, readOnly = false) {
         if (!item?.itemId) return;
 
-        // Reset previous state and re-create with correct readOnly mode
+        // Re-create with correct readOnly mode
         this.historyTab = new HistoryTab(apiClient, { readOnly });
 
         // Start fetching immediately
@@ -121,7 +121,7 @@ export default class ChangeForm extends CollectionEntityForm {
             this._historyObserver = null;
         }
 
-        // Observe the DOM for #history-tab-container to appear
+        // Observe the DOM for #history-tab-container to appear (detail panel / non-modal)
         this._historyObserver = new MutationObserver(() => {
             const container = document.getElementById('history-tab-container');
             if (!container) return;
@@ -133,6 +133,23 @@ export default class ChangeForm extends CollectionEntityForm {
         });
 
         this._historyObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    /**
+     * Attach the history tab to its container once the modal DOM is ready.
+     * Only used in modal scenarios — the MutationObserver handles detail-panel scenarios.
+     */
+    attachHistory(entityType, itemId) {
+        const container = document.getElementById('history-tab-container');
+        if (!container) return;
+
+        // Disconnect observer — we're attaching directly, no need for it anymore
+        if (this._historyObserver) {
+            this._historyObserver.disconnect();
+            this._historyObserver = null;
+        }
+
+        this.historyTab.attach(container, entityType, itemId);
     }
 
     transformDataForSave(data, mode, item) {
@@ -436,6 +453,7 @@ export default class ChangeForm extends CollectionEntityForm {
         this.loadHistory(item, false);
         console.log('ChangeForm.showEditModal - item:', item?.itemId);
         await super.showEditModal(item);
+        this.attachHistory('operational-changes', item.itemId);
 
         // Load milestones after modal is shown
         if (item && (item.itemId || item.id)) {
@@ -451,6 +469,7 @@ export default class ChangeForm extends CollectionEntityForm {
     async showReadOnlyModal(item) {
         this.loadHistory(item, true);
         await super.showReadOnlyModal(item);
+        this.attachHistory('operational-changes', item.itemId);
 
         // Load milestones for read-only view
         if (item && (item.itemId || item.id)) {

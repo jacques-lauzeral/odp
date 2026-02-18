@@ -141,6 +141,7 @@ export class HistoryTab {
     }
 
     _renderError(err) {
+        console.log('HistoryTab._render - container:', !!this._container, 'versions:', this._versions?.length);
         if (!this._container) return;
         this._container.innerHTML = `
             <div class="history-tab-error alert alert-error">

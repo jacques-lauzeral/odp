@@ -97,7 +97,7 @@ export default class RequirementForm extends CollectionEntityForm {
     loadHistory(item, readOnly = false) {
         if (!item?.itemId) return;
 
-        // Reset previous state and re-create with correct readOnly mode
+        // Re-create with correct readOnly mode
         this.historyTab = new HistoryTab(apiClient, { readOnly });
 
         // Start fetching immediately — data will be ready when container appears
@@ -109,12 +109,11 @@ export default class RequirementForm extends CollectionEntityForm {
             this._historyObserver = null;
         }
 
-        // Observe the DOM for #history-tab-container to appear
+        // Observe the DOM for #history-tab-container to appear (detail panel / non-modal)
         this._historyObserver = new MutationObserver(() => {
             const container = document.getElementById('history-tab-container');
             if (!container) return;
 
-            // Container found — stop observing and attach
             this._historyObserver.disconnect();
             this._historyObserver = null;
 
@@ -122,6 +121,28 @@ export default class RequirementForm extends CollectionEntityForm {
         });
 
         this._historyObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    /**
+     * Attach the history tab to its container once the modal DOM is ready.
+     * Only used in modal scenarios — the MutationObserver handles detail-panel scenarios.
+     */
+    attachHistory(entityType, itemId) {
+        console.log('RequirementForm.attachHistory 1');
+        const container = document.getElementById('history-tab-container');
+        if (!container) return;
+        console.log('RequirementForm.attachHistory 2');
+
+        // Disconnect observer — we're attaching directly, no need for it anymore
+        if (this._historyObserver) {
+            console.log('RequirementForm.attachHistory 3');
+            this._historyObserver.disconnect();
+            this._historyObserver = null;
+        }
+        console.log('RequirementForm.attachHistory 4');
+
+        this.historyTab.attach(container, entityType, itemId);
+        console.log('RequirementForm.attachHistory 5');
     }
 
     transformDataForSave(data, mode, item) {
@@ -581,6 +602,7 @@ export default class RequirementForm extends CollectionEntityForm {
         };
 
         await super.showEditModal(item);
+        this.attachHistory('operational-requirements', item.itemId);
     }
 
     // ====================
@@ -590,6 +612,7 @@ export default class RequirementForm extends CollectionEntityForm {
     async showReadOnlyModal(item) {
         this.loadHistory(item, true);
         await super.showReadOnlyModal(item);
+        this.attachHistory('operational-requirements', item.itemId);
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
