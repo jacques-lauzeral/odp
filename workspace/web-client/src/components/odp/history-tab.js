@@ -4,35 +4,41 @@
  *
  * Responsibilities:
  * - Lazy-load version history from API on first tab activation
- * - Render a tabular version list with createdAt, createdBy
- * - Support "Diff vs previous" per-row button and checkbox multi-select + "Diff selected" button
- * - Open a stub diff popup (implementation deferred)
+ * - Render a list of version rows with createdAt, createdBy
+ * - Per-row: Diff button (always) + Restore button (hidden on latest version)
+ * - Diff: confirmation popup with version selector pre-set to previous version
+ * - Restore: confirmation dialog warning that current version will be overridden
+ * - Confirmed actions fire onDiff / onRestore callbacks (stub: console.log)
  *
  * Usage:
- *   const historyTab = new HistoryTab(apiClient);
- *   // On tab activation (called once per modal open):
+ *   const historyTab = new HistoryTab(apiClient, {
+ *       onDiff: (versionId, compareVersionId) => { ... },
+ *       onRestore: (versionId) => { ... }
+ *   });
+ *   // On tab activation:
  *   historyTab.attach(containerElement, 'operational-requirements', itemId);
  */
 
 export class HistoryTab {
     /**
-     * @param {object} apiClient - The shared apiClient instance
+     * @param {object} apiClient        - The shared apiClient instance
+     * @param {object} [callbacks]
+     * @param {Function} [callbacks.onDiff]    - (versionId, compareVersionId) => void
+     * @param {Function} [callbacks.onRestore] - (versionId) => void
      */
-    constructor(apiClient) {
+    constructor(apiClient, callbacks = {}) {
         this.apiClient = apiClient;
 
-        // State
-        this._container = null;
-        this._entityType = null;
-        this._itemId = null;
-        this._versions = [];      // [{version, versionId, createdAt, createdBy}, ...]
-        this._loaded = false;
-        this._loading = false;
+        this.onDiff    = callbacks.onDiff    || ((vId, cId) => console.log(`[HistoryTab] Diff: version=${vId} vs compare=${cId}`));
+        this.onRestore = callbacks.onRestore || ((vId)      => console.log(`[HistoryTab] Restore: version=${vId}`));
 
-        // Bound handlers stored for cleanup
-        this._onDiffClick = this._onDiffClick.bind(this);
-        this._onCheckboxChange = this._onCheckboxChange.bind(this);
-        this._onDiffSelectedClick = this._onDiffSelectedClick.bind(this);
+        // State
+        this._container  = null;
+        this._entityType = null;
+        this._itemId     = null;
+        this._versions   = [];   // [{ id, versionNumber, createdAt, createdBy }, ...] newest-first
+        this._loaded     = false;
+        this._loading    = false;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -43,23 +49,21 @@ export class HistoryTab {
      * Attach to a DOM container and trigger first load.
      * Safe to call multiple times (idempotent after first load).
      *
-     * @param {HTMLElement} container
-     * @param {string} entityType  e.g. 'operational-requirements' | 'operational-changes'
-     * @param {string|number} itemId
+     * @param {HTMLElement}    container
+     * @param {string}         entityType  e.g. 'operational-requirements'
+     * @param {string|number}  itemId
      */
     async attach(container, entityType, itemId) {
-        this._container = container;
+        this._container  = container;
         this._entityType = entityType;
-        this._itemId = itemId;
+        this._itemId     = itemId;
 
         if (this._loaded) {
-            // Data already available (preloaded) — render immediately
             this._render();
             return;
         }
 
         if (this._loading) {
-            // Preload in progress — poll until done then render
             const wait = () => new Promise(resolve => setTimeout(resolve, 50));
             while (this._loading) await wait();
             this._render();
@@ -70,33 +74,30 @@ export class HistoryTab {
     }
 
     /**
-     * Reset state – call when the parent modal is closed so the next
-     * open triggers a fresh fetch.
-     */
-    /**
-     * Preload version history as soon as the item is known — before tab activation.
-     * attach() will reuse the cached result and render immediately.
+     * Preload version history before tab activation so attach() renders immediately.
      *
-     * @param {string} entityType
-     * @param {string|number} itemId
+     * @param {string}         entityType
+     * @param {string|number}  itemId
      */
     preload(entityType, itemId) {
         if (!itemId) return;
         if (this._loading || this._loaded) return;
 
         this._entityType = entityType;
-        this._itemId = itemId;
-        // Fire-and-forget — result cached in this._versions / this._loaded
-        this._load();
+        this._itemId     = itemId;
+        this._load(); // fire-and-forget
     }
 
+    /**
+     * Reset state — call when the parent modal closes so the next open triggers a fresh fetch.
+     */
     reset() {
-        this._container = null;
+        this._container  = null;
         this._entityType = null;
-        this._itemId = null;
-        this._versions = [];
-        this._loaded = false;
-        this._loading = false;
+        this._itemId     = null;
+        this._versions   = [];
+        this._loaded     = false;
+        this._loading    = false;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -110,14 +111,11 @@ export class HistoryTab {
         this._renderLoading();
 
         try {
-            // GET /{entityType}/{id}/versions  → array of VersionHistory
             const versions = await this.apiClient.get(
                 `/${this._entityType}/${this._itemId}/versions`
             );
-
-            // API returns newest-first; we keep that order (v_latest at top)
             this._versions = Array.isArray(versions) ? versions : [];
-            this._loaded = true;
+            this._loaded   = true;
             this._render();
         } catch (err) {
             console.error('HistoryTab: failed to load versions', err);
@@ -163,68 +161,57 @@ export class HistoryTab {
             return;
         }
 
-        // Build table rows (newest first = index 0)
+        // versions[0] = latest (newest-first from API)
         const rows = versions.map((v, idx) => {
-            const isFirst = idx === versions.length - 1; // oldest = cannot diff vs previous
-            const prevDisabled = isFirst ? 'disabled title="No previous version"' : '';
-            const versionLabel = v.version !== undefined ? `v${v.version}` : `#${idx + 1}`;
+            const isLatest     = idx === 0;
+            const versionLabel = `v${v.version}`;
 
             return `
-                <tr data-version="${this._escape(String(v.version))}">
-                    <td class="history-col-check">
-                        <input
-                            type="checkbox"
-                            class="history-version-checkbox"
-                            data-version="${this._escape(String(v.version))}"
-                            aria-label="Select version ${this._escape(versionLabel)}"
-                        >
-                    </td>
-                    <td class="history-col-version">${this._escape(versionLabel)}</td>
-                    <td class="history-col-date">${this._formatDate(v.createdAt)}</td>
-                    <td class="history-col-author">${this._escape(v.createdBy || '—')}</td>
-                    <td class="history-col-actions">
+                <div class="history-row${isLatest ? ' history-row--latest' : ''}" data-version-id="${this._escape(String(v.id))}">
+                    <div class="history-row-meta">
+                        <span class="history-version-badge">${this._escape(versionLabel)}</span>
+                        ${isLatest ? '<span class="history-latest-badge">Latest</span>' : ''}
+                        <span class="history-row-date">${this._formatDate(v.createdAt)}</span>
+                        <span class="history-row-author">${this._escape(v.createdBy || '—')}</span>
+                    </div>
+                    <div class="history-row-actions">
                         <button
                             type="button"
-                            class="btn btn-xs btn-secondary history-diff-prev-btn"
-                            data-version="${this._escape(String(v.version))}"
-                            ${prevDisabled}
+                            class="btn btn-sm btn-secondary history-btn-diff"
+                            data-version-id="${this._escape(String(v.id))}"
+                            data-version-number="${this._escape(String(v.version))}"
                         >
-                            Diff vs previous
+                            Diff
                         </button>
-                    </td>
-                </tr>
+                        ${!isLatest ? `
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-warning history-btn-restore"
+                            data-version-id="${this._escape(String(v.id))}"
+                            data-version-number="${this._escape(String(v.version))}"
+                        >
+                            Restore
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
             `;
         }).join('');
 
         this._container.innerHTML = `
             <div class="history-tab">
-                <div class="history-tab-toolbar">
-                    <button
-                        type="button"
-                        class="btn btn-secondary btn-sm history-diff-selected-btn"
-                        id="history-diff-selected-btn"
-                        disabled
-                        title="Select exactly 2 versions to compare"
-                    >
-                        Diff selected
-                    </button>
-                    <span class="history-tab-hint">Select 2 versions to compare, or use "Diff vs previous" on any row.</span>
-                </div>
-                <div class="history-table-wrapper">
-                    <table class="history-table">
-                        <thead>
-                            <tr>
-                                <th class="history-col-check"></th>
-                                <th class="history-col-version">Version</th>
-                                <th class="history-col-date">Created</th>
-                                <th class="history-col-author">By</th>
-                                <th class="history-col-actions">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${rows}
-                        </tbody>
-                    </table>
+                <div class="history-list">
+                    <div class="history-row history-row--header">
+                        <div class="history-row-meta">
+                            <span class="history-col-title history-col-version">Version</span>
+                            <span class="history-col-title history-col-date">Created</span>
+                            <span class="history-col-title history-col-author">By</span>
+                        </div>
+                        <div class="history-row-actions">
+                            <span class="history-col-title">Actions</span>
+                        </div>
+                    </div>
+                    ${rows}
                 </div>
             </div>
         `;
@@ -239,136 +226,174 @@ export class HistoryTab {
     _attachEvents() {
         if (!this._container) return;
 
-        // Per-row "Diff vs previous" buttons
-        this._container.querySelectorAll('.history-diff-prev-btn').forEach(btn => {
-            btn.addEventListener('click', this._onDiffClick);
+        this._container.addEventListener('click', (e) => {
+            const diffBtn    = e.target.closest('.history-btn-diff');
+            const restoreBtn = e.target.closest('.history-btn-restore');
+
+            if (diffBtn) {
+                this._showDiffConfirm(
+                    diffBtn.dataset.versionId,
+                    diffBtn.dataset.versionNumber
+                );
+            } else if (restoreBtn) {
+                this._showRestoreConfirm(
+                    restoreBtn.dataset.versionId,
+                    restoreBtn.dataset.versionNumber
+                );
+            }
         });
-
-        // Checkboxes for multi-select diff
-        this._container.querySelectorAll('.history-version-checkbox').forEach(cb => {
-            cb.addEventListener('change', this._onCheckboxChange);
-        });
-
-        // "Diff selected" toolbar button
-        const diffSelectedBtn = this._container.querySelector('#history-diff-selected-btn');
-        if (diffSelectedBtn) {
-            diffSelectedBtn.addEventListener('click', this._onDiffSelectedClick);
-        }
-    }
-
-    _onDiffClick(e) {
-        const btn = e.currentTarget;
-        const versionNum = parseInt(btn.dataset.version, 10);
-        const prevVersion = versionNum - 1; // sequential versioning guaranteed by backend
-
-        this._showDiffPopup(versionNum, prevVersion);
-    }
-
-    _onCheckboxChange() {
-        const checked = this._getCheckedVersions();
-        const diffSelectedBtn = this._container?.querySelector('#history-diff-selected-btn');
-        if (diffSelectedBtn) {
-            const canDiff = checked.length === 2;
-            diffSelectedBtn.disabled = !canDiff;
-            diffSelectedBtn.title = canDiff
-                ? `Compare v${checked[0]} with v${checked[1]}`
-                : 'Select exactly 2 versions to compare';
-        }
-    }
-
-    _onDiffSelectedClick() {
-        const checked = this._getCheckedVersions();
-        if (checked.length !== 2) return;
-
-        // Ensure higher version is "versionA" (left/newer side)
-        const [vA, vB] = checked[0] > checked[1]
-            ? [checked[0], checked[1]]
-            : [checked[1], checked[0]];
-
-        this._showDiffPopup(vA, vB);
-    }
-
-    _getCheckedVersions() {
-        if (!this._container) return [];
-        return Array.from(
-            this._container.querySelectorAll('.history-version-checkbox:checked')
-        ).map(cb => parseInt(cb.dataset.version, 10));
     }
 
     // ─────────────────────────────────────────────────────────────
-    // DIFF POPUP (STUB)
+    // DIFF CONFIRMATION POPUP
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Show a diff popup between two versions.
-     * Currently a stub – diff content will be implemented in a future phase.
+     * Show the diff confirmation popup.
+     * Pre-selects the previous version as the comparison target.
      *
-     * @param {number} versionA - Newer version (left side)
-     * @param {number} versionB - Older version (right side)
+     * @param {string} versionId      - ID of the version to diff
+     * @param {string} versionNumber  - Display version number
      */
-    _showDiffPopup(versionA, versionB) {
-        console.log(`HistoryTab: opening diff popup v${versionB} → v${versionA}`);
+    _showDiffConfirm(versionId, versionNumber) {
+        this._removePopup('history-diff-confirm-popup');
 
-        // Remove any existing diff popup
-        document.getElementById('history-diff-popup')?.remove();
+        const versions  = this._versions;
 
-        const popupId = 'history-diff-popup';
-        const zIndex = 2000; // above main modal (1000) and nested modals
+        // Find target index by versionNumber (stored in data-version-number on the button)
+        const targetIdx = versions.findIndex(v => String(v.version) === String(versionNumber));
+        const prevVersion = versions[targetIdx + 1]; // newest-first, so +1 = older = previous
+
+        // All versions except the target, with previous pre-selected
+        const compareSelectOptions = versions
+            .filter(v => String(v.version) !== String(versionNumber))
+            .map(v => {
+                const isPreselected = prevVersion && String(v.version) === String(prevVersion.version);
+                return `<option value="${this._escape(String(v.version))}" ${isPreselected ? 'selected' : ''}>v${this._escape(String(v.version))} — ${this._formatDate(v.createdAt)} · ${this._escape(v.createdBy || '—')}</option>`;
+            }).join('');
 
         const popupHtml = `
-            <div class="modal-overlay history-diff-overlay" id="${popupId}" style="z-index: ${zIndex}">
-                <div class="modal modal-large history-diff-modal">
-                    <div class="modal-header">
-                        <h3 class="modal-title">
-                            Version Diff — v${versionB} → v${versionA}
-                        </h3>
-                        <button class="modal-close" id="history-diff-close">&times;</button>
+            <div class="history-popup-overlay" id="history-diff-confirm-popup">
+                <div class="history-popup history-popup--narrow">
+                    <div class="history-popup-header">
+                        <h3 class="history-popup-title">Compare <span class="history-version-badge">v${this._escape(versionNumber)}</span> with…</h3>
+                        <button type="button" class="history-popup-close" data-action="cancel">&times;</button>
                     </div>
-                    <div class="modal-body history-diff-body">
-                        <div class="history-diff-stub">
-                            <div class="history-diff-stub-icon">⏳</div>
-                            <p>
-                                Diff between <strong>v${versionB}</strong> and
-                                <strong>v${versionA}</strong> will be shown here.
-                            </p>
-                            <p class="history-diff-stub-note">
-                                Diff implementation is planned for a future phase.
-                            </p>
-                            <div class="history-diff-stub-meta">
-                                <span>Comparing: <code>${this._escape(this._entityType)}/${this._escape(String(this._itemId))}</code></span>
-                                <span>v${versionB} ← → v${versionA}</span>
-                            </div>
-                        </div>
+                    <div class="history-popup-body">
+                        <select class="form-control history-compare-select" id="history-compare-select">
+                            ${compareSelectOptions}
+                        </select>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" id="history-diff-close-btn">Close</button>
+                    <div class="history-popup-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel">Cancel</button>
+                        <button type="button" class="btn btn-primary btn-sm history-btn-confirm-diff">Compare</button>
                     </div>
                 </div>
             </div>
         `;
 
         document.body.insertAdjacentHTML('beforeend', popupHtml);
+        const popup = document.getElementById('history-diff-confirm-popup');
 
-        const popup = document.getElementById(popupId);
-
-        // Close handlers
-        const close = () => popup.remove();
-        popup.querySelector('#history-diff-close').addEventListener('click', close);
-        popup.querySelector('#history-diff-close-btn').addEventListener('click', close);
-
-        // Close on overlay click (outside modal box)
-        popup.addEventListener('click', (e) => {
-            if (e.target === popup) close();
+        popup.querySelector('.history-btn-confirm-diff')?.addEventListener('click', () => {
+            const compareVersion = popup.querySelector('#history-compare-select').value;
+            console.log(`[HistoryTab] Diff confirmed: v${versionNumber} vs v${compareVersion}`);
+            this.onDiff(versionId, compareVersion);
+            this._removePopup('history-diff-confirm-popup');
         });
 
-        // Close on Escape
+        this._bindPopupClose(popup, 'history-diff-confirm-popup');
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // RESTORE CONFIRMATION POPUP
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Show the restore confirmation dialog.
+     *
+     * @param {string} versionId      - ID of the version to restore
+     * @param {string} versionNumber  - Display version number
+     */
+    _showRestoreConfirm(versionId, versionNumber) {
+        this._removePopup('history-restore-confirm-popup');
+
+        const latestVersion = this._versions[0];
+
+        const popupHtml = `
+            <div class="history-popup-overlay" id="history-restore-confirm-popup">
+                <div class="history-popup history-popup--narrow">
+                    <div class="history-popup-header">
+                        <h3 class="history-popup-title">Restore <span class="history-version-badge">v${this._escape(versionNumber)}</span>?</h3>
+                        <button type="button" class="history-popup-close" data-action="cancel">&times;</button>
+                    </div>
+                    <div class="history-popup-body">
+                        <div class="history-restore-warning">
+                            <span class="history-restore-warning-icon">⚠️</span>
+                            <p>
+                                Restoring <strong>v${this._escape(versionNumber)}</strong> will create a new version
+                                based on this snapshot, overriding the current content
+                                ${latestVersion ? `(<strong>v${this._escape(String(latestVersion.versionNumber))}</strong>)` : ''}.
+                                This action cannot be undone.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="history-popup-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel">Cancel</button>
+                        <button
+                            type="button"
+                            class="btn btn-danger btn-sm history-btn-confirm-restore"
+                            data-version-id="${this._escape(versionId)}"
+                            data-version-number="${this._escape(versionNumber)}"
+                        >
+                            Restore v${this._escape(versionNumber)}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', popupHtml);
+        const popup = document.getElementById('history-restore-confirm-popup');
+
+        // Confirm
+        popup.querySelector('.history-btn-confirm-restore')?.addEventListener('click', () => {
+            console.log(`[HistoryTab] Restore confirmed: v${versionNumber} (id=${versionId})`);
+            this.onRestore(versionId);
+            this._removePopup('history-restore-confirm-popup');
+        });
+
+        // Cancel / overlay
+        this._bindPopupClose(popup, 'history-restore-confirm-popup');
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // POPUP HELPERS
+    // ─────────────────────────────────────────────────────────────
+
+    _bindPopupClose(popup, popupId) {
+        // Cancel buttons and × button
+        popup.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+            btn.addEventListener('click', () => this._removePopup(popupId));
+        });
+
+        // Click on overlay backdrop
+        popup.addEventListener('click', (e) => {
+            if (e.target === popup) this._removePopup(popupId);
+        });
+
+        // Escape key
         const onEsc = (e) => {
             if (e.key === 'Escape') {
-                close();
+                this._removePopup(popupId);
                 document.removeEventListener('keydown', onEsc);
             }
         };
         document.addEventListener('keydown', onEsc);
+    }
+
+    _removePopup(popupId) {
+        document.getElementById(popupId)?.remove();
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -376,9 +401,9 @@ export class HistoryTab {
     // ─────────────────────────────────────────────────────────────
 
     _escape(text) {
-        if (!text) return '';
+        if (text === null || text === undefined) return '';
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
     }
 

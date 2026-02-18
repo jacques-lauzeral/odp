@@ -1,0 +1,323 @@
+/**
+ * history-tab.css
+ * Styles for the HistoryTab component
+ * Design aligned with ReferenceListManager (chip aesthetics, popup overlays)
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   Tab Container
+───────────────────────────────────────────────────────────── */
+
+.history-tab {
+    display: block;
+    width: 100%;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   State: Loading / Error / Empty
+───────────────────────────────────────────────────────────── */
+
+.history-tab-loading,
+.history-tab-empty {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.history-tab-error {
+    padding: var(--space-3);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Version List
+───────────────────────────────────────────────────────────── */
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Version Row
+───────────────────────────────────────────────────────────── */
+
+.history-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.15s;
+}
+
+.history-row:last-child {
+    border-bottom: none;
+}
+
+.history-row:hover {
+    background: var(--color-primary-light);
+}
+
+.history-row--latest {
+    background: var(--color-muted);
+}
+
+.history-row--latest:hover {
+    background: var(--color-primary-light);
+}
+
+/* Meta section (left side) */
+.history-row-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    flex: 1;
+    min-width: 0;
+}
+
+/* Actions section (right side) */
+.history-row-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Badges — aligned with selected-chip from ReferenceListManager
+───────────────────────────────────────────────────────────── */
+
+.history-version-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: var(--color-primary-light);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.history-latest-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: var(--color-success-light, #e6f4ea);
+    border: 1px solid var(--color-success, #34a853);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-success, #34a853);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.history-row-date,
+.history-row-author {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Popup Overlay — mirrors search-popup-overlay
+───────────────────────────────────────────────────────────── */
+
+.history-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Popup Panel — mirrors search-popup
+───────────────────────────────────────────────────────────── */
+
+.history-popup {
+    background: white;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 480px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.history-popup--narrow {
+    max-width: 400px;
+}
+
+.history-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-popup-title {
+    margin: 0;
+    font-size: var(--text-base);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.history-popup-close {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+    transition: background-color 0.15s;
+}
+
+.history-popup-close:hover {
+    background: var(--color-muted);
+    color: var(--text-primary);
+}
+
+.history-popup-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.history-popup-hint {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.history-popup-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-top: 1px solid var(--border-color);
+}
+
+/* Header row */
+.history-row--header {
+    background: var(--color-muted);
+    cursor: default;
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+
+.history-row--header:hover {
+    background: var(--color-muted);
+}
+
+.history-col-title {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary, var(--text-muted));
+    white-space: nowrap;
+}
+
+
+/* ─────────────────────────────────────────────────────────────
+   Compare Version Selector (Diff popup)
+───────────────────────────────────────────────────────────── */
+
+.history-compare-select {
+    width: 100%;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Restore Warning Block
+───────────────────────────────────────────────────────────── */
+
+.history-restore-warning {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-warning-light, #fff8e1);
+    border: 1px solid var(--color-warning, #f9a825);
+    border-radius: var(--radius-md);
+}
+
+.history-restore-warning-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.history-restore-warning p {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--text-primary);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Scrollbar — mirrors search-popup-results
+───────────────────────────────────────────────────────────── */
+
+.history-popup-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.history-popup-body::-webkit-scrollbar-track {
+    background: var(--color-muted);
+    border-radius: var(--radius-sm);
+}
+
+.history-popup-body::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.history-popup-body::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Responsive
+───────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .history-popup {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .history-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .history-row-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
