@@ -445,12 +445,9 @@ export default class ChangesEntity {
             { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
             { key: 'satisfiesRequirements', label: 'Satisfies', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
             { key: 'supersedesRequirements', label: 'Supersedes', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
-            { key: 'impactsData', label: 'Data Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'dataCategories', maxDisplay: 2 },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact', width: '180px', sortable: false, type: 'setup-reference-list', setupKey: 'stakeholderCategories', maxDisplay: 2 },
             { key: 'impactsServices', label: 'Services Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'services', maxDisplay: 2 },
-            { key: 'documentReferences', label: 'Documents', width: '150px', sortable: false, type: 'annotated-reference-list', maxDisplay: 2, noneLabel: 'No Documents' },
-            { key: 'createdBy', label: 'Updated By', width: '120px', sortable: false, type: 'text' },
-            { key: 'createdAt', label: 'Updated', width: '120px', sortable: true, type: 'date' }
+            { key: 'documentReferences', label: 'Documents', width: '150px', sortable: false, type: 'annotated-reference-list', maxDisplay: 2, noneLabel: 'No Documents' }
         ];
     }
 
@@ -460,7 +457,6 @@ export default class ChangesEntity {
             { key: 'visibility', label: 'Group by Visibility' },
             { key: 'drg', label: 'Group by DrG' },
             { key: 'wave', label: 'Group by Wave' },
-            { key: 'impactsData', label: 'Group by Data Impact' },
             { key: 'impactsStakeholderCategories', label: 'Group by Stakeholder Impact' },
             { key: 'impactsServices', label: 'Group by Services Impact' }
         ];

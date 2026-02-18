@@ -180,16 +180,6 @@ export default class RequirementsEntity {
                 noneLabel: 'No Documents'
             },
             {
-                key: 'impactsData',
-                label: 'Data',
-                width: '120px',
-                sortable: true,
-                type: 'multi-setup-reference',
-                setupEntity: 'dataCategories',
-                renderMode: 'inline',
-                noneLabel: 'No Data Impact'
-            },
-            {
                 key: 'impactsStakeholderCategories',
                 label: 'Stakeholder',
                 width: '120px',
@@ -208,20 +198,6 @@ export default class RequirementsEntity {
                 setupEntity: 'services',
                 renderMode: 'inline',
                 noneLabel: 'No Services Impact'
-            },
-            {
-                key: 'createdBy',
-                label: 'Updated By',
-                width: '130px',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'createdAt',
-                label: 'Updated',
-                width: '110px',
-                sortable: true,
-                type: 'date'
             }
         ];
     }
@@ -235,7 +211,6 @@ export default class RequirementsEntity {
             { key: 'implementedONs', label: 'Implements' },
             { key: 'dependsOnRequirements', label: 'Dependencies' },
             { key: 'documentReferences', label: 'Document References' },
-            { key: 'impactsData', label: 'Data Impact' },
             { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact' },
             { key: 'impactsServices', label: 'Services Impact' }
         ];
