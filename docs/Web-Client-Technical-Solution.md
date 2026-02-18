@@ -26,53 +26,53 @@ The ODP Web Client implements a **vanilla JavaScript** architecture with activit
 ### Directory Structure
 ```
 web-client/
-â”œâ”€â”€ src/
-â”‚   â”œâ”€â”€ index.html               # âœ… Main HTML template with header container
-â”‚   â”œâ”€â”€ index.js                 # âœ… Entry point with error handling
-â”‚   â”œâ”€â”€ app.js                   # âœ… App initialization, routing & API client integration
-â”‚   â”œâ”€â”€ config/
-â”‚   â”‚   â””â”€â”€ api.js              # âœ… API endpoints configuration with CORS
-â”‚   â”œâ”€â”€ shared/
-â”‚   â”‚   â”œâ”€â”€ api-client.js       # âœ… Fetch wrapper with user header & error handling
-â”‚   â”‚   â”œâ”€â”€ error-handler.js    # âœ… Centralized error management
-â”‚   â”‚   â””â”€â”€ utils.js            # âœ… DOM, validation, and formatting utilities
-â”‚   â”œâ”€â”€ components/
-â”‚   â”‚   â”œâ”€â”€ common/
-â”‚   â”‚   â”‚   â””â”€â”€ header.js       # âœ… Global navigation header with user context
-â”‚   â”‚   â”œâ”€â”€ setup/
-â”‚   â”‚   â”‚   â”œâ”€â”€ tree-entity.js  # âœ… Base hierarchical entity component
-â”‚   â”‚   â”‚   â””â”€â”€ list-entity.js  # âœ… Base list/table entity component
-â”‚   â”‚   â””â”€â”€ odp/
-â”‚   â”‚       â”œâ”€â”€ collection-entity.js     # âœ… Base collection component with setup data support
-â”‚   â”‚       â”œâ”€â”€ collection-entity-form.js # âœ… Base form class using inheritance pattern
+├── src/
+│   ├── index.html               # ✅ Main HTML template with header container
+│   ├── index.js                 # ✅ Entry point with error handling
+│   ├── app.js                   # ✅ App initialization, routing & API client integration
+│   ├── config/
+│   │   └── api.js              # ✅ API endpoints configuration with CORS
+│   ├── shared/
+│   │   ├── api-client.js       # ✅ Fetch wrapper with user header & error handling
+│   │   ├── error-handler.js    # ✅ Centralized error management
+│   │   └── utils.js            # ✅ DOM, validation, and formatting utilities
+│   ├── components/
+│   │   ├── common/
+│   │   │   └── header.js       # ✅ Global navigation header with user context
+│   │   ├── setup/
+│   │   │   ├── tree-entity.js  # ✅ Base hierarchical entity component
+│   │   │   └── list-entity.js  # ✅ Base list/table entity component
+│   │   └── odp/
+│   │       ├── collection-entity.js     # ✅ Base collection component with setup data support
+│   │       ├── collection-entity-form.js # ✅ Base form class using inheritance pattern
 │   │       ├── tree-table-entity.js     # ✅ Tree-table perspective with virtual hierarchy
-â”‚   â”‚       â””â”€â”€ odp-column-types.js      # âœ… Specialized column types for ODP data
-â”‚   â”œâ”€â”€ activities/
-â”‚   â”‚   â”œâ”€â”€ landing/
-â”‚   â”‚   â”‚   â”œâ”€â”€ landing.js      # âœ… Landing page component with user ID
-â”‚   â”‚   â”‚   â””â”€â”€ landing.html    # âœ… Landing page template
-â”‚   â”‚   â”œâ”€â”€ setup/
-â”‚   â”‚   â”‚   â”œâ”€â”€ setup.js        # âœ… Setup activity with entity tab navigation
-â”‚   â”‚   â”‚   â”œâ”€â”€ stakeholder-categories.js  # âœ… Hierarchy CRUD with name/description
-â”‚   â”‚   â”‚   â”œâ”€â”€ regulatory-aspects.js      # âœ… Hierarchy CRUD with title/regulation ref
-â”‚   â”‚   â”‚   â”œâ”€â”€ data-categories.js         # âœ… Hierarchy CRUD with classification
-â”‚   â”‚   â”‚   â”œâ”€â”€ services.js                # âœ… Hierarchy CRUD with domain/type/owner
-â”‚   â”‚   â”‚   â””â”€â”€ waves.js                   # âœ… List CRUD with year/quarter validation
-â”‚   â”‚   â””â”€â”€ elaboration/
-â”‚   â”‚       â”œâ”€â”€ elaboration.js  # âœ… Elaboration activity with setup data loading
-â”‚   â”‚       â”œâ”€â”€ requirements.js # âœ… Requirements entity with collection delegation
-â”‚   â”‚       â”œâ”€â”€ requirement-form.js  # âœ… Requirements form using inheritance
-â”‚   â”‚       â”œâ”€â”€ changes.js      # âœ… Changes entity with collection delegation
-â”‚   â”‚       â””â”€â”€ change-form.js  # âœ… Changes form using inheritance
-â”‚   â”œâ”€â”€ styles/
-â”‚   â”‚   â”œâ”€â”€ main.css            # âœ… Global styles with design tokens
-â”‚   â”‚   â”œâ”€â”€ components.css      # âœ… Header & reusable component styling
-â”‚   â”‚   â”œâ”€â”€ landing.css         # âœ… Landing page styling
-â”‚   â”‚   â””â”€â”€ activities/
-â”‚   â”‚       â”œâ”€â”€ setup.css       # âœ… Setup activity styling
-â”‚   â”‚       â””â”€â”€ elaboration.css # âœ… Elaboration activity styling
-â”‚   â””â”€â”€ assets/                 # âœ… Icons and images
-â””â”€â”€ package.json                # âœ… Dependencies and workspace integration
+│   │       └── odp-column-types.js      # ✅ Specialized column types for ODP data
+│   ├── activities/
+│   │   ├── landing/
+│   │   │   ├── landing.js      # ✅ Landing page component with user ID
+│   │   │   └── landing.html    # ✅ Landing page template
+│   │   ├── setup/
+│   │   │   ├── setup.js        # ✅ Setup activity with entity tab navigation
+│   │   │   ├── stakeholder-categories.js  # ✅ Hierarchy CRUD with name/description
+│   │   │   ├── regulatory-aspects.js      # ✅ Hierarchy CRUD with title/regulation ref
+│   │   │   ├── data-categories.js         # ✅ Hierarchy CRUD with classification
+│   │   │   ├── services.js                # ✅ Hierarchy CRUD with domain/type/owner
+│   │   │   └── waves.js                   # ✅ List CRUD with year/quarter validation
+│   │   └── elaboration/
+│   │       ├── elaboration.js  # ✅ Elaboration activity with setup data loading
+│   │       ├── requirements.js # ✅ Requirements entity with collection delegation
+│   │       ├── requirement-form.js  # ✅ Requirements form using inheritance
+│   │       ├── changes.js      # ✅ Changes entity with collection delegation
+│   │       └── change-form.js  # ✅ Changes form using inheritance
+│   ├── styles/
+│   │   ├── main.css            # ✅ Global styles with design tokens
+│   │   ├── components.css      # ✅ Header & reusable component styling
+│   │   ├── landing.css         # ✅ Landing page styling
+│   │   └── activities/
+│   │       ├── setup.css       # ✅ Setup activity styling
+│   │       └── elaboration.css # ✅ Elaboration activity styling
+│   └── assets/                 # ✅ Icons and images
+└── package.json                # ✅ Dependencies and workspace integration
 ```
 
 ## Component Architecture
