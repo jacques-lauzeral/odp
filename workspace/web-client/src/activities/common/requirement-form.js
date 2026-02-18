@@ -1,9 +1,9 @@
 import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
+import { HistoryTab } from '../../components/odp/history-tab.js';
 import { apiClient } from '../../shared/api-client.js';
 import {
     DraftingGroup,
     getDraftingGroupDisplay,
-    OperationalRequirementType,
     getOperationalRequirementTypeDisplay
 } from '/shared/src/index.js';
 import {
@@ -27,6 +27,8 @@ export default class RequirementForm extends CollectionEntityForm {
         // Extract setupData from context (which contains setupData, currentTabIndex, onTabChange)
         this.setupData = context?.setupData || context;
 
+
+
         // Cache for parent requirements, ON requirements, and all requirements
         this.parentRequirementsCache = null;
         this.parentRequirementsCacheTime = 0;
@@ -35,6 +37,9 @@ export default class RequirementForm extends CollectionEntityForm {
         this.dependencyRequirementsCache = null;
         this.dependencyRequirementsCacheTime = 0;
         this.cacheTimeout = 60000; // 1 minute cache
+
+        // HistoryTab – lazy-loads version history when the History tab is activated
+        this.historyTab = new HistoryTab(apiClient);
     }
 
     // ====================
@@ -80,6 +85,42 @@ export default class RequirementForm extends CollectionEntityForm {
 
     getFormTitle(mode) {
         return requirementFormTitles[mode] || requirementFormTitles.default;
+    }
+
+    /**
+     * Load version history as soon as the form is populated with an item.
+     * Uses a MutationObserver to detect when #history-tab-container enters the DOM
+     * (after the caller injects the generated HTML), then renders immediately.
+     * Works in both modal and detail-panel (non-modal) mode.
+     */
+    loadHistory(item) {
+        if (!item?.itemId) return;
+
+        // Reset previous state
+        this.historyTab.reset();
+
+        // Start fetching immediately — data will be ready when container appears
+        this.historyTab.preload('operational-requirements', item.itemId);
+
+        // Disconnect any previous observer
+        if (this._historyObserver) {
+            this._historyObserver.disconnect();
+            this._historyObserver = null;
+        }
+
+        // Observe the DOM for #history-tab-container to appear
+        this._historyObserver = new MutationObserver(() => {
+            const container = document.getElementById('history-tab-container');
+            if (!container) return;
+
+            // Container found — stop observing and attach
+            this._historyObserver.disconnect();
+            this._historyObserver = null;
+
+            this.historyTab.attach(container, 'operational-requirements', item.itemId);
+        });
+
+        this._historyObserver.observe(document.body, { childList: true, subtree: true });
     }
 
     transformDataForSave(data, mode, item) {
@@ -531,6 +572,7 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     async showEditModal(item) {
+        this.loadHistory(item);
         // Set up the callback to execute after modal is fully initialized
         this.context.onModalReady = () => {
             this.bindTypeChangeEvents();
@@ -545,10 +587,12 @@ export default class RequirementForm extends CollectionEntityForm {
     // ====================
 
     async showReadOnlyModal(item) {
+        this.loadHistory(item);
         await super.showReadOnlyModal(item);
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
+        this.loadHistory(item);
         return await super.generateReadOnlyView(item, preserveTabIndex);
     }
 }

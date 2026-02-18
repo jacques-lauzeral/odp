@@ -230,27 +230,20 @@ export const changeFieldDefinitions = [
         ]
     },
 
-    // Metadata Section
+    // History Section
+    // Rendered by HistoryTab component – lazy-loaded on tab activation.
+    // The form must call historyTab.attach(container, entityType, itemId)
+    // in its onTabChange handler when this tab becomes active.
     {
-        title: 'Metadata',
+        title: 'History',
         fields: [
             {
-                key: 'createdBy',
-                label: 'Created By',
-                type: 'text',
+                key: '_history',
+                label: 'Version History',
+                type: 'history',
+                // Visible in read and edit modes (not relevant for create)
                 modes: ['read', 'edit'],
                 readOnly: true
-            },
-            {
-                key: 'createdAt',
-                label: 'Created',
-                type: 'date',
-                modes: ['read', 'edit'],
-                readOnly: true,
-                format: (value) => {
-                    if (!value) return '-';
-                    return new Date(value).toLocaleString();
-                }
             }
         ]
     }

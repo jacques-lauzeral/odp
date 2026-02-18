@@ -1,9 +1,9 @@
 import { CollectionEntityForm } from '../../components/odp/collection-entity-form.js';
+import { HistoryTab } from '../../components/odp/history-tab.js';
 import { apiClient } from '../../shared/api-client.js';
 import {
     DraftingGroup,
     getDraftingGroupDisplay,
-    Visibility,
     getVisibilityDisplay,
     MilestoneEventType
 } from '/shared/src/index.js';
@@ -46,6 +46,11 @@ export default class ChangeForm extends CollectionEntityForm {
             this,
             Object.keys(MilestoneEventType)
         );
+
+        // HistoryTab - lazy-loads version history when the History tab is activated
+        this.historyTab = new HistoryTab(apiClient);
+
+
     }
 
     // ====================
@@ -93,6 +98,40 @@ export default class ChangeForm extends CollectionEntityForm {
 
     getFormTitle(mode) {
         return changeFormTitles[mode] || changeFormTitles.default;
+    }
+
+    /**
+     * Load version history as soon as the form is populated with an item.
+     * Uses a MutationObserver to detect when #history-tab-container enters the DOM,
+     * then renders immediately. Works in both modal and detail-panel (non-modal) mode.
+     */
+    loadHistory(item) {
+        if (!item?.itemId) return;
+
+        // Reset previous state
+        this.historyTab.reset();
+
+        // Start fetching immediately
+        this.historyTab.preload('operational-changes', item.itemId);
+
+        // Disconnect any previous observer
+        if (this._historyObserver) {
+            this._historyObserver.disconnect();
+            this._historyObserver = null;
+        }
+
+        // Observe the DOM for #history-tab-container to appear
+        this._historyObserver = new MutationObserver(() => {
+            const container = document.getElementById('history-tab-container');
+            if (!container) return;
+
+            this._historyObserver.disconnect();
+            this._historyObserver = null;
+
+            this.historyTab.attach(container, 'operational-changes', item.itemId);
+        });
+
+        this._historyObserver.observe(document.body, { childList: true, subtree: true });
     }
 
     transformDataForSave(data, mode, item) {
@@ -393,6 +432,7 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
 
     async showEditModal(item) {
+        this.loadHistory(item);
         console.log('ChangeForm.showEditModal - item:', item?.itemId);
         await super.showEditModal(item);
 
@@ -408,6 +448,7 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     async showReadOnlyModal(item) {
+        this.loadHistory(item);
         await super.showReadOnlyModal(item);
 
         // Load milestones for read-only view
@@ -469,7 +510,8 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
+        this.loadHistory(item);
         return await super.generateReadOnlyView(item, preserveTabIndex);
     }
-    
+
 }

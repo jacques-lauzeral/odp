@@ -44,21 +44,14 @@ export class CollectionEntityForm {
             return;
         }
 
-        // Single event listener for all tab headers anywhere in the document
+        // Single event listener for all tab headers anywhere in the document.
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('tab-header')) {
                 const tabIndex = e.target.dataset.tab;
                 const container = e.target.closest('.form-tabs, .item-details, .modal');
-
                 if (container && tabIndex !== undefined) {
                     this.switchTabInContainer(container, tabIndex);
-                    // Update tracked tab index when user clicks a tab
                     this.currentTabIndex = parseInt(tabIndex, 10);
-
-                    // NEW: Notify parent of tab change
-                    if (this.context?.onTabChange) {
-                        this.context.onTabChange(this.currentTabIndex);
-                    }
                 }
             }
         });
@@ -316,6 +309,11 @@ export class CollectionEntityForm {
     }
 
     renderReadOnlyField(field, value) {
+        // Special handling for history tab - always render the mount point
+        if (field.type === 'history') {
+            return '<div id="history-tab-container" class="history-tab-container"></div>';
+        }
+
         // Special handling for annotated-multiselect
         if (field.type === 'annotated-multiselect') {
             return this.renderAnnotatedMultiselectReadOnly(field, value);
@@ -491,6 +489,10 @@ export class CollectionEntityForm {
             case 'annotated-multiselect':
                 // Render placeholder for annotated-multiselect
                 return this.renderAnnotatedMultiselectField(field, fieldId, value, required);
+
+            case 'history':
+                // Render mount point for HistoryTab component
+                return '<div id="history-tab-container" class="history-tab-container"></div>';
 
             case 'custom':
                 // Allow field to render itself
@@ -925,23 +927,9 @@ export class CollectionEntityForm {
     }
 
     switchTab(tabIndex) {
-        // Update headers
-        this.currentModal.querySelectorAll('.tab-header').forEach(header => {
-            header.classList.toggle('active', header.dataset.tab === tabIndex);
-        });
-
-        // Update panels
-        this.currentModal.querySelectorAll('.tab-panel').forEach(panel => {
-            panel.classList.toggle('active', panel.dataset.tab === tabIndex);
-        });
-
-        // Update tracked tab index
+        if (!this.currentModal) return;
+        this.switchTabInContainer(this.currentModal, String(tabIndex));
         this.currentTabIndex = parseInt(tabIndex, 10);
-
-        // NEW: Notify parent of tab change
-        if (this.context?.onTabChange) {
-            this.context.onTabChange(this.currentTabIndex);
-        }
     }
 
     // ====================
@@ -1060,17 +1048,18 @@ export class CollectionEntityForm {
             });
         }
 
-        // Tab switching is now handled by global delegation
     }
 
     closeModal() {
         console.log("CollectionEntityForm.closeModal - called");
         console.log("CollectionEntityForm.closeModal - stack length:", this.modalStack.length);
 
-        // NEW: Cleanup managers before closing
+        // Cleanup managers before closing
         this.cleanupAnnotatedMultiselects();
         this.cleanupReferenceListManagers();
         this.cleanupQuillEditors();
+
+        this.currentTabIndex = 0;
 
         if (this.currentModal) {
             console.log("CollectionEntityForm.closeModal - removing current modal:", this.currentModal.id);
