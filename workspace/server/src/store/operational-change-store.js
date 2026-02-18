@@ -71,7 +71,10 @@ export class OperationalChangeStore extends VersionedItemStore {
 
                 // Title pattern filtering
                 if (filters.title) {
-                    whereConditions.push('item.title CONTAINS $title');
+                    whereConditions.push(`(
+                    item.title CONTAINS $title OR
+                    item.code CONTAINS $title
+                )`);
                     params.title = filters.title;
                 }
 

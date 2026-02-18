@@ -1036,7 +1036,7 @@ export default class AbstractInteractionActivity {
             if (!endpoint) return [];
 
             const results = await apiClient.get(
-                `${endpoint}?text=${encodeURIComponent(query)}&limit=10`
+                `${endpoint}?title=${encodeURIComponent(query)}&limit=10`
             );
 
             return (results || []).map(item => ({

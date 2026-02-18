@@ -27,7 +27,7 @@ export default class ChangesEntity {
 
         // Local shared state for this entity
         this.sharedState = {
-            filters: {},
+            filters: [],
             selectedItem: null,
             grouping: 'none',
             timeWindow: null,

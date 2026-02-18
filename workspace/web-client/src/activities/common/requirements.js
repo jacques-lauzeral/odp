@@ -28,7 +28,7 @@ export default class RequirementsEntity {
 
         // Local shared state for this entity
         this.sharedState = {
-            filters: {},
+            filters: [],
             selectedItem: null,
             grouping: 'none',
             currentTabIndex: 0
@@ -579,8 +579,12 @@ export default class RequirementsEntity {
             // -- Refines parent (entity reference array) ----------------------
             refines: (item, value) => {
                 if (!value) return true;
+                console.log(`Requirements.refines: item title=`, item.title);
                 const arr = item.refinesParents || [];
-                return arr.some(ref => this._matchesEntityRef(ref, value));
+                return arr.some(ref => {
+                    console.log(`Requirements.refines: ref=`, ref, `value=`, value);
+                    return this._matchesEntityRef(ref, value);
+                });
             },
 
             // -- Depends On (entity reference array) --------------------------
