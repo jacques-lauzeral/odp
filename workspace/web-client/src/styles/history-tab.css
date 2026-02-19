@@ -327,7 +327,7 @@
 ───────────────────────────────────────────────────────────── */
 
 .diff-popup {
-    max-width: 700px;
+    max-width: 860px;
 }
 
 .diff-meta {
@@ -412,4 +412,230 @@
     .diff-field-values {
         grid-template-columns: 1fr;
     }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Diff Popup header layout
+───────────────────────────────────────────────────────────── */
+
+.diff-popup-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+}
+
+.diff-change-count-row {
+    display: flex;
+    align-items: center;
+    padding-top: var(--space-1);
+    border-top: 1px solid var(--border-color);
+}
+
+.diff-popup-versions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--space-2);
+    flex: 1;
+    min-width: 0;
+}
+
+.diff-popup-version-a,
+.diff-popup-version-b {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.diff-popup-version-a > .diff-value-label ~ * {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.diff-popup-version-b {
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+.diff-popup-version-inline {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+}
+
+.diff-vs {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.diff-direction-label {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--text-muted);
+}
+
+.diff-version-selector {
+    font-size: var(--text-sm);
+    padding: 2px 6px;
+    height: auto;
+    max-width: 280px;
+    min-width: 120px;
+    width: 100%;
+}
+
+/* Change count badge */
+.diff-change-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: var(--color-warning-light, #fff8e1);
+    border: 1px solid var(--color-warning, #f9a825);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.diff-change-count--none {
+    background: var(--color-muted);
+    border-color: var(--border-color);
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Diff Popup — field-by-field plain text comparison
+───────────────────────────────────────────────────────────── */
+
+.diff-popup {
+    max-width: 860px;
+}
+
+.diff-meta {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.diff-field-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.diff-field-block:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.diff-field-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-secondary, var(--text-muted));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Side-by-side old / new (scalar fields) */
+.diff-field-values {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+}
+
+.diff-value {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0; /* allow shrink inside grid */
+}
+
+.diff-value-label {
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.diff-value--old .diff-value-label { color: var(--color-danger, #d32f2f); }
+.diff-value--new .diff-value-label { color: var(--color-success, #2e7d32); }
+
+.diff-value-text {
+    margin: 0;
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    white-space: pre-wrap;   /* wrap long lines */
+    word-break: break-word;  /* break unbreakable strings */
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+    max-height: 200px;       /* cap tall blocks — body is scrollable */
+    overflow-y: auto;
+}
+
+.diff-value--old .diff-value-text {
+    background: var(--color-danger-light, #ffebee);
+    border: 1px solid var(--color-danger, #d32f2f);
+}
+
+.diff-value--new .diff-value-text {
+    background: var(--color-success-light, #e8f5e9);
+    border: 1px solid var(--color-success, #2e7d32);
+}
+
+/* Reference array chips */
+.diff-ref-array {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1) 0;
+}
+
+.diff-ref-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.diff-ref-chip--removed {
+    background: var(--color-danger-light, #ffebee);
+    border: 1px solid var(--color-danger, #d32f2f);
+    color: var(--color-danger, #d32f2f);
+    font-weight: 600;
+}
+
+.diff-ref-chip--added {
+    background: var(--color-success-light, #e8f5e9);
+    border: 1px solid var(--color-success, #2e7d32);
+    color: var(--color-success, #2e7d32);
+    font-weight: 600;
+}
+
+.diff-ref-chip--kept {
+    background: var(--color-muted);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .diff-field-values     { grid-template-columns: 1fr; }
+    .diff-popup-header-main { flex-direction: column; align-items: flex-start; }
 }

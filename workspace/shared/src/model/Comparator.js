@@ -142,8 +142,10 @@ class Comparator {
     }
 
     /**
-     * Compare reference arrays (OperationalEntityReference) - only by ID
-     * Order doesn't matter, so we sort before comparing
+     * Compare reference arrays (OperationalEntityReference) - only by ID.
+     * Order doesn't matter, so we sort IDs before comparing.
+     * When a difference is detected, oldValue/newValue carry the original raw
+     * reference objects (not just IDs) so callers can render titles and codes.
      * @private
      */
     static _compareReferenceArray(changes, fieldName, oldRefs, newRefs) {
@@ -153,15 +155,17 @@ class Comparator {
         if (JSON.stringify(oldIds) !== JSON.stringify(newIds)) {
             changes.push({
                 field: fieldName,
-                oldValue: oldIds,
-                newValue: newIds
+                oldValue: Array.isArray(oldRefs) ? oldRefs : [],
+                newValue: Array.isArray(newRefs) ? newRefs : []
             });
         }
     }
 
     /**
-     * Compare annotated reference arrays (AnnotatedReference) - by ID and note
-     * Order doesn't matter, so we sort before comparing
+     * Compare annotated reference arrays (AnnotatedReference) - by ID and note.
+     * Order doesn't matter, so we sort normalized forms before comparing.
+     * When a difference is detected, oldValue/newValue carry the original raw
+     * reference objects (not normalized) so callers can render titles and notes.
      * @private
      */
     static _compareAnnotatedReferenceArray(changes, fieldName, oldRefs, newRefs) {
@@ -171,8 +175,8 @@ class Comparator {
         if (JSON.stringify(oldNormalized) !== JSON.stringify(newNormalized)) {
             changes.push({
                 field: fieldName,
-                oldValue: oldNormalized,
-                newValue: newNormalized
+                oldValue: Array.isArray(oldRefs) ? oldRefs : [],
+                newValue: Array.isArray(newRefs) ? newRefs : []
             });
         }
     }

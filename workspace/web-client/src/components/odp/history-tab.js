@@ -33,8 +33,10 @@ export class HistoryTab {
 
         this._diffPopup = new DiffPopup(apiClient);
 
-        this.onDiff    = callbacks.onDiff    || ((vA, vB) => {
-            this._diffPopup.open(this._entityType, this._itemId, vA, vB);
+        // onDiff(versionNumber) — DiffPopup receives the full versions array
+        // and picks the default comparison target (previous version) itself.
+        this.onDiff = callbacks.onDiff || ((versionNumber) => {
+            this._diffPopup.open(this._entityType, this._itemId, versionNumber, this._versions);
         });
         this.onRestore = callbacks.onRestore || ((vId) => console.log(`[HistoryTab] Restore: version=${vId}`));
         this.readOnly  = callbacks.readOnly  || false;
@@ -247,65 +249,17 @@ export class HistoryTab {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // DIFF CONFIRMATION POPUP
+    // DIFF — direct launch, no intermediate confirm popup
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Show the diff confirmation popup.
-     * Pre-selects the previous version as the comparison target.
+     * Launch the diff directly. The DiffPopup handles version selection internally.
      *
-     * @param {string} versionId      - ID of the version to diff
-     * @param {string} versionNumber  - Display version number
+     * @param {string} versionId      - Node ID of the version (unused here, kept for symmetry)
+     * @param {string} versionNumber  - Version number of the row clicked
      */
     _showDiffConfirm(versionId, versionNumber) {
-        this._removePopup('history-diff-confirm-popup');
-
-        const versions  = this._versions;
-
-        // Find target index by versionNumber
-        const targetIdx = versions.findIndex(v => String(v.version) === String(versionNumber));
-
-        // Only versions older than the target (higher index = older in newest-first array)
-        const olderVersions = versions.slice(targetIdx + 1);
-
-        // All older versions, first one (previous) pre-selected
-        const compareSelectOptions = olderVersions
-            .map((v, idx) => {
-                const isPreselected = idx === 0;
-                return `<option value="${this._escape(String(v.version))}" ${isPreselected ? 'selected' : ''}>v${this._escape(String(v.version))} — ${this._formatDate(v.createdAt)} · ${this._escape(v.createdBy || '—')}</option>`;
-            }).join('');
-
-        const popupHtml = `
-            <div class="history-popup-overlay" id="history-diff-confirm-popup">
-                <div class="history-popup history-popup--narrow">
-                    <div class="history-popup-header">
-                        <h3 class="history-popup-title">Compare <span class="history-version-badge">v${this._escape(versionNumber)}</span> with…</h3>
-                        <button type="button" class="history-popup-close" data-action="cancel">&times;</button>
-                    </div>
-                    <div class="history-popup-body">
-                        <select class="form-control history-compare-select" id="history-compare-select">
-                            ${compareSelectOptions}
-                        </select>
-                    </div>
-                    <div class="history-popup-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel">Cancel</button>
-                        <button type="button" class="btn btn-primary btn-sm history-btn-confirm-diff">Compare</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        document.body.insertAdjacentHTML('beforeend', popupHtml);
-        const popup = document.getElementById('history-diff-confirm-popup');
-
-        popup.querySelector('.history-btn-confirm-diff')?.addEventListener('click', () => {
-            const compareVersion = popup.querySelector('#history-compare-select').value;
-            console.log(`[HistoryTab] Diff confirmed: v${versionNumber} vs v${compareVersion}`);
-            this.onDiff(Number(versionNumber), Number(compareVersion));
-            this._removePopup('history-diff-confirm-popup');
-        });
-
-        this._bindPopupClose(popup, 'history-diff-confirm-popup');
+        this.onDiff(Number(versionNumber));
     }
 
     // ─────────────────────────────────────────────────────────────
