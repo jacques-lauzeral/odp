@@ -102,15 +102,13 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     /**
-     * Load version history as soon as the form is populated with an item.
-     * Uses a MutationObserver to detect when #history-tab-container enters the DOM,
-     * then renders immediately. Works in both modal and detail-panel (non-modal) mode.
+     * Load version history — preload only, no observer (modal mode).
      */
     loadHistory(item, readOnly = false) {
-        if (!item?.itemId) return;
-
         // Re-create with correct readOnly mode
         this.historyTab = new HistoryTab(apiClient, { readOnly });
+
+        if (!item?.itemId) return;
 
         // Start fetching immediately
         this.historyTab.preload('operational-changes', item.itemId);
@@ -120,8 +118,17 @@ export default class ChangeForm extends CollectionEntityForm {
             this._historyObserver.disconnect();
             this._historyObserver = null;
         }
+    }
 
-        // Observe the DOM for #history-tab-container to appear (detail panel / non-modal)
+    /**
+     * Load version history with MutationObserver (detail panel / non-modal mode).
+     */
+    loadHistoryWithObserver(item, readOnly = false) {
+        this.loadHistory(item, readOnly);
+
+        if (!item?.itemId) return;
+
+        // Observe the DOM for #history-tab-container to appear
         this._historyObserver = new MutationObserver(() => {
             const container = document.getElementById('history-tab-container');
             if (!container) return;
@@ -137,18 +144,10 @@ export default class ChangeForm extends CollectionEntityForm {
 
     /**
      * Attach the history tab to its container once the modal DOM is ready.
-     * Only used in modal scenarios — the MutationObserver handles detail-panel scenarios.
+     * Only used in modal scenarios.
      */
     attachHistory(entityType, itemId) {
-        const container = document.getElementById('history-tab-container');
-        if (!container) return;
-
-        // Disconnect observer — we're attaching directly, no need for it anymore
-        if (this._historyObserver) {
-            this._historyObserver.disconnect();
-            this._historyObserver = null;
-        }
-
+        const container = this.currentModal?.querySelector('#history-tab-container');
         this.historyTab.attach(container, entityType, itemId);
     }
 
@@ -530,7 +529,7 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
-        this.loadHistory(item, true);
+        this.loadHistoryWithObserver(item, true);
         return await super.generateReadOnlyView(item, preserveTabIndex);
     }
 

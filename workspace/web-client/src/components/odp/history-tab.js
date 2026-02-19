@@ -65,9 +65,8 @@ export class HistoryTab {
         }
 
         if (this._loading) {
-            const wait = () => new Promise(resolve => setTimeout(resolve, 50));
-            while (this._loading) await wait();
-            this._render();
+            // _load() is already in flight — it will call _render() when done
+            // since _container is now set, the render will go to the right place
             return;
         }
 
@@ -106,10 +105,9 @@ export class HistoryTab {
     // ─────────────────────────────────────────────────────────────
 
     async _load() {
-        if (this._loading) return;
         this._loading = true;
 
-        this._renderLoading();
+        if (this._container) this._renderLoading();
 
         try {
             const versions = await this.apiClient.get(
@@ -117,10 +115,10 @@ export class HistoryTab {
             );
             this._versions = Array.isArray(versions) ? versions : [];
             this._loaded   = true;
-            this._render();
+            if (this._container) this._render();
         } catch (err) {
             console.error('HistoryTab: failed to load versions', err);
-            this._renderError(err);
+            if (this._container) this._renderError(err);
         } finally {
             this._loading = false;
         }
@@ -131,7 +129,6 @@ export class HistoryTab {
     // ─────────────────────────────────────────────────────────────
 
     _renderLoading() {
-        if (!this._container) return;
         this._container.innerHTML = `
             <div class="history-tab-loading">
                 <span class="loading-spinner"></span>
@@ -141,8 +138,6 @@ export class HistoryTab {
     }
 
     _renderError(err) {
-        console.log('HistoryTab._render - container:', !!this._container, 'versions:', this._versions?.length);
-        if (!this._container) return;
         this._container.innerHTML = `
             <div class="history-tab-error alert alert-error">
                 <strong>Error loading history:</strong>
@@ -152,8 +147,6 @@ export class HistoryTab {
     }
 
     _render() {
-        if (!this._container) return;
-
         const versions = this._versions;
 
         if (versions.length === 0) {
@@ -229,8 +222,6 @@ export class HistoryTab {
     // ─────────────────────────────────────────────────────────────
 
     _attachEvents() {
-        if (!this._container) return;
-
         this._container.addEventListener('click', (e) => {
             const diffBtn    = e.target.closest('.history-btn-diff');
             const restoreBtn = e.target.closest('.history-btn-restore');
