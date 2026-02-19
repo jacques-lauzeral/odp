@@ -1,41 +1,34 @@
 /**
  * diff-popup.js
- * Standalone component for displaying a plain-text diff between two entity versions.
+ * Displays a rich diff between two entity versions.
  *
  * Responsibilities:
  *  - Open directly from a version row (no intermediate confirm popup)
- *  - Provide a version selector inside the popup to change the comparison target
- *  - Fetch both versions in parallel via GET /{entityType}/{itemId}/versions/{vN}
- *  - Delegate change detection to Comparator
- *  - Render a modal popup listing changed fields as plain text (old → new)
- *    with added/removed highlighting for reference array fields
- *
- * Usage:
- *   const popup = new DiffPopup(apiClient);
- *   // versions = [{versionId, version, createdAt, createdBy}, ...] newest-first
- *   await popup.open('operational-requirements', itemId, versionNumber, versions);
+ *  - Version selector inside popup header for changing comparison target
+ *  - Fetch both versions in parallel, delegate detection to Comparator
+ *  - For scalar/rich-text fields:
+ *      • Extract plain text from Quill deltas
+ *      • Suppress false positives (identical plain text despite different JSON)
+ *      • Run word-level Myers diff with character-level fallback on short runs
+ *      • Render highlighted Before/After blocks
+ *  - For reference array fields: Before/After chip columns (added/removed only)
  *
  * Dependencies:
- *  - Comparator  (shared/src/model/Comparator.js — adjust path to match your layout)
- *  - history-tab.css  (reuses .history-popup-* and .diff-* classes)
+ *  - Comparator  (shared/src/model/Comparator.js — adjust path to your layout)
+ *  - history-tab.css
  */
 
 import Comparator from '../../shared/src/model/Comparator.js';
 
 export class DiffPopup {
 
-    /**
-     * @param {object} apiClient - Shared API client with .get(path) method
-     */
     constructor(apiClient) {
         this.apiClient   = apiClient;
         this._popupId    = 'diff-popup-overlay';
-
-        // Runtime state for re-compare on selector change
         this._entityType = null;
         this._itemId     = null;
-        this._versionA   = null;   // The "newer" version (selected row) — fixed
-        this._versions   = [];     // Full history list for the selector
+        this._versionA   = null;
+        this._versions   = [];
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -43,14 +36,10 @@ export class DiffPopup {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Open the diff popup directly — no intermediate confirmation step.
-     * Pre-selects the immediately previous version as comparison target.
-     * User can change the target via the selector inside the popup.
-     *
-     * @param {string}        entityType  e.g. 'operational-requirements' | 'operational-changes'
-     * @param {string|number} itemId      Item ID
-     * @param {number}        versionA    The "newer" version number (row that was clicked)
-     * @param {Array}         versions    Full version history [{versionId, version, createdAt, createdBy}] newest-first
+     * @param {string}        entityType  'operational-requirements' | 'operational-changes'
+     * @param {string|number} itemId
+     * @param {number}        versionA    Newer version (clicked row)
+     * @param {Array}         versions    Full history [{versionId, version, createdAt, createdBy}] newest-first
      */
     async open(entityType, itemId, versionA, versions) {
         this._entityType = entityType;
@@ -58,17 +47,15 @@ export class DiffPopup {
         this._versionA   = versionA;
         this._versions   = versions;
 
-        // Default comparison target: the version immediately before versionA
         const targetIdx = versions.findIndex(v => v.version === versionA);
         const defaultB  = versions[targetIdx + 1]?.version ?? null;
-
-        if (defaultB === null) return; // Oldest version — nothing to compare against
+        if (defaultB === null) return;
 
         await this._loadAndRender(versionA, defaultB);
     }
 
     // ─────────────────────────────────────────────────────────────
-    // INTERNAL: FETCH + COMPARE + RENDER CYCLE
+    // FETCH + COMPARE + RENDER
     // ─────────────────────────────────────────────────────────────
 
     async _loadAndRender(vA, vB) {
@@ -81,34 +68,36 @@ export class DiffPopup {
                 this.apiClient.get(`/${this._entityType}/${this._itemId}/versions/${vB}`)
             ]);
 
-            const { hasChanges, changes } = this._compare(this._entityType, entityA, entityB);
+            // Comparator detects changes (B=old, A=new)
+            let { hasChanges, changes } = this._entityType === 'operational-changes'
+                ? Comparator.compareOperationalChange(entityB, entityA)
+                : Comparator.compareOperationalRequirement(entityB, entityA);
+
+            // Second pass: suppress false positives on scalar/rich-text fields
+            changes = changes.filter(change => {
+                if (this._isReferenceArrayField(change.field)) return true;
+                const oldText = this._toPlainText(change.oldValue);
+                const newText = this._toPlainText(change.newValue);
+                return oldText !== newText;
+            });
+            hasChanges = changes.length > 0;
+
             this._removePopup();
-            this._renderDiff(vA, vB, entityA, entityB, hasChanges, changes);
+            this._renderDiff(vA, vB, entityA, hasChanges, changes);
 
         } catch (err) {
-            console.error('[DiffPopup] Failed to load versions for diff', err);
+            console.error('[DiffPopup] Failed to load versions', err);
             this._removePopup();
             this._renderError(vA, vB, err);
         }
     }
 
     // ─────────────────────────────────────────────────────────────
-    // COMPARISON
-    // ─────────────────────────────────────────────────────────────
-
-    _compare(entityType, entityA, entityB) {
-        if (entityType === 'operational-changes') {
-            return Comparator.compareOperationalChange(entityB, entityA); // B=old, A=new
-        }
-        return Comparator.compareOperationalRequirement(entityB, entityA); // B=old, A=new
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // RENDERING
+    // RENDERING — shell
     // ─────────────────────────────────────────────────────────────
 
     _renderLoading(vA, vB) {
-        const html = `
+        document.body.insertAdjacentHTML('beforeend', `
             <div class="history-popup-overlay" id="${this._popupId}">
                 <div class="history-popup diff-popup">
                     ${this._headerHtml(vA, vB)}
@@ -119,12 +108,11 @@ export class DiffPopup {
                         </div>
                     </div>
                 </div>
-            </div>`;
-        document.body.insertAdjacentHTML('beforeend', html);
+            </div>`);
     }
 
     _renderError(vA, vB, err) {
-        const html = `
+        document.body.insertAdjacentHTML('beforeend', `
             <div class="history-popup-overlay" id="${this._popupId}">
                 <div class="history-popup diff-popup">
                     ${this._headerHtml(vA, vB)}
@@ -138,52 +126,43 @@ export class DiffPopup {
                         <button type="button" class="btn btn-secondary btn-sm" data-action="close">Close</button>
                     </div>
                 </div>
-            </div>`;
-        document.body.insertAdjacentHTML('beforeend', html);
+            </div>`);
         this._bindClose();
     }
 
-    _renderDiff(vA, vB, entityA, entityB, hasChanges, changes) {
+    _renderDiff(vA, vB, entityA, hasChanges, changes) {
         const countLabel = hasChanges
             ? `<span class="diff-change-count">${changes.length} field${changes.length !== 1 ? 's' : ''} changed</span>`
             : `<span class="diff-change-count diff-change-count--none">No differences</span>`;
 
         const bodyHtml = hasChanges
-            ? this._renderChanges(changes)
+            ? changes.map(c => this._renderFieldBlock(c)).join('')
             : `<p class="history-popup-hint">No differences found between these versions.</p>`;
 
-        const html = `
+        document.body.insertAdjacentHTML('beforeend', `
             <div class="history-popup-overlay" id="${this._popupId}">
                 <div class="history-popup diff-popup">
-                    ${this._headerHtml(vA, vB, entityA, entityB, countLabel)}
-                    <div class="history-popup-body">
-                        ${bodyHtml}
-                    </div>
+                    ${this._headerHtml(vA, vB, entityA, countLabel)}
+                    <div class="history-popup-body">${bodyHtml}</div>
                     <div class="history-popup-footer">
                         <button type="button" class="btn btn-secondary btn-sm" data-action="close">Close</button>
                     </div>
                 </div>
-            </div>`;
-        document.body.insertAdjacentHTML('beforeend', html);
+            </div>`);
         this._bindClose();
         this._bindVersionSelector(vA);
     }
 
-    /**
-     * Header includes: version badges with meta + inline version selector for vB.
-     * @private
-     */
-    _headerHtml(vA, vB, entityA = null, entityB = null, countLabel = '') {
+    _headerHtml(vA, vB, entityA = null, countLabel = '') {
         const metaA = entityA
             ? `<span class="diff-meta">${this._esc(this._formatDate(entityA.createdAt))} · ${this._esc(entityA.createdBy || '')}</span>`
             : '';
 
-        // Build selector options (all versions older than vA)
         const targetIdx     = this._versions.findIndex(v => v.version === vA);
         const olderVersions = this._versions.slice(targetIdx + 1);
         const selectorHtml  = olderVersions.map(v => {
-            const selected = v.version === vB ? 'selected' : '';
-            return `<option value="${v.version}" ${selected}>v${v.version} — ${this._esc(this._formatDate(v.createdAt))} · ${this._esc(v.createdBy || '—')}</option>`;
+            const sel = v.version === vB ? 'selected' : '';
+            return `<option value="${v.version}" ${sel}>v${v.version} — ${this._esc(this._formatDate(v.createdAt))} · ${this._esc(v.createdBy || '—')}</option>`;
         }).join('');
 
         return `
@@ -191,7 +170,7 @@ export class DiffPopup {
                 <div class="diff-popup-versions">
                     <div class="diff-popup-version-b">
                         <span class="diff-value-label">Before</span>
-                        <select class="form-control diff-version-selector" id="diff-version-selector">
+                        <select class="diff-version-selector" id="diff-version-selector">
                             ${selectorHtml}
                         </select>
                     </div>
@@ -209,45 +188,151 @@ export class DiffPopup {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // FIELD RENDERING
+    // RENDERING — field blocks
     // ─────────────────────────────────────────────────────────────
 
-    _renderChanges(changes) {
-        return changes.map(change => {
-            const isRefArray  = this._isReferenceArrayField(change.field);
-            const fieldContent = isRefArray
-                ? this._renderRefArrayDiff(change.oldValue, change.newValue)
-                : this._renderScalarDiff(change.field, change.oldValue, change.newValue);
+    _renderFieldBlock(change) {
+        const content = this._isReferenceArrayField(change.field)
+            ? this._renderRefArrayDiff(change.oldValue, change.newValue)
+            : this._renderScalarDiff(change.oldValue, change.newValue);
 
-            return `
-                <div class="diff-field-block">
-                    <div class="diff-field-name">${this._esc(this._fieldLabel(change.field))}</div>
-                    ${fieldContent}
-                </div>`;
-        }).join('');
+        return `
+            <div class="diff-field-block">
+                <div class="diff-field-name">${this._esc(this._fieldLabel(change.field))}</div>
+                ${content}
+            </div>`;
     }
 
-    /** Side-by-side old/new for scalar and rich-text fields. @private */
-    _renderScalarDiff(field, oldValue, newValue) {
-        const oldText = this._formatValue(field, oldValue);
-        const newText = this._formatValue(field, newValue);
+    /**
+     * Scalar / rich-text diff: word-level Myers diff with character fallback.
+     * Renders Before (red highlights) and After (green highlights) side by side.
+     * @private
+     */
+    _renderScalarDiff(oldValue, newValue) {
+        const oldText = this._toPlainText(oldValue);
+        const newText = this._toPlainText(newValue);
+
+        const oldHtml = this._buildHighlightedHtml(oldText, newText, 'old');
+        const newHtml = this._buildHighlightedHtml(newText, oldText, 'new');
+
         return `
             <div class="diff-field-values">
                 <div class="diff-value diff-value--old">
                     <span class="diff-value-label">Before</span>
-                    <pre class="diff-value-text">${this._esc(oldText)}</pre>
+                    <div class="diff-value-text">${oldHtml}</div>
                 </div>
                 <div class="diff-value diff-value--new">
                     <span class="diff-value-label">After</span>
-                    <pre class="diff-value-text">${this._esc(newText)}</pre>
+                    <div class="diff-value-text">${newHtml}</div>
                 </div>
             </div>`;
     }
 
     /**
-     * Before/after column layout for reference array fields.
-     * Shows only added/removed items — kept items are hidden (not relevant to the diff).
-     * Before column (red): removed items. After column (green): added items.
+     * Build highlighted HTML for one side of a text diff.
+     * @param {string} thisSide   The text to render
+     * @param {string} otherSide  The text to compare against
+     * @param {'old'|'new'} role
+     * @private
+     */
+    _buildHighlightedHtml(thisSide, otherSide, role) {
+        // Tokenise both sides into words+whitespace
+        const thisTokens  = this._tokenise(thisSide);
+        const otherTokens = this._tokenise(otherSide);
+
+        const ops = myersDiff(thisTokens, otherTokens);
+
+        // Ops are relative to otherSide; we want to mark what's ONLY in thisSide
+        // equal → keep as-is; insert (in other, not here) → irrelevant;
+        // delete (in this, not in other) → highlight
+        // Re-run diff with this as 'a' and other as 'b':
+        const ops2 = myersDiff(thisTokens, otherTokens);
+
+        let html = '';
+        let ai = 0; // index into thisTokens
+
+        for (const op of ops2) {
+            if (op.type === 'equal') {
+                html += this._esc(thisTokens.slice(ai, ai + op.count).join(''));
+                ai += op.count;
+            } else if (op.type === 'delete') {
+                // These tokens are in thisSide but not in otherSide → highlight
+                const run = thisTokens.slice(ai, ai + op.count).join('');
+                html += this._highlightRun(run, role, otherSide);
+                ai += op.count;
+            }
+            // 'insert' ops refer to tokens in otherSide — skip
+        }
+
+        return html || '<span class="diff-empty">(empty)</span>';
+    }
+
+    /**
+     * Highlight a changed run. For short runs, fall back to character-level diff.
+     * @private
+     */
+    _highlightRun(run, role, otherSide) {
+        const cls = role === 'old' ? 'diff-hl-removed' : 'diff-hl-added';
+
+        // Character-level fallback for short runs (≤ 40 chars)
+        if (run.trim().length <= 40) {
+            // Find the nearest matching region in otherSide for character diff
+            const otherRun = this._findBestMatchRun(run, otherSide);
+            if (otherRun) {
+                const charTokensThis  = [...run];   // split into chars
+                const charTokensOther = [...otherRun];
+                const charOps = myersDiff(charTokensThis, charTokensOther);
+                let charHtml = '';
+                let ci = 0;
+                for (const op of charOps) {
+                    if (op.type === 'equal') {
+                        charHtml += this._esc(charTokensThis.slice(ci, ci + op.count).join(''));
+                        ci += op.count;
+                    } else if (op.type === 'delete') {
+                        charHtml += `<mark class="${cls}">${this._esc(charTokensThis.slice(ci, ci + op.count).join(''))}</mark>`;
+                        ci += op.count;
+                    }
+                }
+                return charHtml;
+            }
+        }
+
+        return `<mark class="${cls}">${this._esc(run)}</mark>`;
+    }
+
+    /**
+     * Find the substring in otherSide that best matches the changed run,
+     * used as the counterpart for character-level diffing.
+     * Simple approach: find the word in otherSide closest to the run.
+     * @private
+     */
+    _findBestMatchRun(run, otherSide) {
+        const runTrimmed = run.trim().toLowerCase();
+        if (!runTrimmed) return null;
+
+        // Split other side into word-sized chunks
+        const otherWords = this._tokenise(otherSide).filter(t => t.trim());
+        if (!otherWords.length) return null;
+
+        // Find word with longest common prefix — good enough for typo-level changes
+        let best = null, bestScore = -1;
+        for (const w of otherWords) {
+            let score = 0;
+            const wl = w.toLowerCase();
+            const minLen = Math.min(runTrimmed.length, wl.length);
+            for (let i = 0; i < minLen; i++) {
+                if (runTrimmed[i] === wl[i]) score++;
+                else break;
+            }
+            if (score > bestScore) { bestScore = score; best = w; }
+        }
+
+        return best;
+    }
+
+    /**
+     * Before/After columns for reference arrays.
+     * Shows only removed (Before) and added (After) — kept items hidden.
      * @private
      */
     _renderRefArrayDiff(oldValue, newValue) {
@@ -261,15 +346,11 @@ export class DiffPopup {
         const added   = newItems.filter(r => !oldIds.has(this._refId(r)));
 
         const removedHtml = removed.length > 0
-            ? removed.map(r =>
-                `<span class="diff-ref-chip diff-ref-chip--removed">− ${this._esc(this._refLabel(r))}</span>`
-            ).join('')
+            ? removed.map(r => `<span class="diff-ref-chip diff-ref-chip--removed">− ${this._esc(this._refLabel(r))}</span>`).join('')
             : `<span class="diff-meta">(none removed)</span>`;
 
         const addedHtml = added.length > 0
-            ? added.map(r =>
-                `<span class="diff-ref-chip diff-ref-chip--added">+ ${this._esc(this._refLabel(r))}</span>`
-            ).join('')
+            ? added.map(r => `<span class="diff-ref-chip diff-ref-chip--added">+ ${this._esc(this._refLabel(r))}</span>`).join('')
             : `<span class="diff-meta">(none added)</span>`;
 
         return `
@@ -286,38 +367,20 @@ export class DiffPopup {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // VALUE FORMATTING (plain text)
+    // TEXT EXTRACTION
     // ─────────────────────────────────────────────────────────────
 
-    _formatValue(fieldName, value) {
-        if (value === null || value === undefined || value === '') return '(empty)';
-
-        if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
-            return value.map(ref => {
-                const note = ref.note ? ` [${ref.note}]` : '';
-                return `• ${this._refLabel(ref)}${note}`;
-            }).join('\n') || '(none)';
-        }
-
-        if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'number') {
-            return value.map(id => `• ${id}`).join('\n');
-        }
-
-        if (Array.isArray(value)) return '(none)';
-
-        if (typeof value === 'string') return this._quillToPlainText(value);
-
-        return String(value);
-    }
-
     /**
-     * Extract plain text from a Quill delta JSON string.
-     * Preserves paragraph breaks and list bullets from op attributes.
+     * Normalise any field value to a plain text string for diffing.
+     * Handles Quill delta JSON, plain strings, and scalars.
      * @private
      */
-    _quillToPlainText(value) {
+    _toPlainText(value) {
+        if (value === null || value === undefined) return '';
+        if (typeof value !== 'string') return String(value);
+
         const trimmed = value.trim();
-        if (!trimmed.startsWith('{') && !trimmed.startsWith('"')) return trimmed || '(empty)';
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('"')) return trimmed;
 
         try {
             let parsed = JSON.parse(trimmed);
@@ -340,13 +403,23 @@ export class DiffPopup {
                         text += op.insert;
                     }
                 }
-                return text.replace(/\n+$/, '') || '(empty)';
+                return text.replace(/\n+$/, '');
             }
         } catch {
-            // Not valid JSON — fall through
+            // Not valid JSON
         }
 
-        return trimmed || '(empty)';
+        return trimmed;
+    }
+
+    /**
+     * Tokenise text into words and whitespace/punctuation runs for diffing.
+     * Splitting on word boundaries preserves spaces so rejoined text is identical.
+     * @private
+     */
+    _tokenise(text) {
+        // Split into: words, whitespace runs, punctuation — keeps joinability
+        return text.match(/\S+|\s+/g) ?? [];
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -412,15 +485,15 @@ export class DiffPopup {
         const popup = document.getElementById(this._popupId);
         if (!popup) return;
 
-        popup.querySelectorAll('[data-action="close"]').forEach(btn => {
-            btn.addEventListener('click', () => this._removePopup());
-        });
+        popup.querySelectorAll('[data-action="close"]').forEach(btn =>
+            btn.addEventListener('click', () => this._removePopup())
+        );
 
-        popup.addEventListener('click', (e) => {
+        popup.addEventListener('click', e => {
             if (e.target === popup) this._removePopup();
         });
 
-        const onEsc = (e) => {
+        const onEsc = e => {
             if (e.key === 'Escape') {
                 this._removePopup();
                 document.removeEventListener('keydown', onEsc);
@@ -429,15 +502,13 @@ export class DiffPopup {
         document.addEventListener('keydown', onEsc);
     }
 
-    /** Re-run diff when user picks a different comparison version. @private */
     _bindVersionSelector(vA) {
         const popup    = document.getElementById(this._popupId);
         const selector = popup?.querySelector('#diff-version-selector');
         if (!selector) return;
 
         selector.addEventListener('change', async () => {
-            const newVB = Number(selector.value);
-            await this._loadAndRender(vA, newVB);
+            await this._loadAndRender(vA, Number(selector.value));
         });
     }
 
@@ -460,5 +531,109 @@ export class DiffPopup {
         if (!iso) return '—';
         try { return new Date(iso).toLocaleString(); }
         catch { return iso; }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MYERS DIFF — standalone, no dependencies
+// Produces an edit script of {type, count} ops:
+//   equal  — tokens present in both a and b
+//   delete — tokens in a not in b  (will be highlighted on the 'a' side)
+//   insert — tokens in b not in a  (will be highlighted on the 'b' side)
+//
+// Based on Myers (1986) "An O(ND) Difference Algorithm and Its Variations"
+// ─────────────────────────────────────────────────────────────
+
+function myersDiff(a, b) {
+    const N = a.length;
+    const M = b.length;
+    const MAX = N + M;
+
+    if (MAX === 0) return [];
+
+    // v[k] = furthest reaching x for diagonal k
+    const v = new Array(2 * MAX + 1).fill(0);
+    const trace = []; // snapshot of v after each step
+
+    outer:
+        for (let d = 0; d <= MAX; d++) {
+            trace.push([...v]);
+
+            for (let k = -d; k <= d; k += 2) {
+                const ki = k + MAX; // offset index into v
+
+                let x;
+                if (k === -d || (k !== d && v[ki - 1] < v[ki + 1])) {
+                    x = v[ki + 1]; // move down
+                } else {
+                    x = v[ki - 1] + 1; // move right
+                }
+
+                let y = x - k;
+
+                // Follow snake (diagonals where a[x] === b[y])
+                while (x < N && y < M && a[x] === b[y]) { x++; y++; }
+
+                v[ki] = x;
+
+                if (x >= N && y >= M) {
+                    trace.push([...v]);
+                    break outer;
+                }
+            }
+        }
+
+    // Backtrack through trace to build edit script
+    return backtrack(a, b, trace, MAX);
+}
+
+function backtrack(a, b, trace, MAX) {
+    const ops = [];
+    let x = a.length;
+    let y = b.length;
+
+    for (let d = trace.length - 1; d >= 0; d--) {
+        const v  = trace[d];
+        const k  = x - y;
+        const ki = k + MAX;
+
+        let prevK;
+        if (k === -d || (k !== d && v[ki - 1] < v[ki + 1])) {
+            prevK = k + 1; // came from down (insert)
+        } else {
+            prevK = k - 1; // came from right (delete)
+        }
+
+        const prevX = v[prevK + MAX];
+        const prevY = prevX - prevK;
+
+        // Snake — equal tokens
+        while (x > prevX && y > prevY) {
+            pushOp(ops, 'equal', 1);
+            x--; y--;
+        }
+
+        if (d > 0) {
+            if (x === prevX) {
+                // Moved down → insert (token in b, not a)
+                pushOp(ops, 'insert', 1);
+                y--;
+            } else {
+                // Moved right → delete (token in a, not b)
+                pushOp(ops, 'delete', 1);
+                x--;
+            }
+        }
+    }
+
+    ops.reverse();
+    return ops;
+}
+
+function pushOp(ops, type, count) {
+    if (ops.length && ops[ops.length - 1].type === type) {
+        ops[ops.length - 1].count += count;
+    } else {
+        ops.push({ type, count });
     }
 }

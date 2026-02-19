@@ -1,7 +1,7 @@
 /**
  * history-tab.css
- * Styles for the HistoryTab component
- * Design aligned with ReferenceListManager (chip aesthetics, popup overlays)
+ * Styles for the HistoryTab and DiffPopup components.
+ * Tokens: aligned with main.css design system.
  */
 
 /* ─────────────────────────────────────────────────────────────
@@ -23,12 +23,14 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-3);
-    color: var(--text-muted);
+    color: var(--text-tertiary);
     font-style: italic;
+    font-size: var(--font-size-sm);
 }
 
 .history-tab-error {
     padding: var(--space-3);
+    font-size: var(--font-size-sm);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -39,9 +41,9 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-primary);
     border-radius: var(--radius-md);
-    background: var(--color-background);
+    background: white;
     overflow: hidden;
 }
 
@@ -55,8 +57,8 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-color);
-    transition: background-color 0.15s;
+    border-bottom: 1px solid var(--border-primary);
+    transition: background-color var(--transition-fast);
 }
 
 .history-row:last-child {
@@ -64,15 +66,15 @@
 }
 
 .history-row:hover {
-    background: var(--color-primary-light);
+    background: var(--bg-secondary);
 }
 
 .history-row--latest {
-    background: var(--color-muted);
+    background: var(--bg-secondary);
 }
 
 .history-row--latest:hover {
-    background: var(--color-primary-light);
+    background: var(--bg-tertiary);
 }
 
 /* Meta section (left side) */
@@ -94,18 +96,19 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Badges — aligned with selected-chip from ReferenceListManager
+   Badges
 ───────────────────────────────────────────────────────────── */
 
 .history-version-badge {
     display: inline-flex;
     align-items: center;
     padding: 2px 8px;
-    background: var(--color-primary-light);
-    border: 1px solid var(--color-primary);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-weight: 600;
+    background: var(--primary-50);
+    border: 1px solid var(--primary-500);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--primary-700);
     line-height: 1.4;
     white-space: nowrap;
 }
@@ -114,25 +117,47 @@
     display: inline-flex;
     align-items: center;
     padding: 2px 8px;
-    background: var(--color-success-light, #e6f4ea);
-    border: 1px solid var(--color-success, #34a853);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-success, #34a853);
+    background: #e6f4ea;
+    border: 1px solid #34a853;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: #1e7e34;
     line-height: 1.4;
     white-space: nowrap;
 }
 
 .history-row-date,
 .history-row-author {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
     white-space: nowrap;
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Popup Overlay — mirrors search-popup-overlay
+   Header row (column titles)
+───────────────────────────────────────────────────────────── */
+
+.history-row--header {
+    background: var(--bg-tertiary);
+    cursor: default;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.history-row--header:hover {
+    background: var(--bg-tertiary);
+}
+
+.history-col-title {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Popup Overlay
 ───────────────────────────────────────────────────────────── */
 
 .history-popup-overlay {
@@ -146,15 +171,16 @@
     align-items: center;
     justify-content: center;
     z-index: 2000;
+    padding: var(--space-4);
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Popup Panel — mirrors search-popup
+   Popup Panel
 ───────────────────────────────────────────────────────────── */
 
 .history-popup {
     background: white;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     width: 90%;
     max-width: 480px;
@@ -172,85 +198,81 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
-    padding: var(--space-3);
-    border-bottom: 1px solid var(--border-color);
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
 }
 
 .history-popup-title {
     margin: 0;
-    font-size: var(--text-base);
-    font-weight: 600;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    color: var(--text-primary);
 }
 
 .history-popup-close {
     background: none;
     border: none;
-    font-size: 1.4rem;
+    font-size: var(--font-size-xl);
     line-height: 1;
-    color: var(--text-muted);
+    color: var(--text-tertiary);
     cursor: pointer;
-    padding: 0 var(--space-1);
-    border-radius: var(--radius-sm);
-    transition: background-color 0.15s;
+    padding: var(--space-1);
+    border-radius: var(--radius-base);
+    transition: background-color var(--transition-fast);
+    flex-shrink: 0;
 }
 
 .history-popup-close:hover {
-    background: var(--color-muted);
+    background: var(--bg-tertiary);
     color: var(--text-primary);
 }
 
 .history-popup-body {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-3);
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    /* Firefox scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: var(--gray-300) var(--gray-100);
+}
+
+/* Webkit scrollbar — visible against white background */
+.history-popup-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.history-popup-body::-webkit-scrollbar-track {
+    background: var(--gray-100);
+    border-radius: var(--radius-md);
+}
+
+.history-popup-body::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+    border-radius: var(--radius-md);
+}
+
+.history-popup-body::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
 }
 
 .history-popup-hint {
     margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
 }
 
 .history-popup-footer {
     display: flex;
     justify-content: flex-end;
     gap: var(--space-2);
-    padding: var(--space-3);
-    border-top: 1px solid var(--border-color);
-}
-
-/* Header row */
-.history-row--header {
-    background: var(--color-muted);
-    cursor: default;
-    font-size: var(--text-sm);
-    font-weight: 600;
-}
-
-.history-row--header:hover {
-    background: var(--color-muted);
-}
-
-.history-col-title {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-secondary, var(--text-muted));
-    white-space: nowrap;
-}
-
-
-/* ─────────────────────────────────────────────────────────────
-   Compare Version Selector (Diff popup)
-───────────────────────────────────────────────────────────── */
-
-.history-compare-select {
-    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-primary);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -261,44 +283,250 @@
     display: flex;
     gap: var(--space-3);
     padding: var(--space-3);
-    background: var(--color-warning-light, #fff8e1);
-    border: 1px solid var(--color-warning, #f9a825);
+    background: #fff8e1;
+    border: 1px solid #f9a825;
     border-radius: var(--radius-md);
 }
 
 .history-restore-warning-icon {
-    font-size: 1.4rem;
+    font-size: var(--font-size-xl);
     flex-shrink: 0;
     line-height: 1.4;
 }
 
 .history-restore-warning p {
     margin: 0;
-    font-size: var(--text-sm);
+    font-size: var(--font-size-sm);
     line-height: 1.6;
     color: var(--text-primary);
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Scrollbar — mirrors search-popup-results
+   Diff Popup — wider panel
 ───────────────────────────────────────────────────────────── */
 
-.history-popup-body::-webkit-scrollbar {
-    width: 8px;
+.diff-popup {
+    max-width: 860px;
 }
 
-.history-popup-body::-webkit-scrollbar-track {
-    background: var(--color-muted);
-    border-radius: var(--radius-sm);
+/* ─────────────────────────────────────────────────────────────
+   Diff Popup — header layout
+───────────────────────────────────────────────────────────── */
+
+.diff-popup-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
 }
 
-.history-popup-body::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: var(--radius-sm);
+.diff-popup-versions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: var(--space-3);
+    min-width: 0;
 }
 
-.history-popup-body::-webkit-scrollbar-thumb:hover {
-    background: var(--text-muted);
+.diff-popup-version-a,
+.diff-popup-version-b {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.diff-popup-version-b {
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+/* Badge + meta on one line */
+.diff-popup-version-inline {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-2);
+    white-space: nowrap;
+}
+
+.diff-vs {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+.diff-version-selector {
+    font-size: var(--font-size-sm);
+    padding: var(--space-1) var(--space-2);
+    height: auto;
+    max-width: 280px;
+    min-width: 120px;
+    width: 100%;
+    /* reuse form-control appearance */
+    color: var(--text-primary);
+    background-color: white;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.diff-version-selector:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+/* Change count summary row */
+.diff-change-count-row {
+    display: flex;
+    align-items: center;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-primary);
+}
+
+.diff-change-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    background: #fff8e1;
+    border: 1px solid #f9a825;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.diff-change-count--none {
+    background: var(--bg-tertiary);
+    border-color: var(--border-primary);
+    font-weight: var(--font-weight-normal);
+    color: var(--text-tertiary);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Diff Popup — field blocks
+───────────────────────────────────────────────────────────── */
+
+.diff-meta {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    font-weight: var(--font-weight-normal);
+}
+
+.diff-field-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.diff-field-block:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.diff-field-name {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Side-by-side Before / After columns */
+.diff-field-values {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+}
+
+.diff-value {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.diff-value-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.diff-value--old .diff-value-label { color: #c62828; }
+.diff-value--new .diff-value-label { color: #2e7d32; }
+
+/* Scalar text diff blocks */
+.diff-value-text {
+    margin: 0;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-family: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
+    /* scrollbar inside value block */
+    scrollbar-width: thin;
+    scrollbar-color: var(--gray-300) transparent;
+}
+
+.diff-value-text::-webkit-scrollbar { width: 4px; }
+.diff-value-text::-webkit-scrollbar-track { background: transparent; }
+.diff-value-text::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: var(--radius-md); }
+
+.diff-value--old .diff-value-text {
+    background: #ffebee;
+    border: 1px solid #e57373;
+}
+
+.diff-value--new .diff-value-text {
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+}
+
+/* Reference array chips — inside diff-field-values columns */
+.diff-ref-array {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1) 0;
+    min-height: 28px; /* keep column visible even when empty hint shown */
+}
+
+.diff-ref-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.diff-ref-chip--removed {
+    background: #ffebee;
+    border: 1px solid #e57373;
+    color: #c62828;
+    font-weight: var(--font-weight-medium);
+}
+
+.diff-ref-chip--added {
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+    color: #2e7d32;
+    font-weight: var(--font-weight-medium);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -322,320 +550,50 @@
     }
 }
 
+@media (max-width: 600px) {
+    .diff-field-values      { grid-template-columns: 1fr; }
+    .diff-popup-versions    { flex-wrap: wrap; }
+}
+
 /* ─────────────────────────────────────────────────────────────
-   Diff Popup — field-by-field plain text comparison
+   Inline diff highlighting (scalar / rich-text fields)
 ───────────────────────────────────────────────────────────── */
 
-.diff-popup {
-    max-width: 860px;
-}
-
-.diff-meta {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-    font-weight: 400;
-}
-
-/* One block per changed field */
-.diff-field-block {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.diff-field-block:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-}
-
-.diff-field-name {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-secondary, var(--text-muted));
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-/* Side-by-side old / new values */
-.diff-field-values {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2);
-}
-
-.diff-value {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.diff-value-label {
-    font-size: var(--text-xs, 0.75rem);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.diff-value--old .diff-value-label {
-    color: var(--color-danger, #d32f2f);
-}
-
-.diff-value--new .diff-value-label {
-    color: var(--color-success, #2e7d32);
-}
-
+/* diff-value-text is now a div (not pre) so we can embed marks */
 .diff-value-text {
-    margin: 0;
-    padding: var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-family: inherit;
     white-space: pre-wrap;
     word-break: break-word;
-    line-height: 1.5;
-}
-
-.diff-value--old .diff-value-text {
-    background: var(--color-danger-light, #ffebee);
-    border: 1px solid var(--color-danger, #d32f2f);
-}
-
-.diff-value--new .diff-value-text {
-    background: var(--color-success-light, #e8f5e9);
-    border: 1px solid var(--color-success, #2e7d32);
-}
-
-/* Responsive: stack on narrow screens */
-@media (max-width: 600px) {
-    .diff-field-values {
-        grid-template-columns: 1fr;
-    }
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Diff Popup header layout
-───────────────────────────────────────────────────────────── */
-
-.diff-popup-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-1);
-}
-
-.diff-change-count-row {
-    display: flex;
-    align-items: center;
-    padding-top: var(--space-1);
-    border-top: 1px solid var(--border-color);
-}
-
-.diff-popup-versions {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: var(--space-2);
-    flex: 1;
-    min-width: 0;
-}
-
-.diff-popup-version-a,
-.diff-popup-version-b {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    flex-shrink: 0;
-}
-
-.diff-popup-version-a > .diff-value-label ~ * {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-1);
-}
-
-.diff-popup-version-b {
-    min-width: 0;
-    flex-shrink: 1;
-}
-
-.diff-popup-version-inline {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: var(--space-1);
-    white-space: nowrap;
-}
-
-.diff-vs {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-muted);
-}
-
-.diff-direction-label {
-    font-size: var(--text-xs, 0.75rem);
-    color: var(--text-muted);
-}
-
-.diff-version-selector {
-    font-size: var(--text-sm);
-    padding: 2px 6px;
-    height: auto;
-    max-width: 280px;
-    min-width: 120px;
-    width: 100%;
-}
-
-/* Change count badge */
-.diff-change-count {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    background: var(--color-warning-light, #fff8e1);
-    border: 1px solid var(--color-warning, #f9a825);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.diff-change-count--none {
-    background: var(--color-muted);
-    border-color: var(--border-color);
-    font-weight: 400;
-    color: var(--text-muted);
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Diff Popup — field-by-field plain text comparison
-───────────────────────────────────────────────────────────── */
-
-.diff-popup {
-    max-width: 860px;
-}
-
-.diff-meta {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-    font-weight: 400;
-}
-
-.diff-field-block {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.diff-field-block:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-}
-
-.diff-field-name {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-secondary, var(--text-muted));
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-/* Side-by-side old / new (scalar fields) */
-.diff-field-values {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2);
-}
-
-.diff-value {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0; /* allow shrink inside grid */
-}
-
-.diff-value-label {
-    font-size: var(--text-xs, 0.75rem);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.diff-value--old .diff-value-label { color: var(--color-danger, #d32f2f); }
-.diff-value--new .diff-value-label { color: var(--color-success, #2e7d32); }
-
-.diff-value-text {
-    margin: 0;
-    padding: var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-family: inherit;
-    white-space: pre-wrap;   /* wrap long lines */
-    word-break: break-word;  /* break unbreakable strings */
     overflow-wrap: anywhere;
-    line-height: 1.5;
-    max-height: 200px;       /* cap tall blocks — body is scrollable */
+    line-height: 1.6;
+    max-height: 220px;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--gray-300) transparent;
 }
 
-.diff-value--old .diff-value-text {
-    background: var(--color-danger-light, #ffebee);
-    border: 1px solid var(--color-danger, #d32f2f);
+.diff-value-text::-webkit-scrollbar { width: 4px; }
+.diff-value-text::-webkit-scrollbar-track { background: transparent; }
+.diff-value-text::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: var(--radius-md); }
+
+mark.diff-hl-removed {
+    background: #ffcdd2;
+    color: #b71c1c;
+    border-radius: 2px;
+    padding: 0 1px;
+    font-style: normal;
+    text-decoration: line-through;
+    text-decoration-color: #c62828;
 }
 
-.diff-value--new .diff-value-text {
-    background: var(--color-success-light, #e8f5e9);
-    border: 1px solid var(--color-success, #2e7d32);
+mark.diff-hl-added {
+    background: #c8e6c9;
+    color: #1b5e20;
+    border-radius: 2px;
+    padding: 0 1px;
+    font-style: normal;
 }
 
-/* Reference array chips */
-.diff-ref-array {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    padding: var(--space-1) 0;
-}
-
-.diff-ref-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    line-height: 1.4;
-    white-space: nowrap;
-}
-
-.diff-ref-chip--removed {
-    background: var(--color-danger-light, #ffebee);
-    border: 1px solid var(--color-danger, #d32f2f);
-    color: var(--color-danger, #d32f2f);
-    font-weight: 600;
-}
-
-.diff-ref-chip--added {
-    background: var(--color-success-light, #e8f5e9);
-    border: 1px solid var(--color-success, #2e7d32);
-    color: var(--color-success, #2e7d32);
-    font-weight: 600;
-}
-
-.diff-ref-chip--kept {
-    background: var(--color-muted);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-}
-
-/* Responsive */
-@media (max-width: 600px) {
-    .diff-field-values     { grid-template-columns: 1fr; }
-    .diff-popup-header-main { flex-direction: column; align-items: flex-start; }
+.diff-empty {
+    color: var(--text-tertiary);
+    font-style: italic;
 }
