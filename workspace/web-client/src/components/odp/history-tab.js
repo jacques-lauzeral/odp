@@ -1,3 +1,5 @@
+import { DiffPopup } from './diff-popup.js';
+
 /**
  * history-tab.js
  * Standalone HistoryTab component for versioned entities (OR, OC)
@@ -29,8 +31,12 @@ export class HistoryTab {
     constructor(apiClient, callbacks = {}) {
         this.apiClient = apiClient;
 
-        this.onDiff    = callbacks.onDiff    || ((vId, cId) => console.log(`[HistoryTab] Diff: version=${vId} vs compare=${cId}`));
-        this.onRestore = callbacks.onRestore || ((vId)      => console.log(`[HistoryTab] Restore: version=${vId}`));
+        this._diffPopup = new DiffPopup(apiClient);
+
+        this.onDiff    = callbacks.onDiff    || ((vA, vB) => {
+            this._diffPopup.open(this._entityType, this._itemId, vA, vB);
+        });
+        this.onRestore = callbacks.onRestore || ((vId) => console.log(`[HistoryTab] Restore: version=${vId}`));
         this.readOnly  = callbacks.readOnly  || false;
 
         // State
@@ -295,7 +301,7 @@ export class HistoryTab {
         popup.querySelector('.history-btn-confirm-diff')?.addEventListener('click', () => {
             const compareVersion = popup.querySelector('#history-compare-select').value;
             console.log(`[HistoryTab] Diff confirmed: v${versionNumber} vs v${compareVersion}`);
-            this.onDiff(versionId, compareVersion);
+            this.onDiff(Number(versionNumber), Number(compareVersion));
             this._removePopup('history-diff-confirm-popup');
         });
 
