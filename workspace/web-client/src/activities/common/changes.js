@@ -219,6 +219,7 @@ export default class ChangesEntity {
 
         return null;
     }
+
     // ====================
     // STATE MANAGEMENT
     // ====================
@@ -318,9 +319,7 @@ export default class ChangesEntity {
             const optimalWindow = this.calculateOptimalTimeWindow();
             if (optimalWindow) {
                 this.sharedState.timeWindow = optimalWindow;
-            } else {
             }
-        } else {
         }
 
         // Apply time window to timeline grid
@@ -462,7 +461,6 @@ export default class ChangesEntity {
         ];
     }
 
-
     getItemId(item) {
         return item?.itemId || item?.id || null;
     }
@@ -584,7 +582,7 @@ export default class ChangesEntity {
     }
 
     // ====================
-    // LIFECYCLE NOTIFICATIONS - Phase 1
+    // LIFECYCLE NOTIFICATIONS
     // ====================
 
     /**
@@ -605,7 +603,9 @@ export default class ChangesEntity {
     }
 
     /**
-     * Render current perspective from cached data
+     * Render current perspective from cached data.
+     * After re-rendering the master list, re-selects the previously selected item
+     * (using the fresh copy from this.data) and refreshes the details panel.
      */
     renderFromCache() {
         if (!this.container) {
@@ -615,12 +615,35 @@ export default class ChangesEntity {
 
         console.log(`ChangesEntity.renderFromCache: Rendering ${this.currentPerspective} with ${this.data.length} items`);
 
+        // Capture previously selected item ID before re-rendering clears the DOM
+        const previousSelectedId = this.getItemId(this.sharedState.selectedItem);
+
         // Render based on perspective
         if (this.currentPerspective === 'temporal') {
             this.renderTemporalView(this.sharedState);
         } else {
             this.collection.setData(this.data);
             this.collection.render(this.container);
+        }
+
+        // Re-select previously selected item using fresh data from this.data
+        if (previousSelectedId) {
+            const freshItem = this.data.find(item => this.getItemId(item) === previousSelectedId);
+            if (freshItem) {
+                // Update collection selection state
+                this.collection.selectedItem = freshItem;
+                this.sharedState.selectedItem = freshItem;
+
+                // Re-render the details panel with the fresh (post-save) content
+                this.updateDetailsPanel(freshItem);
+
+                console.log(`ChangesEntity.renderFromCache: Re-selected item ${previousSelectedId}`);
+            } else {
+                // Previously selected item no longer in results (e.g. filtered out) — clear details
+                this.sharedState.selectedItem = null;
+                this.collection.selectedItem = null;
+                console.log(`ChangesEntity.renderFromCache: Previously selected item ${previousSelectedId} no longer in data, clearing details`);
+            }
         }
     }
 

@@ -439,6 +439,10 @@ export default class RequirementsEntity {
         return div.innerHTML;
     }
 
+    getItemId(item) {
+        return item?.itemId || item?.id || null;
+    }
+
     // ====================
     // FILTER MATCHERS
     // ====================
@@ -689,7 +693,7 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // LIFECYCLE NOTIFICATIONS - Phase 1
+    // LIFECYCLE NOTIFICATIONS
     // ====================
 
     /**
@@ -710,7 +714,9 @@ export default class RequirementsEntity {
     }
 
     /**
-     * Render current perspective from cached data
+     * Render current perspective from cached data.
+     * After re-rendering the master list, re-selects the previously selected item
+     * (using the fresh copy from this.data) and refreshes the details panel.
      */
     renderFromCache() {
         if (!this.container) {
@@ -719,6 +725,9 @@ export default class RequirementsEntity {
         }
 
         console.log(`RequirementsEntity.renderFromCache: Rendering ${this.currentPerspective} with ${this.data.length} items`);
+
+        // Capture previously selected item ID before re-rendering clears the DOM
+        const previousSelectedId = this.getItemId(this.sharedState.selectedItem);
 
         // Distribute data to perspectives
         this.collection.setData(this.data);
@@ -729,6 +738,26 @@ export default class RequirementsEntity {
             this.tree.render(this.container);
         } else {
             this.collection.render(this.container);
+        }
+
+        // Re-select previously selected item using fresh data from this.data
+        if (previousSelectedId) {
+            const freshItem = this.data.find(item => this.getItemId(item) === previousSelectedId);
+            if (freshItem) {
+                // Update collection selection state
+                this.collection.selectedItem = freshItem;
+                this.sharedState.selectedItem = freshItem;
+
+                // Re-render the details panel with the fresh (post-save) content
+                this.renderDetails(freshItem);
+
+                console.log(`RequirementsEntity.renderFromCache: Re-selected item ${previousSelectedId}`);
+            } else {
+                // Previously selected item no longer in results (e.g. filtered out) — clear details
+                this.sharedState.selectedItem = null;
+                this.collection.selectedItem = null;
+                console.log(`RequirementsEntity.renderFromCache: Previously selected item ${previousSelectedId} no longer in data, clearing details`);
+            }
         }
     }
 
