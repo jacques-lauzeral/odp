@@ -50,7 +50,8 @@ export default class AbstractInteractionActivity {
 
         // Centralized state management for perspective coordination
         this.sharedState = {
-            filters: [],   // now an array of { key, label, value, displayValue }
+            filters: [],        // array form: [{ key, label, value, displayValue }] – for FilterBar.setFilters()
+            filtersObject: {},  // object form: { key: value } – for buildQueryParams()
             selectedItem: null,
             grouping: 'none',
             // Temporal-specific state (milestone event type filters only)
@@ -80,11 +81,13 @@ export default class AbstractInteractionActivity {
             const entityType = e.detail.entityType;
             console.log(`AbstractInteractionActivity: entitySaved event received for ${entityType}`);
 
-            // Map entity type to loader method and call with current filters
+            // Use the object form of filters so buildQueryParams receives the correct input
+            const currentFiltersObject = this.sharedState.filtersObject || {};
+
             if (entityType === 'Operational Requirements') {
-                await this.loadRequirements(this.sharedState.filters);
+                await this.loadRequirements(currentFiltersObject);
             } else if (entityType === 'Operational Changes') {
-                await this.loadChanges(this.sharedState.filters);
+                await this.loadChanges(currentFiltersObject);
             }
         });
     }
@@ -712,7 +715,9 @@ export default class AbstractInteractionActivity {
 
             // Listen for filter changes and propagate to current entity
             activityFiltersContainer.addEventListener('filtersChanged', (e) => {
+                // Store both forms: array for FilterBar restoration, object for API calls
                 this.sharedState.filters = e.detail.filtersArray;
+                this.sharedState.filtersObject = e.detail.filters;
                 this._applyFiltersToEntities(e.detail.filters);
             });
         }
@@ -907,6 +912,7 @@ export default class AbstractInteractionActivity {
             this.filterBar.clearAll();
             // filtersChanged event fires automatically, which calls _applyFiltersToEntities
         }
+        this.sharedState.filtersObject = {};
         this.updateAllBadges({});
     }
 
