@@ -79,7 +79,6 @@ export default class RequirementsEntity {
     applySharedState(sharedState) {
         console.log('RequirementsEntity.applySharedState:', sharedState);
 
-
         // Apply selection (shared across perspectives)
         if (sharedState.selectedItem) {
             this.collection.selectedItem = sharedState.selectedItem;
@@ -466,7 +465,7 @@ export default class RequirementsEntity {
     // ====================
 
     /**
-     * UPDATED: Render with specified perspective
+     * Render with specified perspective
      */
     async render(container, perspective = 'collection') {
         this.container = container;
@@ -586,7 +585,6 @@ export default class RequirementsEntity {
     // DATA MANAGEMENT
     // ====================
 
-
     /**
      * Handle perspective switching from activity
      */
@@ -617,10 +615,46 @@ export default class RequirementsEntity {
             this.applySharedState(sharedState);
         }
 
-        // Re-render with current perspective
-        this.render(this.container, perspective);
+        // Re-render with current perspective, then restore selection
+        this.render(this.container, perspective).then(() => {
+            this._restoreSelectionAfterRender();
+        });
     }
 
+    /**
+     * Re-select the previously selected item in the current perspective
+     * and refresh the details panel with up-to-date data from this.data.
+     * Safe to call after any render that rebuilds the DOM.
+     */
+    _restoreSelectionAfterRender() {
+        const selected = this.sharedState.selectedItem;
+        if (!selected) return;
+
+        const selectedId = this.getItemId(selected);
+        if (selectedId == null) return;
+
+        // Look up the item in the current data (may be fresher than the stored reference)
+        const freshItem = this.data.find(d => this.getItemId(d) === selectedId) || selected;
+
+        if (this.currentPerspective === 'tree') {
+            // TreeTableEntity uses selectedItem property; render already uses it for highlight
+            this.tree.selectedItem = freshItem;
+        } else {
+            // Set selectedItem directly and update highlight without firing onItemSelect
+            // (avoids double details render)
+            this.collection.selectedItem = freshItem;
+            const rows = this.container?.querySelectorAll('.collection-row');
+            rows?.forEach(row => {
+                row.classList.toggle(
+                    'collection-row--selected',
+                    row.dataset.itemId === String(selectedId)
+                );
+            });
+        }
+
+        // Always refresh the details panel with the (potentially fresher) item
+        this.renderDetails(freshItem);
+    }
 
     handleGrouping(groupBy) {
         this.collection.handleGrouping(groupBy);
@@ -714,9 +748,7 @@ export default class RequirementsEntity {
     }
 
     /**
-     * Render current perspective from cached data.
-     * After re-rendering the master list, re-selects the previously selected item
-     * (using the fresh copy from this.data) and refreshes the details panel.
+     * Render current perspective from cached data, then restore selection.
      */
     renderFromCache() {
         if (!this.container) {
@@ -725,9 +757,6 @@ export default class RequirementsEntity {
         }
 
         console.log(`RequirementsEntity.renderFromCache: Rendering ${this.currentPerspective} with ${this.data.length} items`);
-
-        // Capture previously selected item ID before re-rendering clears the DOM
-        const previousSelectedId = this.getItemId(this.sharedState.selectedItem);
 
         // Distribute data to perspectives
         this.collection.setData(this.data);
@@ -740,25 +769,8 @@ export default class RequirementsEntity {
             this.collection.render(this.container);
         }
 
-        // Re-select previously selected item using fresh data from this.data
-        if (previousSelectedId) {
-            const freshItem = this.data.find(item => this.getItemId(item) === previousSelectedId);
-            if (freshItem) {
-                // Update collection selection state
-                this.collection.selectedItem = freshItem;
-                this.sharedState.selectedItem = freshItem;
-
-                // Re-render the details panel with the fresh (post-save) content
-                this.renderDetails(freshItem);
-
-                console.log(`RequirementsEntity.renderFromCache: Re-selected item ${previousSelectedId}`);
-            } else {
-                // Previously selected item no longer in results (e.g. filtered out) — clear details
-                this.sharedState.selectedItem = null;
-                this.collection.selectedItem = null;
-                console.log(`RequirementsEntity.renderFromCache: Previously selected item ${previousSelectedId} no longer in data, clearing details`);
-            }
-        }
+        // Re-select previously selected item and refresh details panel
+        this._restoreSelectionAfterRender();
     }
 
     /**
