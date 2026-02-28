@@ -96,7 +96,19 @@ export default class RequirementForm extends CollectionEntityForm {
      */
     loadHistory(item, readOnly = false) {
         // Re-create with correct readOnly mode
-        this.historyTab = new HistoryTab(apiClient, { readOnly });
+        this.historyTab = new HistoryTab(apiClient, {
+            readOnly,
+            onRestore: readOnly ? undefined : async (versionId, versionNumber) => {
+                try {
+                    const versionData = await apiClient.get(
+                        `/operational-requirements/${item.itemId}/versions/${versionNumber}`
+                    );
+                    this.restoreVersionToForm(versionData);
+                } catch (err) {
+                    console.error('[RequirementForm] Failed to fetch version for restore:', err);
+                }
+            }
+        });
 
         if (!item?.itemId) return;
 

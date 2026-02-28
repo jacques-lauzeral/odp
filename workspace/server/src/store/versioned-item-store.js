@@ -249,6 +249,9 @@ export class VersionedItemStore extends BaseStore {
             } else {
                 // Inherit relationships from previous version
                 finalRelationshipIds = await this._extractRelationshipIdsFromVersion(numericExpectedVersionId, transaction);
+                // documentReferences is always an exhaustive list — never inherit it.
+                // An empty array means "no document references", not "not provided".
+                finalRelationshipIds.documentReferences = relationshipIds.documentReferences ?? [];
             }
 
             // Create relationships for new version (new version starts with no relationships)

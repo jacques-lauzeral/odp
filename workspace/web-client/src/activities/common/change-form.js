@@ -106,7 +106,19 @@ export default class ChangeForm extends CollectionEntityForm {
      */
     loadHistory(item, readOnly = false) {
         // Re-create with correct readOnly mode
-        this.historyTab = new HistoryTab(apiClient, { readOnly });
+        this.historyTab = new HistoryTab(apiClient, {
+            readOnly,
+            onRestore: readOnly ? undefined : async (versionId, versionNumber) => {
+                try {
+                    const versionData = await apiClient.get(
+                        `/operational-changes/${item.itemId}/versions/${versionNumber}`
+                    );
+                    this.restoreVersionToForm(versionData);
+                } catch (err) {
+                    console.error('[ChangeForm] Failed to fetch version for restore:', err);
+                }
+            }
+        });
 
         if (!item?.itemId) return;
 

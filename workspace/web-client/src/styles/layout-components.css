@@ -213,6 +213,17 @@
     justify-content: flex-end;
 }
 
+/* Dot badge appended to .modal-title when form has unsaved changes */
+.modal-dirty-badge {
+    display: inline-block;
+    margin-left: 0.4em;
+    color: var(--color-warning, #e6a817);
+    font-size: 0.75em;
+    vertical-align: middle;
+    line-height: 1;
+    user-select: none;
+}
+
 /* Animation */
 @keyframes pulse {
     0%, 100% { opacity: 1; }

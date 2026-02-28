@@ -15,7 +15,7 @@ import { DiffPopup } from './diff-popup.js';
  * Usage:
  *   const historyTab = new HistoryTab(apiClient, {
  *       onDiff: (versionId, compareVersionId) => { ... },
- *       onRestore: (versionId) => { ... }
+ *       onRestore: (versionId, versionNumber) => { ... }
  *   });
  *   // On tab activation:
  *   historyTab.attach(containerElement, 'operational-requirements', itemId);
@@ -26,7 +26,7 @@ export class HistoryTab {
      * @param {object} apiClient        - The shared apiClient instance
      * @param {object} [callbacks]
      * @param {Function} [callbacks.onDiff]    - (versionId, compareVersionId) => void
-     * @param {Function} [callbacks.onRestore] - (versionId) => void
+     * @param {Function} [callbacks.onRestore] - (versionId, versionNumber) => void
      */
     constructor(apiClient, callbacks = {}) {
         this.apiClient = apiClient;
@@ -38,7 +38,7 @@ export class HistoryTab {
         this.onDiff = callbacks.onDiff || ((versionNumber) => {
             this._diffPopup.open(this._entityType, this._itemId, versionNumber, this._versions);
         });
-        this.onRestore = callbacks.onRestore || ((vId) => console.log(`[HistoryTab] Restore: version=${vId}`));
+        this.onRestore = callbacks.onRestore || ((versionId, versionNumber) => console.log(`[HistoryTab] Restore: versionId=${versionId} versionNumber=${versionNumber}`));
         this.readOnly  = callbacks.readOnly  || false;
 
         // State
@@ -288,10 +288,14 @@ export class HistoryTab {
                         <div class="history-restore-warning">
                             <span class="history-restore-warning-icon">⚠️</span>
                             <p>
-                                Restoring <strong>v${this._escape(versionNumber)}</strong> will create a new version
-                                based on this snapshot, overriding the current content
+                                The form will be populated with the content of
+                                <strong>v${this._escape(versionNumber)}</strong>,
+                                replacing the current content
                                 ${latestVersion ? `(<strong>v${this._escape(String(latestVersion.version))}</strong>)` : ''}.
-                                This action cannot be undone.
+                            </p>
+                            <p>
+                                The restore will only be finalised when you <strong>save</strong> the form.
+                                You can review and adjust the restored content before saving.
                             </p>
                         </div>
                     </div>
@@ -316,7 +320,7 @@ export class HistoryTab {
         // Confirm
         popup.querySelector('.history-btn-confirm-restore')?.addEventListener('click', () => {
             console.log(`[HistoryTab] Restore confirmed: v${versionNumber} (id=${versionId})`);
-            this.onRestore(versionId);
+            this.onRestore(versionId, versionNumber);
             this._removePopup('history-restore-confirm-popup');
         });
 

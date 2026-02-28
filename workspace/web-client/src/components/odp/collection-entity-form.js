@@ -34,6 +34,9 @@ export class CollectionEntityForm {
         // Quill rich text editors storage
         this.quillEditors = {};
 
+        // Modified indicator flag — set when form data is changed or restored
+        this._isDirty = false;
+
         // Initialize tab delegation once
         this.initTabDelegation();
     }
@@ -566,8 +569,10 @@ export class CollectionEntityForm {
                     emptyMessage: field.emptyMessage || 'No items selected',
                     readOnly: this.currentMode === 'read',
                     onChange: (newValue) => {
-                        // Optional: handle changes
                         console.log(`${fieldKey} changed:`, newValue);
+                        if (this.currentMode === 'edit' || this.currentMode === 'create') {
+                            this.markDirty();
+                        }
                     }
                 });
 
@@ -714,8 +719,10 @@ export class CollectionEntityForm {
                     helpText: field.helpText || '',
                     readOnly: this.currentMode === 'read',
                     onChange: (newValue) => {
-                        // Optional: handle changes
                         console.log(`${fieldKey} changed:`, newValue);
+                        if (this.currentMode === 'edit' || this.currentMode === 'create') {
+                            this.markDirty();
+                        }
                     }
                 });
 
@@ -852,6 +859,9 @@ export class CollectionEntityForm {
             quill.on('text-change', () => {
                 const delta = quill.getContents();
                 hiddenInput.value = JSON.stringify(delta);
+                if (this.currentMode === 'edit' || this.currentMode === 'create') {
+                    this.markDirty();
+                }
             });
 
             // Store editor instance
@@ -871,6 +881,161 @@ export class CollectionEntityForm {
 
         // Clear storage
         this.quillEditors = {};
+    }
+
+    // ====================
+    // VERSION RESTORE
+    // ====================
+
+    /**
+     * Restore a historical version's content into the live edit form.
+     *
+     * The restore is purely client-side: form fields are repopulated with the
+     * restored version's data. The server-side transaction only happens when
+     * the user saves normally.
+     *
+     * Invariant: currentItem.versionId (the optimistic lock token for the
+     * latest version) is preserved so that the save creates a new version
+     * on top of the current latest, not on top of the restored version.
+     *
+     * @param {object} versionData - Full entity object returned by
+     *   GET /{entityType}/{itemId}/versions/{versionNumber}
+     */
+    restoreVersionToForm(versionData) {
+        if (!this.currentItem || !this.currentModal) {
+            console.error('restoreVersionToForm: no active edit form');
+            return;
+        }
+
+        // Preserve the optimistic lock token — it must stay as the latest version's id
+        const preservedVersionId = this.currentItem.versionId;
+
+        // Merge restored field values into currentItem, keeping identity/lock fields
+        this.currentItem = {
+            ...this.currentItem,       // keeps itemId, versionId, version, title, code, etc.
+            ...versionData,            // overwrites editable content fields
+            versionId:  preservedVersionId,          // restore lock token
+            itemId:     this.currentItem.itemId,     // restore stable identity
+        };
+
+        // transformedItem is used for plain inputs/selects (strips objects to IDs, normalises arrays).
+        // Managers (multiselect, annotated-multiselect) must receive the raw API objects from
+        // this.currentItem — exactly as initializeReferenceListManagers / initializeAnnotatedMultiselects
+        // do on initial load — because their normalizeInitialValue expects {id, ...} objects, not plain numbers.
+        const transformedItem = this.transformDataForEdit(this.currentItem);
+        const fields = this.getFieldDefinitions();
+        const allFields = [];
+        for (const section of fields) {
+            if (section.fields) allFields.push(...section.fields);
+            else allFields.push(section);
+        }
+
+        for (const field of allFields) {
+            if (field.computed || field.readOnly || field.editableOnlyOnCreate || field.type === 'history') continue;
+
+            // Managers need raw objects; plain inputs/richtext need the transformed (ID-normalised) value
+            const rawValue         = this.getFieldValue(this.currentItem, field);
+            const transformedValue = this.getFieldValue(transformedItem, field);
+
+            switch (field.type) {
+                case 'richtext': {
+                    // Use transformedValue: richtext is stored as JSON string in the transformed item
+                    const quill = this.quillEditors[field.key];
+                    if (!quill) break;
+                    let delta = { ops: [] };
+                    try {
+                        if (transformedValue && typeof transformedValue === 'string') {
+                            delta = JSON.parse(transformedValue);
+                        } else if (transformedValue && typeof transformedValue === 'object') {
+                            delta = transformedValue;
+                        }
+                    } catch (e) {
+                        console.warn(`restoreVersionToForm: failed to parse richtext for ${field.key}`, e);
+                    }
+                    quill.setContents(delta);
+                    // Sync hidden input
+                    const hiddenInput = this.currentModal.querySelector(`#field-${field.key}-data`);
+                    if (hiddenInput) hiddenInput.value = JSON.stringify(quill.getContents());
+                    break;
+                }
+
+                case 'annotated-multiselect': {
+                    // Use rawValue: manager expects [{id, note, ...}] objects, not plain IDs
+                    const manager = this.annotatedMultiselectManagers[field.key];
+                    if (manager && typeof manager.destroy === 'function') manager.destroy();
+                    delete this.annotatedMultiselectManagers[field.key];
+
+                    const placeholder = this.currentModal.querySelector(
+                        `.annotated-multiselect-placeholder[data-field-key="${field.key}"]`
+                    );
+                    if (!placeholder) break;
+
+                    this.getFieldOptions(field).then(options => {
+                        const mgr = new AnnotatedMultiselectManager({
+                            fieldId: placeholder.dataset.fieldId,
+                            options,
+                            initialValue: rawValue || [],
+                            maxNoteLength: field.maxNoteLength || 200,
+                            placeholder: field.placeholder || 'Select items...',
+                            noteLabel: field.noteLabel || 'Note (optional)',
+                            helpText: field.helpText || '',
+                            readOnly: false,
+                            onChange: (newValue) => console.log(`${field.key} changed:`, newValue)
+                        });
+                        mgr.render(placeholder);
+                        this.annotatedMultiselectManagers[field.key] = mgr;
+                    });
+                    break;
+                }
+
+                case 'multiselect': {
+                    // Use rawValue: manager expects [{id, title, ...}] objects, not plain IDs
+                    const manager = this.referenceListManagers[field.key];
+                    if (manager && typeof manager.destroy === 'function') manager.destroy();
+                    delete this.referenceListManagers[field.key];
+
+                    const placeholder = this.currentModal.querySelector(
+                        `.reference-list-placeholder[data-field-key="${field.key}"]`
+                    );
+                    if (!placeholder) break;
+
+                    this.getFieldOptions(field).then(options => {
+                        const mgr = new ReferenceListManager({
+                            fieldId: placeholder.dataset.fieldId,
+                            options,
+                            initialValue: rawValue || [],
+                            placeholder: field.placeholder || 'Search items...',
+                            emptyMessage: field.emptyMessage || 'No items selected',
+                            readOnly: false,
+                            onChange: (newValue) => console.log(`${field.key} changed:`, newValue)
+                        });
+                        mgr.render(placeholder);
+                        this.referenceListManagers[field.key] = mgr;
+                    });
+                    break;
+                }
+
+                default: {
+                    // Plain input / select / textarea / date — use transformedValue (normalised)
+                    const input = this.currentModal.querySelector(`[name="${field.key}"], #field-${field.key}`);
+                    if (!input) break;
+                    input.value = transformedValue ?? '';
+                    break;
+                }
+            }
+        }
+
+        // Switch to the first content tab so the user sees the repopulated fields immediately
+        this.switchTab(0);
+
+        // Mark the form as modified
+        this.markDirty();
+
+        // Confirm dialog so the user knows the form now shows the restored content
+        const restoredVersion = versionData.version ?? '?';
+        this._showRestoreNotice(restoredVersion);
+
+        console.log(`[CollectionEntityForm] Form populated with restored version data (preserving versionId=${preservedVersionId})`);
     }
 
     // ====================
@@ -1040,14 +1205,80 @@ export class CollectionEntityForm {
             document.addEventListener('keydown', this.escapeHandler);
         }
 
-        // Form validation on input
+        // Form validation on input + modified indicator
         const form = this.currentModal.querySelector('form');
         if (form) {
             form.addEventListener('input', (e) => {
                 this.clearFieldError(e.target);
+                if (this.currentMode === 'edit' || this.currentMode === 'create') {
+                    this.markDirty();
+                }
             });
         }
 
+    }
+
+    // ====================
+    // MODIFIED INDICATOR
+    // ====================
+
+    /**
+     * Mark the form as having unsaved changes.
+     * Adds a visual badge to the modal title.
+     */
+    markDirty() {
+        if (this._isDirty) return; // already marked
+        this._isDirty = true;
+        const titleEl = this.currentModal?.querySelector('.modal-title');
+        if (titleEl && !titleEl.querySelector('.modal-dirty-badge')) {
+            titleEl.insertAdjacentHTML('beforeend', ' <span class="modal-dirty-badge" title="Unsaved changes">●</span>');
+        }
+    }
+
+    /**
+     * Clear the modified indicator (called on close/re-open).
+     */
+    _clearDirty() {
+        this._isDirty = false;
+        // Badge lives in the DOM which is destroyed on close, so no explicit removal needed
+    }
+
+    // ====================
+    // RESTORE NOTICE DIALOG
+    // ====================
+
+    /**
+     * Show a small confirmation dialog after a version restore.
+     * The user dismisses it manually — no auto-close — so they have time to read.
+     * @param {string|number} restoredVersion
+     */
+    _showRestoreNotice(restoredVersion) {
+        const id = 'odp-restore-notice';
+        document.getElementById(id)?.remove();
+
+        document.body.insertAdjacentHTML('beforeend', `
+            <div class="history-popup-overlay" id="${id}">
+                <div class="history-popup history-popup--narrow">
+                    <div class="history-popup-header">
+                        <h3 class="history-popup-title">Restore preview</h3>
+                    </div>
+                    <div class="history-popup-body">
+                        <p>
+                            The form now shows the content of
+                            <span class="history-version-badge">v${this.escapeHtml(String(restoredVersion))}</span>.
+                        </p>
+                        <p>Review the restored content, then <strong>Save</strong> to create a new version.</p>
+                    </div>
+                    <div class="history-popup-footer">
+                        <button type="button" class="btn btn-primary btn-sm" id="${id}-ok">Got it</button>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        document.getElementById(`${id}-ok`)?.addEventListener('click', () => {
+            document.getElementById(id)?.remove();
+        }, { once: true });
     }
 
     closeModal() {
@@ -1059,6 +1290,7 @@ export class CollectionEntityForm {
         this.cleanupReferenceListManagers();
         this.cleanupQuillEditors();
 
+        this._clearDirty();
         this.currentTabIndex = 0;
 
         if (this.currentModal) {
