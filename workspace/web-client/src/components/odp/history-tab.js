@@ -15,7 +15,8 @@ import { DiffPopup } from './diff-popup.js';
  * Usage:
  *   const historyTab = new HistoryTab(apiClient, {
  *       onDiff: (versionId, compareVersionId) => { ... },
- *       onRestore: (versionId, versionNumber) => { ... }
+ *       onRestore: (versionId, versionNumber) => { ... },
+ *       onViewVersion: (versionId, versionNumber) => { ... }
  *   });
  *   // On tab activation:
  *   historyTab.attach(containerElement, 'operational-requirements', itemId);
@@ -26,7 +27,8 @@ export class HistoryTab {
      * @param {object} apiClient        - The shared apiClient instance
      * @param {object} [callbacks]
      * @param {Function} [callbacks.onDiff]    - (versionId, compareVersionId) => void
-     * @param {Function} [callbacks.onRestore] - (versionId, versionNumber) => void
+     * @param {Function} [callbacks.onRestore]     - (versionId, versionNumber) => void
+     * @param {Function} [callbacks.onViewVersion] - (versionId, versionNumber) => void
      */
     constructor(apiClient, callbacks = {}) {
         this.apiClient = apiClient;
@@ -38,8 +40,9 @@ export class HistoryTab {
         this.onDiff = callbacks.onDiff || ((versionNumber) => {
             this._diffPopup.open(this._entityType, this._itemId, versionNumber, this._versions);
         });
-        this.onRestore = callbacks.onRestore || ((versionId, versionNumber) => console.log(`[HistoryTab] Restore: versionId=${versionId} versionNumber=${versionNumber}`));
-        this.readOnly  = callbacks.readOnly  || false;
+        this.onRestore     = callbacks.onRestore     || ((versionId, versionNumber) => console.log(`[HistoryTab] Restore: versionId=${versionId} versionNumber=${versionNumber}`));
+        this.onViewVersion = callbacks.onViewVersion || null;
+        this.readOnly      = callbacks.readOnly      || false;
 
         // State
         this._container  = null;
@@ -173,7 +176,15 @@ export class HistoryTab {
             return `
                 <div class="history-row${isLatest ? ' history-row--latest' : ''}" data-version-id="${this._escape(String(v.id))}">
                     <div class="history-row-meta">
-                        <span class="history-version-badge">${this._escape(versionLabel)}</span>
+                        ${this.onViewVersion ? `
+                        <button
+                            type="button"
+                            class="history-version-badge history-version-badge--link"
+                            data-version-id="${this._escape(String(v.id))}"
+                            data-version-number="${this._escape(String(v.version))}"
+                            title="View v${this._escape(String(v.version))}"
+                        >${this._escape(versionLabel)}</button>
+                        ` : `<span class="history-version-badge history-version-badge--static">${this._escape(versionLabel)}</span>`}
                         ${isLatest ? '<span class="history-latest-badge">Latest</span>' : ''}
                         <span class="history-row-date">${this._formatDate(v.createdAt)}</span>
                         <span class="history-row-author">${this._escape(v.createdBy || '—')}</span>
@@ -233,6 +244,7 @@ export class HistoryTab {
         this._container.addEventListener('click', (e) => {
             const diffBtn    = e.target.closest('.history-btn-diff');
             const restoreBtn = e.target.closest('.history-btn-restore');
+            const versionBtn = e.target.closest('.history-version-badge--link');
 
             if (diffBtn) {
                 this._showDiffConfirm(
@@ -243,6 +255,11 @@ export class HistoryTab {
                 this._showRestoreConfirm(
                     restoreBtn.dataset.versionId,
                     restoreBtn.dataset.versionNumber
+                );
+            } else if (versionBtn && this.onViewVersion) {
+                this.onViewVersion(
+                    versionBtn.dataset.versionId,
+                    versionBtn.dataset.versionNumber
                 );
             }
         });

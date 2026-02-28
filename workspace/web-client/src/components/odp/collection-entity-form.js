@@ -624,7 +624,7 @@ export class CollectionEntityForm {
         }
 
         const formatted = value.map(ref => {
-            const title = this.escapeHtml(ref.title || ref.id);
+            const title = this.escapeHtml(ref.title || ref.name || ref.id);
             const note = ref.note && ref.note.trim() ? ` <span class="note-badge">[${this.escapeHtml(ref.note)}]</span>` : '';
             return `<div class="ref-item">${title}${note}</div>`;
         }).join('');

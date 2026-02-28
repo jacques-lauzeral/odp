@@ -94,7 +94,7 @@ export default class RequirementForm extends CollectionEntityForm {
      * (after the caller injects the generated HTML), then renders immediately.
      * Works in both modal and detail-panel (non-modal) mode.
      */
-    loadHistory(item, readOnly = false) {
+    loadHistory(item, readOnly = false, allowViewVersion = false) {
         // Re-create with correct readOnly mode
         this.historyTab = new HistoryTab(apiClient, {
             readOnly,
@@ -106,6 +106,16 @@ export default class RequirementForm extends CollectionEntityForm {
                     this.restoreVersionToForm(versionData);
                 } catch (err) {
                     console.error('[RequirementForm] Failed to fetch version for restore:', err);
+                }
+            },
+            onViewVersion: !allowViewVersion ? undefined : async (versionId, versionNumber) => {
+                try {
+                    const versionData = await apiClient.get(
+                        `/operational-requirements/${item.itemId}/versions/${versionNumber}`
+                    );
+                    await this.showReadOnlyModal(versionData);
+                } catch (err) {
+                    console.error('[RequirementForm] Failed to fetch version for view:', err);
                 }
             }
         });
@@ -123,7 +133,7 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     loadHistoryWithObserver(item, readOnly = false) {
-        this.loadHistory(item, readOnly);
+        this.loadHistory(item, readOnly, true);
 
         if (!item?.itemId) return;
 

@@ -189,7 +189,7 @@ class Comparator {
         if (!Array.isArray(refs)) return [];
         return refs.map(ref => {
             if (typeof ref === 'number') return ref;
-            return ref.id || ref.itemId || '';
+            return ref.id ?? ref.itemId ?? '';
         }).filter(id => id !== '');
     }
 
@@ -203,7 +203,7 @@ class Comparator {
 
         return refs
             .map(ref => ({
-                id: ref.id || ref.itemId || '',
+                id: ref.id ?? ref.itemId ?? '',
                 note: this._normalizeValue(ref.note)
             }))
             .filter(ref => ref.id !== '')

@@ -104,7 +104,7 @@ export default class ChangeForm extends CollectionEntityForm {
     /**
      * Load version history — preload only, no observer (modal mode).
      */
-    loadHistory(item, readOnly = false) {
+    loadHistory(item, readOnly = false, allowViewVersion = false) {
         // Re-create with correct readOnly mode
         this.historyTab = new HistoryTab(apiClient, {
             readOnly,
@@ -116,6 +116,16 @@ export default class ChangeForm extends CollectionEntityForm {
                     this.restoreVersionToForm(versionData);
                 } catch (err) {
                     console.error('[ChangeForm] Failed to fetch version for restore:', err);
+                }
+            },
+            onViewVersion: !allowViewVersion ? undefined : async (versionId, versionNumber) => {
+                try {
+                    const versionData = await apiClient.get(
+                        `/operational-changes/${item.itemId}/versions/${versionNumber}`
+                    );
+                    await this.showReadOnlyModal(versionData);
+                } catch (err) {
+                    console.error('[ChangeForm] Failed to fetch version for view:', err);
                 }
             }
         });
@@ -136,7 +146,7 @@ export default class ChangeForm extends CollectionEntityForm {
      * Load version history with MutationObserver (detail panel / non-modal mode).
      */
     loadHistoryWithObserver(item, readOnly = false) {
-        this.loadHistory(item, readOnly);
+        this.loadHistory(item, readOnly, true);
 
         if (!item?.itemId) return;
 
