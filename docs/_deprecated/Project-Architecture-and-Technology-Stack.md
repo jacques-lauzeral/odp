@@ -375,13 +375,14 @@ All services run in a single Kubernetes pod:
 ### 6.4 Container Configuration
 
 **Web Client Dockerfile (`Dockerfile.web-client`):**
+
 ```dockerfile
 FROM node:20-alpine
 
 WORKDIR /app
 
 # Copy entire codebase
-COPY . .
+COPY .. .
 
 # Pre-create the shared source structure
 RUN mkdir -p workspace/web-client/src/shared/src && \

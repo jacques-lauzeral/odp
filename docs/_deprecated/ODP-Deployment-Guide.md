@@ -181,7 +181,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Copy entire codebase
-COPY . .
+COPY .. .
 
 # Pre-create the shared source structure
 RUN mkdir -p workspace/web-client/src/shared/src && \
