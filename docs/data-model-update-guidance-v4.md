@@ -97,8 +97,8 @@ Attributes:
 - refines (Refines): optional - the refined (parent) Requirement (of same type)
 
 - domain (Domain): mandatory for ONs, forbidden forORs - a Domain reference
-- documentReferences (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated references to Reference Documents
-- tentative (Tentative Implementation Time): mandatory for root ON, optional for child ONs, forbidden for ORs - either a year or a year period
+- strategicDocuments (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated references to Strategic Documents
+- tentative (Tentative Implementation Time): mandatory for root ON, optional for child ONs, forbidden for ORs - year period [start, end] where start <= end
 
 - implementedONs (Implements): forbidden for ONs, mandatory for root ORs, optional otherwise - the list of implemented ONs
 - impactedStakeholders: forbidden for ONs, mandatory for root ORs, optional otherwise - the list of impacted stakeholder categories
@@ -129,8 +129,8 @@ The Requirement specialisation that represents an ON.
 Attributes:
 - domain (Domain): mandatory - a Domain reference
 - refines (Refines): optional - the refined (parent) ON
-- documentReferences (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated Reference Documents
-- tentative (Tentative Implementation Time): mandatory for root ON, optional otherwise - year period (open <= close)
+- strategicDocuments (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated references to Strategic Documents
+- tentative (Tentative Implementation Time): mandatory for root ON, optional otherwise - year period [start, end] where start <= end
 
 ## OR
 
