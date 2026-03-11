@@ -23,7 +23,7 @@ The other ODIP model elements, e.g. Baselibe, Edition, etc. are a priori not imp
 
 # Setup Model
 
-## StrategicDocument (Strategic Documents)
+## ReferenceDocument (Strategic Documents)
 
 Represents a Strategic Document.
 
@@ -97,7 +97,7 @@ Attributes:
 - refines (Refines): optional - the refined (parent) Requirement (of same type)
 
 - domain (Domain): mandatory for ONs, forbidden forORs - a Domain reference
-- strategicDocuments (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated references to Strategic Documents
+- strategicDocuments (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated list of ReferenceDocuments
 - tentative (Tentative Implementation Time): mandatory for root ON, optional for child ONs, forbidden for ORs - year period [start, end] where start <= end
 
 - implementedONs (Implements): forbidden for ONs, mandatory for root ORs, optional otherwise - the list of implemented ONs
@@ -129,7 +129,7 @@ The Requirement specialisation that represents an ON.
 Attributes:
 - domain (Domain): mandatory - a Domain reference
 - refines (Refines): optional - the refined (parent) ON
-- strategicDocuments (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated references to Strategic Documents
+- strategicDocuments (Strategic Documents (and entry points)): mandatory for root ON, optional otherwise - 0..* annotated list of ReferenceDocuments
 - tentative (Tentative Implementation Time): mandatory for root ON, optional otherwise - year period [start, end] where start <= end
 
 ## OR
