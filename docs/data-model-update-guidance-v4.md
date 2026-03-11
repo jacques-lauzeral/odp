@@ -142,6 +142,7 @@ Attributes:
 - dependencies (Dependencies): optional - the list of ORs that must be implemented before this OR
 - impactedStakeholders: mandatory for root ORs, optional otherwise - the list of impacted stakeholder categories
 - impactedDomains: mandatory for root ORs, optional otherwise - the list of impacted domains
+- nfrs (NFRs): optional - non-functional requirements as seen from business perspective
 
 # OC Model
 
@@ -157,8 +158,8 @@ Attributes:
 - initialState (Initial State): mandatory - multiline rich text
 - finalState (Final State): mandatory - multiline rich text
 - details (Details): mandatory - multiline rich text
-- implementedORs (Implemented ORs): mandatory - the list of implemented ORs
-- decommissionedORs (Decommissioned ORs): mandatory - the list of decommissioned ORs
+- implementedORs (Implemented ORs): optional - the list of implemented ORs
+- decommissionedORs (Decommissioned ORs): optional - the list of decommissioned ORs
 - dependencies (Dependencies): optional - the list of OCs that must be deployed before this OC
 - milestones (Milestones): optional - the list of deployment milestones
 - privateNotes (Private Notes): optional - multiline rich text
