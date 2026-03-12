@@ -220,7 +220,7 @@ export class MilestoneManager {
 
         if (!milestone) return;
 
-        const confirmed = confirm(`Delete milestone "${milestone.title}"?`);
+        const confirmed = confirm(`Delete milestone "${milestone.name}"?`);
         if (!confirmed) return;
 
         try {
@@ -363,7 +363,7 @@ export class MilestoneManager {
     }
 
     renderRow(milestone, index, isReadMode, hasItemId) {
-        const title = this.escapeHtml(milestone.title || '');
+        const title = this.escapeHtml(milestone.name || '');
         const wave = this.formatWave(milestone.wave);
         const eventTypes = this.formatEventTypes(milestone.eventTypes);
 
@@ -394,21 +394,21 @@ export class MilestoneManager {
 
     generateForm(mode, milestone = null) {
         const isEdit = mode === 'edit';
-        const title = milestone?.title || '';
+        const name = milestone?.name || '';
         const description = milestone?.description || '';
         const waveId = milestone?.wave?.id || milestone?.waveId || '';
         const selectedEventTypes = milestone?.eventTypes || [];
 
         return `
             <div class="milestone-form">
-                <div class="form-group" data-field="title">
-                    <label for="milestone-title">Title <span class="required">*</span></label>
+                <div class="form-group" data-field="name">
+                    <label for="milestone-name">Name <span class="required">*</span></label>
                     <input type="text" 
-                        id="milestone-title" 
-                        name="title" 
+                        id="milestone-name" 
+                        name="name" 
                         class="form-control" 
-                        value="${this.escapeHtml(title)}"
-                        placeholder="Enter milestone title"
+                        value="${this.escapeHtml(name)}"
+                        placeholder="Enter milestone name"
                         required>
                     <div class="validation-message"></div>
                 </div>
@@ -462,7 +462,7 @@ export class MilestoneManager {
         return this.parentForm.context.setupData.waves.map(wave => {
             const waveId = wave.id.toString();
             const selected = selectedWaveId && selectedWaveId.toString() === waveId ? 'selected' : '';
-            const label = `${wave.name}`;
+            const label = `Y${wave.year}Q${wave.sequenceNumber ?? 0}`;
             return `<option value="${waveId}" ${selected}>${this.escapeHtml(label)}</option>`;
         }).join('');
     }
@@ -561,7 +561,7 @@ export class MilestoneManager {
     // ====================
 
     collectFormData(form) {
-        const titleInput = form.querySelector('#milestone-title');
+        const nameInput = form.querySelector('#milestone-name');
         const descriptionInput = form.querySelector('#milestone-description');
         const waveInput = form.querySelector('#milestone-wave');
 
@@ -573,7 +573,7 @@ export class MilestoneManager {
         const currentEventTypes = Array.from(tags).map(tag => tag.dataset.eventType);
 
         return {
-            title: titleInput ? titleInput.value.trim() : '',
+            name: nameInput ? nameInput.value.trim() : '',
             description: descriptionInput ? descriptionInput.value.trim() : '',
             waveId: waveInput && waveInput.value ? waveInput.value : null,
             eventTypes: currentEventTypes.length > 0 ? currentEventTypes : selectedEventTypes
@@ -583,10 +583,10 @@ export class MilestoneManager {
     validateMilestone(data) {
         const errors = [];
 
-        if (!data.title || data.title.trim().length === 0) {
+        if (!data.name || data.name.trim().length === 0) {
             errors.push({
-                field: 'title',
-                message: 'Title is required'
+                field: 'name',
+                message: 'Name is required'
             });
         }
 
@@ -611,7 +611,7 @@ export class MilestoneManager {
 
     prepareData(formData) {
         const data = {
-            title: formData.title,
+            name: formData.name,
             description: formData.description,
             eventTypes: formData.eventTypes || [],
             waveId: formData.waveId ? parseInt(formData.waveId, 10) : null
@@ -635,7 +635,7 @@ export class MilestoneManager {
 
     formatWave(wave) {
         if (!wave) return 'Not assigned';
-        return wave.name || 'Not assigned';
+        return `Y${wave.year}Q${wave.sequenceNumber ?? 0}`;
     }
 
     formatEventTypes(eventTypes) {

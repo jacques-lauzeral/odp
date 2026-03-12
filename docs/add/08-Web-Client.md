@@ -39,11 +39,11 @@ Four base component classes cover all entity management needs.
 
 ### 3.1 TreeEntity
 
-Used for hierarchical setup entities (`StakeholderCategory`, `DataCategory`, `Service`). Manages real parent–child relationships stored in the database. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions.
+Used for hierarchical setup entities (`StakeholderCategory`, `Domain`). Manages real parent–child relationships stored in the database. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions.
 
 ### 3.2 ListEntity
 
-Used for flat setup entities (`Wave`, `Document`). Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
+Used for flat setup entities (`Wave`, `ReferenceDocument`, `Bandwidth`). Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
 
 ### 3.3 CollectionEntity
 
@@ -137,7 +137,7 @@ The perspective toggle buttons (`📋 Collection` / `📅 Temporal`) are rendere
 
 ## 6. Rich Text
 
-Rich text fields (`statement`, `rationale`, `flows`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **Quill** editor. Content is stored and transmitted as Quill Delta JSON serialised to a string. The web client renders Delta content in read mode using Quill's read-only renderer and edits it with the full Quill toolbar in write mode.
+Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **Quill** editor. Content is stored and transmitted as Quill Delta JSON serialised to a string. The web client renders Delta content in read mode using Quill's read-only renderer and edits it with the full Quill toolbar in write mode.
 
 Images can be embedded in Delta content as base64-encoded PNG data. The import pipeline handles the reverse path (Quill Delta → AsciiDoc → Word) for the docx round-trip workflow.
 
@@ -175,4 +175,98 @@ The shared API client in `shared/` handles all `fetch` calls, base URL configura
 
 ---
 
-[← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)
+## 10. iCDM DrGs Edition 4 Model Changes
+
+The following web client changes align the client with the Edition 4 data model update.
+
+### 10.1 Setup Layer
+
+| Change | Detail |
+|---|---|
+| `DataCategory` removed | `data-categories.js` deleted; `TreeEntity` now covers `StakeholderCategory` and `Domain` only |
+| `Service` removed | `services.js` deleted |
+| `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field removed; `version` optional; endpoint `/reference-documents` |
+| `Domain` added | New `TreeEntity` (`domains.js`); has `contact` textarea field |
+| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scopeId)` tuple; select options for wave and scope (domain) resolved from `setupData` |
+| `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed; uniqueness check on `(year, sequenceNumber)` |
+
+`abstract-interaction-activity.js` `loadSetupData()` updated: `dataCategories`/`services`/`documents` replaced by `domains`/`referenceDocuments` loaded from `/domains` and `/reference-documents`.
+
+### 10.2 Operational Requirement Fields
+
+**Added to both ON and OR:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `maturity` | `select` | Required; options from `MaturityLevel` enum |
+| `additionalDocumentation` | `static-label` | Renders "Not available yet" in all modes; not submitted |
+
+**Added to ON only (`visibleWhen: type === 'ON'`):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `domain` | `select` | Options from `domains` setupData |
+| `strategicDocuments` | `annotated-multiselect` | Rename of `documentReferences`; options from `referenceDocuments` setupData |
+| `tentative` | `tentative` | Single text input; user enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array; displayed as `"2026"` or `"2026-2028"` |
+
+**Added to OR only (`visibleWhen: type === 'OR'`):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `nfrs` | `richtext` | Optional; operational non-functional requirements |
+| `impactedDomains` | `multiselect` | Options from `domains` setupData |
+
+**Renamed:**
+
+| Old key | New key |
+|---|---|
+| `impactsStakeholderCategories` | `impactedStakeholders` |
+| `dependsOnRequirements` | `dependencies` |
+| `documentReferences` | `strategicDocuments` (ON only) |
+
+**Removed:** `impactsData`, `impactsServices`, `documentReferences` (from OR).
+
+**`dependencies` and `impactedDomains`** are now OR-only (previously `dependsOnRequirements` appeared for all types).
+
+### 10.3 Operational Change Fields
+
+**Added:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `maturity` | `select` | Required; options from `MaturityLevel` enum |
+| `cost` | `text` | Optional free-text cost indicator |
+| `additionalDocumentation` | `static-label` | Renders "Not available yet" in all modes; not submitted |
+
+**Renamed:**
+
+| Old key | New key |
+|---|---|
+| `satisfiesRequirements` | `implementedORs` |
+| `supersedsRequirements` | `decommissionedORs` |
+
+**Removed:** `documentReferences` section.
+
+### 10.4 Milestone Name Field
+
+Milestone `title` field renamed to `name` throughout `change-form-milestone.js`: form input id/name, `collectFormData`, `validateMilestone`, `prepareData`, `renderRow`, and the delete confirmation message.
+
+Wave label in milestone form and table now rendered as `Y{year}Q{sequenceNumber}` (the `name` field was removed from `Wave` in Edition 4).
+
+### 10.5 New Field Types in CollectionEntityForm
+
+Two new `type` values added to `renderInput` / `renderReadOnlyField`:
+
+| Type | Edit rendering | Read rendering | Notes |
+|---|---|---|---|
+| `static-label` | `<div>` with `staticText` content, no `name` attribute | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
+| `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` array as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed in `RequirementForm.transformDataForSave` via `parseTentative()` |
+
+### 10.6 Filter Bar
+
+`getFilterConfig()` in `abstract-interaction-activity.js` updated:
+
+- Removed: `service`, `dataCategory`, `document` filters
+- Added: `domain` filter (suggest, options from `domains` setupData)
+- Renamed: `satisfies` → `implements`
+  [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

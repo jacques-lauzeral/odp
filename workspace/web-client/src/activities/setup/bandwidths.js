@@ -1,43 +1,82 @@
 import ListEntity from '../../components/setup/list-entity.js';
 import { apiClient } from '../../shared/api-client.js';
 
-export default class Waves extends ListEntity {
+export default class Bandwidths extends ListEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
+        this.waves = [];
+        this.domains = [];
     }
 
     getEntityDescription() {
-        return 'Timeline management for deployment planning';
+        return 'Manage per-domain yearly effort bandwidths';
     }
 
     getNewButtonText() {
-        return 'New Wave';
+        return 'New Bandwidth';
+    }
+
+    async render(container) {
+        // Load reference data before rendering
+        await this.loadReferenceData();
+        await super.render(container);
+    }
+
+    async loadReferenceData() {
+        try {
+            [this.waves, this.domains] = await Promise.all([
+                apiClient.get('/waves'),
+                apiClient.get('/domains')
+            ]);
+        } catch (error) {
+            console.error('Failed to load reference data for bandwidths:', error);
+        }
     }
 
     sortData(data) {
         return [...data].sort((a, b) => {
             if (a.year !== b.year) return b.year - a.year;
-            return b.sequenceNumber - a.sequenceNumber;
+            // null waveId (year-level) sorts before wave-specific entries
+            if (a.waveId == null && b.waveId != null) return -1;
+            if (a.waveId != null && b.waveId == null) return 1;
+            // null scopeId (global) sorts before domain-specific entries
+            if (a.scopeId == null && b.scopeId != null) return -1;
+            if (a.scopeId != null && b.scopeId == null) return 1;
+            return 0;
         });
     }
 
     getTableColumns() {
         return [
             { key: 'year', label: 'Year', type: 'number' },
-            { key: 'sequenceNumber', label: 'Sequence', type: 'number' },
-            { key: 'implementationDate', label: 'Implementation Date', type: 'date' }
+            { key: 'waveId', label: 'Wave', type: 'wave-ref' },
+            { key: 'scopeId', label: 'Scope (Domain)', type: 'domain-ref' }
         ];
     }
 
     formatCellValue(value, column, item) {
         switch (column.type) {
-            case 'date':
-                return value ? new Date(value).toLocaleDateString() : '-';
+            case 'wave-ref':
+                if (!value) return '<span class="text-secondary">Year-level</span>';
+                return this.getWaveLabel(value);
+            case 'domain-ref':
+                if (!value) return '<span class="text-secondary">Global</span>';
+                return this.getDomainName(value);
             case 'number':
                 return value != null ? value : '-';
             default:
                 return super.formatCellValue(value, column, item);
         }
+    }
+
+    getWaveLabel(waveId) {
+        const wave = this.waves.find(w => w.id == waveId);
+        return wave ? `${wave.year} / ${wave.sequenceNumber}` : `Wave ${waveId}`;
+    }
+
+    getDomainName(domainId) {
+        const domain = this.domains.find(d => d.id == domainId);
+        return domain ? domain.name : `Domain ${domainId}`;
     }
 
     renderRowActions(item) {
@@ -63,6 +102,23 @@ export default class Waves extends ListEntity {
         this.showDeleteConfirmation(item);
     }
 
+    renderWaveOptions(selectedId = null) {
+        const sorted = [...this.waves].sort((a, b) => {
+            if (a.year !== b.year) return a.year - b.year;
+            return a.sequenceNumber - b.sequenceNumber;
+        });
+        return sorted.map(w =>
+            `<option value="${w.id}" ${w.id == selectedId ? 'selected' : ''}>${w.year} / ${w.sequenceNumber}</option>`
+        ).join('');
+    }
+
+    renderDomainOptions(selectedId = null) {
+        const sorted = [...this.domains].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        return sorted.map(d =>
+            `<option value="${d.id}" ${d.id == selectedId ? 'selected' : ''}>${d.name}</option>`
+        ).join('');
+    }
+
     showCreateForm() {
         const currentYear = new Date().getFullYear();
 
@@ -70,35 +126,39 @@ export default class Waves extends ListEntity {
             <div class="modal-overlay" id="create-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">New Wave</h3>
+                        <h3 class="modal-title">New Bandwidth</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="create-form">
                             <div class="form-group">
                                 <label for="year">Year *</label>
-                                <input type="number" id="year" name="year" class="form-control" 
-                                       min="2020" max="2050" 
-                                       value="${currentYear}" required>
+                                <input type="number" id="year" name="year" class="form-control"
+                                       min="2020" max="2050" value="${currentYear}" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="sequenceNumber">Sequence Number *</label>
-                                <input type="number" id="sequenceNumber" name="sequenceNumber" class="form-control"
-                                       min="1" required>
-                                <small class="form-text">Sequential number within the year (e.g. 1, 2, 3)</small>
+                                <label for="waveId">Wave</label>
+                                <select id="waveId" name="waveId" class="form-control form-select">
+                                    <option value="">Year-level (no specific wave)</option>
+                                    ${this.renderWaveOptions()}
+                                </select>
+                                <small class="form-text">Leave empty for a year-level bandwidth entry</small>
                             </div>
                             
                             <div class="form-group">
-                                <label for="implementationDate">Implementation Date</label>
-                                <input type="date" id="implementationDate" name="implementationDate" class="form-control">
-                                <small class="form-text">Target implementation date for this wave</small>
+                                <label for="scopeId">Scope (Domain)</label>
+                                <select id="scopeId" name="scopeId" class="form-control form-select">
+                                    <option value="">Global (no specific domain)</option>
+                                    ${this.renderDomainOptions()}
+                                </select>
+                                <small class="form-text">Leave empty for a global bandwidth entry</small>
                             </div>
                         </form>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Create Wave</button>
+                        <button type="button" class="btn btn-primary" data-action="save">Create Bandwidth</button>
                     </div>
                 </div>
             </div>
@@ -106,7 +166,6 @@ export default class Waves extends ListEntity {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.attachModalEventListeners('#create-modal');
-        this.attachWaveValidation('#create-modal');
 
         const yearField = document.querySelector('#create-modal #year');
         if (yearField) yearField.focus();
@@ -117,7 +176,7 @@ export default class Waves extends ListEntity {
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Wave</h3>
+                        <h3 class="modal-title">Edit Bandwidth</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -126,21 +185,24 @@ export default class Waves extends ListEntity {
                             
                             <div class="form-group">
                                 <label for="edit-year">Year *</label>
-                                <input type="number" id="edit-year" name="year" class="form-control" 
-                                       min="2020" max="2050" 
-                                       value="${item.year}" required>
+                                <input type="number" id="edit-year" name="year" class="form-control"
+                                       min="2020" max="2050" value="${item.year}" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-sequenceNumber">Sequence Number *</label>
-                                <input type="number" id="edit-sequenceNumber" name="sequenceNumber" class="form-control"
-                                       min="1" value="${item.sequenceNumber}" required>
+                                <label for="edit-waveId">Wave</label>
+                                <select id="edit-waveId" name="waveId" class="form-control form-select">
+                                    <option value="">Year-level (no specific wave)</option>
+                                    ${this.renderWaveOptions(item.waveId)}
+                                </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-implementationDate">Implementation Date</label>
-                                <input type="date" id="edit-implementationDate" name="implementationDate" class="form-control"
-                                       value="${item.implementationDate ? item.implementationDate.split('T')[0] : ''}">
+                                <label for="edit-scopeId">Scope (Domain)</label>
+                                <select id="edit-scopeId" name="scopeId" class="form-control form-select">
+                                    <option value="">Global (no specific domain)</option>
+                                    ${this.renderDomainOptions(item.scopeId)}
+                                </select>
                             </div>
                         </form>
                     </div>
@@ -154,38 +216,29 @@ export default class Waves extends ListEntity {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.attachModalEventListeners('#edit-modal');
-        this.attachWaveValidation('#edit-modal');
     }
 
     showDeleteConfirmation(item) {
-        const label = `${item.year} / ${item.sequenceNumber}`;
+        const waveLabel = item.waveId ? this.getWaveLabel(item.waveId) : 'Year-level';
+        const scopeLabel = item.scopeId ? this.getDomainName(item.scopeId) : 'Global';
 
         const modalHtml = `
             <div class="modal-overlay" id="delete-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Delete Wave</h3>
+                        <h3 class="modal-title">Delete Bandwidth</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <p>Are you sure you want to delete wave <strong>${label}</strong>?</p>
-                        
-                        ${item.implementationDate ? `
-                            <p class="text-secondary">Implementation Date: ${new Date(item.implementationDate).toLocaleDateString()}</p>
-                        ` : ''}
-                        
-                        <div class="warning-message">
-                            <p><strong>Warning:</strong> This will remove the wave from all operational changes and milestones that reference it.</p>
-                        </div>
-                        
+                        <p>Are you sure you want to delete the bandwidth entry for
+                           <strong>${item.year}</strong> / ${waveLabel} / ${scopeLabel}?</p>
                         <p class="text-secondary">This action cannot be undone.</p>
-                        
                         <input type="hidden" id="delete-item-id" value="${item.id}">
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
                         <button type="button" class="btn btn-primary" data-action="confirm-delete">
-                            Delete Wave
+                            Delete Bandwidth
                         </button>
                     </div>
                 </div>
@@ -194,40 +247,6 @@ export default class Waves extends ListEntity {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.attachModalEventListeners('#delete-modal');
-    }
-
-    attachWaveValidation(modalSelector) {
-        const modal = document.querySelector(modalSelector);
-        if (!modal) return;
-
-        const yearField = modal.querySelector('[name="year"]');
-        const seqField = modal.querySelector('[name="sequenceNumber"]');
-
-        if (yearField && seqField) {
-            const validateUnique = () => {
-                const year = parseInt(yearField.value);
-                const seq = parseInt(seqField.value);
-                const currentId = modal.querySelector('[name="id"]')?.value;
-                const numericCurrentId = currentId ? parseInt(currentId, 10) : null;
-
-                if (year && seq) {
-                    const exists = this.data.some(wave =>
-                        wave.year === year &&
-                        wave.sequenceNumber === seq &&
-                        wave.id !== numericCurrentId
-                    );
-
-                    if (exists) {
-                        this.showFieldError(seqField, `Wave ${year} / ${seq} already exists`);
-                    } else {
-                        this.clearFieldError(seqField);
-                    }
-                }
-            };
-
-            yearField.addEventListener('change', validateUnique);
-            seqField.addEventListener('change', validateUnique);
-        }
     }
 
     attachModalEventListeners(modalSelector) {
@@ -270,6 +289,48 @@ export default class Waves extends ListEntity {
         modal.remove();
     }
 
+    validateForm(modal) {
+        const errorFields = modal.querySelectorAll('.error');
+        errorFields.forEach(field => this.clearFieldError(field));
+
+        let isValid = true;
+
+        const requiredFields = modal.querySelectorAll('[required]');
+        requiredFields.forEach(field => {
+            if (!field.value.trim()) {
+                this.showFieldError(field, 'This field is required');
+                isValid = false;
+            }
+        });
+
+        // Uniqueness check on (year, waveId, scopeId)
+        const yearField = modal.querySelector('[name="year"]');
+        const waveField = modal.querySelector('[name="waveId"]');
+        const scopeField = modal.querySelector('[name="scopeId"]');
+        const currentId = modal.querySelector('[name="id"]')?.value;
+
+        if (yearField?.value) {
+            const year = parseInt(yearField.value);
+            const waveId = waveField?.value || null;
+            const scopeId = scopeField?.value || null;
+            const numericCurrentId = currentId ? parseInt(currentId, 10) : null;
+
+            const exists = this.data.some(b =>
+                b.year === year &&
+                (b.waveId ?? null) == (waveId ?? null) &&
+                (b.scopeId ?? null) == (scopeId ?? null) &&
+                b.id !== numericCurrentId
+            );
+
+            if (exists) {
+                this.showFieldError(yearField, 'A bandwidth entry for this year / wave / scope already exists');
+                isValid = false;
+            }
+        }
+
+        return isValid;
+    }
+
     showFieldError(field, message) {
         this.clearFieldError(field);
         field.classList.add('error');
@@ -285,44 +346,6 @@ export default class Waves extends ListEntity {
         if (existingError) existingError.remove();
     }
 
-    validateForm(modal) {
-        const errorFields = modal.querySelectorAll('.error');
-        errorFields.forEach(field => this.clearFieldError(field));
-
-        let isValid = true;
-
-        const requiredFields = modal.querySelectorAll('[required]');
-        requiredFields.forEach(field => {
-            if (!field.value.trim()) {
-                this.showFieldError(field, 'This field is required');
-                isValid = false;
-            }
-        });
-
-        const yearField = modal.querySelector('[name="year"]');
-        const seqField = modal.querySelector('[name="sequenceNumber"]');
-
-        if (yearField?.value && seqField?.value) {
-            const year = parseInt(yearField.value);
-            const seq = parseInt(seqField.value);
-            const currentId = modal.querySelector('[name="id"]')?.value;
-            const numericCurrentId = currentId ? parseInt(currentId, 10) : null;
-
-            const exists = this.data.some(wave =>
-                wave.year === year &&
-                wave.sequenceNumber === seq &&
-                wave.id !== numericCurrentId
-            );
-
-            if (exists) {
-                this.showFieldError(seqField, `Wave ${year} / ${seq} already exists`);
-                isValid = false;
-            }
-        }
-
-        return isValid;
-    }
-
     async handleCreateSave(modal) {
         if (!this.validateForm(modal)) return;
 
@@ -331,8 +354,8 @@ export default class Waves extends ListEntity {
 
         const data = {
             year: parseInt(formData.get('year')),
-            sequenceNumber: parseInt(formData.get('sequenceNumber')),
-            implementationDate: formData.get('implementationDate') || undefined
+            waveId: formData.get('waveId') || undefined,
+            scopeId: formData.get('scopeId') || undefined
         };
 
         try {
@@ -340,7 +363,8 @@ export default class Waves extends ListEntity {
             this.closeModal(modal);
             await this.refreshAndSelect(newItem.id.toString());
         } catch (error) {
-            console.error('Failed to create wave:', error);
+            console.error('Failed to create bandwidth:', error);
+            this.showFormError(modal, error.message || 'Failed to create bandwidth');
         }
     }
 
@@ -353,8 +377,8 @@ export default class Waves extends ListEntity {
         const id = parseInt(formData.get('id'), 10);
         const data = {
             year: parseInt(formData.get('year')),
-            sequenceNumber: parseInt(formData.get('sequenceNumber')),
-            implementationDate: formData.get('implementationDate') || undefined
+            waveId: formData.get('waveId') || undefined,
+            scopeId: formData.get('scopeId') || undefined
         };
 
         try {
@@ -363,7 +387,8 @@ export default class Waves extends ListEntity {
             await this.refresh();
             this.selectItem(id.toString());
         } catch (error) {
-            console.error('Failed to update wave:', error);
+            console.error('Failed to update bandwidth:', error);
+            this.showFormError(modal, error.message || 'Failed to update bandwidth');
         }
     }
 
@@ -375,7 +400,19 @@ export default class Waves extends ListEntity {
             this.closeModal(modal);
             await this.refreshAndClearSelection();
         } catch (error) {
-            console.error('Failed to delete wave:', error);
+            console.error('Failed to delete bandwidth:', error);
+            this.showFormError(modal, error.message || 'Failed to delete bandwidth');
         }
+    }
+
+    showFormError(modal, message) {
+        const existingError = modal.querySelector('.form-error');
+        if (existingError) existingError.remove();
+
+        const modalBody = modal.querySelector('.modal-body');
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'form-error alert alert-error';
+        errorDiv.innerHTML = `<strong>Error:</strong> ${message}`;
+        modalBody.insertBefore(errorDiv, modalBody.firstChild);
     }
 }

@@ -406,54 +406,54 @@ class NMB2BMapper extends DocumentMapper {
 
 ```javascript
 class ReroutingMapper extends DocumentMapper {
-  mapRequirements(rawData) {
-    const reqSheet = rawData.sheets.find(s => s.name === 'Requirements');
-    if (!reqSheet) return [];
+    mapRequirements(rawData) {
+        const reqSheet = rawData.sheets.find(s => s.name === 'Requirements');
+        if (!reqSheet) return [];
 
-    return reqSheet.rows
-      .filter(row => row['Type'] === 'OR' || row['Type'] === 'ON')
-      .map(row => ({
-        externalId: row['ID'],
-        title: row['Title'],
-        type: row['Type'],
-        drg: 'REROUTING',
-        // Convert plain text to Quill Delta (no images in Excel)
-        statement: this.convertToQuillDelta(row['Statement'] || ''),
-        rationale: this.convertToQuillDelta(row['Rationale'] || ''),
-        flows: this.convertToQuillDelta(row['Flows'] || ''),
-        path: this.extractPathFromId(row['ID']),
-        implementedONs: this.parseReferences(row['Implemented ONs']),
-        impactsStakeholderCategories: this.parseReferences(row['Stakeholders']),
-        impactsServices: this.parseReferences(row['Services']),
-        impactsData: this.parseReferences(row['Data'])
-      }));
-  }
+        return reqSheet.rows
+            .filter(row => row['Type'] === 'OR' || row['Type'] === 'ON')
+            .map(row => ({
+                externalId: row['ID'],
+                title: row['Title'],
+                type: row['Type'],
+                drg: 'REROUTING',
+                // Convert plain text to Quill Delta (no images in Excel)
+                statement: this.convertToQuillDelta(row['Statement'] || ''),
+                rationale: this.convertToQuillDelta(row['Rationale'] || ''),
+                flows: this.convertToQuillDelta(row['Flows'] || ''),
+                path: this.extractPathFromId(row['ID']),
+                implementedONs: this.parseReferences(row['Implemented ONs']),
+                impactsStakeholderCategories: this.parseReferences(row['Stakeholders']),
+                impactsServices: this.parseReferences(row['Domains']),
+                impactsData: this.parseReferences(row['Data'])
+            }));
+    }
 
-  mapStakeholderCategories(rawData) {
-    const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
-    if (!setupSheet) return [];
+    mapStakeholderCategories(rawData) {
+        const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
+        if (!setupSheet) return [];
 
-    return setupSheet.rows
-      .filter(row => row['Type'] === 'Stakeholder')
-      .map(row => ({
-        externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'stakeholder'),
-        name: row['Name'],  // Use 'name' field
-        description: row['Description'] || ''
-      }));
-  }
+        return setupSheet.rows
+            .filter(row => row['Type'] === 'Stakeholder')
+            .map(row => ({
+                externalId: ExternalIdBuilder.buildExternalId({name: row['Name']}, 'stakeholder'),
+                name: row['Name'],  // Use 'name' field
+                description: row['Description'] || ''
+            }));
+    }
 
-  mapServices(rawData) {
-    const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
-    if (!setupSheet) return [];
+    mapServices(rawData) {
+        const setupSheet = rawData.sheets.find(s => s.name === 'Setup Entities');
+        if (!setupSheet) return [];
 
-    return setupSheet.rows
+        return setupSheet.rows
             .filter(row => row['Type'] === 'Service')
             .map(row => ({
-              externalId: ExternalIdBuilder.buildExternalId({ name: row['Name'] }, 'service'),
-              name: row['Name'],  // Use 'name' field
-              description: row['Description'] || ''
+                externalId: ExternalIdBuilder.buildExternalId({name: row['Name']}, 'service'),
+                name: row['Name'],  // Use 'name' field
+                description: row['Description'] || ''
             }));
-  }
+    }
 }
 ```
 

@@ -9,8 +9,8 @@
  * This is pure declarative configuration - no logic, no state
  *
  * Special field properties:
- * - optionsKey: References a method name on the form instance (e.g., 'getDraftingGroupOptions')
- * - formatKey: References a method name on the form instance (e.g., 'formatEntityReferences')
+ * - optionsKey: References a method name on the form instance
+ * - formatKey: References a method name on the form instance
  */
 export const changeFieldDefinitions = [
     // Basic Information Section
@@ -56,12 +56,20 @@ export const changeFieldDefinitions = [
                 }
             },
             {
+                key: 'maturity',
+                label: 'Maturity',
+                type: 'select',
+                modes: ['create', 'read', 'edit'],
+                required: true,
+                optionsKey: 'getMaturityOptions',
+                helpText: 'Maturity level of this change'
+            },
+            {
                 key: 'visibility',
                 label: 'Visibility',
                 type: 'radio',
                 modes: ['create', 'read', 'edit'],
                 required: true,
-                // Options will be populated by form using getVisibilityDisplay
                 optionsKey: 'getVisibilityOptions',
                 defaultValue: 'NETWORK',
                 helpTextAbove: 'Control who can see this change'
@@ -152,6 +160,22 @@ export const changeFieldDefinitions = [
                     if (!value || !Array.isArray(value) || value.length === 0) return 'No path';
                     return value.join(' > ');
                 }
+            },
+            {
+                key: 'cost',
+                label: 'Cost',
+                type: 'text',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                placeholder: 'e.g. High / Medium / Low or specific estimate',
+                helpText: 'Indicative implementation cost'
+            },
+            {
+                key: 'additionalDocumentation',
+                label: 'Additional Documentation',
+                type: 'static-label',
+                modes: ['create', 'read', 'edit'],
+                staticText: 'Not available yet'
             }
         ]
     },
@@ -166,7 +190,6 @@ export const changeFieldDefinitions = [
                 type: 'custom',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                // Render function will be bound by form using milestoneManager
                 renderKey: 'renderMilestonesField',
                 format: (value) => {
                     if (!value || !Array.isArray(value) || value.length === 0) {
@@ -184,56 +207,33 @@ export const changeFieldDefinitions = [
         title: 'Relationships',
         fields: [
             {
-                key: 'satisfiesRequirements',
-                label: 'Satisfies Requirements',
+                key: 'implementedORs',
+                label: 'Implements Requirements',
                 type: 'multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
                 optionsKey: 'getRequirementOptions',
-                helpText: 'Select requirements that this change satisfies (use empty array if none)',
+                helpText: 'Select OR requirements that this change implements',
                 formatKey: 'formatEntityReferences',
                 formatArgs: ['requirement']
             },
             {
-                key: 'supersedsRequirements',
-                label: 'Supersedes Requirements',
+                key: 'decommissionedORs',
+                label: 'Decommissions Requirements',
                 type: 'multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
                 optionsKey: 'getRequirementOptions',
-                helpText: 'Select requirements that this change supersedes (use empty array if none)',
+                helpText: 'Select OR requirements that this change decommissions',
                 formatKey: 'formatEntityReferences',
                 formatArgs: ['requirement']
-            }
-        ]
-    },
-
-    // Document References Section
-    {
-        title: 'Document References',
-        fields: [
-            {
-                key: 'documentReferences',
-                label: 'Document References',
-                type: 'annotated-multiselect',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                maxNoteLength: 200,
-                placeholder: 'Select documents...',
-                noteLabel: 'Reference Note',
-                optionsKey: 'getDocumentOptions',
-                helpText: 'Select documents and optionally add notes about their relevance',
-                formatKey: 'formatAnnotatedReferences'
             }
         ]
     },
 
     // History Section
-    // Rendered by HistoryTab component – lazy-loaded on tab activation.
-    // The form must call historyTab.attach(container, entityType, itemId)
-    // in its onTabChange handler when this tab becomes active.
     {
         title: 'History',
         fields: [
@@ -241,7 +241,6 @@ export const changeFieldDefinitions = [
                 key: '_history',
                 label: 'Version History',
                 type: 'history',
-                // Visible in read and edit modes (not relevant for create)
                 modes: ['read', 'edit'],
                 readOnly: true
             }
@@ -263,15 +262,8 @@ export const changeFormTitles = {
  * Required identifier array fields that must always be present (even if empty)
  */
 export const requiredIdentifierArrayFields = [
-    'satisfiesRequirements',
-    'supersedsRequirements'
-];
-
-/**
- * Required annotated reference array fields that must always be present (even if empty)
- */
-export const requiredAnnotatedReferenceArrayFields = [
-    'documentReferences'
+    'implementedORs',
+    'decommissionedORs'
 ];
 
 /**
@@ -280,7 +272,8 @@ export const requiredAnnotatedReferenceArrayFields = [
 export const requiredTextFields = [
     'title',
     'purpose',
-    'visibility'
+    'visibility',
+    'maturity'
 ];
 
 /**
@@ -289,12 +282,14 @@ export const requiredTextFields = [
 export const optionalTextFields = [
     'initialState',
     'finalState',
-    'details'
+    'details',
+    'cost'
 ];
 
 /**
  * Default values for new changes
  */
 export const changeDefaults = {
-    visibility: 'NETWORK'
+    visibility: 'NETWORK',
+    maturity: 'DRAFT'
 };

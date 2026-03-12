@@ -10,7 +10,6 @@ import {
 /**
  * RequirementsEntity - Requirements collection management with multi-perspective support
  * Supports both Collection and Tree perspectives with parent-owned data pattern
- * UPDATED: Parent manages data loading, distributes to perspectives via setData()
  */
 export default class RequirementsEntity {
     constructor(app, entityConfig, setupData) {
@@ -19,14 +18,10 @@ export default class RequirementsEntity {
         this.setupData = setupData;
         this.container = null;
 
-        // Multi-perspective support
-        this.currentPerspective = 'collection'; // 'collection' | 'tree'
-        this.data = []; // PARENT-OWNED: Single source of truth for all perspectives
+        this.currentPerspective = 'collection';
+        this.data = [];
+        this.isActive = false;
 
-        // Lifecycle state
-        this.isActive = false; // Tracks if this entity view is currently active
-
-        // Local shared state for this entity
         this.sharedState = {
             filters: [],
             selectedItem: null,
@@ -34,7 +29,6 @@ export default class RequirementsEntity {
             currentTabIndex: 0
         };
 
-        // Initialize collection perspective
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
             context: { setupData },
@@ -48,7 +42,6 @@ export default class RequirementsEntity {
             })
         });
 
-        // Initialize tree perspective
         this.tree = new TreeTableEntity(app, entityConfig, {
             pathBuilder: (entity, entityMap) => this.buildRequirementTreePath(entity, entityMap),
             typeRenderers: this.getTreeTypeRenderers(),
@@ -62,7 +55,6 @@ export default class RequirementsEntity {
             }
         });
 
-        // Initialize form using inheritance pattern with tab change callback
         this.form = new RequirementForm(entityConfig, {
             setupData,
             currentTabIndex: 0,
@@ -73,30 +65,24 @@ export default class RequirementsEntity {
     }
 
     // ====================
-    // STATE MANAGEMENT - CENTRALIZED STATE
+    // STATE MANAGEMENT
     // ====================
 
     applySharedState(sharedState) {
-        console.log('RequirementsEntity.applySharedState:', sharedState);
-
-        // Apply selection (shared across perspectives)
         if (sharedState.selectedItem) {
             this.collection.selectedItem = sharedState.selectedItem;
             this.tree.selectedItem = sharedState.selectedItem;
         }
 
-        // Apply grouping (collection only)
         if (sharedState.grouping && this.collection) {
             this.collection.currentGrouping = sharedState.grouping;
         }
 
-        // Apply tab index to form context
         if (sharedState.currentTabIndex !== undefined && this.form) {
             this.sharedState.currentTabIndex = sharedState.currentTabIndex;
             this.form.context.currentTabIndex = sharedState.currentTabIndex;
         }
 
-        // Re-render current perspective with the filters already applied above
         if (this.currentPerspective === 'tree') {
             this.tree.render(this.container);
         } else {
@@ -124,6 +110,13 @@ export default class RequirementsEntity {
                 sortable: true,
                 type: 'requirement-type',
                 groupPriority: { 'ON': 1, 'OR': 2 }
+            },
+            {
+                key: 'maturity',
+                label: 'Maturity',
+                width: '100px',
+                sortable: true,
+                type: 'text'
             },
             {
                 key: 'title',
@@ -160,7 +153,7 @@ export default class RequirementsEntity {
                 groupPrefix: 'Implements'
             },
             {
-                key: 'dependsOnRequirements',
+                key: 'dependencies',
                 label: 'Depends On',
                 width: '150px',
                 sortable: false,
@@ -170,33 +163,22 @@ export default class RequirementsEntity {
                 groupPrefix: 'Depends On'
             },
             {
-                key: 'documentReferences',
-                label: 'Documents',
-                width: '150px',
+                key: 'impactedStakeholders',
+                label: 'Stakeholders',
+                width: '120px',
                 sortable: false,
                 type: 'annotated-reference-list',
                 maxDisplay: 2,
-                noneLabel: 'No Documents'
-            },
-            {
-                key: 'impactsStakeholderCategories',
-                label: 'Stakeholder',
-                width: '120px',
-                sortable: true,
-                type: 'multi-setup-reference',
-                setupEntity: 'stakeholderCategories',
-                renderMode: 'inline',
                 noneLabel: 'No Stakeholder Impact'
             },
             {
-                key: 'impactsServices',
-                label: 'Services',
+                key: 'impactedDomains',
+                label: 'Domains',
                 width: '120px',
-                sortable: true,
-                type: 'multi-setup-reference',
-                setupEntity: 'services',
-                renderMode: 'inline',
-                noneLabel: 'No Services Impact'
+                sortable: false,
+                type: 'entity-reference-list',
+                maxDisplay: 2,
+                noneLabel: 'No Domain Impact'
             }
         ];
     }
@@ -205,33 +187,22 @@ export default class RequirementsEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
+            { key: 'maturity', label: 'Maturity' },
             { key: 'drg', label: 'Drafting Group' },
             { key: 'refinesParents', label: 'Refines' },
             { key: 'implementedONs', label: 'Implements' },
-            { key: 'dependsOnRequirements', label: 'Dependencies' },
-            { key: 'documentReferences', label: 'Document References' },
-            { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact' },
-            { key: 'impactsServices', label: 'Services Impact' }
+            { key: 'dependencies', label: 'Dependencies' },
+            { key: 'impactedStakeholders', label: 'Stakeholder Impact' },
+            { key: 'impactedDomains', label: 'Domain Impact' }
         ];
     }
-
 
     // ====================
     // TREE CONFIGURATION
     // ====================
 
-    /**
-     * Build organizational path nodes from path array
-     * Returns org-folder nodes only (no DrG, no requirement node)
-     *
-     * @param {string} drg - Drafting group for ID generation
-     * @param {Array} pathArray - Array of path segments (e.g., ['Operations', 'Ground'])
-     * @returns {Array} Array of org-folder path nodes
-     */
     buildPathTreePath(drg, pathArray) {
-        if (!pathArray || !Array.isArray(pathArray) || pathArray.length === 0) {
-            return [];
-        }
+        if (!pathArray || !Array.isArray(pathArray) || pathArray.length === 0) return [];
 
         return pathArray.map((segment, index) => {
             const pathPrefix = pathArray.slice(0, index + 1).join('/');
@@ -243,55 +214,31 @@ export default class RequirementsEntity {
         });
     }
 
-    /**
-     * Build complete tree path for a requirement
-     *
-     * Path construction rules (mutually exclusive):
-     * 1. If path[] defined: DrG → Organizational Folders → Requirement
-     * 2. Else if refinesParent defined: Parent's complete tree-path → Requirement
-     * 3. Else: DrG → Requirement (root-level)
-     *
-     * @param {Object} requirement - The requirement entity
-     * @param {Map} entityMap - Map of all requirements by ID for parent lookup
-     * @returns {Array} Complete tree path from DrG to requirement
-     */
     buildRequirementTreePath(requirement, entityMap) {
         const path = [];
 
-        // Level 1: DrG (Drafting Group) root folder - ALWAYS included
         if (requirement.drg) {
-            const drgDisplay = getDraftingGroupDisplay(requirement.drg);
             path.push({
                 type: 'drg',
-                value: drgDisplay,
+                value: getDraftingGroupDisplay(requirement.drg),
                 id: `drg:${requirement.drg}`
             });
         }
 
-        // MUTUALLY EXCLUSIVE: Either organizational path OR parent chain
         if (requirement.path && Array.isArray(requirement.path) && requirement.path.length > 0) {
-            // Case 1: Organizational path folders
-            const orgNodes = this.buildPathTreePath(requirement.drg, requirement.path);
-            path.push(...orgNodes);
+            path.push(...this.buildPathTreePath(requirement.drg, requirement.path));
         } else if (requirement.refinesParents && requirement.refinesParents.length > 0) {
-            // Case 2: Recursive parent chain - inherit parent's complete path
             const parentRef = requirement.refinesParents[0];
             const parentId = parentRef.itemId || parentRef.id || parentRef;
             const parent = entityMap ? entityMap.get(parentId) : null;
             if (parent) {
-                // Recursively build parent's complete tree path
                 const parentPath = this.buildRequirementTreePath(parent, entityMap);
-
-                // Extract parent's middle nodes (skip DrG at [0]) and parent node itself
-                // We already added DrG above, so we take everything from index 1 onwards
                 if (parentPath.length > 1) {
                     path.push(...parentPath.slice(1));
                 }
             }
         }
-        // Case 3: Neither path nor refinesParent - requirement goes directly under DrG
 
-        // Final level: The requirement itself - ALWAYS included
         path.push({
             type: requirement.type === 'ON' ? 'on-node' : 'or-node',
             value: requirement.title,
@@ -302,10 +249,6 @@ export default class RequirementsEntity {
         return path;
     }
 
-    /**
-     * Type renderers for different node types in tree
-     * Keys must match the 'type' field in path objects
-     */
     getTreeTypeRenderers() {
         return {
             'drg': {
@@ -335,9 +278,6 @@ export default class RequirementsEntity {
         };
     }
 
-    /**
-     * Column configuration for tree table
-     */
     getTreeColumns() {
         return [
             {
@@ -354,6 +294,13 @@ export default class RequirementsEntity {
                 type: 'text'
             },
             {
+                key: 'maturity',
+                label: 'Maturity',
+                width: '100px',
+                appliesTo: ['on-node', 'or-node'],
+                type: 'text'
+            },
+            {
                 key: 'implementedONs',
                 label: 'Implements',
                 width: '150px',
@@ -363,52 +310,31 @@ export default class RequirementsEntity {
                 noneLabel: 'No Implementation'
             },
             {
-                key: 'dependsOnRequirements',
+                key: 'dependencies',
                 label: 'Depends On',
                 width: '120px',
-                appliesTo: ['on-node', 'or-node'],
+                appliesTo: ['or-node'],
                 type: 'entity-reference-list',
                 maxDisplay: 1,
                 noneLabel: 'No Dependencies'
             },
             {
-                key: 'documentReferences',
-                label: 'Documents',
-                width: '100px',
-                appliesTo: ['on-node', 'or-node'],
+                key: 'impactedStakeholders',
+                label: 'Stakeholders',
+                width: '120px',
+                appliesTo: ['or-node'],
                 type: 'annotated-reference-list',
                 maxDisplay: 1,
-                noneLabel: 'No Documents'
-            },
-            {
-                key: 'impactsData',
-                label: 'Data',
-                width: '120px',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'multi-setup-reference',
-                setupEntity: 'dataCategories',
-                renderMode: 'inline',
-                noneLabel: 'No Data Impact'
-            },
-            {
-                key: 'impactsStakeholderCategories',
-                label: 'Stakeholder',
-                width: '120px',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'multi-setup-reference',
-                setupEntity: 'stakeholderCategories',
-                renderMode: 'inline',
                 noneLabel: 'No Stakeholder Impact'
             },
             {
-                key: 'impactsServices',
-                label: 'Services',
+                key: 'impactedDomains',
+                label: 'Domains',
                 width: '120px',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'multi-setup-reference',
-                setupEntity: 'services',
-                renderMode: 'inline',
-                noneLabel: 'No Service Impact'
+                appliesTo: ['or-node'],
+                type: 'entity-reference-list',
+                maxDisplay: 1,
+                noneLabel: 'No Domain Impact'
             },
             {
                 key: 'updatedBy',
@@ -446,17 +372,7 @@ export default class RequirementsEntity {
     // FILTER MATCHERS
     // ====================
 
-    /**
-     * Called by the activity when FilterBar fires 'filtersChanged'.
-     * Propagates the new filter array to both active perspectives.
-     *
-     * @param {Array} activeFilters  Array of { key, label, value, displayValue }
-     */
     handleFilterChange(activeFilters) {
-        // Store on shared state so perspective switches preserve filters.
-        // No client-side filtering: the activity's _applyFiltersToEntities already
-        // triggers a server-side reload via updateAllBadges, which returns
-        // pre-filtered data. applyFilters() on the collection is therefore a no-op here.
         this.sharedState.filters = activeFilters;
     }
 
@@ -464,20 +380,13 @@ export default class RequirementsEntity {
     // RENDERING
     // ====================
 
-    /**
-     * Render with specified perspective
-     */
     async render(container, perspective = 'collection') {
         this.container = container;
         this.currentPerspective = perspective;
 
-        console.log(`RequirementsEntity: Rendering ${perspective} perspective`);
-
-        // Distribute data to perspectives
         this.collection.setData(this.data);
         this.tree.setData(this.data);
 
-        // Render active perspective
         if (perspective === 'tree') {
             this.tree.render(container);
         } else {
@@ -490,15 +399,9 @@ export default class RequirementsEntity {
     // ====================
 
     async handleItemSelect(item) {
-        console.log('RequirementsEntity.handleItemSelect:', item);
-
-        // Render details first
         this.renderDetails(item);
-
-        // Then update shared state
         this.sharedState.selectedItem = item;
 
-        // Notify activity for cross-perspective sync
         if (this.app.currentActivity?.updateSharedSelection) {
             this.app.currentActivity.updateSharedSelection(item);
         }
@@ -526,7 +429,6 @@ export default class RequirementsEntity {
             <div class="details-scrollable-content">${detailsHtml}</div>
         `;
 
-        // Initialize richtext fields after HTML insertion
         this.form.initializeRichtextReadOnly(detailsContainer);
 
         if (currentTab !== null && currentTab !== 0) {
@@ -552,28 +454,18 @@ export default class RequirementsEntity {
         const headers = container.querySelectorAll('.tab-header');
         const panels = container.querySelectorAll('.tab-panel');
 
-        headers.forEach((header, index) => {
-            header.classList.toggle('active', index === tabIndex);
-        });
-
-        panels.forEach((panel, index) => {
-            panel.classList.toggle('active', index === tabIndex);
-        });
+        headers.forEach((header, index) => header.classList.toggle('active', index === tabIndex));
+        panels.forEach((panel, index) => panel.classList.toggle('active', index === tabIndex));
     }
 
     async handleCreate() {
-        console.log('RequirementsEntity.handleCreate');
         this.form.showCreateModal();
     }
 
     async handleEdit(item) {
-        console.log('RequirementsEntity.handleEdit:', item);
-
-        // Restore tab state
         if (this.sharedState.currentTabIndex !== undefined) {
             this.form.context.currentTabIndex = this.sharedState.currentTabIndex;
         }
-
         this.form.showEditModal(item);
     }
 
@@ -585,47 +477,25 @@ export default class RequirementsEntity {
     // DATA MANAGEMENT
     // ====================
 
-    /**
-     * Handle perspective switching from activity
-     */
     handlePerspectiveSwitch(perspective, sharedState) {
-        console.log(`RequirementsEntity: Switching to ${perspective} perspective`);
-
-        if (perspective === this.currentPerspective) {
-            return; // Already in this perspective
-        }
+        if (perspective === this.currentPerspective) return;
 
         this.currentPerspective = perspective;
 
-        // Update perspective button UI
         const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
         if (viewControlsContainer) {
-            const perspectiveButtons = viewControlsContainer.querySelectorAll('.perspective-option');
-            perspectiveButtons.forEach(button => {
-                if (button.dataset.perspective === perspective) {
-                    button.classList.add('perspective-option--active');
-                } else {
-                    button.classList.remove('perspective-option--active');
-                }
+            viewControlsContainer.querySelectorAll('.perspective-option').forEach(button => {
+                button.classList.toggle('perspective-option--active', button.dataset.perspective === perspective);
             });
         }
 
-        // Apply shared state to new perspective
-        if (sharedState) {
-            this.applySharedState(sharedState);
-        }
+        if (sharedState) this.applySharedState(sharedState);
 
-        // Re-render with current perspective, then restore selection
         this.render(this.container, perspective).then(() => {
             this._restoreSelectionAfterRender();
         });
     }
 
-    /**
-     * Re-select the previously selected item in the current perspective
-     * and refresh the details panel with up-to-date data from this.data.
-     * Safe to call after any render that rebuilds the DOM.
-     */
     _restoreSelectionAfterRender() {
         const selected = this.sharedState.selectedItem;
         if (!selected) return;
@@ -633,171 +503,65 @@ export default class RequirementsEntity {
         const selectedId = this.getItemId(selected);
         if (selectedId == null) return;
 
-        // Look up the item in the current data (may be fresher than the stored reference)
         const freshItem = this.data.find(d => this.getItemId(d) === selectedId) || selected;
 
         if (this.currentPerspective === 'tree') {
-            // TreeTableEntity uses selectedItem property; render already uses it for highlight
             this.tree.selectedItem = freshItem;
         } else {
-            // Set selectedItem directly and update highlight without firing onItemSelect
-            // (avoids double details render)
             this.collection.selectedItem = freshItem;
             const rows = this.container?.querySelectorAll('.collection-row');
             rows?.forEach(row => {
-                row.classList.toggle(
-                    'collection-row--selected',
-                    row.dataset.itemId === String(selectedId)
-                );
+                row.classList.toggle('collection-row--selected', row.dataset.itemId === String(selectedId));
             });
         }
 
-        // Always refresh the details panel with the (potentially fresher) item
         this.renderDetails(freshItem);
     }
 
     handleGrouping(groupBy) {
         this.collection.handleGrouping(groupBy);
-
-        // Update shared state
         this.sharedState.grouping = groupBy;
     }
 
     cleanup() {
         this.collection.cleanup();
-        if (this.tree) {
-            this.tree.container = null;
-        }
+        if (this.tree) this.tree.container = null;
         this.container = null;
-    }
-
-    // ====================
-    // REQUIREMENT-SPECIFIC OPERATIONS
-    // ====================
-
-    async getRequirementHierarchy(rootId = null) {
-        try {
-            // Get all requirements
-            const allRequirements = this.data;
-
-            // Build hierarchy
-            const hierarchy = [];
-            const requirementsById = {};
-
-            // Index by ID
-            allRequirements.forEach(req => {
-                const id = req.itemId || req.id;
-                requirementsById[id] = { ...req, children: [], implementers: [] };
-            });
-
-            // Build refinement tree
-            allRequirements.forEach(req => {
-                const refinesParents = req.refinesParents || [];
-                if (refinesParents.length === 0) {
-                    // Root requirement
-                    if (!rootId || (req.itemId || req.id) === rootId) {
-                        hierarchy.push(requirementsById[req.itemId || req.id]);
-                    }
-                } else {
-                    // Child requirement
-                    refinesParents.forEach(parent => {
-                        const parentId = parent.itemId || parent.id || parent;
-                        if (requirementsById[parentId]) {
-                            requirementsById[parentId].children.push(requirementsById[req.itemId || req.id]);
-                        }
-                    });
-                }
-
-                // Build implementation relationships
-                if (req.type === 'OR' && req.implementedONs) {
-                    req.implementedONs.forEach(on => {
-                        const onId = on.itemId || on.id || on;
-                        if (requirementsById[onId]) {
-                            requirementsById[onId].implementers.push(requirementsById[req.itemId || req.id]);
-                        }
-                    });
-                }
-            });
-
-            return hierarchy;
-        } catch (error) {
-            console.error('Failed to build requirement hierarchy:', error);
-            return [];
-        }
     }
 
     // ====================
     // LIFECYCLE NOTIFICATIONS
     // ====================
 
-    /**
-     * Called when requirements data has been updated (loaded/filtered)
-     * @param {Array} data - The new requirements data
-     * @param {number} count - Total count of requirements
-     */
     onDataUpdated(data, count) {
-        console.log('RequirementsEntity.onDataUpdated:', { count, isActive: this.isActive });
-
-        // Update internal data cache
         this.data = [...data];
-
-        // If this view is currently active, render the data
-        if (this.isActive) {
-            this.renderFromCache();
-        }
+        if (this.isActive) this.renderFromCache();
     }
 
-    /**
-     * Render current perspective from cached data, then restore selection.
-     */
     renderFromCache() {
-        if (!this.container) {
-            console.warn('RequirementsEntity.renderFromCache: No container available');
-            return;
-        }
+        if (!this.container) return;
 
-        console.log(`RequirementsEntity.renderFromCache: Rendering ${this.currentPerspective} with ${this.data.length} items`);
-
-        // Distribute data to perspectives
         this.collection.setData(this.data);
         this.tree.setData(this.data);
 
-        // Render active perspective
         if (this.currentPerspective === 'tree') {
             this.tree.render(this.container);
         } else {
             this.collection.render(this.container);
         }
 
-        // Re-select previously selected item and refresh details panel
         this._restoreSelectionAfterRender();
     }
 
-    /**
-     * Called when this entity view becomes active (user switches to this tab)
-     */
     onActivated() {
-        console.log('RequirementsEntity.onActivated');
         this.isActive = true;
-
-        // Render view controls
         this.renderViewControls();
-
-        // Render from cache if we have data
-        if (this.data && this.data.length > 0) {
-            this.renderFromCache();
-        }
+        if (this.data && this.data.length > 0) this.renderFromCache();
     }
 
-    /**
-     * Render view-specific controls (perspective selector, grouping, actions)
-     */
     renderViewControls() {
         const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
-        if (!viewControlsContainer) {
-            console.warn('RequirementsEntity.renderViewControls: No viewControls container');
-            return;
-        }
+        if (!viewControlsContainer) return;
 
         const groupingConfig = this.getGroupingConfig();
         const isReviewMode = this.app.currentActivity?.config?.mode === 'review';
@@ -842,48 +606,30 @@ export default class RequirementsEntity {
         this.bindViewControlEvents();
     }
 
-    /**
-     * Bind events for view controls
-     */
     bindViewControlEvents() {
         const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
         if (!viewControlsContainer) return;
 
-        // Perspective switching
-        const perspectiveButtons = viewControlsContainer.querySelectorAll('.perspective-option');
-        perspectiveButtons.forEach(button => {
+        viewControlsContainer.querySelectorAll('.perspective-option').forEach(button => {
             button.addEventListener('click', () => {
-                const perspective = button.dataset.perspective;
-                this.handlePerspectiveSwitch(perspective, this.sharedState);
+                this.handlePerspectiveSwitch(button.dataset.perspective, this.sharedState);
             });
         });
 
-        // Grouping
         const groupBySelect = viewControlsContainer.querySelector('#groupBy');
         if (groupBySelect) {
-            groupBySelect.addEventListener('change', (e) => {
-                this.handleGrouping(e.target.value);
-            });
+            groupBySelect.addEventListener('change', (e) => this.handleGrouping(e.target.value));
         }
 
-        // Create button
         const createBtn = viewControlsContainer.querySelector('#createEntity');
         if (createBtn) {
             createBtn.addEventListener('click', () => this.handleCreate());
         }
     }
 
-    /**
-     * Called when this entity view becomes inactive (user switches away)
-     */
     onDeactivated() {
-        console.log('RequirementsEntity.onDeactivated');
         this.isActive = false;
-
-        // Clear view controls
         const viewControlsContainer = this.app.currentActivity?.container?.querySelector('#viewControls');
-        if (viewControlsContainer) {
-            viewControlsContainer.innerHTML = '';
-        }
+        if (viewControlsContainer) viewControlsContainer.innerHTML = '';
     }
 }

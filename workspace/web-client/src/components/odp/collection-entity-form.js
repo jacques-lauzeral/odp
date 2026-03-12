@@ -327,6 +327,30 @@ export class CollectionEntityForm {
             return this.renderRichtextReadOnly(field, value);
         }
 
+        // static-label: always render fixed text, ignore value
+        if (field.type === 'static-label') {
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    <div class="detail-value detail-value--muted">${this.escapeHtml(field.staticText || '')}</div>
+                </div>
+            `;
+        }
+
+        // tentative: render formatted [start, end] array or raw string
+        if (field.type === 'tentative') {
+            const display = Array.isArray(value)
+                ? (value[0] === value[1] ? String(value[0]) : `${value[0]}-${value[1]}`)
+                : (value || '');
+            if (!display) return '';
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    <div class="detail-value">${this.escapeHtml(display)}</div>
+                </div>
+            `;
+        }
+
         // Skip empty optional fields
         if (!field.required && !value) {
             return '';
@@ -496,6 +520,22 @@ export class CollectionEntityForm {
             case 'history':
                 // Render mount point for HistoryTab component
                 return '<div id="history-tab-container" class="history-tab-container"></div>';
+
+            case 'static-label':
+                // Read-only informational label — no input, no name, not submitted
+                return `<div class="form-static-label detail-value--muted">${this.escapeHtml(field.staticText || '')}</div>`;
+
+            case 'tentative':
+                // Single text input — user types "YYYY" or "YYYY-ZZZZ"
+                // Value arriving here is already a formatted string (transformDataForEdit converts array → string)
+                return `<input type="text"
+                    id="${fieldId}"
+                    name="${field.key}"
+                    class="form-control"
+                    value="${this.escapeHtml(value || '')}"
+                    ${required}
+                    ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
+                    pattern="^\\d{4}(-\\d{4})?$">`;
 
             case 'custom':
                 // Allow field to render itself
@@ -931,7 +971,7 @@ export class CollectionEntityForm {
         }
 
         for (const field of allFields) {
-            if (field.computed || field.readOnly || field.editableOnlyOnCreate || field.type === 'history') continue;
+            if (field.computed || field.readOnly || field.editableOnlyOnCreate || field.type === 'history' || field.type === 'static-label') continue;
 
             // Managers need raw objects; plain inputs/richtext need the transformed (ID-normalised) value
             const rawValue         = this.getFieldValue(this.currentItem, field);
@@ -1423,6 +1463,9 @@ export class CollectionEntityForm {
             if (field.computed) continue;
             if (this.currentMode === 'edit' && field.editableOnlyOnCreate) continue;
 
+            // static-label has no input — nothing to collect
+            if (field.type === 'static-label') continue;
+
             // Special handling for annotated-multiselect
             if (field.type === 'annotated-multiselect') {
                 const manager = this.annotatedMultiselectManagers[field.key];
@@ -1505,6 +1548,7 @@ export class CollectionEntityForm {
         // Field-level validation
         for (const field of allFields) {
             if (field.computed) continue;
+            if (field.type === 'static-label') continue;
 
             const value = data[field.key];
 

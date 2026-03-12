@@ -487,12 +487,10 @@ export default class ChangesEntity {
             { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
             { key: 'visibility', label: 'Visibility', width: '100px', sortable: true, type: 'visibility' },
             { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
+            { key: 'maturity', label: 'Maturity', width: '100px', sortable: true, type: 'text' },
             { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
-            { key: 'satisfiesRequirements', label: 'Satisfies', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
-            { key: 'supersedesRequirements', label: 'Supersedes', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
-            { key: 'impactsStakeholderCategories', label: 'Stakeholder Impact', width: '180px', sortable: false, type: 'setup-reference-list', setupKey: 'stakeholderCategories', maxDisplay: 2 },
-            { key: 'impactsServices', label: 'Services Impact', width: '150px', sortable: false, type: 'setup-reference-list', setupKey: 'services', maxDisplay: 2 },
-            { key: 'documentReferences', label: 'Documents', width: '150px', sortable: false, type: 'annotated-reference-list', maxDisplay: 2, noneLabel: 'No Documents' }
+            { key: 'implementedORs', label: 'Implements', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
+            { key: 'decommissionedORs', label: 'Decommissions', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 }
         ];
     }
 
@@ -500,10 +498,9 @@ export default class ChangesEntity {
         return [
             { value: 'none', label: 'No Grouping' },
             { key: 'visibility', label: 'Group by Visibility' },
+            { key: 'maturity', label: 'Group by Maturity' },
             { key: 'drg', label: 'Group by DrG' },
-            { key: 'wave', label: 'Group by Wave' },
-            { key: 'impactsStakeholderCategories', label: 'Group by Stakeholder Impact' },
-            { key: 'impactsServices', label: 'Group by Services Impact' }
+            { key: 'wave', label: 'Group by Wave' }
         ];
     }
 

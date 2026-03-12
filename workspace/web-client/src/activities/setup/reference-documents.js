@@ -1,21 +1,20 @@
 import ListEntity from '../../components/setup/list-entity.js';
 import { apiClient } from '../../shared/api-client.js';
 
-export default class Documents extends ListEntity {
+export default class ReferenceDocuments extends ListEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
     }
 
     getEntityDescription() {
-        return 'Manage reference documents for operational requirements and changes';
+        return 'Manage strategic reference documents for operational needs';
     }
 
     getNewButtonText() {
-        return 'New Document';
+        return 'New Reference Document';
     }
 
     sortData(data) {
-        // Sort documents alphabetically by name, then by version
         return [...data].sort((a, b) => {
             const nameCompare = (a.name || '').localeCompare(b.name || '');
             if (nameCompare !== 0) return nameCompare;
@@ -27,7 +26,6 @@ export default class Documents extends ListEntity {
         return [
             { key: 'name', label: 'Name', type: 'text' },
             { key: 'version', label: 'Version', type: 'text' },
-            { key: 'description', label: 'Description', type: 'text' },
             { key: 'url', label: 'URL', type: 'url' }
         ];
     }
@@ -36,7 +34,6 @@ export default class Documents extends ListEntity {
         switch (column.type) {
             case 'url':
                 if (!value) return '-';
-                // Truncate long URLs for display
                 const displayUrl = value.length > 50 ? value.substring(0, 47) + '...' : value;
                 return `<a href="${this.escapeHtml(value)}" target="_blank" rel="noopener noreferrer" title="${this.escapeHtml(value)}">${this.escapeHtml(displayUrl)}</a>`;
             case 'text':
@@ -81,7 +78,7 @@ export default class Documents extends ListEntity {
             <div class="modal-overlay" id="create-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">New Document</h3>
+                        <h3 class="modal-title">New Reference Document</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -89,35 +86,26 @@ export default class Documents extends ListEntity {
                             <div class="form-group">
                                 <label for="name">Name *</label>
                                 <input type="text" id="name" name="name" class="form-control" required
-                                       placeholder="e.g., Technical Specification, User Guide">
-                                <small class="form-text">Document name or title</small>
+                                       placeholder="e.g., ICAO Doc 4444, EUROCONTROL Specification">
                             </div>
                             
                             <div class="form-group">
-                                <label for="version">Version *</label>
-                                <input type="text" id="version" name="version" class="form-control" required
+                                <label for="version">Version</label>
+                                <input type="text" id="version" name="version" class="form-control"
                                        placeholder="e.g., 1.0, v2.3, 2024-01">
-                                <small class="form-text">Document version identifier</small>
+                                <small class="form-text">Optional version identifier</small>
                             </div>
                             
                             <div class="form-group">
-                                <label for="description">Description</label>
-                                <textarea id="description" name="description" class="form-control form-textarea" rows="3"
-                                         placeholder="Brief description of the document..."></textarea>
-                                <small class="form-text">Optional description of document content</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="url">URL</label>
-                                <input type="url" id="url" name="url" class="form-control"
+                                <label for="url">URL *</label>
+                                <input type="url" id="url" name="url" class="form-control" required
                                        placeholder="https://example.com/documents/...">
-                                <small class="form-text">Optional link to the document location</small>
                             </div>
                         </form>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Create Document</button>
+                        <button type="button" class="btn btn-primary" data-action="save">Create Reference Document</button>
                     </div>
                 </div>
             </div>
@@ -126,11 +114,8 @@ export default class Documents extends ListEntity {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.attachModalEventListeners('#create-modal');
 
-        // Focus on name field
         const nameField = document.querySelector('#create-modal #name');
-        if (nameField) {
-            nameField.focus();
-        }
+        if (nameField) nameField.focus();
     }
 
     showEditForm(item) {
@@ -138,7 +123,7 @@ export default class Documents extends ListEntity {
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Document</h3>
+                        <h3 class="modal-title">Edit Reference Document</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -152,19 +137,14 @@ export default class Documents extends ListEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-version">Version *</label>
+                                <label for="edit-version">Version</label>
                                 <input type="text" id="edit-version" name="version" class="form-control" 
-                                       value="${this.escapeHtml(item.version || '')}" required>
+                                       value="${this.escapeHtml(item.version || '')}">
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-description">Description</label>
-                                <textarea id="edit-description" name="description" class="form-control form-textarea" rows="3">${this.escapeHtml(item.description || '')}</textarea>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="edit-url">URL</label>
-                                <input type="url" id="edit-url" name="url" class="form-control"
+                                <label for="edit-url">URL *</label>
+                                <input type="url" id="edit-url" name="url" class="form-control" required
                                        value="${this.escapeHtml(item.url || '')}">
                             </div>
                         </form>
@@ -186,28 +166,18 @@ export default class Documents extends ListEntity {
             <div class="modal-overlay" id="delete-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Delete Document</h3>
+                        <h3 class="modal-title">Delete Reference Document</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <p>Are you sure you want to delete document <strong>"${this.escapeHtml(item.name)}"</strong> (version ${this.escapeHtml(item.version)})?</p>
-                        
-                        ${item.description ? `
-                            <p class="text-secondary">${this.escapeHtml(item.description)}</p>
-                        ` : ''}
-                        
-                        <div class="warning-message">
-                            <p><strong>Warning:</strong> This will remove document references from all operational requirements and changes that reference it.</p>
-                        </div>
-                        
+                        <p>Are you sure you want to delete <strong>"${this.escapeHtml(item.name)}"</strong>${item.version ? ` (${this.escapeHtml(item.version)})` : ''}?</p>
                         <p class="text-secondary">This action cannot be undone.</p>
-                        
                         <input type="hidden" id="delete-item-id" value="${item.id}">
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
                         <button type="button" class="btn btn-primary" data-action="confirm-delete">
-                            Delete Document
+                            Delete Reference Document
                         </button>
                     </div>
                 </div>
@@ -241,14 +211,10 @@ export default class Documents extends ListEntity {
             }
         });
 
-        // Close modal on overlay click
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.closeModal(modal);
-            }
+            if (e.target === modal) this.closeModal(modal);
         });
 
-        // Close modal on Escape key
         const escapeHandler = (e) => {
             if (e.key === 'Escape') {
                 this.closeModal(modal);
@@ -263,13 +229,11 @@ export default class Documents extends ListEntity {
     }
 
     validateForm(modal) {
-        // Clear previous errors
         const errorFields = modal.querySelectorAll('.error');
         errorFields.forEach(field => this.clearFieldError(field));
 
         let isValid = true;
 
-        // Check required fields
         const requiredFields = modal.querySelectorAll('[required]');
         requiredFields.forEach(field => {
             if (!field.value.trim()) {
@@ -278,9 +242,8 @@ export default class Documents extends ListEntity {
             }
         });
 
-        // Validate URL format if provided
         const urlField = modal.querySelector('[name="url"]');
-        if (urlField && urlField.value.trim()) {
+        if (urlField?.value.trim()) {
             try {
                 new URL(urlField.value.trim());
             } catch (e) {
@@ -304,24 +267,19 @@ export default class Documents extends ListEntity {
     clearFieldError(field) {
         field.classList.remove('error');
         const existingError = field.parentNode.querySelector('.error-message');
-        if (existingError) {
-            existingError.remove();
-        }
+        if (existingError) existingError.remove();
     }
 
     async handleCreateSave(modal) {
-        if (!this.validateForm(modal)) {
-            return;
-        }
+        if (!this.validateForm(modal)) return;
 
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
         const data = {
             name: formData.get('name').trim(),
-            version: formData.get('version').trim(),
-            description: formData.get('description')?.trim() || undefined,
-            url: formData.get('url')?.trim() || undefined
+            version: formData.get('version')?.trim() || undefined,
+            url: formData.get('url').trim()
         };
 
         try {
@@ -329,15 +287,13 @@ export default class Documents extends ListEntity {
             this.closeModal(modal);
             await this.refreshAndSelect(newItem.id.toString());
         } catch (error) {
-            console.error('Failed to create document:', error);
-            this.showFormError(modal, error.message || 'Failed to create document');
+            console.error('Failed to create reference document:', error);
+            this.showFormError(modal, error.message || 'Failed to create reference document');
         }
     }
 
     async handleUpdateSave(modal) {
-        if (!this.validateForm(modal)) {
-            return;
-        }
+        if (!this.validateForm(modal)) return;
 
         const form = modal.querySelector('form');
         const formData = new FormData(form);
@@ -345,9 +301,8 @@ export default class Documents extends ListEntity {
         const id = parseInt(formData.get('id'), 10);
         const data = {
             name: formData.get('name').trim(),
-            version: formData.get('version').trim(),
-            description: formData.get('description')?.trim() || undefined,
-            url: formData.get('url')?.trim() || undefined
+            version: formData.get('version')?.trim() || undefined,
+            url: formData.get('url').trim()
         };
 
         try {
@@ -356,8 +311,8 @@ export default class Documents extends ListEntity {
             await this.refresh();
             this.selectItem(id.toString());
         } catch (error) {
-            console.error('Failed to update document:', error);
-            this.showFormError(modal, error.message || 'Failed to update document');
+            console.error('Failed to update reference document:', error);
+            this.showFormError(modal, error.message || 'Failed to update reference document');
         }
     }
 
@@ -369,19 +324,15 @@ export default class Documents extends ListEntity {
             this.closeModal(modal);
             await this.refreshAndClearSelection();
         } catch (error) {
-            console.error('Failed to delete document:', error);
-            this.showFormError(modal, error.message || 'Failed to delete document');
+            console.error('Failed to delete reference document:', error);
+            this.showFormError(modal, error.message || 'Failed to delete reference document');
         }
     }
 
     showFormError(modal, message) {
-        // Remove existing error if present
         const existingError = modal.querySelector('.form-error');
-        if (existingError) {
-            existingError.remove();
-        }
+        if (existingError) existingError.remove();
 
-        // Add error message at top of modal body
         const modalBody = modal.querySelector('.modal-body');
         const errorDiv = document.createElement('div');
         errorDiv.className = 'form-error alert alert-error';

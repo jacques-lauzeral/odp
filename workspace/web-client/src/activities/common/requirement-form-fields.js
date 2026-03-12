@@ -50,6 +50,15 @@ export const requirementFieldDefinitions = [
                 helpTextAbove: 'Select ON for high-level operational needs, OR for specific requirements'
             },
             {
+                key: 'maturity',
+                label: 'Maturity',
+                type: 'select',
+                modes: ['create', 'read', 'edit'],
+                required: true,
+                optionsKey: 'getMaturityOptions',
+                helpText: 'Maturity level of this requirement'
+            },
+            {
                 key: 'title',
                 label: 'Title',
                 type: 'text',
@@ -125,13 +134,24 @@ export const requirementFieldDefinitions = [
             },
             {
                 key: 'flows',
-                label: 'Flows',
+                label: 'Flow Descriptions and Flow Examples',
                 type: 'richtext',
                 modes: ['create', 'read', 'edit'],
-                required: true,
+                required: false,
                 rows: 4,
                 placeholder: 'Describe operational flows or flow examples that illustrate the requirement...',
                 helpText: 'Optional flow or flow example descriptions'
+            },
+            {
+                key: 'nfrs',
+                label: 'NFRs',
+                type: 'richtext',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                rows: 3,
+                visibleWhen: (data) => data.type === 'OR',
+                placeholder: 'Non-functional requirements as seen from business perspective...',
+                helpText: 'Optional operational NFRs relevant to this requirement'
             },
             {
                 key: 'privateNotes',
@@ -142,6 +162,56 @@ export const requirementFieldDefinitions = [
                 rows: 3,
                 placeholder: 'Internal notes (not for publication)...',
                 helpText: 'Private notes for internal use only'
+            },
+            {
+                key: 'additionalDocumentation',
+                label: 'Additional Documentation',
+                type: 'static-label',
+                modes: ['create', 'read', 'edit'],
+                staticText: 'Not available yet'
+            }
+        ]
+    },
+
+    // ON-specific Section
+    {
+        title: 'Operational Need',
+        visibleWhen: (data) => data.type === 'ON',
+        fields: [
+            {
+                key: 'domain',
+                label: 'Domain',
+                type: 'select',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                visibleWhen: (data) => data.type === 'ON',
+                optionsKey: 'getDomainOptions',
+                helpText: 'Business domain for this operational need'
+            },
+            {
+                key: 'strategicDocuments',
+                label: 'Strategic Documents',
+                type: 'annotated-multiselect',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                visibleWhen: (data) => data.type === 'ON',
+                maxNoteLength: 200,
+                placeholder: 'Select reference documents...',
+                noteLabel: 'Entry Point / Note',
+                optionsKey: 'getReferenceDocumentOptions',
+                helpText: 'Strategic reference documents and entry points for this operational need',
+                formatKey: 'formatAnnotatedReferences'
+            },
+            {
+                key: 'tentative',
+                label: 'Tentative Implementation Time',
+                type: 'tentative',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                visibleWhen: (data) => data.type === 'ON',
+                placeholder: 'e.g. 2026 or 2026-2028',
+                helpText: 'Year or year range (YYYY or YYYY-ZZZZ). A single year means start = end.',
+                formatKey: 'formatTentative'
             }
         ]
     },
@@ -151,11 +221,12 @@ export const requirementFieldDefinitions = [
         title: 'Impact',
         fields: [
             {
-                key: 'impactsStakeholderCategories',
+                key: 'impactedStakeholders',
                 label: 'Stakeholder Categories',
                 type: 'annotated-multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
+                visibleWhen: (data) => data.type === 'OR',
                 maxNoteLength: 200,
                 placeholder: 'Select stakeholder categories...',
                 noteLabel: 'Impact Note',
@@ -163,16 +234,16 @@ export const requirementFieldDefinitions = [
                 helpText: 'Select affected stakeholder categories and optionally add notes about the nature of the impact'
             },
             {
-                key: 'impactsServices',
-                label: 'Services',
-                type: 'annotated-multiselect',
+                key: 'impactedDomains',
+                label: 'Impacted Domains',
+                type: 'multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                maxNoteLength: 200,
-                placeholder: 'Select services...',
-                noteLabel: 'Impact Note',
-                optionsKey: 'getServiceOptions',
-                helpText: 'Select affected services and optionally add notes about the nature of the impact'
+                visibleWhen: (data) => data.type === 'OR',
+                size: 5,
+                optionsKey: 'getDomainOptions',
+                helpText: 'Select business domains impacted by this operational requirement',
+                formatKey: 'formatEntityReferences'
             }
         ]
     },
@@ -199,50 +270,28 @@ export const requirementFieldDefinitions = [
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
-                visibleWhen: (data) => data.type === 'OR', // Only show for OR-type requirements
+                visibleWhen: (data) => data.type === 'OR',
                 optionsKey: 'getONRequirementOptions',
-                helpText: 'Select ON-type requirements that this OR requirement implements',
+                helpText: 'Select ON-type requirements that this OR implements',
                 formatKey: 'formatEntityReferences',
                 formatArgs: ['ON']
             },
             {
-                key: 'dependsOnRequirements',
-                label: 'Depends On (Requirements)',
+                key: 'dependencies',
+                label: 'Dependencies',
                 type: 'multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
+                visibleWhen: (data) => data.type === 'OR',
                 optionsKey: 'getDependencyRequirementOptions',
-                helpText: 'Select requirements that this requirement depends on (follows latest version automatically)',
+                helpText: 'ORs that must be implemented before this OR',
                 formatKey: 'formatEntityReferences'
             }
         ]
     },
 
-    // Document References Section
-    {
-        title: 'Document References',
-        fields: [
-            {
-                key: 'documentReferences',
-                label: 'Document References',
-                type: 'annotated-multiselect',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                maxNoteLength: 200,
-                placeholder: 'Select documents...',
-                noteLabel: 'Reference Note',
-                optionsKey: 'getDocumentOptions',
-                helpText: 'Select documents and optionally add notes about their relevance',
-                formatKey: 'formatAnnotatedReferences'
-            }
-        ]
-    },
-
     // History Section
-    // Rendered by HistoryTab component – lazy-loaded on tab activation.
-    // The form must call historyTab.attach(container, entityType, itemId)
-    // in its onTabChange handler when this tab becomes active.
     {
         title: 'History',
         fields: [
@@ -250,7 +299,6 @@ export const requirementFieldDefinitions = [
                 key: '_history',
                 label: 'Version History',
                 type: 'history',
-                // Visible in read and edit modes (not relevant for create)
                 modes: ['read', 'edit'],
                 readOnly: true
             }
@@ -274,17 +322,16 @@ export const requirementFormTitles = {
 export const requiredIdentifierArrayFields = [
     'refinesParents',
     'implementedONs',
-    'dependsOnRequirements'
+    'dependencies',
+    'impactedDomains'
 ];
 
 /**
  * Required annotated reference array fields that must always be present (even if empty)
  */
 export const requiredAnnotatedReferenceArrayFields = [
-    'impactsStakeholderCategories',
-    'impactsData',
-    'impactsServices',
-    'documentReferences'
+    'impactedStakeholders',
+    'strategicDocuments'
 ];
 
 /**
@@ -295,12 +342,14 @@ export const requiredTextFields = [
     'type',
     'statement',
     'rationale',
-    'privateNotes'
+    'privateNotes',
+    'maturity'
 ];
 
 /**
  * Default values for new requirements
  */
 export const requirementDefaults = {
-    type: 'ON'
+    type: 'ON',
+    maturity: 'DRAFT'
 };

@@ -159,23 +159,20 @@ export default class AbstractInteractionActivity {
             // Load all setup entities in parallel
             const [
                 stakeholderCategories,
-                dataCategories,
-                services,
-                documents,
+                domains,
+                referenceDocuments,
                 waves
             ] = await Promise.all([
                 apiClient.get('/stakeholder-categories'),
-                apiClient.get('/data-categories'),
-                apiClient.get('/services'),
-                apiClient.get('/documents'),
+                apiClient.get('/domains'),
+                apiClient.get('/reference-documents'),
                 apiClient.get('/waves')
             ]);
 
             this.setupData = {
                 stakeholderCategories: stakeholderCategories || [],
-                dataCategories: dataCategories || [],
-                services: services || [],
-                documents: documents || [],
+                domains: domains || [],
+                referenceDocuments: referenceDocuments || [],
                 waves: waves || []
             };
 
@@ -614,25 +611,11 @@ export default class AbstractInteractionActivity {
                 options: this.buildOptionsFromSetupData('stakeholderCategories')
             },
             {
-                key: 'service',
-                label: 'Service Impact',
+                key: 'domain',
+                label: 'Domain',
                 inputType: 'suggest',
-                placeholder: 'Type to search services...',
-                options: this.buildOptionsFromSetupData('services')
-            },
-            {
-                key: 'dataCategory',
-                label: 'Data Impact',
-                inputType: 'suggest',
-                placeholder: 'Type to search data categories...',
-                options: this.buildOptionsFromSetupData('dataCategories')
-            },
-            {
-                key: 'document',
-                label: 'Document Reference',
-                inputType: 'suggest',
-                placeholder: 'Type to search documents...',
-                options: this.buildOptionsFromSetupData('documents')
+                placeholder: 'Type to search domains...',
+                options: this.buildOptionsFromSetupData('domains')
             },
             {
                 key: 'refines',
@@ -649,15 +632,15 @@ export default class AbstractInteractionActivity {
                 options: []
             },
             {
-                key: 'satisfies',
-                label: 'Satisfies',
+                key: 'implements',
+                label: 'Implements',
                 inputType: 'suggest',
                 placeholder: 'Search by code or title...',
                 options: []
             },
             {
                 key: 'implementedON',
-                label: 'Implements',
+                label: 'Implements ON',
                 inputType: 'suggest',
                 placeholder: 'Search by code or title...',
                 options: []   // populated via fetchSuggestionsCallback

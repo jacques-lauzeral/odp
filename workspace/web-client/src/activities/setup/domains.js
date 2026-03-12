@@ -1,13 +1,13 @@
 import TreeEntity from '../../components/setup/tree-entity.js';
 import { apiClient } from '../../shared/api-client.js';
 
-export default class DataCategories extends TreeEntity {
+export default class Domains extends TreeEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
     }
 
     getNewButtonText() {
-        return 'New Data Category';
+        return 'New Domain';
     }
 
     getDisplayName(item) {
@@ -27,15 +27,21 @@ export default class DataCategories extends TreeEntity {
                         <p>${item.description}</p>
                     </div>
                 ` : ''}
+                ${item.contact ? `
+                    <div class="detail-field">
+                        <label>Contact</label>
+                        <p>${item.contact}</p>
+                    </div>
+                ` : ''}
                 ${item.parentId ? `
                     <div class="detail-field">
-                        <label>Parent Category</label>
+                        <label>Parent</label>
                         <p>${this.getParentName(item.parentId)}</p>
                     </div>
                 ` : ''}
                 <div class="detail-field">
-                    <label>Subcategories</label>
-                    <p>${this.getChildrenCount(item.id)} data subcategories</p>
+                    <label>Children</label>
+                    <p>${this.getChildrenCount(item.id)} subdomains</p>
                 </div>
                 <div class="detail-field">
                     <label>ID</label>
@@ -58,7 +64,7 @@ export default class DataCategories extends TreeEntity {
         return `
             <div class="action-buttons">
                 <button class="btn btn-primary btn-sm" data-action="edit" data-id="${item.id}">
-                    Edit Data Category
+                    Edit Domain
                 </button>
                 <button class="btn btn-secondary btn-sm" data-action="add-child" data-id="${item.id}">
                     Add Child
@@ -94,7 +100,7 @@ export default class DataCategories extends TreeEntity {
                 <div class="modal">
                     <div class="modal-header">
                         <h3 class="modal-title">
-                            ${parentInfo ? `Add Subcategory to "${parentInfo.name}"` : 'New Data Category'}
+                            ${parentInfo ? `Add Subdomain to "${parentInfo.name}"` : 'New Domain'}
                         </h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
@@ -104,19 +110,24 @@ export default class DataCategories extends TreeEntity {
                             
                             <div class="form-group">
                                 <label for="name">Name *</label>
-                                <input type="text" id="name" name="name" class="form-control" required
-                                       placeholder="e.g., Personal Data, Financial Records, System Logs">
+                                <input type="text" id="name" name="name" class="form-control" required>
                             </div>
                             
                             <div class="form-group">
                                 <label for="description">Description *</label>
-                                <textarea id="description" name="description" class="form-control form-textarea" 
-                                         placeholder="Description of this data category and what it encompasses" required></textarea>
+                                <textarea id="description" name="description" class="form-control form-textarea"
+                                         placeholder="Description of this domain" required></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="contact">Contact</label>
+                                <textarea id="contact" name="contact" class="form-control form-textarea"
+                                         placeholder="Contact information for this domain"></textarea>
                             </div>
                             
                             ${parentInfo ? `
                                 <div class="form-group">
-                                    <label>Parent Data Category</label>
+                                    <label>Parent Domain</label>
                                     <p class="form-text">${parentInfo.name}</p>
                                 </div>
                             ` : ''}
@@ -124,7 +135,7 @@ export default class DataCategories extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">Create Data Category</button>
+                        <button type="button" class="btn btn-primary" data-action="save">Create Domain</button>
                     </div>
                 </div>
             </div>
@@ -133,11 +144,8 @@ export default class DataCategories extends TreeEntity {
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         this.attachModalEventListeners('#create-modal');
 
-        // Focus on name field
         const nameField = document.querySelector('#create-modal #name');
-        if (nameField) {
-            nameField.focus();
-        }
+        if (nameField) nameField.focus();
     }
 
     showEditForm(item) {
@@ -145,7 +153,7 @@ export default class DataCategories extends TreeEntity {
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Data Category: ${item.name}</h3>
+                        <h3 class="modal-title">Edit Domain: ${item.name}</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -161,13 +169,18 @@ export default class DataCategories extends TreeEntity {
                             
                             <div class="form-group">
                                 <label for="edit-description">Description *</label>
-                                <textarea id="edit-description" name="description" class="form-control form-textarea" 
+                                <textarea id="edit-description" name="description" class="form-control form-textarea"
                                          required>${item.description || ''}</textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="edit-contact">Contact</label>
+                                <textarea id="edit-contact" name="contact" class="form-control form-textarea">${item.contact || ''}</textarea>
                             </div>
                             
                             ${item.parentId ? `
                                 <div class="form-group">
-                                    <label>Parent Data Category</label>
+                                    <label>Parent Domain</label>
                                     <p class="form-text">${this.getParentName(item.parentId)}</p>
                                 </div>
                             ` : ''}
@@ -175,7 +188,7 @@ export default class DataCategories extends TreeEntity {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="update">Update Data Category</button>
+                        <button type="button" class="btn btn-primary" data-action="update">Update Domain</button>
                     </div>
                 </div>
             </div>
@@ -193,7 +206,7 @@ export default class DataCategories extends TreeEntity {
             <div class="modal-overlay" id="delete-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Delete Data Category</h3>
+                        <h3 class="modal-title">Delete Domain</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
@@ -201,8 +214,8 @@ export default class DataCategories extends TreeEntity {
                         
                         ${hasChildren ? `
                             <div class="warning-message">
-                                <p><strong>Warning:</strong> This data category has ${childrenCount} subcategories. 
-                                Deleting it will also delete all subcategories.</p>
+                                <p><strong>Warning:</strong> This domain has ${childrenCount} subdomains.
+                                Deleting it will also delete all subdomains.</p>
                             </div>
                         ` : ''}
                         
@@ -213,7 +226,7 @@ export default class DataCategories extends TreeEntity {
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
                         <button type="button" class="btn btn-primary" data-action="confirm-delete">
-                            Delete Data Category
+                            Delete Domain
                         </button>
                     </div>
                 </div>
@@ -225,17 +238,15 @@ export default class DataCategories extends TreeEntity {
     }
 
     async handleCreateSave(modal) {
-        // Validate form before proceeding
-        if (!this.validateForm(modal)) {
-            return;
-        }
+        if (!this.validateForm(modal)) return;
 
         const form = modal.querySelector('form');
         const formData = new FormData(form);
 
         const data = {
             name: formData.get('name'),
-            description: formData.get('description')
+            description: formData.get('description'),
+            contact: formData.get('contact')?.trim() || undefined
         };
 
         if (formData.get('parentId')) {
@@ -247,15 +258,12 @@ export default class DataCategories extends TreeEntity {
             this.closeModal(modal);
             await this.refreshAndSelect(newItem.id);
         } catch (error) {
-            console.error('Failed to create data category:', error);
+            console.error('Failed to create domain:', error);
         }
     }
 
     async handleUpdateSave(modal) {
-        // Validate form before proceeding
-        if (!this.validateForm(modal)) {
-            return;
-        }
+        if (!this.validateForm(modal)) return;
 
         const form = modal.querySelector('form');
         const formData = new FormData(form);
@@ -263,7 +271,8 @@ export default class DataCategories extends TreeEntity {
         const id = parseInt(formData.get('id'), 10);
         const data = {
             name: formData.get('name'),
-            description: formData.get('description')
+            description: formData.get('description'),
+            contact: formData.get('contact')?.trim() || undefined
         };
 
         if (formData.get('parentId')) {
@@ -275,7 +284,7 @@ export default class DataCategories extends TreeEntity {
             this.closeModal(modal);
             await this.refreshAndSelect(id);
         } catch (error) {
-            console.error('Failed to update data category:', error);
+            console.error('Failed to update domain:', error);
         }
     }
 
@@ -287,7 +296,7 @@ export default class DataCategories extends TreeEntity {
             this.closeModal(modal);
             await this.refreshAndClearSelection();
         } catch (error) {
-            console.error('Failed to delete data category:', error);
+            console.error('Failed to delete domain:', error);
         }
     }
 }

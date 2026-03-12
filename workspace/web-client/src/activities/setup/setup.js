@@ -15,24 +15,24 @@ export default class Setup {
                 endpoint: '/stakeholder-categories',
                 type: 'tree'
             },
-            'data-categories': {
-                name: 'Data Categories',
-                endpoint: '/data-categories',
+            'domains': {
+                name: 'Domains',
+                endpoint: '/domains',
                 type: 'tree'
             },
-            'services': {
-                name: 'Services',
-                endpoint: '/services',
-                type: 'tree'
-            },
-            'documents': {
-                name: 'Documents',
-                endpoint: '/documents',
+            'reference-documents': {
+                name: 'Reference Documents',
+                endpoint: '/reference-documents',
                 type: 'list'
             },
             'waves': {
                 name: 'Waves',
                 endpoint: '/waves',
+                type: 'list'
+            },
+            'bandwidths': {
+                name: 'Bandwidths',
+                endpoint: '/bandwidths',
                 type: 'list'
             }
         };
@@ -43,7 +43,6 @@ export default class Setup {
     async render(container, subPath = []) {
         this.container = container;
 
-        // Parse subPath for entity type
         if (subPath.length > 0 && this.entities[subPath[0]]) {
             this.currentEntity = subPath[0];
         }
@@ -115,21 +114,16 @@ export default class Setup {
     async switchToEntity(entityKey) {
         if (this.currentEntity === entityKey) return;
 
-        // Cleanup current entity component
         if (this.currentEntityComponent?.cleanup) {
             this.currentEntityComponent.cleanup();
         }
 
         this.currentEntity = entityKey;
 
-        // Update URL
         const path = `/setup/${entityKey}`;
         this.app.navigate(path);
 
-        // Update active tab
         this.updateActiveTab();
-
-        // Load new entity component
         await this.loadCurrentEntity();
     }
 
@@ -146,7 +140,6 @@ export default class Setup {
         if (!workspace) return;
 
         try {
-            // Show loading state
             workspace.innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
@@ -154,11 +147,9 @@ export default class Setup {
                 </div>
             `;
 
-            // Dynamically import entity component
             const entityModule = await import(`./${this.currentEntity}.js`);
             const EntityComponent = entityModule.default;
 
-            // Create and render entity component
             this.currentEntityComponent = new EntityComponent(
                 this.app,
                 this.entities[this.currentEntity]

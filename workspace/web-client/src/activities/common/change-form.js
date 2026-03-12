@@ -5,7 +5,9 @@ import {
     DraftingGroup,
     getDraftingGroupDisplay,
     getVisibilityDisplay,
-    MilestoneEventType
+    MilestoneEventType,
+    MaturityLevel,
+    getMaturityLevelDisplay
 } from '/shared/src/index.js';
 import { MilestoneManager } from './change-form-milestone.js';
 import {
@@ -247,7 +249,7 @@ export default class ChangeForm extends CollectionEntityForm {
         }
 
         // Extract IDs from object references
-        const referenceFields = ['satisfiesRequirements', 'supersedsRequirements', 'dependsOnChanges'];
+        const referenceFields = ['implementedORs', 'decommissionedORs', 'dependsOnChanges'];
 
         referenceFields.forEach(field => {
             if (transformed[field] && Array.isArray(transformed[field])) {
@@ -323,6 +325,14 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
     // OPTIONS PROVIDERS (Referenced by field config)
     // ====================
+
+    getMaturityOptions() {
+        const options = [];
+        Object.keys(MaturityLevel).forEach(key => {
+            options.push({ value: key, label: getMaturityLevelDisplay(key) });
+        });
+        return options;
+    }
 
     getVisibilityOptions() {
         return [
@@ -400,20 +410,6 @@ export default class ChangeForm extends CollectionEntityForm {
             console.error('Failed to load changes for dependencies:', error);
             return [];
         }
-    }
-
-    async getDocumentOptions() {
-        if (!this.context?.setupData?.documents) {
-            return [];
-        }
-
-        const options = this.context.setupData.documents.map(doc => ({
-            value: doc.id,
-            label: doc.name || doc.title || doc.id
-        }));
-
-        console.log('getDocumentOptions - returning options:', options);
-        return options;
     }
 
     // ====================
