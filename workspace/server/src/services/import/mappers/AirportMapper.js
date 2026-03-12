@@ -29,9 +29,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * Field Mapping Strategy:
  *
  * Structured Fields (Resolved to Entity References):
- * - Stakeholders → impactsStakeholderCategories (with synonym resolution)
+ * - Stakeholders → impactedStakeholders (with synonym resolution)
  * - ON Reference → implementedONs (for OR type)
- * - Regulatory requirements → documentReferences
+ * - Regulatory requirements → strategicDocuments (for ON type); privateNotes (for OR type)
  *
  * Unstructured Fields (Preserved as Raw Text in privateNotes):
  * - Data (and other Enabler) → privateNotes section "Data and Enablers"
@@ -40,11 +40,6 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *   Reason: Not standardized format across DrGs
  * - Dependencies → privateNotes section "Dependencies"
  *   Reason: Prose format requiring text parsing to extract requirement references
- *
- * These unstructured fields remain as empty arrays in the model for future processing:
- * - impactsData: [] (to be populated when DataCategory taxonomy is established)
- * - impactsServices: [] (to be populated when Service taxonomy is established)
- * - dependsOnRequirements: [] (to be populated when dependency parsing is implemented)
  *
  * Stakeholder Processing:
  * The mapper handles stakeholders in the following format:
@@ -191,11 +186,8 @@ class AirportMapper extends Mapper {
             requirements: [],
             changes: [],
             stakeholderCategoryMap: new Map(),
-            dataCategoryMap: new Map(),
-            serviceMap: new Map(),
             documentMap: new Map(),
             waveMap: new Map(),
-            // Map requirement numbers (APT-ON-01, APT-OR-02-1) to external IDs
             requirementNumberMap: new Map()
         };
 
@@ -381,6 +373,8 @@ class AirportMapper extends Mapper {
             rationale += '\n\n**Opportunities / Risks:**\n' + opportunitiesRisks;
         }
 
+        const regulatoryReqs = data['Regulatory requirements'];
+
         // Build private notes with all supplementary information
         let privateNotes = `Requirement ID: ${requirementNumber}`;
 
@@ -404,6 +398,11 @@ class AirportMapper extends Mapper {
             privateNotes += '\n\n**Impacted Services:** ' + impactedServices;
         }
 
+        // For ORs, regulatory requirements have no dedicated field — preserve in privateNotes
+        if (type === 'OR' && regulatoryReqs) {
+            privateNotes += '\n\n**Regulatory Requirements:** ' + regulatoryReqs;
+        }
+
         // Build flows from Use Case table if present
         let flows = '';
         if (useCaseTable) {
@@ -425,12 +424,9 @@ class AirportMapper extends Mapper {
             path: path,
             drg: drg,
             refines: null,
-            impactsStakeholderCategories: this._extractImpactedStakeholders(data['Stakeholders'], context),
-            impactsData: [],
-            impactsServices: [],
+            impactedStakeholders: this._extractImpactedStakeholders(data['Stakeholders'], context),
             implementedONs: type === 'OR' ? this._extractImplementedONs(data['ON Reference'], context) : [],
-            documentReferences: this._extractDocumentReferences(data['Regulatory requirements'], context),
-            dependsOnRequirements: []
+            strategicDocuments: type === 'ON' ? this._extractStrategicDocuments(regulatoryReqs, context) : []
         };
 
         // Store requirement number -> external ID mapping for reference resolution
@@ -755,15 +751,13 @@ class AirportMapper extends Mapper {
      * @param {Object} context - Mapping context with documentMap
      * @returns {Array<{externalId: string, note?: string}>} - Array of document references
      */
-    _extractDocumentReferences(regulatoryReqText, context) {
+    _extractStrategicDocuments(regulatoryReqText, context) {
         if (!regulatoryReqText) {
             return [];
         }
 
         const result = [];
 
-        // Split by comma: "CP1 Regulation 2021/116, Full AOP/NOP Integration (Highly Desirable Data Element)"
-        // → ["CP1 Regulation 2021/116", "Full AOP/NOP Integration (Highly Desirable Data Element)"]
         const parts = regulatoryReqText.split(',').map(p => p.trim());
 
         if (parts.length === 0) {
@@ -773,10 +767,7 @@ class AirportMapper extends Mapper {
         const docReference = parts[0];
         const note = parts.length > 1 ? parts.slice(1).join(', ') : null;
 
-        // Normalize document name using synonym map
         const normalizedName = this._normalizeDocumentName(docReference);
-
-        // Resolve to external ID
         const externalId = this._resolveDocumentExternalId(normalizedName, context);
 
         if (externalId) {
@@ -786,7 +777,7 @@ class AirportMapper extends Mapper {
             }
             result.push(docRef);
         } else {
-            console.warn(`Document reference "${docReference}" (normalized: "${normalizedName}") not found in document map`);
+            console.warn(`Strategic document "${docReference}" (normalized: "${normalizedName}") not found in document map`);
         }
 
         return result;
@@ -824,10 +815,8 @@ class AirportMapper extends Mapper {
         console.log(`Mapped entities - Requirements: ${context.requirements.length}, Changes: ${context.changes.length}`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: [],
             requirements: context.requirements,
             changes: context.changes

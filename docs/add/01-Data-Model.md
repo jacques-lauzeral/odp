@@ -4,7 +4,7 @@
 
 The ODIP data model is organised into three categories of entities:
 
-- **Setup Entities** — reference data configured once and referenced throughout (stakeholder categories, data categories, regulatory aspects, services, waves)
+- **Setup Entities** — reference data configured once and referenced throughout (reference documents, stakeholder categories, domains, bandwidths, waves)
 - **Operational Entities** — versioned content authored by contributors (operational requirements, operational changes)
 - **Management Entities** — immutable lifecycle records (baselines, ODIP editions)
 
@@ -37,8 +37,9 @@ shared/src/
 │   └── messages.js           # Request/response model definitions
 └── model/                    # Domain model: entities, enums, utilities
     ├── drafting-groups.js    # DRG enum + validation helpers
-    ├── milestone-events.js   # Milestone event types (5 events)
-    ├── odp-edition-types.js  # Edition type enum (DRAFT, OFFICIAL)
+    ├── maturity-levels.js    # Maturity level enum (DRAFT, ADVANCED, MATURE)
+    ├── milestone-events.js   # Milestone event types
+    ├── odp-edition-types.js  # Edition type enum (ALPHA, BETA, RELEASE)
     ├── odp-elements.js       # Operational and management entity models
     ├── or-types.js           # OR type enum (ON, OR)
     ├── setup-elements.js     # Setup entity models
@@ -54,10 +55,10 @@ All enumerations follow a consistent pattern:
 
 ```javascript
 export const DraftingGroup = {
-  '4DT':        '4D-Trajectory',
-  'AIRPORT':    'Airport',
-  'ASM_ATFCM':  'ASM / ATFCM Integration',
-  // ...
+    '4DT':        '4D-Trajectory',
+    'AIRPORT':    'Airport',
+    'ASM_ATFCM':  'ASM / ATFCM Integration',
+    // ...
 };
 export const DraftingGroupKeys    = Object.keys(DraftingGroup);
 export const isDraftingGroupValid = (value) => DraftingGroupKeys.includes(value);
@@ -70,63 +71,71 @@ export const getDraftingGroupDisplay = (key) => DraftingGroup[key] || key;
 
 ### 3.1 Setup Entities
 
-Setup entities are non-versioned reference data. They support hierarchical organisation via the REFINES relationship (except Waves, which are flat).
+Setup entities are non-versioned reference data. They support hierarchical organisation via the REFINES relationship where noted.
 
-#### Stakeholder Categories
-Characterise the operational stakeholder impact of an ON/OR.
+#### ReferenceDocument (Strategic Documents)
+
+Represents a strategic or regulatory document (e.g. CONOPS, EU Regulation, NSP) that serves as a source for ON definitions. ONs trace back to at least one reference document; by extension, ORs and OCs inherit this traceability.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
-| `name` | string | Short name, e.g. "Flow Management Position" |
-| `description` | string | |
-
-Supports REFINES hierarchy (parent-child tree). Electronic documents can be attached.
-
-#### Data Categories
-Characterise the data impact of an ON/OR.
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | integer | |
-| `name` | string | Compact name reflecting data nature |
-| `description` | string | |
-
-Supports REFINES hierarchy.
-
-#### Regulatory Aspects
-Characterise the regulatory impact of an ON/OR.
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | integer | |
-| `name` | string | Compact name, e.g. "ICAO Annex 15 AIRAC" |
-| `description` | string | |
-
-Supports REFINES hierarchy.
-
-#### Services (and Domains)
-A domain is a named group of services. A service represents a capability delivered by NM to operational stakeholders.
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | integer | |
-| `name` | string | |
-| `description` | string | |
-
-Supports REFINES hierarchy (domain → service).
-
-#### Waves
-NM deployment cycles, used as milestone targets for OCs.
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | integer | |
-| `year` | integer | Deployment year, e.g. 2027 |
-| `quarter` | integer | Deployment quarter, e.g. 1 |
-| `date` | string | Deployment date when decided |
+| `name` | string | Short title, e.g. "iDL CONOPS" |
+| `version` | string | Optional edition or version number |
+| `url` | string | Link to the physical document |
 
 Flat list — no hierarchy.
+
+#### Wave
+
+NM deployment cycle, used as milestone targets for OCs. The wave is identified by its year and sequence number (e.g. 27#2).
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `year` | integer | Deployment year, e.g. 2027 |
+| `sequenceNumber` | integer | Sequence number within the year, e.g. 2 |
+| `implementationDate` | date | Actual deployment date when decided; optional |
+
+Flat list — no hierarchy. The `(year, sequenceNumber)` pair is unique.
+
+#### StakeholderCategory
+
+Characterises the operational stakeholder impact of ORs. Organised in a two-level hierarchy under the implicit top-level "Network" category.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `name` | string | Full name, e.g. "Flow Management Position" |
+| `description` | rich text | |
+
+Supports REFINES hierarchy (parent-child, max two levels).
+
+#### Domain
+
+Represents a business domain, e.g. "Flight" or "Flow Management". Domains are used to characterise the impact of ORs and to assign ownership of ONs.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `name` | string | Short name, e.g. "Flight Planning" |
+| `description` | rich text | |
+| `contact` | rich text | NM contact point for this domain; optional |
+
+Supports REFINES hierarchy (max two levels, top-level mandatory).
+
+#### Bandwidth
+
+Represents the per-domain yearly development effort (in MW), for NM internal planning. Not visible to external stakeholders.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `year` | integer | The effort year |
+| `wave` | reference | Wave reference; optional — omitted means yearly total |
+| `scope` | reference | Domain reference; optional — omitted means global scope |
+
+The `(year, wave, scope)` tuple is unique: no two Bandwidth records may share the same combination.
 
 ---
 
@@ -134,54 +143,94 @@ Flat list — no hierarchy.
 
 Operational entities are **versioned**. Every update creates a new version; previous versions are preserved for historical navigation and baseline snapshots.
 
-#### Operational Requirement (OR)
+#### Operational Requirement
 
-ORs are the core content of the ODIP. An OR can be of type **ON** (Operational Need, high-level) or **OR** (Operational Requirement, detailed).
+ORs are the core content of the ODIP. A Requirement can be of type **ON** (Operational Need — high-level objective agreed with operational stakeholders) or **OR** (Operational Requirement — detailed, implementable requirement).
+
+Several attributes are type-specific. The service layer enforces these rules; the web client anticipates them in form field visibility and validation:
+
+- Fields marked **ON only** are applicable to ONs; forbidden for ORs
+- Fields marked **OR only** are applicable to ORs; forbidden for ONs
+- Fields marked **root only** are mandatory on root requirements (no parent); optional on child requirements
 
 **Item node fields** (stable across versions):
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | integer | |
-| `title` | string | Searchable, unique identifier |
+| `id` | integer | Neo4j internal ID |
+| `title` | string | Searchable unique identifier |
 | `createdAt` | timestamp | |
 | `createdBy` | string | |
 | `latest_version` | integer | Cache of current version number |
 
 **Version node fields** (per version):
 
-| Field | Type | Notes |
-|---|---|---|
-| `version` | integer | Sequential (1, 2, 3…) |
-| `type` | enum | ON \| OR |
-| `drg` | enum | Drafting Group (see §4.1) |
-| `statement` | rich text | Core requirement statement |
-| `rationale` | rich text | Justification |
-| `flows` | rich text | Use case / flow descriptions |
-| `privateNotes` | rich text | Internal notes |
-| `path` | string[] | Folder hierarchy for navigation |
+| Field | Type | ON/OR | Cardinality | Notes |
+|---|---|---|---|---|
+| `version` | integer | both | mandatory | Sequential (1, 2, 3…) |
+| `type` | enum | both | mandatory | ON \| OR |
+| `drg` | enum | both | mandatory | Drafting Group (see §6.1) |
+| `maturity` | enum | both | mandatory | DRAFT \| ADVANCED \| MATURE |
+| `statement` | rich text | both | mandatory | Core requirement statement |
+| `rationale` | rich text | both | mandatory | Justification |
+| `flows` | rich text | both | optional | Flow descriptions and flow examples |
+| `privateNotes` | rich text | both | optional | Internal notes, not shared with other organisations |
+| `additionalDocumentation` | attachments | both | optional | Supporting documents |
+| `path` | string[] | both | optional | Folder hierarchy for navigation |
+| `domain` | reference | **ON only** | mandatory (root ON), optional (child ON) | Domain reference |
+| `tentative` | year period | **ON only** | mandatory (root ON), optional (child ON) | Tentative implementation time [start, end], start ≤ end |
+| `nfrs` | rich text | **OR only** | optional | Non-functional requirements from business perspective |
+
+**Version relationship fields**:
+
+| Relationship | ON/OR | Cardinality | Notes |
+|---|---|---|---|
+| `refines` | both | optional | Parent Requirement of same type |
+| `strategicDocuments` | **ON only** | mandatory (root ON), optional otherwise | Annotated list of ReferenceDocuments |
+| `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | List of implemented ONs |
+| `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | List of StakeholderCategories |
+| `impactedDomains` | **OR only** | mandatory (root OR), optional otherwise | List of Domains |
+| `dependencies` | **OR only** | optional | List of ORs that must be implemented before this OR |
 
 #### Operational Change (OC)
 
-OCs describe and plan the deployment of OR evolutions. They do not group ONs directly — ONs are implemented progressively through the ORs included in one or more OCs.
+OCs describe and plan the deployment of OR evolutions. They do not group ONs directly — ONs are progressively implemented through the ORs included in one or more OCs.
 
-**Item node fields**: same pattern as OR (id, title, createdAt, createdBy, latest_version).
+**Item node fields**: same pattern as Requirement (id, title, createdAt, createdBy, latest_version).
 
 **Version node fields**:
 
+| Field | Type | Cardinality | Notes |
+|---|---|---|---|
+| `version` | integer | mandatory | Sequential |
+| `drg` | enum | mandatory | Drafting Group |
+| `visibility` | enum | mandatory | NM \| NETWORK |
+| `maturity` | enum | mandatory | DRAFT \| ADVANCED \| MATURE |
+| `purpose` | rich text | mandatory | Why the OC is needed |
+| `initialState` | rich text | mandatory | Current operational situation before deployment |
+| `finalState` | rich text | mandatory | Target operational situation after deployment |
+| `details` | rich text | mandatory | Additional deployment detail |
+| `cost` | integer | optional | Estimated development cost in MW |
+| `privateNotes` | rich text | optional | Internal notes |
+| `additionalDocumentation` | attachments | optional | Supporting documents |
+| `path` | string[] | optional | Folder hierarchy |
+
+**Version relationship fields**:
+
+| Relationship | Cardinality | Notes |
+|---|---|---|
+| `implementedORs` | optional | ORs satisfied by this OC |
+| `decommissionedORs` | optional | ORs fully decommissioned by this OC |
+| `dependencies` | optional | OCs that must be deployed before this OC |
+| `milestones` | optional | Deployment milestones (see §4.4) |
+| `orCosts` | optional | Per-OR cost breakdown (see ORCost below) |
+
+**ORCost**: Represents the cost of an OR in the context of this OC.
+
 | Field | Type | Notes |
 |---|---|---|
-| `version` | integer | Sequential |
-| `drg` | enum | Drafting Group |
-| `visibility` | enum | NM \| NETWORK |
-| `purpose` | rich text | Why the OC is needed |
-| `initialState` | rich text | Current operational situation |
-| `finalState` | rich text | Target operational situation |
-| `details` | rich text | Additional deployment detail |
-| `privateNotes` | rich text | Internal notes |
-| `path` | string[] | Folder hierarchy |
-
-**Milestones**: Each OC version owns a set of independent milestone events (see §4.4).
+| `or` | reference | The OR reference |
+| `cost` | integer | Cost in MW |
 
 ---
 
@@ -222,23 +271,23 @@ An ODIP Edition acts as a "saved query": it references a baseline and a starting
 
 ### 4.1 Hierarchy — REFINES
 
-Used by all hierarchical setup entities and by ORs to express parent-child structuring.
+Used by hierarchical setup entities (StakeholderCategory, Domain) and by Requirements to express parent-child structuring.
 
 ```
 (Child)-[:REFINES]->(Parent)
 ```
 
-Tree structure is enforced: a node can have only one parent. Self-reference is prevented.
+Tree structure is enforced: a node can have only one parent. Self-reference is prevented. For Requirements, the REFINES relationship is type-homogeneous: an ON refines an ON, an OR refines an OR.
 
 ### 4.2 Operational Relationships
 
 | Relationship | From | To | Meaning |
 |---|---|---|---|
-| `SATISFIES` | OCVersion | ORItem | OC implements the OR |
-| `SUPERSEDES` | OCVersion | ORItem | OC replaces the OR |
+| `IMPLEMENTS` | OR-type RequirementVersion | ON-type RequirementItem | OR implements the ON |
+| `IMPLEMENTS` | OCVersion | ORItem | OC satisfies (implements) the OR |
+| `DECOMMISSIONS` | OCVersion | ORItem | OC fully decommissions the OR |
 | `DEPENDS_ON` | ORVersion → ORItem | | OR depends on another OR |
 | `DEPENDS_ON` | OCVersion → OCItem | | OC depends on another OC |
-| `IMPLEMENTED_BY` | ON-type OR | OR-type OR | ON implemented by OR |
 
 `DEPENDS_ON` points to the Item node (not a specific version), so it automatically follows the latest version as new versions are created.
 
@@ -246,10 +295,9 @@ Tree structure is enforced: a node can have only one parent. Self-reference is p
 
 | Relationship | From | To | Notes |
 |---|---|---|---|
-| `IMPACTS` | ORVersion / OCVersion | StakeholderCategory | |
-| `IMPACTS` | ORVersion / OCVersion | DataCategory | |
-| `IMPACTS` | ORVersion / OCVersion | Service | |
-| `REFERENCES` | ORVersion / OCVersion | Document | Optional `note` property (plain text, e.g. "Section 3.2") |
+| `IMPACTS_STAKEHOLDER` | ORVersion | StakeholderCategory | |
+| `IMPACTS_DOMAIN` | ORVersion | Domain | |
+| `REFERENCES` | RequirementVersion | ReferenceDocument | Optional `note` property (plain text, e.g. "Section 3.2") |
 
 ### 4.4 Milestone Relationships
 
@@ -260,17 +308,9 @@ Each OC version owns a set of independent milestone events. Milestones have a st
 (Milestone)-[:TARGETS]->(Wave)
 ```
 
-Five milestone event types are defined:
+Each milestone carries one or more event types. The supported event types are defined in §6.5.
 
-| Event | Description |
-|---|---|
-| `API_PUBLICATION` | API published |
-| `API_TEST_DEPLOYMENT` | API deployed on test environment |
-| `UI_TEST_DEPLOYMENT` | UI deployed on test environment |
-| `OPS_DEPLOYMENT` | Operational deployment |
-| `API_DECOMMISSIONING` | API decommissioned |
-
-Milestone events are independent — no sequencing or dependency between them is enforced.
+Milestones are independent — no sequencing or dependency between them is enforced. All milestones must reference a Wave, ensuring that deployment dates align with defined NM release cycles.
 
 ### 4.5 Versioning and Baseline Relationships
 
@@ -344,15 +384,34 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 | ON | Operational Need (high-level objective) |
 | OR | Operational Requirement (detailed, traceable) |
 
-### 6.3 ODIP Edition Types
+### 6.3 Maturity Levels
 
 | Key | Meaning |
 |---|---|
-| ALPHA | Early draft edition |
-| BETA | Review edition |
-| RELEASE | Official published edition |
+| DRAFT | Under work; not ready for prioritisation or ODIP edition display |
+| ADVANCED | Under work but good enough for prioritisation and ODIP edition display |
+| MATURE | Considered finalised for prioritisation and ODIP edition display |
 
-### 6.4 Visibility
+### 6.4 ODIP Edition Types
+
+| Key | Meaning |
+|---|---|
+| DRAFT | Draft edition |
+| OFFICIAL | Official published edition |
+
+### 6.5 Milestone Event Types
+
+| Key | Meaning |
+|---|---|
+| `OPS_DEPLOYMENT` | Operations Deployment |
+| `API_PUBLICATION` | API Publication |
+| `API_TEST_DEPLOYMENT` | API Test Deployment |
+| `UI_TEST_DEPLOYMENT` | UI Test Deployment |
+| `API_DECOMMISSIONING` | API Decommissioning |
+
+Each milestone carries one or more event types from this list.
+
+### 6.6 Visibility
 
 | Key | Meaning |
 |---|---|
@@ -395,7 +454,7 @@ idsEqual(neo4jId, '42')    // → true
 
 | Entity type | Format |
 |---|---|
-| `data`, `service`, `stakeholder` | `{type}:{parent.externalId}/{name}` or `{type}:{name}` |
+| `domain`, `stakeholder` | `{type}:{parent.externalId}/{name}` or `{type}:{name}` |
 | `document`, `wave` | `{type}:{name_normalized}` |
 | `on`, `or` | `{type}:{drg}/{parent.externalId}/{title}` or `{type}:{drg}/{path}/{title}` |
 | `oc` | `oc:{drg}/{title_normalized}` |
@@ -422,10 +481,10 @@ Comparison is entity-type-aware, handling three categories of fields:
 
 | Category | Comparison strategy |
 |---|---|
-| Simple fields (`title`, `drg`, `visibility`, …) | Normalised string equality (trim, null → `''`) |
+| Simple fields (`title`, `drg`, `maturity`, `visibility`, …) | Normalised string equality (trim, null → `''`) |
 | Rich text fields (Quill delta JSON) | Structural normalisation — empty delta variants (`{}`, `{"ops":[]}`, single `\n`) all resolve to `''`; valid content is re-serialised before comparison |
-| Reference arrays (`refinesParents`, `satisfiesRequirements`, …) | Sorted ID comparison (order-insensitive) |
-| Annotated reference arrays (`documentReferences`, `impactsData`, …) | Sorted `{id, note}` comparison |
+| Reference arrays (`refinesParents`, `implementedORs`, …) | Sorted ID comparison (order-insensitive) |
+| Annotated reference arrays (`strategicDocuments`, …) | Sorted `{id, note}` comparison |
 
 Milestones are excluded from OC comparison — they have their own independent lifecycle.
 

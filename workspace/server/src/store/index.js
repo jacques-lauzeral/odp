@@ -3,9 +3,9 @@ import { createTransaction, commitTransaction, rollbackTransaction } from './tra
 
 // Import store classes
 import { StakeholderCategoryStore } from './stakeholder-category-store.js';
-import { DocumentStore } from './document-store.js';
-import { DataCategoryStore } from './data-category-store.js';
-import { ServiceStore } from './service-store.js';
+import { DomainStore } from './domain-store.js';
+import { ReferenceDocumentStore } from './reference-document-store.js';
+import { BandwidthStore } from './bandwidth-store.js';
 import { WaveStore } from './wave-store.js';
 import { OperationalRequirementStore } from './operational-requirement-store.js';
 import { OperationalChangeStore } from './operational-change-store.js';
@@ -14,9 +14,9 @@ import { ODPEditionStore } from './odp-edition-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
-let documentStore = null;
-let dataCategoryStore = null;
-let serviceStore = null;
+let domainStore = null;
+let referenceDocumentStore = null;
+let bandwidthStore = null;
 let waveStore = null;
 let operationalRequirementStore = null;
 let operationalChangeStore = null;
@@ -24,8 +24,8 @@ let baselineStore = null;
 let odpEditionStore = null;
 
 /**
- * Initialize the store layer with Neo4j connection and store instances
- * Must be called before using any store operations
+ * Initialize the store layer with Neo4j connection and store instances.
+ * Must be called before using any store operations.
  * @returns {Promise<void>}
  * @throws {Error} If connection or initialization fails
  */
@@ -33,17 +33,13 @@ export async function initializeStores() {
     try {
         console.log('Initializing store layer...');
 
-        // Initialize Neo4j connection with retry logic
         await initializeConnection();
-
-        // Get driver instance
         const driver = getDriver();
 
-        // Create store instances with shared driver
         stakeholderCategoryStore = new StakeholderCategoryStore(driver);
-        documentStore = new DocumentStore(driver);
-        dataCategoryStore = new DataCategoryStore(driver);
-        serviceStore = new ServiceStore(driver);
+        domainStore = new DomainStore(driver);
+        referenceDocumentStore = new ReferenceDocumentStore(driver);
+        bandwidthStore = new BandwidthStore(driver);
         waveStore = new WaveStore(driver);
         operationalRequirementStore = new OperationalRequirementStore(driver);
         operationalChangeStore = new OperationalChangeStore(driver);
@@ -53,9 +49,9 @@ export async function initializeStores() {
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
             stakeholderCategory: '✓',
-            document: '✓',
-            dataCategory: '✓',
-            service: '✓',
+            domain: '✓',
+            referenceDocument: '✓',
+            bandwidth: '✓',
             wave: '✓',
             operationalRequirement: '✓',
             operationalChange: '✓',
@@ -70,26 +66,24 @@ export async function initializeStores() {
 }
 
 /**
- * Close all store connections and cleanup resources
- * Should be called during application shutdown
+ * Close all store connections and cleanup resources.
+ * Should be called during application shutdown.
  * @returns {Promise<void>}
  */
 export async function closeStores() {
     try {
         console.log('Closing store layer...');
 
-        // Reset store instances
         stakeholderCategoryStore = null;
-        documentStore = null;
-        dataCategoryStore = null;
-        serviceStore = null;
+        domainStore = null;
+        referenceDocumentStore = null;
+        bandwidthStore = null;
         waveStore = null;
         operationalRequirementStore = null;
         operationalChangeStore = null;
         baselineStore = null;
         odpEditionStore = null;
 
-        // Close database connection
         await closeConnection();
 
         console.log('Store layer closed successfully');
@@ -104,120 +98,56 @@ export { createTransaction, commitTransaction, rollbackTransaction };
 
 // Store access functions
 
-/**
- * Get StakeholderCategories store instance
- * @returns {StakeholderCategoryStore} Store instance
- * @throws {Error} If store layer not initialized
- */
 function getStakeholderCategoryStore() {
-    if (!stakeholderCategoryStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
+    if (!stakeholderCategoryStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
     return stakeholderCategoryStore;
 }
 
-/**
- * Get Documents store instance
- * @returns {DocumentStore} Store instance
- * @throws {Error} If store layer not initialized
- */
-function getDocumentStore() {
-    if (!documentStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
-    return documentStore;
+function getDomainStore() {
+    if (!domainStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
+    return domainStore;
 }
 
-/**
- * Get DataCategories store instance
- * @returns {DataCategoryStore} Store instance
- * @throws {Error} If store layer not initialized
- */
-function getDataCategoryStore() {
-    if (!dataCategoryStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
-    return dataCategoryStore;
+function getReferenceDocumentStore() {
+    if (!referenceDocumentStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
+    return referenceDocumentStore;
 }
 
-/**
- * Get Services store instance
- * @returns {ServiceStore} Store instance
- * @throws {Error} If store layer not initialized
- */
-function getServiceStore() {
-    if (!serviceStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
-    return serviceStore;
+function getBandwidthStore() {
+    if (!bandwidthStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
+    return bandwidthStore;
 }
 
-/**
- * Get Waves store instance
- * @returns {WaveStore} Store instance
- * @throws {Error} If store layer not initialized
- */
 function getWaveStore() {
-    if (!waveStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
+    if (!waveStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
     return waveStore;
 }
 
-/**
- * Get OperationalRequirement store instance
- * @returns {OperationalRequirementStore} Store instance
- * @throws {Error} If store layer not initialized
- */
 function getOperationalRequirementStore() {
-    if (!operationalRequirementStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
+    if (!operationalRequirementStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
     return operationalRequirementStore;
 }
 
-/**
- * Get OperationalChange store instance
- * @returns {OperationalChangeStore} Store instance
- * @throws {Error} If store layer not initialized
- */
 function getOperationalChangeStore() {
-    if (!operationalChangeStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
+    if (!operationalChangeStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
     return operationalChangeStore;
 }
 
-/**
- * Get Baseline store instance
- * @returns {BaselineStore} Store instance
- * @throws {Error} If store layer not initialized
- */
 function getBaselineStore() {
-    if (!baselineStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
+    if (!baselineStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
     return baselineStore;
 }
 
-/**
- * Get ODPEdition store instance
- * @returns {ODPEditionStore} Store instance
- * @throws {Error} If store layer not initialized
- */
 function getODPEditionStore() {
-    if (!odpEditionStore) {
-        throw new Error('Store layer not initialized. Call initializeStores() first.');
-    }
+    if (!odpEditionStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
     return odpEditionStore;
 }
 
-// Export store access functions with consistent naming
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
-    getDocumentStore as documentStore,
-    getDataCategoryStore as dataCategoryStore,
-    getServiceStore as serviceStore,
+    getDomainStore as domainStore,
+    getReferenceDocumentStore as referenceDocumentStore,
+    getBandwidthStore as bandwidthStore,
     getWaveStore as waveStore,
     getOperationalRequirementStore as operationalRequirementStore,
     getOperationalChangeStore as operationalChangeStore,
@@ -227,15 +157,13 @@ export {
 
 /**
  * Get all store instances (for debugging/testing)
- * @returns {object} Object containing all store instances
- * @throws {Error} If store layer not initialized
  */
 export function getAllStores() {
     return {
         stakeholderCategory: getStakeholderCategoryStore(),
-        document: getDocumentStore(),
-        dataCategory: getDataCategoryStore(),
-        service: getServiceStore(),
+        domain: getDomainStore(),
+        referenceDocument: getReferenceDocumentStore(),
+        bandwidth: getBandwidthStore(),
         wave: getWaveStore(),
         operationalRequirement: getOperationalRequirementStore(),
         operationalChange: getOperationalChangeStore(),
@@ -246,14 +174,13 @@ export function getAllStores() {
 
 /**
  * Check if store layer is initialized
- * @returns {boolean} True if all stores are initialized
  */
 export function isStoreLayerInitialized() {
     return !!(
         stakeholderCategoryStore &&
-        documentStore &&
-        dataCategoryStore &&
-        serviceStore &&
+        domainStore &&
+        referenceDocumentStore &&
+        bandwidthStore &&
         waveStore &&
         operationalRequirementStore &&
         operationalChangeStore &&
@@ -264,14 +191,13 @@ export function isStoreLayerInitialized() {
 
 /**
  * Get store layer status information
- * @returns {object} Status information
  */
 export function getStoreLayerStatus() {
     const stores = {
         stakeholderCategory: !!stakeholderCategoryStore,
-        document: !!documentStore,
-        dataCategory: !!dataCategoryStore,
-        service: !!serviceStore,
+        domain: !!domainStore,
+        referenceDocument: !!referenceDocumentStore,
+        bandwidth: !!bandwidthStore,
         wave: !!waveStore,
         operationalRequirement: !!operationalRequirementStore,
         operationalChange: !!operationalChangeStore,

@@ -38,12 +38,12 @@ Invalid inputs (bad IDs, missing referenced nodes, self-references) throw immedi
 ```
 BaseStore                              (base-store.js)
 ├── BaselineStore                      (baseline-store.js)
-├── DocumentStore                      (document-store.js)
+├── BandwidthStore                     (bandwidth-store.js)
 ├── ODPEditionStore                    (odp-edition-store.js)
 ├── OperationalChangeMilestoneStore    (operational-change-milestone-store.js)
+├── ReferenceDocumentStore             (reference-document-store.js)
 ├── RefinableEntityStore               (refinable-entity-store.js)
-│   ├── DataCategoryStore              (data-category-store.js)
-│   ├── ServiceStore                   (service-store.js)
+│   ├── DomainStore                    (domain-store.js)
 │   └── StakeholderCategoryStore       (stakeholder-category-store.js)
 ├── VersionedItemStore                 (versioned-item-store.js)
 │   ├── OperationalChangeStore         (operational-change-store.js)
@@ -150,15 +150,15 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 | Store | Base | Additional relationships / notes |
 |---|---|---|
 | `StakeholderCategoryStore` | `RefinableEntityStore` | — |
-| `DataCategoryStore` | `RefinableEntityStore` | — |
-| `ServiceStore` | `RefinableEntityStore` | — |
+| `DomainStore` | `RefinableEntityStore` | — |
 | `WaveStore` | `BaseStore` | — |
-| `DocumentStore` | `BaseStore` | — |
+| `ReferenceDocumentStore` | `BaseStore` | — |
+| `BandwidthStore` | `BaseStore` | — |
 | `BaselineStore` | `BaseStore` | `HAS_ITEMS` capture; immutable |
 | `ODPEditionStore` | `BaseStore` | `EXPOSES`, `STARTS_FROM`, context resolution; immutable |
 | `OperationalChangeMilestoneStore` | `BaseStore` | `BELONGS_TO`, `TARGETS`; internal to `OperationalChangeStore` |
-| `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS`, `REFERENCES`, `DEPENDS_ON` |
-| `OperationalChangeStore` | `VersionedItemStore` | `SATISFIES`, `SUPERSEDS`, `REFERENCES`, `DEPENDS_ON`; milestones delegated |
+| `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `IMPACTS_DOMAIN`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
+| `OperationalChangeStore` | `VersionedItemStore` | `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`; milestones delegated |
 
 ---
 
@@ -166,11 +166,13 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 ### 4.1 Setup Entity Stores
 
-`StakeholderCategoryStore`, `DataCategoryStore`, `ServiceStore` all inherit `RefinableEntityStore → BaseStore` and expose no additional public methods beyond those described in §3.1 and §3.2.
+`StakeholderCategoryStore` and `DomainStore` both inherit `RefinableEntityStore → BaseStore` and expose no additional public methods beyond those described in §3.1 and §3.2.
 
-`WaveStore` inherits `BaseStore` only. Business rules: `year` is a 4-digit integer, `quarter` is 1–4, `date` is ISO format. `name` is automatically derived as `"year.quarter"` (e.g. `"2027.1"`).
+`WaveStore` inherits `BaseStore` only. Business rules: `year` is a 4-digit integer, `sequenceNumber` is a positive integer. The `(year, sequenceNumber)` pair is unique (e.g. wave `27#2`). `implementationDate` is optional (ISO format).
 
-`DocumentStore` inherits `BaseStore` only. Fields: `name`, `version` (optional), `description` (optional), `url` (optional). Documents are standalone — they are referenced via `REFERENCES` relationships from operational entity versions (see §6.3), not via any method on `DocumentStore` itself.
+`ReferenceDocumentStore` inherits `BaseStore` only. Fields: `name`, `version` (optional), `url`. Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
+
+`BandwidthStore` inherits `BaseStore` only. Fields: `year`, `waveId` (optional), `scopeId` (optional). The `(year, waveId, scopeId)` tuple is unique. NM internal — not exposed to external stakeholders.
 
 ---
 
@@ -178,17 +180,17 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extended with optional context: `findById(itemId, tx, baselineId?, fromWaveId?)`.
 
-**Relationship fields** (returned by `findAll`/`findById`, accepted by `create`/`update`). The `IMPACTS` relationships carry an optional `note` property:
+**Relationship fields** (returned by `findAll`/`findById`, accepted by `create`/`update`):
 
-| Field | Relationship | Note |
-|---|---|---|
-| `refinesParents` | `REFINES` → OR Item | — |
-| `impactsStakeholderCategories` | `IMPACTS` → StakeholderCategory | `note` |
-| `impactsData` | `IMPACTS` → DataCategory | `note` |
-| `impactsServices` | `IMPACTS` → Service | `note` |
-| `implementedONs` | `IMPLEMENTS` → OR Item (ON type) | — |
-| `documentReferences` | `REFERENCES` → Document | `note` |
-| `dependsOnRequirements` | `DEPENDS_ON` → OR Item | — |
+| Field | Relationship | ON/OR | Note |
+|---|---|---|---|
+| `refinesParents` | `REFINES` → OR Item | both | — |
+| `domain` | `HAS_DOMAIN` → Domain | ON only | — |
+| `strategicDocuments` | `REFERENCES` → ReferenceDocument | ON only | `note` |
+| `implementedONs` | `IMPLEMENTS` → OR Item (ON type) | OR only | — |
+| `impactedStakeholders` | `IMPACTS_STAKEHOLDER` → StakeholderCategory | OR only | `note` |
+| `impactedDomains` | `IMPACTS_DOMAIN` → Domain | OR only | `note` |
+| `dependencies` | `DEPENDS_ON` → OR Item | OR only | — |
 
 **`findAll(tx, baselineId?, fromWaveId?, filters?)`** — uses a single aggregated query (no N+1). Wave filtering applies a 3-hop `REFINES|IMPLEMENTS` upward cascade. Filters object:
 
@@ -198,11 +200,10 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS across statement, rationale, flows, privateNotes |
 | `drg` | `string\|null` | Exact match on DRG enum value |
+| `maturity` | `string\|null` | Exact match on maturity enum value |
 | `path` | `string\|null` | Array membership (`$path IN version.path`) |
-| `document` | `number[]\|null` | EXISTS via REFERENCES relationship |
-| `dataCategory` | `number[]\|null` | EXISTS via IMPACTS → DataCategory |
-| `stakeholderCategory` | `number[]\|null` | EXISTS via IMPACTS → StakeholderCategory |
-| `service` | `number[]\|null` | EXISTS via IMPACTS → Service |
+| `domain` | `number\|null` | EXISTS via HAS_DOMAIN relationship |
+| `stakeholderCategory` | `number[]\|null` | EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory |
 | `refinesParent` | `number\|null` | Single OR item ID — EXISTS via REFINES |
 | `dependsOn` | `number\|null` | Single OR item ID — EXISTS via DEPENDS_ON |
 | `implementedON` | `number\|null` | Single ON item ID — EXISTS via IMPLEMENTS |
@@ -213,11 +214,11 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findRoots(tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — requirements with no REFINES parent
 
-**`findRequirementsThatImpact(targetLabel, targetId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — `targetLabel`: `'StakeholderCategory'`, `'DataCategory'`, or `'Service'`
+**`findRequirementsThatImpact(targetLabel, targetId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — `targetLabel`: `'StakeholderCategory'` or `'Domain'`
 
 **`findRequirementsThatImplement(onItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — OR requirements that IMPLEMENT a given ON
 
-**Not implemented**: `findDependencies`, `findDependents`, `findDocumentReferences` (standalone), `patch`, `getVersionHistory`
+**Not implemented**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`
 
 ---
 
@@ -233,16 +234,14 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS search across purpose, initialState, finalState, details, privateNotes |
 | `drg` | `string\|null` | Exact match on DRG enum value |
+| `maturity` | `string\|null` | Exact match on maturity enum value |
 | `path` | `string\|null` | Array membership (`$path IN version.path`) |
-| `document` | `number[]\|null` | EXISTS match via REFERENCES relationship |
-| `dataCategory` | `number[]\|null` | Via SATISFIES\|SUPERSEDS → OR IMPACTS chain |
-| `stakeholderCategory` | `number[]\|null` | Via SATISFIES\|SUPERSEDS → OR IMPACTS chain |
-| `service` | `number[]\|null` | Via SATISFIES\|SUPERSEDS → OR IMPACTS chain |
-| `satisfiesOR` | `number\|null` | Single OR item ID — EXISTS via SATISFIES\|SUPERSEDS |
+| `stakeholderCategory` | `number[]\|null` | Via IMPLEMENTS\|DECOMMISSIONS → OR IMPACTS_STAKEHOLDER chain |
+| `implementsOR` | `number\|null` | Single OR item ID — EXISTS via IMPLEMENTS\|DECOMMISSIONS |
 
-**`findChangesThatSatisfyRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>` — delegates to `_buildReference`
+**`findChangesThatImplementRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>` — OCs that IMPLEMENT the given OR
 
-**`findChangesThatSupersedeRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>`
+**`findChangesThatDecommissionRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>` — OCs that DECOMMISSION the given OR
 
 **Milestone delegation** — the following are thin wrappers that forward to `this.milestoneStore`:
 
@@ -250,7 +249,7 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 - **`findMilestoneByKey(itemId, milestoneKey, tx, baselineId?, fromWaveId?)`** → `object|null`
 - **`findMilestonesByWave(waveId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
 
-**Not implemented in this store**: `findDocumentReferences`, `findDependencies`, `findDependents`, `patch`, `getVersionHistory`. Document references and dependencies are returned inline as part of `findById` / `findAll` results.
+**Not implemented in this store**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`. Dependencies are returned inline as part of `findById` / `findAll` results.
 
 **Note on milestone fields**: The milestone object uses **`eventTypes`** (array, not singular `eventType`). Milestones carry a stable **`milestoneKey`** (UUID-prefixed string, e.g. `ms_<uuid>`) generated on first creation and preserved across versions.
 
@@ -276,7 +275,7 @@ Inherits `BaseStore`. `update()` and `delete()` are overridden to throw `StoreEr
 
 **`create({title, type, baselineId, startsFromWaveId}, tx)`** — validates baseline and wave exist, creates node with `EXPOSES` → Baseline and `STARTS_FROM` → Wave. Returns the bare edition object (no sub-objects). Throws `StoreError('Invalid baseline reference')` or `StoreError('Invalid wave reference')`.
 
-**`findById(id, tx)`** → edition enriched with `baseline: {id, title, createdAt}` and `startsFromWave: {id, name, year, quarter, date}` sub-objects
+**`findById(id, tx)`** → edition enriched with `baseline: {id, title, createdAt}` and `startsFromWave: {id, year, sequenceNumber, implementationDate}` sub-objects
 
 **`findAll(tx)`** → all editions with same enrichment, ordered by `createdAt DESC`
 
@@ -293,16 +292,14 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 {
     id: number,              // Neo4j node ID (changes each version)
     milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
-    title: string,
+    name: string,
     description: string,
     eventTypes: string[],    // Array of event type values
     wave?: {                 // Optional — present only if TARGETS relationship exists
         id: number,
-        title: string,       // wave.name used as title
         year: number,
-        quarter: number,
-        date: string,
-        name: string
+        sequenceNumber: number,
+        implementationDate: string  // optional
     }
 }
 ```
@@ -314,10 +311,10 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 
 **Query methods** (exposed via `OperationalChangeStore` delegation):
 - **`findMilestoneByKey(itemId, milestoneKey, tx, baselineId?, fromWaveId?)`** → `object|null`
-- **`findMilestonesByChange(itemId, tx, baselineId?, fromWaveId?)`** → `Array<object>` — ordered by `milestone.title`
-- **`findMilestonesByWave(waveId, tx, baselineId?, fromWaveId?)`** → `Array<object>` — each result includes `change: {id, title}` context; ordered by `change.title, milestone.title`
+- **`findMilestonesByChange(itemId, tx, baselineId?, fromWaveId?)`** → `Array<object>` — ordered by `milestone.name`
+- **`findMilestonesByWave(waveId, tx, baselineId?, fromWaveId?)`** → `Array<object>` — each result includes `change: {id, title}` context; ordered by `change.title, milestone.name`
 
-**Wave filtering for milestones**: a milestone passes the `fromWaveId` filter only if it has a `TARGETS` wave and that wave's `date >= fromWave.date`. Milestones without a wave target **do not pass** the filter.
+**Wave filtering for milestones**: a milestone passes the `fromWaveId` filter only if it has a `TARGETS` wave and that wave's `implementationDate >= fromWave.implementationDate`. Milestones without a wave target **do not pass** the filter.
 
 ---
 
@@ -358,7 +355,7 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 // Result shape
 {
     itemId: 123,
-    versionId: 456,
+        versionId: 456,
     version: 1,
     title: "Requirement Title",
     type: "OR",
@@ -399,14 +396,15 @@ The client must supply `expectedVersionId` (the `versionId` of the version it la
 
 // Operational cross-references (from version node to item node)
 (ORVersion)-[:REFINES]->(ORItem)
-(ORVersion)-[:IMPACTS {note}]->(SetupEntity)
-(ORVersion)-[:REFERENCES {note}]->(Document)
+(ORVersion)-[:IMPACTS_STAKEHOLDER {note}]->(StakeholderCategory)
+(ORVersion)-[:IMPACTS_DOMAIN {note}]->(Domain)
+(ORVersion)-[:HAS_DOMAIN]->(Domain)
+(ORVersion)-[:REFERENCES {note}]->(ReferenceDocument)
 (ORVersion)-[:DEPENDS_ON]->(ORItem)
 (ORVersion)-[:IMPLEMENTS]->(ORItem)   // OR → ON links
 
-(OCVersion)-[:SATISFIES]->(ORItem)
-(OCVersion)-[:SUPERSEDS]->(ORItem)
-(OCVersion)-[:REFERENCES {note}]->(Document)
+(OCVersion)-[:IMPLEMENTS]->(ORItem)
+(OCVersion)-[:DECOMMISSIONS]->(ORItem)
 (OCVersion)-[:DEPENDS_ON]->(OCItem)
 
 // Milestones
@@ -435,14 +433,14 @@ await transaction.run(`
 `, { sourceId, targetIds });
 ```
 
-### 6.3 Document Reference Relationships
+### 6.3 Strategic Document Reference Relationships
 
-`REFERENCES` carries an optional `note` property (plain text, e.g. "Section 3.2"):
+`REFERENCES` carries an optional `note` property (plain text, e.g. "Section 3.2"). Used only by ON-type requirements:
 
 ```javascript
 await transaction.run(`
     MATCH (version) WHERE id(version) = $versionId
-    MATCH (doc:Document) WHERE id(doc) = $docId
+    MATCH (doc:ReferenceDocument) WHERE id(doc) = $docId
     CREATE (version)-[:REFERENCES {note: $note}]->(doc)
 `, { versionId, docId, note });
 ```
@@ -487,7 +485,7 @@ RETURN item, version
 Wave filtering cascades from milestones upward:
 
 1. **OCs**: include only those with at least one milestone targeting a wave at or after `fromWave`
-2. **ORs**: include only those referenced by a filtered OC via `SATISFIES` or `SUPERSEDS`, plus all ancestors via `REFINES` (upward cascade)
+2. **ORs**: include only those referenced by a filtered OC via `IMPLEMENTS` or `DECOMMISSIONS`, plus all ancestors via `REFINES` (upward cascade)
 
 ```javascript
 // Wave filter check for OC
@@ -613,7 +611,7 @@ Unlike the previous design, there is no separate `ValidationError` or `Optimisti
 - **`HAS_ITEMS` relationships** on baselines enable direct version lookup without re-deriving historical state
 - **`UNWIND` batching** minimises round-trips for multi-target relationship creation
 - **`EXISTS {}` subqueries** avoid materialising full node sets for wave milestone checks
-- **Neo4j indexes** on `title` (OperationalRequirement, OperationalChange) and `year`/`quarter` (Wave) support search and filtering
+- **Neo4j indexes** on `title` (OperationalRequirement, OperationalChange) and `year`/`sequenceNumber` (Wave) support search and filtering
 - **Connection pooling** at the driver level handles concurrent requests without per-request connection overhead
 
 ---

@@ -46,11 +46,11 @@ Three base classes cover all entity types.
 SimpleItemService          (CRUD + transaction wrapping)
 └── TreeItemService        (+ name/description validation + REFINES hierarchy)
     ├── StakeholderCategoryService
-    ├── DataCategoryService
-    └── ServiceService
+    └── DomainService
     (also flat, no hierarchy:)
     WaveService
-    DocumentService
+    ReferenceDocumentService
+    BandwidthService
 
 VersionedItemService       (versioned CRUD + patch + multi-context)
 ├── OperationalRequirementService
@@ -91,7 +91,7 @@ Additional methods:
 | `findItemsByName(namePattern, userId)` | Case-insensitive name search (in-memory filter) |
 | `isNameExists(name, excludeId?, userId)` | Uniqueness check (in-memory) |
 
-`WaveService` and `DocumentService` extend `SimpleItemService` directly (no hierarchy).
+`WaveService` and `ReferenceDocumentService` extend `SimpleItemService` directly (no hierarchy).
 
 ### 3.3 VersionedItemService
 
@@ -115,16 +115,19 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 ### 3.4 OperationalRequirementService
 
-Extends `VersionedItemService`. Required fields: `title`, `type`, `statement`, `rationale`. Optional: `drg`, `path`, and all relationship arrays.
+Extends `VersionedItemService`. Required fields: `title`, `type`, `statement`, `rationale`, `maturity`. Optional: `drg`, `path`, and all relationship arrays.
 
 Key validation rules:
 
 - `type` must be `ON` or `OR` (validated against `OperationalRequirementType` enum)
+- `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
 - `drg` is optional but if present must be a valid `DraftingGroup` value
+- Type-gated fields — `ON` only: `domainId`, `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders`, `impactedDomains` — rejected on the wrong type
+- `tentative` if present must be `{start, end}` integer year range with `start <= end`
 - `implementedONs` only allowed on `OR`-type requirements; each referenced item must exist and be `ON`-type
-- `ON` requirements cannot refine `OR` requirements (parent type checked per-item)
-- IMPACTS and document reference items must use `{id, note?}` object format
-- Referenced setup entities (`impactsStakeholderCategories`, `impactsData`, `impactsServices`, `documentReferences`) validated for existence using separate `'system'` transactions
+- `OR` requirements cannot refine `ON` requirements (and vice versa); parent type checked per-item
+- Annotated reference arrays (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) must use `{id, note?}` object format
+- Referenced entities (`impactedStakeholders`, `impactedDomains`, `domainId`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 
 ### 3.5 OperationalChangeService
 
@@ -145,10 +148,14 @@ Milestone mutations work by fetching the current OC, rebuilding the full milesto
 Validation rules:
 - `visibility` must be `NM` or `NETWORK`
 - `drg` is required and must be a valid `DraftingGroup` value
+- `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
+- `cost` if present must be an integer
+- `orCosts` items must be `{orId, cost}` with integer `cost`; each `orId` validated for existence
 - `eventTypes` on milestones must be valid `MilestoneEventType` values (array)
-- `satisfiesRequirements` and `supersedsRequirements` IDs validated for existence
+- `implementedORs` and `decommissionedORs` IDs validated for existence
 - Milestone `waveId` references validated for existence
 - Reference validations run in parallel using `Promise.all`
+- `_buildCompletePayload()` extracts the common logic of rebuilding the full OC payload for all three milestone mutation methods
 
 ### 3.6 BaselineService
 
@@ -214,11 +221,15 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 |---|---|---|
 | Required fields present | Service, before transaction | Throws immediately |
 | Enum values valid | Service, before transaction | Uses `@odp/shared` enum validators |
+| `maturity` valid | Service, before transaction | `MaturityLevel` enum on OR and OC |
 | Array field types | Service, before transaction | Checks `Array.isArray` |
-| `{id, note?}` object format | Service, before transaction | For IMPACTS and document refs |
+| `{id, note?}` object format | Service, before transaction | For `impactedStakeholders`, `impactedDomains`, `strategicDocuments` |
+| Type-gated fields (ON/OR) | Service, before transaction | Wrong-type fields rejected immediately |
+| `tentative` range integrity | Service, before transaction | `start <= end`, both integers |
+| `orCosts` structure | Service, before transaction | `{orId, cost}` with integer cost |
 | Referenced entity existence | Service, separate `'system'` tx | Per-entity store `.exists()` calls |
 | `implementedONs` type check | Service, separate `'system'` tx | Each referenced item fetched and type checked |
-| Refinement rules (ON/OR) | Service, separate `'system'` tx | Parent fetched and type checked |
+| Refinement rules (ON/OR) | Service, separate `'system'` tx | Parent fetched and type checked; symmetric rule |
 | Self-reference / self-dependency | Service, before or during validation tx | Checked by item ID comparison |
 | Milestone wave existence | Service, separate `'system'` tx | Per-milestone `waveStore().exists()` |
 | Self-reference in REFINES | Store (`StoreError`) | Surfaced as-is to route layer |
@@ -231,10 +242,10 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Service | Base | Primary Store(s) |
 |---|---|---|
 | `StakeholderCategoryService` | `TreeItemService` | `StakeholderCategoryStore` |
-| `DataCategoryService` | `TreeItemService` | `DataCategoryStore` |
-| `ServiceService` | `TreeItemService` | `ServiceStore` |
+| `DomainService` | `TreeItemService` | `DomainStore` |
 | `WaveService` | `SimpleItemService` | `WaveStore` |
-| `DocumentService` | `SimpleItemService` | `DocumentStore` |
+| `ReferenceDocumentService` | `SimpleItemService` | `ReferenceDocumentStore` |
+| `BandwidthService` | `SimpleItemService` | `BandwidthStore`, `WaveStore`, `DomainStore` |
 | `OperationalRequirementService` | `VersionedItemService` | `OperationalRequirementStore` |
 | `OperationalChangeService` | `VersionedItemService` | `OperationalChangeStore` |
 | `BaselineService` | — | `BaselineStore` |

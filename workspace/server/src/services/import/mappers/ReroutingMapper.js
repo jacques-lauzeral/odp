@@ -27,7 +27,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'Use Case' → flows
  * - 'Comments' + 'Data (and other Enabler)' → privateNotes (concatenated)
  * - 'ON ID' → implementedONs (resolved via internal ID map)
- * - 'Stakeholders' → impactsStakeholderCategories (parsed and mapped)
+ * - 'Stakeholders' → impactedStakeholders (parsed and mapped)
  * - 'OC ID' → used for OC-OR relationship tracking (resolved via internal ID map)
  * - type: 'OR', drg: 'RRT' (hardcoded)
  *
@@ -40,7 +40,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *   - Text after "In essence:" → purpose
  * - 'Target maturity' → M1 milestone (API_PUBLICATION, wave:YYYY)
  * - 'Target implementation' → M2 milestone (OPS_DEPLOYMENT, wave:YYYY)
- * - satisfiedORs → populated after all rows processed (relationship array)
+ * - implementedORs → populated after all rows processed (relationship array)
  * - visibility: 'NETWORK', drg: 'RRT' (hardcoded)
  *
  * External ID Format:
@@ -74,7 +74,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * RELATIONSHIPS:
  * --------------
  * - ON → OR: One-to-many (ON.externalId stored in OR.implementedONs)
- * - OC → OR: One-to-many (OR.externalId stored in OC.satisfiedORs)
+ * - OC → OR: One-to-many (OR.externalId stored in OC.implementedORs)
  */
 class ReroutingMapper extends Mapper {
     /**
@@ -111,10 +111,8 @@ class ReroutingMapper extends Mapper {
         console.log(`Mapped ${result.needs.length} needs (ONs), ${result.requirements.length} requirements (ORs), and ${result.changes.length} changes (OCs) from NM-RR sheet`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: [],
             requirements: [...result.needs, ...result.requirements],
             changes: [...result.changes]
@@ -166,11 +164,11 @@ class ReroutingMapper extends Mapper {
             }
         }
 
-        // Now populate satisfiedORs for each OC
+        // Now populate implementedORs for each OC
         for (const [ocExternalId, orExternalIds] of ocToOrMap.entries()) {
             const oc = changesMap.get(ocExternalId);
             if (oc) {
-                oc.satisfiedORs = Array.from(orExternalIds);
+                oc.implementedORs = Array.from(orExternalIds);
             }
         }
 
@@ -378,7 +376,7 @@ class ReroutingMapper extends Mapper {
             title: ocName.trim(),
             purpose: this.converter.asciidocToDelta(purpose),
             details: this.converter.asciidocToDelta(details),
-            satisfiedORs: [],  // Will be populated after all rows processed
+            implementedORs: [],  // Will be populated after all rows processed
             milestones: this._extractMilestones(row)
         };
 
@@ -403,7 +401,7 @@ class ReroutingMapper extends Mapper {
             const year = this._parseYear(targetMaturity);
             if (year) {
                 milestones.push({
-                    title: 'M1',
+                    name: 'M1',
                     wave: `wave:${year}`,
                     eventTypes: ['API_PUBLICATION']
                 });
@@ -416,7 +414,7 @@ class ReroutingMapper extends Mapper {
             const year = this._parseYear(targetImplementation);
             if (year) {
                 milestones.push({
-                    title: 'M2',
+                    name: 'M2',
                     wave: `wave:${year}`,
                     eventTypes: ['OPS_DEPLOYMENT']
                 });
@@ -505,7 +503,7 @@ class ReroutingMapper extends Mapper {
         }
 
         // Parse stakeholders
-        const impactsStakeholderCategories = this._parseStakeholders(row['Stakeholders']);
+        const impactedStakeholders = this._parseStakeholders(row['Stakeholders']);
 
         // Build object first
         const requirement = {
@@ -518,7 +516,7 @@ class ReroutingMapper extends Mapper {
             flows: this.converter.asciidocToDelta(this._extractRequirementFlows(row)),
             privateNotes: this.converter.asciidocToDelta(this._extractRequirementPrivateNotes(row)),
             implementedONs: [],  // Will be populated by caller
-            impactsStakeholderCategories: impactsStakeholderCategories
+            impactedStakeholders: impactedStakeholders
         };
 
         // Add external ID using the complete object (no path needed)
@@ -681,10 +679,8 @@ class ReroutingMapper extends Mapper {
      */
     _emptyOutput() {
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: [],
             requirements: [],
             changes: []

@@ -1,25 +1,14 @@
-// OperationalChangeRouter.js
-import { Router } from 'express';
 import { VersionedItemRouter } from './versioned-item-router.js';
 import OperationalChangeService from '../services/OperationalChangeService.js';
 
-/**
- * OperationalChangeRouter extends VersionedItemRouter with change-specific content filtering
- */
 class OperationalChangeRouter extends VersionedItemRouter {
     constructor() {
         super(OperationalChangeService, 'operational-change', 'Operational Change');
     }
 
-    /**
-     * Extract content filters from query parameters for OperationalChange entities
-     * @param {Object} req - Express request object
-     * @returns {Object} filters object for OperationalChange filtering
-     */
     getContentFilters(req) {
         const filters = {};
 
-        // OperationalChange-specific filters
         if (req.query.visibility) {
             filters.visibility = req.query.visibility;
         }
@@ -28,7 +17,10 @@ class OperationalChangeRouter extends VersionedItemRouter {
             filters.drg = req.query.drg;
         }
 
-        // Common text filters
+        if (req.query.maturity) {
+            filters.maturity = req.query.maturity;
+        }
+
         if (req.query.title) {
             filters.title = req.query.title;
         }
@@ -37,45 +29,33 @@ class OperationalChangeRouter extends VersionedItemRouter {
             filters.text = req.query.text;
         }
 
-        // Path filter
         if (req.query.path) {
             filters.path = req.query.path;
         }
 
-        // Parse comma-separated category IDs for relationship filtering
-        // Note: OperationalChange filtering works through SATISFIES/SUPERSEDES requirements
-        if (req.query.document) {
-            filters.document = req.query.document.split(',').map(id => parseInt(id));
+        if (req.query.domain) {
+            filters.domain = parseInt(req.query.domain);
         }
 
         if (req.query.stakeholderCategory) {
             filters.stakeholderCategory = req.query.stakeholderCategory.split(',').map(id => parseInt(id));
         }
 
-        if (req.query.dataCategory) {
-            filters.dataCategory = req.query.dataCategory.split(',').map(id => parseInt(id));
-        }
-
-        if (req.query.service) {
-            filters.service = req.query.service.split(',').map(id => parseInt(id));
-        }
-
         // Relationship-based filters (single Item ID)
-        if (req.query.satisfiesOR) {
-            filters.satisfiesOR = parseInt(req.query.satisfiesOR);
+        if (req.query.implementsOR) {
+            filters.implementsOR = parseInt(req.query.implementsOR);
         }
 
         return filters;
     }
 }
 
-// Create base router using VersionedItemRouter pattern with content filtering
 const operationalChangeRouter = new OperationalChangeRouter();
 const router = operationalChangeRouter.getRouter();
 
 // MILESTONE CRUD ROUTES WITH MULTI-CONTEXT SUPPORT
 
-// GET /operational-changes/:id/milestones - List all milestones (latest version, baseline context, or wave filtered)
+// GET /operational-changes/:id/milestones
 router.get('/:id/milestones', async (req, res) => {
     try {
         const userId = operationalChangeRouter.getUserId(req);
@@ -92,7 +72,7 @@ router.get('/:id/milestones', async (req, res) => {
             const context = baselineId ? ` in baseline ${baselineId}` : '';
             const waveContext = fromWaveId ? ` (wave filtered)` : '';
             res.status(404).json({ error: { code: 'NOT_FOUND', message: `Operational change not found${context}${waveContext}` } });
-        } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
+        } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
@@ -102,7 +82,7 @@ router.get('/:id/milestones', async (req, res) => {
     }
 });
 
-// GET /operational-changes/:id/milestones/:milestoneKey - Get specific milestone (latest version, baseline context, or wave filtered)
+// GET /operational-changes/:id/milestones/:milestoneKey
 router.get('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
         const userId = operationalChangeRouter.getUserId(req);
@@ -119,7 +99,7 @@ router.get('/:id/milestones/:milestoneKey', async (req, res) => {
             const context = baselineId ? ` in baseline ${baselineId}` : '';
             const waveContext = fromWaveId ? ` (wave filtered)` : '';
             res.status(404).json({ error: { code: 'NOT_FOUND', message: `${error.message}${context}${waveContext}` } });
-        } else if (error.message.includes('Baseline not found') || error.message.includes('Waves not found')) {
+        } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
@@ -129,7 +109,7 @@ router.get('/:id/milestones/:milestoneKey', async (req, res) => {
     }
 });
 
-// POST /operational-changes/:id/milestones - Add milestone (current context only)
+// POST /operational-changes/:id/milestones
 router.post('/:id/milestones', async (req, res) => {
     try {
         const userId = operationalChangeRouter.getUserId(req);
@@ -139,7 +119,6 @@ router.post('/:id/milestones', async (req, res) => {
                 error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
             });
         }
-
         console.log(`OperationalChangeService.addMilestone() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
         const response = await OperationalChangeService.addMilestone(req.params.id, req.body, expectedVersionId, userId);
         res.status(201).json(response);
@@ -159,7 +138,7 @@ router.post('/:id/milestones', async (req, res) => {
     }
 });
 
-// PUT /operational-changes/:id/milestones/:milestoneKey - Update milestone (current context only)
+// PUT /operational-changes/:id/milestones/:milestoneKey
 router.put('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
         const userId = operationalChangeRouter.getUserId(req);
@@ -169,7 +148,6 @@ router.put('/:id/milestones/:milestoneKey', async (req, res) => {
                 error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
             });
         }
-
         console.log(`OperationalChangeService.updateMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
         const response = await OperationalChangeService.updateMilestone(req.params.id, req.params.milestoneKey, req.body, expectedVersionId, userId);
         res.json(response);
@@ -189,7 +167,7 @@ router.put('/:id/milestones/:milestoneKey', async (req, res) => {
     }
 });
 
-// DELETE /operational-changes/:id/milestones/:milestoneKey - Delete milestone (current context only)
+// DELETE /operational-changes/:id/milestones/:milestoneKey
 router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
         const userId = operationalChangeRouter.getUserId(req);
@@ -199,10 +177,9 @@ router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
                 error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
             });
         }
-
         console.log(`OperationalChangeService.deleteMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, userId);
-        res.status(204).send();
+        const response = await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, userId);
+        res.status(200).json(response);
     } catch (error) {
         console.error('Error deleting milestone:', error);
         if (error.message === 'Operational change not found' || error.message === 'Milestone not found') {

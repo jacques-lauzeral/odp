@@ -210,7 +210,7 @@ class DocxEntityRenderer {
             this._createRow("Title", on.title),
             this._createRichTextRow("Statement", on.statement),
             this._createRichTextRow("Rationale", on.rationale),
-            this._createAnnotatedReferencesRow("References", on.documentReferences),
+            this._createAnnotatedReferencesRow("Strategic Documents", on.strategicDocuments),
             this._createRichTextRow("Flows", on.flows),
             this._createRichTextRow("Private Notes", on.privateNotes)
         ];
@@ -238,11 +238,8 @@ class DocxEntityRenderer {
             this._createRichTextRow("Rationale", or.rationale),
             this._createRichTextRow("Flows", or.flows),
             this._createEntityReferencesRow("Implements", or.implementedONs),
-            this._createEntityReferencesRow("Depends on Requirements", or.dependsOnRequirements),
-            this._createAnnotatedReferencesRow("References", or.documentReferences),
-            this._createAnnotatedReferencesRow("Impacts Stakeholders", or.impactsStakeholderCategories),
-            this._createAnnotatedReferencesRow("Impacts Data", or.impactsData),
-            this._createAnnotatedReferencesRow("Impacts Services", or.impactsServices),
+            this._createEntityReferencesRow("Dependencies", or.dependencies),
+            this._createAnnotatedReferencesRow("Impacts Stakeholders", or.impactedStakeholders),
             this._createRichTextRow("Private Notes", or.privateNotes)
         ];
 
@@ -266,7 +263,7 @@ class DocxEntityRenderer {
             this._createRow("Code", String(oc.code)),
             this._createRow("Title", oc.title),
             this._createRichTextRow("Purpose", oc.purpose),
-            this._createEntityReferencesRow("Satisfies Requirements", oc.satisfiesRequirements),
+            this._createEntityReferencesRow("Implements Requirements", oc.implementedORs),
             this._createEntityReferencesRow("Depends on Changes", oc.dependsOnChanges),
             this._createRichTextRow("Initial State", oc.initialState),
             this._createRichTextRow("Final State", oc.finalState),

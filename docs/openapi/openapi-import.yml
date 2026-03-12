@@ -251,10 +251,10 @@ components:
     ImportSummary:
       type: object
       properties:
-        documents: { type: integer }
+        referenceDocuments: { type: integer }
         stakeholderCategories: { type: integer }
-        dataCategories: { type: integer }
-        services: { type: integer }
+        domains: { type: integer }
+        bandwidths: { type: integer }
         waves: { type: integer }
         requirements: { type: integer }
         changes: { type: integer }
@@ -373,22 +373,22 @@ components:
       type: object
       description: Structured entities ready for database import
       properties:
-        documents:
+        referenceDocuments:
           type: array
           items:
-            $ref: 'openapi-base.yml#/components/schemas/DocumentRequest'
+            $ref: 'openapi-base.yml#/components/schemas/ReferenceDocumentRequest'
         stakeholderCategories:
           type: array
           items:
             $ref: 'openapi-base.yml#/components/schemas/StakeholderCategoryRequest'
-        dataCategories:
+        domains:
           type: array
           items:
-            $ref: 'openapi-base.yml#/components/schemas/DataCategoryRequest'
-        services:
+            $ref: 'openapi-base.yml#/components/schemas/DomainRequest'
+        bandwidths:
           type: array
           items:
-            $ref: 'openapi-base.yml#/components/schemas/ServiceRequest'
+            $ref: 'openapi-base.yml#/components/schemas/BandwidthRequest'
         waves:
           type: array
           items:

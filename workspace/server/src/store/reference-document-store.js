@@ -1,12 +1,12 @@
 import { BaseStore } from './base-store.js';
 
 /**
- * WaveStore provides data access operations for Wave nodes.
+ * ReferenceDocumentStore provides data access operations for ReferenceDocument nodes.
  * Extends BaseStore to inherit CRUD operations.
  */
-export class WaveStore extends BaseStore {
+export class ReferenceDocumentStore extends BaseStore {
     constructor(driver) {
-        super(driver, 'Wave');
+        super(driver, 'ReferenceDocument');
     }
 
     // Inherits from BaseStore:

@@ -51,7 +51,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * | Flow of Actions:          | flows                     | UC only → injected into ON     |
  * | ON Reference:             | implementedONs            | OR: resolved to ON externalId  |
  * |                           | (UC: target for flows)    | UC: identifies target ON       |
- * | Stakeholders:             | impactsStakeholderCategories | Resolved via synonym map   |
+ * | Stakeholders:             | impactedStakeholders | Resolved via synonym map   |
  * | Data (and other Enablers):| privateNotes              | Appended to notes              |
  * | Impacted Services:        | privateNotes              | Appended to notes              |
  * | Dependencies:             | privateNotes              | Appended to notes              |
@@ -261,10 +261,7 @@ class iDL_Mapper_tables extends Mapper {
             onMap: new Map(),      // code → ON entity
             orMap: new Map(),      // code → OR entity
             ucMap: new Map(),      // code → UC entity (temporary, for flow injection)
-            documentMap: new Map(),
             stakeholderCategoryMap: new Map(),
-            dataCategoryMap: new Map(),
-            serviceMap: new Map(),
             waveMap: new Map(),
             changeMap: new Map(),
             warnings: []
@@ -506,7 +503,7 @@ class iDL_Mapper_tables extends Mapper {
             flows: null,
             privateNotes: null,
             implementedONs: [],
-            impactsStakeholderCategories: [],
+            impactedStakeholders: [],
             _rawFields: fields // Keep for later processing
         };
 
@@ -766,7 +763,7 @@ class iDL_Mapper_tables extends Mapper {
             // Resolve stakeholders
             if (or._rawStakeholders) {
                 const { resolved, unresolvedText } = this._resolveStakeholders(or._rawStakeholders, code, context);
-                or.impactsStakeholderCategories = resolved;
+                or.impactedStakeholders = resolved;
 
                 // Append unresolved stakeholder text to privateNotes
                 if (unresolvedText) {
@@ -784,7 +781,7 @@ class iDL_Mapper_tables extends Mapper {
         for (const [code, on] of context.onMap) {
             if (on._rawStakeholders) {
                 const { resolved, unresolvedText } = this._resolveStakeholders(on._rawStakeholders, code, context);
-                on.impactsStakeholderCategories = resolved;
+                on.impactedStakeholders = resolved;
 
                 // Append unresolved stakeholder text to privateNotes
                 if (unresolvedText) {
@@ -887,9 +884,7 @@ class iDL_Mapper_tables extends Mapper {
             requirements,
             changes: [...context.changeMap.values()],
             stakeholderCategories: [...context.stakeholderCategoryMap.values()],
-            dataCategories: [...context.dataCategoryMap.values()],
-            services: [...context.serviceMap.values()],
-            documents: [...context.documentMap.values()],
+            referenceDocuments: [],
             waves: [...context.waveMap.values()]
         };
     }

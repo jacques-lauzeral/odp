@@ -4,7 +4,7 @@ import { StoreError } from './transaction.js';
 
 /**
  * Store for OperationalChange items with versioning and relationship management
- * Handles SATISFIES/SUPERSEDS relationships to OperationalRequirements,
+ * Handles IMPLEMENTS/DECOMMISSIONS relationships to OperationalRequirements,
  * REFERENCES relationships to Documents, and DEPENDS_ON relationships to OperationalChanges
  * Delegates milestone operations to OperationalChangeMilestoneStore
  * Supports baseline, wave filtering, and content filtering for multi-context operations
@@ -97,52 +97,39 @@ export class OperationalChangeStore extends VersionedItemStore {
                     params.text = filters.text;
                 }
 
-                // Document-based filtering (relationship-based)
-                if (filters.document && Array.isArray(filters.document) && filters.document.length > 0) {
+                // Relationship-based filtering
+                if (filters.implementsOR !== undefined && filters.implementsOR !== null) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:REFERENCES]->(doc:Document) 
-                        WHERE id(doc) IN $document
+                        MATCH (version)-[:IMPLEMENTS|DECOMMISSIONS]->(req:OperationalRequirement)
+                        WHERE id(req) = $implementsOR
                     }`);
-                    params.document = filters.document.map(id => this.normalizeId(id));
+                    params.implementsOR = this.normalizeId(filters.implementsOR, 'implementsOR');
                 }
-                // Impact-based filtering (via SATISFIES/SUPERSEDES requirements)
+
+                // Impact-based filtering (via IMPLEMENTS/DECOMMISSIONS -> requirement -> impacted stakeholders/domains)
                 if (filters.stakeholderCategory && Array.isArray(filters.stakeholderCategory) && filters.stakeholderCategory.length > 0) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:SATISFIES|SUPERSEDS]->(req:OperationalRequirement)
+                        MATCH (version)-[:IMPLEMENTS|DECOMMISSIONS]->(req:OperationalRequirement)
                         MATCH (req)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                        MATCH (reqVersion)-[:IMPACTS]->(sc:StakeholderCategory)
+                        MATCH (reqVersion)-[:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
                         WHERE id(sc) IN $stakeholderCategory
                     }`);
                     params.stakeholderCategory = filters.stakeholderCategory.map(id => this.normalizeId(id));
                 }
 
-                if (filters.dataCategory && Array.isArray(filters.dataCategory) && filters.dataCategory.length > 0) {
+                if (filters.domain !== undefined && filters.domain !== null) {
                     whereConditions.push(`EXISTS {
-                        MATCH (version)-[:SATISFIES|SUPERSEDS]->(req:OperationalRequirement)
+                        MATCH (version)-[:IMPLEMENTS|DECOMMISSIONS]->(req:OperationalRequirement)
                         MATCH (req)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                        MATCH (reqVersion)-[:IMPACTS]->(dc:DataCategory)
-                        WHERE id(dc) IN $dataCategory
+                        MATCH (reqVersion)-[:IMPACTS_DOMAIN]->(d:Domain)
+                        WHERE id(d) = $domain
                     }`);
-                    params.dataCategory = filters.dataCategory.map(id => this.normalizeId(id));
+                    params.domain = this.normalizeId(filters.domain, 'domain');
                 }
 
-                if (filters.service && Array.isArray(filters.service) && filters.service.length > 0) {
-                    whereConditions.push(`EXISTS {
-                        MATCH (version)-[:SATISFIES|SUPERSEDS]->(req:OperationalRequirement)
-                        MATCH (req)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                        MATCH (reqVersion)-[:IMPACTS]->(s:Service)
-                        WHERE id(s) IN $service
-                    }`);
-                    params.service = filters.service.map(id => this.normalizeId(id));
-                }
-
-                // Relationship-based filtering
-                if (filters.satisfiesOR !== undefined && filters.satisfiesOR !== null) {
-                    whereConditions.push(`EXISTS {
-                        MATCH (version)-[:SATISFIES|SUPERSEDS]->(req:OperationalRequirement)
-                        WHERE id(req) = $satisfiesOR
-                    }`);
-                    params.satisfiesOR = this.normalizeId(filters.satisfiesOR, 'satisfiesOR');
+                if (filters.maturity) {
+                    whereConditions.push('version.maturity = $maturity');
+                    params.maturity = filters.maturity;
                 }
             }
 
@@ -237,7 +224,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (version)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
                     WHERE (targetWave.year > fromWave.year)
                        OR (targetWave.year = fromWave.year AND 
-                           COALESCE(targetWave.quarter, 0) >= COALESCE(fromWave.quarter, 0))
+                           COALESCE(targetWave.sequenceNumber, 0) >= COALESCE(fromWave.sequenceNumber, 0))
                 }
                 RETURN collect(DISTINCT id(change)) as acceptedChangeIds
             `;
@@ -253,7 +240,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                     MATCH (version)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
                     WHERE (targetWave.year > fromWave.year)
                        OR (targetWave.year = fromWave.year AND 
-                           COALESCE(targetWave.quarter, 0) >= COALESCE(fromWave.quarter, 0))
+                           COALESCE(targetWave.sequenceNumber, 0) >= COALESCE(fromWave.sequenceNumber, 0))
                 }
                 RETURN collect(DISTINCT id(change)) as acceptedChangeIds
             `;
@@ -280,20 +267,18 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async _extractRelationshipIdsFromInput(data) {
         const {
-            satisfiesRequirements,
-            supersedsRequirements,
+            implementedORs,
+            decommissionedORs,
             milestones,
-            documentReferences,
             dependsOnChanges,
             ...contentData
         } = data;
 
         return {
             relationshipIds: {
-                satisfiesRequirements: satisfiesRequirements || [],
-                supersedsRequirements: supersedsRequirements || [],
-                milestones: milestones || [],  // Milestone data (not IDs)
-                documentReferences: documentReferences || [], // Array of EntityReference {id, note?}
+                implementedORs: implementedORs || [],
+                decommissionedORs: decommissionedORs || [],
+                milestones: milestones || [],       // Milestone data (not IDs)
                 dependsOnChanges: dependsOnChanges || [] // Array of item IDs
             },
             ...contentData
@@ -309,57 +294,39 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async _buildRelationshipReferences(versionId, transaction) {
         try {
-            // Get SATISFIES relationships (to OperationalRequirement Items)
-            const satisfiesResult = await transaction.run(`
-            MATCH (version:${this.versionLabel})-[:SATISFIES]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-            WHERE id(version) = $versionId
+            // IMPLEMENTS relationships (to OR-type requirements)
+            const implementedORsResult = await transaction.run(`
+            MATCH (version:${this.versionLabel})-[:IMPLEMENTS]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
+            WHERE id(version) = $versionId AND reqVersion.type = 'OR'
             RETURN id(req) as id, req.title as title, req.code as code, reqVersion.type as type
             ORDER BY req.title
         `, { versionId });
+            const implementedORs = implementedORsResult.records.map(record => this._buildReference(record));
 
-            const satisfiesRequirements = satisfiesResult.records.map(record => this._buildReference(record));
-
-            // Get SUPERSEDS relationships (to OperationalRequirement Items)
-            const supersedsResult = await transaction.run(`
-            MATCH (version:${this.versionLabel})-[:SUPERSEDS]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-            WHERE id(version) = $versionId
+            // DECOMMISSIONS relationships (to OR-type requirements)
+            const decommissionedORsResult = await transaction.run(`
+            MATCH (version:${this.versionLabel})-[:DECOMMISSIONS]->(req:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
+            WHERE id(version) = $versionId AND reqVersion.type = 'OR'
             RETURN id(req) as id, req.title as title, req.code as code, reqVersion.type as type
             ORDER BY req.title
         `, { versionId });
+            const decommissionedORs = decommissionedORsResult.records.map(record => this._buildReference(record));
 
-            const supersedsRequirements = supersedsResult.records.map(record => this._buildReference(record));
-
-            // Get REFERENCES relationships to Documents (with note)
-            const referencesResult = await transaction.run(`
-            MATCH (version:${this.versionLabel})-[ref:REFERENCES]->(doc:Document)
-            WHERE id(version) = $versionId
-            RETURN id(doc) as id, doc.name as title, ref.note as note
-            ORDER BY doc.name
-        `, { versionId });
-
-            const documentReferences = referencesResult.records.map(record => ({
-                id: this.normalizeId(record.get('id')),
-                title: record.get('title'),
-                note: record.get('note') || ''
-            }));
-
-            // Get DEPENDS_ON relationships (Version -> Item, resolve to current context version)
+            // DEPENDS_ON relationships (Version -> Item)
             const dependsOnResult = await transaction.run(`
             MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(changeItem:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
             WHERE id(version) = $versionId
             RETURN id(changeItem) as id, changeItem.title as title, changeItem.code as code
             ORDER BY changeItem.title
         `, { versionId });
-
             const dependsOnChanges = dependsOnResult.records.map(record => this._buildReference(record));
 
             // Delegate milestone building to milestoneStore
             const milestones = await this.milestoneStore.getMilestonesWithReferences(versionId, transaction);
 
             return {
-                satisfiesRequirements,
-                supersedsRequirements,
-                documentReferences,
+                implementedORs,
+                decommissionedORs,
                 dependsOnChanges,
                 milestones
             };
@@ -381,42 +348,29 @@ export class OperationalChangeStore extends VersionedItemStore {
             const relationshipsResult = await transaction.run(`
             MATCH (version:${this.versionLabel})
             WHERE id(version) = $versionId
-            
-            // Get SATISFIES relationships
-            OPTIONAL MATCH (version)-[:SATISFIES]->(satisfiedReq:OperationalRequirement)
-            WITH version, collect(id(satisfiedReq)) as satisfiesRequirements
-            
-            // Get SUPERSEDS relationships
-            OPTIONAL MATCH (version)-[:SUPERSEDS]->(supersededReq:OperationalRequirement)
-            WITH version, satisfiesRequirements, collect(id(supersededReq)) as supersedsRequirements
-            
-            // Get REFERENCES relationships with note property
-            OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:Document)
-            WITH version, satisfiesRequirements, supersedsRequirements,
-                 collect({id: id(doc), note: ref.note}) as documentReferences
-            
-            // Get DEPENDS_ON relationships (Version -> Item)
+
+            OPTIONAL MATCH (version)-[:IMPLEMENTS]->(implementedReq:OperationalRequirement)
+            WITH version, collect(id(implementedReq)) as implementedORs
+
+            OPTIONAL MATCH (version)-[:DECOMMISSIONS]->(decommissionedReq:OperationalRequirement)
+            WITH version, implementedORs, collect(id(decommissionedReq)) as decommissionedORs
+
             OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depChange:OperationalChange)
-            
-            RETURN satisfiesRequirements, supersedsRequirements, documentReferences, collect(id(depChange)) as dependsOnChanges
+
+            RETURN implementedORs, decommissionedORs, collect(id(depChange)) as dependsOnChanges
         `, { versionId });
 
             let relationships = {
-                satisfiesRequirements: [],
-                supersedsRequirements: [],
-                documentReferences: [],
+                implementedORs: [],
+                decommissionedORs: [],
                 dependsOnChanges: []
             };
 
             if (relationshipsResult.records.length > 0) {
                 const record = relationshipsResult.records[0];
                 relationships = {
-                    satisfiesRequirements: record.get('satisfiesRequirements').map(id => this.normalizeId(id)),
-                    supersedsRequirements: record.get('supersedsRequirements').map(id => this.normalizeId(id)),
-                    documentReferences: record.get('documentReferences').filter(ref => ref.id !== null).map(ref => ({
-                        id: this.normalizeId(ref.id),
-                        note: ref.note || ''
-                    })),
+                    implementedORs: record.get('implementedORs').map(id => this.normalizeId(id)),
+                    decommissionedORs: record.get('decommissionedORs').map(id => this.normalizeId(id)),
                     dependsOnChanges: record.get('dependsOnChanges').map(id => this.normalizeId(id))
                 };
             }
@@ -443,36 +397,14 @@ export class OperationalChangeStore extends VersionedItemStore {
     async _createRelationshipsFromIds(versionId, relationshipIds, transaction) {
         try {
             const {
-                satisfiesRequirements = [],
-                supersedsRequirements = [],
+                implementedORs = [],
+                decommissionedORs = [],
                 milestones = [],
-                documentReferences = [],
                 dependsOnChanges = []
             } = relationshipIds;
 
             // Create requirement relationships
-            await this._createRequirementRelationshipsFromIds(versionId, satisfiesRequirements, supersedsRequirements, transaction);
-
-            // Create REFERENCES relationships with note property
-            if (documentReferences.length > 0) {
-                const documentIds = documentReferences.map(ref => this.normalizeId(ref.id));
-
-                // Validate all documents exist
-                await this._validateReferences('Document', documentIds, transaction);
-
-                // Create REFERENCES relationships with notes
-                for (const ref of documentReferences) {
-                    await transaction.run(`
-                    MATCH (version:${this.versionLabel}), (doc:Document)
-                    WHERE id(version) = $versionId AND id(doc) = $documentId
-                    CREATE (version)-[:REFERENCES {note: $note}]->(doc)
-                `, {
-                        versionId,
-                        documentId: this.normalizeId(ref.id),
-                        note: ref.note || ''
-                    });
-                }
-            }
+            await this._createRequirementRelationshipsFromIds(versionId, implementedORs, decommissionedORs, transaction);
 
             // Create DEPENDS_ON relationships (Version -> Item)
             if (dependsOnChanges.length > 0) {
@@ -523,67 +455,58 @@ export class OperationalChangeStore extends VersionedItemStore {
      * Create requirement relationships for a version from ID arrays
      * @private
      * @param {number} versionId - ItemVersion node ID
-     * @param {Array<number>} satisfiesRequirements - Requirement Item IDs
-     * @param {Array<number>} supersedsRequirements - Requirement Item IDs
+     * @param {Array<number>} implementedORs - Requirement Item IDs
+     * @param {Array<number>} decommissionedORs - Requirement Item IDs
      * @param {Transaction} transaction - Transaction instance
      */
-    async _createRequirementRelationshipsFromIds(versionId, satisfiesRequirements, supersedsRequirements, transaction) {
-        // Create SATISFIES relationships
-        if (satisfiesRequirements.length > 0) {
-            // Normalize requirement IDs
-            const normalizedSatisfiesIds = satisfiesRequirements.map(id => this.normalizeId(id));
-
-            await this._validateReferences('OperationalRequirement', normalizedSatisfiesIds, transaction);
-
+    async _createRequirementRelationshipsFromIds(versionId, implementedORs, decommissionedORs, transaction) {
+        // Create IMPLEMENTS relationships
+        if (implementedORs.length > 0) {
+            const normalizedImplementedIds = implementedORs.map(id => this.normalizeId(id));
+            await this._validateReferences('OperationalRequirement', normalizedImplementedIds, transaction);
             await transaction.run(`
                 MATCH (version:${this.versionLabel})
                 WHERE id(version) = $versionId
-                
                 UNWIND $reqIds as reqId
                 MATCH (req:OperationalRequirement)
                 WHERE id(req) = reqId
-                CREATE (version)-[:SATISFIES]->(req)
-            `, { versionId, reqIds: normalizedSatisfiesIds });
+                CREATE (version)-[:IMPLEMENTS]->(req)
+            `, { versionId, reqIds: normalizedImplementedIds });
         }
 
-        // Create SUPERSEDS relationships
-        if (supersedsRequirements.length > 0) {
-            // Normalize requirement IDs
-            const normalizedSupersedsIds = supersedsRequirements.map(id => this.normalizeId(id));
-
-            await this._validateReferences('OperationalRequirement', normalizedSupersedsIds, transaction);
-
+        // Create DECOMMISSIONS relationships
+        if (decommissionedORs.length > 0) {
+            const normalizedDecommissionedIds = decommissionedORs.map(id => this.normalizeId(id));
+            await this._validateReferences('OperationalRequirement', normalizedDecommissionedIds, transaction);
             await transaction.run(`
                 MATCH (version:${this.versionLabel})
                 WHERE id(version) = $versionId
-                
                 UNWIND $reqIds as reqId
                 MATCH (req:OperationalRequirement)
                 WHERE id(req) = reqId
-                CREATE (version)-[:SUPERSEDS]->(req)
-            `, { versionId, reqIds: normalizedSupersedsIds });
+                CREATE (version)-[:DECOMMISSIONS]->(req)
+            `, { versionId, reqIds: normalizedDecommissionedIds });
         }
     }
 
     // Additional query methods with baseline and wave filtering support
 
     /**
-     * Find changes that satisfy a specific requirement (inverse SATISFIES)
+     * Find changes that implement a specific requirement (inverse IMPLEMENTS)
      * @param {number} requirementItemId - Requirement Item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
      * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Changes that satisfy the requirement with Reference structure
+     * @returns {Promise<Array<object>>} Changes that implement the requirement with Reference structure
      */
-    async findChangesThatSatisfyRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null) {
+    async findChangesThatImplementRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const normalizedRequirementId = this.normalizeId(requirementItemId);
             let query, params;
 
             if (baselineId === null) {
-                // Latest versions query
                 query = `
-                    MATCH (req:OperationalRequirement)<-[:SATISFIES]-(changeVersion:OperationalChangeVersion)
+                    MATCH (req:OperationalRequirement)<-[:IMPLEMENTS]-(changeVersion:OperationalChangeVersion)
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     MATCH (change)-[:LATEST_VERSION]->(changeVersion)
                     WHERE id(req) = $requirementItemId
@@ -592,10 +515,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                 `;
                 params = { requirementItemId: normalizedRequirementId };
             } else {
-                // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SATISFIES]->(req:OperationalRequirement)
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:IMPLEMENTS]->(req:OperationalRequirement)
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     WHERE id(baseline) = $baselineId AND id(req) = $requirementItemId
                     RETURN id(change) as id, change.title as title
@@ -607,7 +529,6 @@ export class OperationalChangeStore extends VersionedItemStore {
             const result = await transaction.run(query, params);
             const changes = result.records.map(record => this._buildReference(record));
 
-            // Apply wave filtering if specified
             if (fromWaveId !== null) {
                 const filteredChanges = [];
                 for (const change of changes) {
@@ -621,27 +542,26 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             return changes;
         } catch (error) {
-            throw new StoreError(`Failed to find changes that satisfy requirement: ${error.message}`, error);
+            throw new StoreError(`Failed to find changes that implement requirement: ${error.message}`, error);
         }
     }
 
     /**
-     * Find changes that supersede a specific requirement (inverse SUPERSEDS)
+     * Find changes that decommission a specific requirement (inverse DECOMMISSIONS)
      * @param {number} requirementItemId - Requirement Item ID
      * @param {Transaction} transaction - Transaction instance
      * @param {number|null} baselineId - Optional baseline context
      * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Changes that supersede the requirement with Reference structure
+     * @returns {Promise<Array<object>>} Changes that decommission the requirement with Reference structure
      */
-    async findChangesThatSupersedeRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null) {
+    async findChangesThatDecommissionRequirement(requirementItemId, transaction, baselineId = null, fromWaveId = null) {
         try {
             const normalizedRequirementId = this.normalizeId(requirementItemId);
             let query, params;
 
             if (baselineId === null) {
-                // Latest versions query
                 query = `
-                    MATCH (req:OperationalRequirement)<-[:SUPERSEDS]-(changeVersion:OperationalChangeVersion)
+                    MATCH (req:OperationalRequirement)<-[:DECOMMISSIONS]-(changeVersion:OperationalChangeVersion)
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     MATCH (change)-[:LATEST_VERSION]->(changeVersion)
                     WHERE id(req) = $requirementItemId
@@ -650,10 +570,9 @@ export class OperationalChangeStore extends VersionedItemStore {
                 `;
                 params = { requirementItemId: normalizedRequirementId };
             } else {
-                // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
-                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:SUPERSEDS]->(req:OperationalRequirement)
+                    MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)-[:DECOMMISSIONS]->(req:OperationalRequirement)
                     MATCH (changeVersion)-[:VERSION_OF]->(change:OperationalChange)
                     WHERE id(baseline) = $baselineId AND id(req) = $requirementItemId
                     RETURN id(change) as id, change.title as title
@@ -679,7 +598,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             return changes;
         } catch (error) {
-            throw new StoreError(`Failed to find changes that supersede requirement: ${error.message}`, error);
+            throw new StoreError(`Failed to find changes that decommission requirement: ${error.message}`, error);
         }
     }
 

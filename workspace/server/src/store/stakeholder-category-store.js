@@ -1,7 +1,7 @@
 import { RefinableEntityStore } from './refinable-entity-store.js';
 
 /**
- * StakeholderCategoryStore provides data access operations for StakeholderCategories entities.
+ * StakeholderCategoryStore provides data access operations for StakeholderCategory nodes.
  * Extends RefinableEntityStore to inherit both CRUD operations and REFINES hierarchy management.
  */
 export class StakeholderCategoryStore extends RefinableEntityStore {
@@ -23,6 +23,4 @@ export class StakeholderCategoryStore extends RefinableEntityStore {
     // - update(id, data, transaction)
     // - delete(id, transaction)
     // - exists(id, transaction)
-
-    // Add any StakeholderCategories-specific methods here if needed in the future
 }

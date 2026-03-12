@@ -25,6 +25,11 @@ export class BaseCommands {
             updateSignature: '<id> <name> <description>',
             hasParent: true
         };
+
+        // argFields: fields populated from positional args (defaults to all fields)
+        if (!this.fieldConfig.argFields) {
+            this.fieldConfig.argFields = this.fieldConfig.fields;
+        }
     }
 
     /**
@@ -155,18 +160,30 @@ export class BaseCommands {
             command.option('--parent <id>', `Parent ${this.displayName} ID`);
         }
 
-        command.action(async (...args) => {
+        if (this.fieldConfig.options) {
+            this.fieldConfig.options.forEach(opt => command.option(opt.flag, opt.description));
+        }
+
+        const createCmd = command;
+        command.action(async () => {
             try {
-                const options = args[args.length - 1];
-                const fieldValues = args.slice(0, -1);
+                const fieldValues = createCmd.args;
+                const options = createCmd.opts();
 
                 const data = {};
-                this.fieldConfig.fields.forEach((field, index) => {
-                    data[field] = fieldValues[index];
+                this.fieldConfig.argFields.forEach((field, index) => {
+                    const val = fieldValues[index];
+                    data[field] = val !== undefined && /^-?\d+(\.\d+)?$/.test(val) ? Number(val) : val;
                 });
 
                 if (this.fieldConfig.hasParent) {
                     data.parentId = options.parent || null;
+                }
+
+                if (this.fieldConfig.options) {
+                    this.fieldConfig.options.forEach(opt => {
+                        data[opt.field] = options[opt.field] || null;
+                    });
                 }
 
                 const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
@@ -201,20 +218,32 @@ export class BaseCommands {
             command.option('--parent <id>', `Parent ${this.displayName} ID`);
         }
 
-        command.action(async (...args) => {
+        if (this.fieldConfig.options) {
+            this.fieldConfig.options.forEach(opt => command.option(opt.flag, opt.description));
+        }
+
+        const updateCmd = command;
+        command.action(async () => {
             try {
-                const options = args[args.length - 1];
-                const allValues = args.slice(0, -1);
+                const allValues = updateCmd.args;
+                const options = updateCmd.opts();
                 const id = allValues[0];
                 const fieldValues = allValues.slice(1);
 
                 const data = { id };
-                this.fieldConfig.fields.forEach((field, index) => {
-                    data[field] = fieldValues[index];
+                this.fieldConfig.argFields.forEach((field, index) => {
+                    const val = fieldValues[index];
+                    data[field] = val !== undefined && /^-?\d+(\.\d+)?$/.test(val) ? Number(val) : val;
                 });
 
                 if (this.fieldConfig.hasParent) {
                     data.parentId = options.parent || null;
+                }
+
+                if (this.fieldConfig.options) {
+                    this.fieldConfig.options.forEach(opt => {
+                        data[opt.field] = options[opt.field] || null;
+                    });
                 }
 
                 const response = await fetch(`${this.baseUrl}/${this.urlPath}/${id}`, {

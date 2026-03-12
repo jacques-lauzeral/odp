@@ -67,7 +67,7 @@ const store = dataCategoryStore()
 ```javascript
 const store = serviceStore()
 ```
-**Returns**: `ServiceStore`  
+**Returns**: `DomainStore`  
 **Throws**: `Error` - Store not initialized
 
 ### waveStore()
@@ -81,7 +81,7 @@ const store = waveStore()
 ```javascript
 const store = documentStore()
 ```
-**Returns**: `DocumentStore`  
+**Returns**: `ReferenceDocumentStore`  
 **Throws**: `Error` - Store not initialized
 
 ### operationalRequirementStore()

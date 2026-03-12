@@ -54,9 +54,9 @@ import {textStartsWith} from "./utils.js";
  *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
  *   - Relative references resolved using current entity's organizational path
  * - "Private notes:" / "NM private notes:" → nmPrivateNotes
- * - "Dependencies:" → dependsOnRequirements array (OR-type only)
+ * - "Dependencies:" → dependencies array (OR-type only)
  *   - Same reference format as implementedONs, resolves to OR external IDs
- * - "ConOPS Reference:" / "ConOPS References:" → documentReferences array
+ * - "ConOPS Reference:" / "ConOPS References:" → strategicDocuments array (ONs) / privateNotes (ORs)
  *   - Full external ID: "- document:idl_conops_v2.1" or "- document:idl_conops_v2.1: note"
  *   - Section reference: "- Section 4.1.1 - Title" (auto-maps to iDL ConOPS)
  *   - Placeholder "<to be completed>" ignored
@@ -114,9 +114,6 @@ class iDL_Mapper_sections extends Mapper {
         console.log(`iDL_Mapper_sections mapping raw data to folder: ${folder}`);
         const context = this._initContext(folder);
 
-        // Add reference documents
-        this._addReferenceDocuments(context);
-
         // Process sections 4 (ONs) and 5 (ORs)
         for (const section of rawData.sections || []) {
             if (section.sectionNumber?.startsWith('4')) {
@@ -139,28 +136,10 @@ class iDL_Mapper_sections extends Mapper {
             folder,
             onMap: new Map(),
             orMap: new Map(),
-            documentMap: new Map(),
             stakeholderCategoryMap: new Map(),
-            dataCategoryMap: new Map(),
-            serviceMap: new Map(),
             waveMap: new Map(),
             changeMap: new Map()
         };
-    }
-
-    /**
-     * Add reference documents to context
-     * @private
-     */
-    _addReferenceDocuments(context) {
-        const conopsDocument = {
-            name: "iDL ConOPS",
-            description: "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
-            version: "2.1",
-            url: "https://www.eurocontrol.int/publication/integrated-data-layer-idl-concept-operations-conops"
-        };
-        conopsDocument.externalId = ExternalIdBuilder.buildExternalId(conopsDocument, 'document');
-        context.documentMap.set(conopsDocument.externalId, conopsDocument);
     }
 
     /**
@@ -261,8 +240,9 @@ class iDL_Mapper_sections extends Mapper {
         let flows = '';
         let privateNotes = '';
         let implementedONs = [];
-        let dependsOnRequirements = [];
-        let documentReferences = [];
+        let dependencies = [];
+        let strategicDocuments = [];
+        let conopsRefsForPrivateNotes = [];
         let currentSection = null;
 
         // Terminator keywords for rationale section
@@ -310,7 +290,7 @@ class iDL_Mapper_sections extends Mapper {
             } else if (textStartsWith(text, 'Implemented ONs:', 'Implemented Operational Needs:')) {
                 currentSection = 'implementedONs';
             } else if (textStartsWith(text, 'Dependencies:')) {
-                currentSection = 'dependsOnRequirements';
+                currentSection = 'dependencies';
             } else if (textStartsWith(text, 'Private notes:', 'NM private notes:')) {
                 currentSection = 'privateNotes';
             } else if (textStartsWith(text, 'ConOPS Reference:', 'ConOPS References:')) {
@@ -337,14 +317,14 @@ class iDL_Mapper_sections extends Mapper {
                         }
                     }
                 }
-            } else if (currentSection === 'dependsOnRequirements') {
+            } else if (currentSection === 'dependencies') {
                 const lines = text.split('\n');
                 for (const line of lines) {
                     if (line.startsWith('* ')) {
                         const reference = line.substring(2).trim();
                         const normalizedId = this._normalizeORReference(reference, subsection.path, context);
                         if (normalizedId) {
-                            dependsOnRequirements.push(normalizedId);
+                            dependencies.push(normalizedId);
                         }
                     }
                 }
@@ -354,11 +334,23 @@ class iDL_Mapper_sections extends Mapper {
                     if (line.startsWith('* ')) {
                         const reference = this._parseDocumentReference(line.substring(2).trim());
                         if (reference) {
-                            documentReferences.push(reference);
+                            conopsRefsForPrivateNotes.push(reference);
                         }
                     }
                 }
             }
+        }
+
+        // For ONs: conops refs become strategicDocuments
+        // For ORs: conops refs go to privateNotes
+        if (type === 'ON') {
+            strategicDocuments = conopsRefsForPrivateNotes;
+        } else if (conopsRefsForPrivateNotes.length > 0) {
+            const refsText = conopsRefsForPrivateNotes
+                .map(r => r.note ? `${r.documentExternalId}: ${r.note}` : r.documentExternalId)
+                .join('\n');
+            const refsNote = `**ConOPS References:**\n${refsText}`;
+            privateNotes = privateNotes ? `${privateNotes}\n\n${refsNote}` : refsNote;
         }
 
         const result = {
@@ -367,12 +359,12 @@ class iDL_Mapper_sections extends Mapper {
             flows: this.converter.asciidocToDelta(flows),
             privateNotes: this.converter.asciidocToDelta(privateNotes),
             implementedONs: type === 'OR' ? implementedONs : [],
-            dependsOnRequirements: type === 'OR' ? dependsOnRequirements : []
+            dependencies: type === 'OR' ? dependencies : []
         };
 
-        // Add documentReferences only if explicitly found
-        if (documentReferences.length > 0) {
-            result.documentReferences = documentReferences;
+        // Add strategicDocuments only for ONs if found
+        if (type === 'ON' && strategicDocuments.length > 0) {
+            result.strategicDocuments = strategicDocuments;
         }
 
         return result;
@@ -503,7 +495,6 @@ class iDL_Mapper_sections extends Mapper {
         // Validate references
         this._validateImplementedONs(context);
         this._validateORDependencies(context);
-        this._validateDocumentReferences(context);
 
         // Helper to clean entity by removing null/empty fields
         const cleanEntity = (entity) => {
@@ -523,10 +514,8 @@ class iDL_Mapper_sections extends Mapper {
         console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: cleanArray(Array.from(context.waveMap.values())),
             requirements: cleanArray(Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()))),
             changes: cleanArray(Array.from(context.changeMap.values()))
@@ -558,7 +547,7 @@ class iDL_Mapper_sections extends Mapper {
     }
 
     /**
-     * Validate that all OR dependsOnRequirements point to existing ORs
+     * Validate that all OR dependencies point to existing ORs
      * @private
      */
     _validateORDependencies(context) {
@@ -566,10 +555,10 @@ class iDL_Mapper_sections extends Mapper {
         let unresolvedReferences = 0;
 
         for (const or of context.orMap.values()) {
-            if (or.dependsOnRequirements && or.dependsOnRequirements.length > 0) {
-                totalReferences += or.dependsOnRequirements.length;
+            if (or.dependencies && or.dependencies.length > 0) {
+                totalReferences += or.dependencies.length;
 
-                for (const orRef of or.dependsOnRequirements) {
+                for (const orRef of or.dependencies) {
                     if (!context.orMap.has(orRef)) {
                         unresolvedReferences++;
                         console.warn(`WARNING: OR "${or.externalId}" references non-existent OR dependency: "${orRef}"`);
@@ -578,33 +567,7 @@ class iDL_Mapper_sections extends Mapper {
             }
         }
 
-        console.log(`OR dependsOnRequirements validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
-    }
-
-    /**
-     * Validate that all document references point to existing documents
-     * @private
-     */
-    _validateDocumentReferences(context) {
-        let totalReferences = 0;
-        let unresolvedReferences = 0;
-
-        const allRequirements = Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()));
-
-        for (const req of allRequirements) {
-            if (req.documentReferences && req.documentReferences.length > 0) {
-                totalReferences += req.documentReferences.length;
-
-                for (const docRef of req.documentReferences) {
-                    if (!context.documentMap.has(docRef.documentExternalId)) {
-                        unresolvedReferences++;
-                        console.warn(`WARNING: ${req.type} "${req.externalId}" references non-existent document: "${docRef.documentExternalId}"`);
-                    }
-                }
-            }
-        }
-
-        console.log(`Document references validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
+        console.log(`OR dependencies validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
     }
 
 }

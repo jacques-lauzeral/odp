@@ -85,11 +85,11 @@ paths:
         '204':
           description: No Content
 
-  # Data Category Endpoints
-  /data-categories:
+  # Domain Endpoints
+  /domains:
     get:
-      summary: List all data categories
-      tags: [Data Categories]
+      summary: List all domains
+      tags: [Domains]
       responses:
         '200':
           description: Success
@@ -98,185 +98,117 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: 'openapi-base.yml#/components/schemas/DataCategory'
+                  $ref: 'openapi-base.yml#/components/schemas/Domain'
 
     post:
-      summary: Create new data category
-      tags: [Data Categories]
+      summary: Create new domain
+      tags: [Domains]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: 'openapi-base.yml#/components/schemas/DataCategoryRequest'
+              $ref: 'openapi-base.yml#/components/schemas/DomainRequest'
       responses:
         '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/DataCategory'
-
-  /data-categories/{id}:
-    get:
-      summary: Get data category by ID
-      tags: [Data Categories]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/DataCategory'
-
-    put:
-      summary: Update data category
-      tags: [Data Categories]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: 'openapi-base.yml#/components/schemas/DataCategoryRequest'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/DataCategory'
-
-    delete:
-      summary: Delete data category
-      tags: [Data Categories]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: No Content
-
-  # Service Endpoints
-  /services:
-    get:
-      summary: List all services
-      tags: [Services]
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/Service'
-
-    post:
-      summary: Create new service
-      tags: [Services]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: 'openapi-base.yml#/components/schemas/ServiceRequest'
-      responses:
-        '201':
-          description: Created
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Service'
-
-  /services/{id}:
-    get:
-      summary: Get service by ID
-      tags: [Services]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Service'
-
-    put:
-      summary: Update service
-      tags: [Services]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: 'openapi-base.yml#/components/schemas/ServiceRequest'
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Service'
-
-    delete:
-      summary: Delete service
-      tags: [Services]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: No Content
-
-  # Document Endpoints
-  /documents:
-    get:
-      summary: List all documents
-      tags: [Documents]
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/Document'
+                $ref: 'openapi-base.yml#/components/schemas/Domain'
         '400':
-          description: Bad Request
+          description: Bad Request - Invalid domain data
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /domains/{id}:
+    get:
+      summary: Get domain by ID
+      tags: [Domains]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Domain'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    put:
+      summary: Update domain
+      tags: [Domains]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/DomainRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Domain'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete domain
+      tags: [Domains]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  # Reference Document Endpoints
+  /reference-documents:
+    get:
+      summary: List all reference documents
+      tags: [Reference Documents]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/ReferenceDocument'
         '500':
           description: Internal Server Error
           content:
@@ -285,32 +217,32 @@ paths:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
     post:
-      summary: Create new document
-      tags: [Documents]
+      summary: Create new reference document
+      tags: [Reference Documents]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: 'openapi-base.yml#/components/schemas/DocumentRequest'
+              $ref: 'openapi-base.yml#/components/schemas/ReferenceDocumentRequest'
       responses:
         '201':
           description: Created
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/Document'
+                $ref: 'openapi-base.yml#/components/schemas/ReferenceDocument'
         '400':
-          description: Bad Request - Invalid document data
+          description: Bad Request - Invalid reference document data
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
-  /documents/{id}:
+  /reference-documents/{id}:
     get:
-      summary: Get document by ID
-      tags: [Documents]
+      summary: Get reference document by ID
+      tags: [Reference Documents]
       parameters:
         - name: id
           in: path
@@ -323,7 +255,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/Document'
+                $ref: 'openapi-base.yml#/components/schemas/ReferenceDocument'
         '404':
           description: Not Found
           content:
@@ -332,8 +264,8 @@ paths:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
     put:
-      summary: Update document
-      tags: [Documents]
+      summary: Update reference document
+      tags: [Reference Documents]
       parameters:
         - name: id
           in: path
@@ -345,14 +277,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: 'openapi-base.yml#/components/schemas/DocumentRequest'
+              $ref: 'openapi-base.yml#/components/schemas/ReferenceDocumentRequest'
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/Document'
+                $ref: 'openapi-base.yml#/components/schemas/ReferenceDocument'
         '404':
           description: Not Found
           content:
@@ -361,8 +293,130 @@ paths:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
     delete:
-      summary: Delete document
-      tags: [Documents]
+      summary: Delete reference document
+      tags: [Reference Documents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: No Content
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  # Bandwidth Endpoints
+  /bandwidths:
+    get:
+      summary: List all bandwidths
+      tags: [Bandwidths]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/Bandwidth'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    post:
+      summary: Create new bandwidth
+      tags: [Bandwidths]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/BandwidthRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Bandwidth'
+        '400':
+          description: Bad Request - Duplicate (year, wave, scope) tuple or invalid references
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /bandwidths/{id}:
+    get:
+      summary: Get bandwidth by ID
+      tags: [Bandwidths]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Bandwidth'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    put:
+      summary: Update bandwidth
+      tags: [Bandwidths]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/BandwidthRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Bandwidth'
+        '400':
+          description: Bad Request - Duplicate (year, wave, scope) tuple or invalid references
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete bandwidth
+      tags: [Bandwidths]
       parameters:
         - name: id
           in: path
@@ -393,12 +447,6 @@ paths:
                 type: array
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/Wave'
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
         '500':
           description: Internal Server Error
           content:
@@ -423,7 +471,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Wave'
         '400':
-          description: Bad Request - Invalid year/quarter combination or date
+          description: Bad Request - Invalid year/sequenceNumber or duplicate wave
           content:
             application/json:
               schema:
@@ -482,7 +530,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid year/quarter combination or date
+          description: Bad Request - Invalid year/sequenceNumber or duplicate wave
           content:
             application/json:
               schema:

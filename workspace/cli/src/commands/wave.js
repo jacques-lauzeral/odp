@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/waves.js
+// workspace/cli/src/commands/wave.js
 import { BaseCommands } from '../base-commands.js';
 
 export function waveCommands(program, config) {
@@ -8,11 +8,11 @@ export function waveCommands(program, config) {
         'wave',                  // displayName for messages
         config,
         {
-            fields: ['year', 'quarter', 'date', 'name'],
-            headers: ['ID', 'Year', 'Quarter', 'Date', 'Name'],
-            colWidths: [10, 10, 10, 15, 15],
-            createSignature: '<year> <quarter> <date>',
-            updateSignature: '<id> <year> <quarter> <date>',
+            fields: ['year', 'sequenceNumber', 'implementationDate'],
+            headers: ['ID', 'Year', 'Sequence Number', 'Implementation Date'],
+            colWidths: [10, 10, 18, 25],
+            createSignature: '<year> <sequenceNumber> <implementationDate>',
+            updateSignature: '<id> <year> <sequenceNumber> <implementationDate>',
             hasParent: false
         }
     );

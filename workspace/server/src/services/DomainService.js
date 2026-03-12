@@ -1,9 +1,9 @@
 import { TreeItemService } from './TreeItemService.js';
-import { stakeholderCategoryStore } from '../store/index.js';
+import { domainStore } from '../store/index.js';
 
-export class StakeholderCategoryService extends TreeItemService {
+export class DomainService extends TreeItemService {
     constructor() {
-        super(stakeholderCategoryStore);
+        super(domainStore);
     }
 
     // Inherits from TreeItemService:
@@ -21,4 +21,4 @@ export class StakeholderCategoryService extends TreeItemService {
     // - isNameExists(name, excludeId, userId)
 }
 
-export default new StakeholderCategoryService();
+export default new DomainService();

@@ -14,7 +14,6 @@ paths:
       summary: List all operational requirements (latest versions, baseline context, wave filtered, and content filtered)
       tags: [Operational Requirements]
       parameters:
-        # Existing context parameters
         - name: baseline
           in: query
           required: false
@@ -27,8 +26,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering (requirements referenced by changes with milestones at/after this wave)"
-
-        # Content filtering parameters - UPDATED
         - name: type
           in: query
           required: false
@@ -50,43 +47,29 @@ paths:
           required: false
           schema:
             type: string
-          description: "Filter by title pattern matching (existing behavior preserved)"
+          description: "Filter by title pattern matching"
           example: "authentication"
         - name: text
           in: query
           required: false
           schema:
             type: string
-          description: "Full-text search across title, statement, rationale, flows, flowExamples, references, and risksAndOpportunities"
+          description: "Full-text search across title, statement, rationale, flows, and nfrs"
           example: "security authentication"
-        - name: dataCategory
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Filter by data category ID(s). Comma-separated for OR logic."
-          example: "123,456,789"
         - name: stakeholderCategory
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by stakeholder category ID(s). Comma-separated for OR logic."
+          description: "Filter by impacted stakeholder category ID(s). Comma-separated for OR logic. OR type only."
           example: "123,456"
-        - name: service
+        - name: domain
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by service ID(s). Comma-separated for OR logic."
-          example: "789,101"
-        - name: regulatoryAspect
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Filter by regulatory aspect ID(s). Comma-separated for OR logic."
-          example: "234,567"
+          description: "Filter by domain ID. For ONs: filters by assigned domain. For ORs: filters by impacted domains. Comma-separated for OR logic."
+          example: "42"
 
         # Relationship-based filtering parameters
         - name: refinesParent
@@ -94,21 +77,21 @@ paths:
           required: false
           schema:
             type: string
-          description: "Filter by parent Item ID: return ORs/ONs that refine the given parent requirement (REFINES relationship). Single Item ID."
+          description: "Filter by parent Item ID: return requirements that refine the given parent (REFINES relationship). Single Item ID."
           example: "42"
-        - name: dependsOn
+        - name: dependency
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by dependency Item ID: return ORs that depend on the given requirement (DEPENDS_ON relationship). Single Item ID."
+          description: "Filter by dependency Item ID: return ORs that depend on the given OR (DEPENDS_ON relationship). Single Item ID."
           example: "42"
         - name: implementedON
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by ON Item ID: return ORs that implement the given ON requirement (IMPLEMENTS relationship). Single Item ID."
+          description: "Filter by ON Item ID: return ORs that implement the given ON (IMPLEMENTS relationship). Single Item ID."
           example: "42"
       responses:
         '200':
@@ -143,7 +126,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '400':
-          description: Validation Error - Invalid DRG value, implementedONs type mismatch, or missing required fields
+          description: Validation Error - Invalid DRG, maturity, implementedONs type mismatch, or missing required fields
           content:
             application/json:
               schema:
@@ -221,7 +204,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG value or implementedONs type constraint violation
+          description: Validation Error - Invalid DRG, maturity, or implementedONs type constraint violation
           content:
             application/json:
               schema:
@@ -256,7 +239,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG value or implementedONs type constraint violation
+          description: Validation Error - Invalid DRG, maturity, or implementedONs type constraint violation
           content:
             application/json:
               schema:
@@ -324,7 +307,6 @@ paths:
       summary: List all operational changes (latest versions, baseline context, wave filtered, and content filtered)
       tags: [Operational Changes]
       parameters:
-        # Existing context parameters
         - name: baseline
           in: query
           required: false
@@ -337,8 +319,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering (changes with milestones at/after this wave)"
-
-        # Content filtering parameters - UPDATED
         - name: visibility
           in: query
           required: false
@@ -360,51 +340,37 @@ paths:
           required: false
           schema:
             type: string
-          description: "Filter by title pattern matching (existing behavior preserved)"
+          description: "Filter by title pattern matching"
           example: "database migration"
         - name: text
           in: query
           required: false
           schema:
             type: string
-          description: "Full-text search across title, purpose, initialState, finalState, and details rich text fields"
+          description: "Full-text search across title, purpose, initialState, finalState, and details"
           example: "performance optimization"
         - name: stakeholderCategory
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by stakeholder category ID(s) via SATISFIES/SUPERSEDES requirements. Comma-separated for OR logic."
+          description: "Filter by stakeholder category ID(s) via implemented/decommissioned ORs. Comma-separated for OR logic."
           example: "123,456"
-        - name: dataCategory
+        - name: domain
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by data category ID(s) via SATISFIES/SUPERSEDES requirements. Comma-separated for OR logic."
+          description: "Filter by domain ID(s) via implemented/decommissioned ORs. Comma-separated for OR logic."
           example: "789,101"
-        - name: service
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Filter by service ID(s) via SATISFIES/SUPERSEDES requirements. Comma-separated for OR logic."
-          example: "234,567"
-        - name: regulatoryAspect
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Filter by regulatory aspect ID(s) via SATISFIES/SUPERSEDES requirements. Comma-separated for OR logic."
-          example: "345,678"
 
         # Relationship-based filtering parameters
-        - name: satisfiesOR
+        - name: implementsOR
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by OR Item ID: return OCs that satisfy the given operational requirement (SATISFIES relationship). Single Item ID."
+          description: "Filter by OR Item ID: return OCs that implement the given OR (IMPLEMENTS relationship). Single Item ID."
           example: "42"
       responses:
         '200':
@@ -439,7 +405,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '400':
-          description: Validation Error - Invalid DRG value, milestone eventType, or missing required fields
+          description: Validation Error - Invalid DRG, maturity, milestone eventTypes, or missing required fields
           content:
             application/json:
               schema:
@@ -517,7 +483,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG value or milestone eventType
+          description: Validation Error - Invalid DRG, maturity, or milestone eventTypes
           content:
             application/json:
               schema:
@@ -552,7 +518,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG value or milestone eventType
+          description: Validation Error - Invalid DRG, maturity, or milestone eventTypes
           content:
             application/json:
               schema:

@@ -1,15 +1,15 @@
-// workspace/cli/src/index.js - Updated CLI entry point with ODP Edition commands
+// workspace/cli/src/index.js
 import { Command } from 'commander';
 import config from '../config.json' assert { type: 'json' };
 
 // Import entity command functions
 import { stakeholderCategoryCommands } from './commands/stakeholder-category.js';
-import { documentCommands } from './commands/document.js';
-import { dataCategoryCommands } from './commands/data-category.js';
-import { serviceCommands } from './commands/service.js';
+import { domainCommands } from './commands/domain.js';
+import { referenceDocumentCommands } from './commands/reference-document.js';
+import { bandwidthCommands } from './commands/bandwidth.js';
 import { waveCommands } from './commands/wave.js';
 import { baselineCommands } from './commands/baseline.js';
-import { editionCommands } from './commands/odp-edition.js';  // Added ODP Edition commands
+import { editionCommands } from './commands/odp-edition.js';
 import { operationalRequirementCommands } from './commands/operational-requirement.js';
 import { operationalChangeCommands } from './commands/operational-change.js';
 import { importCommands } from './commands/import.js';
@@ -33,11 +33,11 @@ program
             console.error('');
             console.error('Examples:');
             console.error('  npm run dev -- --user john.doe stakeholder-category list');
-            console.error('  npm run dev -- --user jane.smith service create "API Gateway" "Main API service"');
-            console.error('  npm run dev -- --user bin operational-requirement show 123');
+            console.error('  npm run dev -- --user jane.smith domain create "Flow Management" "Flow domain" ""');
+            console.error('  npm run dev -- --user bin requirement show 123');
             console.error('  npm run dev -- --user bin baseline create "Q1 2025 Release"');
             console.error('  npm run dev -- --user bin requirement list --baseline 456');
-            console.error('  npm run dev -- --user bin odp create "Q1 Edition" 123 DRAFT 456');
+            console.error('  npm run dev -- --user bin odp-edition create "Q1 Edition" 123 DRAFT 456');
             process.exit(1);
         }
     });
@@ -47,9 +47,9 @@ global.program = program;
 
 // Register all entity commands
 stakeholderCategoryCommands(program, config);
-documentCommands(program, config);
-dataCategoryCommands(program, config);
-serviceCommands(program, config);
+domainCommands(program, config);
+referenceDocumentCommands(program, config);
+bandwidthCommands(program, config);
 waveCommands(program, config);
 baselineCommands(program, config);
 editionCommands(program, config);

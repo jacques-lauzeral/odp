@@ -405,15 +405,11 @@ export class StandardMapper {
 
         // Entity references
         this._addEntityReferences(entity, 'implementedONs', fields['Implements']);
-        this._addEntityReferences(entity, 'dependsOnRequirements', fields['Depends on Requirements']);
-
-        // Document references
-        this._addDocumentReferences(entity, fields['References']);
+        this._addEntityReferences(entity, 'dependencies', fields['Depends on Requirements']);
 
         // Impact references (annotated)
         this._addAnnotatedReferences(entity, 'impactedStakeholderCategories', fields['Impacts Stakeholders']);
-        this._addAnnotatedReferences(entity, 'impactedDataCategories', fields['Impacts Data']);
-        this._addAnnotatedReferences(entity, 'impactedServices', fields['Impacts Services']);
+        this._addAnnotatedReferences(entity, 'impactedDomains', fields['Impacts Domains']);
     }
 
     /**
@@ -428,7 +424,8 @@ export class StandardMapper {
         this._addRichTextField(entity, 'privateNotes', fields['Private Notes']);
 
         // Entity references
-        this._addEntityReferences(entity, 'satisfiesRequirements', fields['Satisfies Requirements']);
+        this._addEntityReferences(entity, 'implementedORs', fields['Implements Requirements']);
+        this._addEntityReferences(entity, 'decommissionedORs', fields['Decommissions Requirements']);
         this._addEntityReferences(entity, 'dependsOnChanges', fields['Depends on Changes']);
     }
 
@@ -543,34 +540,6 @@ export class StandardMapper {
                 return item.trim();
             });
         }
-    }
-
-    /**
-     * Add document references (array of {documentExternalId, note?})
-     */
-    _addDocumentReferences(entity, text) {
-        if (!text) return;
-
-        const items = this._extractListItems(text);
-        if (items.length === 0) return;
-
-        const references = items.map(item => {
-            // Parse "documentId [note text]" format
-            const match = item.match(/^([^\[]+?)(?:\s*\[(.+)\])?$/);
-            if (match) {
-                const ref = {
-                    documentExternalId: match[1].trim()
-                };
-                if (match[2]) {
-                    ref.note = match[2].trim();
-                }
-                return ref;
-            }
-            // Fallback
-            return { documentExternalId: item.trim() };
-        });
-
-        entity.referencesDocuments = references;
     }
 
     /**

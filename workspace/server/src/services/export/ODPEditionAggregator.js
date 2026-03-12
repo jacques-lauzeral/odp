@@ -60,9 +60,9 @@ export class ODPEditionAggregator {
         if (waveA.year < waveB.year) return true;
         if (waveA.year > waveB.year) return false;
 
-        // Same year - compare quarters (treat undefined as 0)
-        const quarterA = waveA.quarter ?? 0;
-        const quarterB = waveB.quarter ?? 0;
+        // Same year - compare sequenceNumbers (treat undefined as 0)
+        const quarterA = waveA.sequenceNumber ?? 0;
+        const quarterB = waveB.sequenceNumber ?? 0;
         return quarterA < quarterB;
     }
 
@@ -109,8 +109,8 @@ export class ODPEditionAggregator {
         const reqToChangeMap = new Map();
 
         changes.forEach(change => {
-            if (change.satisfiesRequirements) {
-                change.satisfiesRequirements.forEach(reqRef => {
+            if (change.implementedORs) {
+                change.implementedORs.forEach(reqRef => {
                     reqToChangeMap.set(reqRef.id, {
                         id: change.itemId,
                         title: change.title
@@ -211,11 +211,11 @@ export class ODPEditionAggregator {
         const editionWaves = allWaves.filter(w => {
             if (w.year > startingWave.year) return true;
             if (w.year === startingWave.year) {
-                // If starting wave has no quarter, include all waves from that year
-                if (startingWave.quarter === null || startingWave.quarter === undefined) return true;
-                // If starting wave has quarter, compare quarters (treat undefined as 0)
-                const wQuarter = w.quarter ?? 0;
-                const startQuarter = startingWave.quarter ?? 0;
+                // If starting wave has no sequenceNumber, include all waves from that year
+                if (startingWave.sequenceNumber === null || startingWave.sequenceNumber === undefined) return true;
+                // If starting wave has sequenceNumber, compare (treat undefined as 0)
+                const wQuarter = w.sequenceNumber ?? 0;
+                const startQuarter = startingWave.sequenceNumber ?? 0;
                 return wQuarter >= startQuarter;
             }
             return false;
@@ -351,7 +351,7 @@ export class ODPEditionAggregator {
 
             const milestones = await operationalChangeService.getMilestones(change.itemId, userId);
 
-            // Sort milestones chronologically by wave year and quarter
+            // Sort milestones chronologically by wave year and sequenceNumber
             change.milestones = milestones.sort((a, b) => {
                 // Handle milestones without waves
                 if (!a.wave && !b.wave) return 0;
@@ -363,8 +363,8 @@ export class ODPEditionAggregator {
                     return a.wave.year - b.wave.year;
                 }
 
-                // Then by quarter if same year
-                return a.wave.quarter - b.wave.quarter;
+                // Then by sequenceNumber if same year
+                return (a.wave.sequenceNumber ?? 0) - (b.wave.sequenceNumber ?? 0);
             });
 
             // Convert milestone descriptions to AsciiDoc and mark if before edition start

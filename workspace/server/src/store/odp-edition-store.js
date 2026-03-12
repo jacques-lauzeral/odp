@@ -124,10 +124,9 @@ export class ODPEditionStore extends BaseStore {
                 },
                 startsFromWave: {
                     id: this.normalizeId(wave.identity),
-                    name: wave.properties.name,
                     year: wave.properties.year,
-                    quarter: wave.properties.quarter,
-                    date: wave.properties.date
+                    sequenceNumber: wave.properties.sequenceNumber,
+                    implementationDate: wave.properties.implementationDate
                 }
             };
 
@@ -165,10 +164,9 @@ export class ODPEditionStore extends BaseStore {
                     },
                     startsFromWave: {
                         id: this.normalizeId(wave.identity),
-                        name: wave.properties.name,
                         year: wave.properties.year,
-                        quarter: wave.properties.quarter,
-                        date: wave.properties.date
+                        sequenceNumber: wave.properties.sequenceNumber,
+                        implementationDate: wave.properties.implementationDate
                     }
                 };
             });

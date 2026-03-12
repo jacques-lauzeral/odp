@@ -76,7 +76,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - "ON Reference:" → implementedONs (resolve via identifier map)
  * - "Date:" → ignored
  * - "Originator:" → privateNotes entry (separated by \n\n from identifier)
- * - "Stakeholders:" → impactsStakeholderCategories array (with normalization)
+ * - "Stakeholders:" → impactedStakeholders array (with normalization)
  *   Normalization rules:
  *   - Plurals → Singular (AOs→AO, FMPs→FMP, TWRs→TWR)
  *   - Abbreviations → Full (AU→Airspace User)
@@ -92,7 +92,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * Processed OR fields:
  * - "Dependencies:" → processed in second pass:
- *   - OR titles matched (case-insensitive) → dependsOnRequirements array with external IDs
+ *   - OR titles matched (case-insensitive) → dependencies array with external IDs
  *   - Unmatched text → privateNotes as "Dependencies:\n{text}"
  *   - Ignored values: empty, "N/A", "Click or tap here to enter text."
  *   - Split by newlines or periods for multi-line dependencies
@@ -205,10 +205,7 @@ class FlowMapper extends Mapper {
             titleMap: new Map(), // normalized ON title -> externalId
             useCases: [], // Array of { onReference, content }
             validationErrors: [], // Array of validation errors
-            documentMap: new Map(),
             stakeholderCategoryMap: new Map(),
-            dataCategoryMap: new Map(),
-            serviceMap: new Map(),
             waveMap: new Map(),
             changeMap: new Map()
         };
@@ -568,11 +565,11 @@ class FlowMapper extends Mapper {
         }
 
         // Process Stakeholders for ORs
-        let impactsStakeholderCategories = [];
+        let impactedStakeholders = [];
         let unresolvedStakeholdersNote = null;
         if (type === 'OR' && tableData['stakeholders']) {
             const { resolvedStakeholders, unresolvedStakeholders } = this._normalizeStakeholders(tableData['stakeholders']);
-            impactsStakeholderCategories = resolvedStakeholders;
+            impactedStakeholders = resolvedStakeholders;
 
             if (unresolvedStakeholders.length > 0) {
                 unresolvedStakeholdersNote = `**Stakeholders (unresolved):**\n${unresolvedStakeholders.join('\n')}`;
@@ -621,11 +618,8 @@ class FlowMapper extends Mapper {
             rationale: rationale,
             privateNotes: privateNotes,
             implementedONs: type === 'OR' ? implementedONs : [],
-            // Stakeholder categories resolved
-            impactsStakeholderCategories: impactsStakeholderCategories,
-            impactsData: [],
-            impactsServices: [],
-            dependsOnRequirements: [],
+            impactedStakeholders: impactedStakeholders,
+            dependencies: [],
             // Store raw dependencies and parent path for later processing
             _rawDependencies: type === 'OR' ? (tableData['dependencies'] || null) : null,
             _parentPath: this._normalizePathSegments(path) // For fallback ON resolution
@@ -810,11 +804,11 @@ class FlowMapper extends Mapper {
             const { dependsOnRequirements, dependenciesNote } = this._processDependencies(
                 or._rawDependencies,
                 context,
-                or.externalId  // Pass for warning messages
+                or.externalId
             );
 
             // Update OR with resolved dependencies
-            or.dependsOnRequirements = dependsOnRequirements;
+            or.dependencies = dependsOnRequirements;
 
             // Append dependencies note to privateNotes if present
             if (dependenciesNote) {
@@ -1049,10 +1043,8 @@ class FlowMapper extends Mapper {
         console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: cleanArray(Array.from(context.waveMap.values())),
             requirements: cleanArray(Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()))),
             changes: cleanArray(Array.from(context.changeMap.values()))

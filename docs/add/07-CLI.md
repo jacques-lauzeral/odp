@@ -1,4 +1,4 @@
-# Chapter 06 – CLI
+# Chapter 07 – CLI
 
 ## 1. Overview
 
@@ -37,45 +37,62 @@ Commands that write data (create, update, patch, delete, import) require a `--us
 
 ### Setup Entities
 
-All setup entity commands follow the same pattern. Hierarchy-aware entities (`stakeholder-category`, `data-category`, `service`) support `--parent` on create/update.
+All setup entity commands follow the `BaseCommands` pattern (list / show / create / update / delete). Hierarchy-aware entities (`stakeholder-category`, `domain`) support `--parent` on create/update.
 
 | Command | Action |
 |---|---|
 | `stakeholder-category list` | List all |
 | `stakeholder-category show <id>` | Show single |
-| `stakeholder-category create` | Interactive create |
-| `stakeholder-category update <id>` | Interactive update |
+| `stakeholder-category create <name> <description>` | Create |
+| `stakeholder-category update <id> <name> <description>` | Update |
 | `stakeholder-category delete <id>` | Delete |
-| *(same pattern for `data-category`, `service`, `wave`, `document`)* | |
+| *(same pattern for `domain`, `reference-document`, `bandwidth`, `wave`)* | |
+
+**`domain`** supports `--parent <id>` (Domain REFINES hierarchy). Fields: `name`, `description`, `contact`.
+
+**`reference-document`** fields: `name`, `version`, `url`. No parent.
+
+**`bandwidth`** fields: `year`, `wave` (Wave ID), `scope` (Domain ID). No parent.
+
+**`wave`** fields: `year`, `sequenceNumber`, `implementationDate`. No parent.
 
 ### Operational Requirements
 
 | Command | Action |
 |---|---|
-| `requirement list` | List (supports `--baseline`, `--from-wave`, filter flags) |
-| `requirement show <id>` | Show latest version |
-| `requirement create` | Interactive create |
-| `requirement update <id>` | Interactive update (requires current version ID) |
-| `requirement patch <id>` | Partial update |
-| `requirement delete <id>` | Delete |
-| `requirement versions <id>` | List version history |
-| `requirement version <id> <num>` | Show specific version |
+| `requirement list` | List (supports `--baseline`, `--edition`, filter flags) |
+| `requirement show <itemId>` | Show latest version |
+| `requirement show <itemId> --baseline <id>` | Show in baseline context |
+| `requirement show <itemId> --edition <id>` | Show in edition context |
+| `requirement create <title>` | Create |
+| `requirement update <itemId> <expectedVersionId> <title>` | Full update (new version) |
+| `requirement patch <itemId> <expectedVersionId>` | Partial update (new version) |
+| `requirement delete <itemId>` | Delete all versions |
+| `requirement versions <itemId>` | List version history |
+| `requirement show-version <itemId> <versionNumber>` | Show specific version |
+
+**`requirement list` filter flags**: `--type ON|OR`, `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
+
+**`requirement create/update` options**: `--type`, `--drg`, `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--impacted-domains`, `--domain`, `--maturity`, `--dependencies`, `--nfrs`.
 
 ### Operational Changes
 
 | Command | Action |
 |---|---|
-| `change list` | List (supports `--baseline`, `--from-wave`, filter flags) |
-| `change show <id>` | Show latest version |
-| `change create` | Interactive create |
-| `change update <id>` | Interactive update |
-| `change patch <id>` | Partial update |
-| `change delete <id>` | Delete |
-| `change versions <id>` | List version history |
-| `change milestone-list <id>` | List milestones |
-| `change milestone-add <id>` | Add milestone |
-| `change milestone-update <id> <milestoneKey>` | Update milestone |
-| `change milestone-delete <id> <milestoneKey>` | Delete milestone |
+| `change list` | List (supports `--baseline`, `--edition`, filter flags) |
+| `change show <itemId>` | Show latest version |
+| `change show <itemId> --baseline <id>` | Show in baseline context |
+| `change show <itemId> --edition <id>` | Show in edition context |
+| `change create <title>` | Create |
+| `change update <itemId> <expectedVersionId> <title>` | Full update (new version) |
+| `change patch <itemId> <expectedVersionId>` | Partial update (new version) |
+| `change delete <itemId>` | Delete all versions |
+| `change versions <itemId>` | List version history |
+| `change show-version <itemId> <versionNumber>` | Show specific version |
+
+**`change list` filter flags**: `--visibility`, `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
+
+**`change create/update` options**: `--purpose`, `--visibility`, `--drg`, `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
 
 ### Management Entities
 
@@ -97,19 +114,49 @@ All setup entity commands follow the same pattern. Hierarchy-aware entities (`st
 | `import map --file <path> --drg <DRG> [--specific]` | Map raw JSON to structured JSON |
 | `import structured --file <path> [--specific]` | Import structured JSON into database |
 | `docx export --drg <DRG> --output <path>` | Export entities to `.docx` by DRG |
-| `edition export <id> --output <path>` | Export ODIP edition as AsciiDoc ZIP |
 
 ### Publication
 
 | Command | Action |
 |---|---|
-| `publication generate <id>` | Generate publication artefacts for an edition |
+| `publication antora --output <path> [--edition <id>]` | Generate Antora ZIP |
+| `publication pdf --output <path> [--edition <id>]` | Generate PDF |
+| `publication docx --output <path> [--edition <id>]` | Generate Word document |
 
 ---
 
-## 4. Interactive Modes
+## 4. Deleted Commands
 
-Create and update commands for complex entities (requirements, changes) run in interactive mode — they prompt for each field in sequence rather than requiring all values as flags. This is particularly useful for rich text fields and relationship arrays, which are impractical to pass as command-line arguments.
+The following command files were removed in the Edition 4 model update:
+
+| File | Reason |
+|---|---|
+| `data-category.js` | `DataCategory` entity removed from model |
+| `service.js` | `Service` entity removed from model |
+| `document.js` | `Document` renamed to `ReferenceDocument`; replaced by `reference-document.js` |
+
+---
+
+## 5. Base Command Patterns
+
+### BaseCommands (setup entities)
+
+`BaseCommands` in `base-commands.js` provides list / show / create / update / delete for flat or hierarchical setup entities. Configuration is passed via `fieldConfig`:
+
+```javascript
+{
+    fields: ['name', 'description'],   // API response fields to display (excluding id)
+    headers: ['ID', 'Name', ...],      // Table column headers (id always first)
+    colWidths: [10, 30, 50],           // cli-table3 column widths
+    createSignature: '<name> <desc>',  // Commander positional args for create
+    updateSignature: '<id> <name> <desc>',
+    hasParent: true                    // Adds --parent option to create/update
+}
+```
+
+### VersionedCommands (operational entities)
+
+`VersionedCommands` extends `BaseCommands` and adds: version history, show-version, baseline/edition context resolution, and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
 
 ---
 

@@ -66,7 +66,7 @@ components:
           type: string
           nullable: true
 
-    DataCategory:
+    Domain:
       type: object
       properties:
         id:
@@ -75,11 +75,14 @@ components:
           type: string
         description:
           type: string
+        contact:
+          type: string
+          nullable: true
         parentId:
           type: string
           nullable: true
 
-    DataCategoryRequest:
+    DomainRequest:
       type: object
       required: [name, description]
       properties:
@@ -87,36 +90,45 @@ components:
           type: string
         description:
           type: string
+        contact:
+          type: string
+          nullable: true
         parentId:
           type: string
           nullable: true
 
-    Service:
+    Bandwidth:
       type: object
       properties:
         id:
           type: string
-        name:
-          type: string
-        description:
-          type: string
-        parentId:
+        year:
+          type: integer
+        waveId:
           type: string
           nullable: true
+          description: "Optional wave reference — undefined means year-level scope"
+        scopeId:
+          type: string
+          nullable: true
+          description: "Optional domain reference — undefined means global scope"
 
-    ServiceRequest:
+    BandwidthRequest:
       type: object
-      required: [name, description]
+      required: [year]
       properties:
-        name:
-          type: string
-        description:
-          type: string
-        parentId:
+        year:
+          type: integer
+        waveId:
           type: string
           nullable: true
+          description: "Optional wave reference — undefined means year-level scope"
+        scopeId:
+          type: string
+          nullable: true
+          description: "Optional domain reference — undefined means global scope"
 
-    Document:
+    ReferenceDocument:
       type: object
       properties:
         id:
@@ -126,28 +138,20 @@ components:
         version:
           type: string
           nullable: true
-        description:
-          type: string
-          nullable: true
         url:
           type: string
-          nullable: true
 
-    DocumentRequest:
+    ReferenceDocumentRequest:
       type: object
-      required: [name]
+      required: [name, url]
       properties:
         name:
           type: string
         version:
           type: string
           nullable: true
-        description:
-          type: string
-          nullable: true
         url:
           type: string
-          nullable: true
 
     Wave:
       type: object
@@ -156,37 +160,52 @@ components:
           type: string
         year:
           type: integer
-        quarter:
+        sequenceNumber:
           type: integer
-          nullable: true
-        date:
+          description: "Sequential number within the year"
+        implementationDate:
           type: string
           format: date
           nullable: true
-        name:
-          type: string
-          nullable: true
-          description: "Wave name in format 'year.quarter' (e.g., '2025.1')"
 
     WaveRequest:
       type: object
-      required: [year]
+      required: [year, sequenceNumber]
       properties:
         year:
           type: integer
           minimum: 2024
           maximum: 2030
-        quarter:
+        sequenceNumber:
           type: integer
           minimum: 1
-          maximum: 4
-          nullable: true
-        date:
+        implementationDate:
           type: string
           format: date
           nullable: true
 
     # Operational Entity Schemas
+    TentativeRange:
+      type: object
+      description: "Year range for tentative implementation time [start, end] where start <= end"
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+        end:
+          type: integer
+
+    ORCost:
+      type: object
+      description: "Cost of an OR in the context of an OC"
+      required: [orId, cost]
+      properties:
+        orId:
+          type: string
+          description: "OR item ID"
+        cost:
+          type: integer
+
     OperationalRequirement:
       type: object
       properties:
@@ -217,6 +236,13 @@ components:
           type: string
         privateNotes:
           type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+          description: "Placeholder for attachments"
+        maturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
         path:
           type: array
           items:
@@ -228,36 +254,47 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
-        impactsStakeholderCategories:
+        # ON-only fields
+        domain:
+          $ref: '#/components/schemas/AnnotatedReference'
+          description: "Domain reference — ON only"
+        strategicDocuments:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'
-        impactsData:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-        impactsServices:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
+          description: "Annotated references to ReferenceDocuments — ON only"
+        tentative:
+          $ref: '#/components/schemas/TentativeRange'
+          description: "Tentative implementation time range — ON only"
+        # OR-only fields
         implementedONs:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
-          description: "ON-type requirements implemented by this OR (OR type only)"
-        dependsOnRequirements:
+          description: "ON-type requirements implemented by this OR — OR only"
+        dependencies:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
-          description: "Requirements this requirement depends on"
-        documentReferences:
+          description: "ORs that must be implemented before this OR — OR only"
+        impactedStakeholders:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'
+          description: "Impacted stakeholder categories — OR only"
+        impactedDomains:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedReference'
+          description: "Impacted domains — OR only"
+        nfrs:
+          type: string
+          nullable: true
+          description: "Non-functional requirements — OR only"
 
     OperationalRequirementRequest:
       type: object
-      required: [title, type, statement, rationale, flows]
+      required: [title, type, statement, rationale, maturity]
       properties:
         title:
           type: string
@@ -272,6 +309,12 @@ components:
           type: string
         privateNotes:
           type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+        maturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
         path:
           type: array
           items:
@@ -284,38 +327,49 @@ components:
           items:
             type: string
           default: []
-        impactsStakeholderCategories:
+        # ON-only fields
+        domainId:
+          type: string
+          nullable: true
+          description: "Domain item ID — ON only"
+        strategicDocuments:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'
           default: []
-        impactsData:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-          default: []
-        impactsServices:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-          default: []
+          description: "Annotated references to ReferenceDocument IDs — ON only"
+        tentative:
+          $ref: '#/components/schemas/TentativeRange'
+          description: "Tentative implementation time range — ON only"
+        # OR-only fields
         implementedONs:
           type: array
           items:
             type: string
           default: []
-          description: "ON-type requirement Item IDs (OR type only)"
-        dependsOnRequirements:
+          description: "ON-type requirement item IDs — OR only"
+        dependencies:
           type: array
           items:
             type: string
           default: []
-          description: "Requirement item IDs (follows latest version automatically)"
-        documentReferences:
+          description: "OR item IDs that must be implemented before this OR — OR only"
+        impactedStakeholders:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'
           default: []
+          description: "Impacted stakeholder category IDs — OR only"
+        impactedDomains:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedReference'
+          default: []
+          description: "Impacted domain IDs — OR only"
+        nfrs:
+          type: string
+          nullable: true
+          description: "Non-functional requirements — OR only"
 
     OperationalRequirementUpdateRequest:
       allOf:
@@ -345,6 +399,12 @@ components:
           type: string
         privateNotes:
           type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+        maturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
         path:
           type: array
           items:
@@ -356,76 +416,111 @@ components:
           type: array
           items:
             type: string
-        impactsStakeholderCategories:
+        domainId:
+          type: string
+          nullable: true
+        strategicDocuments:
           type: array
           items:
-            type: string
-        impactsData:
-          type: array
-          items:
-            type: string
-        impactsServices:
-          type: array
-          items:
-            type: string
+            $ref: '#/components/schemas/AnnotatedReference'
+        tentative:
+          $ref: '#/components/schemas/TentativeRange'
         implementedONs:
           type: array
           items:
             type: string
-        dependsOnRequirements:
+        dependencies:
           type: array
           items:
             type: string
-        documentReferences:
+        impactedStakeholders:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'
+        impactedDomains:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedReference'
+        nfrs:
+          type: string
+          nullable: true
 
     Milestone:
       type: object
       properties:
-        id:
-          type: string
         milestoneKey:
           type: string
           description: "Stable UUID identifier preserved across versions"
-        title:
+        name:
           type: string
         description:
           type: string
-        eventType:
-          type: string
-          enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, OPS_DEPLOYMENT, API_DECOMMISSIONING]
-        targetDate:
-          type: string
-          format: date
-        actualDate:
-          type: string
-          format: date
-          nullable: true
+        eventTypes:
+          type: array
+          items:
+            type: string
+            enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, OPS_DEPLOYMENT, API_DECOMMISSIONING]
         wave:
           $ref: '#/components/schemas/Wave'
 
     MilestoneRequest:
       type: object
-      required: [title, eventType]
+      required: [name, eventTypes, waveId]
       properties:
-        title:
+        name:
           type: string
         description:
           type: string
-        eventType:
-          type: string
-          enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, OPS_DEPLOYMENT, API_DECOMMISSIONING]
-        targetDate:
-          type: string
-          format: date
-        actualDate:
-          type: string
-          format: date
-          nullable: true
+        eventTypes:
+          type: array
+          items:
+            type: string
+            enum: [API_PUBLICATION, API_TEST_DEPLOYMENT, UI_TEST_DEPLOYMENT, OPS_DEPLOYMENT, API_DECOMMISSIONING]
         waveId:
           type: string
+
+    MilestoneUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/MilestoneRequest'
+        - type: object
+          required: [expectedVersionId]
+          properties:
+            expectedVersionId:
+              type: string
+              description: "Version ID of the parent OperationalChange (for optimistic locking)"
+
+    OperationalChangeVersionRef:
+      type: object
+      description: "Minimal OC version info returned after milestone mutations"
+      properties:
+        itemId:
+          type: string
+        versionId:
+          type: string
+        version:
+          type: integer
+
+    MilestoneCreateResponse:
+      type: object
+      properties:
+        milestone:
+          $ref: '#/components/schemas/Milestone'
+        operationalChange:
+          $ref: '#/components/schemas/OperationalChangeVersionRef'
+
+    MilestoneUpdateResponse:
+      type: object
+      properties:
+        milestone:
+          $ref: '#/components/schemas/Milestone'
+        operationalChange:
+          $ref: '#/components/schemas/OperationalChangeVersionRef'
+
+    MilestoneDeleteResponse:
+      type: object
+      properties:
+        operationalChange:
+          $ref: '#/components/schemas/OperationalChangeVersionRef'
 
     OperationalChange:
       type: object
@@ -456,6 +551,20 @@ components:
           type: string
         privateNotes:
           type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+          description: "Placeholder for attachments"
+        maturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
+        cost:
+          type: integer
+          nullable: true
+        orCosts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ORCost'
         path:
           type: array
           items:
@@ -466,23 +575,21 @@ components:
         drg:
           type: string
           enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
-        satisfiesRequirements:
+        implementedORs:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
-        supersedsRequirements:
+          description: "ORs implemented by this OC"
+        decommissionedORs:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
+          description: "ORs decommissioned by this OC"
         dependsOnChanges:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
-          description: "Changes this change depends on"
-        documentReferences:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
+          description: "OCs that must be deployed before this OC"
         milestones:
           type: array
           items:
@@ -490,7 +597,7 @@ components:
 
     OperationalChangeRequest:
       type: object
-      required: [title, purpose, visibility]
+      required: [title, purpose, visibility, maturity]
       properties:
         title:
           type: string
@@ -504,6 +611,20 @@ components:
           type: string
         privateNotes:
           type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+        maturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
+        cost:
+          type: integer
+          nullable: true
+        orCosts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ORCost'
+          default: []
         path:
           type: array
           items:
@@ -514,27 +635,24 @@ components:
         drg:
           type: string
           enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
-        satisfiesRequirements:
+        implementedORs:
           type: array
           items:
             type: string
           default: []
-        supersedsRequirements:
+          description: "OR item IDs implemented by this OC"
+        decommissionedORs:
           type: array
           items:
             type: string
           default: []
+          description: "OR item IDs decommissioned by this OC"
         dependsOnChanges:
           type: array
           items:
             type: string
           default: []
-          description: "Change item IDs (follows latest version automatically)"
-        documentReferences:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-          default: []
+          description: "OC item IDs that must be deployed before this OC"
         milestones:
           type: array
           items:
@@ -568,6 +686,19 @@ components:
           type: string
         privateNotes:
           type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+        maturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
+        cost:
+          type: integer
+          nullable: true
+        orCosts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ORCost'
         path:
           type: array
           items:
@@ -578,11 +709,11 @@ components:
         drg:
           type: string
           enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
-        satisfiesRequirements:
+        implementedORs:
           type: array
           items:
             type: string
-        supersedsRequirements:
+        decommissionedORs:
           type: array
           items:
             type: string
@@ -590,10 +721,6 @@ components:
           type: array
           items:
             type: string
-        documentReferences:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
         milestones:
           type: array
           items:

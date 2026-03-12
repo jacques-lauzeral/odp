@@ -89,6 +89,12 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Operational Change not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
   /operational-changes/{id}/milestones/{milestoneKey}:
     get:
@@ -127,7 +133,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Milestone'
         '404':
-          description: Milestone, Operational Change not found, or not captured in specified baseline
+          description: Milestone or Operational Change not found, or not captured in specified baseline
           content:
             application/json:
               schema:
@@ -213,10 +219,14 @@ paths:
               properties:
                 expectedVersionId:
                   type: string
-                  description: Version ID of the OperationalChange (for optimistic locking)
+                  description: "Version ID of the parent OperationalChange (for optimistic locking)"
       responses:
-        '204':
+        '200':
           description: Milestone deleted and new OC version generated
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/MilestoneDeleteResponse'
         '409':
           description: Version Conflict - expectedVersionId is outdated
           content:

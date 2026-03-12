@@ -1,12 +1,12 @@
 import { RefinableEntityStore } from './refinable-entity-store.js';
 
 /**
- * DataCategoryStore provides data access operations for Data entities.
+ * DomainStore provides data access operations for Domain nodes.
  * Extends RefinableEntityStore to inherit both CRUD operations and REFINES hierarchy management.
  */
-export class DataCategoryStore extends RefinableEntityStore {
+export class DomainStore extends RefinableEntityStore {
     constructor(driver) {
-        super(driver, 'DataCategory');
+        super(driver, 'Domain');
     }
 
     // Inherits from RefinableEntityStore:
@@ -23,6 +23,4 @@ export class DataCategoryStore extends RefinableEntityStore {
     // - update(id, data, transaction)
     // - delete(id, transaction)
     // - exists(id, transaction)
-
-    // Add any Data-specific methods here if needed in the future
 }

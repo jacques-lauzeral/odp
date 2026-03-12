@@ -26,7 +26,7 @@ export class OperationalChangeMilestoneStore extends BaseStore {
 
         try {
             for (const milestoneData of milestonesData) {
-                const { milestoneKey, title, description, eventTypes, waveId } = milestoneData;
+                const { milestoneKey, name, description, eventTypes, waveId } = milestoneData;
 
                 // Generate new milestoneKey if not present (for new milestones)
                 const finalMilestoneKey = milestoneKey || `ms_${uuidv4()}`;
@@ -41,12 +41,12 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                 const milestoneResult = await transaction.run(`
                     CREATE (milestone:OperationalChangeMilestone {
                         milestoneKey: $milestoneKey,
-                        title: $title,
+                        name: $name,
                         description: $description,
                         eventTypes: $eventTypes
                     })
                     RETURN id(milestone) as milestoneId
-                `, { milestoneKey: finalMilestoneKey, title, description, eventTypes });
+                `, { milestoneKey: finalMilestoneKey, name, description, eventTypes });
 
                 const milestoneId = this.normalizeId(milestoneResult.records[0].get('milestoneId'));
 
@@ -88,32 +88,30 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                 OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                 
                 RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                       milestone.title as title, milestone.description as description, 
+                       milestone.name as name, milestone.description as description, 
                        milestone.eventTypes as eventTypes,
-                       id(wave) as waveId, wave.year as waveYear, wave.quarter as waveQuarter, 
-                       wave.date as waveDate, wave.name as waveName
-                ORDER BY milestone.title
+                       id(wave) as waveId, wave.year as waveYear,
+                       wave.sequenceNumber as waveSequenceNumber,
+                       wave.implementationDate as waveImplementationDate
+                ORDER BY milestone.name
             `, { versionId });
 
             return result.records.map(record => {
                 const milestone = {
                     id: this.normalizeId(record.get('milestoneId')),
                     milestoneKey: record.get('milestoneKey'),
-                    title: record.get('title'),
+                    name: record.get('name'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
                 };
 
-                // Add wave information if milestone targets a wave (Reference structure)
                 const waveId = record.get('waveId');
                 if (waveId) {
                     milestone.wave = {
                         id: this.normalizeId(waveId),
-                        title: record.get('waveName'), // Use name as title for consistency
                         year: record.get('waveYear'),
-                        quarter: record.get('waveQuarter'),
-                        date: record.get('waveDate'),
-                        name: record.get('waveName')
+                        sequenceNumber: record.get('waveSequenceNumber'),
+                        implementationDate: record.get('waveImplementationDate')
                     };
                 }
 
@@ -138,16 +136,16 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                 
                 OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                 
-                RETURN milestone.milestoneKey as milestoneKey, milestone.title as title, 
+                RETURN milestone.milestoneKey as milestoneKey, milestone.name as name, 
                        milestone.description as description, milestone.eventTypes as eventTypes, 
                        id(wave) as waveId
-                ORDER BY milestone.title
+                ORDER BY milestone.name
             `, { versionId });
 
             return result.records.map(record => {
                 const milestoneData = {
-                    milestoneKey: record.get('milestoneKey'), // Preserve stable identifier
-                    title: record.get('title'),
+                    milestoneKey: record.get('milestoneKey'),
+                    name: record.get('name'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
                 };
@@ -188,9 +186,11 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                     OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                     
                     RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                           milestone.title as title, milestone.description as description, 
+                           milestone.name as name, milestone.description as description, 
                            milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate
+                           id(wave) as waveId, wave.year as waveYear,
+                           wave.sequenceNumber as waveSequenceNumber,
+                           wave.implementationDate as waveImplementationDate
                 `;
                 params = { itemId: normalizedItemId, milestoneKey };
             } else {
@@ -204,9 +204,11 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                     OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                     
                     RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                           milestone.title as title, milestone.description as description, 
+                           milestone.name as name, milestone.description as description, 
                            milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate
+                           id(wave) as waveId, wave.year as waveYear,
+                           wave.sequenceNumber as waveSequenceNumber,
+                           wave.implementationDate as waveImplementationDate
                 `;
                 params = { baselineId: numericBaselineId, itemId: normalizedItemId, milestoneKey };
             }
@@ -221,7 +223,7 @@ export class OperationalChangeMilestoneStore extends BaseStore {
             const milestone = {
                 id: this.normalizeId(record.get('milestoneId')),
                 milestoneKey: record.get('milestoneKey'),
-                title: record.get('title'),
+                name: record.get('name'),
                 description: record.get('description'),
                 eventTypes: record.get('eventTypes')
             };
@@ -230,15 +232,16 @@ export class OperationalChangeMilestoneStore extends BaseStore {
             if (waveId) {
                 milestone.wave = {
                     id: this.normalizeId(waveId),
-                    title: record.get('waveName'),
-                    date: record.get('waveDate')
+                    year: record.get('waveYear'),
+                    sequenceNumber: record.get('waveSequenceNumber'),
+                    implementationDate: record.get('waveImplementationDate')
                 };
             }
 
             // Apply wave filtering if specified
             if (fromWaveId !== null) {
-                if (!milestone.wave || !milestone.wave.date) {
-                    return null; // Milestone without wave doesn't pass filter
+                if (!milestone.wave || !milestone.wave.implementationDate) {
+                    return null;
                 }
 
                 const passesWaveFilter = await this._checkMilestoneWaveFilter(milestone, fromWaveId, transaction);
@@ -274,10 +277,12 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                     OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                     
                     RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                           milestone.title as title, milestone.description as description, 
+                           milestone.name as name, milestone.description as description, 
                            milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate
-                    ORDER BY milestone.title
+                           id(wave) as waveId, wave.year as waveYear,
+                           wave.sequenceNumber as waveSequenceNumber,
+                           wave.implementationDate as waveImplementationDate
+                    ORDER BY milestone.name
                 `;
                 params = { itemId: normalizedItemId };
             } else {
@@ -291,10 +296,12 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                     OPTIONAL MATCH (milestone)-[:TARGETS]->(wave:Wave)
                     
                     RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                           milestone.title as title, milestone.description as description, 
+                           milestone.name as name, milestone.description as description, 
                            milestone.eventTypes as eventTypes,
-                           id(wave) as waveId, wave.name as waveName, wave.date as waveDate
-                    ORDER BY milestone.title
+                           id(wave) as waveId, wave.year as waveYear,
+                           wave.sequenceNumber as waveSequenceNumber,
+                           wave.implementationDate as waveImplementationDate
+                    ORDER BY milestone.name
                 `;
                 params = { baselineId: numericBaselineId, itemId: normalizedItemId };
             }
@@ -304,7 +311,7 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                 const milestone = {
                     id: this.normalizeId(record.get('milestoneId')),
                     milestoneKey: record.get('milestoneKey'),
-                    title: record.get('title'),
+                    name: record.get('name'),
                     description: record.get('description'),
                     eventTypes: record.get('eventTypes')
                 };
@@ -313,8 +320,9 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                 if (waveId) {
                     milestone.wave = {
                         id: this.normalizeId(waveId),
-                        title: record.get('waveName'),
-                        date: record.get('waveDate')
+                        year: record.get('waveYear'),
+                        sequenceNumber: record.get('waveSequenceNumber'),
+                        implementationDate: record.get('waveImplementationDate')
                     };
                 }
 
@@ -325,8 +333,8 @@ export class OperationalChangeMilestoneStore extends BaseStore {
             if (fromWaveId !== null) {
                 const filteredMilestones = [];
                 for (const milestone of milestones) {
-                    if (!milestone.wave || !milestone.wave.date) {
-                        continue; // Milestones without waves don't pass filter
+                    if (!milestone.wave || !milestone.wave.implementationDate) {
+                        continue;
                     }
 
                     const passesWaveFilter = await this._checkMilestoneWaveFilter(milestone, fromWaveId, transaction);
@@ -365,10 +373,10 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                     MATCH (change)-[:LATEST_VERSION]->(version)
                     WHERE id(wave) = $waveId
                     RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                           milestone.title as title, milestone.description as description, 
+                           milestone.name as name, milestone.description as description, 
                            milestone.eventTypes as eventTypes,
                            id(change) as changeId, change.title as changeTitle
-                    ORDER BY change.title, milestone.title
+                    ORDER BY change.title, milestone.name
                 `;
                 params = { waveId: normalizedWaveId };
             } else {
@@ -381,10 +389,10 @@ export class OperationalChangeMilestoneStore extends BaseStore {
                     MATCH (version)-[:VERSION_OF]->(change:OperationalChange)
                     WHERE id(baseline) = $baselineId AND id(wave) = $waveId
                     RETURN id(milestone) as milestoneId, milestone.milestoneKey as milestoneKey,
-                           milestone.title as title, milestone.description as description, 
+                           milestone.name as name, milestone.description as description, 
                            milestone.eventTypes as eventTypes,
                            id(change) as changeId, change.title as changeTitle
-                    ORDER BY change.title, milestone.title
+                    ORDER BY change.title, milestone.name
                 `;
                 params = { baselineId: numericBaselineId, waveId: normalizedWaveId };
             }
@@ -393,7 +401,7 @@ export class OperationalChangeMilestoneStore extends BaseStore {
             const milestones = result.records.map(record => ({
                 id: this.normalizeId(record.get('milestoneId')),
                 milestoneKey: record.get('milestoneKey'),
-                title: record.get('title'),
+                name: record.get('name'),
                 description: record.get('description'),
                 eventTypes: record.get('eventTypes'),
                 change: {
@@ -450,15 +458,14 @@ export class OperationalChangeMilestoneStore extends BaseStore {
      * @returns {Promise<boolean>} True if milestone passes wave filter
      */
     async _checkMilestoneWaveFilter(milestone, fromWaveId, transaction) {
-        if (!milestone.wave || !milestone.wave.date) {
-            return false; // Milestones without waves don't pass filter
+        if (!milestone.wave || !milestone.wave.implementationDate) {
+            return false;
         }
 
         try {
-            // Get fromWave date for filtering
             const fromWaveResult = await transaction.run(`
                 MATCH (wave:Wave) WHERE id(wave) = $fromWaveId
-                RETURN wave.date as fromWaveDate
+                RETURN wave.implementationDate as fromWaveDate
             `, { fromWaveId: this.normalizeId(fromWaveId) });
 
             if (fromWaveResult.records.length === 0) {
@@ -466,7 +473,7 @@ export class OperationalChangeMilestoneStore extends BaseStore {
             }
 
             const fromWaveDate = fromWaveResult.records[0].get('fromWaveDate');
-            return milestone.wave.date >= fromWaveDate;
+            return milestone.wave.implementationDate >= fromWaveDate;
         } catch (error) {
             throw new StoreError(`Failed to check milestone wave filter: ${error.message}`, error);
         }
@@ -485,14 +492,14 @@ export class OperationalChangeMilestoneStore extends BaseStore {
             const result = await transaction.run(`
                 MATCH (targetWave:Wave) WHERE id(targetWave) = $targetWaveId
                 MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-                RETURN date(targetWave.date) >= date(fromWave.date) as passesFilter
+                RETURN date(targetWave.implementationDate) >= date(fromWave.implementationDate) as passesFilter
             `, {
                 targetWaveId: this.normalizeId(targetWaveId),
                 fromWaveId: this.normalizeId(fromWaveId)
             });
 
             if (result.records.length === 0) {
-                return false; // One of the waves not found
+                return false;
             }
 
             return result.records[0].get('passesFilter');

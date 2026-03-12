@@ -1,7 +1,7 @@
 // Messages
 
 import { OperationalRequirement, OperationalChange } from '../model/odp-elements.js';
-import { StakeholderCategory, DataCategory, Service, Document, Wave } from '../model/setup-elements.js';
+import { StakeholderCategory, Domain, Bandwidth, ReferenceDocument, Wave } from '../model/setup-elements.js';
 
 // Request Models
 export const OperationalRequirementRequests = {
@@ -10,12 +10,14 @@ export const OperationalRequirementRequests = {
         itemId: undefined,
         versionId: undefined,
         version: undefined,
+        code: undefined,
         createdAt: undefined,
         createdBy: undefined
     },
 
     update: {
         ...OperationalRequirement,
+        code: undefined,
         expectedVersionId: ''
     },
 
@@ -31,12 +33,14 @@ export const OperationalChangeRequests = {
         itemId: undefined,
         versionId: undefined,
         version: undefined,
+        code: undefined,
         createdAt: undefined,
         createdBy: undefined
     },
 
     update: {
         ...OperationalChange,
+        code: undefined,
         expectedVersionId: ''
     }
 };
@@ -58,15 +62,15 @@ export const StakeholderCategoryRequests = {
     }
 };
 
-export const DataCategoryRequests = {
+export const DomainRequests = {
     create: {
-        ...DataCategory,
+        ...Domain,
         id: undefined,
         parentId: null
     },
 
     update: {
-        ...DataCategory,
+        ...Domain,
         parentId: null
     },
 
@@ -75,31 +79,31 @@ export const DataCategoryRequests = {
     }
 };
 
-export const ServiceRequests = {
+export const BandwidthRequests = {
     create: {
-        ...Service,
-        id: undefined,
-        parentId: null
-    },
-
-    update: {
-        ...Service,
-        parentId: null
-    },
-
-    query: {
-        parentId: null
-    }
-};
-
-export const DocumentRequests = {
-    create: {
-        ...Document,
+        ...Bandwidth,
         id: undefined
     },
 
     update: {
-        ...Document
+        ...Bandwidth
+    },
+
+    query: {
+        year: null,
+        waveId: null,
+        scopeId: null
+    }
+};
+
+export const ReferenceDocumentRequests = {
+    create: {
+        ...ReferenceDocument,
+        id: undefined
+    },
+
+    update: {
+        ...ReferenceDocument
     },
 
     query: {
@@ -120,6 +124,6 @@ export const WaveRequests = {
 
     query: {
         year: null,
-        quarter: null
+        sequenceNumber: null
     }
 };

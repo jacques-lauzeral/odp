@@ -1,5 +1,19 @@
 // Setup Elements
 
+export const ReferenceDocument = {
+    id: '',
+    name: '',
+    version: '',  // optional
+    url: ''
+};
+
+export const Wave = {
+    id: '',
+    year: 0,
+    sequenceNumber: 0,
+    implementationDate: '' // optional
+};
+
 export const StakeholderCategory = {
     id: '',
     name: '',
@@ -7,32 +21,17 @@ export const StakeholderCategory = {
     parentId: null // string or null
 };
 
-export const DataCategory = {
+export const Domain = {
     id: '',
     name: '',
     description: '',
+    contact: '',  // optional
     parentId: null // string or null
 };
 
-export const Service = {
-    id: '',
-    name: '',
-    description: '',
-    parentId: null // string or null
-};
-
-export const Document = {
-    id: '',
-    name: '',
-    version: '',
-    description: '',
-    url: ''
-};
-
-export const Wave = {
+export const Bandwidth = {
     id: '',
     year: 0,
-    quarter: 0,
-    date: '',
-    name: '' // derived: year.quarter
+    waveId: null,   // optional - null means yearly total
+    scopeId: null   // optional - null means global scope
 };

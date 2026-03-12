@@ -4,8 +4,8 @@
  * External ID Format: {type}:{type-specific-format}
  *
  * Type-specific formats:
- * - data|service|stakeholder: {parent.externalId}/{name} (parent optional) - name as-is
- * - document: {name_normalized}
+ * - stakeholder|domain: {parent.externalId}/{name} (parent optional) - name as-is
+ * - refdoc: {name_normalized}
  * - wave: {name_normalized}
  * - on|or: {drg}/{parent.externalId}/{title_normalized} OR {drg}/{path_normalized}/{title_normalized}
  * - oc: {drg}/{title_normalized}
@@ -16,20 +16,20 @@ class ExternalIdBuilder {
     /**
      * Build external ID for an entity
      * @param {Object} object - Entity data
-     * @param {string} type - Entity type: 'data'|'service'|'stakeholder'|'document'|'wave'|'on'|'or'|'oc'
+     * @param {string} type - Entity type: 'stakeholder'|'domain'|'refdoc'|'wave'|'on'|'or'|'oc'
      * @returns {string} External ID
      * @throws {Error} If required fields are missing
      */
     static buildExternalId(object, type) {
         switch (type) {
-            case 'data':
-            case 'service':
             case 'stakeholder':
+            case 'domain':
                 return this._buildHierarchicalId(object, type);
 
-            case 'document':
-            case 'wave':
+            case 'refdoc':
                 return this._buildSimpleId(object, type);
+            case 'wave':
+                return this._buildWaveId(object, type);
 
             case 'on':
             case 'or':
@@ -44,7 +44,7 @@ class ExternalIdBuilder {
     }
 
     /**
-     * Build ID for hierarchical entities (data/service/stakeholder)
+     * Build ID for hierarchical entities (stakeholder/domain)
      * Format: {type}:{parent.externalId}/{name} or {type}:{name}
      * @private
      */
@@ -65,7 +65,7 @@ class ExternalIdBuilder {
     }
 
     /**
-     * Build ID for simple entities (document/wave)
+     * Build ID for simple entities (refdoc/wave)
      * Format: {type}:{name_normalized}
      * @private
      */
@@ -76,6 +76,21 @@ class ExternalIdBuilder {
 
         const normalized = this._normalize(object.name);
         return `${type}:${normalized}`;
+    }
+
+    /**
+     * Build ID for wave
+     * Format: {type}:{year}.{sequenceNumber}
+     * @private
+     */
+    static _buildWaveId(object, type) {
+        if (!object.year) {
+            throw new Error(`Missing required field 'year' for type '${type}'`);
+        }
+        if (!object.sequenceNumber) {
+            throw new Error(`Missing required field 'sequenceNumber' for type '${type}'`);
+        }
+        return `${type}:${object.year}.${object.sequenceNumber}`;
     }
 
     /**

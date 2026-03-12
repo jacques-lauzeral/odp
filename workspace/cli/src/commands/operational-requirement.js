@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-requirement.js - Updated for EntityReference with notes
+// workspace/cli/src/commands/operational-requirement.js
 import { VersionedCommands } from '../base-commands.js';
 import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '../../../shared/src/index.js';
 import Table from 'cli-table3';
@@ -23,19 +23,14 @@ class OperationalRequirementCommands extends VersionedCommands {
             .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
-            // OperationalRequirement-specific content filters
             .option('--type <type>', 'Filter by requirement type (ON or OR)')
             .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
             .option('--path <path>', 'Filter by path element')
-            .option('--data-category <ids>', 'Filter by data category IDs (comma-separated)')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
-            .option('--service <ids>', 'Filter by service IDs (comma-separated)')
-            .option('--document <ids>', 'Filter by document IDs (comma-separated)')
             .action(async (options) => {
                 try {
-                    // Validate DRG if provided
                     if (options.drg && !isDraftingGroupValid(options.drg)) {
                         console.error(`Invalid DRG value: ${options.drg}`);
                         console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
@@ -44,7 +39,6 @@ class OperationalRequirementCommands extends VersionedCommands {
 
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
-                    // Build content filtering query parameters
                     const filterParams = this.buildContentFilterParams(options);
                     const finalUrl = this.appendFilterParams(url, filterParams);
 
@@ -62,7 +56,6 @@ class OperationalRequirementCommands extends VersionedCommands {
 
                     const items = await response.json();
 
-                    // Build filter display summary
                     const filterDisplay = this.buildFilterDisplaySummary(options);
                     const fullContextDisplay = contextDisplay + filterDisplay;
 
@@ -100,9 +93,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * Build content filter query parameters for OperationalRequirements
-     */
     buildContentFilterParams(options) {
         const params = [];
 
@@ -111,17 +101,11 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
         if (options.path) params.push(`path=${encodeURIComponent(options.path)}`);
-        if (options.dataCategory) params.push(`dataCategory=${encodeURIComponent(options.dataCategory)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
-        if (options.service) params.push(`service=${encodeURIComponent(options.service)}`);
-        if (options.document) params.push(`document=${encodeURIComponent(options.document)}`);
 
         return params;
     }
 
-    /**
-     * Append filter parameters to URL
-     */
     appendFilterParams(url, filterParams) {
         if (filterParams.length === 0) return url;
 
@@ -129,9 +113,6 @@ class OperationalRequirementCommands extends VersionedCommands {
         return url + separator + filterParams.join('&');
     }
 
-    /**
-     * Build filter display summary for user feedback
-     */
     buildFilterDisplaySummary(options) {
         const filters = [];
 
@@ -140,17 +121,13 @@ class OperationalRequirementCommands extends VersionedCommands {
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
         if (options.path) filters.push(`path="${options.path}"`);
-        if (options.dataCategory) filters.push(`data-categories=[${options.dataCategory}]`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
-        if (options.service) filters.push(`services=[${options.service}]`);
-        if (options.document) filters.push(`documents=[${options.document}]`);
 
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
 
     /**
      * Override displayItemDetails for operational requirements
-     * UPDATED: Display notes for IMPACTS and documentReferences
      */
     displayItemDetails(item) {
         super.displayItemDetails(item);
@@ -158,16 +135,25 @@ class OperationalRequirementCommands extends VersionedCommands {
         console.log(`Type: ${item.type}`);
         console.log(`Code: ${item.code || 'Not set'}`);
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
+        console.log(`Maturity: ${item.maturity || 'Not set'}`);
         console.log(`Statement: ${item.statement}`);
         console.log(`Rationale: ${item.rationale}`);
         console.log(`Flows: ${item.flows}`);
+        console.log(`NFRs: ${item.nfrs || 'None'}`);
         console.log(`Private Notes: ${item.privateNotes || 'None'}`);
+
+        if (item.tentative) {
+            console.log(`Tentative: ${item.tentative.start} – ${item.tentative.end}`);
+        }
 
         if (item.path && item.path.length > 0) {
             console.log(`Path: ${item.path.join(' > ')}`);
         }
 
-        // Display relationships
+        if (item.domain) {
+            console.log(`\nDomain: ${item.domain.name} [ID: ${item.domain.id}]`);
+        }
+
         if (item.refinesParents && item.refinesParents.length > 0) {
             console.log(`\nRefines:`);
             item.refinesParents.forEach(parent => {
@@ -175,7 +161,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
         }
 
-        // Display implementedONs relationships
         if (item.implementedONs && item.implementedONs.length > 0) {
             console.log(`\nImplemented ONs:`);
             item.implementedONs.forEach(on => {
@@ -183,53 +168,36 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
         }
 
-        // UPDATED: Display stakeholder categories with notes
-        if (item.impactsStakeholderCategories && item.impactsStakeholderCategories.length > 0) {
-            console.log(`\nImpacts Stakeholder Categories:`);
-            item.impactsStakeholderCategories.forEach(cat => {
-                const note = cat.note ? ` - Note: "${cat.note}"` : '';
-                console.log(`  - ${cat.title} [ID: ${cat.id}]${note}`);
+        if (item.impactedStakeholders && item.impactedStakeholders.length > 0) {
+            console.log(`\nImpacted Stakeholders:`);
+            item.impactedStakeholders.forEach(cat => {
+                console.log(`  - ${cat.title} [ID: ${cat.id}]`);
             });
         }
 
-        // UPDATED: Display data categories with notes
-        if (item.impactsData && item.impactsData.length > 0) {
-            console.log(`\nImpacts Data:`);
-            item.impactsData.forEach(data => {
-                const note = data.note ? ` - Note: "${data.note}"` : '';
-                console.log(`  - ${data.title} [ID: ${data.id}]${note}`);
+        if (item.impactedDomains && item.impactedDomains.length > 0) {
+            console.log(`\nImpacted Domains:`);
+            item.impactedDomains.forEach(domain => {
+                console.log(`  - ${domain.name} [ID: ${domain.id}]`);
             });
         }
 
-        // UPDATED: Display services with notes
-        if (item.impactsServices && item.impactsServices.length > 0) {
-            console.log(`\nImpacts Services:`);
-            item.impactsServices.forEach(service => {
-                const note = service.note ? ` - Note: "${service.note}"` : '';
-                console.log(`  - ${service.title} [ID: ${service.id}]${note}`);
+        if (item.dependencies && item.dependencies.length > 0) {
+            console.log(`\nDependencies:`);
+            item.dependencies.forEach(dep => {
+                console.log(`  - ${dep.code} [ID: ${dep.id}] ${dep.title}`);
             });
         }
 
-        // UPDATED: Display document references with EntityReference format
-        if (item.documentReferences && item.documentReferences.length > 0) {
-            console.log(`\nReferences Documents:`);
-            item.documentReferences.forEach(ref => {
+        if (item.strategicDocuments && item.strategicDocuments.length > 0) {
+            console.log(`\nStrategic Documents:`);
+            item.strategicDocuments.forEach(ref => {
                 const note = ref.note ? ` - Note: "${ref.note}"` : '';
                 console.log(`  - ${ref.title} [ID: ${ref.id}]${note}`);
             });
         }
-
-        if (item.dependsOnRequirements && item.dependsOnRequirements.length > 0) {
-            console.log(`\nDepends On Requirements:`);
-            item.dependsOnRequirements.forEach(dep => {
-                console.log(`  - ${dep.code} [ID: ${dep.id}] ${dep.title}`);
-            });
-        }
     }
 
-    /**
-     * Helper method to validate and prompt for DRG
-     */
     validateDRG(drg) {
         if (!drg) return null;
 
@@ -242,36 +210,31 @@ class OperationalRequirementCommands extends VersionedCommands {
         return drg;
     }
 
-    /**
-     * Helper method to parse implementedONs input
-     */
-    parseImplementedONs(input) {
+    parseIds(input) {
         if (!input) return [];
 
-        // Handle both comma-separated and space-separated input
         const ids = Array.isArray(input) ? input : input.split(/[,\s]+/).filter(id => id.trim());
         return ids.map(id => id.trim());
     }
 
-    /**
-     * UPDATED: create command now sends EntityReference format for IMPACTS
-     * Note: CLI doesn't support adding notes - web UI required for that
-     */
     _addCreateCommand(itemCommand) {
         itemCommand
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
-            .option('--type <type>', `ON | OR (default)`)
+            .option('--type <type>', `ON | OR (default: OR)`)
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--flows <flows>', `Flows`)
+            .option('--nfrs <nfrs>', `Non-functional requirements`)
             .option('--private-notes <notes>', `Private notes`)
+            .option('--maturity <maturity>', `Maturity level (DRAFT, ADVANCED, MATURE)`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
+            .option('--domain <domain-id>', `Domain ID (mandatory for root ONs)`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
-            .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
-            .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
-            .option('--impacts-services <service-ids...>', `Impacted service IDs`)
+            .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
+            .option('--impacted-domains <ids>', `Impacted domain IDs (comma-separated)`)
+            .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .action(async (title, options) => {
                 try {
                     const data = {
@@ -281,16 +244,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                         statement: options.statement || '',
                         rationale: options.rationale || '',
                         flows: options.flows || '',
+                        nfrs: options.nfrs || '',
                         privateNotes: options.privateNotes || '',
+                        maturity: options.maturity || 'DRAFT',
                         path: [],
                         refinesParents: options.parent ? [options.parent] : [],
-                        implementedONs: this.parseImplementedONs(options.implementedOns),
-                        // UPDATED: Send EntityReference format (CLI doesn't add notes)
-                        impactsData: (options.impactsData || []).map(id => ({ id, note: '' })),
-                        impactsStakeholderCategories: (options.impactsStakeholders || []).map(id => ({ id, note: '' })),
-                        impactsServices: (options.impactsServices || []).map(id => ({ id, note: '' })),
-                        documentReferences: [],
-                        dependsOnRequirements: []
+                        domainId: options.domain || null,
+                        implementedONs: this.parseIds(options.implementedOns),
+                        impactedStakeholders: this.parseIds(options.impactedStakeholders),
+                        impactedDomains: this.parseIds(options.impactedDomains),
+                        dependencies: this.parseIds(options.dependencies)
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
@@ -317,9 +280,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * UPDATED: update command now sends EntityReference format for IMPACTS
-     */
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId> <title>')
@@ -329,12 +289,15 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--flows <flows>', `Flows`)
+            .option('--nfrs <nfrs>', `Non-functional requirements`)
             .option('--private-notes <notes>', `Private notes`)
+            .option('--maturity <maturity>', `Maturity level (DRAFT, ADVANCED, MATURE)`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
+            .option('--domain <domain-id>', `Domain ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
-            .option('--impacts-data <data-category-ids...>', `Impacted data category IDs`)
-            .option('--impacts-stakeholders <stakeholder-category-ids...>', `Impacted stakeholder category IDs`)
-            .option('--impacts-services <service-ids...>', `Impacted service IDs`)
+            .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
+            .option('--impacted-domains <ids>', `Impacted domain IDs (comma-separated)`)
+            .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
                     const data = {
@@ -345,16 +308,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                         statement: options.statement || '',
                         rationale: options.rationale || '',
                         flows: options.flows || '',
+                        nfrs: options.nfrs || '',
                         privateNotes: options.privateNotes || '',
+                        maturity: options.maturity || 'DRAFT',
                         path: [],
                         refinesParents: options.parent ? [options.parent] : [],
-                        implementedONs: this.parseImplementedONs(options.implementedOns),
-                        // UPDATED: Send EntityReference format (CLI doesn't add notes)
-                        impactsData: (options.impactsData || []).map(id => ({ id, note: '' })),
-                        impactsStakeholderCategories: (options.impactsStakeholders || []).map(id => ({ id, note: '' })),
-                        impactsServices: (options.impactsServices || []).map(id => ({ id, note: '' })),
-                        documentReferences: [],
-                        dependsOnRequirements: []
+                        domainId: options.domain || null,
+                        implementedONs: this.parseIds(options.implementedOns),
+                        impactedStakeholders: this.parseIds(options.impactedStakeholders),
+                        impactedDomains: this.parseIds(options.impactedDomains),
+                        dependencies: this.parseIds(options.dependencies)
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
@@ -393,10 +356,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * UPDATED: patch command - CLI doesn't support patching notes
-     * If user provides IMPACTS IDs, they're sent as EntityReference with empty notes
-     */
     _addPatchCommand(itemCommand) {
         itemCommand
             .command('patch <itemId> <expectedVersionId>')
@@ -407,15 +366,17 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--statement <statement>', 'New statement')
             .option('--rationale <rationale>', 'New rationale')
             .option('--flows <flows>', 'New flows')
+            .option('--nfrs <nfrs>', 'Non-functional requirements')
             .option('--private-notes <notes>', 'New private notes')
+            .option('--maturity <maturity>', 'Maturity level (DRAFT, ADVANCED, MATURE)')
             .option('--parent <requirement-id>', 'Parent requirement ID')
+            .option('--domain <domain-id>', 'Domain ID')
             .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
-            .option('--impacts-data <data-category-ids...>', 'Impacted data category IDs')
-            .option('--impacts-stakeholders <stakeholder-category-ids...>', 'Impacted stakeholder category IDs')
-            .option('--impacts-services <service-ids...>', 'Impacted service IDs')
+            .option('--impacted-stakeholders <ids>', 'Impacted stakeholder category IDs (comma-separated)')
+            .option('--impacted-domains <ids>', 'Impacted domain IDs (comma-separated)')
+            .option('--dependencies <ids>', 'Dependency OR IDs (comma-separated)')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
-                    // Build patch payload with only provided fields
                     const data = { expectedVersionId };
 
                     if (options.title) data.title = options.title;
@@ -424,14 +385,15 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.statement) data.statement = options.statement;
                     if (options.rationale) data.rationale = options.rationale;
                     if (options.flows) data.flows = options.flows;
+                    if (options.nfrs) data.nfrs = options.nfrs;
                     if (options.privateNotes) data.privateNotes = options.privateNotes;
+                    if (options.maturity) data.maturity = options.maturity;
                     if (options.parent) data.refinesParents = [options.parent];
-                    if (options.implementedOns !== undefined) data.implementedONs = this.parseImplementedONs(options.implementedOns);
-
-                    // UPDATED: Send EntityReference format when provided
-                    if (options.impactsData) data.impactsData = options.impactsData.map(id => ({ id, note: '' }));
-                    if (options.impactsStakeholders) data.impactsStakeholderCategories = options.impactsStakeholders.map(id => ({ id, note: '' }));
-                    if (options.impactsServices) data.impactsServices = options.impactsServices.map(id => ({ id, note: '' }));
+                    if (options.domain) data.domainId = options.domain;
+                    if (options.implementedOns !== undefined) data.implementedONs = this.parseIds(options.implementedOns);
+                    if (options.impactedStakeholders) data.impactedStakeholders = this.parseIds(options.impactedStakeholders);
+                    if (options.impactedDomains) data.impactedDomains = this.parseIds(options.impactedDomains);
+                    if (options.dependencies) data.dependencies = this.parseIds(options.dependencies);
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PATCH',

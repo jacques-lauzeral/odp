@@ -1,12 +1,15 @@
 import { BaseStore } from './base-store.js';
 
 /**
- * DocumentStore provides data access operations for Documents.
+ * BandwidthStore provides data access operations for Bandwidth nodes.
  * Extends BaseStore to inherit CRUD operations.
+ *
+ * Fields: year (integer), waveId (optional), scopeId (optional Domain ID).
+ * The (year, waveId, scopeId) tuple is unique — enforced at the service layer.
  */
-export class DocumentStore extends BaseStore {
+export class BandwidthStore extends BaseStore {
     constructor(driver) {
-        super(driver, 'Document');
+        super(driver, 'Bandwidth');
     }
 
     // Inherits from BaseStore:
@@ -16,6 +19,4 @@ export class DocumentStore extends BaseStore {
     // - update(id, data, transaction)
     // - delete(id, transaction)
     // - exists(id, transaction)
-
-    // Add any Document-specific methods here if needed in the future
 }

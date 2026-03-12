@@ -44,7 +44,7 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  * - "Implemented ONs:" → implementedONs array (OR-type only)
  *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
  *   - Relative references resolved using current entity's organizational path
- * - "References:" / "Reference:" → documentReferences array
+ * - "References:" / "Reference:" → strategicDocuments (ONs) / privateNotes (ORs)
  *   - Format: "- document:external_id" or "- document:external_id: note text"
  *
  * Document References (Default Behavior):
@@ -90,9 +90,6 @@ class NM_B2B_Mapper extends Mapper {
     map(rawData) {
         const context = this._initContext();
 
-        // Add reference documents
-        this._addReferenceDocuments(context);
-
         // Process all top-level sections
         for (const section of rawData.sections || []) {
             this._mapSection(section, context);
@@ -109,35 +106,10 @@ class NM_B2B_Mapper extends Mapper {
         return {
             onMap: new Map(),
             orMap: new Map(),
-            documentMap: new Map(),
             stakeholderCategoryMap: new Map(),
-            dataCategoryMap: new Map(),
-            serviceMap: new Map(),
             waveMap: new Map(),
             changeMap: new Map()
         };
-    }
-
-    /**
-     * Add reference documents to context
-     * @private
-     */
-    _addReferenceDocuments(context) {
-        const conopsDocument = {
-            name: "NM B2B ConOPS",
-            description: "NM B2B Concept of Operations",
-            version: "2.1",
-            url: "https://www.eurocontrol.int/publication/network-manager-b2b-concept-operations"
-        };
-        conopsDocument.externalId = ExternalIdBuilder.buildExternalId(conopsDocument, 'document');
-        context.documentMap.set(conopsDocument.externalId, conopsDocument);
-
-        const cirDocument = {
-            name: "Commission Implementing Regulation (EU) 2021/116",
-            url: "https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32021R0116"
-        };
-        cirDocument.externalId = ExternalIdBuilder.buildExternalId(cirDocument, 'document');
-        context.documentMap.set(cirDocument.externalId, cirDocument);
     }
 
     /**
@@ -203,9 +175,13 @@ class NM_B2B_Mapper extends Mapper {
             req.externalId = ExternalIdBuilder.buildExternalId(req, type.toLowerCase());
 
             // Add implicit ConOPS document reference for ONs if not explicitly provided
-            if (type === 'ON' && (!req.documentReferences || req.documentReferences.length === 0)) {
-                req.documentReferences = [{
-                    documentExternalId: context.documentMap.keys().next().value, // Get first document (ConOPS)
+            if (type === 'ON' && (!req.strategicDocuments || req.strategicDocuments.length === 0)) {
+                const conopsExternalId = ExternalIdBuilder.buildExternalId({
+                    name: "NM B2B ConOPS",
+                    version: "2.1"
+                }, 'refdoc');
+                req.strategicDocuments = [{
+                    documentExternalId: conopsExternalId,
                     note: `Section: '${this._getOrganizationalPathString(subsection.path)}'`
                 }];
             }
@@ -314,7 +290,7 @@ class NM_B2B_Mapper extends Mapper {
         let rationale = '';
         let flows = '';
         let implementedONs = [];
-        let documentReferences = [];
+        let parsedDocRefs = [];
         let currentSection = null;
 
         for (const p of paragraphs) {
@@ -370,7 +346,7 @@ class NM_B2B_Mapper extends Mapper {
                     if (line.startsWith('* ')) {
                         const reference = this._parseDocumentReference(line.substring(2).trim());
                         if (reference) {
-                            documentReferences.push(reference);
+                            parsedDocRefs.push(reference);
                         }
                     }
                 }
@@ -384,9 +360,17 @@ class NM_B2B_Mapper extends Mapper {
             implementedONs: type === 'OR' ? implementedONs : []
         };
 
-        // Add documentReferences only if explicitly found
-        if (documentReferences.length > 0) {
-            result.documentReferences = documentReferences;
+        // ONs: explicit refs become strategicDocuments
+        // ORs: explicit refs go to privateNotes
+        if (parsedDocRefs.length > 0) {
+            if (type === 'ON') {
+                result.strategicDocuments = parsedDocRefs;
+            } else {
+                const refsText = parsedDocRefs
+                    .map(r => r.note ? `${r.documentExternalId}: ${r.note}` : r.documentExternalId)
+                    .join('\n');
+                result.privateNotes = this.converter.asciidocToDelta(`**References:**\n${refsText}`);
+            }
         }
 
         return result;
@@ -454,7 +438,6 @@ class NM_B2B_Mapper extends Mapper {
     _buildOutput(context) {
         // Validate references
         this._validateImplementedONs(context);
-        this._validateDocumentReferences(context);
 
         // Helper to clean entity by removing null/empty fields
         const cleanEntity = (entity) => {
@@ -474,10 +457,8 @@ class NM_B2B_Mapper extends Mapper {
         console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}, OCs: ${context.changeMap.size}`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: cleanArray(Array.from(context.waveMap.values())),
             requirements: cleanArray(Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()))),
             changes: cleanArray(Array.from(context.changeMap.values()))
@@ -508,31 +489,6 @@ class NM_B2B_Mapper extends Mapper {
         console.log(`Implemented ONs validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
     }
 
-    /**
-     * Validate that all document references point to existing documents
-     * @private
-     */
-    _validateDocumentReferences(context) {
-        let totalReferences = 0;
-        let unresolvedReferences = 0;
-
-        const allRequirements = Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()));
-
-        for (const req of allRequirements) {
-            if (req.documentReferences && req.documentReferences.length > 0) {
-                totalReferences += req.documentReferences.length;
-
-                for (const docRef of req.documentReferences) {
-                    if (!context.documentMap.has(docRef.documentExternalId)) {
-                        unresolvedReferences++;
-                        console.warn(`WARNING: ${req.type} "${req.externalId}" references non-existent document: "${docRef.documentExternalId}"`);
-                    }
-                }
-            }
-        }
-
-        console.log(`Document references validation: ${totalReferences - unresolvedReferences}/${totalReferences} resolved (${unresolvedReferences} unresolved)`);
-    }
 }
 
 export default NM_B2B_Mapper;

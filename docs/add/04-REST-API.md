@@ -12,7 +12,7 @@ Two reusable base routers cover all entity types, plus hand-written routers for 
 
 ### 2.1 SimpleItemRouter
 
-Used by all setup entity routes (`stakeholder-category.js`, `data-category.js`, `service.js`, `wave.js`, `document.js`). Wires standard CRUD to the corresponding `SimpleItemService` / `TreeItemService` methods:
+Used by all setup entity routes (`stakeholder-category.js`, `domain.js`, `reference-reference-document.js`, `bandwidth.js`, `wave.js`). Wires standard CRUD to the corresponding `SimpleItemService` / `TreeItemService` methods:
 
 ```
 GET    /           → service.listItems(userId)
@@ -90,10 +90,11 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 |---|---|
 | `openapi.yml` | Entry point, aggregates all modules |
 | `openapi-base.yml` | Shared schemas (models, enums, common parameters) |
+| `openapi-setup.yml` | Setup entities (stakeholder categories, domains, reference documents, bandwidths, waves) |
 | `openapi-operational.yml` | Operational requirements and changes |
+| `openapi-operational-milestones.yml` | Milestone sub-resource endpoints |
 | `openapi-baseline.yml` | Baselines |
 | `openapi-odp.yml` | ODIP editions |
-| `openapi-setup.yml` | Setup entities |
 | `openapi-import.yml` | Import endpoints |
 | `openapi-docx.yml` | DOCX export endpoint |
 | `openapi-publication.yml` | Publication endpoint |

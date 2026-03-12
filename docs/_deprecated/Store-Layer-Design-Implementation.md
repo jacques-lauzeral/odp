@@ -376,39 +376,40 @@ async _validateMilestoneWaves(milestones, transaction) {
 ## Store Initialization Pattern
 
 ### Store Factory
+
 ```javascript
 // Store instances (initialized once)
 let storeInstances = {};
 
 export async function initializeStores() {
-  await initializeConnection();
-  
-  storeInstances = {
-    stakeholderCategory: new StakeholderCategoryStore(driver),
-    dataCategory: new DataCategoryStore(driver),
-    service: new ServiceStore(driver),
-    wave: new WaveStore(driver),
-    document: new DocumentStore(driver),
-    operationalRequirement: new OperationalRequirementStore(driver),
-    operationalChange: new OperationalChangeStore(driver),
-    baseline: new BaselineStore(driver),
-    odpEdition: new ODPEditionStore(driver)
-  };
+    await initializeConnection();
+
+    storeInstances = {
+        stakeholderCategory: new StakeholderCategoryStore(driver),
+        dataCategory: new DataCategoryStore(driver),
+        service: new DomainStore(driver),
+        wave: new WaveStore(driver),
+        document: new ReferenceDocumentStore(driver),
+        operationalRequirement: new OperationalRequirementStore(driver),
+        operationalChange: new OperationalChangeStore(driver),
+        baseline: new BaselineStore(driver),
+        odpEdition: new ODPEditionStore(driver)
+    };
 }
 
 // Store accessor functions
 export function stakeholderCategoryStore() {
-  if (!storeInstances.stakeholderCategory) {
-    throw new Error('Stores not initialized - call initializeStores() first');
-  }
-  return storeInstances.stakeholderCategory;
+    if (!storeInstances.stakeholderCategory) {
+        throw new Error('Stores not initialized - call initializeStores() first');
+    }
+    return storeInstances.stakeholderCategory;
 }
 
 export function documentStore() {
-  if (!storeInstances.document) {
-    throw new Error('Stores not initialized - call initializeStores() first');
-  }
-  return storeInstances.document;
+    if (!storeInstances.document) {
+        throw new Error('Stores not initialized - call initializeStores() first');
+    }
+    return storeInstances.document;
 }
 
 // ... similar accessor functions for all stores
@@ -582,7 +583,7 @@ export async function createIndexes(driver) {
 
 ### Store Unit Tests
 ```javascript
-describe('DocumentStore', () => {
+describe('ReferenceDocumentStore', () => {
     let store;
     let transaction;
 

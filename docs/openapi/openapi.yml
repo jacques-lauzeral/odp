@@ -25,20 +25,20 @@ paths:
   /stakeholder-categories/{id}:
     $ref: 'openapi-setup.yml#/paths/~1stakeholder-categories~1{id}'
 
-  /data-categories:
-    $ref: 'openapi-setup.yml#/paths/~1data-categories'
-  /data-categories/{id}:
-    $ref: 'openapi-setup.yml#/paths/~1data-categories~1{id}'
+  /domains:
+    $ref: 'openapi-setup.yml#/paths/~1domains'
+  /domains/{id}:
+    $ref: 'openapi-setup.yml#/paths/~1domains~1{id}'
 
-  /services:
-    $ref: 'openapi-setup.yml#/paths/~1services'
-  /services/{id}:
-    $ref: 'openapi-setup.yml#/paths/~1services~1{id}'
+  /reference-documents:
+    $ref: 'openapi-setup.yml#/paths/~1reference-documents'
+  /reference-documents/{id}:
+    $ref: 'openapi-setup.yml#/paths/~1reference-documents~1{id}'
 
-  /regulatory-aspects:
-    $ref: 'openapi-setup.yml#/paths/~1regulatory-aspects'
-  /regulatory-aspects/{id}:
-    $ref: 'openapi-setup.yml#/paths/~1regulatory-aspects~1{id}'
+  /bandwidths:
+    $ref: 'openapi-setup.yml#/paths/~1bandwidths'
+  /bandwidths/{id}:
+    $ref: 'openapi-setup.yml#/paths/~1bandwidths~1{id}'
 
   /waves:
     $ref: 'openapi-setup.yml#/paths/~1waves'
@@ -46,10 +46,16 @@ paths:
     $ref: 'openapi-setup.yml#/paths/~1waves~1{id}'
 
   # Import endpoints
-  /import/setup:
-    $ref: 'openapi-import.yml#/paths/~1import~1setup'
-  /import/requirements:
-    $ref: 'openapi-import.yml#/paths/~1import~1requirements'
+  /import/extract/word:
+    $ref: 'openapi-import.yml#/paths/~1import~1extract~1word'
+  /import/extract/word-hierarchy:
+    $ref: 'openapi-import.yml#/paths/~1import~1extract~1word-hierarchy'
+  /import/extract/excel:
+    $ref: 'openapi-import.yml#/paths/~1import~1extract~1excel'
+  /import/map/{drg}:
+    $ref: 'openapi-import.yml#/paths/~1import~1map~1{drg}'
+  /import/structured:
+    $ref: 'openapi-import.yml#/paths/~1import~1structured'
 
   # Operational entity endpoints
   /operational-requirements:
@@ -73,14 +79,24 @@ paths:
   # Milestone endpoints
   /operational-changes/{id}/milestones:
     $ref: 'openapi-operational-milestones.yml#/paths/~1operational-changes~1{id}~1milestones'
-  /operational-changes/{id}/milestones/{milestoneId}:
-    $ref: 'openapi-operational-milestones.yml#/paths/~1operational-changes~1{id}~1milestones~1{milestoneId}'
+  /operational-changes/{id}/milestones/{milestoneKey}:
+    $ref: 'openapi-operational-milestones.yml#/paths/~1operational-changes~1{id}~1milestones~1{milestoneKey}'
 
   # Baseline management endpoints
   /baselines:
     $ref: 'openapi-baseline.yml#/paths/~1baselines'
   /baselines/{id}:
     $ref: 'openapi-baseline.yml#/paths/~1baselines~1{id}'
+
+  # ODP Edition endpoints
+  /odp-editions:
+    $ref: 'openapi-odp.yml#/paths/~1odp-editions'
+  /odp-editions/{id}:
+    $ref: 'openapi-odp.yml#/paths/~1odp-editions~1{id}'
+  /odp-editions/{id}/export:
+    $ref: 'openapi-odp.yml#/paths/~1odp-editions~1{id}~1export'
+  /odp-editions/export:
+    $ref: 'openapi-odp.yml#/paths/~1odp-editions~1export'
 
   # Publication endpoints
   /publications/antora:
@@ -93,14 +109,14 @@ paths:
 tags:
   - name: Stakeholder Categories
     description: Stakeholder category management
-  - name: Data Categories
-    description: Data category management
-  - name: Services
-    description: Services management
-  - name: Regulatory Aspects
-    description: Regulatory aspect management
+  - name: Domains
+    description: Business domain management
+  - name: Reference Documents
+    description: Strategic reference document management
+  - name: Bandwidths
+    description: Per-domain yearly effort management
   - name: Waves
-    description: Waves management for deployment timelines
+    description: Wave management for deployment timelines
   - name: Import
     description: Bulk import operations for setup and operational data
   - name: Operational Requirements
@@ -111,5 +127,7 @@ tags:
     description: Milestone management within operational changes
   - name: Baselines
     description: Baseline management for deployment planning
+  - name: ODP
+    description: ODP Edition management
   - name: Publications
     description: Edition publication operations for generating ODIP documents

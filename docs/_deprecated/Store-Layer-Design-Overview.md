@@ -37,9 +37,9 @@ BaseStore (CRUD operations + normalizeId)
 â”œâ”€â”€ RefinableEntityStore (+ REFINES hierarchy)
 â”‚   â”œâ”€â”€ StakeholderCategoryStore
 â”‚   â”œâ”€â”€ DataCategoryStore
-â”‚   â””â”€â”€ ServiceStore
+â”‚   â””â”€â”€ DomainStore
 â”œâ”€â”€ WaveStore (simple entity)
-â”œâ”€â”€ DocumentStore (simple entity)
+â”œâ”€â”€ ReferenceDocumentStore (simple entity)
 â”œâ”€â”€ BaselineStore (baseline management)
 â”œâ”€â”€ ODPEditionStore (edition management + context resolution)
 â””â”€â”€ VersionedItemStore (+ versioning + multi-context)

@@ -68,7 +68,7 @@ try {
 }
 ```
 
-## ServiceStore
+## DomainStore
 **Inheritance**: `RefinableEntityStore → BaseStore`  
 **Entity Model**: `{id: number, name: string, description: string}`  
 **Relationships**: REFINES hierarchy (tree structure)
@@ -137,7 +137,7 @@ try {
 }
 ```
 
-## DocumentStore
+## ReferenceDocumentStore
 **Inheritance**: `BaseStore`  
 **Entity Model**: `{id: number, name: string, version: string, description: string, url: string}`  
 **Relationships**: None (standalone entity - referenced via REFERENCES relationships from operational entity versions)

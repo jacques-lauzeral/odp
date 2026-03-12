@@ -16,7 +16,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'Originator' → privateNotes as "Originator: {name}"
  * - 'Source' → split handling:
  *   - Text before 'CONOPS' → privateNotes as "Sources:\n\n{text}"
- *   - Text after 'CONOPS' → documentReferences note
+ *   - Text after 'CONOPS' → strategicDocuments note
  *   - If no 'CONOPS' → all text to privateNotes as "Sources:\n\n{text}"
  * - 'Need Statement' → statement
  * - 'Rationale' → rationale
@@ -28,14 +28,14 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'Title' → title (used for external ID generation)
  * - 'Date' → ignored
  * - 'Originator' → privateNotes as "Originator: {name}"
- * - 'CONOPS Section' → beginning of documentReferences note
- * - 'Source Reference' → end of documentReferences note
+ * - 'CONOPS Section' → appended to privateNotes as "CONOPS Section: {text}"
+ * - 'Source Reference' → appended to privateNotes as "Source Reference: {text}"
  * - 'Detailed Requirement' → statement (base)
  * - 'Fit Criteria' → appended to statement as "Fit Criteria:" paragraph
  * - 'Rationale' → rationale (base)
  * - 'Opportunities/Risks' → appended to rationale as "Opportunities / Risks:" paragraph
  * - 'Operational Need' → implementedONs (resolved via normalized title match)
- * - 'Stakeholders' → impactsStakeholderCategories (parsed and mapped via synonym map)
+ * - 'Stakeholders' → impactedStakeholders (parsed and mapped via synonym map)
  * - 'Data (and other Enabler)' → privateNotes as "Data (and other Enabler):\n\n{text}"
  * - 'Impacted Services' → privateNotes as "Impacted Services:\n\n{text}"
  * - 'Dependencies' → ignored (always empty)
@@ -47,10 +47,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - ON: on:4dt/{title_normalized}
  * - OR: or:4dt/{title_normalized}
  *
- * Document References:
+ * Strategic Documents (ONs only):
  * --------------------
  * - ON: document:4d_trajectory_conops (if Source contains 'CONOPS')
- * - OR: document:4d_trajectory_conops (if CONOPS Section or Source Reference present)
  *
  * Stakeholder Mapping:
  * --------------------
@@ -114,10 +113,8 @@ class FourDTMapper extends Mapper {
         console.log(`Mapped ${needs.length} operational needs (ONs) and ${requirements.length} operational requirements (ORs)`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: [],
             requirements: [...needs, ...requirements],
             changes: []
@@ -169,7 +166,7 @@ class FourDTMapper extends Mapper {
         const statement = row['Need Statement'] || null;
         const rationale = row['Rationale'] || null;
         const privateNotes = this._extractNeedPrivateNotes(row);
-        const documentReferences = this._extractNeedDocumentReferences(row);
+        const strategicDocuments = this._extractNeedStrategicDocuments(row);
 
         const need = {
             type: 'ON',
@@ -178,7 +175,7 @@ class FourDTMapper extends Mapper {
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale),
             privateNotes: this.converter.asciidocToDelta(privateNotes),
-            documentReferences: documentReferences
+            strategicDocuments: strategicDocuments
         };
 
         need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
@@ -215,8 +212,8 @@ class FourDTMapper extends Mapper {
         return privateNotes || null;
     }
 
-    _extractNeedDocumentReferences(row) {
-        const documentReferences = [];
+    _extractNeedStrategicDocuments(row) {
+        const strategicDocuments = [];
 
         const source = row['Source'];
         const sourceText = source ? source.trim() : '';
@@ -225,14 +222,14 @@ class FourDTMapper extends Mapper {
             const afterConops = sourceText.substring(conopsIndex + 6).trim();
 
             if (afterConops) {
-                documentReferences.push({
+                strategicDocuments.push({
                     documentExternalId: "document:4d_trajectory_conops",
                     note: afterConops
                 });
             }
         }
 
-        return documentReferences.length > 0 ? documentReferences : [];
+        return strategicDocuments.length > 0 ? strategicDocuments : [];
     }
 
     _extractRequirement(row, onTitleMap) {
@@ -245,9 +242,8 @@ class FourDTMapper extends Mapper {
         const statement = this._extractRequirementStatement(row);
         const rationale = this._extractRequirementRationale(row);
         const privateNotes = this._extractRequirementPrivateNotes(row);
-        const documentReferences = this._extractRequirementDocumentReferences(row);
         const implementedONs = this._resolveImplementedONs(row, onTitleMap);
-        const impactsStakeholderCategories = this._parseStakeholders(row['Stakeholders']);
+        const impactedStakeholders = this._parseStakeholders(row['Stakeholders']);
 
         const requirement = {
             type: 'OR',
@@ -256,9 +252,8 @@ class FourDTMapper extends Mapper {
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale),
             privateNotes: this.converter.asciidocToDelta(privateNotes),
-            documentReferences: documentReferences,
             implementedONs: implementedONs,
-            impactsStakeholderCategories: impactsStakeholderCategories
+            impactedStakeholders: impactedStakeholders
         };
 
         requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
@@ -333,33 +328,6 @@ class FourDTMapper extends Mapper {
         return null;
     }
 
-    _extractRequirementDocumentReferences(row) {
-        const conopsSection = row['CONOPS Section'];
-        const sourceReference = row['Source Reference'];
-
-        const conopsSectionText = conopsSection ? conopsSection.trim() : '';
-        const sourceRefText = sourceReference ? sourceReference.trim() : '';
-
-        if (!conopsSectionText && !sourceRefText) {
-            return [];
-        }
-
-        let note = '';
-
-        if (conopsSectionText && sourceRefText) {
-            note = `${conopsSectionText}. ${sourceRefText}`;
-        } else if (conopsSectionText) {
-            note = conopsSectionText;
-        } else {
-            note = sourceRefText;
-        }
-
-        return [{
-            documentExternalId: "document:4d_trajectory_conops",
-            note: note
-        }];
-    }
-
     _resolveImplementedONs(row, onTitleMap) {
         const operationalNeed = row['Operational Need'];
         const operationalNeedText = operationalNeed ? operationalNeed.trim() : '';
@@ -426,10 +394,8 @@ class FourDTMapper extends Mapper {
 
     _emptyOutput() {
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: [],
             requirements: [],
             changes: []

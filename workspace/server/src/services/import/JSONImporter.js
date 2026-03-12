@@ -1,7 +1,6 @@
 import StakeholderCategoryService from '../StakeholderCategoryService.js';
-import ServiceService from '../ServiceService.js';
-import DataCategoryService from '../DataCategoryService.js';
-import DocumentService from '../DocumentService.js';
+import DomainService from '../DomainService.js';
+import ReferenceDocumentService from '../ReferenceDocumentService.js';
 import WaveService from '../WaveService.js';
 import OperationalRequirementService from '../OperationalRequirementService.js';
 import OperationalChangeService from '../OperationalChangeService.js';
@@ -21,10 +20,9 @@ class JSONImporter {
     async importStructuredData(structuredData, userId) {
         const context = this._createContext();
         const summary = {
-            documents: 0,
+            referenceDocuments: 0,
             stakeholderCategories: 0,
-            dataCategories: 0,
-            services: 0,
+            domains: 0,
             waves: 0,
             requirements: 0,
             changes: 0,
@@ -84,9 +82,9 @@ class JSONImporter {
         // Load existing setup entities from database into global reference map
         await this._buildSetupEntityReferenceMaps(userId, context);
 
-        // Import documents first (no dependencies)
-        if (structuredData.documents && structuredData.documents.length > 0) {
-            summary.documents = await this._importDocuments(structuredData.documents, userId, context);
+        // Import reference documents first (no dependencies)
+        if (structuredData.referenceDocuments && structuredData.referenceDocuments.length > 0) {
+            summary.referenceDocuments = await this._importReferenceDocuments(structuredData.referenceDocuments, userId, context);
         }
 
         // Import stakeholder categories (may have hierarchy)
@@ -98,14 +96,9 @@ class JSONImporter {
             );
         }
 
-        // Import services (may have hierarchy)
-        if (structuredData.services && structuredData.services.length > 0) {
-            summary.services = await this._importServices(structuredData.services, userId, context);
-        }
-
-        // Import data categories (may have hierarchy)
-        if (structuredData.dataCategories && structuredData.dataCategories.length > 0) {
-            summary.dataCategories = await this._importDataCategories(structuredData.dataCategories, userId, context);
+        // Import domains (may have hierarchy)
+        if (structuredData.domains && structuredData.domains.length > 0) {
+            summary.domains = await this._importDomains(structuredData.domains, userId, context);
         }
 
         // Import waves (no dependencies)
@@ -120,32 +113,30 @@ class JSONImporter {
      */
     async _buildSetupEntityReferenceMaps(userId, context) {
         try {
-            const [stakeholders, services, dataCategories, documents, waves] = await Promise.all([
+            const [stakeholders, domains, referenceDocuments, waves] = await Promise.all([
                 StakeholderCategoryService.listItems(userId),
-                ServiceService.listItems(userId),
-                DataCategoryService.listItems(userId),
-                DocumentService.listItems(userId),
+                DomainService.listItems(userId),
+                ReferenceDocumentService.listItems(userId),
                 WaveService.listItems(userId)
             ]);
 
             // Build maps with memoization for hierarchical entities
             this._buildHierarchicalMap(stakeholders, 'stakeholder', context);
-            this._buildHierarchicalMap(services, 'service', context);
-            this._buildHierarchicalMap(dataCategories, 'data', context);
+            this._buildHierarchicalMap(domains, 'domain', context);
 
-            // Build document reference map by external ID only (case-insensitive)
-            documents.forEach(doc => {
-                const externalId = ExternalIdBuilder.buildExternalId(doc, 'document');
+            // Build reference document map by external ID (case-insensitive)
+            referenceDocuments.forEach(doc => {
+                const externalId = ExternalIdBuilder.buildExternalId(doc, 'refdoc');
                 context.documentIdMap.set(externalId.toLowerCase(), doc.id);
             });
 
-            // Build wave reference map by external ID only (case-insensitive)
+            // Build wave reference map by external ID (case-insensitive)
             waves.forEach(wave => {
                 const externalId = ExternalIdBuilder.buildExternalId(wave, 'wave');
                 context.waveIdMap.set(externalId.toLowerCase(), wave.id);
             });
 
-            console.log(`Loaded existing entities - Stakeholders: ${stakeholders.length}, Services: ${services.length}, Data: ${dataCategories.length}, Documents: ${documents.length}, Waves: ${waves.length}`);
+            console.log(`Loaded existing entities - Stakeholders: ${stakeholders.length}, Domains: ${domains.length}, ReferenceDocuments: ${referenceDocuments.length}, Waves: ${waves.length}`);
 
         } catch (error) {
             throw new Error(`Failed to build setup entity reference maps: ${error.message}`);
@@ -247,7 +238,7 @@ class JSONImporter {
 
     // Setup entity import methods
 
-    async _importDocuments(documents, userId, context) {
+    async _importReferenceDocuments(documents, userId, context) {
         let count = 0;
 
         for (const docData of documents) {
@@ -255,21 +246,19 @@ class JSONImporter {
                 const createRequest = {
                     name: docData.name,
                     version: docData.version || '',
-                    description: docData.description || '',
                     url: docData.url || ''
                 };
 
-                const created = await DocumentService.createDocument(createRequest, userId);
+                const created = await ReferenceDocumentService.createItem(createRequest, userId);
 
-                // Store with external ID only
                 context.setupIdMap.set(docData.externalId.toLowerCase(), created.id);
                 context.documentIdMap.set(docData.externalId.toLowerCase(), created.id);
                 count++;
 
-                console.log(`Created document: ${docData.externalId}`);
+                console.log(`Created reference document: ${docData.externalId}`);
 
             } catch (error) {
-                context.errors.push(`Failed to create document ${docData.externalId}: ${error.message}`);
+                context.errors.push(`Failed to create reference document ${docData.externalId}: ${error.message}`);
             }
         }
 
@@ -343,7 +332,7 @@ class JSONImporter {
                 parentId: parentId
             };
 
-            const created = await StakeholderCategoryService.createStakeholderCategory(createRequest, userId);
+            const created = await StakeholderCategoryService.createItem(createRequest, userId);
 
             // Store in global map
             context.globalRefMap.set(externalId, created.id);
@@ -357,20 +346,13 @@ class JSONImporter {
         }
     }
 
-    async _importServices(services, userId, context) {
-        // Build lookup map by externalId
-        const serviceMap = new Map();
-        services.forEach(svc => serviceMap.set(svc.externalId.toLowerCase(), svc));
+    async _importDomains(domains, userId, context) {
+        const domainMap = new Map();
+        domains.forEach(d => domainMap.set(d.externalId.toLowerCase(), d));
 
-        // Recursively import each service
         let count = 0;
-        for (const serviceData of services) {
-            const created = await this._importService(
-                serviceData,
-                serviceMap,
-                userId,
-                context
-            );
+        for (const domainData of domains) {
+            const created = await this._importDomain(domainData, domainMap, userId, context);
             if (created) count++;
         }
 
@@ -378,37 +360,27 @@ class JSONImporter {
     }
 
     /**
-     * Recursively import a service, ensuring parent exists first
+     * Recursively import a domain, ensuring parent exists first
      * @private
      */
-    async _importService(itemData, itemMap, userId, context) {
+    async _importDomain(itemData, itemMap, userId, context) {
         const externalId = itemData.externalId.toLowerCase();
 
-        // Already imported?
         if (context.globalRefMap.has(externalId)) {
             return context.globalRefMap.get(externalId);
         }
 
         let parentId = null;
 
-        // Handle parent if exists
         if (itemData.parentExternalId) {
             const parentExternalId = itemData.parentExternalId.toLowerCase();
 
-            // Check if parent already in global map (from DB or already imported)
             if (context.globalRefMap.has(parentExternalId)) {
                 parentId = context.globalRefMap.get(parentExternalId);
             } else {
-                // Parent not yet imported - check if in current batch
                 const parentData = itemMap.get(parentExternalId);
                 if (parentData) {
-                    // Recursively import parent first
-                    parentId = await this._importService(
-                        parentData,
-                        itemMap,
-                        userId,
-                        context
-                    );
+                    parentId = await this._importDomain(parentData, itemMap, userId, context);
                 } else {
                     context.errors.push(`Parent ${itemData.parentExternalId} not found for ${itemData.externalId}`);
                     return null;
@@ -416,7 +388,6 @@ class JSONImporter {
             }
         }
 
-        // Create the item
         try {
             const createRequest = {
                 name: itemData.name,
@@ -424,97 +395,15 @@ class JSONImporter {
                 parentId: parentId
             };
 
-            const created = await ServiceService.createService(createRequest, userId);
+            const created = await DomainService.createItem(createRequest, userId);
 
-            // Store in global map
             context.globalRefMap.set(externalId, created.id);
 
-            console.log(`Created service: ${itemData.externalId}`);
+            console.log(`Created domain: ${itemData.externalId}`);
             return created.id;
 
         } catch (error) {
-            context.errors.push(`Failed to create service ${itemData.externalId}: ${error.message}`);
-            return null;
-        }
-    }
-
-    async _importDataCategories(categories, userId, context) {
-        // Build lookup map by externalId
-        const categoryMap = new Map();
-        categories.forEach(cat => categoryMap.set(cat.externalId.toLowerCase(), cat));
-
-        // Recursively import each category
-        let count = 0;
-        for (const categoryData of categories) {
-            const created = await this._importDataCategory(
-                categoryData,
-                categoryMap,
-                userId,
-                context
-            );
-            if (created) count++;
-        }
-
-        return count;
-    }
-
-    /**
-     * Recursively import a data category, ensuring parent exists first
-     * @private
-     */
-    async _importDataCategory(itemData, itemMap, userId, context) {
-        const externalId = itemData.externalId.toLowerCase();
-
-        // Already imported?
-        if (context.globalRefMap.has(externalId)) {
-            return context.globalRefMap.get(externalId);
-        }
-
-        let parentId = null;
-
-        // Handle parent if exists
-        if (itemData.parentExternalId) {
-            const parentExternalId = itemData.parentExternalId.toLowerCase();
-
-            // Check if parent already in global map (from DB or already imported)
-            if (context.globalRefMap.has(parentExternalId)) {
-                parentId = context.globalRefMap.get(parentExternalId);
-            } else {
-                // Parent not yet imported - check if in current batch
-                const parentData = itemMap.get(parentExternalId);
-                if (parentData) {
-                    // Recursively import parent first
-                    parentId = await this._importDataCategory(
-                        parentData,
-                        itemMap,
-                        userId,
-                        context
-                    );
-                } else {
-                    context.errors.push(`Parent ${itemData.parentExternalId} not found for ${itemData.externalId}`);
-                    return null;
-                }
-            }
-        }
-
-        // Create the item
-        try {
-            const createRequest = {
-                name: itemData.name,
-                description: itemData.description || '',
-                parentId: parentId
-            };
-
-            const created = await DataCategoryService.createDataCategory(createRequest, userId);
-
-            // Store in global map
-            context.globalRefMap.set(externalId, created.id);
-
-            console.log(`Created data category: ${itemData.externalId}`);
-            return created.id;
-
-        } catch (error) {
-            context.errors.push(`Failed to create data category ${itemData.externalId}: ${error.message}`);
+            context.errors.push(`Failed to create domain ${itemData.externalId}: ${error.message}`);
             return null;
         }
     }
@@ -526,8 +415,8 @@ class JSONImporter {
             try {
                 const createRequest = {
                     year: waveData.year,
-                    quarter: waveData.quarter,
-                    date: waveData.date
+                    sequenceNumber: waveData.sequenceNumber,
+                    implementationDate: waveData.implementationDate
                 };
 
                 const created = await WaveService.createItem(createRequest, userId);
@@ -629,16 +518,15 @@ class JSONImporter {
                     rationale: reqData.rationale || '',
                     flows: reqData.flows || '',
                     privateNotes: reqData.privateNotes || '',
+                    maturity: reqData.maturity || 'DRAFT',
                     path: reqData.path || [],
                     drg: reqData.drg,
                     // All reference fields empty initially
                     refinesParents: [],
-                    impactsStakeholderCategories: [],
-                    impactsData: [],
-                    impactsServices: [],
+                    impactedStakeholders: [],
+                    impactedDomains: [],
                     implementedONs: [],
-                    documentReferences: [],
-                    dependsOnRequirements: []
+                    dependencies: []
                 };
 
                 const created = await OperationalRequirementService.create(createRequest, userId);
@@ -682,18 +570,13 @@ class JSONImporter {
             context
         );
 
-        const impactsStakeholderCategories = this._resolveImpactElementReferences(
-            reqData.impactsStakeholderCategories || [],
+        const impactedStakeholders = this._resolveImpactElementReferences(
+            reqData.impactedStakeholders || [],
             context
         );
 
-        const impactsData = this._resolveImpactElementReferences(
-            reqData.impactsData || [],
-            context
-        );
-
-        const impactsServices = this._resolveImpactElementReferences(
-            reqData.impactsServices || [],
+        const impactedDomains = this._resolveImpactElementReferences(
+            reqData.impactedDomains || [],
             context
         );
 
@@ -702,13 +585,8 @@ class JSONImporter {
             context
         );
 
-        const documentReferences = this._resolveDocumentReferences(
-            reqData.documentReferences || [],
-            context
-        );
-
-        const dependsOnRequirements = this._resolveExternalIds(
-            reqData.dependsOnRequirements || [],
+        const dependencies = this._resolveExternalIds(
+            reqData.dependencies || [],
             context
         );
 
@@ -720,15 +598,14 @@ class JSONImporter {
             rationale: current.rationale,
             flows: current.flows,
             privateNotes: current.privateNotes,
+            maturity: current.maturity,
             path: current.path,
             drg: current.drg,
             refinesParents: refinesParents,
-            impactsStakeholderCategories: impactsStakeholderCategories,
-            impactsData: impactsData,
-            impactsServices: impactsServices,
+            impactedStakeholders: impactedStakeholders,
+            impactedDomains: impactedDomains,
             implementedONs: implementedONs,
-            documentReferences: documentReferences,
-            dependsOnRequirements: dependsOnRequirements
+            dependencies: dependencies
         };
 
         // Update in single transaction
@@ -750,19 +627,13 @@ class JSONImporter {
         for (const changeData of changes) {
             try {
                 // Resolve OR references
-                const satisfiedORs = this._resolveExternalIds(
-                    changeData.satisfiedORs || [],
+                const implementedORs = this._resolveExternalIds(
+                    changeData.implementedORs || [],
                     context
                 );
 
-                const supersededORs = this._resolveExternalIds(
-                    changeData.supersededORs || [],
-                    context
-                );
-
-                // Resolve document references
-                const documentReferences = this._resolveDocumentReferences(
-                    changeData.documentReferences || [],
+                const decommissionedORs = this._resolveExternalIds(
+                    changeData.decommissionedORs || [],
                     context
                 );
 
@@ -794,10 +665,10 @@ class JSONImporter {
                             }
 
                             processedMilestones.push({
-                                title: milestoneData.title,
+                                name: milestoneData.name,
                                 milestoneKey: milestoneKey,
                                 description: milestoneData.description || 'TBD',
-                                eventTypes: milestoneData.eventTypes,
+                                eventTypes: milestoneData.eventTypes || [],
                                 waveId: waveId
                             });
 
@@ -819,12 +690,12 @@ class JSONImporter {
                     finalState: changeData.finalState || '',
                     details: changeData.details || '',
                     privateNotes: changeData.privateNotes || '',
+                    maturity: changeData.maturity || 'DRAFT',
                     path: changeData.path || [],
                     visibility: changeData.visibility || 'NETWORK',
                     drg: changeData.drg,
-                    satisfiesRequirements: satisfiedORs,
-                    supersedsRequirements: supersededORs,
-                    documentReferences: documentReferences,
+                    implementedORs: implementedORs,
+                    decommissionedORs: decommissionedORs,
                     dependsOnChanges: dependsOnChanges,
                     milestones: processedMilestones
                 };
@@ -915,38 +786,7 @@ class JSONImporter {
         return resolved;
     }
 
-    _resolveDocumentReferences(documentRefs, context) {
-        if (!Array.isArray(documentRefs)) {
-            return [];
-        }
-
-        const resolved = [];
-        const missing = [];
-
-        for (const ref of documentRefs) {
-            if (!ref.documentExternalId) {
-                context.warnings.push('Document reference missing documentExternalId' + JSON.stringify(ref));
-                continue;
-            }
-
-            const documentId = context.documentIdMap.get(ref.documentExternalId.toLowerCase());
-
-            if (documentId !== undefined) {
-                resolved.push({
-                    id: documentId,
-                    note: ref.note || ''
-                });
-            } else {
-                missing.push(ref.documentExternalId);
-            }
-        }
-
-        if (missing.length > 0) {
-            context.warnings.push(`Missing document references: ${missing.join(', ')}`);
-        }
-
-        return resolved;
-    }
 }
+
 
 export default new JSONImporter();

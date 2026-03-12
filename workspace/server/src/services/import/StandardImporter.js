@@ -1,7 +1,6 @@
 import StakeholderCategoryService from '../StakeholderCategoryService.js';
-import ServiceService from '../ServiceService.js';
-import DataCategoryService from '../DataCategoryService.js';
-import DocumentService from '../DocumentService.js';
+import DomainService from '../DomainService.js';
+import ReferenceDocumentService from '../ReferenceDocumentService.js';
 import WaveService from '../WaveService.js';
 import OperationalRequirementService from '../OperationalRequirementService.js';
 import OperationalChangeService from '../OperationalChangeService.js';
@@ -92,8 +91,7 @@ class StandardImporter {
         return {
             // Setup element maps (externalId → entity)
             stakeholderMap: new Map(),
-            dataMap: new Map(),
-            serviceMap: new Map(),
+            domainMap: new Map(),
             documentMap: new Map(),
             waveMap: new Map(),
 
@@ -178,18 +176,16 @@ class StandardImporter {
     async _buildCodeMaps(userId, context) {
         try {
             // Load setup elements
-            const [stakeholders, services, dataCategories, documents, waves] = await Promise.all([
+            const [stakeholders, domains, documents, waves] = await Promise.all([
                 StakeholderCategoryService.listItems(userId),
-                ServiceService.listItems(userId),
-                DataCategoryService.listItems(userId),
-                DocumentService.listItems(userId),
+                DomainService.listItems(userId),
+                ReferenceDocumentService.listItems(userId),
                 WaveService.listItems(userId)
             ]);
 
-            // Build setup element maps by externalId
+            // Build setup element maps by name (case-insensitive)
             this._buildSetupElementMap(stakeholders, 'stakeholder', context.stakeholderMap);
-            this._buildSetupElementMap(services, 'service', context.serviceMap);
-            this._buildSetupElementMap(dataCategories, 'data', context.dataMap);
+            this._buildSetupElementMap(domains, 'domain', context.domainMap);
 
             // Build document and wave maps by name
             documents.forEach(doc => {
@@ -219,7 +215,7 @@ class StandardImporter {
                 context.codeOCMap.set(change.code, change);
             });
 
-            console.log(`Loaded: Stakeholders=${stakeholders.length}, Services=${services.length}, Data=${dataCategories.length}, Documents=${documents.length}, Waves=${waves.length}`);
+            console.log(`Loaded: Stakeholders=${stakeholders.length}, Domains=${domains.length}, Documents=${documents.length}, Waves=${waves.length}`);
             console.log(`Loaded: ONs=${context.codeONMap.size}, ORs=${context.codeORMap.size}, OCs=${context.codeOCMap.size}`);
 
         } catch (error) {
@@ -295,74 +291,36 @@ class StandardImporter {
 
         // Resolve references in all ON candidates (toCreate + updateCandidate)
         for (const onData of [...context.toCreateONs, ...context.updateCandidateONs]) {
-            onData.impactsStakeholderCategories = this._resolveAnnotatedReferences(
+            onData.impactedStakeholders = this._resolveAnnotatedReferences(
                 onData.impactedStakeholderCategories || [],
                 context.stakeholderMap,
                 context
             );
-            resolvedCount += onData.impactsStakeholderCategories.length;
+            resolvedCount += onData.impactedStakeholders.length;
 
-            onData.impactsData = this._resolveAnnotatedReferences(
-                onData.impactedData || [],
-                context.dataMap,
+            onData.impactedDomains = this._resolveAnnotatedReferences(
+                onData.impactedDomains || [],
+                context.domainMap,
                 context
             );
-            resolvedCount += onData.impactsData.length;
-
-            onData.impactsServices = this._resolveAnnotatedReferences(
-                onData.impactedServices || [],
-                context.serviceMap,
-                context
-            );
-            resolvedCount += onData.impactsServices.length;
-
-            onData.documentReferences = this._resolveAnnotatedReferences(
-                onData.referencesDocuments || [],
-                context.documentMap,
-                context
-            );
-            resolvedCount += onData.documentReferences.length;
+            resolvedCount += onData.impactedDomains.length;
         }
 
         // Resolve references in all OR candidates (toCreate + updateCandidate)
         for (const orData of [...context.toCreateORs, ...context.updateCandidateORs]) {
-            orData.impactsStakeholderCategories = this._resolveAnnotatedReferences(
+            orData.impactedStakeholders = this._resolveAnnotatedReferences(
                 orData.impactedStakeholderCategories || [],
                 context.stakeholderMap,
                 context
             );
-            resolvedCount += orData.impactsStakeholderCategories.length;
+            resolvedCount += orData.impactedStakeholders.length;
 
-            orData.impactsData = this._resolveAnnotatedReferences(
-                orData.impactedData || [],
-                context.dataMap,
+            orData.impactedDomains = this._resolveAnnotatedReferences(
+                orData.impactedDomains || [],
+                context.domainMap,
                 context
             );
-            resolvedCount += orData.impactsData.length;
-
-            orData.impactsServices = this._resolveAnnotatedReferences(
-                orData.impactedServices || [],
-                context.serviceMap,
-                context
-            );
-            resolvedCount += orData.impactsServices.length;
-
-            orData.documentReferences = this._resolveAnnotatedReferences(
-                orData.referencesDocuments || [],
-                context.documentMap,
-                context
-            );
-            resolvedCount += orData.documentReferences.length;
-        }
-
-        // Resolve references in all OC candidates (toCreate + updateCandidate)
-        for (const ocData of [...context.toCreateOCs, ...context.updateCandidateOCs]) {
-            ocData.documentReferences = this._resolveAnnotatedReferences(
-                ocData.referencesDocuments || [],
-                context.documentMap,
-                context
-            );
-            resolvedCount += ocData.documentReferences.length;
+            resolvedCount += orData.impactedDomains.length;
         }
 
         console.log(`Resolved ${resolvedCount} annotated references (setup elements)`);
@@ -451,15 +409,14 @@ class StandardImporter {
             rationale: reqData.rationale || '',
             flows: reqData.flows || '',
             privateNotes: reqData.privateNotes || '',
+            maturity: reqData.maturity || 'DRAFT',
             path: reqData.path || [],
             drg: reqData.drg
         };
 
         // Annotated references already resolved in Phase 3
-        request.impactsStakeholderCategories = reqData.impactsStakeholderCategories || [];
-        request.impactsData = reqData.impactsData || [];
-        request.impactsServices = reqData.impactsServices || [];
-        request.documentReferences = reqData.documentReferences || [];
+        request.impactedStakeholders = reqData.impactedStakeholders || [];
+        request.impactedDomains = reqData.impactedDomains || [];
 
         // Skip operational references in Phase 4
         if (!skipOperationalRefs) {
@@ -473,14 +430,14 @@ class StandardImporter {
                 context
             );
 
-            request.dependsOnRequirements = this._resolveOperationalReferences(
-                reqData.dependsOnRequirements || [],
+            request.dependencies = this._resolveOperationalReferences(
+                reqData.dependencies || [],
                 context
             );
         } else {
             request.refinesParents = [];
             request.implementedONs = [];
-            request.dependsOnRequirements = [];
+            request.dependencies = [];
         }
 
         return request;
@@ -498,26 +455,24 @@ class StandardImporter {
             finalState: ocData.finalState || '',
             details: ocData.details || '',
             privateNotes: ocData.privateNotes || '',
+            maturity: ocData.maturity || 'DRAFT',
             path: ocData.path || [],
             visibility: ocData.visibility || 'NETWORK',
             drg: ocData.drg
         };
-
-        // Annotated references already resolved in Phase 3
-        request.documentReferences = ocData.documentReferences || [];
 
         // Process milestones
         request.milestones = this._processMilestones(ocData, context);
 
         // Skip operational references in Phase 4
         if (!skipOperationalRefs) {
-            request.satisfiesRequirements = this._resolveOperationalReferences(
-                ocData.satisfiesRequirements || [],
+            request.implementedORs = this._resolveOperationalReferences(
+                ocData.implementedORs || [],
                 context
             );
 
-            request.supersedsRequirements = this._resolveOperationalReferences(
-                ocData.supersedsRequirements || [],
+            request.decommissionedORs = this._resolveOperationalReferences(
+                ocData.decommissionedORs || [],
                 context
             );
 
@@ -526,8 +481,8 @@ class StandardImporter {
                 context
             );
         } else {
-            request.satisfiesRequirements = [];
-            request.supersedsRequirements = [];
+            request.implementedORs = [];
+            request.decommissionedORs = [];
             request.dependsOnChanges = [];
         }
 
@@ -590,20 +545,20 @@ class StandardImporter {
         // Resolve references in all ON candidates (toCreate + updateCandidate)
         for (const onData of [...context.toCreateONs, ...context.updateCandidateONs]) {
             onData.refinesParents = resolveReferenceArray(onData.refinesParents, 'refinesParents', onData.externalId);
-            onData.dependsOnRequirements = resolveReferenceArray(onData.dependsOnRequirements, 'dependsOnRequirements', onData.externalId);
+            onData.dependencies = resolveReferenceArray(onData.dependencies, 'dependencies', onData.externalId);
         }
 
         // Resolve references in all OR candidates (toCreate + updateCandidate)
         for (const orData of [...context.toCreateORs, ...context.updateCandidateORs]) {
             orData.refinesParents = resolveReferenceArray(orData.refinesParents, 'refinesParents', orData.externalId);
             orData.implementedONs = resolveReferenceArray(orData.implementedONs, 'implementedONs', orData.externalId);
-            orData.dependsOnRequirements = resolveReferenceArray(orData.dependsOnRequirements, 'dependsOnRequirements', orData.externalId);
+            orData.dependencies = resolveReferenceArray(orData.dependencies, 'dependencies', orData.externalId);
         }
 
         // Resolve references in all OC candidates (toCreate + updateCandidate)
         for (const ocData of [...context.toCreateOCs, ...context.updateCandidateOCs]) {
-            ocData.satisfiesRequirements = resolveReferenceArray(ocData.satisfiesRequirements, 'satisfiesRequirements', ocData.externalId);
-            ocData.supersedsRequirements = resolveReferenceArray(ocData.supersedsRequirements, 'supersedsRequirements', ocData.externalId);
+            ocData.implementedORs = resolveReferenceArray(ocData.implementedORs, 'implementedORs', ocData.externalId);
+            ocData.decommissionedORs = resolveReferenceArray(ocData.decommissionedORs, 'decommissionedORs', ocData.externalId);
             ocData.dependsOnChanges = resolveReferenceArray(ocData.dependsOnChanges, 'dependsOnChanges', ocData.externalId);
         }
 
@@ -696,18 +651,17 @@ class StandardImporter {
             rationale: reqData.rationale || '',
             flows: reqData.flows || '',
             privateNotes: reqData.privateNotes || '',
+            maturity: reqData.maturity || 'DRAFT',
             path: reqData.path || [],
             drg: reqData.drg
         };
 
         // All references already resolved in Phase 3 (annotated) and Phase 5 (operational)
-        request.impactsStakeholderCategories = reqData.impactsStakeholderCategories || [];
-        request.impactsData = reqData.impactsData || [];
-        request.impactsServices = reqData.impactsServices || [];
-        request.documentReferences = reqData.documentReferences || [];
+        request.impactedStakeholders = reqData.impactedStakeholders || [];
+        request.impactedDomains = reqData.impactedDomains || [];
         request.refinesParents = reqData.refinesParents || [];
         request.implementedONs = reqData.implementedONs || [];
-        request.dependsOnRequirements = reqData.dependsOnRequirements || [];
+        request.dependencies = reqData.dependencies || [];
 
         return request;
     }
@@ -724,16 +678,16 @@ class StandardImporter {
             finalState: ocData.finalState || '',
             details: ocData.details || '',
             privateNotes: ocData.privateNotes || '',
+            maturity: ocData.maturity || 'DRAFT',
             path: ocData.path || [],
             visibility: ocData.visibility || 'NETWORK',
             drg: ocData.drg
         };
 
         // All references already resolved in Phase 3 (annotated) and Phase 5 (operational)
-        request.documentReferences = ocData.documentReferences || [];
         request.milestones = this._processMilestones(ocData, context);
-        request.satisfiesRequirements = ocData.satisfiesRequirements || [];
-        request.supersedsRequirements = ocData.supersedsRequirements || [];
+        request.implementedORs = ocData.implementedORs || [];
+        request.decommissionedORs = ocData.decommissionedORs || [];
         request.dependsOnChanges = ocData.dependsOnChanges || [];
 
         return request;
@@ -958,8 +912,9 @@ class StandardImporter {
                 }
 
                 processedMilestones.push({
+                    name: milestoneData.name,
                     milestoneKey: milestoneKey,
-                    eventType: milestoneData.eventType || 'OPS_DEPLOYMENT',
+                    eventTypes: milestoneData.eventTypes || [],
                     waveId: waveId
                 });
 

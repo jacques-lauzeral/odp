@@ -241,17 +241,12 @@ export class VersionedItemStore extends BaseStore {
                 CREATE (item)-[:LATEST_VERSION]->(version)
             `, { itemId: numericItemId, versionId });
 
-            // Determine final relationships (inheritance + override logic)
+            // Use provided relationships (override) or inherit from previous version
             let finalRelationshipIds;
             if (this._hasAnyRelationshipIds(relationshipIds)) {
-                // Use provided relationships (override)
                 finalRelationshipIds = relationshipIds;
             } else {
-                // Inherit relationships from previous version
                 finalRelationshipIds = await this._extractRelationshipIdsFromVersion(numericExpectedVersionId, transaction);
-                // documentReferences is always an exhaustive list — never inherit it.
-                // An empty array means "no document references", not "not provided".
-                finalRelationshipIds.documentReferences = relationshipIds.documentReferences ?? [];
             }
 
             // Create relationships for new version (new version starts with no relationships)
@@ -457,7 +452,7 @@ export class VersionedItemStore extends BaseStore {
         };
 
         // Add additional fields if present
-        const additionalFields = ['type', 'name', 'year', 'quarter', 'date'];
+        const additionalFields = ['type', 'name', 'year', 'sequenceNumber', 'implementationDate'];
         additionalFields.forEach(field => {
             try {
                 const value = record.get(field);

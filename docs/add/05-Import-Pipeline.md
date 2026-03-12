@@ -77,16 +77,21 @@ Used for the round-trip (docx-loop) workflow. Processes exported ODIP `.docx` fi
 ### 3.4 Output Structure (`StructuredImportData`)
 
 ```
-documents[]
+referenceDocuments[]
 stakeholderCategories[]   — {externalId|code, name, description}
-dataCategories[]
-services[]
+domains[]
+bandwidths[]
 waves[]
 requirements[]            — {externalId|code, title, type, statement (Quill Delta),
                              rationale, flows, drg, path, refinesParents,
-                             implementedONs, impactsStakeholderCategories,
-                             impactsData, impactsServices, documentReferences}
-changes[]
+                             implementedONs, impactedStakeholders,
+                             impactedDomains, dependencies, maturity, nfrs,
+                             tentative, strategicDocuments (ONs only),
+                             additionalDocumentation}
+changes[]                 — {externalId|code, title, drg, visibility,
+                             implementedORs, decommissionedORs,
+                             milestones[{name, wave, eventTypes[]}],
+                             maturity, cost, orCosts, additionalDocumentation}
 ```
 
 Note: setup entities use `name` (not `title`); requirements and changes use `title`.
@@ -104,9 +109,9 @@ Note: setup entities use `name` (not `title`); requirements and changes use `tit
 
 Used for initial DrG material import. Entities are identified by `externalId`. All entities are created as new entries. Processing order:
 
-1. Setup entities (stakeholderCategories, dataCategories, services, waves, documents) — no dependencies, imported first
+1. Setup entities (stakeholderCategories, domains, bandwidths, waves, referenceDocuments) — no dependencies, imported first
 2. Requirements — topological sort by `refinesParents` to resolve REFINES hierarchy before persisting
-3. Changes — imported after requirements so `satisfiesRequirements` references can be resolved
+3. Changes — imported after requirements so `implementedORs` / `decommissionedORs` references can be resolved
 
 External ID → internal Neo4j ID mapping is built incrementally as entities are persisted and used to resolve cross-references at import time.
 
@@ -130,10 +135,10 @@ Returned by both importers:
 
 ```json
 {
-  "documents": 0,
+  "referenceDocuments": 0,
   "stakeholderCategories": 3,
-  "dataCategories": 5,
-  "services": 2,
+  "domains": 5,
+  "bandwidths": 2,
   "waves": 4,
   "requirements": 47,
   "changes": 12,

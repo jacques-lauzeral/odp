@@ -5,7 +5,7 @@
 class Comparator {
     // Rich text field definitions
     static RICH_TEXT_FIELDS = {
-        OperationalRequirement: ['statement', 'rationale', 'flows', 'privateNotes'],
+        OperationalRequirement: ['statement', 'rationale', 'flows', 'privateNotes', 'nfrs'],
         OperationalChange: ['purpose', 'initialState', 'finalState', 'details', 'privateNotes'],
         Milestone: ['description']
     };
@@ -20,28 +20,33 @@ class Comparator {
         const changes = [];
         const richTextFields = this.RICH_TEXT_FIELDS.OperationalRequirement;
 
-        // Compare simple fields
+        // Compare simple fields (both ON and OR)
         this._compareField(changes, 'title', existing.title, incoming.title, false);
         this._compareField(changes, 'type', existing.type, incoming.type, false);
+        this._compareField(changes, 'maturity', existing.maturity, incoming.maturity, false);
+        this._compareField(changes, 'drg', existing.drg, incoming.drg, false);
         this._compareField(changes, 'statement', existing.statement, incoming.statement, richTextFields.includes('statement'));
         this._compareField(changes, 'rationale', existing.rationale, incoming.rationale, richTextFields.includes('rationale'));
         this._compareField(changes, 'flows', existing.flows, incoming.flows, richTextFields.includes('flows'));
         this._compareField(changes, 'privateNotes', existing.privateNotes, incoming.privateNotes, richTextFields.includes('privateNotes'));
-        this._compareField(changes, 'drg', existing.drg, incoming.drg, false);
 
         // Compare arrays
         this._compareStringArray(changes, 'path', existing.path, incoming.path);
 
-        // Compare reference arrays (by ID only)
+        // Compare reference arrays (by ID only) - both
         this._compareReferenceArray(changes, 'refinesParents', existing.refinesParents, incoming.refinesParents);
-        this._compareReferenceArray(changes, 'implementedONs', existing.implementedONs, incoming.implementedONs);
-        this._compareReferenceArray(changes, 'dependsOnRequirements', existing.dependsOnRequirements, incoming.dependsOnRequirements);
 
-        // Compare annotated reference arrays (by ID and note)
-        this._compareAnnotatedReferenceArray(changes, 'impactsStakeholderCategories', existing.impactsStakeholderCategories, incoming.impactsStakeholderCategories);
-        this._compareAnnotatedReferenceArray(changes, 'impactsData', existing.impactsData, incoming.impactsData);
-        this._compareAnnotatedReferenceArray(changes, 'impactsServices', existing.impactsServices, incoming.impactsServices);
-        this._compareAnnotatedReferenceArray(changes, 'documentReferences', existing.documentReferences, incoming.documentReferences);
+        // ON-only fields
+        this._compareField(changes, 'domain', existing.domain, incoming.domain, false);
+        this._compareField(changes, 'tentative', existing.tentative, incoming.tentative, false);
+        this._compareAnnotatedReferenceArray(changes, 'strategicDocuments', existing.strategicDocuments, incoming.strategicDocuments);
+
+        // OR-only fields
+        this._compareField(changes, 'nfrs', existing.nfrs, incoming.nfrs, richTextFields.includes('nfrs'));
+        this._compareReferenceArray(changes, 'implementedONs', existing.implementedONs, incoming.implementedONs);
+        this._compareReferenceArray(changes, 'dependencies', existing.dependencies, incoming.dependencies);
+        this._compareAnnotatedReferenceArray(changes, 'impactedStakeholders', existing.impactedStakeholders, incoming.impactedStakeholders);
+        this._compareAnnotatedReferenceArray(changes, 'impactedDomains', existing.impactedDomains, incoming.impactedDomains);
 
         return {
             hasChanges: changes.length > 0,
@@ -61,26 +66,26 @@ class Comparator {
 
         // Compare simple fields
         this._compareField(changes, 'title', existing.title, incoming.title, false);
+        this._compareField(changes, 'maturity', existing.maturity, incoming.maturity, false);
+        this._compareField(changes, 'visibility', existing.visibility, incoming.visibility, false);
+        this._compareField(changes, 'drg', existing.drg, incoming.drg, false);
+        this._compareField(changes, 'cost', existing.cost, incoming.cost, false);
         this._compareField(changes, 'purpose', existing.purpose, incoming.purpose, richTextFields.includes('purpose'));
         this._compareField(changes, 'initialState', existing.initialState, incoming.initialState, richTextFields.includes('initialState'));
         this._compareField(changes, 'finalState', existing.finalState, incoming.finalState, richTextFields.includes('finalState'));
         this._compareField(changes, 'details', existing.details, incoming.details, richTextFields.includes('details'));
         this._compareField(changes, 'privateNotes', existing.privateNotes, incoming.privateNotes, richTextFields.includes('privateNotes'));
-        this._compareField(changes, 'visibility', existing.visibility, incoming.visibility, false);
-        this._compareField(changes, 'drg', existing.drg, incoming.drg, false);
 
         // Compare arrays
         this._compareStringArray(changes, 'path', existing.path, incoming.path);
 
         // Compare reference arrays (by ID only)
-        this._compareReferenceArray(changes, 'satisfiesRequirements', existing.satisfiesRequirements, incoming.satisfiesRequirements);
-        this._compareReferenceArray(changes, 'supersedsRequirements', existing.supersedsRequirements, incoming.supersedsRequirements);
-        this._compareReferenceArray(changes, 'dependsOnChanges', existing.dependsOnChanges, incoming.dependsOnChanges);
-
-        // Compare annotated reference arrays
-        this._compareAnnotatedReferenceArray(changes, 'documentReferences', existing.documentReferences, incoming.documentReferences);
+        this._compareReferenceArray(changes, 'implementedORs', existing.implementedORs, incoming.implementedORs);
+        this._compareReferenceArray(changes, 'decommissionedORs', existing.decommissionedORs, incoming.decommissionedORs);
+        this._compareReferenceArray(changes, 'dependencies', existing.dependencies, incoming.dependencies);
 
         // Note: Milestones are not compared - they have their own lifecycle
+        // Note: orCosts are not compared - managed separately
 
         return {
             hasChanges: changes.length > 0,
@@ -108,19 +113,11 @@ class Comparator {
             : this._normalizeValue(newValue);
 
         if (normalizedOld !== normalizedNew) {
-            const change = {
+            changes.push({
                 field: fieldName,
                 oldValue: normalizedOld,
                 newValue: normalizedNew
-            };
-
-            // Include raw values if normalization was applied
-            // if (isRichText) {
-            //    change.rawOldValue = oldValue;
-            //    change.rawNewValue = newValue;
-            //}
-
-            changes.push(change);
+            });
         }
     }
 
@@ -208,7 +205,6 @@ class Comparator {
             }))
             .filter(ref => ref.id !== '')
             .sort((a, b) => {
-                // Numeric comparison for IDs
                 if (a.id !== b.id) return a.id - b.id;
                 return a.note.localeCompare(b.note);
             });

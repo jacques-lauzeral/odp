@@ -1,4 +1,4 @@
-// workspace/cli/src/commands/operational-change.js - Updated for EntityReference with notes
+// workspace/cli/src/commands/operational-change.js
 import { VersionedCommands } from '../base-commands.js';
 import {
     DraftingGroup,
@@ -36,26 +36,20 @@ class OperationalChangeCommands extends VersionedCommands {
             .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
-            // OperationalChange-specific content filters
             .option('--visibility <visibility>', `Filter by change visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
             .option('--path <path>', 'Filter by path element')
-            .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
-            .option('--data-category <ids>', 'Filter by data category IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
-            .option('--service <ids>', 'Filter by service IDs via SATISFIES/SUPERSEDES requirements (comma-separated)')
-            .option('--document <ids>', 'Filter by document IDs (comma-separated)')
+            .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via IMPLEMENTS/DECOMMISSIONS requirements (comma-separated)')
             .action(async (options) => {
                 try {
-                    // Validate visibility if provided
                     if (options.visibility && !isVisibilityValid(options.visibility)) {
                         console.error(`Invalid visibility value: ${options.visibility}`);
                         console.error(`Valid values: ${VisibilityKeys.join(', ')}`);
                         process.exit(1);
                     }
 
-                    // Validate DRG if provided
                     if (options.drg && !isDraftingGroupValid(options.drg)) {
                         console.error(`Invalid DRG value: ${options.drg}`);
                         console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
@@ -64,7 +58,6 @@ class OperationalChangeCommands extends VersionedCommands {
 
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
-                    // Build content filtering query parameters
                     const filterParams = this.buildContentFilterParams(options);
                     const finalUrl = this.appendFilterParams(url, filterParams);
 
@@ -82,7 +75,6 @@ class OperationalChangeCommands extends VersionedCommands {
 
                     const items = await response.json();
 
-                    // Build filter display summary
                     const filterDisplay = this.buildFilterDisplaySummary(options);
                     const fullContextDisplay = contextDisplay + filterDisplay;
 
@@ -121,9 +113,6 @@ class OperationalChangeCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * Build content filter query parameters for OperationalChanges
-     */
     buildContentFilterParams(options) {
         const params = [];
 
@@ -133,16 +122,10 @@ class OperationalChangeCommands extends VersionedCommands {
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
         if (options.path) params.push(`path=${encodeURIComponent(options.path)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
-        if (options.dataCategory) params.push(`dataCategory=${encodeURIComponent(options.dataCategory)}`);
-        if (options.service) params.push(`service=${encodeURIComponent(options.service)}`);
-        if (options.document) params.push(`document=${encodeURIComponent(options.document)}`);
 
         return params;
     }
 
-    /**
-     * Append filter parameters to URL
-     */
     appendFilterParams(url, filterParams) {
         if (filterParams.length === 0) return url;
 
@@ -150,9 +133,6 @@ class OperationalChangeCommands extends VersionedCommands {
         return url + separator + filterParams.join('&');
     }
 
-    /**
-     * Build filter display summary for user feedback
-     */
     buildFilterDisplaySummary(options) {
         const filters = [];
 
@@ -162,59 +142,45 @@ class OperationalChangeCommands extends VersionedCommands {
         if (options.text) filters.push(`text="${options.text}"`);
         if (options.path) filters.push(`path="${options.path}"`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
-        if (options.dataCategory) filters.push(`data-categories=[${options.dataCategory}]`);
-        if (options.service) filters.push(`services=[${options.service}]`);
-        if (options.document) filters.push(`documents=[${options.document}]`);
 
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
 
     /**
      * Override displayItemDetails for operational changes
-     * UPDATED: Display notes for documentReferences
      */
     displayItemDetails(item) {
         super.displayItemDetails(item);
 
         console.log(`Code: ${item.code || 'Not set'}`);
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
-        console.log(`Purpose: ${item.purpose || item.description || ''}`);
+        console.log(`Maturity: ${item.maturity || 'Not set'}`);
+        console.log(`Purpose: ${item.purpose || ''}`);
         console.log(`Visibility: ${item.visibility ? getVisibilityDisplay(item.visibility) : 'Not set'}`);
         console.log(`Initial State: ${item.initialState || 'Not specified'}`);
         console.log(`Final State: ${item.finalState || 'Not specified'}`);
         console.log(`Details: ${item.details || 'Not specified'}`);
+        console.log(`Cost: ${item.cost != null ? item.cost : 'Not set'}`);
         console.log(`Private Notes: ${item.privateNotes || 'None'}`);
 
         if (item.path && item.path.length > 0) {
             console.log(`Path: ${item.path.join(' > ')}`);
         }
 
-        // Display SATISFIES relationships
-        if (item.satisfiesRequirements && item.satisfiesRequirements.length > 0) {
-            console.log(`\nSatisfies Requirements:`);
-            item.satisfiesRequirements.forEach(req => {
+        if (item.implementedORs && item.implementedORs.length > 0) {
+            console.log(`\nImplements ORs:`);
+            item.implementedORs.forEach(req => {
                 console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`);
             });
         }
 
-        // Display SUPERSEDES relationships
-        if (item.supersedsRequirements && item.supersedsRequirements.length > 0) {
-            console.log(`\nSupersedes Requirements:`);
-            item.supersedsRequirements.forEach(req => {
+        if (item.decommissionedORs && item.decommissionedORs.length > 0) {
+            console.log(`\nDecommissions ORs:`);
+            item.decommissionedORs.forEach(req => {
                 console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`);
             });
         }
 
-        // UPDATED: Display document references with EntityReference format
-        if (item.documentReferences && item.documentReferences.length > 0) {
-            console.log(`\nReferences Documents:`);
-            item.documentReferences.forEach(ref => {
-                const note = ref.note ? ` - Note: "${ref.note}"` : '';
-                console.log(`  - ${ref.title} [ID: ${ref.id}]${note}`);
-            });
-        }
-
-        // Display dependencies
         if (item.dependsOnChanges && item.dependsOnChanges.length > 0) {
             console.log(`\nDepends On Changes:`);
             item.dependsOnChanges.forEach(dep => {
@@ -222,25 +188,26 @@ class OperationalChangeCommands extends VersionedCommands {
             });
         }
 
-        // Display milestones
         if (item.milestones && item.milestones.length > 0) {
             console.log(`\nMilestones:`);
 
             const table = new Table({
-                head: ['Event Type', 'Wave', 'Version'],
-                colWidths: [25, 15, 10]
+                head: ['Name', 'Event Types', 'Wave'],
+                colWidths: [25, 35, 15]
             });
 
             item.milestones.forEach(milestone => {
-                const eventTypeDisplay = milestone.eventType ? getMilestoneEventDisplay(milestone.eventType) : 'Not specified';
-                const wave = milestone.wave ?
-                    `${milestone.wave.year}.${milestone.wave.quarter}` :
-                    'Not targeted';
+                const eventTypesDisplay = milestone.eventTypes && milestone.eventTypes.length > 0
+                    ? milestone.eventTypes.map(et => getMilestoneEventDisplay(et)).join(', ')
+                    : 'Not specified';
+                const wave = milestone.wave
+                    ? `${milestone.wave.year}.${milestone.wave.sequenceNumber}`
+                    : 'Not targeted';
 
                 table.push([
-                    eventTypeDisplay,
-                    wave,
-                    milestone.version || 'Latest'
+                    milestone.name || 'Unnamed',
+                    eventTypesDisplay,
+                    wave
                 ]);
             });
 
@@ -248,9 +215,6 @@ class OperationalChangeCommands extends VersionedCommands {
         }
     }
 
-    /**
-     * Helper method to validate visibility
-     */
     validateVisibility(visibility) {
         if (!visibility) return null;
 
@@ -263,9 +227,6 @@ class OperationalChangeCommands extends VersionedCommands {
         return visibility;
     }
 
-    /**
-     * Helper method to validate DRG
-     */
     validateDRG(drg) {
         if (!drg) return null;
 
@@ -278,22 +239,28 @@ class OperationalChangeCommands extends VersionedCommands {
         return drg;
     }
 
-    /**
-     * UPDATED: create command - CLI doesn't support adding notes
-     */
+    parseIds(input) {
+        if (!input) return [];
+
+        const ids = Array.isArray(input) ? input : input.split(/[,\s]+/).filter(id => id.trim());
+        return ids.map(id => id.trim());
+    }
+
     _addCreateCommand(itemCommand) {
         itemCommand
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
-            .option('--purpose <purpose>', 'Purpose of the change (replaces description)', '')
+            .option('--purpose <purpose>', 'Purpose of the change', '')
             .option('--visibility <visibility>', `Visibility (${VisibilityKeys.join(', ')})`, 'NETWORK')
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--initial-state <state>', 'Initial state description', '')
             .option('--final-state <state>', 'Final state description', '')
             .option('--details <details>', 'Additional details', '')
             .option('--private-notes <notes>', 'Private notes', '')
-            .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies (space-separated)')
-            .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes (space-separated)')
+            .option('--maturity <maturity>', 'Maturity level (DRAFT, ADVANCED, MATURE)', 'DRAFT')
+            .option('--cost <cost>', 'Cost (integer)')
+            .option('--implements <or-ids...>', 'OR IDs that this change implements (space-separated)')
+            .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions (space-separated)')
             .action(async (title, options) => {
                 try {
                     const data = {
@@ -305,10 +272,11 @@ class OperationalChangeCommands extends VersionedCommands {
                         finalState: options.finalState || '',
                         details: options.details || '',
                         privateNotes: options.privateNotes || '',
+                        maturity: options.maturity || 'DRAFT',
+                        cost: options.cost != null ? parseInt(options.cost, 10) : null,
                         path: [],
-                        satisfiesRequirements: options.satisfies || [],
-                        supersedsRequirements: options.supersedes || [],
-                        documentReferences: [], // CLI doesn't support document references
+                        implementedORs: options.implements || [],
+                        decommissionedORs: options.decommissions || [],
                         dependsOnChanges: [],
                         milestones: []
                     };
@@ -340,22 +308,21 @@ class OperationalChangeCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * UPDATED: update command - CLI doesn't support adding notes
-     */
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version with complete replacement)`)
-            .option('--purpose <purpose>', 'New purpose (replaces description)')
+            .option('--purpose <purpose>', 'New purpose')
             .option('--visibility <visibility>', `New visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
             .option('--details <details>', 'Additional details')
             .option('--private-notes <notes>', 'Private notes')
-            .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
-            .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
+            .option('--maturity <maturity>', 'Maturity level (DRAFT, ADVANCED, MATURE)')
+            .option('--cost <cost>', 'Cost (integer)')
+            .option('--implements <or-ids...>', 'OR IDs that this change implements')
+            .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions')
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
                     const data = {
@@ -368,10 +335,11 @@ class OperationalChangeCommands extends VersionedCommands {
                         finalState: options.finalState || '',
                         details: options.details || '',
                         privateNotes: options.privateNotes || '',
+                        maturity: options.maturity || 'DRAFT',
+                        cost: options.cost != null ? parseInt(options.cost, 10) : null,
                         path: [],
-                        satisfiesRequirements: options.satisfies || [],
-                        supersedsRequirements: options.supersedes || [],
-                        documentReferences: [],
+                        implementedORs: options.implements || [],
+                        decommissionedORs: options.decommissions || [],
                         dependsOnChanges: [],
                         milestones: []
                     };
@@ -415,23 +383,22 @@ class OperationalChangeCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * UPDATED: patch command - CLI doesn't support patching notes
-     */
     _addPatchCommand(itemCommand) {
         itemCommand
             .command('patch <itemId> <expectedVersionId>')
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
-            .option('--purpose <purpose>', 'New purpose (replaces description)')
+            .option('--purpose <purpose>', 'New purpose')
             .option('--visibility <visibility>', `New visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
             .option('--details <details>', 'Additional details')
             .option('--private-notes <notes>', 'Private notes')
-            .option('--satisfies <requirement-ids...>', 'Requirement IDs that this change satisfies')
-            .option('--supersedes <requirement-ids...>', 'Requirement IDs that this change supersedes')
+            .option('--maturity <maturity>', 'Maturity level (DRAFT, ADVANCED, MATURE)')
+            .option('--cost <cost>', 'Cost (integer)')
+            .option('--implements <or-ids...>', 'OR IDs that this change implements')
+            .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
@@ -444,8 +411,10 @@ class OperationalChangeCommands extends VersionedCommands {
                     if (options.finalState) data.finalState = options.finalState;
                     if (options.details) data.details = options.details;
                     if (options.privateNotes) data.privateNotes = options.privateNotes;
-                    if (options.satisfies) data.satisfiesRequirements = options.satisfies;
-                    if (options.supersedes) data.supersedsRequirements = options.supersedes;
+                    if (options.maturity) data.maturity = options.maturity;
+                    if (options.cost != null) data.cost = parseInt(options.cost, 10);
+                    if (options.implements) data.implementedORs = options.implements;
+                    if (options.decommissions) data.decommissionedORs = options.decommissions;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PATCH',
@@ -487,15 +456,7 @@ class OperationalChangeCommands extends VersionedCommands {
     }
 
     /**
-     * Milestone commands remain unchanged - milestones don't have notes
-     */
-    _addMilestoneCommands(itemCommand) {
-        // [Milestone commands unchanged from original - not affected by EntityReference changes]
-        // Keeping original milestone logic as-is
-    }
-
-    /**
-     * Override createCommands to add milestone commands
+     * Override createCommands to add milestone commands and delete command
      */
     createCommands(program) {
         super.createCommands(program);
@@ -533,6 +494,11 @@ class OperationalChangeCommands extends VersionedCommands {
                     process.exit(1);
                 }
             });
+    }
+
+    _addMilestoneCommands(itemCommand) {
+        // Milestone commands have their own lifecycle and are managed via the milestone sub-resource API.
+        // Implementation left for milestone-specific route integration.
     }
 }
 

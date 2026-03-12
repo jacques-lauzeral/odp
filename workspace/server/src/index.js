@@ -1,9 +1,9 @@
 import express from 'express';
 import { initializeStores, closeStores } from './store/index.js';
 import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
-import documentRoutes from './routes/document.js';
-import dataCategoryRoutes from './routes/data-category.js';
-import serviceRoutes from './routes/service.js';
+import domainRoutes from './routes/domain.js';
+import referenceDocumentRoutes from './routes/reference-document.js';
+import bandwidthRoutes from './routes/bandwidth.js';
 import waveRoutes from './routes/wave.js';
 import operationalRequirementRoutes from './routes/operational-requirement.js';
 import operationalChangeRoutes from './routes/operational-change.js';
@@ -24,14 +24,12 @@ app.use(express.urlencoded({ extended: true }));
 // Add raw body parser for YAML content
 app.use('/import', express.raw({ type: ['application/yaml', 'text/yaml'], limit: '10mb' }));
 
-// CORS middleware - Add this BEFORE routes
+// CORS middleware
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id');
 
-    // Handle preflight requests
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
     } else {
@@ -43,25 +41,16 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
     const startTime = Date.now();
     const timestamp = new Date().toISOString();
-
-    // Generate unique trace ID for this request
     const traceId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Capture original path and method (they may change during routing)
     const originalPath = req.path;
     const originalMethod = req.method;
 
-    // Attach trace ID to request for use in services/routes
     req.traceId = traceId;
-
-    // Log request received
     console.log(`[${timestamp}] [${traceId}] --> ${originalMethod} ${originalPath}`);
 
-    // Capture the original res.send to log response
     const originalSend = res.send.bind(res);
     let responseSent = false;
 
-    // Override res.send to capture response (covers res.json, res.send, res.sendStatus, etc.)
     res.send = function(body) {
         if (!responseSent) {
             responseSent = true;
@@ -86,9 +75,9 @@ app.use('/docx', docxExportRoutes);
 
 // Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
-app.use('/documents', documentRoutes);
-app.use('/data-categories', dataCategoryRoutes);
-app.use('/services', serviceRoutes);
+app.use('/domains', domainRoutes);
+app.use('/reference-documents', referenceDocumentRoutes);
+app.use('/bandwidths', bandwidthRoutes);
 app.use('/waves', waveRoutes);
 
 // Operational Entity API Routes
@@ -121,7 +110,6 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-// Start server
 async function startServer() {
     try {
         console.log('Initializing store layer...');
@@ -140,9 +128,9 @@ async function startServer() {
             console.log(`  - POST http://localhost:${PORT}/import/requirements?drg=<DRG> (Content-Type: application/yaml)`);
             console.log(`Setup Entities:`);
             console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
-            console.log(`  - http://localhost:${PORT}/documents`);
-            console.log(`  - http://localhost:${PORT}/data-categories`);
-            console.log(`  - http://localhost:${PORT}/services`);
+            console.log(`  - http://localhost:${PORT}/domains`);
+            console.log(`  - http://localhost:${PORT}/reference-documents`);
+            console.log(`  - http://localhost:${PORT}/bandwidths`);
             console.log(`  - http://localhost:${PORT}/waves`);
             console.log(`Operational Entities:`);
             console.log(`  - http://localhost:${PORT}/operational-requirements`);

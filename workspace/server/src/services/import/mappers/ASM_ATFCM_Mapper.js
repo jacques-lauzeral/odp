@@ -32,8 +32,8 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * - 'ON Title:' → implementedONs (resolved via ON title map)
  * - 'Step' → path[0] (first element of hierarchical path)
  * - 'CONOPS Improvement reference' → path[1] (second element of hierarchical path)
- * - 'Stakeholders:' → impactsStakeholderCategories (parsed via synonym map)
- * - 'INM Roadmap reference (code)' → documentReferences (document:inm-roadmap with column value as note)
+ * - 'Stakeholders:' → impactedStakeholders (parsed via synonym map)
+ * - 'INM Roadmap reference (code)' → privateNotes (as INM Roadmap Reference section)
  * - 'Originator:' → privateNotes
  * - 'OR Code' → privateNotes
  * - 'Dependencies:' → privateNotes
@@ -51,10 +51,10 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * - 'Initial State' → initialState (rich text)
  * - 'Final State' → finalState (rich text)
  * - 'Details' → details (rich text)
- * - 'Satisfied Ors' → satisfiedORs (semicolon-delimited list)
- * - 'Superseded Ors' → supersededORs (semicolon-delimited, "N/A" → empty array)
- * - 'Additional documents' → documentReferences (line-delimited → document references)
- * - 'Milestones' → milestones (single milestone: title='M1', wave='wave:2027', eventTypes=[parsed values])
+ * - 'Satisfied Ors' → implementedORs (semicolon-delimited list)
+ * - 'Superseded Ors' → decommissionedORs (semicolon-delimited, "N/A" → empty array)
+ * - 'Additional documents' → privateNotes (appended as Additional Documents section)
+ * - 'Milestones' → milestones (single milestone: name='M1', wave='wave:2027', eventTypes=[parsed values])
  * - 'Remarks' → privateNotes (combined with other fields)
  * - 'Dependences' → privateNotes (appended as Dependencies section)
  * - 'Cost assessment' → privateNotes (appended as Cost Assessment section)
@@ -130,7 +130,7 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * RELATIONSHIPS:
  * --------------
  * - ON → OR: One-to-many (ON.externalId stored in OR.implementedONs)
- * - OC → OR: One-to-many (OR.externalId stored in OC.satisfiedORs)
+ * - OC → OR: One-to-many (OR.externalId stored in OC.implementedORs)
  */
 class AsmAtfcmMapper extends Mapper {
 
@@ -264,10 +264,8 @@ class AsmAtfcmMapper extends Mapper {
         console.log(`Mapped ${changes.length} changes (OCs) from OCs for 2027 sheet`);
 
         return {
-            documents: [],
+            referenceDocuments: [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
             waves: [],
             requirements: [...onOrResult.needs, ...onOrResult.requirements],
             changes: changes
@@ -506,14 +504,14 @@ class AsmAtfcmMapper extends Mapper {
         // Parse stakeholders
         const stakeholderResult = this._parseStakeholders(row['Stakeholders:']);
 
-        // Parse document references
-        const documentReferences = this._parseRequirementDocumentReferences(row);
+        // INM Roadmap reference goes to privateNotes (no document references on ORs in v4)
+        const inmRoadmapRef = row['INM Roadmap reference (code)'];
 
         // Build path from Step and CONOPS Improvement reference
         const path = this._buildPath(step, conopsReference);
 
-        // Build private notes (including unmapped stakeholders if any)
-        const privateNotes = this._extractRequirementPrivateNotes(row, stakeholderResult.unmapped);
+        // Build private notes (including unmapped stakeholders and INM roadmap ref if any)
+        const privateNotes = this._extractRequirementPrivateNotes(row, stakeholderResult.unmapped, inmRoadmapRef);
 
         // Build object first
         const requirement = {
@@ -525,8 +523,7 @@ class AsmAtfcmMapper extends Mapper {
             rationale: rationale,
             privateNotes: privateNotes,
             implementedONs: [],  // Will be populated by caller
-            impactsStakeholderCategories: stakeholderResult.refs,
-            documentReferences: documentReferences
+            impactedStakeholders: stakeholderResult.refs
         };
 
         // Add external ID using the complete object (no path needed)
@@ -563,7 +560,7 @@ class AsmAtfcmMapper extends Mapper {
      * @returns {string|null} Private notes text
      * @private
      */
-    _extractRequirementPrivateNotes(row, unmappedStakeholders = []) {
+    _extractRequirementPrivateNotes(row, unmappedStakeholders = [], inmRoadmapRef = null) {
         const rowNumber = row['#'];
         const originator = row['Originator:'];
         const orCode = row['OR Code'];
@@ -603,6 +600,10 @@ class AsmAtfcmMapper extends Mapper {
             parts.push(`**Impacted Services:** ${impactedServices.trim()}`);
         }
 
+        if (inmRoadmapRef && inmRoadmapRef.trim() !== '') {
+            parts.push(`**INM Roadmap Reference:** ${inmRoadmapRef.trim()}`);
+        }
+
         if (unmappedStakeholders && unmappedStakeholders.length > 0) {
             parts.push(`**Stakeholders (unmapped):** ${unmappedStakeholders.join(', ')}`);
         }
@@ -612,25 +613,6 @@ class AsmAtfcmMapper extends Mapper {
         }
 
         return parts.length > 0 ? parts.join('\n\n') : null;
-    }
-
-    /**
-     * Parse document references for OR from iNM Roadmap reference column
-     * @param {Object} row - Row object
-     * @returns {Array<{documentExternalId: string, note: string}>} Array of document reference objects
-     * @private
-     */
-    _parseRequirementDocumentReferences(row) {
-        const inmRoadmapRef = row['INM Roadmap reference (code)'];
-
-        if (!inmRoadmapRef || inmRoadmapRef.trim() === '') {
-            return [];
-        }
-
-        return [{
-            documentExternalId: 'document:inm-roadmap',
-            note: inmRoadmapRef.trim()
-        }];
     }
 
     /**
@@ -692,14 +674,11 @@ class AsmAtfcmMapper extends Mapper {
             return null;
         }
 
-        // Parse satisfied ORs (semicolon-delimited OR codes → resolve to external IDs)
-        const satisfiedORs = this._resolveOrCodes(row['Satisfied Ors'], orCodeMap, 'Satisfied Ors');
+        // Parse implemented ORs (semicolon-delimited OR codes → resolve to external IDs)
+        const implementedORs = this._resolveOrCodes(row['Satisfied Ors'], orCodeMap, 'Satisfied Ors');
 
-        // Parse superseded ORs (semicolon-delimited OR codes → resolve to external IDs)
-        const supersededORs = this._resolveOrCodes(row['Superseded Ors'], orCodeMap, 'Superseded Ors', true);
-
-        // Parse document references (line-delimited)
-        const documentReferences = this._parseDocumentReferences(row['Additional documents']);
+        // Parse decommissioned ORs (semicolon-delimited OR codes → resolve to external IDs)
+        const decommissionedORs = this._resolveOrCodes(row['Superseded Ors'], orCodeMap, 'Superseded Ors', true);
 
         // Parse milestones
         const milestones = this._parseOcMilestones(row['Milestones']);
@@ -717,9 +696,8 @@ class AsmAtfcmMapper extends Mapper {
             details: row['Details'] && row['Details'].trim() !== '' ? row['Details'].trim() : null,
             drg: 'ASM_ATFCM',
             visibility: 'NETWORK',
-            satisfiedORs: satisfiedORs,
-            supersededORs: supersededORs,
-            documentReferences: documentReferences,
+            implementedORs: implementedORs,
+            decommissionedORs: decommissionedORs,
             milestones: milestones,
             privateNotes: privateNotes
         };
@@ -739,6 +717,7 @@ class AsmAtfcmMapper extends Mapper {
         const dependences = row['Dependences'];
         const costAssessment = row['Cost assessment'];
         const priority = row['Pirotity'];
+        const additionalDocuments = row['Additional documents'];
 
         const parts = [];
 
@@ -760,6 +739,10 @@ class AsmAtfcmMapper extends Mapper {
 
         if (priority && priority.trim() !== '' && this._isValidPrivateNote(priority)) {
             parts.push(`**Priority:** ${priority.trim()}`);
+        }
+
+        if (additionalDocuments && additionalDocuments.trim() !== '' && this._isValidPrivateNote(additionalDocuments)) {
+            parts.push(`**Additional Documents:** ${additionalDocuments.trim()}`);
         }
 
         return parts.length > 0 ? parts.join('\n\n') : null;
@@ -813,37 +796,6 @@ class AsmAtfcmMapper extends Mapper {
     }
 
     /**
-     * Parse line-delimited document references
-     * @param {string} text - Line-delimited document names
-     * @returns {Array<{documentExternalId: string}>} Array of document reference objects
-     * @private
-     */
-    _parseDocumentReferences(text) {
-        if (!text || text.trim() === '') {
-            return [];
-        }
-
-        const references = [];
-        const lines = text.split('\n').map(line => line.trim()).filter(line => line !== '');
-
-        for (const line of lines) {
-            // Build external ID from document name
-            // Convention: document:{normalized_name}
-            const normalizedName = line
-                .toLowerCase()
-                .replace(/\//g, '_')  // Convert slashes to underscores first
-                .replace(/\s+/g, '_')  // Convert spaces to underscores
-                .replace(/[^a-z0-9_]/g, '');  // Remove other special characters
-
-            references.push({
-                documentExternalId: `document:${normalizedName}`
-            });
-        }
-
-        return references;
-    }
-
-    /**
      * Parse milestones text and map to a single milestone object with eventTypes array
      * @param {string} text - Line-delimited milestone descriptions
      * @returns {Array<{title: string, wave: string, eventTypes: Array<string>}>} Array with single milestone object (or empty)
@@ -870,7 +822,7 @@ class AsmAtfcmMapper extends Mapper {
         }
 
         return [{
-            title: 'M1',
+            name: 'M1',
             wave: 'wave:2027',
             eventTypes: eventTypes
         }];

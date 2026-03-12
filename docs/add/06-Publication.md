@@ -5,7 +5,7 @@
 The publication pipeline converts ODIP database content into distributable artefacts for external stakeholders. It has two output formats:
 
 - **Antora ZIP** — a structured AsciiDoc source tree that stakeholders build into a multi-page HTML site with full-text search and optional PDF
-- **PDF** — a single consolidated document generated directly via AsciiDoctor
+- **PDF** — a single consolidated document generated directly via AsciiDoctor (not yet implemented)
 
 Both formats can target a specific ODIP Edition (scoped by baseline + wave) or the entire repository.
 
@@ -22,13 +22,15 @@ REST API  POST /publications/pdf?editionId=<id>
           ▼
     PublicationService
           │
-          ├── ODPEditionAggregator     ← queries Neo4j, assembles data
-          │
-          ├── ODPEditionTemplateRenderer  ← Mustache templates → AsciiDoc pages
-          │
-          ├── DeltaToAsciidocConverter    ← Quill Delta → AsciiDoc + image extraction
-          │
-          └── archiver (ZIP)              ← packages output directory
+          └── DetailsModuleGenerator   ← queries Neo4j, generates AsciiDoc pages
+                │
+                ├── operationalRequirementStore.findAll()
+                │
+                ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
+                │
+                ├── Mustache templates          ← on.mustache, or.mustache, etc.
+                │
+                └── archiver (ZIP)              ← packages static + dynamic content
 ```
 
 **File locations** — all under `workspace/server/src/services/`:
@@ -37,31 +39,58 @@ REST API  POST /publications/pdf?editionId=<id>
 services/
 └── publication/
     ├── PublicationService.js
-    ├── ODPEditionAggregator.js
-    ├── ODPEditionTemplateRenderer.js
-    └── converters/
-        └── DeltaToAsciidocConverter.js
+    └── generators/
+        └── DetailsModuleGenerator.js
+    └── templates/
+        ├── on.mustache
+        ├── or.mustache
+        ├── folder-index.mustache
+        └── drg-index.mustache
+
+services/export/
+└── DeltaToAsciidocConverter.js   (shared with docx export)
 ```
 
-Templates live in `workspace/server/src/templates/` as Mustache files.
+Static Antora scaffolding lives in `publication/web-site/static/` (configurable via `STATIC_CONTENT_PATH` env var):
+
+```
+static/
+├── antora-playbook.yml
+├── antora.yml
+├── modules/ROOT/nav.adoc
+├── modules/ROOT/pages/index.adoc
+├── modules/introduction/pages/index.adoc
+└── modules/portfolio/pages/index.adoc
+```
 
 ---
 
 ## 3. Generation Pipeline
 
-### Stage 1 — Data Aggregation
+### Stage 1 — Data Fetch
 
-`ODPEditionAggregator` queries the store layer to assemble all content needed for the publication:
+`DetailsModuleGenerator` queries `operationalRequirementStore.findAll()` in a single transaction with no baseline or wave filters (full repository). All ONs and ORs are retrieved and split by type.
 
-- All ONs and ORs grouped by DrG, with hierarchical path structure
-- Operational Changes with milestone data
-- Reverse relationships (which ORs implement a given ON, etc.)
-- Referenced documents and annotations
-- Setup entity display names (stakeholder categories, services, data categories)
+### Stage 2 — Relationship Resolution
 
-When an `editionId` is provided the aggregator applies the edition's `baselineId` + `fromWaveId` filters. Without an `editionId` the entire repository is published.
+Reverse relationship maps are built in-memory from the fetched data:
 
-### Stage 2 — Content Transformation
+- `refinedBy[]` — ONs/ORs that refine a given entity (from `refinesParents`)
+- `implementedBy[]` — ORs that implement a given ON (from `implementedONs`)
+
+Cross-reference lookups (`onLookup`, `orLookup`) map `itemId → { drg, path }` and are used to generate correct Antora `xref` links between pages.
+
+### Stage 3 — Hierarchy Building
+
+Entities are placed into a per-DrG tree structure:
+
+- Entities with a `path[]` → placed into nested folder nodes matching their path segments
+- Entities with `refinesParents` → nested as children under their parent entity (same folder)
+- Entities with neither → placed at the DrG root
+
+Refinement children are sorted by `itemId` at each level. Multi-level refinements are resolved iteratively until all children are placed.
+
+### Stage 4 — Content Transformation
 
 `DeltaToAsciidocConverter` converts every rich text field from Quill Delta JSON to AsciiDoc:
 
@@ -74,52 +103,53 @@ When an `editionId` is provided the aggregator applies the edition's `baselineId
 | Inline code / code blocks | `` `code` `` / `[source]\n----` |
 | Embedded images (base64 PNG) | Extracted to `assets/images/image-NNN.png`, referenced as `image::image-NNN.png[]` |
 
-Images are extracted sequentially, assigned unique filenames (`image-001.png`, `image-002.png`, …), and written to `modules/details/assets/images/`.
+Images are extracted using a global counter (never reset between entities) to guarantee unique filenames across the entire publication. All extracted images are written to `modules/details/assets/images/`.
 
-### Stage 3 — Page and Navigation Generation
+### Stage 5 — Page Generation
 
-`ODPEditionTemplateRenderer` uses Mustache templates to produce one AsciiDoc page per ON/OR and one `nav.adoc` per directory level:
+One AsciiDoc page is generated per ON and per OR using Mustache templates. Pages contain:
+
+- Metadata block: type, itemId, DrG, path, refines link
+- Statement, Rationale, Flows sections (when present)
+- Refined By section (links to refining child entities)
+- Implemented By section (ON pages: links to implementing ORs)
+- Implements section (OR pages: links to implemented ONs)
+
+Folder index pages (`index.adoc`) are generated for each subfolder listing its ONs, ORs, and subfolders.
+
+Output structure per DrG:
 
 ```
 modules/details/
 ├── pages/
 │   ├── index.adoc
-│   ├── idl/
-│   │   ├── adp/
-│   │   │   ├── on-91.adoc
-│   │   │   ├── or-93.adoc
-│   │   │   └── nav.adoc
-│   │   └── nav.adoc
-│   └── <drg>/...
+│   ├── {drg}/
+│   │   ├── index.adoc
+│   │   ├── {folder}/
+│   │   │   ├── index.adoc
+│   │   │   ├── on-{itemId}.adoc
+│   │   │   └── or-{itemId}.adoc
+│   │   ├── on-{itemId}.adoc
+│   │   └── or-{itemId}.adoc
+│   └── ...
 ├── assets/images/
 │   ├── image-001.png
 │   └── ...
 └── nav.adoc
 ```
 
-Navigation files use Antora `xref` syntax and are ordered by `itemId`.
+Navigation (`nav.adoc`) is generated hierarchically, mirroring the folder/entity tree, using Antora `xref` syntax ordered by `itemId`.
 
-### Stage 4 — Antora Structure
+### Stage 6 — Antora Structure and Packaging
 
-The output directory is structured as a complete Antora component source:
+`PublicationService` assembles the final ZIP by combining:
 
-```yaml
-# antora.yml (generated)
-name: odip
-title: ODIP
-version: ~
-nav:
-- modules/ROOT/nav.adoc
-- modules/introduction/nav.adoc
-- modules/portfolio/nav.adoc
-- modules/details/nav.adoc
-```
+1. The entire static directory tree (Antora playbook, ROOT module, introduction module, portfolio module)
+2. All dynamically generated details module files (`modules/details/…`)
 
-Four modules are generated: `ROOT` (landing page), `introduction`, `portfolio` (high-level summaries), and `details` (full ON/OR pages by DrG).
+The ZIP is streamed directly as the HTTP response (`application/zip`).
 
-### Stage 5 — Packaging
-
-The complete Antora source tree is packaged as a ZIP archive using `archiver` and streamed as the HTTP response (`application/zip`).
+The four Antora modules are: `ROOT` (landing page), `introduction`, `portfolio` (high-level summaries), and `details` (full ON/OR pages by DrG).
 
 ---
 
@@ -130,7 +160,7 @@ Defined in `openapi-publication.yml`.
 | Method | Endpoint | Body / Query | Response |
 |---|---|---|---|
 | `POST` | `/publications/antora` | `?editionId=<id>` (optional) | `application/zip` |
-| `POST` | `/publications/pdf` | `?editionId=<id>` (optional) | `application/pdf` |
+| `POST` | `/publications/pdf` | `?editionId=<id>` (optional) | `application/pdf` (not yet implemented) |
 
 Both endpoints return 404 if `editionId` is provided but not found. Omitting `editionId` publishes the entire repository.
 

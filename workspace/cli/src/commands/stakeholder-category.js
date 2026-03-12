@@ -2,9 +2,9 @@ import { BaseCommands } from '../base-commands.js';
 
 export function stakeholderCategoryCommands(program, config) {
     const commands = new BaseCommands(
-        'stakeholder-category',     // entityName for command
+        'stakeholder',              // entityName for command
         'stakeholder-categories',   // urlPath for API
-        'category',                 // displayName for messages
+        'stakeholder category',     // displayName for messages
         config
     );
 
