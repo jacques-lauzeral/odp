@@ -1,4 +1,4 @@
-# Chapter 09 – Development Guide
+# Chapter 10 – Development Guide
 
 ## 1. Philosophy
 
@@ -22,7 +22,6 @@ odp/
 │   ├── cli/             Commander.js CLI
 │   └── web-client/      Vanilla JS SPA
 ├── Dockerfile.web-client
-├── docker-compose.yml
 ├── odp-deployment-local.yaml
 ├── odp-deployment-ec.yaml
 └── package.json         npm workspace root (type: "module")
@@ -48,7 +47,7 @@ export const isDraftingGroupValid    = (v) => DraftingGroupKeys.includes(v);
 export const getDraftingGroupDisplay = (k) => DraftingGroup[k] || k;
 ```
 
-Enums defined in `@odp/shared`: `DraftingGroup`, `ORType`, `ODIPEditionType`, `Visibility`, `MilestoneEvent`.
+Enums defined in `@odp/shared`: `DraftingGroup`, `ORType`, `ODIPEditionType`, `Visibility`, `MilestoneEvent`, `MaturityLevel`, `BandwidthScope`.
 
 ### Model Pattern
 
@@ -104,7 +103,7 @@ Use `SimpleItemRouter` for setup entities or `VersionedItemRouter` for operation
 Add a new command file in `cli/src/commands/`. Register in `cli/src/index.js`.
 
 ### Step 6 — Web client
-Choose the appropriate component pattern (see Chapter 07), add entity to the relevant activity, update setup data loading if the entity is referenced in forms.
+Choose the appropriate component pattern (see Chapter 08), add entity to the relevant activity, update setup data loading if the entity is referenced in forms.
 
 ---
 
@@ -118,7 +117,7 @@ Choose the appropriate component pattern (see Chapter 07), add entity to the rel
 | Files (web client forms) | singular kebab-case | `requirement-form.js` |
 | Fields | camelCase | `parentId`, `expectedVersionId` |
 | Neo4j labels | PascalCase singular | `OperationalRequirement` |
-| Neo4j relationships | UPPER_SNAKE_CASE | `REFINES`, `IMPLEMENTS`, `DEPENDS_ON` |
+| Neo4j relationships | UPPER_SNAKE_CASE | `REFINES`, `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`, `IMPACTS_STAKEHOLDER`, `IMPACTS_DOMAIN` |
 | API endpoints | plural kebab-case | `/operational-requirements` |
 
 ---
@@ -174,13 +173,13 @@ podman logs -f odp-pod-odp-server
 curl -H "x-user-id: dev" http://localhost:8080/hello
 
 # Run CLI against running server
-node workspace/cli/src/index.js stakeholder-category list
+node workspace/cli/src/index.js stakeholder list
 
 # Neo4j query console
 # Open http://localhost:7474  (neo4j / password123)
 ```
 
-Live reload via `nodemon` is active on the server container — saving a file in `workspace/server/src/` restarts the server automatically. The web client dev server also watches for changes.
+Live reload via `nodemon` is active on the server container — saving a file in `workspace/server/src/` restarts the server automatically. The web client dev server also watches for changes within the running container image; source file changes on the host require rebuilding the web client image (`podman build -f Dockerfile.web-client -t odp-web-client:latest .`) and restarting the pod.
 
 ---
 

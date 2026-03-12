@@ -1,4 +1,4 @@
-# Chapter 08 – Deployment
+# Chapter 09 – Deployment
 
 ## 1. Overview
 
@@ -13,7 +13,7 @@ Three containers share a single pod and communicate over localhost:
 | Container | Image | Port | Role |
 |---|---|---|---|
 | `neo4j` | neo4j:5.15 + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
-| `odp-server` | node:20 | 8080 (host) → 80 (container) | Express API + import/export services |
+| `odp-server` | node:24 | 8080 (host) → 80 (container) | Express API + import/export services |
 | `web-client` | odp-web-client:latest (local build) | 3000 | Static web client dev server |
 
 The server container mounts the source code tree as a host volume and runs `nodemon` for live reload during development. The web client is built into a local container image once and rebuilt only when its dependencies change.
@@ -26,7 +26,7 @@ The server container mounts the source code tree as a host volume and runs `node
 
 | Aspect | Local (`odp-deployment-local.yaml`) | Eurocontrol (`odp-deployment-ec.yaml`) |
 |---|---|---|
-| Base images | `docker.io/neo4j:5.15`, `docker.io/node:20` | `yagi.cfmu.corp.eurocontrol.int:5000/*` |
+| Base images | `docker.io/neo4j:5.15`, `docker.io/node:24` | `yagi.cfmu.corp.eurocontrol.int:5000/*` |
 | Neo4j data | `~/odp-data/neo4j` | `/auto/local_build/dhws097/ssd1/odp-data/neo4j` |
 | Source code | `~/odp/odp-main` | `/auto/home/lau/works/odp/odp-main` |
 | Node.js | System / nvm | `/cm/cots/osm/node.24.11.1/` |
@@ -48,7 +48,7 @@ NEO4J_PASSWORD: "password123"
 ### 3.3 Web Client Dockerfile
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY . .
 RUN mkdir -p workspace/web-client/src/shared/src && \
