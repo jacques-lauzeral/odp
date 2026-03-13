@@ -487,9 +487,8 @@ export default class ChangesEntity {
             { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
             { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
             { key: 'maturity', label: 'Maturity', width: '100px', sortable: true, type: 'text' },
-            { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
             { key: 'implementedORs', label: 'Implements', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
-            { key: 'decommissionedORs', label: 'Decommissions', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 }
+            { key: 'cost', label: 'Cost', width: '80px', sortable: true, type: 'text' }
         ];
     }
 
