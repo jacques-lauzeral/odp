@@ -108,14 +108,14 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 | `getAll(userId, baselineId?, fromWaveId?, filters?)` | List with optional context and filters |
 | `delete(itemId, userId)` | Delete item and all versions |
 | `_validateCreatePayload(payload)` *(abstract)* | Must be implemented by subclass |
-| `_validateUpdatePayload(payload)` *(abstract)* | Must be implemented by subclass |
+| `_validateUpdatePayload(payload, itemId?)` *(abstract)* | Must be implemented by subclass; `itemId` is `null` on create, set on update/patch |
 | `_computePatchedPayload(current, patchPayload)` *(abstract)* | Field merge logic; must be implemented by subclass |
 
-`patch()` is implemented entirely in the base class: it fetches the current entity, calls `_computePatchedPayload()` on the subclass to merge fields, validates the result, and calls `store.update()` — all in a single transaction.
+`patch()` is implemented entirely in the base class: it fetches the current entity, calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
 
 ### 3.4 OperationalRequirementService
 
-Extends `VersionedItemService`. Required fields: `title`, `type`, `statement`, `rationale`, `maturity`. Optional: `drg`, `path`, and all relationship arrays.
+Extends `VersionedItemService`. Required fields at create: `title`, `type`, `maturity`. Optional: `drg`, `path`, and all relationship arrays. Further fields are required conditionally based on maturity level (see maturity-gated rules below).
 
 Key validation rules:
 
@@ -129,6 +129,8 @@ Key validation rules:
 - Annotated reference arrays (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) must use `{id, note?}` object format
 - Referenced entities (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 - `type` is set at create time and cannot be changed on update — rejected immediately if `type` differs from current
+- `refinesParents`: cycle detection via `store.hasRefinesCycle(itemId, candidateParentId, tx)` — checked per parent in a `'system'` transaction
+- `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
 - `refinesParents`: cycle detection via `store.hasRefinesCycle(itemId, candidateParentId, tx)` — checked per parent in a `'system'` transaction
 - `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
 
@@ -169,6 +171,7 @@ Validation rules:
 - `implementedORs` and `decommissionedORs` IDs validated for existence
 - Milestone `waveId` references validated for existence
 - Reference validations run in parallel using `Promise.all`
+- `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
 - `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
 - `_buildCompletePayload()` extracts the common logic of rebuilding the full OC payload for all three milestone mutation methods
 
@@ -254,6 +257,9 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Self-reference / self-dependency | Service, before or during validation tx | Checked by item ID comparison |
 | Milestone wave existence | Service, separate `'system'` tx | Per-milestone `waveStore().exists()` |
 | Self-reference in REFINES | Store (`StoreError`) | Surfaced as-is to route layer |
+| Cycle detection in `REFINES` | Service, separate `'system'` tx | `store.hasRefinesCycle()` per candidate parent — OR only |
+| Cycle detection in `DEPENDS_ON` (OR) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
+| Cycle detection in `DEPENDS_ON` (OC) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
 | Cycle detection in `REFINES` | Service, separate `'system'` tx | `store.hasRefinesCycle()` per candidate parent — OR only |
 | Cycle detection in `DEPENDS_ON` (OR) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
 | Cycle detection in `DEPENDS_ON` (OC) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |

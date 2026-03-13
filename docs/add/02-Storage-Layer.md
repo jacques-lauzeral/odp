@@ -8,7 +8,7 @@ Key responsibilities:
 - Entity CRUD with consistent Neo4j result transformation
 - Hierarchical relationship management (REFINES)
 - Versioned entity lifecycle with optimistic locking
-- Relationship inheritance across versions
+- Complete relationship payload per version (no inheritance fallback)
 - Multi-context querying (baseline snapshots and wave filtering)
 - Transaction boundary management
 
@@ -17,10 +17,10 @@ Key responsibilities:
 ## 2. Design Principles
 
 ### 2.1 Complete Payload Approach
-All content and relationships are provided in a single operation. There are no partial update endpoints — the store always receives the full desired state and resolves inheritance for unspecified relationships.
+All content and relationships are provided in a single operation. There are no partial update endpoints — the store always receives the complete desired state for every write.
 
 ### 2.2 Relationship Inheritance
-When a new version is created, any relationship array not included in the update payload is automatically inherited from the previous version. An empty array explicitly clears that relationship type. Previous versions are never mutated.
+When a new version is created, the store always uses the relationship arrays supplied in the payload. An empty array explicitly clears that relationship type. The service layer (both `update` and `patch`) is responsible for always providing a complete payload — `patch` achieves this by fetching the current state and merging before calling the store. Previous versions are never mutated.
 
 ### 2.3 Transaction Boundaries
 One user action = one transaction. Content, relationships, and milestones are committed atomically. All transactions carry user identification for audit trails. The store never commits or rolls back — that responsibility belongs to the service layer.
@@ -115,11 +115,11 @@ async createRefinesRelation(childId, parentId, transaction) {
 
 ### 3.3 VersionedItemStore (`versioned-item-store.js`)
 
-Extends `BaseStore` with the dual-node versioning pattern, code generation, optimistic locking, relationship inheritance, and multi-context query support.
+Extends `BaseStore` with the dual-node versioning pattern, code generation, optimistic locking, and multi-context query support.
 
 **Concrete public methods:**
 - `create(data, tx)` — generates `code`, creates Item + ItemVersion (version 1), establishes all relationships
-- `update(itemId, data, expectedVersionId, tx)` — validates lock, creates new version, inherits/overrides relationships
+- `update(itemId, data, expectedVersionId, tx)` — validates lock, creates new version, always uses provided relationship arrays
 - `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references
 - `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships
 - `findVersionHistory(itemId, tx)` — lightweight list of all versions (versionId, version, createdAt, createdBy)
@@ -127,7 +127,6 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 **Abstract methods** (must be implemented by concrete stores):
 - `_extractRelationshipIdsFromInput(data)` — separates relationship arrays from content fields
 - `_buildRelationshipReferences(versionId, tx)` — loads relationships as Reference objects `{id, title, code}`
-- `_extractRelationshipIdsFromVersion(versionId, tx)` — reads existing relationships for inheritance
 - `_createRelationshipsFromIds(versionId, relationshipIds, tx)` — writes all relationships for a version
 - `buildFindAllQuery(baselineId, fromWaveId, filters)` — builds entity-specific optimised Cypher for list queries
 - `findAll(tx, baselineId?, fromWaveId?, filters?)` — list with multi-context and content filtering (abstract)
@@ -139,7 +138,6 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_findMaxCodeNumber(entityType, drg, tx)` — finds highest existing code number for a type+DRG pair
 - `_buildReference(record, titleField?)` — builds a `{id, title, code, ...}` Reference object from a Neo4j record
 - `_validateReferences(label, ids, tx)` — batch-validates that all referenced node IDs exist; throws `StoreError` listing missing IDs
-- `_hasAnyRelationshipIds(relationshipIds)` — utility to check if any relationship arrays are non-empty
 
 **Note on `code` field**: Item nodes carry a `code` property (e.g. `OR-IDL-0042`) that is generated at creation time from the entity type and DRG. Codes are stable identifiers used for round-trip import matching alongside `externalId`.
 
@@ -294,16 +292,16 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 ```javascript
 {
     id: number,              // Neo4j node ID (changes each version)
-        milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
-        name: string,
-        description: string,
-        eventTypes: string[],    // Array of event type values
-        wave?: {                 // Optional — present only if TARGETS relationship exists
-            id: number,
-            year: number,
-            sequenceNumber: number,
-            implementationDate: string  // optional
-        }
+    milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
+    name: string,
+    description: string,
+    eventTypes: string[],    // Array of event type values
+    wave?: {                 // Optional — present only if TARGETS relationship exists
+        id: number,
+        year: number,
+        sequenceNumber: number,
+        implementationDate: string  // optional
+    }
 }
 ```
 
@@ -374,14 +372,7 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 1. Validate `expectedVersionId` matches current `LATEST_VERSION` — reject with `StoreError` if not
 2. Create new `ItemVersion` node (version + 1)
 3. Move `LATEST_VERSION` pointer from old to new version
-4. Resolve relationships: inherit unspecified, override specified, clear empty arrays
-
-```javascript
-// Relationship inheritance rules
-// null/undefined → inherit from previous version
-// []            → clear (remove all)
-// [id, ...]     → override with supplied IDs
-```
+4. Write relationships from provided arrays — empty array clears, non-empty array sets
 
 ### 5.4 Optimistic Locking
 
