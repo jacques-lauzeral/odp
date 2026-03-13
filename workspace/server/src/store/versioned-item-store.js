@@ -17,10 +17,6 @@ export class VersionedItemStore extends BaseStore {
         throw new Error('_buildRelationshipReferences must be implemented by concrete store');
     }
 
-    async _extractRelationshipIdsFromVersion(versionId, transaction) {
-        throw new Error('_extractRelationshipIdsFromVersion must be implemented by concrete store');
-    }
-
     async _createRelationshipsFromIds(versionId, relationshipIds, transaction) {
         throw new Error('_createRelationshipsFromIds must be implemented by concrete store');
     }
@@ -241,16 +237,9 @@ export class VersionedItemStore extends BaseStore {
                 CREATE (item)-[:LATEST_VERSION]->(version)
             `, { itemId: numericItemId, versionId });
 
-            // Use provided relationships (override) or inherit from previous version
-            let finalRelationshipIds;
-            if (this._hasAnyRelationshipIds(relationshipIds)) {
-                finalRelationshipIds = relationshipIds;
-            } else {
-                finalRelationshipIds = await this._extractRelationshipIdsFromVersion(numericExpectedVersionId, transaction);
-            }
-
-            // Create relationships for new version (new version starts with no relationships)
-            await this._createRelationshipsFromIds(versionId, finalRelationshipIds, transaction);
+            // Always use provided relationships — service layer (both update and patch)
+            // always sends a complete payload, so inheritance is never needed.
+            await this._createRelationshipsFromIds(versionId, relationshipIds, transaction);
 
             // Get complete item with relationships as Reference objects
             const completeItem = await this.findById(itemId, transaction);
@@ -435,14 +424,6 @@ export class VersionedItemStore extends BaseStore {
     // Helper methods for concrete stores to use
 
     // Check if any relationship IDs are provided
-    _hasAnyRelationshipIds(relationshipIds) {
-        if (!relationshipIds || typeof relationshipIds !== 'object') return false;
-        return Object.keys(relationshipIds).some(key => {
-            const value = relationshipIds[key];
-            return Array.isArray(value) ? value.length > 0 : value != null;
-        });
-    }
-
     // Helper to build Reference objects from Neo4j results
     _buildReference(record, titleField = 'title') {
         const ref = {

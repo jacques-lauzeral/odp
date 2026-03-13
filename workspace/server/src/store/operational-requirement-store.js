@@ -408,71 +408,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * @param {Transaction} transaction - Transaction instance
      * @returns {Promise<object>} Current relationships as ID arrays
      */
-    async _extractRelationshipIdsFromVersion(versionId, transaction) {
-        try {
-            const result = await transaction.run(`
-            MATCH (version:${this.versionLabel})
-            WHERE id(version) = $versionId
-
-            OPTIONAL MATCH (version)-[:REFINES]->(parent:OperationalRequirement)
-            WITH version, collect(id(parent)) as refinesParents
-
-            OPTIONAL MATCH (version)-[scRel:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
-            WITH version, refinesParents, collect({id: id(sc), note: scRel.note}) as impactedStakeholders
-
-            OPTIONAL MATCH (version)-[dRel:IMPACTS_DOMAIN]->(d:Domain)
-            WITH version, refinesParents, impactedStakeholders, collect({id: id(d), note: dRel.note}) as impactedDomains
-
-            OPTIONAL MATCH (version)-[:IMPLEMENTS]->(ion:OperationalRequirement)
-            WITH version, refinesParents, impactedStakeholders, impactedDomains, collect(id(ion)) as implementedONs
-
-            OPTIONAL MATCH (version)-[ref:REFERENCES]->(doc:ReferenceDocument)
-            WITH version, refinesParents, impactedStakeholders, impactedDomains, implementedONs,
-                 collect({id: id(doc), note: ref.note}) as strategicDocuments
-
-            OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depReq:OperationalRequirement)
-
-            RETURN refinesParents, impactedStakeholders, impactedDomains, implementedONs,
-                   strategicDocuments, collect(id(depReq)) as dependencies
-        `, { versionId });
-
-            if (result.records.length === 0) {
-                return {
-                    refinesParents: [],
-                    impactedStakeholders: [],
-                    impactedDomains: [],
-                    implementedONs: [],
-                    strategicDocuments: [],
-                    dependencies: []
-                };
-            }
-
-            const record = result.records[0];
-            return {
-                refinesParents: record.get('refinesParents').map(id => this.normalizeId(id, 'refinesParents')),
-                impactedStakeholders: record.get('impactedStakeholders')
-                    .filter(ref => ref.id !== null).map(ref => ({
-                        id: this.normalizeId(ref.id, 'impactedStakeholders'),
-                        note: ref.note || ''
-                    })),
-                impactedDomains: record.get('impactedDomains')
-                    .filter(ref => ref.id !== null).map(ref => ({
-                        id: this.normalizeId(ref.id, 'impactedDomains'),
-                        note: ref.note || ''
-                    })),
-                implementedONs: record.get('implementedONs').map(id => this.normalizeId(id, 'implementedONs')),
-                strategicDocuments: record.get('strategicDocuments')
-                    .filter(ref => ref.id !== null).map(ref => ({
-                        id: this.normalizeId(ref.id, 'strategicDocuments'),
-                        note: ref.note || ''
-                    })),
-                dependencies: record.get('dependencies').map(id => this.normalizeId(id, 'dependencies'))
-            };
-        } catch (error) {
-            throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
-        }
-    }
-
     /**
      * Create fresh relationships for a version from ID arrays
      * @private
@@ -1023,6 +958,60 @@ export class OperationalRequirementStore extends VersionedItemStore {
             return roots;
         } catch (error) {
             throw new StoreError(`Failed to find root requirements: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Check whether adding a REFINES edge from itemId to candidateParentId would create a cycle.
+     * Returns true if (candidateParent)-[:REFINES*]->(item) path already exists.
+     *
+     * @param {number} itemId - The item that would do the refining
+     * @param {number} candidateParentId - The item that would be refined
+     * @param {Transaction} transaction
+     * @returns {Promise<boolean>}
+     */
+    async hasRefinesCycle(itemId, candidateParentId, transaction) {
+        try {
+            const result = await transaction.run(`
+                MATCH (candidate:${this.nodeLabel}), (item:${this.nodeLabel})
+                WHERE id(candidate) = $candidateParentId AND id(item) = $itemId
+                RETURN EXISTS {
+                    MATCH (candidate)-[:REFINES*]->(item)
+                } AS hasCycle
+            `, {
+                itemId: this.normalizeId(itemId),
+                candidateParentId: this.normalizeId(candidateParentId)
+            });
+            return result.records[0].get('hasCycle');
+        } catch (error) {
+            throw new StoreError(`Failed to check REFINES cycle: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Check whether adding a DEPENDS_ON edge from itemId to candidateDependencyId would create a cycle.
+     * Returns true if (candidateDependency)-[:DEPENDS_ON*]->(item) path already exists.
+     *
+     * @param {number} itemId - The item that would declare the dependency
+     * @param {number} candidateDependencyId - The item that would be depended on
+     * @param {Transaction} transaction
+     * @returns {Promise<boolean>}
+     */
+    async hasDependsOnCycle(itemId, candidateDependencyId, transaction) {
+        try {
+            const result = await transaction.run(`
+                MATCH (candidate:${this.nodeLabel}), (item:${this.nodeLabel})
+                WHERE id(candidate) = $candidateDependencyId AND id(item) = $itemId
+                RETURN EXISTS {
+                    MATCH (candidate)-[:DEPENDS_ON*]->(item)
+                } AS hasCycle
+            `, {
+                itemId: this.normalizeId(itemId),
+                candidateDependencyId: this.normalizeId(candidateDependencyId)
+            });
+            return result.records[0].get('hasCycle');
+        } catch (error) {
+            throw new StoreError(`Failed to check DEPENDS_ON cycle: ${error.message}`, error);
         }
     }
 }

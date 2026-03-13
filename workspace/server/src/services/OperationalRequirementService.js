@@ -39,21 +39,39 @@ export class OperationalRequirementService extends VersionedItemService {
         this._validateDRG(payload.drg);
         this._validateRelationshipArrays(payload);
         this._validateTypeGatedFields(payload);
-        await this._validateRefinementRules(payload.type, payload.refinesParents);
+        this._validateMaturityGatedFields(payload);
+        await this._validateRefinementRules(payload.type, payload.refinesParents, null);
         await this._validateImplementedONs(payload.implementedONs, payload.type);
-        await this._validateReferencedEntities(payload);
+        await this._validateReferencedEntities(payload, null);
     }
 
-    async _validateUpdatePayload(payload) {
+    async _validateUpdatePayload(payload, itemId) {
+        if (itemId !== null && itemId !== undefined && payload.type !== undefined) {
+            const tx = createTransaction('system');
+            try {
+                const current = await operationalRequirementStore().findById(itemId, tx);
+                await commitTransaction(tx);
+                if (!current) {
+                    throw new Error(`Validation failed: requirement ${itemId} not found`);
+                }
+                if (payload.type !== current.type) {
+                    throw new Error(`Validation failed: type cannot be changed after creation (current: ${current.type})`);
+                }
+            } catch (error) {
+                await rollbackTransaction(tx);
+                throw error;
+            }
+        }
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateMaturity(payload.maturity);
         this._validateDRG(payload.drg);
         this._validateRelationshipArrays(payload);
         this._validateTypeGatedFields(payload);
-        await this._validateRefinementRules(payload.type, payload.refinesParents);
+        this._validateMaturityGatedFields(payload);
+        await this._validateRefinementRules(payload.type, payload.refinesParents, itemId);
         await this._validateImplementedONs(payload.implementedONs, payload.type);
-        await this._validateReferencedEntities(payload);
+        await this._validateReferencedEntities(payload, itemId);
     }
 
     async _computePatchedPayload(current, patchPayload) {
@@ -84,7 +102,7 @@ export class OperationalRequirementService extends VersionedItemService {
     // Validation helper methods
 
     _validateRequiredFields(payload) {
-        const requiredFields = ['title', 'type', 'statement', 'rationale', 'maturity'];
+        const requiredFields = ['title', 'type', 'maturity'];
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {
                 throw new Error(`Validation failed: missing required field: ${field}`);
@@ -134,10 +152,6 @@ export class OperationalRequirementService extends VersionedItemService {
             if (payload.impactedDomains && payload.impactedDomains.length > 0) {
                 throw new Error('Validation failed: impactedDomains is only allowed on OR-type requirements');
             }
-            if ((payload.maturity === 'ADVANCED' || payload.maturity === 'MATURE') &&
-                (payload.tentative === undefined || payload.tentative === null)) {
-                throw new Error('Validation failed: tentative is required for ON requirements with maturity ADVANCED or MATURE');
-            }
         }
 
         // Validate tentative range if provided
@@ -155,6 +169,58 @@ export class OperationalRequirementService extends VersionedItemService {
             if (start > end) {
                 throw new Error('Validation failed: tentative start must be <= end');
             }
+        }
+    }
+
+    _validateMaturityGatedFields(payload) {
+        const { type, maturity } = payload;
+        const maturityOrder = { DRAFT: 0, ADVANCED: 1, MATURE: 2 };
+        const level = maturityOrder[maturity] ?? 0;
+
+        const isDeltaEmpty = (value) => {
+            if (!value) return true;
+            try {
+                const delta = typeof value === 'string' ? JSON.parse(value) : value;
+                return !delta.ops || delta.ops.every(op => typeof op.insert === 'string' && op.insert.trim() === '');
+            } catch {
+                return false;
+            }
+        };
+
+        if (level >= 1) {
+            // ADVANCED: statement and rationale required
+            if (!payload.statement || isDeltaEmpty(payload.statement)) {
+                throw new Error('Validation failed: statement is required for maturity ADVANCED or MATURE');
+            }
+            if (!payload.rationale || isDeltaEmpty(payload.rationale)) {
+                throw new Error('Validation failed: rationale is required for maturity ADVANCED or MATURE');
+            }
+
+            if (type === 'ON') {
+                // ON ADVANCED: refinesParents non-empty OR strategicDocuments non-empty
+                const hasRefines = payload.refinesParents && payload.refinesParents.length > 0;
+                const hasStrategicDocs = payload.strategicDocuments && payload.strategicDocuments.length > 0;
+                if (!hasRefines && !hasStrategicDocs) {
+                    throw new Error('Validation failed: ON requirements with maturity ADVANCED or MATURE must have either refinesParents or strategicDocuments');
+                }
+            }
+
+            if (type === 'OR') {
+                // OR ADVANCED: refinesParents non-empty OR implementedONs non-empty
+                const hasRefines = payload.refinesParents && payload.refinesParents.length > 0;
+                const hasImplementedONs = payload.implementedONs && payload.implementedONs.length > 0;
+                if (!hasRefines && !hasImplementedONs) {
+                    throw new Error('Validation failed: OR requirements with maturity ADVANCED or MATURE must have either refinesParents or implementedONs');
+                }
+            }
+        }
+
+        if (level >= 2) {
+            // MATURE ON: tentative required
+            if (type === 'ON' && (payload.tentative === undefined || payload.tentative === null)) {
+                throw new Error('Validation failed: tentative is required for ON requirements with maturity MATURE');
+            }
+            // OR MATURE: no additional fields
         }
     }
 
@@ -196,12 +262,15 @@ export class OperationalRequirementService extends VersionedItemService {
         }
     }
 
-    async _validateRefinementRules(type, refinesParents) {
+    async _validateRefinementRules(type, refinesParents, itemId) {
         if (!refinesParents || refinesParents.length === 0) return;
 
         const tx = createTransaction('system');
         try {
             for (const parentId of refinesParents) {
+                if (itemId !== null && parentId === itemId) {
+                    throw new Error('Validation failed: requirement cannot refine itself');
+                }
                 const parent = await operationalRequirementStore().findById(parentId, tx);
                 if (!parent) {
                     throw new Error(`Validation failed: parent requirement ${parentId} not found`);
@@ -211,6 +280,12 @@ export class OperationalRequirementService extends VersionedItemService {
                 }
                 if (type === 'OR' && parent.type === 'ON') {
                     throw new Error('Validation failed: OR requirements cannot refine ON requirements');
+                }
+                if (itemId !== null) {
+                    const hasCycle = await operationalRequirementStore().hasRefinesCycle(itemId, parentId, tx);
+                    if (hasCycle) {
+                        throw new Error(`Validation failed: adding REFINES to requirement ${parentId} would create a cycle`);
+                    }
                 }
             }
             await commitTransaction(tx);
@@ -245,7 +320,7 @@ export class OperationalRequirementService extends VersionedItemService {
         }
     }
 
-    async _validateReferencedEntities(payload) {
+    async _validateReferencedEntities(payload, itemId) {
         const validationPromises = [];
 
         if (payload.impactedStakeholders && payload.impactedStakeholders.length > 0) {
@@ -264,7 +339,7 @@ export class OperationalRequirementService extends VersionedItemService {
         }
 
         if (payload.dependencies && payload.dependencies.length > 0) {
-            validationPromises.push(this._validateDependencies(payload.dependencies, null));
+            validationPromises.push(this._validateDependencies(payload.dependencies, itemId));
         }
 
         await Promise.all(validationPromises);
@@ -293,18 +368,23 @@ export class OperationalRequirementService extends VersionedItemService {
     async _validateDependencies(dependencyIds, currentItemId) {
         const tx = createTransaction('system');
         try {
-            const invalidIds = [];
             for (const id of dependencyIds) {
                 if (currentItemId !== null && id === currentItemId) {
                     throw new Error('Validation failed: requirement cannot depend on itself');
                 }
-                const exists = await operationalRequirementStore().exists(id, tx);
-                if (!exists) {
-                    invalidIds.push(id);
+                const dep = await operationalRequirementStore().findById(id, tx);
+                if (!dep) {
+                    throw new Error(`Validation failed: dependency requirement ${id} not found`);
                 }
-            }
-            if (invalidIds.length > 0) {
-                throw new Error(`Validation failed: invalid requirement dependency IDs: [${invalidIds.join(', ')}]`);
+                if (dep.type !== 'OR') {
+                    throw new Error(`Validation failed: dependencies must reference OR-type requirements only. Requirement ${id} is ${dep.type}-type`);
+                }
+                if (currentItemId !== null) {
+                    const hasCycle = await operationalRequirementStore().hasDependsOnCycle(currentItemId, id, tx);
+                    if (hasCycle) {
+                        throw new Error(`Validation failed: adding DEPENDS_ON to requirement ${id} would create a cycle`);
+                    }
+                }
             }
             await commitTransaction(tx);
         } catch (error) {

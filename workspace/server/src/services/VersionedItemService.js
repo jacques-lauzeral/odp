@@ -54,14 +54,14 @@ export class VersionedItemService {
     }
 
     async _doUpdate(itemId, payload, expectedVersionId, tx) {
-        await this._validateUpdatePayload(payload);
+        await this._validateUpdatePayload(payload, itemId);
         const store = this.getStore();
         const entity = await store.update(itemId, payload, expectedVersionId, tx);
         await commitTransaction(tx);
         return entity;
     }
 
-                 /**
+    /**
      * Patch versioned entity (partial update with field inheritance)
      */
     async patch(itemId, patchPayload, expectedVersionId, userId) {
@@ -79,7 +79,7 @@ export class VersionedItemService {
             const completePayload = await this._computePatchedPayload(current, patchPayload);
 
             // Validate the complete payload
-            await this._validateUpdatePayload(completePayload);
+            await this._validateUpdatePayload(completePayload, itemId);
 
             // Perform the update within the same transaction
             const entity = await store.update(itemId, completePayload, expectedVersionId, tx);
@@ -185,7 +185,7 @@ export class VersionedItemService {
         throw new Error('_validateCreatePayload must be implemented by subclass');
     }
 
-    async _validateUpdatePayload(payload) {
+    async _validateUpdatePayload(payload, itemId) {
         throw new Error('_validateUpdatePayload must be implemented by subclass');
     }
 

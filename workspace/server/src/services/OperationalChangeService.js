@@ -240,19 +240,19 @@ export class OperationalChangeService extends VersionedItemService {
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateMaturity(payload.maturity);
-        this._validateCostForMaturity(payload);
+        this._validateMaturityGatedFields(payload);
         this._validateRelationshipArrays(payload);
-        await this._validateReferencedEntities(payload);
+        await this._validateReferencedEntities(payload, null);
     }
 
-    async _validateUpdatePayload(payload) {
+    async _validateUpdatePayload(payload, itemId) {
         if (payload.cost === '') payload.cost = null;
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateMaturity(payload.maturity);
-        this._validateCostForMaturity(payload);
+        this._validateMaturityGatedFields(payload);
         this._validateRelationshipArrays(payload);
-        await this._validateReferencedEntities(payload);
+        await this._validateReferencedEntities(payload, itemId);
     }
 
     async _computePatchedPayload(current, patchPayload) {
@@ -299,9 +299,42 @@ export class OperationalChangeService extends VersionedItemService {
         }
     }
 
-    _validateCostForMaturity(payload) {
-        if (payload.maturity !== 'DRAFT' && (payload.cost === undefined || payload.cost === null)) {
-            throw new Error('Validation failed: cost is required when maturity is not DRAFT');
+    _validateMaturityGatedFields(payload) {
+        const maturityOrder = { DRAFT: 0, ADVANCED: 1, MATURE: 2 };
+        const level = maturityOrder[payload.maturity] ?? 0;
+
+        const isDeltaEmpty = (value) => {
+            if (!value) return true;
+            try {
+                const delta = typeof value === 'string' ? JSON.parse(value) : value;
+                return !delta.ops || delta.ops.every(op => typeof op.insert === 'string' && op.insert.trim() === '');
+            } catch {
+                return false;
+            }
+        };
+
+        if (level >= 1) {
+            // ADVANCED: purpose required
+            if (!payload.purpose || isDeltaEmpty(payload.purpose)) {
+                throw new Error('Validation failed: purpose is required for maturity ADVANCED or MATURE');
+            }
+            // ADVANCED: implementedORs non-empty
+            if (!payload.implementedORs || payload.implementedORs.length === 0) {
+                throw new Error('Validation failed: implementedORs is required for maturity ADVANCED or MATURE');
+            }
+        }
+
+        if (level >= 2) {
+            // MATURE: initialState, finalState, cost required
+            if (!payload.initialState || isDeltaEmpty(payload.initialState)) {
+                throw new Error('Validation failed: initialState is required for maturity MATURE');
+            }
+            if (!payload.finalState || isDeltaEmpty(payload.finalState)) {
+                throw new Error('Validation failed: finalState is required for maturity MATURE');
+            }
+            if (payload.cost === undefined || payload.cost === null) {
+                throw new Error('Validation failed: cost is required for maturity MATURE');
+            }
         }
     }
 
@@ -373,7 +406,7 @@ export class OperationalChangeService extends VersionedItemService {
         }
     }
 
-    async _validateReferencedEntities(payload) {
+    async _validateReferencedEntities(payload, itemId) {
         const validationPromises = [];
 
         if (payload.implementedORs && payload.implementedORs.length > 0) {
@@ -397,7 +430,7 @@ export class OperationalChangeService extends VersionedItemService {
 
         if (payload.dependsOnChanges && payload.dependsOnChanges.length > 0) {
             validationPromises.push(
-                this._validateDependencies(payload.dependsOnChanges, null)
+                this._validateDependencies(payload.dependsOnChanges, itemId)
             );
         }
 
@@ -433,18 +466,20 @@ export class OperationalChangeService extends VersionedItemService {
     async _validateDependencies(dependencyIds, currentItemId) {
         const tx = createTransaction('system');
         try {
-            const invalidIds = [];
             for (const id of dependencyIds) {
                 if (currentItemId !== null && id === currentItemId) {
                     throw new Error('Validation failed: change cannot depend on itself');
                 }
-                const exists = await operationalChangeStore().exists(id, tx);
-                if (!exists) {
-                    invalidIds.push(id);
+                const dep = await operationalChangeStore().findById(id, tx);
+                if (!dep) {
+                    throw new Error(`Validation failed: dependency change ${id} not found`);
                 }
-            }
-            if (invalidIds.length > 0) {
-                throw new Error(`Validation failed: invalid change dependency IDs: [${invalidIds.join(', ')}]`);
+                if (currentItemId !== null) {
+                    const hasCycle = await operationalChangeStore().hasDependsOnCycle(currentItemId, id, tx);
+                    if (hasCycle) {
+                        throw new Error(`Validation failed: adding DEPENDS_ON to change ${id} would create a cycle`);
+                    }
+                }
             }
             await commitTransaction(tx);
         } catch (error) {

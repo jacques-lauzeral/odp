@@ -484,11 +484,11 @@ export default class ChangesEntity {
     getColumnConfig() {
         return [
             { key: 'code', label: 'Code', width: 'auto', sortable: true, type: 'text' },
+            { key: 'maturity', label: 'Maturity', width: '100px', sortable: true, type: 'text' },
             { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
             { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
-            { key: 'maturity', label: 'Maturity', width: '100px', sortable: true, type: 'text' },
-            { key: 'implementedORs', label: 'Implements', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 },
-            { key: 'cost', label: 'Cost', width: '80px', sortable: true, type: 'text' }
+            { key: 'cost', label: 'Cost', width: '80px', sortable: true, type: 'text' },
+            { key: 'implementedORs', label: 'Implements', width: '150px', sortable: false, type: 'entity-reference-list', maxDisplay: 2 }
         ];
     }
 

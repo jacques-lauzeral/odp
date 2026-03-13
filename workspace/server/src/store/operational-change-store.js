@@ -336,51 +336,6 @@ export class OperationalChangeStore extends VersionedItemStore {
      * @param {Transaction} transaction - Transaction instance
      * @returns {Promise<object>} Current relationships and milestone data as arrays
      */
-    async _extractRelationshipIdsFromVersion(versionId, transaction) {
-        try {
-            // Get relationships as ID arrays
-            const relationshipsResult = await transaction.run(`
-            MATCH (version:${this.versionLabel})
-            WHERE id(version) = $versionId
-
-            OPTIONAL MATCH (version)-[:IMPLEMENTS]->(implementedReq:OperationalRequirement)
-            WITH version, collect(id(implementedReq)) as implementedORs
-
-            OPTIONAL MATCH (version)-[:DECOMMISSIONS]->(decommissionedReq:OperationalRequirement)
-            WITH version, implementedORs, collect(id(decommissionedReq)) as decommissionedORs
-
-            OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depChange:OperationalChange)
-
-            RETURN implementedORs, decommissionedORs, collect(id(depChange)) as dependsOnChanges
-        `, { versionId });
-
-            let relationships = {
-                implementedORs: [],
-                decommissionedORs: [],
-                dependsOnChanges: []
-            };
-
-            if (relationshipsResult.records.length > 0) {
-                const record = relationshipsResult.records[0];
-                relationships = {
-                    implementedORs: record.get('implementedORs').map(id => this.normalizeId(id)),
-                    decommissionedORs: record.get('decommissionedORs').map(id => this.normalizeId(id)),
-                    dependsOnChanges: record.get('dependsOnChanges').map(id => this.normalizeId(id))
-                };
-            }
-
-            // Delegate milestone data extraction to milestoneStore
-            const milestones = await this.milestoneStore.getMilestoneDataFromVersion(versionId, transaction);
-
-            return {
-                ...relationships,
-                milestones
-            };
-        } catch (error) {
-            throw new StoreError(`Failed to extract relationship IDs from version: ${error.message}`, error);
-        }
-    }
-
     /**
      * Create fresh relationships and milestones for a version from ID arrays and milestone data
      * @private
@@ -617,5 +572,32 @@ export class OperationalChangeStore extends VersionedItemStore {
      */
     async findMilestoneByKey(itemId, milestoneKey, transaction, baselineId = null, fromWaveId = null) {
         return await this.milestoneStore.findMilestoneByKey(itemId, milestoneKey, transaction, baselineId, fromWaveId);
+    }
+
+    /**
+     * Check whether adding a DEPENDS_ON edge from itemId to candidateDependencyId would create a cycle.
+     * Returns true if (candidateDependency)-[:DEPENDS_ON*]->(item) path already exists.
+     *
+     * @param {number} itemId - The item that would declare the dependency
+     * @param {number} candidateDependencyId - The item that would be depended on
+     * @param {Transaction} transaction
+     * @returns {Promise<boolean>}
+     */
+    async hasDependsOnCycle(itemId, candidateDependencyId, transaction) {
+        try {
+            const result = await transaction.run(`
+                MATCH (candidate:${this.nodeLabel}), (item:${this.nodeLabel})
+                WHERE id(candidate) = $candidateDependencyId AND id(item) = $itemId
+                RETURN EXISTS {
+                    MATCH (candidate)-[:DEPENDS_ON*]->(item)
+                } AS hasCycle
+            `, {
+                itemId: this.normalizeId(itemId),
+                candidateDependencyId: this.normalizeId(candidateDependencyId)
+            });
+            return result.records[0].get('hasCycle');
+        } catch (error) {
+            throw new StoreError(`Failed to check DEPENDS_ON cycle: ${error.message}`, error);
+        }
     }
 }

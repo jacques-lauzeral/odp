@@ -216,6 +216,10 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findRequirementsThatImplement(onItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — OR requirements that IMPLEMENT a given ON
 
+**`hasRefinesCycle(itemId, candidateParentId, tx)`** → `boolean` — returns `true` if adding a `REFINES` edge from `itemId` to `candidateParentId` would create a cycle. Uses a Cypher path existence check: `(candidate)-[:REFINES*]->(item)`.
+
+**`hasDependsOnCycle(itemId, candidateDependencyId, tx)`** → `boolean` — returns `true` if adding a `DEPENDS_ON` edge from `itemId` to `candidateDependencyId` would create a cycle. Uses a Cypher path existence check: `(candidate)-[:DEPENDS_ON*]->(item)`.
+
 **Not implemented**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`
 
 ---
@@ -245,6 +249,8 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 - **`findMilestonesByChange(itemId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
 - **`findMilestoneByKey(itemId, milestoneKey, tx, baselineId?, fromWaveId?)`** → `object|null`
 - **`findMilestonesByWave(waveId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
+
+**`hasDependsOnCycle(itemId, candidateDependencyId, tx)`** → `boolean` — returns `true` if adding a `DEPENDS_ON` edge from `itemId` to `candidateDependencyId` would create a cycle. Uses a Cypher path existence check: `(candidate)-[:DEPENDS_ON*]->(item)`.
 
 **Not implemented in this store**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`. Dependencies are returned inline as part of `findById` / `findAll` results.
 
@@ -288,16 +294,16 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 ```javascript
 {
     id: number,              // Neo4j node ID (changes each version)
-    milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
-    name: string,
-    description: string,
-    eventTypes: string[],    // Array of event type values
-    wave?: {                 // Optional — present only if TARGETS relationship exists
-        id: number,
-        year: number,
-        sequenceNumber: number,
-        implementationDate: string  // optional
-    }
+        milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
+        name: string,
+        description: string,
+        eventTypes: string[],    // Array of event type values
+        wave?: {                 // Optional — present only if TARGETS relationship exists
+            id: number,
+            year: number,
+            sequenceNumber: number,
+            implementationDate: string  // optional
+        }
 }
 ```
 
