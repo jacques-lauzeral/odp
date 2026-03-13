@@ -485,7 +485,6 @@ export default class ChangesEntity {
         return [
             { key: 'code', label: 'Code', width: 'auto', sortable: true, type: 'text' },
             { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
-            { key: 'visibility', label: 'Visibility', width: '100px', sortable: true, type: 'visibility' },
             { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
             { key: 'maturity', label: 'Maturity', width: '100px', sortable: true, type: 'text' },
             { key: 'milestones', label: 'Waves', width: '150px', sortable: true, type: 'milestone-waves' },
@@ -497,7 +496,6 @@ export default class ChangesEntity {
     getGroupingConfig() {
         return [
             { value: 'none', label: 'No Grouping' },
-            { key: 'visibility', label: 'Group by Visibility' },
             { key: 'maturity', label: 'Group by Maturity' },
             { key: 'drg', label: 'Group by DrG' },
             { key: 'wave', label: 'Group by Wave' }

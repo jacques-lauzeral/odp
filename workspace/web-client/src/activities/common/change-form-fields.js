@@ -65,16 +65,6 @@ export const changeFieldDefinitions = [
                 helpText: 'Maturity level of this change'
             },
             {
-                key: 'visibility',
-                label: 'Visibility',
-                type: 'radio',
-                modes: ['create', 'read', 'edit'],
-                required: true,
-                optionsKey: 'getVisibilityOptions',
-                defaultValue: 'NETWORK',
-                helpTextAbove: 'Control who can see this change'
-            },
-            {
                 key: 'drg',
                 label: 'Drafting Group',
                 type: 'select',
@@ -272,7 +262,6 @@ export const requiredIdentifierArrayFields = [
 export const requiredTextFields = [
     'title',
     'purpose',
-    'visibility',
     'maturity'
 ];
 
@@ -290,6 +279,5 @@ export const optionalTextFields = [
  * Default values for new changes
  */
 export const changeDefaults = {
-    visibility: 'NETWORK',
     maturity: 'DRAFT'
 };

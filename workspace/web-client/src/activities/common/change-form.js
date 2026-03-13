@@ -4,7 +4,6 @@ import { apiClient } from '../../shared/api-client.js';
 import {
     DraftingGroup,
     getDraftingGroupDisplay,
-    getVisibilityDisplay,
     MilestoneEventType,
     MaturityLevel,
     getMaturityLevelDisplay
@@ -213,11 +212,6 @@ export default class ChangeForm extends CollectionEntityForm {
             }
         }
 
-        // Set default visibility if not set
-        if (!transformed.visibility) {
-            transformed.visibility = changeDefaults.visibility;
-        }
-
         // Add version ID for optimistic locking on edit
         if (mode === 'edit' && item) {
             transformed.expectedVersionId = item.versionId || item.expectedVersionId;
@@ -309,13 +303,6 @@ export default class ChangeForm extends CollectionEntityForm {
             errors.push({ field: 'purpose', message: 'Purpose must be at least 3 characters long' });
         }
 
-        // Validate visibility
-        if (!data.visibility) {
-            errors.push({ field: 'visibility', message: 'Visibility is required' });
-        } else if (!['NM', 'NETWORK'].includes(data.visibility)) {
-            errors.push({ field: 'visibility', message: 'Invalid visibility value' });
-        }
-
         return {
             valid: errors.length === 0,
             errors
@@ -332,13 +319,6 @@ export default class ChangeForm extends CollectionEntityForm {
             options.push({ value: key, label: getMaturityLevelDisplay(key) });
         });
         return options;
-    }
-
-    getVisibilityOptions() {
-        return [
-            { value: 'NM', label: getVisibilityDisplay('NM') },
-            { value: 'NETWORK', label: getVisibilityDisplay('NETWORK') }
-        ];
     }
 
     getDraftingGroupOptions() {

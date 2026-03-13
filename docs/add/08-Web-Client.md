@@ -185,9 +185,9 @@ The following web client changes align the client with the Edition 4 data model 
 |---|---|
 | `DataCategory` removed | `data-categories.js` deleted; `TreeEntity` now covers `StakeholderCategory` and `Domain` only |
 | `Service` removed | `services.js` deleted |
-| `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field removed; `version` optional; endpoint `/reference-documents` |
+| `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field removed; `version` optional; `parentId` optional; now a `TreeEntity` (was `ListEntity`); endpoint `/reference-documents` |
 | `Domain` added | New `TreeEntity` (`domains.js`); has `contact` textarea field |
-| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scopeId)` tuple; select options for wave and scope (domain) resolved from `setupData` |
+| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scopeId)` tuple; select options for wave and scope (domain) resolved from `setupData`; `planned` optional integer field added |
 | `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed; uniqueness check on `(year, sequenceNumber)` |
 
 `abstract-interaction-activity.js` `loadSetupData()` updated: `dataCategories`/`services`/`documents` replaced by `domains`/`referenceDocuments` loaded from `/domains` and `/reference-documents`.
@@ -205,7 +205,6 @@ The following web client changes align the client with the Edition 4 data model 
 
 | Field | Type | Notes |
 |---|---|---|
-| `domain` | `select` | Options from `domains` setupData |
 | `strategicDocuments` | `annotated-multiselect` | Rename of `documentReferences`; options from `referenceDocuments` setupData |
 | `tentative` | `tentative` | Single text input; user enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array; displayed as `"2026"` or `"2026-2028"` |
 
@@ -245,7 +244,7 @@ The following web client changes align the client with the Edition 4 data model 
 | `satisfiesRequirements` | `implementedORs` |
 | `supersedsRequirements` | `decommissionedORs` |
 
-**Removed:** `documentReferences` section.
+**Removed:** `documentReferences` section, `visibility` field.
 
 ### 10.4 Milestone Name Field
 

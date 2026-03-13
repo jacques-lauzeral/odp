@@ -179,16 +179,6 @@ export const requirementFieldDefinitions = [
         visibleWhen: (data) => data.type === 'ON',
         fields: [
             {
-                key: 'domain',
-                label: 'Domain',
-                type: 'select',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                visibleWhen: (data) => data.type === 'ON',
-                optionsKey: 'getDomainOptions',
-                helpText: 'Business domain for this operational need'
-            },
-            {
                 key: 'strategicDocuments',
                 label: 'Strategic Documents',
                 type: 'annotated-multiselect',

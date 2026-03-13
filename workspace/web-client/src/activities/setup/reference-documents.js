@@ -1,67 +1,84 @@
-import ListEntity from '../../components/setup/list-entity.js';
+import TreeEntity from '../../components/setup/tree-entity.js';
 import { apiClient } from '../../shared/api-client.js';
 
-export default class ReferenceDocuments extends ListEntity {
+export default class ReferenceDocuments extends TreeEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
-    }
-
-    getEntityDescription() {
-        return 'Manage strategic reference documents for operational needs';
     }
 
     getNewButtonText() {
         return 'New Reference Document';
     }
 
-    sortData(data) {
-        return [...data].sort((a, b) => {
-            const nameCompare = (a.name || '').localeCompare(b.name || '');
-            if (nameCompare !== 0) return nameCompare;
-            return (a.version || '').localeCompare(b.version || '');
-        });
+    getDisplayName(item) {
+        return item.version
+            ? `${item.name} (${item.version})`
+            : item.name;
     }
 
-    getTableColumns() {
-        return [
-            { key: 'name', label: 'Name', type: 'text' },
-            { key: 'version', label: 'Version', type: 'text' },
-            { key: 'url', label: 'URL', type: 'url' }
-        ];
-    }
+    renderItemDetails(item) {
+        const parentItem = item.parentId ? this.data.find(d => d.id === item.parentId) : null;
 
-    formatCellValue(value, column, item) {
-        switch (column.type) {
-            case 'url':
-                if (!value) return '-';
-                const displayUrl = value.length > 50 ? value.substring(0, 47) + '...' : value;
-                return `<a href="${this.escapeHtml(value)}" target="_blank" rel="noopener noreferrer" title="${this.escapeHtml(value)}">${this.escapeHtml(displayUrl)}</a>`;
-            case 'text':
-                return value || '-';
-            default:
-                return super.formatCellValue(value, column, item);
-        }
-    }
-
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    renderRowActions(item) {
         return `
-            <button class="btn btn-sm btn-ghost" data-action="edit" data-id="${item.id}">
-                Edit
-            </button>
-            <button class="btn btn-sm btn-ghost" data-action="delete" data-id="${item.id}">
-                Delete
-            </button>
+            <div class="item-details">
+                <div class="detail-field">
+                    <label>Name</label>
+                    <p>${item.name}</p>
+                </div>
+                ${item.version ? `
+                    <div class="detail-field">
+                        <label>Version</label>
+                        <p>${item.version}</p>
+                    </div>
+                ` : ''}
+                <div class="detail-field">
+                    <label>URL</label>
+                    <p><a href="${this.escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer"
+                          title="${this.escapeHtml(item.url)}">${this.escapeHtml(item.url)}</a></p>
+                </div>
+                ${parentItem ? `
+                    <div class="detail-field">
+                        <label>Parent</label>
+                        <p>${this.getDisplayName(parentItem)}</p>
+                    </div>
+                ` : ''}
+                <div class="detail-field">
+                    <label>Children</label>
+                    <p>${this.getChildrenCount(item.id)} documents</p>
+                </div>
+                <div class="detail-field">
+                    <label>ID</label>
+                    <p class="text-secondary">${item.id}</p>
+                </div>
+            </div>
         `;
     }
 
-    handleAdd() {
+    getChildrenCount(itemId) {
+        return this.data.filter(item => item.parentId === itemId).length;
+    }
+
+    renderItemActions(item) {
+        const hasChildren = this.getChildrenCount(item.id) > 0;
+
+        return `
+            <div class="action-buttons">
+                <button class="btn btn-primary btn-sm" data-action="edit" data-id="${item.id}">
+                    Edit Reference Document
+                </button>
+                ${!hasChildren ? `
+                    <button class="btn btn-secondary btn-sm" data-action="add-child" data-id="${item.id}">
+                        Add Child
+                    </button>
+                ` : ''}
+                <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${item.id}">
+                    Delete
+                </button>
+            </div>
+        `;
+    }
+
+    handleNewRoot() {
         this.showCreateForm();
     }
 
@@ -69,38 +86,63 @@ export default class ReferenceDocuments extends ListEntity {
         this.showEditForm(item);
     }
 
+    handleAddChild(item) {
+        this.showCreateForm(item.id);
+    }
+
     handleDelete(item) {
         this.showDeleteConfirmation(item);
     }
 
-    showCreateForm() {
+    renderParentOptions(excludeId = null) {
+        // Only root items can be parents (max two levels)
+        const roots = this.data.filter(d => !d.parentId && d.id !== excludeId);
+        return roots.map(d =>
+            `<option value="${d.id}">${this.escapeHtml(this.getDisplayName(d))}</option>`
+        ).join('');
+    }
+
+    showCreateForm(parentId = null) {
+        const parentItem = parentId ? this.data.find(d => d.id === parentId) : null;
+
         const modalHtml = `
             <div class="modal-overlay" id="create-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">New Reference Document</h3>
+                        <h3 class="modal-title">
+                            ${parentItem ? `Add Child to "${this.escapeHtml(this.getDisplayName(parentItem))}"` : 'New Reference Document'}
+                        </h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="create-form">
+                            ${parentId ? `<input type="hidden" name="parentId" value="${parentId}">` : ''}
+
                             <div class="form-group">
                                 <label for="name">Name *</label>
                                 <input type="text" id="name" name="name" class="form-control" required
                                        placeholder="e.g., ICAO Doc 4444, EUROCONTROL Specification">
                             </div>
-                            
+
                             <div class="form-group">
                                 <label for="version">Version</label>
                                 <input type="text" id="version" name="version" class="form-control"
                                        placeholder="e.g., 1.0, v2.3, 2024-01">
                                 <small class="form-text">Optional version identifier</small>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label for="url">URL *</label>
                                 <input type="url" id="url" name="url" class="form-control" required
                                        placeholder="https://example.com/documents/...">
                             </div>
+
+                            ${parentItem ? `
+                                <div class="form-group">
+                                    <label>Parent Document</label>
+                                    <p class="form-text">${this.escapeHtml(this.getDisplayName(parentItem))}</p>
+                                </div>
+                            ` : ''}
                         </form>
                     </div>
                     <div class="modal-footer">
@@ -119,39 +161,49 @@ export default class ReferenceDocuments extends ListEntity {
     }
 
     showEditForm(item) {
+        const parentItem = item.parentId ? this.data.find(d => d.id === item.parentId) : null;
+
         const modalHtml = `
             <div class="modal-overlay" id="edit-modal">
                 <div class="modal">
                     <div class="modal-header">
-                        <h3 class="modal-title">Edit Reference Document</h3>
+                        <h3 class="modal-title">Edit Reference Document: ${this.escapeHtml(item.name)}</h3>
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
                         <form id="edit-form">
                             <input type="hidden" name="id" value="${item.id}">
-                            
+                            ${item.parentId ? `<input type="hidden" name="parentId" value="${item.parentId}">` : ''}
+
                             <div class="form-group">
                                 <label for="edit-name">Name *</label>
-                                <input type="text" id="edit-name" name="name" class="form-control" 
-                                       value="${this.escapeHtml(item.name || '')}" required>
+                                <input type="text" id="edit-name" name="name" class="form-control"
+                                       value="${this.escapeHtml(item.name)}" required>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label for="edit-version">Version</label>
-                                <input type="text" id="edit-version" name="version" class="form-control" 
+                                <input type="text" id="edit-version" name="version" class="form-control"
                                        value="${this.escapeHtml(item.version || '')}">
                             </div>
-                            
+
                             <div class="form-group">
                                 <label for="edit-url">URL *</label>
                                 <input type="url" id="edit-url" name="url" class="form-control" required
                                        value="${this.escapeHtml(item.url || '')}">
                             </div>
+
+                            ${parentItem ? `
+                                <div class="form-group">
+                                    <label>Parent Document</label>
+                                    <p class="form-text">${this.escapeHtml(this.getDisplayName(parentItem))}</p>
+                                </div>
+                            ` : ''}
                         </form>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="update">Update</button>
+                        <button type="button" class="btn btn-primary" data-action="update">Update Reference Document</button>
                     </div>
                 </div>
             </div>
@@ -162,6 +214,9 @@ export default class ReferenceDocuments extends ListEntity {
     }
 
     showDeleteConfirmation(item) {
+        const childrenCount = this.getChildrenCount(item.id);
+        const hasChildren = childrenCount > 0;
+
         const modalHtml = `
             <div class="modal-overlay" id="delete-modal">
                 <div class="modal">
@@ -170,13 +225,23 @@ export default class ReferenceDocuments extends ListEntity {
                         <button class="modal-close" data-action="close">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <p>Are you sure you want to delete <strong>"${this.escapeHtml(item.name)}"</strong>${item.version ? ` (${this.escapeHtml(item.version)})` : ''}?</p>
+                        <p>Are you sure you want to delete
+                           <strong>"${this.escapeHtml(this.getDisplayName(item))}"</strong>?</p>
+
+                        ${hasChildren ? `
+                            <div class="warning-message">
+                                <p><strong>Warning:</strong> This document has ${childrenCount} child document(s).
+                                You must delete or re-parent them first.</p>
+                            </div>
+                        ` : ''}
+
                         <p class="text-secondary">This action cannot be undone.</p>
                         <input type="hidden" id="delete-item-id" value="${item.id}">
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="confirm-delete">
+                        <button type="button" class="btn btn-primary" data-action="confirm-delete"
+                                ${hasChildren ? 'disabled' : ''}>
                             Delete Reference Document
                         </button>
                     </div>
@@ -188,59 +253,8 @@ export default class ReferenceDocuments extends ListEntity {
         this.attachModalEventListeners('#delete-modal');
     }
 
-    attachModalEventListeners(modalSelector) {
-        const modal = document.querySelector(modalSelector);
-        if (!modal) return;
-
-        modal.addEventListener('click', async (e) => {
-            const action = e.target.dataset.action;
-
-            switch (action) {
-                case 'close':
-                    this.closeModal(modal);
-                    break;
-                case 'save':
-                    await this.handleCreateSave(modal);
-                    break;
-                case 'update':
-                    await this.handleUpdateSave(modal);
-                    break;
-                case 'confirm-delete':
-                    await this.handleDeleteConfirm(modal);
-                    break;
-            }
-        });
-
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) this.closeModal(modal);
-        });
-
-        const escapeHandler = (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal(modal);
-                document.removeEventListener('keydown', escapeHandler);
-            }
-        };
-        document.addEventListener('keydown', escapeHandler);
-    }
-
-    closeModal(modal) {
-        modal.remove();
-    }
-
     validateForm(modal) {
-        const errorFields = modal.querySelectorAll('.error');
-        errorFields.forEach(field => this.clearFieldError(field));
-
-        let isValid = true;
-
-        const requiredFields = modal.querySelectorAll('[required]');
-        requiredFields.forEach(field => {
-            if (!field.value.trim()) {
-                this.showFieldError(field, 'This field is required');
-                isValid = false;
-            }
-        });
+        if (!super.validateForm(modal)) return false;
 
         const urlField = modal.querySelector('[name="url"]');
         if (urlField?.value.trim()) {
@@ -248,26 +262,11 @@ export default class ReferenceDocuments extends ListEntity {
                 new URL(urlField.value.trim());
             } catch (e) {
                 this.showFieldError(urlField, 'Please enter a valid URL');
-                isValid = false;
+                return false;
             }
         }
 
-        return isValid;
-    }
-
-    showFieldError(field, message) {
-        this.clearFieldError(field);
-        field.classList.add('error');
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'error-message';
-        errorDiv.textContent = message;
-        field.parentNode.appendChild(errorDiv);
-    }
-
-    clearFieldError(field) {
-        field.classList.remove('error');
-        const existingError = field.parentNode.querySelector('.error-message');
-        if (existingError) existingError.remove();
+        return true;
     }
 
     async handleCreateSave(modal) {
@@ -282,13 +281,16 @@ export default class ReferenceDocuments extends ListEntity {
             url: formData.get('url').trim()
         };
 
+        if (formData.get('parentId')) {
+            data.parentId = parseInt(formData.get('parentId'), 10);
+        }
+
         try {
             const newItem = await apiClient.post(this.config.endpoint, data);
             this.closeModal(modal);
-            await this.refreshAndSelect(newItem.id.toString());
+            await this.refreshAndSelect(newItem.id);
         } catch (error) {
             console.error('Failed to create reference document:', error);
-            this.showFormError(modal, error.message || 'Failed to create reference document');
         }
     }
 
@@ -305,14 +307,16 @@ export default class ReferenceDocuments extends ListEntity {
             url: formData.get('url').trim()
         };
 
+        if (formData.get('parentId')) {
+            data.parentId = parseInt(formData.get('parentId'), 10);
+        }
+
         try {
             await apiClient.put(`${this.config.endpoint}/${id}`, data);
             this.closeModal(modal);
-            await this.refresh();
-            this.selectItem(id.toString());
+            await this.refreshAndSelect(id);
         } catch (error) {
             console.error('Failed to update reference document:', error);
-            this.showFormError(modal, error.message || 'Failed to update reference document');
         }
     }
 
@@ -325,18 +329,13 @@ export default class ReferenceDocuments extends ListEntity {
             await this.refreshAndClearSelection();
         } catch (error) {
             console.error('Failed to delete reference document:', error);
-            this.showFormError(modal, error.message || 'Failed to delete reference document');
         }
     }
 
-    showFormError(modal, message) {
-        const existingError = modal.querySelector('.form-error');
-        if (existingError) existingError.remove();
-
-        const modalBody = modal.querySelector('.modal-body');
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'form-error alert alert-error';
-        errorDiv.innerHTML = `<strong>Error:</strong> ${this.escapeHtml(message)}`;
-        modalBody.insertBefore(errorDiv, modalBody.firstChild);
+    escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
     }
 }

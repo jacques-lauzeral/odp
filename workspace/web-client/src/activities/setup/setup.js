@@ -23,7 +23,7 @@ export default class Setup {
             'reference-documents': {
                 name: 'Reference Documents',
                 endpoint: '/reference-documents',
-                type: 'list'
+                type: 'tree'
             },
             'waves': {
                 name: 'Waves',

@@ -50,7 +50,8 @@ export default class Bandwidths extends ListEntity {
         return [
             { key: 'year', label: 'Year', type: 'number' },
             { key: 'waveId', label: 'Wave', type: 'wave-ref' },
-            { key: 'scopeId', label: 'Scope (Domain)', type: 'domain-ref' }
+            { key: 'scopeId', label: 'Scope (Domain)', type: 'domain-ref' },
+            { key: 'planned', label: 'Planned (MW)', type: 'number' }
         ];
     }
 
@@ -154,6 +155,13 @@ export default class Bandwidths extends ListEntity {
                                 </select>
                                 <small class="form-text">Leave empty for a global bandwidth entry</small>
                             </div>
+
+                            <div class="form-group">
+                                <label for="planned">Planned (MW)</label>
+                                <input type="number" id="planned" name="planned" class="form-control"
+                                       min="0" placeholder="Optional">
+                                <small class="form-text">Planned bandwidth in MW</small>
+                            </div>
                         </form>
                     </div>
                     <div class="modal-footer">
@@ -203,6 +211,13 @@ export default class Bandwidths extends ListEntity {
                                     <option value="">Global (no specific domain)</option>
                                     ${this.renderDomainOptions(item.scopeId)}
                                 </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit-planned">Planned (MW)</label>
+                                <input type="number" id="edit-planned" name="planned" class="form-control"
+                                       min="0" value="${item.planned ?? ''}" placeholder="Optional">
+                                <small class="form-text">Planned bandwidth in MW</small>
                             </div>
                         </form>
                     </div>
@@ -355,7 +370,8 @@ export default class Bandwidths extends ListEntity {
         const data = {
             year: parseInt(formData.get('year')),
             waveId: formData.get('waveId') || undefined,
-            scopeId: formData.get('scopeId') || undefined
+            scopeId: formData.get('scopeId') || undefined,
+            planned: formData.get('planned') ? parseInt(formData.get('planned'), 10) : undefined
         };
 
         try {
@@ -378,7 +394,8 @@ export default class Bandwidths extends ListEntity {
         const data = {
             year: parseInt(formData.get('year')),
             waveId: formData.get('waveId') || undefined,
-            scopeId: formData.get('scopeId') || undefined
+            scopeId: formData.get('scopeId') || undefined,
+            planned: formData.get('planned') ? parseInt(formData.get('planned'), 10) : undefined
         };
 
         try {
