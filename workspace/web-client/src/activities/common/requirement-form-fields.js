@@ -16,7 +16,7 @@
 export const requirementFieldDefinitions = [
     // Basic Information Section
     {
-        title: 'Basic Information',
+        title: 'General',
         fields: [
             {
                 key: 'itemId',
@@ -48,15 +48,6 @@ export const requirementFieldDefinitions = [
                 editableOnlyOnCreate: true,
                 optionsKey: 'getTypeOptions',
                 helpTextAbove: 'Select ON for high-level operational needs, OR for specific requirements'
-            },
-            {
-                key: 'maturity',
-                label: 'Maturity',
-                type: 'select',
-                modes: ['create', 'read', 'edit'],
-                required: true,
-                optionsKey: 'getMaturityOptions',
-                helpText: 'Maturity level of this requirement'
             },
             {
                 key: 'title',
@@ -251,6 +242,15 @@ export const requirementFieldDefinitions = [
         title: 'Planning',
         fields: [
             {
+                key: 'maturity',
+                label: 'Maturity',
+                type: 'select',
+                modes: ['create', 'read', 'edit'],
+                required: true,
+                optionsKey: 'getMaturityOptions',
+                helpText: 'Maturity level of this requirement'
+            },
+            {
                 key: 'tentative',
                 label: 'Tentative Implementation Time',
                 type: 'tentative',
@@ -276,9 +276,9 @@ export const requirementFieldDefinitions = [
         ]
     },
 
-    // Additional Documentation Section
+    // Documentation Section
     {
-        title: 'Additional Documentation',
+        title: 'Documentation',
         fields: [
             {
                 key: 'additionalDocumentation',

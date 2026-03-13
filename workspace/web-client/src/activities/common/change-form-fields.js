@@ -13,9 +13,9 @@
  * - formatKey: References a method name on the form instance
  */
 export const changeFieldDefinitions = [
-    // Basic Information Section
+    // Header Section
     {
-        title: 'Basic Information',
+        title: 'Header',
         fields: [
             {
                 key: 'itemId',
@@ -56,15 +56,6 @@ export const changeFieldDefinitions = [
                 }
             },
             {
-                key: 'maturity',
-                label: 'Maturity',
-                type: 'select',
-                modes: ['create', 'read', 'edit'],
-                required: true,
-                optionsKey: 'getMaturityOptions',
-                helpText: 'Maturity level of this change'
-            },
-            {
                 key: 'drg',
                 label: 'Drafting Group',
                 type: 'select',
@@ -77,9 +68,9 @@ export const changeFieldDefinitions = [
         ]
     },
 
-    // Change Details Section
+    // Details Section
     {
-        title: 'Change Details',
+        title: 'Details',
         fields: [
             {
                 key: 'purpose',
@@ -136,65 +127,13 @@ export const changeFieldDefinitions = [
                 rows: 3,
                 placeholder: 'Internal notes (not for publication)...',
                 helpText: 'Private notes for internal use only'
-            },
-            {
-                key: 'path',
-                label: 'Path',
-                type: 'textarea',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                rows: 2,
-                placeholder: 'Enter path elements separated by commas (e.g., "Deployment, Phase 1, Infrastructure")',
-                helpText: 'Organizational path for this change (comma-separated)',
-                format: (value) => {
-                    if (!value || !Array.isArray(value) || value.length === 0) return 'No path';
-                    return value.join(' > ');
-                }
-            },
-            {
-                key: 'cost',
-                label: 'Cost',
-                type: 'number',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                placeholder: 'Integer value in MW',
-                helpText: 'Indicative implementation cost in MW'
-            },
-            {
-                key: 'additionalDocumentation',
-                label: 'Additional Documentation',
-                type: 'static-label',
-                modes: ['create', 'read', 'edit'],
-                staticText: 'Not available yet'
             }
         ]
     },
 
-    // Milestones Section
+    // Traceability Section
     {
-        title: 'Milestones',
-        fields: [
-            {
-                key: 'milestones',
-                label: 'Milestones',
-                type: 'custom',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                renderKey: 'renderMilestonesField',
-                format: (value) => {
-                    if (!value || !Array.isArray(value) || value.length === 0) {
-                        return 'No milestones defined';
-                    }
-                    return '';
-                },
-                helpText: 'Manage milestones using the 5 standard milestone event types'
-            }
-        ]
-    },
-
-    // Relationships Section
-    {
-        title: 'Relationships',
+        title: 'Traceability',
         fields: [
             {
                 key: 'implementedORs',
@@ -219,6 +158,72 @@ export const changeFieldDefinitions = [
                 helpText: 'Select OR requirements that this change decommissions',
                 formatKey: 'formatEntityReferences',
                 formatArgs: ['requirement']
+            }
+        ]
+    },
+
+    // Planning Section
+    {
+        title: 'Planning',
+        fields: [
+            {
+                key: 'maturity',
+                label: 'Maturity',
+                type: 'select',
+                modes: ['create', 'read', 'edit'],
+                required: true,
+                optionsKey: 'getMaturityOptions',
+                helpText: 'Maturity level of this change'
+            },
+            {
+                key: 'cost',
+                label: 'Cost',
+                type: 'number',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                placeholder: 'Integer value in MW',
+                helpText: 'Indicative implementation cost in MW'
+            },
+            {
+                key: 'dependencies',
+                label: 'Dependencies',
+                type: 'multiselect',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                size: 5,
+                optionsKey: 'getDependencyChangeOptions',
+                helpText: 'OCs that must be implemented before this OC',
+                formatKey: 'formatEntityReferences'
+            },
+            {
+                key: 'milestones',
+                label: 'Milestones',
+                type: 'custom',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                renderKey: 'renderMilestonesField',
+                format: (value) => {
+                    if (!value || !Array.isArray(value) || value.length === 0) {
+                        return 'No milestones defined';
+                    }
+                    return '';
+                },
+                helpText: 'Manage milestones using the 5 standard milestone event types'
+            }
+        ]
+    },
+
+
+    // Documentation Section
+    {
+        title: 'Documentation',
+        fields: [
+            {
+                key: 'additionalDocumentation',
+                label: 'Additional Documentation',
+                type: 'static-label',
+                modes: ['create', 'read', 'edit'],
+                staticText: 'Not available yet'
             }
         ]
     },
