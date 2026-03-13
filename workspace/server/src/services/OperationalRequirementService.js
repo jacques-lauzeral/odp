@@ -138,12 +138,15 @@ export class OperationalRequirementService extends VersionedItemService {
 
         // Validate tentative range if provided
         if (payload.tentative !== undefined && payload.tentative !== null) {
-            const { start, end } = payload.tentative;
-            if (start === undefined || end === undefined) {
-                throw new Error('Validation failed: tentative must have start and end fields');
+            if (!Array.isArray(payload.tentative) || payload.tentative.length !== 2) {
+                throw new Error('Validation failed: tentative must be an array of exactly 2 integers');
             }
+            const [start, end] = payload.tentative;
             if (!Number.isInteger(start) || !Number.isInteger(end)) {
-                throw new Error('Validation failed: tentative start and end must be integers (years)');
+                throw new Error('Validation failed: tentative start and end must be integers');
+            }
+            if (start < 2025 || start > 2050 || end < 2025 || end > 2050) {
+                throw new Error('Validation failed: tentative years must be in range [2025, 2050]');
             }
             if (start > end) {
                 throw new Error('Validation failed: tentative start must be <= end');

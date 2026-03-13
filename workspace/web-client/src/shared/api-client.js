@@ -71,8 +71,21 @@ export class ApiClient {
             // Handle HTTP errors
             if (!response.ok) {
                 const errorData = await this.parseErrorResponse(response);
-                const error = new Error(errorData.message || `HTTP ${response.status}`);
+                let message;
+                let code;
+                if (errorData.error && errorData.error.message) {
+                    message = errorData.error.message;
+                } else {
+                    message = typeof errorData === 'string' ? errorData : JSON.stringify(errorData);
+                }
+                if (errorData.error && errorData.error.code) {
+                    code = errorData.error.code;
+                } else {
+                    code = `HTTP Status: ${response.status}`;
+                }
+                const error = new Error(message);
                 error.status = response.status;
+                error.code = code;
                 error.data = errorData;
                 throw error;
             }

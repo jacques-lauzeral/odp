@@ -169,8 +169,6 @@ export default class RequirementForm extends CollectionEntityForm {
         if (transformed.tentative !== undefined && transformed.tentative !== null) {
             if (typeof transformed.tentative === 'string' && transformed.tentative.trim()) {
                 transformed.tentative = this.parseTentative(transformed.tentative.trim());
-            } else if (!Array.isArray(transformed.tentative)) {
-                transformed.tentative = null;
             }
         }
 
@@ -221,8 +219,8 @@ export default class RequirementForm extends CollectionEntityForm {
             transformed.path = transformed.path.join(', ');
         }
 
-        // Handle tentative - convert [start, end] array to display string for text input
-        if (transformed.tentative && Array.isArray(transformed.tentative)) {
+        // Handle tentative - convert {start, end} object (or legacy array) to display string for text input
+        if (transformed.tentative) {
             transformed.tentative = this.formatTentative(transformed.tentative);
         }
 
@@ -281,13 +279,6 @@ export default class RequirementForm extends CollectionEntityForm {
 
         if (data.type === 'ON' && data.dependencies && data.dependencies.length > 0) {
             errors.push({ field: 'dependencies', message: 'ON-type requirements cannot have OR dependencies' });
-        }
-
-        if (data.tentative && Array.isArray(data.tentative)) {
-            const [start, end] = data.tentative;
-            if (start > end) {
-                errors.push({ field: 'tentative', message: 'Start year must be less than or equal to end year' });
-            }
         }
 
         return { valid: errors.length === 0, errors };
@@ -462,7 +453,7 @@ export default class RequirementForm extends CollectionEntityForm {
      * [2026, 2026] → "2026", [2026, 2028] → "2026-2028"
      */
     formatTentative(value) {
-        if (!value || !Array.isArray(value) || value.length < 2) return '';
+        if (!value) return '';
         const [start, end] = value;
         return start === end ? String(start) : `${start}-${end}`;
     }

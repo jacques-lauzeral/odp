@@ -177,7 +177,7 @@ Several attributes are type-specific. The service layer enforces these rules; th
 | `privateNotes` | rich text | both | optional | Internal notes, not shared with other organisations |
 | `additionalDocumentation` | attachments | both | optional | Supporting documents |
 | `path` | string[] | both | optional | Folder hierarchy for navigation |
-| `tentative` | year period | **ON only** | mandatory (root ON), optional (child ON) | Tentative implementation time [start, end], start ≤ end |
+| `tentative` | integer[] | **ON only** | mandatory (root ON), optional (child ON) | Tentative implementation time: `[year]` or `[start, end]` where start ≤ end |
 | `nfrs` | rich text | **OR only** | optional | Non-functional requirements from business perspective |
 
 **Version relationship fields**:

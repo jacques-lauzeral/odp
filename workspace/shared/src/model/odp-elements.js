@@ -38,7 +38,7 @@ export const OperationalRequirement = {
     drg: '',        // DraftingGroup enum
     refinesParents: [],         // array of OperationalEntityReference
     // ON only
-    tentative: null,            // year period { start, end } where start <= end
+    tentative: null,            // year period [year] or [start, end] where start <= end
     strategicDocuments: [],     // array of AnnotatedReference (ReferenceDocument)
     // OR only
     implementedONs: [],         // array of OperationalEntityReference

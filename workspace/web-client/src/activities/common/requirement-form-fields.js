@@ -102,9 +102,9 @@ export const requirementFieldDefinitions = [
         ]
     },
 
-    // Requirement Details Section
+    // Details Section
     {
-        title: 'Requirement Details',
+        title: 'Details',
         fields: [
             {
                 key: 'statement',
@@ -162,21 +162,13 @@ export const requirementFieldDefinitions = [
                 rows: 3,
                 placeholder: 'Internal notes (not for publication)...',
                 helpText: 'Private notes for internal use only'
-            },
-            {
-                key: 'additionalDocumentation',
-                label: 'Additional Documentation',
-                type: 'static-label',
-                modes: ['create', 'read', 'edit'],
-                staticText: 'Not available yet'
             }
         ]
     },
 
-    // ON-specific Section
+    // Traceability Section
     {
-        title: 'Operational Need',
-        visibleWhen: (data) => data.type === 'ON',
+        title: 'Traceability',
         fields: [
             {
                 key: 'strategicDocuments',
@@ -193,22 +185,36 @@ export const requirementFieldDefinitions = [
                 formatKey: 'formatAnnotatedReferences'
             },
             {
-                key: 'tentative',
-                label: 'Tentative Implementation Time',
-                type: 'tentative',
+                key: 'implementedONs',
+                label: 'Implements (ON Requirements)',
+                type: 'multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                visibleWhen: (data) => data.type === 'ON',
-                placeholder: 'e.g. 2026 or 2026-2028',
-                helpText: 'Year or year range (YYYY or YYYY-ZZZZ). A single year means start = end.',
-                formatKey: 'formatTentative'
+                size: 5,
+                visibleWhen: (data) => data.type === 'OR',
+                optionsKey: 'getONRequirementOptions',
+                helpText: 'Select ON-type requirements that this OR implements',
+                formatKey: 'formatEntityReferences',
+                formatArgs: ['ON']
+            },
+            {
+                key: 'refinesParents',
+                label: 'Refines (Parent Requirements)',
+                type: 'multiselect',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                size: 5,
+                optionsKey: 'getParentRequirementOptions',
+                helpText: 'Select parent requirements that this requirement refines',
+                formatKey: 'formatEntityReferences'
             }
         ]
     },
 
-    // Impact Section
+    // Impact Section (OR only)
     {
         title: 'Impact',
+        visibleWhen: (data) => data.type === 'OR',
         fields: [
             {
                 key: 'impactedStakeholders',
@@ -238,33 +244,20 @@ export const requirementFieldDefinitions = [
         ]
     },
 
-    // Relationships Section
+    // Planning Section
     {
-        title: 'Relationships',
+        title: 'Planning',
         fields: [
             {
-                key: 'refinesParents',
-                label: 'Refines (Parent Requirements)',
-                type: 'multiselect',
+                key: 'tentative',
+                label: 'Tentative Implementation Time',
+                type: 'tentative',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                size: 5,
-                optionsKey: 'getParentRequirementOptions',
-                helpText: 'Select parent requirements that this requirement refines',
-                formatKey: 'formatEntityReferences'
-            },
-            {
-                key: 'implementedONs',
-                label: 'Implements (ON Requirements)',
-                type: 'multiselect',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                size: 5,
-                visibleWhen: (data) => data.type === 'OR',
-                optionsKey: 'getONRequirementOptions',
-                helpText: 'Select ON-type requirements that this OR implements',
-                formatKey: 'formatEntityReferences',
-                formatArgs: ['ON']
+                visibleWhen: (data) => data.type === 'ON',
+                placeholder: 'e.g. 2026 or 2026-2028',
+                helpText: 'Year or year range (YYYY or YYYY-ZZZZ). A single year means start = end.',
+                formatKey: 'formatTentative'
             },
             {
                 key: 'dependencies',
@@ -277,6 +270,20 @@ export const requirementFieldDefinitions = [
                 optionsKey: 'getDependencyRequirementOptions',
                 helpText: 'ORs that must be implemented before this OR',
                 formatKey: 'formatEntityReferences'
+            }
+        ]
+    },
+
+    // Additional Documentation Section
+    {
+        title: 'Additional Documentation',
+        fields: [
+            {
+                key: 'additionalDocumentation',
+                label: 'Additional Documentation',
+                type: 'static-label',
+                modes: ['create', 'read', 'edit'],
+                staticText: 'Not available yet'
             }
         ]
     },

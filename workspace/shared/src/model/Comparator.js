@@ -37,7 +37,7 @@ class Comparator {
         this._compareReferenceArray(changes, 'refinesParents', existing.refinesParents, incoming.refinesParents);
 
         // ON-only fields
-        this._compareField(changes, 'tentative', existing.tentative, incoming.tentative, false);
+        this._compareIntegerArray(changes, 'tentative', existing.tentative, incoming.tentative);
         this._compareAnnotatedReferenceArray(changes, 'strategicDocuments', existing.strategicDocuments, incoming.strategicDocuments);
 
         // OR-only fields
@@ -126,6 +126,24 @@ class Comparator {
     static _compareStringArray(changes, fieldName, oldArray, newArray) {
         const oldNorm = Array.isArray(oldArray) ? oldArray : [];
         const newNorm = Array.isArray(newArray) ? newArray : [];
+
+        if (JSON.stringify(oldNorm) !== JSON.stringify(newNorm)) {
+            changes.push({
+                field: fieldName,
+                oldValue: oldNorm,
+                newValue: newNorm
+            });
+        }
+    }
+
+    /**
+     * Compare a nullable integer array (order matters).
+     * Used for tentative: null, [year], or [start, end].
+     * @private
+     */
+    static _compareIntegerArray(changes, fieldName, oldArray, newArray) {
+        const oldNorm = Array.isArray(oldArray) ? oldArray : null;
+        const newNorm = Array.isArray(newArray) ? newArray : null;
 
         if (JSON.stringify(oldNorm) !== JSON.stringify(newNorm)) {
             changes.push({
