@@ -13,7 +13,7 @@ export function referenceDocumentCommands(program, config) {
             colWidths: [10, 30, 15, 50],
             createSignature: '<n> <version> <url>',
             updateSignature: '<id> <n> <version> <url>',
-            hasParent: false
+            hasParent: true
         }
     );
 

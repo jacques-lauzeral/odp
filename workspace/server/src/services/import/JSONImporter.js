@@ -692,7 +692,6 @@ class JSONImporter {
                     privateNotes: changeData.privateNotes || '',
                     maturity: changeData.maturity || 'DRAFT',
                     path: changeData.path || [],
-                    visibility: changeData.visibility || 'NETWORK',
                     drg: changeData.drg,
                     implementedORs: implementedORs,
                     decommissionedORs: decommissionedORs,

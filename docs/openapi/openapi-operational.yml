@@ -319,14 +319,6 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering (changes with milestones at/after this wave)"
-        - name: visibility
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [NM, NETWORK]
-          description: "Filter by change visibility. Omit for all visibility types."
-          example: "NETWORK"
         - name: drg
           in: query
           required: false

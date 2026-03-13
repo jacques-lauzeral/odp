@@ -5,10 +5,6 @@ import {
     DraftingGroupKeys,
     isDraftingGroupValid,
     getDraftingGroupDisplay,
-    Visibility,
-    VisibilityKeys,
-    isVisibilityValid,
-    getVisibilityDisplay,
     MilestoneEventType,
     MilestoneEventKeys,
     isMilestoneEventValid,
@@ -36,7 +32,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
-            .option('--visibility <visibility>', `Filter by change visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
@@ -44,12 +39,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via IMPLEMENTS/DECOMMISSIONS requirements (comma-separated)')
             .action(async (options) => {
                 try {
-                    if (options.visibility && !isVisibilityValid(options.visibility)) {
-                        console.error(`Invalid visibility value: ${options.visibility}`);
-                        console.error(`Valid values: ${VisibilityKeys.join(', ')}`);
-                        process.exit(1);
-                    }
-
                     if (options.drg && !isDraftingGroupValid(options.drg)) {
                         console.error(`Invalid DRG value: ${options.drg}`);
                         console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
@@ -84,18 +73,16 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Visibility', 'DRG', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 15, 12, 12, 20, 10, 20]
+                        head: ['Item ID', 'Code', 'DRG', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 15, 12, 20, 10, 20]
                     });
 
                     items.forEach(item => {
-                        const visibilityDisplay = item.visibility ? getVisibilityDisplay(item.visibility) : '-';
                         const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
                         const codeDisplay = item.code || '-';
                         table.push([
                             item.itemId,
                             codeDisplay,
-                            visibilityDisplay,
                             drgDisplay,
                             item.title,
                             item.version,
@@ -116,7 +103,6 @@ class OperationalChangeCommands extends VersionedCommands {
     buildContentFilterParams(options) {
         const params = [];
 
-        if (options.visibility) params.push(`visibility=${encodeURIComponent(options.visibility)}`);
         if (options.drg) params.push(`drg=${encodeURIComponent(options.drg)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
@@ -136,7 +122,6 @@ class OperationalChangeCommands extends VersionedCommands {
     buildFilterDisplaySummary(options) {
         const filters = [];
 
-        if (options.visibility) filters.push(`visibility=${options.visibility}`);
         if (options.drg) filters.push(`drg=${options.drg}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
@@ -156,7 +141,6 @@ class OperationalChangeCommands extends VersionedCommands {
         console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
         console.log(`Maturity: ${item.maturity || 'Not set'}`);
         console.log(`Purpose: ${item.purpose || ''}`);
-        console.log(`Visibility: ${item.visibility ? getVisibilityDisplay(item.visibility) : 'Not set'}`);
         console.log(`Initial State: ${item.initialState || 'Not specified'}`);
         console.log(`Final State: ${item.finalState || 'Not specified'}`);
         console.log(`Details: ${item.details || 'Not specified'}`);
@@ -215,18 +199,6 @@ class OperationalChangeCommands extends VersionedCommands {
         }
     }
 
-    validateVisibility(visibility) {
-        if (!visibility) return null;
-
-        if (!isVisibilityValid(visibility)) {
-            console.error(`Invalid visibility value: ${visibility}`);
-            console.error(`Valid values: ${VisibilityKeys.join(', ')}`);
-            process.exit(1);
-        }
-
-        return visibility;
-    }
-
     validateDRG(drg) {
         if (!drg) return null;
 
@@ -251,7 +223,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
             .option('--purpose <purpose>', 'Purpose of the change', '')
-            .option('--visibility <visibility>', `Visibility (${VisibilityKeys.join(', ')})`, 'NETWORK')
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--initial-state <state>', 'Initial state description', '')
             .option('--final-state <state>', 'Final state description', '')
@@ -266,7 +237,6 @@ class OperationalChangeCommands extends VersionedCommands {
                     const data = {
                         title,
                         purpose: options.purpose,
-                        visibility: this.validateVisibility(options.visibility) || 'NETWORK',
                         drg: this.validateDRG(options.drg),
                         initialState: options.initialState || '',
                         finalState: options.finalState || '',
@@ -295,9 +265,6 @@ class OperationalChangeCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Created ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`Version: ${entity.version} (Version ID: ${entity.versionId})`);
-                    if (entity.visibility) {
-                        console.log(`Visibility: ${getVisibilityDisplay(entity.visibility)}`);
-                    }
                     if (entity.drg) {
                         console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
                     }
@@ -313,7 +280,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version with complete replacement)`)
             .option('--purpose <purpose>', 'New purpose')
-            .option('--visibility <visibility>', `New visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
@@ -329,7 +295,6 @@ class OperationalChangeCommands extends VersionedCommands {
                         expectedVersionId,
                         title,
                         purpose: options.purpose || '',
-                        visibility: this.validateVisibility(options.visibility) || 'NETWORK',
                         drg: this.validateDRG(options.drg),
                         initialState: options.initialState || '',
                         finalState: options.finalState || '',
@@ -370,9 +335,6 @@ class OperationalChangeCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Updated ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`New version: ${entity.version} (Version ID: ${entity.versionId})`);
-                    if (entity.visibility) {
-                        console.log(`Visibility: ${getVisibilityDisplay(entity.visibility)}`);
-                    }
                     if (entity.drg) {
                         console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
                     }
@@ -389,7 +351,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
             .option('--purpose <purpose>', 'New purpose')
-            .option('--visibility <visibility>', `New visibility (${VisibilityKeys.join(', ')})`)
             .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
@@ -405,7 +366,6 @@ class OperationalChangeCommands extends VersionedCommands {
 
                     if (options.title) data.title = options.title;
                     if (options.purpose) data.purpose = options.purpose;
-                    if (options.visibility !== undefined) data.visibility = this.validateVisibility(options.visibility);
                     if (options.drg !== undefined) data.drg = this.validateDRG(options.drg);
                     if (options.initialState) data.initialState = options.initialState;
                     if (options.finalState) data.finalState = options.finalState;
@@ -442,9 +402,6 @@ class OperationalChangeCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Patched ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`New version: ${entity.version} (Version ID: ${entity.versionId})`);
-                    if (entity.visibility) {
-                        console.log(`Visibility: ${getVisibilityDisplay(entity.visibility)}`);
-                    }
                     if (entity.drg) {
                         console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
                     }

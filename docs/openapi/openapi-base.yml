@@ -112,6 +112,10 @@ components:
           type: string
           nullable: true
           description: "Optional domain reference — undefined means global scope"
+        planned:
+          type: integer
+          nullable: true
+          description: "Planned bandwidth in MW — optional"
 
     BandwidthRequest:
       type: object
@@ -127,12 +131,20 @@ components:
           type: string
           nullable: true
           description: "Optional domain reference — undefined means global scope"
+        planned:
+          type: integer
+          nullable: true
+          description: "Planned bandwidth in MW — optional"
 
     ReferenceDocument:
       type: object
       properties:
         id:
           type: string
+        parentId:
+          type: string
+          nullable: true
+          description: "Parent ReferenceDocument ID — optional, max two levels"
         name:
           type: string
         version:
@@ -145,6 +157,10 @@ components:
       type: object
       required: [name, url]
       properties:
+        parentId:
+          type: string
+          nullable: true
+          description: "Parent ReferenceDocument ID — optional, max two levels"
         name:
           type: string
         version:
@@ -328,10 +344,6 @@ components:
             type: string
           default: []
         # ON-only fields
-        domainId:
-          type: string
-          nullable: true
-          description: "Domain item ID — ON only"
         strategicDocuments:
           type: array
           items:
@@ -416,9 +428,6 @@ components:
           type: array
           items:
             type: string
-        domainId:
-          type: string
-          nullable: true
         strategicDocuments:
           type: array
           items:
@@ -569,9 +578,6 @@ components:
           type: array
           items:
             type: string
-        visibility:
-          type: string
-          enum: [NM, NETWORK]
         drg:
           type: string
           enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
@@ -597,7 +603,7 @@ components:
 
     OperationalChangeRequest:
       type: object
-      required: [title, purpose, visibility, maturity]
+      required: [title, purpose, maturity]
       properties:
         title:
           type: string
@@ -629,9 +635,6 @@ components:
           type: array
           items:
             type: string
-        visibility:
-          type: string
-          enum: [NM, NETWORK]
         drg:
           type: string
           enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
@@ -703,9 +706,6 @@ components:
           type: array
           items:
             type: string
-        visibility:
-          type: string
-          enum: [NM, NETWORK]
         drg:
           type: string
           enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]

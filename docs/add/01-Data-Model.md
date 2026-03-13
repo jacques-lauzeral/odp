@@ -43,8 +43,7 @@ shared/src/
     ├── odp-elements.js       # Operational and management entity models
     ├── or-types.js           # OR type enum (ON, OR)
     ├── setup-elements.js     # Setup entity models
-    ├── utils.js              # ID normalisation, lazy comparison
-    └── visibility.js         # Visibility levels (NM, NETWORK)
+    └── utils.js              # ID normalisation, lazy comparison
 ```
 
 > **model/ vs messages/**: `model/` defines what entities *are* (structure, enums, validation). `messages/` defines what is *exchanged over the API* (request payloads, response shapes). Keeping them separate makes it easier to evolve API contracts independently of the domain model.
@@ -84,7 +83,7 @@ Represents a strategic or regulatory document (e.g. CONOPS, EU Regulation, NSP) 
 | `version` | string | Optional edition or version number |
 | `url` | string | Link to the physical document |
 
-Flat list — no hierarchy.
+Supports REFINES hierarchy (parent-child, max two levels).
 
 #### Wave
 
@@ -132,6 +131,7 @@ Represents the per-domain yearly development effort (in MW), for NM internal pla
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
 | `year` | integer | The effort year |
+| `planned` | integer | Planned bandwidth in MW; optional |
 | `wave` | reference | Wave reference; optional — omitted means yearly total |
 | `scope` | reference | Domain reference; optional — omitted means global scope |
 
@@ -177,7 +177,6 @@ Several attributes are type-specific. The service layer enforces these rules; th
 | `privateNotes` | rich text | both | optional | Internal notes, not shared with other organisations |
 | `additionalDocumentation` | attachments | both | optional | Supporting documents |
 | `path` | string[] | both | optional | Folder hierarchy for navigation |
-| `domain` | reference | **ON only** | mandatory (root ON), optional (child ON) | Domain reference |
 | `tentative` | year period | **ON only** | mandatory (root ON), optional (child ON) | Tentative implementation time [start, end], start ≤ end |
 | `nfrs` | rich text | **OR only** | optional | Non-functional requirements from business perspective |
 
@@ -204,7 +203,6 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 |---|---|---|---|
 | `version` | integer | mandatory | Sequential |
 | `drg` | enum | mandatory | Drafting Group |
-| `visibility` | enum | mandatory | NM \| NETWORK |
 | `maturity` | enum | mandatory | DRAFT \| ADVANCED \| MATURE |
 | `purpose` | rich text | mandatory | Why the OC is needed |
 | `initialState` | rich text | mandatory | Current operational situation before deployment |
@@ -411,13 +409,6 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 
 Each milestone carries one or more event types from this list.
 
-### 6.6 Visibility
-
-| Key | Meaning |
-|---|---|
-| NM | Visible to NM only |
-| NETWORK | Visible to the wider network |
-
 ---
 
 ## 7. Shared Utilities
@@ -481,7 +472,7 @@ Comparison is entity-type-aware, handling three categories of fields:
 
 | Category | Comparison strategy |
 |---|---|
-| Simple fields (`title`, `drg`, `maturity`, `visibility`, …) | Normalised string equality (trim, null → `''`) |
+| Simple fields (`title`, `drg`, `maturity`, …) | Normalised string equality (trim, null → `''`) |
 | Rich text fields (Quill delta JSON) | Structural normalisation — empty delta variants (`{}`, `{"ops":[]}`, single `\n`) all resolve to `''`; valid content is re-serialised before comparison |
 | Reference arrays (`refinesParents`, `implementedORs`, …) | Sorted ID comparison (order-insensitive) |
 | Annotated reference arrays (`strategicDocuments`, …) | Sorted `{id, note}` comparison |

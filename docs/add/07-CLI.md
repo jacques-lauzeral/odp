@@ -50,9 +50,9 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`domain`** supports `--parent <id>` (Domain REFINES hierarchy). Fields: `name`, `description`, `contact`.
 
-**`reference-document`** fields: `name`, `version`, `url`. No parent.
+**`reference-document`** supports `--parent <id>` (ReferenceDocument REFINES hierarchy). Fields: `name`, `version`, `url`.
 
-**`bandwidth`** fields: `year`, `wave` (Wave ID), `scope` (Domain ID). No parent.
+**`bandwidth`** fields: `year`, `wave` (Wave ID), `scope` (Domain ID), `planned` (integer, MW). No parent.
 
 **`wave`** fields: `year`, `sequenceNumber`, `implementationDate`. No parent.
 
@@ -73,7 +73,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`requirement list` filter flags**: `--type ON|OR`, `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
 
-**`requirement create/update` options**: `--type`, `--drg`, `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--impacted-domains`, `--domain`, `--maturity`, `--dependencies`, `--nfrs`.
+**`requirement create/update` options**: `--type`, `--drg`, `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--impacted-domains`, `--maturity`, `--dependencies`, `--nfrs`.
 
 ### Operational Changes
 
@@ -90,9 +90,9 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `change versions <itemId>` | List version history |
 | `change show-version <itemId> <versionNumber>` | Show specific version |
 
-**`change list` filter flags**: `--visibility`, `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
+**`change list` filter flags**: `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
 
-**`change create/update` options**: `--purpose`, `--visibility`, `--drg`, `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
+**`change create/update` options**: `--purpose`, `--drg`, `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
 
 ### Management Entities
 
@@ -146,11 +146,11 @@ The following command files were removed in the Edition 4 model update:
 ```javascript
 {
     fields: ['name', 'description'],   // API response fields to display (excluding id)
-    headers: ['ID', 'Name', ...],      // Table column headers (id always first)
-    colWidths: [10, 30, 50],           // cli-table3 column widths
-    createSignature: '<name> <desc>',  // Commander positional args for create
-    updateSignature: '<id> <name> <desc>',
-    hasParent: true                    // Adds --parent option to create/update
+        headers: ['ID', 'Name', ...],      // Table column headers (id always first)
+        colWidths: [10, 30, 50],           // cli-table3 column widths
+        createSignature: '<name> <desc>',  // Commander positional args for create
+        updateSignature: '<id> <name> <desc>',
+        hasParent: true                    // Adds --parent option to create/update
 }
 ```
 

@@ -70,7 +70,6 @@ export class OperationalRequirementService extends VersionedItemService {
             drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             refinesParents: patchPayload.refinesParents !== undefined ? patchPayload.refinesParents : current.refinesParents.map(ref => ref.id),
             // ON-only fields
-            domainId: patchPayload.domainId !== undefined ? patchPayload.domainId : (current.domain?.id ?? null),
             strategicDocuments: patchPayload.strategicDocuments !== undefined ? patchPayload.strategicDocuments : current.strategicDocuments.map(ref => ({ id: ref.id, note: ref.note })),
             tentative: patchPayload.tentative !== undefined ? patchPayload.tentative : current.tentative,
             // OR-only fields
@@ -116,9 +115,6 @@ export class OperationalRequirementService extends VersionedItemService {
 
         // ON-only fields forbidden on OR
         if (type === 'OR') {
-            if (payload.domainId !== undefined && payload.domainId !== null) {
-                throw new Error('Validation failed: domainId is only allowed on ON-type requirements');
-            }
             if (payload.tentative !== undefined && payload.tentative !== null) {
                 throw new Error('Validation failed: tentative is only allowed on ON-type requirements');
             }
@@ -253,10 +249,6 @@ export class OperationalRequirementService extends VersionedItemService {
         if (payload.impactedDomains && payload.impactedDomains.length > 0) {
             const ids = payload.impactedDomains.map(ref => ref.id);
             validationPromises.push(this._validateEntityIds(ids, domainStore(), 'domain'));
-        }
-
-        if (payload.domainId !== undefined && payload.domainId !== null) {
-            validationPromises.push(this._validateEntityIds([payload.domainId], domainStore(), 'domain'));
         }
 
         if (payload.strategicDocuments && payload.strategicDocuments.length > 0) {

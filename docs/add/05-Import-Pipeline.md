@@ -88,7 +88,7 @@ requirements[]            — {externalId|code, title, type, statement (Quill De
                              impactedDomains, dependencies, maturity, nfrs,
                              tentative, strategicDocuments (ONs only),
                              additionalDocumentation}
-changes[]                 — {externalId|code, title, drg, visibility,
+changes[]                 — {externalId|code, title, drg,
                              implementedORs, decommissionedORs,
                              milestones[{name, wave, eventTypes[]}],
                              maturity, cost, orCosts, additionalDocumentation}

@@ -37,7 +37,6 @@ class Comparator {
         this._compareReferenceArray(changes, 'refinesParents', existing.refinesParents, incoming.refinesParents);
 
         // ON-only fields
-        this._compareField(changes, 'domain', existing.domain, incoming.domain, false);
         this._compareField(changes, 'tentative', existing.tentative, incoming.tentative, false);
         this._compareAnnotatedReferenceArray(changes, 'strategicDocuments', existing.strategicDocuments, incoming.strategicDocuments);
 
@@ -67,7 +66,6 @@ class Comparator {
         // Compare simple fields
         this._compareField(changes, 'title', existing.title, incoming.title, false);
         this._compareField(changes, 'maturity', existing.maturity, incoming.maturity, false);
-        this._compareField(changes, 'visibility', existing.visibility, incoming.visibility, false);
         this._compareField(changes, 'drg', existing.drg, incoming.drg, false);
         this._compareField(changes, 'cost', existing.cost, incoming.cost, false);
         this._compareField(changes, 'purpose', existing.purpose, incoming.purpose, richTextFields.includes('purpose'));

@@ -182,7 +182,14 @@ export class BaseCommands {
 
                 if (this.fieldConfig.options) {
                     this.fieldConfig.options.forEach(opt => {
-                        data[opt.field] = options[opt.field] || null;
+                        const val = options[opt.field];
+                        if (val === undefined || val === null) {
+                            data[opt.field] = null;
+                        } else if (opt.type === 'integer') {
+                            data[opt.field] = parseInt(val, 10);
+                        } else {
+                            data[opt.field] = val || null;
+                        }
                     });
                 }
 
@@ -242,7 +249,14 @@ export class BaseCommands {
 
                 if (this.fieldConfig.options) {
                     this.fieldConfig.options.forEach(opt => {
-                        data[opt.field] = options[opt.field] || null;
+                        const val = options[opt.field];
+                        if (val === undefined || val === null) {
+                            data[opt.field] = null;
+                        } else if (opt.type === 'integer') {
+                            data[opt.field] = parseInt(val, 10);
+                        } else {
+                            data[opt.field] = val || null;
+                        }
                     });
                 }
 

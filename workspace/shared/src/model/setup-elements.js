@@ -4,7 +4,8 @@ export const ReferenceDocument = {
     id: '',
     name: '',
     version: '',  // optional
-    url: ''
+    url: '',
+    parentId: null // optional
 };
 
 export const Wave = {
@@ -32,6 +33,7 @@ export const Domain = {
 export const Bandwidth = {
     id: '',
     year: 0,
+    planned: 0,     // optional - planned bandwidth in MW
     waveId: null,   // optional - null means yearly total
     scopeId: null   // optional - null means global scope
 };

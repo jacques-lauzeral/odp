@@ -41,7 +41,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'Target maturity' → M1 milestone (API_PUBLICATION, wave:YYYY)
  * - 'Target implementation' → M2 milestone (OPS_DEPLOYMENT, wave:YYYY)
  * - implementedORs → populated after all rows processed (relationship array)
- * - visibility: 'NETWORK', drg: 'RRT' (hardcoded)
+ * - drg: 'RRT' (hardcoded)
  *
  * External ID Format:
  * -------------------
@@ -372,7 +372,6 @@ class ReroutingMapper extends Mapper {
         // Build object first
         const change = {
             drg: 'RRT',
-            visibility: 'NETWORK',
             title: ocName.trim(),
             purpose: this.converter.asciidocToDelta(purpose),
             details: this.converter.asciidocToDelta(details),

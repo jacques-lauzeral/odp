@@ -57,12 +57,6 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             // Content filtering conditions
             if (filters && Object.keys(filters).length > 0) {
-                // Visibility filtering
-                if (filters.visibility) {
-                    whereConditions.push('version.visibility = $visibility');
-                    params.visibility = filters.visibility;
-                }
-
                 // DRG filtering
                 if (filters.drg) {
                     whereConditions.push('version.drg = $drg');

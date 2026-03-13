@@ -3,8 +3,6 @@ import {
     MilestoneEventType,
     DraftingGroup,
     isDraftingGroupValid,
-    Visibility,
-    isVisibilityValid,
     isMilestoneEventValid,
     MilestoneEventKeys,
     MaturityLevel,
@@ -228,7 +226,6 @@ export class OperationalChangeService extends VersionedItemService {
             orCosts: current.orCosts,
             path: current.path,
             drg: current.drg,
-            visibility: current.visibility,
             implementedORs: current.implementedORs.map(ref => ref.id),
             decommissionedORs: current.decommissionedORs.map(ref => ref.id),
             dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
@@ -241,7 +238,6 @@ export class OperationalChangeService extends VersionedItemService {
     async _validateCreatePayload(payload) {
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
-        this._validateVisibility(payload.visibility);
         this._validateMaturity(payload.maturity);
         this._validateRelationshipArrays(payload);
         await this._validateReferencedEntities(payload);
@@ -250,7 +246,6 @@ export class OperationalChangeService extends VersionedItemService {
     async _validateUpdatePayload(payload) {
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
-        this._validateVisibility(payload.visibility);
         this._validateMaturity(payload.maturity);
         this._validateRelationshipArrays(payload);
         await this._validateReferencedEntities(payload);
@@ -270,7 +265,6 @@ export class OperationalChangeService extends VersionedItemService {
             orCosts: patchPayload.orCosts !== undefined ? patchPayload.orCosts : current.orCosts,
             path: patchPayload.path !== undefined ? patchPayload.path : current.path,
             drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
-            visibility: patchPayload.visibility !== undefined ? patchPayload.visibility : current.visibility,
             implementedORs: patchPayload.implementedORs !== undefined ? patchPayload.implementedORs : current.implementedORs.map(ref => ref.id),
             decommissionedORs: patchPayload.decommissionedORs !== undefined ? patchPayload.decommissionedORs : current.decommissionedORs.map(ref => ref.id),
             dependsOnChanges: patchPayload.dependsOnChanges !== undefined ? patchPayload.dependsOnChanges : current.dependsOnChanges.map(ref => ref.itemId),
@@ -281,17 +275,11 @@ export class OperationalChangeService extends VersionedItemService {
     // Validation helper methods
 
     _validateRequiredFields(payload) {
-        const requiredFields = ['title', 'purpose', 'initialState', 'finalState', 'drg', 'visibility', 'maturity'];
+        const requiredFields = ['title', 'purpose', 'initialState', 'finalState', 'drg', 'maturity'];
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {
                 throw new Error(`Validation failed: missing required field: ${field}`);
             }
-        }
-    }
-
-    _validateVisibility(visibility) {
-        if (!isVisibilityValid(visibility)) {
-            throw new Error(`Validation failed: visibility must be one of: ${Object.keys(Visibility).join(', ')}`);
         }
     }
 

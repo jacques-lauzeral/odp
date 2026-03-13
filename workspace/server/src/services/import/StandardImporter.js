@@ -457,7 +457,6 @@ class StandardImporter {
             privateNotes: ocData.privateNotes || '',
             maturity: ocData.maturity || 'DRAFT',
             path: ocData.path || [],
-            visibility: ocData.visibility || 'NETWORK',
             drg: ocData.drg
         };
 
@@ -680,7 +679,6 @@ class StandardImporter {
             privateNotes: ocData.privateNotes || '',
             maturity: ocData.maturity || 'DRAFT',
             path: ocData.path || [],
-            visibility: ocData.visibility || 'NETWORK',
             drg: ocData.drg
         };
 

@@ -1,17 +1,24 @@
-import { SimpleItemService } from './SimpleItemService.js';
+import { TreeItemService } from './TreeItemService.js';
 import { referenceDocumentStore } from '../store/index.js';
 
-export class ReferenceDocumentService extends SimpleItemService {
+export class ReferenceDocumentService extends TreeItemService {
     constructor() {
         super(referenceDocumentStore);
     }
 
-    // Inherits from SimpleItemService:
+    // Inherits from TreeItemService:
     // - listItems(userId)
     // - getItem(id, userId)
-    // - createItem(data, userId)
-    // - updateItem(id, data, userId)
-    // - deleteItem(id, userId)
+    // - createItem(data, userId) - with name validation + parentId support
+    // - updateItem(id, data, userId) - with validation + parentId changes
+    // - deleteItem(id, userId) - with hierarchy validation
+    // - getChildren(parentId, userId)
+    // - getParent(childId, userId)
+    // - getRoots(userId)
+    // - createRefinesRelation(childId, parentId, userId)
+    // - deleteRefinesRelation(childId, parentId, userId)
+    // - findItemsByName(namePattern, userId)
+    // - isNameExists(name, excludeId, userId)
 
     async _validateCreateData(data) {
         this._validateRequiredFields(data);

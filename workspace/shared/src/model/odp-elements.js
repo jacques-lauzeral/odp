@@ -38,7 +38,6 @@ export const OperationalRequirement = {
     drg: '',        // DraftingGroup enum
     refinesParents: [],         // array of OperationalEntityReference
     // ON only
-    domain: null,               // Domain reference (id)
     tentative: null,            // year period { start, end } where start <= end
     strategicDocuments: [],     // array of AnnotatedReference (ReferenceDocument)
     // OR only
@@ -74,7 +73,6 @@ export const OperationalChange = {
     privateNotes: '',           // rich text
     additionalDocumentation: [],// attachments
     path: [],       // array of strings
-    visibility: '', // NM | NETWORK
     drg: '',        // DraftingGroup enum
     implementedORs: [],         // array of OperationalEntityReference
     decommissionedORs: [],      // array of OperationalEntityReference

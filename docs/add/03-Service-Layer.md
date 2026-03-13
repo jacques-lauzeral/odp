@@ -46,10 +46,10 @@ Three base classes cover all entity types.
 SimpleItemService          (CRUD + transaction wrapping)
 └── TreeItemService        (+ name/description validation + REFINES hierarchy)
     ├── StakeholderCategoryService
-    └── DomainService
+    ├── DomainService
+    └── ReferenceDocumentService
     (also flat, no hierarchy:)
     WaveService
-    ReferenceDocumentService
     BandwidthService
 
 VersionedItemService       (versioned CRUD + patch + multi-context)
@@ -91,7 +91,7 @@ Additional methods:
 | `findItemsByName(namePattern, userId)` | Case-insensitive name search (in-memory filter) |
 | `isNameExists(name, excludeId?, userId)` | Uniqueness check (in-memory) |
 
-`WaveService` and `ReferenceDocumentService` extend `SimpleItemService` directly (no hierarchy).
+`WaveService` and `BandwidthService` extend `SimpleItemService` directly (no hierarchy).
 
 ### 3.3 VersionedItemService
 
@@ -122,16 +122,16 @@ Key validation rules:
 - `type` must be `ON` or `OR` (validated against `OperationalRequirementType` enum)
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
 - `drg` is optional but if present must be a valid `DraftingGroup` value
-- Type-gated fields — `ON` only: `domainId`, `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders`, `impactedDomains` — rejected on the wrong type
+- Type-gated fields — `ON` only: `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders`, `impactedDomains` — rejected on the wrong type
 - `tentative` if present must be `{start, end}` integer year range with `start <= end`
 - `implementedONs` only allowed on `OR`-type requirements; each referenced item must exist and be `ON`-type
 - `OR` requirements cannot refine `ON` requirements (and vice versa); parent type checked per-item
 - Annotated reference arrays (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) must use `{id, note?}` object format
-- Referenced entities (`impactedStakeholders`, `impactedDomains`, `domainId`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
+- Referenced entities (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 
 ### 3.5 OperationalChangeService
 
-Extends `VersionedItemService`. Required fields: `title`, `purpose`, `initialState`, `finalState`, `drg`, `visibility` (note: `drg` is **required** on OC, unlike OR).
+Extends `VersionedItemService`. Required fields: `title`, `purpose`, `initialState`, `finalState`, `drg`, `maturity` (note: `drg` is **required** on OC, unlike OR).
 
 Additional milestone methods — all require `expectedVersionId` because each operation creates a new OC version internally:
 
@@ -146,7 +146,6 @@ Additional milestone methods — all require `expectedVersionId` because each op
 Milestone mutations work by fetching the current OC, rebuilding the full milestones array, and calling `store.update()` with the complete payload — there is no direct milestone write. The `milestoneKey` is a stable UUID-based identifier preserved across versions.
 
 Validation rules:
-- `visibility` must be `NM` or `NETWORK`
 - `drg` is required and must be a valid `DraftingGroup` value
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
 - `cost` if present must be an integer
@@ -244,7 +243,7 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | `StakeholderCategoryService` | `TreeItemService` | `StakeholderCategoryStore` |
 | `DomainService` | `TreeItemService` | `DomainStore` |
 | `WaveService` | `SimpleItemService` | `WaveStore` |
-| `ReferenceDocumentService` | `SimpleItemService` | `ReferenceDocumentStore` |
+| `ReferenceDocumentService` | `TreeItemService` | `ReferenceDocumentStore` |
 | `BandwidthService` | `SimpleItemService` | `BandwidthStore`, `WaveStore`, `DomainStore` |
 | `OperationalRequirementService` | `VersionedItemService` | `OperationalRequirementStore` |
 | `OperationalChangeService` | `VersionedItemService` | `OperationalChangeStore` |

@@ -150,10 +150,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             console.log(`Path: ${item.path.join(' > ')}`);
         }
 
-        if (item.domain) {
-            console.log(`\nDomain: ${item.domain.name} [ID: ${item.domain.id}]`);
-        }
-
         if (item.refinesParents && item.refinesParents.length > 0) {
             console.log(`\nRefines:`);
             item.refinesParents.forEach(parent => {
@@ -230,7 +226,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--private-notes <notes>', `Private notes`)
             .option('--maturity <maturity>', `Maturity level (DRAFT, ADVANCED, MATURE)`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
-            .option('--domain <domain-id>', `Domain ID (mandatory for root ONs)`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
             .option('--impacted-domains <ids>', `Impacted domain IDs (comma-separated)`)
@@ -249,7 +244,6 @@ class OperationalRequirementCommands extends VersionedCommands {
                         maturity: options.maturity || 'DRAFT',
                         path: [],
                         refinesParents: options.parent ? [options.parent] : [],
-                        domainId: options.domain || null,
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
                         impactedDomains: this.parseIds(options.impactedDomains),
@@ -293,7 +287,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--private-notes <notes>', `Private notes`)
             .option('--maturity <maturity>', `Maturity level (DRAFT, ADVANCED, MATURE)`)
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
-            .option('--domain <domain-id>', `Domain ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
             .option('--impacted-domains <ids>', `Impacted domain IDs (comma-separated)`)
@@ -313,7 +306,6 @@ class OperationalRequirementCommands extends VersionedCommands {
                         maturity: options.maturity || 'DRAFT',
                         path: [],
                         refinesParents: options.parent ? [options.parent] : [],
-                        domainId: options.domain || null,
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
                         impactedDomains: this.parseIds(options.impactedDomains),
@@ -370,7 +362,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--private-notes <notes>', 'New private notes')
             .option('--maturity <maturity>', 'Maturity level (DRAFT, ADVANCED, MATURE)')
             .option('--parent <requirement-id>', 'Parent requirement ID')
-            .option('--domain <domain-id>', 'Domain ID')
             .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
             .option('--impacted-stakeholders <ids>', 'Impacted stakeholder category IDs (comma-separated)')
             .option('--impacted-domains <ids>', 'Impacted domain IDs (comma-separated)')
@@ -389,7 +380,6 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.privateNotes) data.privateNotes = options.privateNotes;
                     if (options.maturity) data.maturity = options.maturity;
                     if (options.parent) data.refinesParents = [options.parent];
-                    if (options.domain) data.domainId = options.domain;
                     if (options.implementedOns !== undefined) data.implementedONs = this.parseIds(options.implementedOns);
                     if (options.impactedStakeholders) data.impactedStakeholders = this.parseIds(options.impactedStakeholders);
                     if (options.impactedDomains) data.impactedDomains = this.parseIds(options.impactedDomains);

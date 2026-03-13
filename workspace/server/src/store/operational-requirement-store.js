@@ -101,7 +101,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }
                 if (filters.domain !== undefined && filters.domain !== null) {
                     whereConditions.push(`EXISTS {
-                    MATCH (version)-[:IMPACTS_DOMAIN|HAS_DOMAIN]->(d:Domain)
+                    MATCH (version)-[:IMPACTS_DOMAIN]->(d:Domain)
                     WHERE id(d) = $domain
                 }`);
                     params.domain = this.normalizeId(filters.domain);

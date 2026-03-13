@@ -41,9 +41,9 @@ BaseStore                              (base-store.js)
 ├── BandwidthStore                     (bandwidth-store.js)
 ├── ODPEditionStore                    (odp-edition-store.js)
 ├── OperationalChangeMilestoneStore    (operational-change-milestone-store.js)
-├── ReferenceDocumentStore             (reference-document-store.js)
 ├── RefinableEntityStore               (refinable-entity-store.js)
 │   ├── DomainStore                    (domain-store.js)
+│   ├── ReferenceDocumentStore         (reference-document-store.js)
 │   └── StakeholderCategoryStore       (stakeholder-category-store.js)
 ├── VersionedItemStore                 (versioned-item-store.js)
 │   ├── OperationalChangeStore         (operational-change-store.js)
@@ -151,8 +151,8 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 |---|---|---|
 | `StakeholderCategoryStore` | `RefinableEntityStore` | — |
 | `DomainStore` | `RefinableEntityStore` | — |
+| `ReferenceDocumentStore` | `RefinableEntityStore` | — |
 | `WaveStore` | `BaseStore` | — |
-| `ReferenceDocumentStore` | `BaseStore` | — |
 | `BandwidthStore` | `BaseStore` | — |
 | `BaselineStore` | `BaseStore` | `HAS_ITEMS` capture; immutable |
 | `ODPEditionStore` | `BaseStore` | `EXPOSES`, `STARTS_FROM`, context resolution; immutable |
@@ -170,9 +170,9 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 `WaveStore` inherits `BaseStore` only. Business rules: `year` is a 4-digit integer, `sequenceNumber` is a positive integer. The `(year, sequenceNumber)` pair is unique (e.g. wave `27#2`). `implementationDate` is optional (ISO format).
 
-`ReferenceDocumentStore` inherits `BaseStore` only. Fields: `name`, `version` (optional), `url`. Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
+`ReferenceDocumentStore` inherits `RefinableEntityStore → BaseStore`. Supports REFINES parent-child hierarchy consistent with `DomainStore` and `StakeholderCategoryStore`. Fields: `name`, `version` (optional), `url`, `parentId` (optional). Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
 
-`BandwidthStore` inherits `BaseStore` only. Fields: `year`, `waveId` (optional), `scopeId` (optional). The `(year, waveId, scopeId)` tuple is unique. NM internal — not exposed to external stakeholders.
+`BandwidthStore` inherits `BaseStore` only. Fields: `year`, `planned` (optional, integer, in MW), `waveId` (optional), `scopeId` (optional). The `(year, waveId, scopeId)` tuple is unique. NM internal — not exposed to external stakeholders.
 
 ---
 
@@ -185,7 +185,6 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | Field | Relationship | ON/OR | Note |
 |---|---|---|---|
 | `refinesParents` | `REFINES` → OR Item | both | — |
-| `domain` | `HAS_DOMAIN` → Domain | ON only | — |
 | `strategicDocuments` | `REFERENCES` → ReferenceDocument | ON only | `note` |
 | `implementedONs` | `IMPLEMENTS` → OR Item (ON type) | OR only | — |
 | `impactedStakeholders` | `IMPACTS_STAKEHOLDER` → StakeholderCategory | OR only | `note` |
@@ -202,7 +201,6 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `drg` | `string\|null` | Exact match on DRG enum value |
 | `maturity` | `string\|null` | Exact match on maturity enum value |
 | `path` | `string\|null` | Array membership (`$path IN version.path`) |
-| `domain` | `number\|null` | EXISTS via HAS_DOMAIN relationship |
 | `stakeholderCategory` | `number[]\|null` | EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory |
 | `refinesParent` | `number\|null` | Single OR item ID — EXISTS via REFINES |
 | `dependsOn` | `number\|null` | Single OR item ID — EXISTS via DEPENDS_ON |
@@ -230,7 +228,6 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 
 | Filter field | Type | Behaviour |
 |---|---|---|
-| `visibility` | `'NM'\|'NETWORK'\|null` | Exact match on version field |
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS search across purpose, initialState, finalState, details, privateNotes |
 | `drg` | `string\|null` | Exact match on DRG enum value |
@@ -398,7 +395,6 @@ The client must supply `expectedVersionId` (the `versionId` of the version it la
 (ORVersion)-[:REFINES]->(ORItem)
 (ORVersion)-[:IMPACTS_STAKEHOLDER {note}]->(StakeholderCategory)
 (ORVersion)-[:IMPACTS_DOMAIN {note}]->(Domain)
-(ORVersion)-[:HAS_DOMAIN]->(Domain)
 (ORVersion)-[:REFERENCES {note}]->(ReferenceDocument)
 (ORVersion)-[:DEPENDS_ON]->(ORItem)
 (ORVersion)-[:IMPLEMENTS]->(ORItem)   // OR → ON links

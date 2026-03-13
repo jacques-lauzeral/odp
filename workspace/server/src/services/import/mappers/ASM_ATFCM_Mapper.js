@@ -59,7 +59,7 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
  * - 'Dependences' → privateNotes (appended as Dependencies section)
  * - 'Cost assessment' → privateNotes (appended as Cost Assessment section)
  * - 'Pirotity' → privateNotes (appended as Priority section)
- * - drg: 'ASM_ATFCM', visibility: 'NETWORK' (hardcoded)
+ * - drg: 'ASM_ATFCM' (hardcoded)
  *
  * ON Private Notes (from "ON OR OC" sheet):
  * -----------------
@@ -695,7 +695,6 @@ class AsmAtfcmMapper extends Mapper {
             finalState: row['Final State'] && row['Final State'].trim() !== '' ? row['Final State'].trim() : null,
             details: row['Details'] && row['Details'].trim() !== '' ? row['Details'].trim() : null,
             drg: 'ASM_ATFCM',
-            visibility: 'NETWORK',
             implementedORs: implementedORs,
             decommissionedORs: decommissionedORs,
             milestones: milestones,
