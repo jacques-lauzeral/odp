@@ -213,7 +213,7 @@ The following web client changes align the client with the Edition 4 data model 
 | Field | Type | Notes |
 |---|---|---|
 | `nfrs` | `richtext` | Optional; operational non-functional requirements |
-| `impactedDomains` | `multiselect` | Options from `domains` setupData |
+| `impactedDomains` | `annotated-multiselect` | Options from `domains` setupData; note stored per domain |
 
 **Renamed:**
 
@@ -234,7 +234,8 @@ The following web client changes align the client with the Edition 4 data model 
 | Field | Type | Notes |
 |---|---|---|
 | `maturity` | `select` | Required; options from `MaturityLevel` enum |
-| `cost` | `text` | Optional free-text cost indicator |
+| `cost` | `number` | Optional integer; placeholder "Integer value in MW" |
+| `dependencies` | `multiselect` | OCs that must precede this OC; options from OC list |
 | `additionalDocumentation` | `static-label` | Renders "Not available yet" in all modes; not submitted |
 
 **Renamed:**
