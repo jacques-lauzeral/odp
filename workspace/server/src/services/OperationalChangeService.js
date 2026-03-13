@@ -236,17 +236,21 @@ export class OperationalChangeService extends VersionedItemService {
     // Implement validation methods required by VersionedItemService
 
     async _validateCreatePayload(payload) {
+        if (payload.cost === '') payload.cost = null;
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateMaturity(payload.maturity);
+        this._validateCostForMaturity(payload);
         this._validateRelationshipArrays(payload);
         await this._validateReferencedEntities(payload);
     }
 
     async _validateUpdatePayload(payload) {
+        if (payload.cost === '') payload.cost = null;
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateMaturity(payload.maturity);
+        this._validateCostForMaturity(payload);
         this._validateRelationshipArrays(payload);
         await this._validateReferencedEntities(payload);
     }
@@ -292,6 +296,12 @@ export class OperationalChangeService extends VersionedItemService {
     _validateMaturity(maturity) {
         if (!isMaturityLevelValid(maturity)) {
             throw new Error(`Validation failed: maturity must be one of: ${Object.keys(MaturityLevel).join(', ')}`);
+        }
+    }
+
+    _validateCostForMaturity(payload) {
+        if (payload.maturity !== 'DRAFT' && (payload.cost === undefined || payload.cost === null)) {
+            throw new Error('Validation failed: cost is required when maturity is not DRAFT');
         }
     }
 

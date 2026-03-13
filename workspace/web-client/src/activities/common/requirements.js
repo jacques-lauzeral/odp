@@ -176,7 +176,7 @@ export default class RequirementsEntity {
                 label: 'Domains',
                 width: '120px',
                 sortable: false,
-                type: 'entity-reference-list',
+                type: 'annotated-reference-list',
                 maxDisplay: 2,
                 noneLabel: 'No Domain Impact'
             }
@@ -332,7 +332,7 @@ export default class RequirementsEntity {
                 label: 'Domains',
                 width: '120px',
                 appliesTo: ['or-node'],
-                type: 'entity-reference-list',
+                type: 'annotated-reference-list',
                 maxDisplay: 1,
                 noneLabel: 'No Domain Impact'
             },

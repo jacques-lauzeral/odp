@@ -5,6 +5,8 @@ import {
     DraftingGroup,
     getOperationalRequirementTypeDisplay,
     getDraftingGroupDisplay,
+    MaturityLevel,
+    getMaturityLevelDisplay,
     MilestoneEventType,
     getMilestoneEventDisplay
 } from '/shared/src/index.js';
@@ -590,6 +592,15 @@ export default class AbstractInteractionActivity {
                     { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
                     { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
                 ]
+            },
+            {
+                key: 'maturity',
+                label: 'Maturity',
+                inputType: 'select',
+                options: Object.keys(MaturityLevel).map(key => ({
+                    value: key,
+                    label: getMaturityLevelDisplay(key)
+                }))
             },
             {
                 key: 'text',

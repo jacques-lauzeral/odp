@@ -232,14 +232,16 @@ export const requirementFieldDefinitions = [
             {
                 key: 'impactedDomains',
                 label: 'Impacted Domains',
-                type: 'multiselect',
+                type: 'annotated-multiselect',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 visibleWhen: (data) => data.type === 'OR',
-                size: 5,
+                maxNoteLength: 200,
+                placeholder: 'Select impacted domains...',
+                noteLabel: 'Impact Note',
                 optionsKey: 'getDomainOptions',
                 helpText: 'Select business domains impacted by this operational requirement',
-                formatKey: 'formatEntityReferences'
+                formatKey: 'formatAnnotatedReferences'
             }
         ]
     },
@@ -319,8 +321,7 @@ export const requirementFormTitles = {
 export const requiredIdentifierArrayFields = [
     'refinesParents',
     'implementedONs',
-    'dependencies',
-    'impactedDomains'
+    'dependencies'
 ];
 
 /**
@@ -328,6 +329,7 @@ export const requiredIdentifierArrayFields = [
  */
 export const requiredAnnotatedReferenceArrayFields = [
     'impactedStakeholders',
+    'impactedDomains',
     'strategicDocuments'
 ];
 

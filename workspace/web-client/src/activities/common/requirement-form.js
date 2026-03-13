@@ -228,8 +228,7 @@ export default class RequirementForm extends CollectionEntityForm {
         const idArrayFields = [
             'refinesParents',
             'implementedONs',
-            'dependencies',
-            'impactedDomains'
+            'dependencies'
         ];
 
         idArrayFields.forEach(field => {

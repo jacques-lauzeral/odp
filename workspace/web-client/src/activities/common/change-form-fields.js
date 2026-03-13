@@ -154,11 +154,11 @@ export const changeFieldDefinitions = [
             {
                 key: 'cost',
                 label: 'Cost',
-                type: 'text',
+                type: 'number',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                placeholder: 'e.g. High / Medium / Low or specific estimate',
-                helpText: 'Indicative implementation cost'
+                placeholder: 'Integer value in MW',
+                helpText: 'Indicative implementation cost in MW'
             },
             {
                 key: 'additionalDocumentation',

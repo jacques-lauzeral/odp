@@ -134,6 +134,10 @@ export class OperationalRequirementService extends VersionedItemService {
             if (payload.impactedDomains && payload.impactedDomains.length > 0) {
                 throw new Error('Validation failed: impactedDomains is only allowed on OR-type requirements');
             }
+            if ((payload.maturity === 'ADVANCED' || payload.maturity === 'MATURE') &&
+                (payload.tentative === undefined || payload.tentative === null)) {
+                throw new Error('Validation failed: tentative is required for ON requirements with maturity ADVANCED or MATURE');
+            }
         }
 
         // Validate tentative range if provided
