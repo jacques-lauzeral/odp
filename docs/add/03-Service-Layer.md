@@ -147,6 +147,17 @@ Milestone mutations work by fetching the current OC, rebuilding the full milesto
 
 **Milestone ownership contract:** `milestones` is forbidden in `update` and `patch` payloads — passing it returns a 400 validation error. Milestones must be managed exclusively via the dedicated milestone endpoints above. On the general update/patch path the store automatically inherits milestones from the current version (see §2.2 of the Storage Layer chapter).
 
+**Call flow distinction — general update/patch vs milestone mutations:**
+
+| | General `update` / `patch` | Milestone `add` / `update` / `delete` |
+|---|---|---|
+| Entry point | `VersionedItemService.update/patch` | `OperationalChangeService.addMilestone` etc. |
+| Validation | `_validateUpdatePayload` runs — rejects `milestones` if present | Bypasses `_validateUpdatePayload` entirely |
+| Milestone handling | Store inherits milestones from current version | Service rebuilds milestones array explicitly via `_buildCompletePayload` |
+| Store call | `store.update()` with no milestones in payload | `store.update()` with explicit milestones array |
+
+This asymmetry is intentional: milestone mutations own their own validation and payload construction, and do not go through the generic update pipeline.
+
 Validation rules:
 - `drg` is required and must be a valid `DraftingGroup` value
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
