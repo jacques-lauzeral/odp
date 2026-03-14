@@ -246,6 +246,9 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     async _validateUpdatePayload(payload, itemId) {
+        if (payload.milestones !== undefined) {
+            throw new Error('Validation failed: milestones must not be included in update/patch payloads — use the dedicated milestone endpoints');
+        }
         if (payload.cost === '') payload.cost = null;
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);

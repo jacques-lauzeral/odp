@@ -319,6 +319,14 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering (changes with milestones at/after this wave)"
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [NM, NETWORK]
+          description: "Filter by change visibility. Omit for all visibility types."
+          example: "NETWORK"
         - name: drg
           in: query
           required: false
@@ -475,7 +483,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG, maturity, or milestone eventTypes
+          description: Validation Error - Invalid DRG, maturity, or missing required fields. Milestones are not accepted in this endpoint.
           content:
             application/json:
               schema:
@@ -510,7 +518,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG, maturity, or milestone eventTypes
+          description: Validation Error - Invalid DRG, maturity, or missing required fields. Milestones are not accepted in this endpoint.
           content:
             application/json:
               schema:

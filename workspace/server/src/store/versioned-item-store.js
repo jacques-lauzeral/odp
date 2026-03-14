@@ -95,8 +95,8 @@ export class VersionedItemStore extends BaseStore {
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
 
-            // Extract relationships from version data
-            const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
+            // Extract relationships from version data (null currentVersionId = create path, milestones taken from input)
+            const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData, null, transaction);
 
             // Generate code if drg is provided
             let code = null;
@@ -162,17 +162,6 @@ export class VersionedItemStore extends BaseStore {
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
 
-            // Extract relationships from input data
-            const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData);
-
-            // Sanitize contentData - prevent mismatch between received versionId and id(version)
-            console.log(`VersionItemStore.update() data: ${contentData}`);
-            if ('versionId' in contentData) {
-                delete contentData.versionId;
-            }
-            console.log(`VersionItemStore.update() sanitized data: ${contentData}`);
-
-
             // Get current latest version info and validate expectedVersionId
             const currentResult = await transaction.run(`
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(currentVersion:${this.versionLabel})
@@ -193,6 +182,16 @@ export class VersionedItemStore extends BaseStore {
             if (currentVersionId !== numericExpectedVersionId) {
                 throw new StoreError('Outdated item version');
             }
+
+            // Extract relationships from input data (currentVersionId provided for milestone inheritance)
+            const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData, currentVersionId, transaction);
+
+            // Sanitize contentData - prevent mismatch between received versionId and id(version)
+            console.log(`VersionItemStore.update() data: ${contentData}`);
+            if ('versionId' in contentData) {
+                delete contentData.versionId;
+            }
+            console.log(`VersionItemStore.update() sanitized data: ${contentData}`);
 
             const newVersion = currentVersionNumeric + 1;
 

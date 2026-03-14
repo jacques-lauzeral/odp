@@ -601,7 +601,8 @@ components:
           items:
             $ref: '#/components/schemas/Milestone'
 
-    OperationalChangeRequest:
+    OperationalChangeBaseRequest:
+      description: "Content fields for an OperationalChange. Does not include milestones — those are managed exclusively via the dedicated milestone endpoints."
       type: object
       required: [title, purpose, maturity]
       properties:
@@ -656,15 +657,23 @@ components:
             type: string
           default: []
           description: "OC item IDs that must be deployed before this OC"
-        milestones:
-          type: array
-          items:
-            $ref: '#/components/schemas/MilestoneRequest'
-          default: []
+
+    OperationalChangeRequest:
+      description: "Create request for an OperationalChange. Milestones may be provided at creation time."
+      allOf:
+        - $ref: '#/components/schemas/OperationalChangeBaseRequest'
+        - type: object
+          properties:
+            milestones:
+              type: array
+              items:
+                $ref: '#/components/schemas/MilestoneRequest'
+              default: []
 
     OperationalChangeUpdateRequest:
+      description: "Full update request for an OperationalChange. Milestones are not accepted — use the dedicated milestone endpoints."
       allOf:
-        - $ref: '#/components/schemas/OperationalChangeRequest'
+        - $ref: '#/components/schemas/OperationalChangeBaseRequest'
         - type: object
           required: [expectedVersionId]
           properties:
@@ -672,6 +681,7 @@ components:
               type: string
 
     OperationalChangePatchRequest:
+      description: "Partial update request for an OperationalChange. Milestones are not accepted — use the dedicated milestone endpoints."
       type: object
       required: [expectedVersionId]
       properties:
@@ -721,10 +731,6 @@ components:
           type: array
           items:
             type: string
-        milestones:
-          type: array
-          items:
-            $ref: '#/components/schemas/MilestoneRequest'
 
     VersionHistory:
       type: object

@@ -145,6 +145,8 @@ Additional milestone methods — all require `expectedVersionId` because each op
 
 Milestone mutations work by fetching the current OC, rebuilding the full milestones array, and calling `store.update()` with the complete payload — there is no direct milestone write. The `milestoneKey` is a stable UUID-based identifier preserved across versions.
 
+**Milestone ownership contract:** `milestones` is forbidden in `update` and `patch` payloads — passing it returns a 400 validation error. Milestones must be managed exclusively via the dedicated milestone endpoints above. On the general update/patch path the store automatically inherits milestones from the current version (see §2.2 of the Storage Layer chapter).
+
 Validation rules:
 - `drg` is required and must be a valid `DraftingGroup` value
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
@@ -197,12 +199,12 @@ Every service method follows the same try/catch/rollback structure:
 ```javascript
 const tx = createTransaction(userId);
 try {
-  const result = await store.someMethod(data, tx);
-  await commitTransaction(tx);
-  return result;
+    const result = await store.someMethod(data, tx);
+    await commitTransaction(tx);
+    return result;
 } catch (error) {
-  await rollbackTransaction(tx);
-  throw error;
+    await rollbackTransaction(tx);
+    throw error;
 }
 ```
 

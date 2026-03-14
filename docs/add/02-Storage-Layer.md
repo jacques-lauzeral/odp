@@ -20,7 +20,9 @@ Key responsibilities:
 All content and relationships are provided in a single operation. There are no partial update endpoints — the store always receives the complete desired state for every write.
 
 ### 2.2 Relationship Inheritance
-When a new version is created, the store always uses the relationship arrays supplied in the payload. An empty array explicitly clears that relationship type. The service layer (both `update` and `patch`) is responsible for always providing a complete payload — `patch` achieves this by fetching the current state and merging before calling the store. Previous versions are never mutated.
+When a new version is created, the store uses the relationship arrays supplied in the payload. An empty array explicitly clears that relationship type. The service layer (both `update` and `patch`) is responsible for always providing a complete payload — `patch` achieves this by fetching the current state and merging before calling the store. Previous versions are never mutated.
+
+**Exception — milestones on `OperationalChangeStore`:** Milestones are owned exclusively by the dedicated milestone endpoints. `update` and `patch` payloads must not include milestones. On the update path, `OperationalChangeStore._extractRelationshipIdsFromInput` detects the absence of milestones in the payload and automatically inherits them from the current version via `OperationalChangeMilestoneStore.getMilestoneDataFromVersion()`. Milestone mutation methods (`addMilestone`, `updateMilestone`, `deleteMilestone`) supply an explicit milestones array and bypass this inheritance.
 
 ### 2.3 Transaction Boundaries
 One user action = one transaction. Content, relationships, and milestones are committed atomically. All transactions carry user identification for audit trails. The store never commits or rolls back — that responsibility belongs to the service layer.
@@ -125,7 +127,7 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `findVersionHistory(itemId, tx)` — lightweight list of all versions (versionId, version, createdAt, createdBy)
 
 **Abstract methods** (must be implemented by concrete stores):
-- `_extractRelationshipIdsFromInput(data)` — separates relationship arrays from content fields
+- `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
 - `_buildRelationshipReferences(versionId, tx)` — loads relationships as Reference objects `{id, title, code}`
 - `_createRelationshipsFromIds(versionId, relationshipIds, tx)` — writes all relationships for a version
 - `buildFindAllQuery(baselineId, fromWaveId, filters)` — builds entity-specific optimised Cypher for list queries
@@ -286,16 +288,16 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 ```javascript
 {
     id: number,              // Neo4j node ID (changes each version)
-    milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
-    name: string,
-    description: string,
-    eventTypes: string[],    // Array of event type values
-    wave?: {                 // Optional — present only if TARGETS relationship exists
-        id: number,
-        year: number,
-        sequenceNumber: number,
-        implementationDate: string  // optional
-    }
+        milestoneKey: string,    // Stable identifier: "ms_<uuid>" — preserved across versions
+        name: string,
+        description: string,
+        eventTypes: string[],    // Array of event type values
+        wave?: {                 // Optional — present only if TARGETS relationship exists
+            id: number,
+            year: number,
+            sequenceNumber: number,
+            implementationDate: string  // optional
+        }
 }
 ```
 

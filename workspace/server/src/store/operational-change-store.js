@@ -258,12 +258,21 @@ export class OperationalChangeStore extends VersionedItemStore {
     }
 
     /**
-     * Extract relationship ID arrays and milestone data from input data
-     * @private
+     * Extract relationship ID arrays from input data.
+     * Milestones are managed exclusively by the dedicated milestone endpoints — they must not
+     * appear in general update/patch payloads. That contract is enforced at the service layer
+     * (OperationalChangeService._validateUpdatePayload). Here, on the update path
+     * (currentVersionId provided), milestones from input are used as-is when present (milestone
+     * mutation methods supply them explicitly), or inherited from the current version when absent
+     * (general update/patch path). On the create path (currentVersionId is null), milestones are
+     * taken from input.
+     *
      * @param {object} data - Input data
-     * @returns {object} - {relationshipIds, ...contentData}
+     * @param {number|null} currentVersionId - Current version ID for milestone inheritance (null on create)
+     * @param {Transaction} transaction - Transaction instance
+     * @returns {Promise<object>} - {relationshipIds, ...contentData}
      */
-    async _extractRelationshipIdsFromInput(data) {
+    async _extractRelationshipIdsFromInput(data, currentVersionId, transaction) {
         const {
             implementedORs,
             decommissionedORs,
@@ -272,12 +281,21 @@ export class OperationalChangeStore extends VersionedItemStore {
             ...contentData
         } = data;
 
+        let resolvedMilestones;
+        if (currentVersionId !== null && milestones === undefined) {
+            // Update path, no milestones in payload: inherit from current version
+            resolvedMilestones = await this.milestoneStore.getMilestoneDataFromVersion(currentVersionId, transaction);
+        } else {
+            // Create path, or milestone mutation methods supplying explicit milestones
+            resolvedMilestones = milestones || [];
+        }
+
         return {
             relationshipIds: {
                 implementedORs: implementedORs || [],
                 decommissionedORs: decommissionedORs || [],
-                milestones: milestones || [],       // Milestone data (not IDs)
-                dependencies: dependencies || [] // Array of item IDs
+                milestones: resolvedMilestones,
+                dependencies: dependencies || []
             },
             ...contentData
         };

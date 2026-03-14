@@ -305,8 +305,7 @@ class OperationalChangeCommands extends VersionedCommands {
                         path: [],
                         implementedORs: options.implements || [],
                         decommissionedORs: options.decommissions || [],
-                        dependsOnChanges: [],
-                        milestones: []
+                        dependsOnChanges: []
                     };
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {

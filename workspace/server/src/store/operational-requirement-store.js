@@ -288,7 +288,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * @param {object} data - Input data
      * @returns {object} - {relationshipIds, ...contentData}
      */
-    async _extractRelationshipIdsFromInput(data) {
+    async _extractRelationshipIdsFromInput(data, currentVersionId, transaction) {
         const {
             refinesParents,
             impactedStakeholders,
