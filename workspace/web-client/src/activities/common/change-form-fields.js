@@ -13,9 +13,9 @@
  * - formatKey: References a method name on the form instance
  */
 export const changeFieldDefinitions = [
-    // Header Section
+    // General Section
     {
-        title: 'Header',
+        title: 'General',
         fields: [
             {
                 key: 'itemId',

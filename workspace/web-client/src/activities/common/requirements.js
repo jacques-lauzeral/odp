@@ -96,90 +96,16 @@ export default class RequirementsEntity {
 
     getColumnConfig() {
         return [
-            {
-                key: 'code',
-                label: 'Code',
-                width: 'auto',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'type',
-                label: 'Type',
-                width: '80px',
-                sortable: true,
-                type: 'requirement-type',
-                groupPriority: { 'ON': 1, 'OR': 2 }
-            },
-            {
-                key: 'maturity',
-                label: 'Maturity',
-                width: '100px',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'title',
-                label: 'Title',
-                width: 'auto',
-                sortable: true,
-                type: 'text'
-            },
-            {
-                key: 'drg',
-                label: 'DrG',
-                width: '120px',
-                sortable: true,
-                type: 'drafting-group'
-            },
-            {
-                key: 'refinesParents',
-                label: 'Refines',
-                width: '150px',
-                sortable: false,
-                type: 'entity-reference-list',
-                maxDisplay: 1,
-                noneLabel: 'No Refinement',
-                groupPrefix: 'Refines'
-            },
-            {
-                key: 'implementedONs',
-                label: 'Implements',
-                width: '150px',
-                sortable: false,
-                type: 'implemented-ons',
-                maxDisplay: 1,
-                noneLabel: 'No Implementation',
-                groupPrefix: 'Implements'
-            },
-            {
-                key: 'dependencies',
-                label: 'Depends On',
-                width: '150px',
-                sortable: false,
-                type: 'entity-reference-list',
-                maxDisplay: 1,
-                noneLabel: 'No Dependencies',
-                groupPrefix: 'Depends On'
-            },
-            {
-                key: 'impactedStakeholders',
-                label: 'Stakeholders',
-                width: '120px',
-                sortable: false,
-                type: 'annotated-reference-list',
-                maxDisplay: 2,
-                noneLabel: 'No Stakeholder Impact'
-            },
-            {
-                key: 'impactedDomains',
-                label: 'Domains',
-                width: '120px',
-                sortable: false,
-                type: 'annotated-reference-list',
-                maxDisplay: 2,
-                noneLabel: 'No Domain Impact'
-            }
+            { key: 'code', label: 'Code',  width: '120px', sortable: true, type: 'text' },
+            { key: 'type', label: 'Type', width: '80px', sortable: true, type: 'requirement-type', groupPriority: { 'ON': 1, 'OR': 2 } },
+            { key: 'maturity', label: 'Maturity',  width: '80px', sortable: true, type: 'text' },
+            { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
+            { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
+            { key: 'refinesParents', label: 'Refines', width: '200px', sortable: false, type: 'entity-reference-list', maxDisplay: 1, groupPrefix: 'Refines' },
+            { key: 'implementedONs', label: 'Implements', width: '200px', sortable: false, type: 'implemented-ons', maxDisplay: 5,  groupPrefix: 'Implements' },
+            { key: 'dependencies', label: 'Depends On', width: '200px', sortable: false, type: 'entity-reference-list', maxDisplay: 5, groupPrefix: 'Depends On' },
+            { key: 'impactedStakeholders',  label: 'Stakeholders', width: '120px', sortable: false, type: 'annotated-reference-list', maxDisplay: 5 },
+            { key: 'impactedDomains', label: 'Domains', width: '120px', sortable: false, type: 'annotated-reference-list', maxDisplay: 5 }
         ];
     }
 
