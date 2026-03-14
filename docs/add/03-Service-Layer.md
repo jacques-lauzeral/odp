@@ -128,23 +128,6 @@ Key validation rules:
 - `OR` requirements cannot refine `ON` requirements (and vice versa); parent type checked per-item
 - Annotated reference arrays (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) must use `{id, note?}` object format
 - Referenced entities (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
-- `type` is set at create time and cannot be changed on update — rejected immediately if `type` differs from current
-- `refinesParents`: cycle detection via `store.hasRefinesCycle(itemId, candidateParentId, tx)` — checked per parent in a `'system'` transaction
-- `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
-- `refinesParents`: cycle detection via `store.hasRefinesCycle(itemId, candidateParentId, tx)` — checked per parent in a `'system'` transaction
-- `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
-
-**Maturity-gated field validation** — mandatory fields cumulate with each increasing maturity level:
-
-For `type = ON`:
-- `DRAFT`: `title`
-- `ADVANCED` (+ DRAFT): `statement`, `rationale`, and either `refinesParents` non-empty (each pointing to an `ON`) or `strategicDocuments` non-empty
-- `MATURE` (+ ADVANCED): `tentative`
-
-For `type = OR`:
-- `DRAFT`: `title`
-- `ADVANCED` (+ DRAFT): `statement`, `rationale`, and either `refinesParents` non-empty (each pointing to an `OR`) or `implementedONs` non-empty (each pointing to an `ON`)
-- `MATURE` (+ ADVANCED): *(no additional fields)*
 
 ### 3.5 OperationalChangeService
 
@@ -169,17 +152,11 @@ Validation rules:
 - `orCosts` items must be `{orId, cost}` with integer `cost`; each `orId` validated for existence
 - `eventTypes` on milestones must be valid `MilestoneEventType` values (array)
 - `implementedORs` and `decommissionedORs` IDs validated for existence
+- `dependencies` (OC item IDs) validated for existence and cycle-free via `store.hasDependsOnCycle()` — checked per dependency in a `'system'` transaction
+- `_computePatchedPayload` maps reference objects back to ID arrays using `ref.id` (not `ref.itemId`)
 - Milestone `waveId` references validated for existence
 - Reference validations run in parallel using `Promise.all`
-- `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
-- `dependencies`: cycle detection via `store.hasDependsOnCycle(itemId, candidateDependencyId, tx)` — checked per dependency in a `'system'` transaction
 - `_buildCompletePayload()` extracts the common logic of rebuilding the full OC payload for all three milestone mutation methods
-
-**Maturity-gated field validation** — mandatory fields cumulate with each increasing maturity level:
-
-- `DRAFT`: `title`
-- `ADVANCED` (+ DRAFT): `purpose`, `implementedORs` non-empty
-- `MATURE` (+ ADVANCED): `initialState`, `finalState`, `cost`
 
 ### 3.6 BaselineService
 
@@ -257,16 +234,6 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Self-reference / self-dependency | Service, before or during validation tx | Checked by item ID comparison |
 | Milestone wave existence | Service, separate `'system'` tx | Per-milestone `waveStore().exists()` |
 | Self-reference in REFINES | Store (`StoreError`) | Surfaced as-is to route layer |
-| Cycle detection in `REFINES` | Service, separate `'system'` tx | `store.hasRefinesCycle()` per candidate parent — OR only |
-| Cycle detection in `DEPENDS_ON` (OR) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
-| Cycle detection in `DEPENDS_ON` (OC) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
-| Cycle detection in `REFINES` | Service, separate `'system'` tx | `store.hasRefinesCycle()` per candidate parent — OR only |
-| Cycle detection in `DEPENDS_ON` (OR) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
-| Cycle detection in `DEPENDS_ON` (OC) | Service, separate `'system'` tx | `store.hasDependsOnCycle()` per candidate dependency |
-| `type` immutable after create | Service, `_validateUpdatePayload` | Rejects if `type` differs from current |
-| Maturity-gated fields (ON) | Service, before transaction | Cumulative: DRAFT → ADVANCED (statement, rationale, refines/strategicDocs) → MATURE (tentative) |
-| Maturity-gated fields (OR) | Service, before transaction | Cumulative: DRAFT → ADVANCED (statement, rationale, refines/implementedONs) → MATURE (no addition) |
-| Maturity-gated fields (OC) | Service, before transaction | Cumulative: DRAFT → ADVANCED (purpose, implementedORs) → MATURE (initialState, finalState, cost) |
 | Delete with children | `TreeItemService.deleteItem()` | Checked via `store.findChildren()` |
 
 ---

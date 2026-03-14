@@ -214,10 +214,6 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findRequirementsThatImplement(onItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — OR requirements that IMPLEMENT a given ON
 
-**`hasRefinesCycle(itemId, candidateParentId, tx)`** → `boolean` — returns `true` if adding a `REFINES` edge from `itemId` to `candidateParentId` would create a cycle. Uses a Cypher path existence check: `(candidate)-[:REFINES*]->(item)`.
-
-**`hasDependsOnCycle(itemId, candidateDependencyId, tx)`** → `boolean` — returns `true` if adding a `DEPENDS_ON` edge from `itemId` to `candidateDependencyId` would create a cycle. Uses a Cypher path existence check: `(candidate)-[:DEPENDS_ON*]->(item)`.
-
 **Not implemented**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`
 
 ---
@@ -247,8 +243,6 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 - **`findMilestonesByChange(itemId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
 - **`findMilestoneByKey(itemId, milestoneKey, tx, baselineId?, fromWaveId?)`** → `object|null`
 - **`findMilestonesByWave(waveId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
-
-**`hasDependsOnCycle(itemId, candidateDependencyId, tx)`** → `boolean` — returns `true` if adding a `DEPENDS_ON` edge from `itemId` to `candidateDependencyId` would create a cycle. Uses a Cypher path existence check: `(candidate)-[:DEPENDS_ON*]->(item)`.
 
 **Not implemented in this store**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`. Dependencies are returned inline as part of `findById` / `findAll` results.
 
@@ -372,7 +366,7 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 1. Validate `expectedVersionId` matches current `LATEST_VERSION` — reject with `StoreError` if not
 2. Create new `ItemVersion` node (version + 1)
 3. Move `LATEST_VERSION` pointer from old to new version
-4. Write relationships from provided arrays — empty array clears, non-empty array sets
+4. Write relationships from provided arrays — empty array clears, clear; non-empty array sets; raw relationship ID properties stripped from `versionData` before spread
 
 ### 5.4 Optimistic Locking
 
