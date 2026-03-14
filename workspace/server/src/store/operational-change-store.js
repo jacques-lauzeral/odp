@@ -166,6 +166,10 @@ export class OperationalChangeStore extends VersionedItemStore {
                 delete versionData.version;
                 delete versionData.createdAt;
                 delete versionData.createdBy;
+                // Strip raw relationship ID arrays — resolved as references by _buildRelationshipReferences
+                delete versionData.implementedORs;
+                delete versionData.decommissionedORs;
+                delete versionData.dependencies;
 
                 const baseItem = {
                     itemId: this.normalizeId(record.get('itemId')),
@@ -264,7 +268,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             implementedORs,
             decommissionedORs,
             milestones,
-            dependsOnChanges,
+            dependencies,
             ...contentData
         } = data;
 
@@ -273,7 +277,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 implementedORs: implementedORs || [],
                 decommissionedORs: decommissionedORs || [],
                 milestones: milestones || [],       // Milestone data (not IDs)
-                dependsOnChanges: dependsOnChanges || [] // Array of item IDs
+                dependencies: dependencies || [] // Array of item IDs
             },
             ...contentData
         };
@@ -313,7 +317,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             RETURN id(changeItem) as id, changeItem.title as title, changeItem.code as code
             ORDER BY changeItem.title
         `, { versionId });
-            const dependsOnChanges = dependsOnResult.records.map(record => this._buildReference(record));
+            const dependencies = dependsOnResult.records.map(record => this._buildReference(record));
 
             // Delegate milestone building to milestoneStore
             const milestones = await this.milestoneStore.getMilestonesWithReferences(versionId, transaction);
@@ -321,7 +325,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             return {
                 implementedORs,
                 decommissionedORs,
-                dependsOnChanges,
+                dependencies,
                 milestones
             };
         } catch (error) {
@@ -349,14 +353,14 @@ export class OperationalChangeStore extends VersionedItemStore {
                 implementedORs = [],
                 decommissionedORs = [],
                 milestones = [],
-                dependsOnChanges = []
+                dependencies = []
             } = relationshipIds;
 
             // Create requirement relationships
             await this._createRequirementRelationshipsFromIds(versionId, implementedORs, decommissionedORs, transaction);
 
             // Create DEPENDS_ON relationships (Version -> Item)
-            if (dependsOnChanges.length > 0) {
+            if (dependencies.length > 0) {
                 // Get parent item for self-reference check
                 const versionCheck = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:VERSION_OF]->(item:OperationalChange)
@@ -369,7 +373,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 }
 
                 const itemId = this.normalizeId(versionCheck.records[0].get('itemId'));
-                const normalizedDepIds = dependsOnChanges.map(id => this.normalizeId(id));
+                const normalizedDepIds = dependencies.map(id => this.normalizeId(id));
 
                 // Validate no self-dependencies
                 if (normalizedDepIds.includes(itemId)) {

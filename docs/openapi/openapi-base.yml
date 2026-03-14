@@ -202,14 +202,14 @@ components:
 
     # Operational Entity Schemas
     TentativeRange:
-      type: array
-      description: "Tentative implementation time: [start, end] where 2025 <= start <= end <= 2050"
-      minItems: 2
-      maxItems: 2
-      items:
-        type: integer
-        minimum: 2025
-        maximum: 2050
+      type: object
+      description: "Year range for tentative implementation time [start, end] where start <= end"
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+        end:
+          type: integer
 
     ORCost:
       type: object
@@ -591,7 +591,7 @@ components:
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
           description: "ORs decommissioned by this OC"
-        dependsOnChanges:
+        dependencies:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
@@ -650,7 +650,7 @@ components:
             type: string
           default: []
           description: "OR item IDs decommissioned by this OC"
-        dependsOnChanges:
+        dependencies:
           type: array
           items:
             type: string
@@ -717,7 +717,7 @@ components:
           type: array
           items:
             type: string
-        dependsOnChanges:
+        dependencies:
           type: array
           items:
             type: string

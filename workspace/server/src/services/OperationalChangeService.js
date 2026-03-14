@@ -228,7 +228,7 @@ export class OperationalChangeService extends VersionedItemService {
             drg: current.drg,
             implementedORs: current.implementedORs.map(ref => ref.id),
             decommissionedORs: current.decommissionedORs.map(ref => ref.id),
-            dependsOnChanges: current.dependsOnChanges.map(ref => ref.itemId),
+            dependencies: current.dependencies.map(ref => ref.id),
             milestones: newMilestones
         };
     }
@@ -271,7 +271,7 @@ export class OperationalChangeService extends VersionedItemService {
             drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             implementedORs: patchPayload.implementedORs !== undefined ? patchPayload.implementedORs : current.implementedORs.map(ref => ref.id),
             decommissionedORs: patchPayload.decommissionedORs !== undefined ? patchPayload.decommissionedORs : current.decommissionedORs.map(ref => ref.id),
-            dependsOnChanges: patchPayload.dependsOnChanges !== undefined ? patchPayload.dependsOnChanges : current.dependsOnChanges.map(ref => ref.itemId),
+            dependencies: patchPayload.dependencies !== undefined ? patchPayload.dependencies : current.dependencies.map(ref => ref.id),
             milestones: patchPayload.milestones !== undefined ? patchPayload.milestones : this._convertMilestonesToRawData(current.milestones)
         };
     }
@@ -340,7 +340,7 @@ export class OperationalChangeService extends VersionedItemService {
 
     _validateRelationshipArrays(payload) {
         const relationshipFields = [
-            'implementedORs', 'decommissionedORs', 'dependsOnChanges', 'orCosts', 'milestones'
+            'implementedORs', 'decommissionedORs', 'dependencies', 'orCosts', 'milestones'
         ];
         for (const field of relationshipFields) {
             if (payload[field] !== undefined && !Array.isArray(payload[field])) {
@@ -428,9 +428,9 @@ export class OperationalChangeService extends VersionedItemService {
             );
         }
 
-        if (payload.dependsOnChanges && payload.dependsOnChanges.length > 0) {
+        if (payload.dependencies && payload.dependencies.length > 0) {
             validationPromises.push(
-                this._validateDependencies(payload.dependsOnChanges, itemId)
+                this._validateDependencies(payload.dependencies, itemId)
             );
         }
 

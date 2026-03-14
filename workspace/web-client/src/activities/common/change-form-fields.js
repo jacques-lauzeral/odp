@@ -193,7 +193,8 @@ export const changeFieldDefinitions = [
                 size: 5,
                 optionsKey: 'getDependencyChangeOptions',
                 helpText: 'OCs that must be implemented before this OC',
-                formatKey: 'formatEntityReferences'
+                formatKey: 'formatEntityReferences',
+                formatArgs: ['change']
             },
             {
                 key: 'milestones',

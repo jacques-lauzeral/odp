@@ -36,15 +36,17 @@ export default class ReferenceListManager {
         if (!value || !Array.isArray(value)) return [];
 
         return value.map((item, index) => {
-            if (typeof item !== 'object' || item === null) {
-                throw new Error(`Expected object at index ${index}, got: ${typeof item}`);
+            if (item === null || item === undefined) {
+                throw new Error(`Null or undefined item at index ${index}`);
             }
-
-            if (item.id === undefined) {
-                throw new Error(`Object at index ${index} does not have id property: ${JSON.stringify(item)}`);
+            // Accept plain ID (number or string) or object with .id property
+            if (typeof item === 'number' || typeof item === 'string') {
+                return normalizeId(item);
             }
-
-            return normalizeId(item.id);
+            if (typeof item === 'object' && item.id !== undefined) {
+                return normalizeId(item.id);
+            }
+            throw new Error(`Cannot normalize item at index ${index}: ${JSON.stringify(item)}`);
         });
     }
 
