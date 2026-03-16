@@ -14,12 +14,14 @@ web-client/src/
 │   ├── landing/        User identification, activity tiles, connection status
 │   ├── setup/          Setup entity management
 │   ├── elaboration/    OR/OC authoring and browsing
+│   ├── planning/       ON/OC deployment and implementation planning
 │   ├── publication/    ODIP Edition management and export
 │   └── review/         Edition review interface (read-only)
 ├── components/
 │   ├── common/         Global navigation, error handling
 │   ├── setup/          TreeEntity, ListEntity base classes
-│   └── odp/            CollectionEntity, TreeTableEntity, form base classes
+│   └── odp/            CollectionEntity, TreeTableEntity, AbstractTimelineGrid,
+│                       TimelineGrid, GanttGrid, form base classes
 └── shared/             API client, utilities, error handling
 ```
 
@@ -27,7 +29,7 @@ web-client/src/
 
 Every activity follows the same structural pattern:
 
-- **Layer 1** — Global chrome: persistent top navigation (`Landing | Setup | Elaboration | Publication | Review`), user context, connection status
+- **Layer 1** — Global chrome: persistent top navigation (`Landing | Setup | Elaboration | Planning | Publication | Review`), user context, connection status
 - **Layer 2** — Activity workspace: activity-specific tabs, context selectors (edition picker), toolbars
 - **Layer 3** — Entity interactions: CRUD operations, detail panels, forms, relationship management
 
@@ -51,7 +53,11 @@ Used for operational entities (ORs, OCs) in table/list perspective. Provides fil
 
 ### 3.4 TreeTableEntity
 
-Used for the tree-table perspective on ORs/OCs. Displays a **virtual hierarchy** derived from flat entity lists using a `pathBuilder` function — not from real database parent–child relationships. The path builder returns a typed path array (`drg` → `org-folder` → `on-node` / `or-node`) that drives the tree structure and per-node rendering via `typeRenderers`.
+Used for tree-table perspectives on ORs/OCs and for the ON tree in the Planning activity. Builds tree structure from a flat entity list using a configurable `pathBuilder` function. The path builder returns a typed path array that drives both tree structure and per-node rendering via `typeRenderers`.
+
+The `pathBuilder` may produce **virtual hierarchy** (e.g. `drg-folder → on-node` derived from entity attributes) or **graph-based hierarchy** (e.g. `parent-on-node → child-on-node` derived from real `refines` relationships). Both modes are supported without component modification — the distinction lives entirely in the `pathBuilder` implementation provided by the parent entity.
+
+Filter matchers are injected as `options.filterMatchers` (same predicate map used by `CollectionEntity`), enabling consistent filter behaviour across all perspectives that share a `TreeTableEntity`.
 
 ### 3.5 CollectionEntityForm
 
@@ -70,11 +76,81 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 
 ---
 
-## 5. Temporal Perspective (Changes)
+## 5. Temporal Grid Components
 
-The `ChangesEntity` is the only entity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TimelineGrid` (`components/odp/timeline-grid.js`).
+Two temporal visualisation components — `TimelineGrid` (OC milestones, wave-based axis) and `GanttGrid` (ON tentative periods, year-based axis) — share a common base class `AbstractTimelineGrid`.
 
-### 5.1 Layout
+### 5.1 AbstractTimelineGrid
+
+`AbstractTimelineGrid` (`components/odp/abstract-timeline-grid.js`) owns all logic that is independent of the column unit (wave vs year):
+
+- Container and data lifecycle (`render()`, `setData()`, `cleanup()`)
+- Selection state and `selectItem()` / `updateSelectionUI()`
+- Time window state and `updateTimeWindow(startDate, endDate)`
+- Zoom control rendering and event binding (see §5.3)
+- `renderContent()` skeleton: header + body loop
+- `bindEvents()` for row selection
+- Helper utilities: `getItemId()`, `escapeHtml()`
+
+The following methods are **abstract** — concrete subclasses must override them:
+
+| Method | Responsibility |
+|---|---|
+| `initializeTimeWindow()` | Compute default start/end from available data |
+| `getVisibleColumns()` | Return ordered array of column descriptors within time window |
+| `calculateColumnPosition(col, allCols)` | Return `%` position for a column |
+| `renderHeader(cols)` | Render the column header row |
+| `renderRow(item, cols)` | Render a single data row |
+| `applyFilters()` | Filter `this.data` into `this.filteredData` |
+
+### 5.2 TimelineGrid (OC / wave-based)
+
+`TimelineGrid extends AbstractTimelineGrid` (`components/odp/timeline-grid.js`). Concrete implementation for the Changes temporal perspective.
+
+- `initializeTimeWindow()` — defaults to all future setup waves within a 3-year horizon; `ChangesEntity.calculateOptimalTimeWindow()` computes the actual bounds from `setupData.waves` and calls `updateTimeWindow()`.
+- `getVisibleColumns()` — filters `setupData.waves` to those falling within the time window; returns wave descriptors sorted chronologically.
+- `calculateColumnPosition()` — distributes wave columns evenly with 5% padding.
+- `renderHeader()` — renders wave labels (`2027 Q1`, `2028`, etc.) with vertical guide lines.
+- `renderRow()` — renders a change row with baseline, milestone pixmaps, and connector lines (see §5.5–5.7).
+- `applyFilters()` — excludes changes that have no milestones matching the active `milestoneFilters` within the time window.
+
+Additional public API specific to `TimelineGrid`:
+
+- `setMilestoneFilters(filters)` — updates the active event-type filter array and re-renders.
+- `selectMilestone(itemId, milestoneKey)` — programmatic milestone selection.
+
+### 5.3 Zoom Control
+
+`AbstractTimelineGrid` renders a zoom control bar above the grid. The control consists of two text inputs labelled **From** and **To**, sharing the same parse/validate/render logic as the `tentative` form field type (§10.5):
+
+- Input format: `YYYY` (single year) or `YYYY-ZZZZ` (year range), validated by `parseYearPeriod(str)`.
+- `parseYearPeriod(str)` → `{ start: Date, end: Date }` is a shared utility in `shared/year-period.js`. A single year `YYYY` maps to `[YYYY/01/01, YYYY+1/01/01[`. A range `YYYY-ZZZZ` maps to `[YYYY/01/01, ZZZZ+1/01/01[`.
+- On valid input, the control calls `this.updateTimeWindow(start, end)` on the owning grid instance.
+- Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`). The zoom control enforces these bounds during validation.
+- The current window is displayed as a read-only `YYYY-ZZZZ` label beside the inputs, updated on every `updateTimeWindow()` call.
+
+Both `TimelineGrid` and `GanttGrid` inherit this control without modification.
+
+### 5.4 GanttGrid (ON / year-based)
+
+`GanttGrid extends AbstractTimelineGrid` (`components/odp/gantt-grid.js`). Concrete implementation for the ON Plan temporal perspective.
+
+- `initializeTimeWindow()` — defaults to the union of all `tentative` periods across the loaded ON dataset. Falls back to current year + 5 years if no tentative periods are set.
+- `getVisibleColumns()` — returns one column descriptor per integer year within the time window.
+- `calculateColumnPosition()` — distributes year columns evenly with 5% padding (same algorithm as `TimelineGrid`).
+- `renderHeader()` — renders year labels (`2027`, `2028`, etc.) with vertical guide lines.
+- `renderRow()` — renders one row per ON. If the ON has a `tentative` period, a horizontal bar spans from `tentative.start` to `tentative.end` (inclusive) across the year columns. ONs without a `tentative` period render an empty row with reserved vertical space — no bar is drawn.
+- `applyFilters()` — passes all items through (no row exclusion); filtering is handled upstream by `ONPlanning` before `setData()` is called.
+
+`GanttGrid` has no milestone-specific API — `setMilestoneFilters` and `selectMilestone` are not present.
+
+---
+
+## 6. Temporal Perspective (Changes)
+
+The `ChangesEntity` is the only entity in the Elaboration activity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TimelineGrid` (`components/odp/timeline-grid.js`).
+
+### 6.1 Layout
 
 The temporal view renders a horizontal grid:
 
@@ -84,15 +160,15 @@ The temporal view renders a horizontal grid:
 
 The grid header shows wave labels (`2027 Q1`, `2028`, etc.) with vertical guide lines. Only waves that fall within the current time window are shown as columns.
 
-### 5.2 Time Window
+### 6.2 Time Window
 
 The default time window spans all future setup waves (from the earliest future wave to the latest). `ChangesEntity.calculateOptimalTimeWindow()` computes this from `setupData.waves` on first activation. The window is stored in `sharedState.timeWindow` and persists across perspective switches.
 
 Changes with no milestones within the time window are excluded from the temporal view (they remain visible in the collection perspective). `filterChangesByTimeWindow()` in `ChangesEntity` performs this pre-filter before handing data to `TimelineGrid.setData()`.
 
-`TimelineGrid.updateTimeWindow(startDate, endDate)` can be called at any time to recompute the visible wave columns and re-render.
+`TimelineGrid.updateTimeWindow(startDate, endDate)` can be called at any time to recompute the visible wave columns and re-render. The zoom control (§5.3) is the primary user-facing mechanism for adjusting the window.
 
-### 5.3 Milestone Pixmap
+### 6.3 Milestone Pixmap
 
 Each milestone is rendered as a **1-row × 3-column pixmap** positioned at the wave column where the milestone falls. The three columns map to event domain:
 
@@ -104,11 +180,11 @@ Each milestone is rendered as a **1-row × 3-column pixmap** positioned at the w
 
 A cell is filled (coloured) when the milestone carries at least one event of that domain. A tooltip on each cell lists the active event display names from the `@odp/shared` `getMilestoneEventDisplay` helper. An empty pixmap (no event types) renders three unfilled cells.
 
-### 5.4 Connector Lines
+### 6.4 Connector Lines
 
 When a change has two or more visible milestones, `renderConnectors()` draws horizontal connector `<div>` elements between them. Connectors are drawn between each adjacent pair of milestones (sorted by wave date). Milestones whose wave falls outside the visible columns are not connected.
 
-### 5.5 Milestone Filtering
+### 6.5 Milestone Filtering
 
 `TimelineGrid` maintains a `milestoneFilters` array (default `['ANY']`). When `ANY` is active all milestones are shown. When specific event types are set:
 
@@ -118,7 +194,7 @@ When a change has two or more visible milestones, `renderConnectors()` draws hor
 
 `ChangesEntity` stores the current milestone filter in `sharedState.eventTypeFilters` and propagates it to `TimelineGrid.setMilestoneFilters()` on perspective switches and shared-state updates.
 
-### 5.6 Selection and State Sharing
+### 6.6 Selection and State Sharing
 
 Both item selection (click on change label) and milestone selection (click on pixmap) are supported:
 
@@ -129,13 +205,13 @@ Selection state is stored in `sharedState.selectedItem` and restored when switch
 
 The `AbstractInteractionActivity` parent holds the canonical `sharedState` and coordinates perspective switching. `ChangesEntity.handlePerspectiveSwitch()` applies the shared state to whichever perspective is being activated.
 
-### 5.7 Perspective Toggle UI
+### 6.7 Perspective Toggle UI
 
 The perspective toggle buttons (`📋 Collection` / `📅 Temporal`) are rendered by `ChangesEntity.renderViewControls()` into the `#viewControls` container owned by `AbstractInteractionActivity`. Clicking a button calls `handlePerspectiveSwitch(perspective, sharedState)`.
 
 ---
 
-## 6. Rich Text
+## 7. Rich Text
 
 Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **Quill** editor. Content is stored and transmitted as Quill Delta JSON serialised to a string. The web client renders Delta content in read mode using Quill's read-only renderer and edits it with the full Quill toolbar in write mode.
 
@@ -143,15 +219,15 @@ Images can be embedded in Delta content as base64-encoded PNG data. The import p
 
 ---
 
-## 7. ODIP Edition Context
+## 8. ODIP Edition Context
 
-The edition picker (available in Elaboration and Review activities) resolves to `baseline` + `fromWave` API parameters before any list or get request is issued. The web client never sends `odpEdition` as a raw query parameter to the service layer — resolution happens client-side by reading the selected edition's `baselineId` and `startsFromWaveId` fields.
+The edition picker (available in Elaboration, Planning, and Review activities) resolves to `baseline` + `fromWave` API parameters before any list or get request is issued. The web client never sends `odpEdition` as a raw query parameter to the service layer — resolution happens client-side by reading the selected edition's `baselineId` and `startsFromWaveId` fields.
 
 ---
 
-## 8. CSS Architecture
+## 9. CSS Architecture
 
-Modular CSS split across six functional files loaded in dependency order:
+Modular CSS split across functional files loaded in dependency order:
 
 | File | Coverage |
 |---|---|
@@ -159,7 +235,7 @@ Modular CSS split across six functional files loaded in dependency order:
 | `base-components.css` | Buttons, form controls, utilities, loading spinner |
 | `layout-components.css` | Header, navigation, modals, cards |
 | `table-components.css` | Collection tables, row selection, grouping, empty states |
-| `temporal-components.css` | Timeline grid, wave visualisation, milestone connectors |
+| `temporal-components.css` | Timeline grid, Gantt grid, wave/year visualisation, milestone connectors, zoom control |
 | `form-components.css` | Tabs, tags, multi-select, validation, alerts |
 | `feedback-components.css` | Status indicators, notifications, error states |
 | `activities/abstract-interaction-activity.css` | Shared interaction patterns for all collection perspectives |
@@ -169,17 +245,108 @@ The activity-specific files contain only what differs from the shared patterns. 
 
 ---
 
-## 9. API Integration
+## 10. API Integration
 
 The shared API client in `shared/` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
 
 ---
 
-## 10. iCDM DrGs Edition 4 Model Changes
+## 11. Planning Activity
+
+The Planning activity (`activities/planning/`) supports deployment and implementation planning across two phases. Phase 1 (ON-based) is fully implemented. Phase 2 (OC-based) is reserved as a placeholder tab.
+
+### 11.1 Navigation and Tab Structure
+
+The Planning activity appears as a top-level nav tab alongside Elaboration. It uses the same edition picker as Elaboration (baseline + fromWave resolution, current working edition). The activity shell (`PlanningActivity extends AbstractInteractionActivity`) renders two tabs:
+
+| Tab | Status |
+|---|---|
+| `ON Plan` | Active — full implementation |
+| `OC Plan` | Placeholder — disabled, renders "Coming soon" message |
+
+### 11.2 ON Plan Layout
+
+The ON Plan tab uses a **three-pane horizontal layout**:
+
+- **Left pane** — ON tree (`ONTreeComponent`, implemented via `TreeTableEntity`)
+- **Centre pane** — ON Gantt (`GanttGrid`)
+- **Right pane** — Selected ON details (`RequirementForm` read-only + `Implemented By` tab)
+
+All three panes share a single data load. ONs are fetched once via `GET /requirements?type=ON` (with edition parameters). `ONPlanning` distributes the loaded data to the tree and the Gantt.
+
+### 11.3 ON Tree (Left Pane)
+
+The ON tree is a `TreeTableEntity` instance configured with a single hierarchy column (no additional table columns). The `pathBuilder` builds paths from real `refines` relationships:
+
+- Root ONs (no `refines` parent) appear as top-level nodes.
+- ONs that refine another ON appear as child nodes under their parent.
+- The path type for all nodes is `on-node`; folder nodes (e.g. `drg-folder`) may be prepended if DrG grouping is active.
+
+The tree supports the same filter injection pattern as the Elaboration tree-table perspective. Initial filter configuration includes:
+
+| Filter | Source |
+|---|---|
+| DrG | `DraftingGroup` enum |
+| Strategic document | `referenceDocuments` from `setupData` |
+
+Expand/collapse on the tree drives which ON rows are visible in the Gantt. The tree notifies `ONPlanning` on expansion state change; `ONPlanning` calls `GanttGrid.setData()` with the updated visible ON list.
+
+### 11.4 ON Gantt (Centre Pane)
+
+The Gantt is a `GanttGrid` instance (§5.4). It is initialised with:
+
+```javascript
+new GanttGrid(app, entityConfig, options = {
+    minYear: 2025,
+    maxYear: 2045,
+    onItemSelect: (on) => onPlanEntity.handleONSelect(on)
+})
+```
+
+Each visible ON (root or child of an expanded node) is rendered as one row. The bar spans the ON's `tentative` period if set; the row is empty otherwise. Selecting a row fires `onItemSelect`, which updates both the right panel and the tree selection.
+
+The zoom control (§5.3) is rendered by `AbstractTimelineGrid` above the grid. The default time window is computed from the union of all loaded ON `tentative` periods via `GanttGrid.initializeTimeWindow()`.
+
+### 11.5 ON Details (Right Pane)
+
+The right pane reuses `RequirementForm` in **read-only mode** with one additional tab: **Implemented By**.
+
+The `Implemented By` tab renders a flat read-only list of ORs that carry an `implements` relationship to the selected ON. The list is derived client-side by filtering the loaded OR dataset (`type=OR`) for entries whose `implementedONs` array contains the selected ON's id. Each list entry shows the OR code, title, and maturity.
+
+The existing form tab order is preserved; `Implemented By` is appended as the last tab.
+
+### 11.6 Bidirectional Selection Sync
+
+Selection is coordinated by `ONPlanning` via `sharedState.selectedItem`:
+
+- Clicking a tree node → updates Gantt highlight + right panel
+- Clicking a Gantt row → updates tree selection + right panel
+- Both paths call the same `handleONSelect(on)` handler on `ONPlanning`
+
+### 11.7 File Structure
+
+```
+activities/planning/
+├── planning-activity.js       PlanningActivity shell, tab management, edition picker
+├── on-planning.js          ONPlanning: data load, pane coordination, selection sync
+└── planning-activity.css      Three-pane layout overrides only
+
+components/odp/
+├── abstract-timeline-grid.js  AbstractTimelineGrid base class (§5.1)
+├── timeline-grid.js           TimelineGrid extends AbstractTimelineGrid (§5.2)
+└── gantt-grid.js              GanttGrid extends AbstractTimelineGrid (§5.4)
+
+shared/
+└── year-period.js             parseYearPeriod() shared utility (§5.3)
+```
+
+---
+
+## 12. iCDM DrGs Edition 4 Model Changes
 
 The following web client changes align the client with the Edition 4 data model update.
 
-### 10.1 Setup Layer
+### 12.1 Setup Layer
 
 | Change | Detail |
 |---|---|
@@ -192,7 +359,7 @@ The following web client changes align the client with the Edition 4 data model 
 
 `abstract-interaction-activity.js` `loadSetupData()` updated: `dataCategories`/`services`/`documents` replaced by `domains`/`referenceDocuments` loaded from `/domains` and `/reference-documents`.
 
-### 10.2 Operational Requirement Fields
+### 12.2 Operational Requirement Fields
 
 **Added to both ON and OR:**
 
@@ -227,7 +394,7 @@ The following web client changes align the client with the Edition 4 data model 
 
 **`dependencies` and `impactedDomains`** are now OR-only (previously `dependsOnRequirements` appeared for all types).
 
-### 10.3 Operational Change Fields
+### 12.3 Operational Change Fields
 
 **Added:**
 
@@ -247,26 +414,27 @@ The following web client changes align the client with the Edition 4 data model 
 
 **Removed:** `documentReferences` section, `visibility` field.
 
-### 10.4 Milestone Name Field
+### 12.4 Milestone Name Field
 
 Milestone `title` field renamed to `name` throughout `change-form-milestone.js`: form input id/name, `collectFormData`, `validateMilestone`, `prepareData`, `renderRow`, and the delete confirmation message.
 
 Wave label in milestone form and table now rendered as `Y{year}Q{sequenceNumber}` (the `name` field was removed from `Wave` in Edition 4).
 
-### 10.5 New Field Types in CollectionEntityForm
+### 12.5 New Field Types in CollectionEntityForm
 
 Two new `type` values added to `renderInput` / `renderReadOnlyField`:
 
 | Type | Edit rendering | Read rendering | Notes |
 |---|---|---|---|
 | `static-label` | `<div>` with `staticText` content, no `name` attribute | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
-| `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` array as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed in `RequirementForm.transformDataForSave` via `parseTentative()` |
+| `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` array as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed in `RequirementForm.transformDataForSave` via `parseTentative()` which delegates to `parseYearPeriod()` in `shared/year-period.js` |
 
-### 10.6 Filter Bar
+### 12.6 Filter Bar
 
 `getFilterConfig()` in `abstract-interaction-activity.js` updated:
 
 - Removed: `service`, `dataCategory`, `document` filters
 - Added: `domain` filter (suggest, options from `domains` setupData)
 - Renamed: `satisfies` → `implements`
-  [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)
+
+[← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

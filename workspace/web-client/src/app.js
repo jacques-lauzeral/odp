@@ -60,6 +60,8 @@ export class App {
                 await this.loadActivity('setup', segments.slice(1));
             } else if (segments[0] === 'elaboration') {
                 await this.loadActivity('elaboration', segments.slice(1));
+            } else if (segments[0] === 'planning') {
+                await this.loadActivity('planning', segments.slice(1));
             } else if (segments[0] === 'publication') {
                 await this.loadActivity('publication', segments.slice(1));
             } else if (segments[0] === 'review') {

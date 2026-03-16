@@ -1,0 +1,132 @@
+/* =============================================================================
+   Planning Activity — Layout
+   Three-pane horizontal layout for ON Plan tab.
+   Common chrome (tabs, header, loading, error states) inherits from
+   abstract-interaction-activity.css and base-components.css.
+   ============================================================================= */
+
+/* --- Tab content area ------------------------------------------------------- */
+
+.planning-tab-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- Three-pane layout ------------------------------------------------------ */
+
+.on-plan-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr 2fr;
+    grid-template-rows: 1fr;
+    gap: var(--space-2, 8px);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Shared pane styles */
+.on-plan-tree-pane,
+.on-plan-gantt-pane,
+.on-plan-details-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: var(--radius-md, 6px);
+}
+
+.pane-header {
+    padding: var(--space-2, 8px) var(--space-3, 12px);
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--color-text-secondary, #6b7280);
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
+    flex-shrink: 0;
+}
+
+.pane-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-2, 8px);
+}
+
+/* Gantt pane: no padding (grid owns its own internal layout) */
+.on-plan-gantt-pane .pane-content {
+    padding: 0;
+    overflow: hidden;
+}
+
+/* --- Placeholder states ----------------------------------------------------- */
+
+.planning-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3, 12px);
+    height: 100%;
+    min-height: 200px;
+    color: var(--color-text-secondary, #6b7280);
+    text-align: center;
+    padding: var(--space-6, 24px);
+}
+
+.planning-placeholder .icon {
+    font-size: 2.5rem;
+}
+
+.planning-placeholder h3 {
+    margin: 0;
+    font-size: var(--text-lg, 1.125rem);
+    color: var(--color-text-primary, #111827);
+}
+
+.planning-placeholder p {
+    margin: 0;
+    font-size: var(--text-sm, 0.875rem);
+}
+
+/* --- Details stub (temporary until RequirementForm is wired) ---------------- */
+
+.on-details-stub {
+    padding: var(--space-3, 12px);
+    font-size: var(--text-sm, 0.875rem);
+}
+
+.on-details-stub h3 {
+    margin: 0 0 var(--space-3, 12px);
+    font-size: var(--text-base, 1rem);
+}
+
+.on-details-stub h4 {
+    margin: var(--space-3, 12px) 0 var(--space-2, 8px);
+    font-size: var(--text-sm, 0.875rem);
+    color: var(--color-text-secondary, #6b7280);
+}
+
+.on-details-stub p {
+    margin: 0 0 var(--space-1, 4px);
+}
+
+.on-details-stub ul {
+    margin: 0;
+    padding-left: var(--space-4, 16px);
+}
+
+.on-details-stub hr {
+    border: none;
+    border-top: 1px solid var(--color-border, #e5e7eb);
+    margin: var(--space-3, 12px) 0;
+}
+
+/* --- Disabled tab ----------------------------------------------------------- */
+
+.interaction-tab--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
