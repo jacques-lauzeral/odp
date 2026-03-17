@@ -524,14 +524,6 @@ export default class TemporalGrid {
                 this._toggleGroup(toggle.dataset.toggleId);
             });
         });
-
-        // Separator toggle icons (in separator rows, outside .temporal-body)
-        this.container.querySelectorAll('.temporal-separator-row .temporal-toggle-icon').forEach(toggle => {
-            toggle.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this._toggleGroup(toggle.dataset.toggleId);
-            });
-        });
     }
 
     _bindResizeHandle() {
