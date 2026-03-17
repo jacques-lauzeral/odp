@@ -712,7 +712,7 @@ export default class AbstractInteractionActivity {
         if (!this.setupData?.[entityName]) return baseOptions;
 
         const setupOptions = this.setupData[entityName].map(entity => ({
-            value: entity.id,
+            value: String(entity.id),
             label: entity.name || entity.id
         }));
 

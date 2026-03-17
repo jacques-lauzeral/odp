@@ -34,6 +34,7 @@ export default class FilterBar {
         this.pendingFilter = null;    // Step-2: { key, label, inputType, options, ... }
         this.suggestionQuery = '';
         this.suggestionResults = [];
+        this.suggestionMap = new Map();  // label.toLowerCase() → suggestion entry
 
         this.container = null;        // Set by render()
 
@@ -329,7 +330,18 @@ export default class FilterBar {
             textInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    this._commitFilter(textInput.value.trim(), textInput.value.trim());
+                    const typed = textInput.value.trim();
+                    // For suggest filters, require a match in the suggestion map
+                    // so that a raw label is never sent as the filter value.
+                    if (this.pendingFilter?.inputType === 'suggest') {
+                        const match = this.suggestionMap.get(typed.toLowerCase());
+                        if (match) {
+                            this._commitFilter(match.value, match.label);
+                        }
+                        // No match → stay in edit mode (do nothing)
+                    } else {
+                        this._commitFilter(typed, typed);
+                    }
                 } else if (e.key === 'Escape') {
                     this._cancelPending();
                 }
@@ -346,7 +358,8 @@ export default class FilterBar {
         // ── Suggestion box ──
         const suggestions = this.container.querySelectorAll('.filter-bar__suggestion');
         suggestions.forEach(s => {
-            s.addEventListener('click', (e) => {
+            s.addEventListener('mousedown', (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 this._commitFilter(s.dataset.suggestValue, s.dataset.suggestLabel);
             });
@@ -423,7 +436,7 @@ export default class FilterBar {
 
     _commitFilter(value, displayValue) {
         if (!this.pendingFilter) return;
-        if (!value || value === '') {
+        if (value === null || value === undefined || value === '') {
             this._cancelPending();
             return;
         }
@@ -458,6 +471,7 @@ export default class FilterBar {
     _cancelPending() {
         this.pendingFilter = null;
         this.suggestionResults = [];
+        this.suggestionMap = new Map();
         this._renderBar();
     }
 
@@ -471,6 +485,7 @@ export default class FilterBar {
         const cfg = this.pendingFilter;
         const results = await this._fetchSuggestions(cfg, query);
         this.suggestionResults = results;
+        this.suggestionMap = new Map(results.map(s => [s.label.toLowerCase(), s]));
 
         // Only re-render the suggestion box, not the whole bar
         const wrapper = this.container.querySelector('.filter-bar__suggest-wrapper');
@@ -483,7 +498,8 @@ export default class FilterBar {
 
                 // Bind suggestion clicks
                 wrapper.querySelectorAll('.filter-bar__suggestion').forEach(s => {
-                    s.addEventListener('click', (e) => {
+                    s.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         this._commitFilter(s.dataset.suggestValue, s.dataset.suggestLabel);
                     });
