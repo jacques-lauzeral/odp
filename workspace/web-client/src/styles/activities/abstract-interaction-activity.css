@@ -138,12 +138,28 @@
 .collection-container {
     display: grid;
     grid-template-areas:
-        "left details";
-    grid-template-columns: 2fr 1fr;
+        "left divider details";
+    grid-template-columns: 2fr 4px 1fr;
     grid-template-rows: 1fr;
     height: 100%;
     background: white;
     gap: 0;
+}
+
+/* DIVIDER */
+.collection-split-divider {
+    grid-area: divider;
+    width: 4px;
+    cursor: col-resize;
+    background: var(--border-primary);
+    transition: background var(--transition-fast);
+    align-self: stretch;
+}
+
+.collection-split-divider:hover,
+.collection-split-divider:active {
+    background: var(--accent-primary);
+    opacity: 0.5;
 }
 
 /* LEFT COLUMN: Contains perspective, actions/grouping, and list */
@@ -151,7 +167,6 @@
     grid-area: left;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--border-primary);
     overflow: hidden;
 }
 

@@ -91,22 +91,97 @@ export default class RequirementsEntity {
     }
 
     // ====================
+    // COLUMN DEFINITIONS
+    // ====================
+
+    /**
+     * Unified column specification — single source of truth for all column metadata.
+     * Fields present: key, label, width, type, sortable, appliesTo,
+     *                 groupPriority, groupPrefix, maxDisplay, noneLabel
+     * Callers cherry-pick by name; unused fields are ignored by renderers.
+     */
+    static _cols() {
+        return {
+            code: {
+                key: 'code', label: 'Code', width: '120px',
+                type: 'text', sortable: true,
+                appliesTo: ['on-node', 'or-node']
+            },
+            type: {
+                key: 'type', label: 'Type', width: '80px',
+                type: 'requirement-type', sortable: true,
+                groupPriority: { 'ON': 1, 'OR': 2 },
+                appliesTo: ['on-node', 'or-node']
+            },
+            maturity: {
+                key: 'maturity', label: 'Maturity', width: '100px',
+                type: 'text', sortable: true,
+                appliesTo: ['on-node', 'or-node']
+            },
+            title: {
+                key: 'title', label: 'Title', width: 'auto',
+                type: 'text', sortable: true,
+                appliesTo: ['drg', 'org-folder', 'on-node', 'or-node']
+            },
+            drg: {
+                key: 'drg', label: 'DrG', width: '120px',
+                type: 'drafting-group', sortable: true,
+                appliesTo: ['on-node', 'or-node']
+            },
+            refinesParents: {
+                key: 'refinesParents', label: 'Refines', width: '200px',
+                type: 'entity-reference-list', sortable: false,
+                maxDisplay: 1, groupPrefix: 'Refines',
+                appliesTo: ['on-node', 'or-node']
+            },
+            implementedONs: {
+                key: 'implementedONs', label: 'Implements', width: '150px',
+                type: 'implemented-ons', sortable: false,
+                maxDisplay: 1, groupPrefix: 'Implements', noneLabel: 'No Implementation',
+                appliesTo: ['or-node']
+            },
+            dependencies: {
+                key: 'dependencies', label: 'Depends On', width: '120px',
+                type: 'entity-reference-list', sortable: false,
+                maxDisplay: 1, groupPrefix: 'Depends On', noneLabel: 'No Dependencies',
+                appliesTo: ['or-node']
+            },
+            impactedStakeholders: {
+                key: 'impactedStakeholders', label: 'Stakeholders', width: '120px',
+                type: 'annotated-reference-list', sortable: false,
+                maxDisplay: 1, noneLabel: 'No Stakeholder Impact',
+                appliesTo: ['or-node']
+            },
+            impactedDomains: {
+                key: 'impactedDomains', label: 'Domains', width: '120px',
+                type: 'annotated-reference-list', sortable: false,
+                maxDisplay: 1, noneLabel: 'No Domain Impact',
+                appliesTo: ['or-node']
+            },
+            updatedBy: {
+                key: 'updatedBy', label: 'Updated By', width: '100px',
+                type: 'text', sortable: false,
+                appliesTo: ['on-node', 'or-node']
+            },
+            updatedAt: {
+                key: 'updatedAt', label: 'Updated', width: '100px',
+                type: 'date', sortable: false,
+                appliesTo: ['on-node', 'or-node']
+            }
+        };
+    }
+
+    // ====================
     // COLLECTION CONFIGURATION
     // ====================
 
     getColumnConfig() {
+        const c = RequirementsEntity._cols();
         return [
-            { key: 'code', label: 'Code',  width: '120px', sortable: true, type: 'text' },
-            { key: 'type', label: 'Type', width: '80px', sortable: true, type: 'requirement-type', groupPriority: { 'ON': 1, 'OR': 2 } },
-            { key: 'maturity', label: 'Maturity',  width: '80px', sortable: true, type: 'text' },
-            { key: 'title', label: 'Title', width: 'auto', sortable: true, type: 'text' },
-            { key: 'drg', label: 'DrG', width: '120px', sortable: true, type: 'drafting-group' },
-            { key: 'refinesParents', label: 'Refines', width: '200px', sortable: false, type: 'entity-reference-list', maxDisplay: 1, groupPrefix: 'Refines' },
-            { key: 'implementedONs', label: 'Implements', width: '200px', sortable: false, type: 'implemented-ons', maxDisplay: 5,  groupPrefix: 'Implements' },
-            { key: 'dependencies', label: 'Depends On', width: '200px', sortable: false, type: 'entity-reference-list', maxDisplay: 5, groupPrefix: 'Depends On' },
-            { key: 'impactedStakeholders',  label: 'Stakeholders', width: '120px', sortable: false, type: 'annotated-reference-list', maxDisplay: 5 },
-            { key: 'impactedDomains', label: 'Domains', width: '120px', sortable: false, type: 'annotated-reference-list', maxDisplay: 5 }
-        ];
+            'code', 'type', 'maturity', 'title', 'drg',
+            'refinesParents', 'implementedONs', 'dependencies',
+            'impactedStakeholders', 'impactedDomains'
+        ].map(k => c[k]);
     }
 
     getGroupingConfig() {
@@ -205,78 +280,11 @@ export default class RequirementsEntity {
     }
 
     getTreeColumns() {
+        const c = RequirementsEntity._cols();
         return [
-            {
-                key: 'title',
-                label: 'Title',
-                width: 'auto',
-                appliesTo: ['drg', 'org-folder', 'on-node', 'or-node']
-            },
-            {
-                key: 'code',
-                label: 'Code',
-                width: 'auto',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'text'
-            },
-            {
-                key: 'maturity',
-                label: 'Maturity',
-                width: '100px',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'text'
-            },
-            {
-                key: 'implementedONs',
-                label: 'Implements',
-                width: '150px',
-                appliesTo: ['or-node'],
-                type: 'implemented-ons',
-                maxDisplay: 1,
-                noneLabel: 'No Implementation'
-            },
-            {
-                key: 'dependencies',
-                label: 'Depends On',
-                width: '120px',
-                appliesTo: ['or-node'],
-                type: 'entity-reference-list',
-                maxDisplay: 1,
-                noneLabel: 'No Dependencies'
-            },
-            {
-                key: 'impactedStakeholders',
-                label: 'Stakeholders',
-                width: '120px',
-                appliesTo: ['or-node'],
-                type: 'annotated-reference-list',
-                maxDisplay: 1,
-                noneLabel: 'No Stakeholder Impact'
-            },
-            {
-                key: 'impactedDomains',
-                label: 'Domains',
-                width: '120px',
-                appliesTo: ['or-node'],
-                type: 'annotated-reference-list',
-                maxDisplay: 1,
-                noneLabel: 'No Domain Impact'
-            },
-            {
-                key: 'updatedBy',
-                label: 'Updated By',
-                width: '100px',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'text'
-            },
-            {
-                key: 'updatedAt',
-                label: 'Updated',
-                width: '100px',
-                appliesTo: ['on-node', 'or-node'],
-                type: 'date'
-            }
-        ];
+            'title', 'code', 'maturity', 'implementedONs', 'dependencies',
+            'impactedStakeholders', 'impactedDomains', 'updatedBy', 'updatedAt'
+        ].map(k => c[k]);
     }
 
     // ====================

@@ -67,6 +67,9 @@ export default class AbstractInteractionActivity {
         // Available event types from shared enum (5 specific milestone events)
         this.availableEventTypes = Object.keys(MilestoneEventType);
 
+        // Details pane split ratio: fraction of width for left (content) column (0.2–0.85)
+        this.detailsSplitRatio = 0.67;
+
         // Cache for filtered entity data (to avoid re-fetching when switching tabs)
         this.cachedEntityData = {
             requirements: null,
@@ -243,7 +246,8 @@ export default class AbstractInteractionActivity {
                         `).join('')}
                     </div>
                     
-                    <div class="collection-container" id="mainContainer">
+                    <div class="collection-container" id="mainContainer"
+                         style="grid-template-columns: ${this.detailsSplitRatio}fr 4px ${1 - this.detailsSplitRatio}fr">
                         <!-- LEFT COLUMN: View controls and content -->
                         <div class="collection-left-column">
                             <!-- View-specific controls (perspective, grouping, actions) -->
@@ -260,6 +264,9 @@ export default class AbstractInteractionActivity {
                                 </div>
                             </div>
                         </div>
+
+                        <!-- DIVIDER -->
+                        <div class="collection-split-divider" id="collectionSplitDivider" title="Drag to resize"></div>
                         
                         <!-- RIGHT COLUMN: Details panel (extends from tabs down) -->
                         <div class="collection-details">
@@ -345,7 +352,44 @@ export default class AbstractInteractionActivity {
             commentBtn.addEventListener('click', () => this.handleCommentMode());
         }
 
+        this._bindDetailsDivider();
+
         // Dynamic filter and grouping controls will be bound when entity loads
+    }
+
+    _bindDetailsDivider() {
+        const divider  = this.container.querySelector('#collectionSplitDivider');
+        const container = this.container.querySelector('#mainContainer');
+        if (!divider || !container) return;
+
+        let startX = 0;
+        let startRatio = 0;
+
+        const onMouseMove = (e) => {
+            const totalWidth = container.getBoundingClientRect().width;
+            if (totalWidth === 0) return;
+            const delta = e.clientX - startX;
+            const newRatio = Math.max(0.2, Math.min(0.85, startRatio + delta / totalWidth));
+            this.detailsSplitRatio = newRatio;
+            container.style.gridTemplateColumns = `${newRatio}fr 4px ${1 - newRatio}fr`;
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        };
+
+        divider.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startRatio = this.detailsSplitRatio;
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
     }
 
     async switchEntity(entity) {
