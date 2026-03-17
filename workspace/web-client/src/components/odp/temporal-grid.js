@@ -83,8 +83,11 @@ export default class TemporalGrid {
     // =========================================================================
 
     addSeparatorRow(id, label) {
-        this.rows.set(String(id), {
-            id: String(id), kind: 'separator', label: label || '', milestones: []
+        const key = String(id);
+        const existing = this.rows.get(key);
+        this.rows.set(key, {
+            id: key, kind: 'separator', label: label || '', milestones: [],
+            expanded: existing?.expanded ?? true
         });
         this._render();
     }
@@ -109,7 +112,13 @@ export default class TemporalGrid {
         this._render();
     }
 
-    addTimeLine(id, label, milestones = []) {
+    /**
+     * Add a flat row (no hierarchy).
+     * @param {string|number} id
+     * @param {string}        label
+     * @param {Array}         milestones
+     */
+    addRow(id, label, milestones = []) {
         this.rows.set(String(id), {
             id: String(id), kind: 'timeline', label: label || '',
             milestones: milestones.map(m => this._normaliseMilestone(m))
@@ -117,7 +126,12 @@ export default class TemporalGrid {
         this._render();
     }
 
-    updateTimeLine(id, milestones = []) {
+    /**
+     * Replace milestones for any existing row.
+     * @param {string|number} id
+     * @param {Array}         milestones
+     */
+    updateRow(id, milestones = []) {
         const row = this.rows.get(String(id));
         if (!row) return;
         row.milestones = milestones.map(m => this._normaliseMilestone(m));
@@ -210,11 +224,24 @@ export default class TemporalGrid {
 
     _renderAllRows(visibleTicks) {
         const html = [];
+        let currentSeparatorExpanded = true; // true until a collapsed separator is encountered
+
         for (const row of this.rows.values()) {
+            if (row.kind === 'separator') {
+                currentSeparatorExpanded = row.expanded;
+                html.push(this._renderRowHtml(row, visibleTicks));
+                continue;
+            }
+
+            // Skip all non-separator rows when their owning separator is collapsed
+            if (!currentSeparatorExpanded) continue;
+
+            // Skip child rows when their parent group is collapsed
             if (row.kind === 'child') {
                 const parent = this.rows.get(row.parentId);
                 if (parent && !parent.expanded) continue;
             }
+
             html.push(this._renderRowHtml(row, visibleTicks));
         }
         return html.join('');
@@ -235,8 +262,10 @@ export default class TemporalGrid {
     }
 
     _renderSeparatorRowHtml(row) {
+        const toggleIcon = row.expanded ? '▼' : '▶';
         return `
             <div class="temporal-separator-row" data-row-id="${this._escapeAttr(row.id)}">
+                <span class="temporal-toggle-icon" data-toggle-id="${this._escapeAttr(row.id)}">${toggleIcon}</span>
                 <span class="temporal-separator-label">${this._escapeHtml(row.label)}</span>
             </div>
         `;
@@ -357,9 +386,9 @@ export default class TemporalGrid {
             <div class="temporal-header-row">
                 <div class="temporal-row-label-header"></div>
                 <div class="temporal-axis">
-                    ${visibleTicks.map((tick, i) => `
+                    ${visibleTicks.map(tick => `
                         <div class="temporal-tick-header"
-                             style="left: ${this._tickPosition(i, visibleTicks.length)}%">
+                             style="left: ${this._datePosition(tick.date, visibleTicks)}%">
                             <div class="temporal-tick-label">${this._escapeHtml(tick.label)}</div>
                             <div class="temporal-tick-line"></div>
                         </div>
@@ -497,9 +526,13 @@ export default class TemporalGrid {
 
     _toggleGroup(id) {
         const row = this.rows.get(String(id));
-        if (!row || row.kind !== 'group') return;
+        if (!row || (row.kind !== 'group' && row.kind !== 'separator')) return;
+        const body = this.container?.querySelector('#temporalBody');
+        const scrollTop = body ? body.scrollTop : 0;
         row.expanded = !row.expanded;
         this._render();
+        const newBody = this.container?.querySelector('#temporalBody');
+        if (newBody) newBody.scrollTop = scrollTop;
     }
 
     // =========================================================================
@@ -539,12 +572,6 @@ export default class TemporalGrid {
         const padding = 5;
         const usable  = 100 - padding * 2;
         return padding + ((date.getTime() - intervalStart) / span) * usable;
-    }
-
-    _tickPosition(index, total) {
-        if (total <= 1) return 50;
-        const padding = 5;
-        return padding + (index / (total - 1)) * (100 - padding * 2);
     }
 
     // =========================================================================

@@ -85,7 +85,7 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 // TimelineMilestone
 {
     label: string,        // short display label
-    description: string,  // tooltip / detail text
+        description: string,  // tooltip / detail text
     eventTypes: string[], // one or more event type keys
     date: Date            // calendar position
 }
@@ -132,7 +132,7 @@ One call per instance before adding rows. Two modes:
 ```javascript
 {
     mode: 'pixmap', rows: 1, cols: 3,
-    eventTypes: {
+        eventTypes: {
         'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
         'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
         'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
@@ -146,8 +146,8 @@ One call per instance before adding rows. Two modes:
 addSeparatorRow(id, label)
 addGroupRow(id, label, milestones)
 addChildRow(id, parentId, label, milestones)
-addTimeLine(id, label, milestones)      // flat row — used by ChangesEntity
-updateTimeLine(id, milestones)
+addRow(id, label, milestones)           // flat row — used by ChangesEntity
+updateRow(id, milestones)
 removeRow(id)
 clearRows()
 ```
@@ -195,7 +195,7 @@ The temporal view renders a horizontal grid with a label column (change code/tit
 
 `ChangesEntity.calculateOptimalTimeWindow()` computes the default interval from `setupData.waves` (earliest to latest future wave) on first activation. It calls `temporalGrid.setTimeInterval(startYear, endYear)` and `temporalGrid.setTicks(waveTicks)` where `waveTicks` is the array of `{ label, date }` descriptors derived from `setupData.waves` using `implementationDate` as the wave date.
 
-Changes with no milestones within the current time interval are excluded before `addTimeLine` calls. `_feedTemporalGrid()` in `ChangesEntity` performs this pre-filter and calls `clearRows()` then re-adds all visible changes.
+Changes with no milestones within the current time interval are excluded before `addRow` calls. `_feedTemporalGrid()` in `ChangesEntity` performs this pre-filter and calls `clearRows()` then re-adds all visible changes.
 
 The zoom control (§5.5) is the primary user-facing mechanism for adjusting the interval.
 

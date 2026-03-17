@@ -221,24 +221,28 @@ export default class ONPlanning {
             return String(ref.itemId || ref.id || ref);
         };
 
-        // Helper: emit group row + its children
+        // Helper: emit group row + its children (or flat row if no children)
         const emitGroup = (rootOn, allOnsInDrg) => {
             const groupId = String(rootOn.itemId || rootOn.id);
             const label = rootOn.code ? `${rootOn.code} – ${rootOn.title}` : rootOn.title;
             const milestones = this._buildMilestones(rootOn);
-            this.temporalGrid.addGroupRow(groupId, label, milestones);
 
             // Children: ONs whose first refinesParent is this root
             const children = allOnsInDrg
                 .filter(on => parentIdOf(on) === groupId)
                 .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
-            children.forEach(child => {
-                const childId = String(child.itemId || child.id);
-                const childLabel = child.code ? `${child.code} – ${child.title}` : child.title;
-                const childMilestones = this._buildMilestones(child);
-                this.temporalGrid.addChildRow(childId, groupId, childLabel, childMilestones);
-            });
+            if (children.length > 0) {
+                this.temporalGrid.addGroupRow(groupId, label, milestones);
+                children.forEach(child => {
+                    const childId = String(child.itemId || child.id);
+                    const childLabel = child.code ? `${child.code} – ${child.title}` : child.title;
+                    this.temporalGrid.addChildRow(childId, groupId, childLabel, this._buildMilestones(child));
+                });
+            } else {
+                // No children — flat row, not expandable
+                this.temporalGrid.addRow(groupId, label, milestones);
+            }
         };
 
         // Emit rows per DrG

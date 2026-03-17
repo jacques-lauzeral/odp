@@ -2,6 +2,9 @@ import CollectionEntity from '../../components/odp/collection-entity.js';
 import ChangeForm from './change-form.js';
 import TemporalGrid from '../../components/odp/temporal-grid.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
+import {
+    getDraftingGroupDisplay
+} from '/shared/src/index.js';
 
 
 /**
@@ -352,7 +355,7 @@ export default class ChangesEntity {
             .sort((a, b) => a.date - b.date)
             .map(({ wave, date }) => ({
                 label: wave.sequenceNumber
-                    ? `Y${wave.year}Q${wave.sequenceNumber}`
+                    ? `${wave.year}.${wave.sequenceNumber}`
                     : String(wave.year),
                 date
             }));
@@ -369,10 +372,11 @@ export default class ChangesEntity {
         const start = new Date(startYear, 0, 1);
         const end   = new Date(endYear + 1, 0, 1);
 
+        // Build visible change rows — filter to those with milestones in window
+        const visibleChanges = [];
         this.data.forEach(change => {
             if (!change.milestones || change.milestones.length === 0) return;
 
-            // Only include changes that have at least one milestone in the window
             const visibleMilestones = change.milestones.filter(m => {
                 const wave = this.findMilestoneWave(m);
                 if (!wave) return false;
@@ -384,25 +388,52 @@ export default class ChangesEntity {
 
             if (visibleMilestones.length === 0) return;
 
-            const entityId = String(this.getItemId(change));
-            const label = change.code
-                ? `${change.code} – ${change.title}`
-                : (change.title || entityId);
-
-            const milestones = visibleMilestones.map(m => {
-                const wave = this.findMilestoneWave(m);
-                const date = wave.implementationDate
-                    ? new Date(wave.implementationDate)
-                    : new Date(wave.year, 0, 1);
-                return {
-                    label:       m.name || m.title || '',
-                    description: m.description || '',
-                    eventTypes:  m.eventTypes || [],
-                    date
-                };
+            visibleChanges.push({
+                change,
+                milestones: visibleMilestones.map(m => {
+                    const wave = this.findMilestoneWave(m);
+                    const date = wave.implementationDate
+                        ? new Date(wave.implementationDate)
+                        : new Date(wave.year, 0, 1);
+                    return {
+                        label:      m.name || m.title || '',
+                        description: m.description || '',
+                        eventTypes: m.eventTypes || [],
+                        date
+                    };
+                })
             });
+        });
 
-            this.temporalGrid.addTimeLine(entityId, label, milestones);
+        // Group by DrG — alphabetical by DrG display name; no-DrG under 'NM'
+        const byDrg = new Map();
+        visibleChanges.forEach(({ change, milestones }) => {
+            const drg = change.drg || 'NM';
+            if (!byDrg.has(drg)) byDrg.set(drg, []);
+            byDrg.get(drg).push({ change, milestones });
+        });
+
+        // Sort DrG keys alphabetically by display name
+        const sortedDrgs = [...byDrg.keys()].sort((a, b) => {
+            const labelA = getDraftingGroupDisplay(a) || a;
+            const labelB = getDraftingGroupDisplay(b) || b;
+            return labelA.localeCompare(labelB);
+        });
+
+        // Emit separator + rows per DrG
+        sortedDrgs.forEach(drg => {
+            const drgLabel = getDraftingGroupDisplay(drg) || drg;
+            this.temporalGrid.addSeparatorRow(`drg:${drg}`, drgLabel);
+
+            byDrg.get(drg)
+                .sort((a, b) => (a.change.title || '').localeCompare(b.change.title || ''))
+                .forEach(({ change, milestones }) => {
+                    const entityId = String(this.getItemId(change));
+                    const label = change.code
+                        ? `${change.code} – ${change.title}`
+                        : (change.title || entityId);
+                    this.temporalGrid.addRow(entityId, label, milestones);
+                });
         });
     }
 

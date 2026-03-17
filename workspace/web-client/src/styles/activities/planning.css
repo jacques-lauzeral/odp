@@ -101,29 +101,6 @@
     max-height: none;
 }
 
-/* --- Separator row ---------------------------------------------------------- */
-
-.temporal-separator-row {
-    display: flex;
-    align-items: center;
-    padding: var(--space-1) var(--space-3);
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-primary);
-    height: 28px;
-    box-sizing: border-box;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-}
-
-.temporal-separator-label {
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-bold);
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
 /* --- Group row -------------------------------------------------------------- */
 
 .temporal-group-row {
@@ -142,21 +119,6 @@
     cursor: pointer;
 }
 
-.temporal-toggle-icon {
-    font-size: var(--font-size-xs);
-    color: var(--text-secondary);
-    cursor: pointer;
-    user-select: none;
-    flex-shrink: 0;
-    width: 12px;
-    text-align: center;
-    transition: color var(--transition-fast);
-}
-
-.temporal-toggle-icon:hover {
-    color: var(--accent-primary);
-}
-
 /* --- Child row -------------------------------------------------------------- */
 
 .temporal-child-row {
@@ -165,10 +127,6 @@
 
 .temporal-child-row:hover {
     background: rgba(14, 165, 233, 0.03);
-}
-
-.temporal-child-label {
-    padding-left: var(--space-6) !important; /* indentation */
 }
 
 /* --- Label column in planning (overrides temporal-components.css) ----------- */
