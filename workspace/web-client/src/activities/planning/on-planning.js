@@ -36,6 +36,9 @@ export default class ONPlanning {
 
         // Selection
         this.selectedON = null;
+
+        // Pane split ratio: fraction of width allocated to temporal grid (0.2–0.9)
+        this.splitRatio = 0.67;
     }
 
     // ====================
@@ -100,7 +103,8 @@ export default class ONPlanning {
 
     renderLayout() {
         this.container.innerHTML = `
-            <div class="on-plan-layout">
+            <div class="on-plan-layout" id="onPlanLayout"
+                 style="grid-template-columns: ${this.splitRatio}fr 4px ${1 - this.splitRatio}fr">
                 <!-- Left pane: temporal grid -->
                 <div class="on-plan-grid-pane" id="onGridPane">
                     <div class="pane-content" id="onGridContent">
@@ -110,6 +114,9 @@ export default class ONPlanning {
                         </div>
                     </div>
                 </div>
+
+                <!-- Pane resize divider -->
+                <div class="on-plan-split-divider" id="onPlanSplitDivider" title="Drag to resize"></div>
 
                 <!-- Right pane: details -->
                 <div class="on-plan-details-pane" id="onDetailsPane">
@@ -123,6 +130,8 @@ export default class ONPlanning {
                 </div>
             </div>
         `;
+
+        this._bindSplitDivider();
     }
 
     renderError(error) {
@@ -133,6 +142,41 @@ export default class ONPlanning {
                 <p>Error: ${error.message}</p>
             </div>
         `;
+    }
+
+    _bindSplitDivider() {
+        const divider = this.container.querySelector('#onPlanSplitDivider');
+        const layout  = this.container.querySelector('#onPlanLayout');
+        if (!divider || !layout) return;
+
+        let startX = 0;
+        let startRatio = 0;
+
+        const onMouseMove = (e) => {
+            const totalWidth = layout.getBoundingClientRect().width;
+            if (totalWidth === 0) return;
+            const delta = e.clientX - startX;
+            const newRatio = Math.max(0.2, Math.min(0.85, startRatio + delta / totalWidth));
+            this.splitRatio = newRatio;
+            layout.style.gridTemplateColumns = `${newRatio}fr 4px ${1 - newRatio}fr`;
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        };
+
+        divider.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startRatio = this.splitRatio;
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
     }
 
     // ====================
