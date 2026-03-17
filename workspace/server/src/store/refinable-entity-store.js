@@ -11,6 +11,39 @@ export class RefinableEntityStore extends BaseStore {
     }
 
     /**
+     * Override create() to strip parentId from node properties.
+     * parentId is managed exclusively as a REFINES relationship, never as a node property.
+     */
+    async create(data, transaction) {
+        const { parentId, ...nodeData } = data;
+        return super.create(nodeData, transaction);
+    }
+
+    /**
+     * Find all nodes, including parentId derived from REFINES relationship.
+     * Overrides BaseStore.findAll() to never rely on parentId as a node property.
+     */
+    async findAll(transaction) {
+        try {
+            const query = `
+        MATCH (n:${this.nodeLabel})
+        OPTIONAL MATCH (n)-[:REFINES]->(parent:${this.nodeLabel})
+        RETURN n, id(parent) AS parentId
+        ORDER BY id(n)
+      `;
+            const result = await transaction.run(query);
+            return result.records.map(record => {
+                const item = this.transformRecord(record, 'n');
+                const parentId = record.get('parentId');
+                if (parentId !== null) item.parentId = parentId.toNumber();
+                return item;
+            });
+        } catch (error) {
+            throw new StoreError(`Failed to find all ${this.nodeLabel} nodes: ${error.message}`, error);
+        }
+    }
+
+    /**
      * Creates a REFINES relationship between child and parent entities.
      * Enforces tree structure by replacing any existing parent relationship.
      *

@@ -92,9 +92,13 @@ class BaseStore {
 
 ### 3.2 RefinableEntityStore (`refinable-entity-store.js`)
 
-Extends `BaseStore` with REFINES hierarchy management.
+Extends `BaseStore` with REFINES hierarchy management. `parentId` is managed exclusively as a `REFINES` relationship — it is never stored as a node property.
 
-**Public methods:**
+**Overridden methods:**
+- `create(data, tx)` — strips `parentId` from `data` before delegating to `BaseStore.create()`; the caller (`TreeItemService`) is responsible for creating the `REFINES` relationship separately
+- `findAll(tx)` — overrides `BaseStore.findAll()` with an `OPTIONAL MATCH` on `REFINES` to derive `parentId` from the graph edge
+
+**Additional public methods:**
 - `createRefinesRelation(childId, parentId, tx)` — validates both nodes exist, prevents self-reference, enforces tree structure (deletes existing parent relationship before creating the new one)
 - `deleteRefinesRelation(childId, parentId, tx)` — removes a specific REFINES relationship
 - `findChildren(parentId, tx)` — direct children, ordered by `name`
@@ -102,6 +106,25 @@ Extends `BaseStore` with REFINES hierarchy management.
 - `findRoots(tx)` — all nodes with no parent, ordered by `name`
 
 ```javascript
+async create(data, transaction) {
+    const { parentId, ...nodeData } = data;
+    return super.create(nodeData, transaction);
+}
+
+async findAll(transaction) {
+    const result = await transaction.run(`
+        MATCH (n:${this.nodeLabel})
+        OPTIONAL MATCH (n)-[:REFINES]->(parent:${this.nodeLabel})
+        RETURN n, id(parent) AS parentId
+        ORDER BY id(n)`);
+    return result.records.map(record => {
+        const item = this.transformRecord(record, 'n');
+        const parentId = record.get('parentId');
+        if (parentId !== null) item.parentId = parentId.toNumber();
+        return item;
+    });
+}
+
 async createRefinesRelation(childId, parentId, transaction) {
     if (childId === parentId) throw new StoreError('Node cannot refine itself');
     // Delete existing parent (tree enforcement), then create new

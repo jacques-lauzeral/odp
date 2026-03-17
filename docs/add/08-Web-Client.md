@@ -12,14 +12,13 @@ The ODIP web client is a Vanilla JavaScript single-page application (no framewor
 web-client/src/
 ├── activities/
 │   ├── landing/        User identification, activity tiles, connection status
-│   ├── setup/          Setup entity management
+│   ├── setup/          Setup entity management + TreeEntity, ListEntity base classes
 │   ├── elaboration/    OR/OC authoring and browsing
 │   ├── planning/       ON/OC deployment and implementation planning
 │   ├── publication/    ODIP Edition management and export
 │   └── review/         Edition review interface (read-only)
 ├── components/
 │   ├── common/         Global navigation, error handling
-│   ├── setup/          TreeEntity, ListEntity base classes
 │   └── odp/            CollectionEntity, TreeTableEntity, TemporalGrid, form base classes
 └── shared/             API client, utilities, error handling
 ```
@@ -40,11 +39,21 @@ Four base component classes cover all entity management needs.
 
 ### 3.1 TreeEntity
 
-Used for hierarchical setup entities (`StakeholderCategory`, `Domain`). Manages real parent–child relationships stored in the database. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions.
+Used for hierarchical setup entities (`StakeholderCategory`, `Domain`, `ReferenceDocument`). Located in `activities/setup/tree-entity.js`. Manages real parent–child relationships stored in the database as `REFINES` edges — `parentId` is never stored as a node property. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child, Delete restricted to leaves).
+
+Concrete subclasses declare only three things — no methods required:
+
+| Declaration | Purpose |
+|---|---|
+| `entityLabel` | Singular display name (e.g. `'Domain'`) |
+| `parentScope` | `'all'` — any non-self item as parent; `'roots'` — root items only (max two levels) |
+| `fields` | Array of `{ name, label, type, required }` for entity-specific fields |
+
+`ReferenceDocument` additionally overrides `getDisplayName()` to append the version.
 
 ### 3.2 ListEntity
 
-Used for flat setup entities (`Wave`, `ReferenceDocument`, `Bandwidth`). Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
+Used for flat setup entities (`Wave`, `Bandwidth`). Located in `activities/setup/list-entity.js`. Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
 
 ### 3.3 CollectionEntity
 
