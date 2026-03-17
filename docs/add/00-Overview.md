@@ -12,6 +12,8 @@ ODIP supports the full lifecycle of operational content — from initial draftin
 
 ODIP is designed as a prototype for operational deployment management, with a functional web UI, REST API, and CLI tooling.
 
+NOTE: ODIP was formerly named ODP (for Operational Deployment Plan). Consequently, many code artefact names are still based on ODP rather than ODIP.
+
 ---
 
 ## 2. Key Concepts and Terminology

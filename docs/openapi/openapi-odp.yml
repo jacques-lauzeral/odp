@@ -8,7 +8,7 @@ info:
     name: ODP Development Team
 
 paths:
-  # ODP Edition CRUD Endpoints
+  # ODIP Edition CRUD Endpoints
   /odp-editions:
     get:
       summary: List all ODP editions
