@@ -1,0 +1,473 @@
+#!/bin/bash
+
+# odip-admin - Administration utility for ODIP (Podman/Kubernetes)
+#
+# Requires ODIP_HOME to be set in the environment.
+
+set -e
+
+if [[ -z "$ODIP_HOME" ]]; then
+    echo "Error: ODIP_HOME is not set. Add to your .bashrc:"
+    echo "  export ODIP_HOME=~/works/github/odp"
+    exit 1
+fi
+
+if [[ -z "$ODIP_DATA" ]]; then
+    echo "Error: ODIP_DATA is not set. Add to your .bashrc:"
+    echo "  export ODIP_DATA=~/odp-tool/odp-data/neo4j"
+    exit 1
+fi
+
+if [[ -z "$ODIP_BACKUP" ]]; then
+    echo "Error: ODIP_BACKUP is not set. Add to your .bashrc:"
+    echo "  export ODIP_BACKUP=~/odip-backups"
+    exit 1
+fi
+
+SERVER_URL="http://localhost:8080"
+
+# --- Top-level help ---
+
+usage() {
+    cat << 'EOF'
+Usage: odip-admin <command> [options]
+
+Commands:
+  start     Start the ODIP pod
+  stop      Stop the ODIP pod
+  restart   Stop and restart the ODIP pod
+  logs      Stream server logs
+  dump      Dump Neo4j database (with server standby)
+  load      Load Neo4j database (with server standby)
+  reset     Reset Neo4j database (with server standby)
+  standby   Signal server to enter standby mode
+  resume    Signal server to resume normal operation
+  dumps     List available backup slots
+
+Run 'odip-admin <command> -h' for command-specific options.
+EOF
+}
+
+# --- Helpers ---
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+resolve_yaml() {
+    case "$1" in
+        local) echo "${ODIP_HOME}/odip-deployment-local.yaml" ;;
+        ec)    echo "${ODIP_HOME}/odip-deployment-ec.yaml" ;;
+        *)     echo "Error: Unknown environment: $1 (expected: local or ec)" >&2; exit 1 ;;
+    esac
+}
+
+extract_data_dir() {
+    local yaml_file="$1" data_dir="$2"
+    if [[ -z "$data_dir" ]]; then
+        data_dir="$ODIP_DATA"
+        log "Using Neo4j data directory: $data_dir" >&2
+    fi
+    [[ ! -d "$data_dir" ]] && { echo "Error: Neo4j data directory does not exist: $data_dir" >&2; exit 1; }
+    echo "$data_dir"
+}
+
+extract_neo4j_image() {
+    local yaml_file="$1" image="$2"
+    if [[ -z "$image" ]]; then
+        [[ ! -f "$yaml_file" ]] && { echo "Error: YAML file not found: $yaml_file" >&2; exit 1; }
+        image=$(awk '/- name: neo4j/{found=1} found && /image:/{print $2; exit}' "$yaml_file")
+        if [[ -z "$image" ]]; then
+            image="yagi.cfmu.corp.eurocontrol.int:5000/neo4j:5-community"
+            log "Warning: Could not extract Neo4j image, using fallback: $image" >&2
+        else
+            log "Detected Neo4j image: $image" >&2
+        fi
+    fi
+    echo "$image"
+}
+
+signal_standby() {
+    log "Signalling server to enter standby"
+    curl -sf -X POST "${SERVER_URL}/admin/standby" || { echo "Error: Failed to signal standby" >&2; exit 1; }
+    log "Server in standby"
+}
+
+signal_resume() {
+    log "Signalling server to resume"
+    curl -sf -X POST "${SERVER_URL}/admin/resume" || { echo "Error: Failed to signal resume" >&2; exit 1; }
+    log "Server resumed"
+}
+
+neo4j_stop() {
+    log "Stopping Neo4j container"
+    podman stop odp-pod-neo4j
+}
+
+neo4j_start() {
+    log "Starting Neo4j container"
+    podman start odp-pod-neo4j
+    log "Waiting for Neo4j to be ready..."
+    sleep 10
+}
+
+# --- Commands ---
+
+cmd_start() {
+    local env="local" rebuild=false
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env)   env="$2"; shift 2 ;;
+            --rebuild)  rebuild=true; shift ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin start [options]
+
+  Start the ODIP pod.
+
+Options:
+  -e, --env <env>   Deployment environment: local (default) or ec
+      --rebuild     Rebuild web client image before starting
+  -h, --help        Show this help
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+    local yaml_file; yaml_file=$(resolve_yaml "$env")
+    if [[ "$rebuild" == true ]]; then
+        log "Rebuilding web client image"
+        podman build -f "${ODIP_HOME}/Dockerfile.web-client" -t odp-web-client:latest "$ODIP_HOME"
+    fi
+    log "Starting ODIP pod"
+    envsubst < "$yaml_file" | podman play kube -
+    log "ODIP pod started"
+}
+
+cmd_stop() {
+    local env="local"
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env)  env="$2"; shift 2 ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin stop [options]
+
+  Stop the ODIP pod.
+
+Options:
+  -e, --env <env>   Deployment environment: local (default) or ec
+  -h, --help        Show this help
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+    local yaml_file; yaml_file=$(resolve_yaml "$env")
+    log "Stopping ODIP pod"
+    envsubst < "$yaml_file" | podman play kube --down -
+    log "ODIP pod stopped"
+}
+
+cmd_restart() {
+    local env="local" rebuild=false
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env)   env="$2"; shift 2 ;;
+            --rebuild)  rebuild=true; shift ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin restart [options]
+
+  Stop and restart the ODIP pod.
+
+Options:
+  -e, --env <env>   Deployment environment: local (default) or ec
+      --rebuild     Rebuild web client image before restarting
+  -h, --help        Show this help
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+    local yaml_file; yaml_file=$(resolve_yaml "$env")
+    log "Stopping ODIP pod"
+    envsubst < "$yaml_file" | podman play kube --down -
+    if [[ "$rebuild" == true ]]; then
+        log "Rebuilding web client image"
+        podman build -f "${ODIP_HOME}/Dockerfile.web-client" -t odp-web-client:latest "$ODIP_HOME"
+    fi
+    log "Starting ODIP pod"
+    envsubst < "$yaml_file" | podman play kube -
+    log "ODIP pod restarted"
+}
+
+cmd_logs() {
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        cat << 'EOF'
+Usage: odip-admin logs [podman-logs-options]
+
+  Stream server logs. All options are passed through to podman logs.
+
+Examples:
+  odip-admin logs
+  odip-admin logs -f
+  odip-admin logs --tail 100
+  odip-admin logs --since 1h
+EOF
+        exit 0
+    fi
+    podman logs "$@" odp-pod-odp-server
+}
+
+cmd_dump() {
+    local env="local" backup_dir="" data_dir="" neo4j_image=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env)        env="$2"; shift 2 ;;
+            -b|--backup-dir) backup_dir="$2"; shift 2 ;;
+            -d|--data-dir)   data_dir="$2"; shift 2 ;;
+            -i|--image)      neo4j_image="$2"; shift 2 ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin dump [options]
+
+  Place server in standby, stop Neo4j, dump database, restart Neo4j, resume server.
+
+Options:
+  -e, --env <env>           Deployment environment: local (default) or ec
+  -b, --backup-dir <path>   Backup directory (default: ~/odip-backups/<timestamp>)
+  -d, --data-dir <path>     Neo4j data directory (default: auto-detect from YAML)
+  -i, --image <name>        Neo4j image (default: auto-detect from YAML)
+  -h, --help                Show this help
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+    local yaml_file; yaml_file=$(resolve_yaml "$env")
+    data_dir=$(extract_data_dir "$yaml_file" "$data_dir")
+    neo4j_image=$(extract_neo4j_image "$yaml_file" "$neo4j_image")
+    [[ -z "$backup_dir" ]] && backup_dir="${ODIP_BACKUP}/$(date +%Y%m%d-%H%M)"
+    log "Creating backup directory: $backup_dir"
+    mkdir -p "$backup_dir"
+    chmod 777 "$backup_dir"
+    signal_standby
+    neo4j_stop
+    log "Dumping database to: $backup_dir"
+    podman run --rm \
+        --entrypoint neo4j-admin \
+        -v "$data_dir":/data \
+        -v "$backup_dir":/backup \
+        "$neo4j_image" \
+        database dump neo4j --to-path=/backup
+    neo4j_start
+    signal_resume
+    log "Backup complete: $backup_dir/neo4j.dump"
+}
+
+cmd_load() {
+    local env="local" backup_dir="" data_dir="" neo4j_image=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env)        env="$2"; shift 2 ;;
+            -b|--backup-dir) backup_dir="$2"; shift 2 ;;
+            -d|--data-dir)   data_dir="$2"; shift 2 ;;
+            -i|--image)      neo4j_image="$2"; shift 2 ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin load [options]
+
+  Place server in standby, stop Neo4j, load database from backup, restart Neo4j, resume server.
+
+Options:
+  -e, --env <env>           Deployment environment: local (default) or ec
+  -b, --backup-dir <path>   Backup directory containing neo4j.dump (required)
+  -d, --data-dir <path>     Neo4j data directory (default: auto-detect from YAML)
+  -i, --image <name>        Neo4j image (default: auto-detect from YAML)
+  -h, --help                Show this help
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+    [[ -z "$backup_dir" ]] && { echo "Error: --backup-dir is required" >&2; exit 1; }
+    [[ ! -f "$backup_dir/neo4j.dump" ]] && { echo "Error: Backup file not found: $backup_dir/neo4j.dump" >&2; exit 1; }
+    local yaml_file; yaml_file=$(resolve_yaml "$env")
+    data_dir=$(extract_data_dir "$yaml_file" "$data_dir")
+    neo4j_image=$(extract_neo4j_image "$yaml_file" "$neo4j_image")
+    signal_standby
+    neo4j_stop
+    log "Loading database from: $backup_dir"
+    podman run --rm \
+        --entrypoint neo4j-admin \
+        -v "$data_dir":/data \
+        -v "$backup_dir":/backup \
+        "$neo4j_image" \
+        database load neo4j --from-path=/backup --overwrite-destination=true
+    neo4j_start
+    signal_resume
+    log "Restore complete"
+}
+
+cmd_reset() {
+    local env="local" target_dir="" data_dir="" neo4j_image=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -e|--env)      env="$2"; shift 2 ;;
+            -t|--target)   target_dir="$2"; shift 2 ;;
+            -d|--data-dir) data_dir="$2"; shift 2 ;;
+            -i|--image)    neo4j_image="$2"; shift 2 ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin reset [options]
+
+  Place server in standby, stop Neo4j, move data directory contents to target
+  (empty database on restart), restart Neo4j, resume server.
+  Requires YES confirmation. Data is moved, not deleted.
+
+Options:
+  -e, --env <env>        Deployment environment: local (default) or ec
+  -t, --target <path>    Target directory for moved data
+                         (default: ~/odip-backups/reset-<timestamp>)
+  -d, --data-dir <path>  Neo4j data directory (default: auto-detect from YAML)
+  -i, --image <name>     Neo4j image (default: auto-detect from YAML)
+  -h, --help             Show this help
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+    local yaml_file; yaml_file=$(resolve_yaml "$env")
+    data_dir=$(extract_data_dir "$yaml_file" "$data_dir")
+    neo4j_image=$(extract_neo4j_image "$yaml_file" "$neo4j_image")
+    [[ -z "$target_dir" ]] && target_dir="${ODIP_BACKUP}/reset-$(date +%Y%m%d-%H%M)"
+    echo "==> This will move all Neo4j data from:"
+    echo "      $data_dir"
+    echo "    to:"
+    echo "      $target_dir"
+    echo ""
+    read -r -p "Type YES to confirm: " CONFIRM
+    [[ "$CONFIRM" != "YES" ]] && { echo "Aborted."; exit 0; }
+    signal_standby
+    neo4j_stop
+    log "Creating target directory: $target_dir"
+    mkdir -p "$target_dir"
+    chmod 777 "$target_dir"
+    log "Moving data to: $target_dir"
+    podman run --rm --user root \
+        -v "$data_dir":/data \
+        -v "$target_dir":/target \
+        "$neo4j_image" \
+        bash -c "find /data -maxdepth 1 -mindepth 1 -exec mv {} /target/ \;"
+    neo4j_start
+    signal_resume
+    log "Reset complete. Previous data preserved at: $target_dir"
+}
+
+cmd_standby() {
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        cat << 'EOF'
+Usage: odip-admin standby
+
+  Signal the server to enter standby mode.
+  The server rejects all non-admin requests with 503 until resumed.
+EOF
+        exit 0
+    fi
+    signal_standby
+}
+
+cmd_resume() {
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        cat << 'EOF'
+Usage: odip-admin resume
+
+  Signal the server to resume normal operation after standby.
+EOF
+        exit 0
+    fi
+    signal_resume
+}
+
+format_age() {
+    local age_sec="$1"
+    if (( age_sec < 3600 )); then
+        echo "$((age_sec / 60))m ago"
+    elif (( age_sec < 86400 )); then
+        echo "$((age_sec / 3600))h ago"
+    else
+        echo "$((age_sec / 86400))d ago"
+    fi
+}
+
+cmd_dumps() {
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        echo "Usage: odip-admin dumps"
+        echo ""
+        echo "  List available backup slots and ad-hoc dumps with file size and age."
+        exit 0
+    fi
+
+    local base="${ODIP_BACKUP}"
+    local now; now=$(date +%s)
+
+    printf "%-12s %-10s %s\n" "SLOT" "SIZE" "AGE"
+    printf "%-12s %-10s %s\n" "------------" "----------" "-------"
+
+    for slot in daily weekly monthly; do
+        local dump="$base/auto/$slot/neo4j.dump"
+        if [[ -f "$dump" ]]; then
+            local size mtime age_sec
+            size=$(du -sh "$dump" | cut -f1)
+            mtime=$(stat -c %Y "$dump")
+            age_sec=$(( now - mtime ))
+            printf "%-12s %-10s %s\n" "$slot" "$size" "$(format_age $age_sec)"
+        else
+            printf "%-12s %-10s %s\n" "$slot" "-" "no dump"
+        fi
+    done
+
+    # Ad-hoc dumps: timestamped directories containing neo4j.dump
+    local found_adhoc=false
+    for dir in "$base"/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]; do
+        local dump="$dir/neo4j.dump"
+        if [[ -f "$dump" ]]; then
+            if [[ "$found_adhoc" == false ]]; then
+                printf "\n%-12s %-10s %s\n" "AD-HOC" "SIZE" "AGE"
+                printf "%-12s %-10s %s\n" "------------" "----------" "-------"
+                found_adhoc=true
+            fi
+            local size mtime age_sec label
+            size=$(du -sh "$dump" | cut -f1)
+            mtime=$(stat -c %Y "$dump")
+            age_sec=$(( now - mtime ))
+            label=$(basename "$dir")
+            printf "%-12s %-10s %s\n" "$label" "$size" "$(format_age $age_sec)"
+        fi
+    done
+}
+
+# --- Dispatch ---
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
+
+COMMAND="$1"; shift
+
+case "$COMMAND" in
+    start)     cmd_start "$@" ;;
+    stop)      cmd_stop "$@" ;;
+    restart)   cmd_restart "$@" ;;
+    logs)      cmd_logs "$@" ;;
+    dump)      cmd_dump "$@" ;;
+    load)      cmd_load "$@" ;;
+    reset)     cmd_reset "$@" ;;
+    standby)   cmd_standby "$@" ;;
+    resume)    cmd_resume "$@" ;;
+    dumps)     cmd_dumps "$@" ;;
+    -h|--help) usage ;;
+    *) echo "Unknown command: $COMMAND"; usage; exit 1 ;;
+esac

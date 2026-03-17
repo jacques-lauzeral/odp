@@ -7,7 +7,7 @@ spec:
 
     # Neo4j Database
     - name: neo4j
-      image: yagi.cfmu.corp.eurocontrol.int:5000/neo4j:5.15
+      image: docker.io/neo4j:5.15
       ports:
         - containerPort: 7474
           hostPort: 7474
@@ -24,7 +24,7 @@ spec:
 
     # ODP Server
     - name: odp-server
-      image: yagi.cfmu.corp.eurocontrol.int:5000/node:20
+      image: docker.io/node:20
       workingDir: /app/workspace/server
       ports:
         - containerPort: 80
@@ -39,9 +39,13 @@ spec:
           value: "neo4j"
         - name: NEO4J_PASSWORD
           value: "password123"
+        - name: STATIC_CONTENT_PATH
+          value: "$ODIP_HOME/publication/web-site/static"
       volumeMounts:
         - name: odp-code
           mountPath: /app
+        - name: static-content
+          mountPath: $ODIP_HOME/publication/web-site/static
 
     # Web Client
     - name: web-client
@@ -57,9 +61,13 @@ spec:
   volumes:
     - name: neo4j-data
       hostPath:
-        path: /auto/local_build/dhws097/ssd1/odp-data/neo4j
+        path: $ODIP_DATA
         type: Directory
     - name: odp-code
       hostPath:
-        path: /auto/home/lau/works/odp/odp-main
+        path: $ODIP_HOME
+        type: Directory
+    - name: static-content
+      hostPath:
+        path: $ODIP_HOME/publication/web-site/static
         type: Directory

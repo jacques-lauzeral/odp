@@ -13,6 +13,7 @@ import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
 import publicationRoutes from './routes/publication.js';
 import MapperRegistry from './services/import/MapperRegistry.js';
+import { standbyMiddleware, adminRouter } from './routes/admin.js';
 
 const app = express();
 const PORT = process.env.PORT || 80;
@@ -63,6 +64,10 @@ app.use((req, res, next) => {
 
     next();
 });
+
+// Standby middleware — must be before all routes
+app.use(standbyMiddleware);
+app.use('/admin', adminRouter);
 
 // Health check
 app.get('/hello', (req, res) => {

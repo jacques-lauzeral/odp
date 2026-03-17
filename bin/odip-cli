@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# odip-cli - Command-line interface launcher for ODIP
+#
+# Requires ODIP_HOME to be set in the environment.
+#
+# Usage:
+#   odip-cli [--user <name>] <command> [args...]
+#
+# If --user is not provided, defaults to the current OS user ($USER).
+#
+# Examples:
+#   odip-cli stakeholder list
+#   odip-cli --user jack requirement list
+#   odip-cli document tree
+
+set -e
+
+if [[ -z "$ODIP_HOME" ]]; then
+    echo "Error: ODIP_HOME is not set. Add to your .bashrc:"
+    echo "  export ODIP_HOME=~/works/github/odp"
+    exit 1
+fi
+
+CLI_ENTRY="$ODIP_HOME/workspace/cli/src/index.js"
+
+if [[ ! -f "$CLI_ENTRY" ]]; then
+    echo "Error: CLI entry point not found: $CLI_ENTRY"
+    exit 1
+fi
+
+# Inject --user if not already provided
+if [[ "$1" == "--user" ]]; then
+    exec node "$CLI_ENTRY" "$@"
+else
+    exec node "$CLI_ENTRY" --user "$USER" "$@"
+fi

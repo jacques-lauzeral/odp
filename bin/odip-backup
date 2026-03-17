@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# odip-backup - Automated periodic backup for ODIP Neo4j database
+#
+# Requires ODIP_HOME to be set in the environment.
+#
+# Retention policy:
+#   daily   — 1 backup, refreshed every 24 hours
+#   weekly  — 1 backup, promoted from daily every 7 days
+#   monthly — 1 backup, promoted from weekly every 28 days
+#
+# Promotion uses last-modified timestamps on dump files — no external state.
+#
+# Usage (typically called from cron):
+#   odip-backup [-e local|ec] [-b <backup-base-dir>]
+#
+# Cron example (nightly at 02:00):
+#   0 2 * * *  odip-backup >> ~/odip-backups/auto/odip-backup.log 2>&1
+
+set -e
+
+if [[ -z "$ODIP_HOME" ]]; then
+    echo "Error: ODIP_HOME is not set."
+    exit 1
+fi
+
+if [[ -z "$ODIP_BACKUP" ]]; then
+    echo "Error: ODIP_BACKUP is not set. Add to your .bashrc:"
+    echo "  export ODIP_BACKUP=~/odip-backups"
+    exit 1
+fi
+
+# --- Defaults ---
+ENV="local"
+BACKUP_BASE=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ADMIN_SCRIPT="$SCRIPT_DIR/odip-admin"
+
+# --- Thresholds (seconds) ---
+DAILY_THRESHOLD=$(( 24 * 3600 ))         # refresh daily   after 24h
+WEEKLY_THRESHOLD=$(( 7 * 24 * 3600 ))    # promote weekly  after 7 days
+MONTHLY_THRESHOLD=$(( 28 * 24 * 3600 ))  # promote monthly after 28 days
+
+usage() {
+    cat << 'EOF'
+Usage: odip-backup [options]
+
+Options:
+  -e, --env <env>           Deployment environment: local (default) or ec
+  -b, --backup-base <path>  Base directory for auto backups
+                            default: $ODIP_BACKUP/auto
+  -h, --help                Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -e|--env)   ENV="$2"; shift 2 ;;
+        -b|--backup-base) BACKUP_BASE="$2"; shift 2 ;;
+        -h|--help)  usage; exit 0 ;;
+        *)          echo "Unknown option: $1"; usage; exit 1 ;;
+    esac
+done
+
+[[ -z "$BACKUP_BASE" ]] && BACKUP_BASE="${ODIP_BACKUP}/auto"
+
+DAILY_DIR="$BACKUP_BASE/daily"
+WEEKLY_DIR="$BACKUP_BASE/weekly"
+MONTHLY_DIR="$BACKUP_BASE/monthly"
+
+DAILY_DUMP="$DAILY_DIR/neo4j.dump"
+WEEKLY_DUMP="$WEEKLY_DIR/neo4j.dump"
+MONTHLY_DUMP="$MONTHLY_DIR/neo4j.dump"
+
+# --- Helpers ---
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+file_age_seconds() {
+    local file="$1"
+    if [[ ! -f "$file" ]]; then echo 999999999; return; fi
+    local mtime now
+    mtime=$(stat -c %Y "$file")
+    now=$(date +%s)
+    echo $(( now - mtime ))
+}
+
+promote() {
+    local src="$1"
+    local dst_dir="$2"
+    local dst="$dst_dir/neo4j.dump"
+    local label="$3"
+    log "Promoting to $label slot: $dst"
+    mkdir -p "$dst_dir"
+    cp "$src" "${dst}.tmp"
+    mv "${dst}.tmp" "$dst"
+}
+
+[[ ! -f "$ADMIN_SCRIPT" ]] && { echo "Error: admin script not found: $ADMIN_SCRIPT"; exit 1; }
+
+# --- Main ---
+
+log "=== ODIP backup start (env=$ENV) ==="
+
+# Step 1 — Promotions (oldest first, before fresh dump)
+
+MONTHLY_AGE=$(file_age_seconds "$MONTHLY_DUMP")
+if (( MONTHLY_AGE >= MONTHLY_THRESHOLD )) && [[ -f "$WEEKLY_DUMP" ]]; then
+    promote "$WEEKLY_DUMP" "$MONTHLY_DIR" "monthly"
+fi
+
+WEEKLY_AGE=$(file_age_seconds "$WEEKLY_DUMP")
+if (( WEEKLY_AGE >= WEEKLY_THRESHOLD )) && [[ -f "$DAILY_DUMP" ]]; then
+    promote "$DAILY_DUMP" "$WEEKLY_DIR" "weekly"
+fi
+
+# Step 2 — Fresh daily dump if due
+DAILY_AGE=$(file_age_seconds "$DAILY_DUMP")
+if (( DAILY_AGE >= DAILY_THRESHOLD )); then
+    log "Taking fresh dump (daily slot)"
+    mkdir -p "$DAILY_DIR"
+    chmod 777 "$DAILY_DIR"
+    bash "$ADMIN_SCRIPT" dump -e "$ENV" -b "$DAILY_DIR"
+    log "Daily dump complete"
+else
+    NEXT=$(( DAILY_THRESHOLD - DAILY_AGE ))
+    log "Daily dump not due yet (next in ~$(( NEXT / 3600 ))h $(( (NEXT % 3600) / 60 ))m)"
+fi
+
+log "=== ODIP backup done ==="

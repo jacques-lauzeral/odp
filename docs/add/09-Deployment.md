@@ -24,7 +24,7 @@ The server container mounts the source code tree as a host volume and runs `node
 
 ### 3.1 Environment Differences
 
-| Aspect | Local (`odp-deployment-local.yaml`) | Eurocontrol (`odp-deployment-ec.yaml`) |
+| Aspect | Local (`odip-deployment-local.yaml`) | Eurocontrol (`odip-deployment-ec.yaml`) |
 |---|---|---|
 | Base images | `docker.io/neo4j:5.15`, `docker.io/node:24` | `yagi.cfmu.corp.eurocontrol.int:5000/*` |
 | Neo4j data | `~/odp-data/neo4j` | `/auto/local_build/dhws097/ssd1/odp-data/neo4j` |
@@ -67,15 +67,17 @@ The Dockerfile copies the shared package into the web client source tree at buil
 ```
 odp-main/
 ├── bin/
-│   └── odp-admin-podman.bash       Backup / restore utility
+│   ├── odip-admin              Pod lifecycle, backup / restore (manual)
+│   ├── odip-backup             Automated periodic backup
+│   └── odip-cli                CLI launcher
 ├── workspace/
 │   ├── cli/                        CLI tool
 │   ├── server/                     Express API server
 │   ├── shared/                     @odp/shared package
 │   └── web-client/                 Web client
 ├── Dockerfile.web-client
-├── odp-deployment-ec.yaml
-├── odp-deployment-local.yaml
+├── odip-deployment-ec.yaml
+├── odip-deployment-local.yaml
 └── package.json                    npm workspace root
 ```
 
@@ -93,7 +95,26 @@ In the Eurocontrol environment the web client is accessible from remote browsers
 
 ---
 
-## 6. Deployment Procedures
+## 6. Environment Variables
+
+Add to `~/.bashrc`:
+
+```bash
+export ODIP_HOME=/home/jacques/works/github/odp
+export ODIP_DATA=~/odip-data
+export ODIP_BACKUP=~/odip-backups
+export PATH="$ODIP_HOME/bin:$PATH"
+```
+
+| Variable | Purpose |
+|---|---|
+| `ODIP_HOME` | Repository root — resolves YAML files, Dockerfile, CLI entry point |
+| `ODIP_DATA` | Neo4j data directory (`~/odip-data`) — used by `odip-admin` dump/load/reset and resolved in YAML via `envsubst` |
+| `ODIP_BACKUP` | Backup base directory — default root for all backup slots |
+
+---
+
+## 7. Deployment Procedures
 
 ### Local Environment
 
@@ -102,14 +123,14 @@ In the Eurocontrol environment the web client is accessible from remote browsers
 git clone <repository-url> odp-main && cd odp-main
 npm install
 mkdir -p ~/odp-data/neo4j
-# Edit odp-deployment-local.yaml: replace USERNAME with your username
+# Edit odip-deployment-local.yaml: replace USERNAME with your username
 podman build -f Dockerfile.web-client -t odp-web-client:latest .
 
 # Start
-podman play kube odp-deployment-local.yaml
+podman play kube odip-deployment-local.yaml
 
 # Stop
-podman play kube --down odp-deployment-local.yaml
+podman play kube --down odip-deployment-local.yaml
 ```
 
 ### Eurocontrol Environment
@@ -123,7 +144,7 @@ chmod 777 /auto/local_build/dhws097/ssd1/odp-data/neo4j
 rm -rf node_modules/sharp
 npm install --os=linux --libc=musl --cpu=x64 sharp
 
-podman play kube odp-deployment-ec.yaml
+podman play kube odip-deployment-ec.yaml
 ```
 
 ### Verify
@@ -137,10 +158,90 @@ curl -H "x-user-id: test" http://localhost:8080/hello
 ```
 
 ---
+## 8. Data Management
 
-## 7. Data Management
+Neo4j data persists in the host-mounted volume. No database migrations are required — the schema is created implicitly by the store layer on first use (Neo4j constraints are created at startup).
 
-Neo4j data persists in the host-mounted volume. A backup/restore utility is provided at `bin/odp-admin-podman.bash`. No database migrations are required — the schema is created implicitly by the store layer on first use (Neo4j constraints are created at startup).
+### 7.1 Manual Backup / Restore — `odip-admin`
+
+`dump`, `load`, and `reset` operate on the Neo4j container only (not the whole pod). Before stopping Neo4j, the server is signalled to enter standby mode (503 on all non-admin requests); it resumes automatically once Neo4j is back up.
+
+| Command | Effect |
+|---|---|
+| `dump` | Standby → stop Neo4j → `neo4j-admin dump` → start Neo4j → resume |
+| `load` | Standby → stop Neo4j → `neo4j-admin load --overwrite` → start Neo4j → resume |
+| `reset` | Standby → stop Neo4j → move data dir → start Neo4j → resume (empty DB) |
+
+```bash
+odip-admin dump                              # default: ~/odip-backups/<timestamp>/neo4j.dump
+odip-admin dump -b /path/to/backup
+odip-admin load -b ~/odip-backups/20260211-1430
+odip-admin reset                             # requires YES confirmation; data moved not deleted
+odip-admin dump -e ec                        # Eurocontrol environment
+odip-admin standby                           # manual standby
+odip-admin resume                            # manual resume
+```
+
+### 7.2 Pod Lifecycle — `odip-admin`
+
+```bash
+odip-admin start
+odip-admin stop
+odip-admin restart
+odip-admin restart --rebuild                 # rebuilds web client image before restart
+odip-admin logs                              # stream server logs
+odip-admin logs --tail 50                   # last 50 lines
+odip-admin logs -f                          # follow
+```
+
+### 7.3 Automated Backup — `odip-backup`
+
+Three-slot rotation with fixed filenames. Cron wakes the script nightly; the age-threshold logic decides what action to take.
+
+| Slot | File | Cadence | Source |
+|---|---|---|---|
+| daily | `auto/daily/neo4j.dump` | every 24h | fresh dump via `odip-admin dump` |
+| weekly | `auto/weekly/neo4j.dump` | every 7 days | promoted from daily |
+| monthly | `auto/monthly/neo4j.dump` | every 28 days | promoted from weekly |
+
+Promotions run before the fresh dump so the pre-dump state propagates up the chain.
+
+**Setup**
+
+```bash
+chmod +x bin/odip-backup
+mkdir -p ~/odip-backups/auto
+```
+
+Add to crontab (`crontab -e`):
+
+```cron
+# Local environment — nightly at 02:00
+0 2 * * *  odip-backup >> ~/odip-backups/auto/odip-backup.log 2>&1
+
+# Eurocontrol environment — nightly at 02:00
+0 2 * * *  odip-backup -e ec >> ~/odip-backups/auto/odip-backup.log 2>&1
+```
+
+**Manual invocation**
+
+```bash
+odip-backup                                  # local, default base dir
+odip-backup -e ec
+odip-backup -b /path/to/backup-base
+```
+
+### 7.4 Server Standby Protocol
+
+`odip-admin` signals the API server before stopping Neo4j and after restarting it, via two localhost-only endpoints:
+
+| Endpoint | Effect |
+|---|---|
+| `POST /admin/standby` | Server rejects all non-admin requests with 503 |
+| `POST /admin/resume` | Server resumes normal operation |
+| `GET /admin/status` | Returns `{ status: "standby" \| "running" }` |
+
+The server module is `server/src/routes/admin.js`; it exports `standbyMiddleware` (registered before all other routes in `index.js`) and `adminRouter` (mounted at `/admin`).
 
 ---
 
