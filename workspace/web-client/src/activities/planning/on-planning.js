@@ -330,7 +330,7 @@ export default class ONPlanning {
             },
             {
                 label: 'End', description: 'Expected implementation end',
-                eventTypes: ['period-end'], date: new Date(endYear, 0, 1)
+                eventTypes: ['period-end'], date: new Date(endYear + 1, 0, 1)
             }
         ];
     }
@@ -341,7 +341,7 @@ export default class ONPlanning {
             .flatMap(on => on.tentative);
 
         if (years.length > 0) {
-            return { startYear: Math.min(...years), endYear: Math.max(...years) };
+            return { startYear: Math.min(...years), endYear: Math.max(...years) + 1 };
         }
         const now = new Date().getFullYear();
         return { startYear: now, endYear: now + 4 };

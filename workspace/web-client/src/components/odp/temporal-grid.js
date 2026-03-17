@@ -395,7 +395,8 @@ export default class TemporalGrid {
                 <div class="temporal-axis">
                     ${visibleTicks.map(tick => `
                         <div class="temporal-tick-header"
-                             style="left: ${this._datePosition(tick.date, visibleTicks)}%">
+                             style="left: ${this._datePosition(tick.date, visibleTicks)}%"
+                             title="${this._escapeAttr(tick.date.toLocaleDateString('en-GB'))}">
                             <div class="temporal-tick-label">${this._escapeHtml(tick.label)}</div>
                             <div class="temporal-tick-line"></div>
                         </div>
