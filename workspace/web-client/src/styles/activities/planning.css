@@ -84,6 +84,7 @@
     flex-direction: column;
     border: none;
     border-radius: 0;
+    --temporal-label-width: 220px;
 }
 
 .on-plan-grid-pane .temporal-grid-inner {
@@ -131,26 +132,8 @@
 
 /* --- Label column in planning (overrides temporal-components.css) ----------- */
 
-.on-plan-grid-pane .temporal-row-label {
-    width: 220px;
-    flex-shrink: 0;
-    padding: 0 var(--space-3);
-    border-right: 1px solid var(--border-primary);
-    display: flex;
-    align-items: center;
-    font-size: var(--font-size-sm);
-    overflow: hidden;
-}
-
-.on-plan-grid-pane .temporal-label-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .on-plan-grid-pane .temporal-row-label-header {
-    width: 220px;
-    flex-shrink: 0;
+    width: var(--temporal-label-width, 220px);
 }
 
 /* --- Disabled tab ----------------------------------------------------------- */

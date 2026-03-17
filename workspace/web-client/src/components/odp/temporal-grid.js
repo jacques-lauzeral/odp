@@ -36,6 +36,8 @@ export default class TemporalGrid {
         this.endYear   = options.endYear   ?? (this.startYear + 4);
         this.ticks = [];
         this.renderingSpec = null;
+        // Label column width in px — user-resizable via drag handle
+        this.labelWidth = 220;
         // Insertion-ordered Map of rows
         // { id, kind, label, milestones, parentId?, expanded? }
         this.rows = new Map();
@@ -203,7 +205,7 @@ export default class TemporalGrid {
         const visibleTicks = this._getVisibleTicks();
 
         this.container.innerHTML = `
-            <div class="temporal-grid">
+            <div class="temporal-grid" style="--temporal-label-width: ${this.labelWidth}px">
                 <div class="temporal-zoom-bar">
                     ${this._renderZoomControl()}
                 </div>
@@ -214,6 +216,7 @@ export default class TemporalGrid {
                     <div class="temporal-body" id="temporalBody">
                         ${this._renderAllRows(visibleTicks)}
                     </div>
+                    <div class="temporal-resize-handle" id="temporalResizeHandle" title="Drag to resize"></div>
                 </div>
             </div>
         `;
@@ -266,7 +269,8 @@ export default class TemporalGrid {
         return `
             <div class="temporal-separator-row" data-row-id="${this._escapeAttr(row.id)}">
                 <span class="temporal-toggle-icon" data-toggle-id="${this._escapeAttr(row.id)}">${toggleIcon}</span>
-                <span class="temporal-separator-label">${this._escapeHtml(row.label)}</span>
+                <span class="temporal-separator-label"
+                      title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
             </div>
         `;
     }
@@ -279,7 +283,8 @@ export default class TemporalGrid {
                  data-row-id="${this._escapeAttr(row.id)}" data-kind="group">
                 <div class="temporal-row-label temporal-group-label">
                     <span class="temporal-toggle-icon" data-toggle-id="${this._escapeAttr(row.id)}">${toggleIcon}</span>
-                    <span class="temporal-label-text">${this._escapeHtml(row.label)}</span>
+                    <span class="temporal-label-text"
+                          title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
                 </div>
                 <div class="temporal-row-track">
                     <div class="temporal-row-baseline"></div>
@@ -297,7 +302,8 @@ export default class TemporalGrid {
                  data-row-id="${this._escapeAttr(row.id)}" data-kind="child"
                  data-parent-id="${this._escapeAttr(row.parentId)}">
                 <div class="temporal-row-label temporal-child-label">
-                    <span class="temporal-label-text">${this._escapeHtml(row.label)}</span>
+                    <span class="temporal-label-text"
+                          title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
                 </div>
                 <div class="temporal-row-track">
                     <div class="temporal-row-baseline"></div>
@@ -314,7 +320,8 @@ export default class TemporalGrid {
             <div class="temporal-row ${isSelected ? 'temporal-row--selected' : ''}"
                  data-row-id="${this._escapeAttr(row.id)}" data-kind="timeline">
                 <div class="temporal-row-label">
-                    <span class="temporal-label-text">${this._escapeHtml(row.label)}</span>
+                    <span class="temporal-label-text"
+                          title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
                 </div>
                 <div class="temporal-row-track">
                     <div class="temporal-row-baseline"></div>
@@ -498,6 +505,7 @@ export default class TemporalGrid {
     _bindEvents() {
         if (!this.container) return;
         this._bindZoomEvents();
+        this._bindResizeHandle();
 
         const body = this.container.querySelector('#temporalBody');
         if (!body) return;
@@ -515,6 +523,49 @@ export default class TemporalGrid {
                 e.stopPropagation();
                 this._toggleGroup(toggle.dataset.toggleId);
             });
+        });
+
+        // Separator toggle icons (in separator rows, outside .temporal-body)
+        this.container.querySelectorAll('.temporal-separator-row .temporal-toggle-icon').forEach(toggle => {
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._toggleGroup(toggle.dataset.toggleId);
+            });
+        });
+    }
+
+    _bindResizeHandle() {
+        const handle = this.container.querySelector('#temporalResizeHandle');
+        if (!handle) return;
+
+        let startX = 0;
+        let startWidth = 0;
+
+        const onMouseMove = (e) => {
+            const delta = e.clientX - startX;
+            const newWidth = Math.max(80, Math.min(500, startWidth + delta));
+            this.labelWidth = newWidth;
+            // Update CSS variable live without full re-render
+            const grid = this.container.querySelector('.temporal-grid');
+            if (grid) grid.style.setProperty('--temporal-label-width', `${newWidth}px`);
+            handle.style.left = `${newWidth}px`;
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+        };
+
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startWidth = this.labelWidth;
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
         });
     }
 
