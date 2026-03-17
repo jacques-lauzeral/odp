@@ -20,8 +20,7 @@ web-client/src/
 ├── components/
 │   ├── common/         Global navigation, error handling
 │   ├── setup/          TreeEntity, ListEntity base classes
-│   └── odp/            CollectionEntity, TreeTableEntity, AbstractTimelineGrid,
-│                       TimelineGrid, GanttGrid, form base classes
+│   └── odp/            CollectionEntity, TreeTableEntity, TemporalGrid, form base classes
 └── shared/             API client, utilities, error handling
 ```
 
@@ -76,138 +75,166 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 
 ---
 
-## 5. Temporal Grid Components
+## 5. TemporalGrid Component
 
-Two temporal visualisation components — `TimelineGrid` (OC milestones, wave-based axis) and `GanttGrid` (ON tentative periods, year-based axis) — share a common base class `AbstractTimelineGrid`.
+`TemporalGrid` (`components/odp/temporal-grid.js`) is a single generic component for all temporal visualisations. It renders a horizontal grid with a continuous **calendar-based time axis** and a structured row hierarchy. All domain knowledge lives in the caller.
 
-### 5.1 AbstractTimelineGrid
+### 5.1 Data Model
 
-`AbstractTimelineGrid` (`components/odp/abstract-timeline-grid.js`) owns all logic that is independent of the column unit (wave vs year):
+```javascript
+// TimelineMilestone
+{
+    label: string,        // short display label
+    description: string,  // tooltip / detail text
+    eventTypes: string[], // one or more event type keys
+    date: Date            // calendar position
+}
+```
 
-- Container and data lifecycle (`render()`, `setData()`, `cleanup()`)
-- Selection state and `selectItem()` / `updateSelectionUI()`
-- Time window state and `updateTimeWindow(startDate, endDate)`
-- Zoom control rendering and event binding (see §5.3)
-- `renderContent()` skeleton: header + body loop
-- `bindEvents()` for row selection
-- Helper utilities: `getItemId()`, `escapeHtml()`
+### 5.2 Row Taxonomy
 
-The following methods are **abstract** — concrete subclasses must override them:
+Four row kinds are supported, rendered in insertion order:
 
-| Method | Responsibility |
+| Kind | Description |
 |---|---|
-| `initializeTimeWindow()` | Compute default start/end from available data |
-| `getVisibleColumns()` | Return ordered array of column descriptors within time window |
-| `calculateColumnPosition(col, allCols)` | Return `%` position for a column |
-| `renderHeader(cols)` | Render the column header row |
-| `renderRow(item, cols)` | Render a single data row |
-| `applyFilters()` | Filter `this.data` into `this.filteredData` |
+| `separator` | Full-width label spanning both label and axis columns. No timeline track, no selection. Used as a visual section header (e.g. DrG name). |
+| `group` | Label column + timeline track + expand/collapse toggle (`▶/▼`). Collapsing hides all child rows of this group. Expand state is preserved across re-renders. |
+| `child` | Indented label column + timeline track. Visibility controlled by parent group's expanded state. |
+| `timeline` | Flat label column + timeline track. No hierarchy — used by `ChangesEntity`. |
 
-### 5.2 TimelineGrid (OC / wave-based)
+### 5.3 Public API
 
-`TimelineGrid extends AbstractTimelineGrid` (`components/odp/timeline-grid.js`). Concrete implementation for the Changes temporal perspective.
+#### Time axis
 
-- `initializeTimeWindow()` — defaults to all future setup waves within a 3-year horizon; `ChangesEntity.calculateOptimalTimeWindow()` computes the actual bounds from `setupData.waves` and calls `updateTimeWindow()`.
-- `getVisibleColumns()` — filters `setupData.waves` to those falling within the time window; returns wave descriptors sorted chronologically.
-- `calculateColumnPosition()` — distributes wave columns evenly with 5% padding.
-- `renderHeader()` — renders wave labels (`2027 Q1`, `2028`, etc.) with vertical guide lines.
-- `renderRow()` — renders a change row with baseline, milestone pixmaps, and connector lines (see §5.5–5.7).
-- `applyFilters()` — excludes changes that have no milestones matching the active `milestoneFilters` within the time window.
+```javascript
+setTimeInterval(startYear, endYear)   // set visible interval; fires timeIntervalListeners
+setTicks(ticks)                       // ticks: [{ label: string, date: Date }]
+getTimeInterval()                     // → { startYear, endYear }
+addTimeIntervalUpdateListener(fn)     // fn(startYear, endYear)
+```
 
-Additional public API specific to `TimelineGrid`:
+#### Milestone rendering
 
-- `setMilestoneFilters(filters)` — updates the active event-type filter array and re-renders.
-- `selectMilestone(itemId, milestoneKey)` — programmatic milestone selection.
+```javascript
+setMilestoneRendering(spec)
+```
 
-### 5.3 Zoom Control
+One call per instance before adding rows. Two modes:
 
-`AbstractTimelineGrid` renders a zoom control bar above the grid. The control consists of two text inputs labelled **From** and **To**, sharing the same parse/validate/render logic as the `tentative` form field type (§10.5):
+**Icon mode** — one marker per milestone, styled by event type:
 
-- Input format: `YYYY` (single year) or `YYYY-ZZZZ` (year range), validated by `parseYearPeriod(str)`.
-- `parseYearPeriod(str)` → `{ start: Date, end: Date }` is a shared utility in `shared/year-period.js`. A single year `YYYY` maps to `[YYYY/01/01, YYYY+1/01/01[`. A range `YYYY-ZZZZ` maps to `[YYYY/01/01, ZZZZ+1/01/01[`.
-- On valid input, the control calls `this.updateTimeWindow(start, end)` on the owning grid instance.
-- Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`). The zoom control enforces these bounds during validation.
-- The current window is displayed as a read-only `YYYY-ZZZZ` label beside the inputs, updated on every `updateTimeWindow()` call.
+```javascript
+{ mode: 'icon', eventTypes: { 'period-start': { icon: '▶', colour: '#2563eb' }, ... } }
+```
 
-Both `TimelineGrid` and `GanttGrid` inherit this control without modification.
+**Pixmap mode** — a `rows × cols` pixel grid per milestone:
 
-### 5.4 GanttGrid (ON / year-based)
+```javascript
+{
+    mode: 'pixmap', rows: 1, cols: 3,
+    eventTypes: {
+        'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
+        'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
+        'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
+    }
+}
+```
 
-`GanttGrid extends AbstractTimelineGrid` (`components/odp/gantt-grid.js`). Concrete implementation for the ON Plan temporal perspective.
+#### Row management
 
-- `initializeTimeWindow()` — defaults to the union of all `tentative` periods across the loaded ON dataset. Falls back to current year + 5 years if no tentative periods are set.
-- `getVisibleColumns()` — returns one column descriptor per integer year within the time window.
-- `calculateColumnPosition()` — distributes year columns evenly with 5% padding (same algorithm as `TimelineGrid`).
-- `renderHeader()` — renders year labels (`2027`, `2028`, etc.) with vertical guide lines.
-- `renderRow()` — renders one row per ON. If the ON has a `tentative` period, a horizontal bar spans from `tentative.start` to `tentative.end` (inclusive) across the year columns. ONs without a `tentative` period render an empty row with reserved vertical space — no bar is drawn.
-- `applyFilters()` — passes all items through (no row exclusion); filtering is handled upstream by `ONPlanning` before `setData()` is called.
+```javascript
+addSeparatorRow(id, label)
+addGroupRow(id, label, milestones)
+addChildRow(id, parentId, label, milestones)
+addTimeLine(id, label, milestones)      // flat row — used by ChangesEntity
+updateTimeLine(id, milestones)
+removeRow(id)
+clearRows()
+```
 
-`GanttGrid` has no milestone-specific API — `setMilestoneFilters` and `selectMilestone` are not present.
+All row-management calls trigger a full re-render. Rows are rendered in insertion order.
+
+#### Selection
+
+```javascript
+addSelectionListener(fn)              // fn(id) — fires on every click, always
+setTimeLineSelected(id, boolean)      // programmatic selection; does NOT fire listeners
+getSelectedTimeLine()                 // → id | null
+```
+
+#### Lifecycle
+
+```javascript
+render(container)
+cleanup()
+```
+
+### 5.4 Connector Lines
+
+When a row has two or more milestones visible within the current time interval, the component draws horizontal connector lines between adjacent milestones (sorted by date). Milestones outside the visible interval are not connected.
+
+### 5.5 Zoom Control
+
+`TemporalGrid` renders a zoom control bar above the grid — a single text input accepting `YYYY` or `YYYY-ZZZZ` format:
+
+- Delegates parsing to `parseYearPeriod()` from `shared/year-period.js`.
+- On valid input calls `setTimeInterval(startYear, endYear)`, which fires `timeIntervalListeners`.
+- Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`).
 
 ---
 
 ## 6. Temporal Perspective (Changes)
 
-The `ChangesEntity` is the only entity in the Elaboration activity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TimelineGrid` (`components/odp/timeline-grid.js`).
+The `ChangesEntity` is the only entity in the Elaboration activity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TemporalGrid` using flat `timeline` rows.
 
 ### 6.1 Layout
 
-The temporal view renders a horizontal grid:
+The temporal view renders a horizontal grid with a label column (change code/title) and a timeline track per row. Wave-based tick marks serve as the time axis.
 
-- **Label column** (left) — change title and ID, one row per change
-- **Timeline area** (right) — wave columns with milestone markers per row
-- A horizontal baseline runs across each change row; milestone pixmaps and connector lines are overlaid on it
+### 6.2 Time Interval and Ticks
 
-The grid header shows wave labels (`2027 Q1`, `2028`, etc.) with vertical guide lines. Only waves that fall within the current time window are shown as columns.
+`ChangesEntity.calculateOptimalTimeWindow()` computes the default interval from `setupData.waves` (earliest to latest future wave) on first activation. It calls `temporalGrid.setTimeInterval(startYear, endYear)` and `temporalGrid.setTicks(waveTicks)` where `waveTicks` is the array of `{ label, date }` descriptors derived from `setupData.waves` using `implementationDate` as the wave date.
 
-### 6.2 Time Window
+Changes with no milestones within the current time interval are excluded before `addTimeLine` calls. `_feedTemporalGrid()` in `ChangesEntity` performs this pre-filter and calls `clearRows()` then re-adds all visible changes.
 
-The default time window spans all future setup waves (from the earliest future wave to the latest). `ChangesEntity.calculateOptimalTimeWindow()` computes this from `setupData.waves` on first activation. The window is stored in `sharedState.timeWindow` and persists across perspective switches.
+The zoom control (§5.5) is the primary user-facing mechanism for adjusting the interval.
 
-Changes with no milestones within the time window are excluded from the temporal view (they remain visible in the collection perspective). `filterChangesByTimeWindow()` in `ChangesEntity` performs this pre-filter before handing data to `TimelineGrid.setData()`.
+### 6.3 Milestone Rendering
 
-`TimelineGrid.updateTimeWindow(startDate, endDate)` can be called at any time to recompute the visible wave columns and re-render. The zoom control (§5.3) is the primary user-facing mechanism for adjusting the window.
+`ChangesEntity` configures `TemporalGrid` with pixmap-mode milestone rendering on construction:
 
-### 6.3 Milestone Pixmap
-
-Each milestone is rendered as a **1-row × 3-column pixmap** positioned at the wave column where the milestone falls. The three columns map to event domain:
-
-| Column | Domain | Events |
-|---|---|---|
-| Left (`api-cell`) | API | `API_PUBLICATION`, `API_TEST_DEPLOYMENT`, `API_DECOMMISSIONING` |
-| Centre (`ui-cell`) | UI | `UI_TEST_DEPLOYMENT` |
-| Right (`ops-cell`) | Operations | `OPS_DEPLOYMENT` |
-
-A cell is filled (coloured) when the milestone carries at least one event of that domain. A tooltip on each cell lists the active event display names from the `@odp/shared` `getMilestoneEventDisplay` helper. An empty pixmap (no event types) renders three unfilled cells.
+```javascript
+temporalGrid.setMilestoneRendering({
+    mode: 'pixmap',
+    rows: 1,
+    cols: 3,
+    eventTypes: {
+        'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
+        'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
+        'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
+        'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
+        'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
+    }
+})
+```
 
 ### 6.4 Connector Lines
 
-When a change has two or more visible milestones, `renderConnectors()` draws horizontal connector `<div>` elements between them. Connectors are drawn between each adjacent pair of milestones (sorted by wave date). Milestones whose wave falls outside the visible columns are not connected.
+When a change has two or more visible milestones, `TemporalGrid` draws horizontal connector lines between adjacent milestones (sorted by date).
 
-### 6.5 Milestone Filtering
+### 6.5 Selection and State Sharing
 
-`TimelineGrid` maintains a `milestoneFilters` array (default `['ANY']`). When `ANY` is active all milestones are shown. When specific event types are set:
+`ChangesEntity` registers a selection listener on construction:
 
-- Milestones are hidden unless they carry at least one of the filtered event types
-- Changes that have no visible milestones after filtering are removed from the grid
-- The empty state message distinguishes between "no data" and "no matches for current filters"
+```javascript
+temporalGrid.addSelectionListener((id) => this.handleTimelineItemSelect(id))
+```
 
-`ChangesEntity` stores the current milestone filter in `sharedState.eventTypeFilters` and propagates it to `TimelineGrid.setMilestoneFilters()` on perspective switches and shared-state updates.
+Selection state is stored in `sharedState.selectedItem` and restored when switching back to the temporal perspective via `temporalGrid.setTimeLineSelected(itemId, true)`.
 
-### 6.6 Selection and State Sharing
+### 6.6 Perspective Toggle UI
 
-Both item selection (click on change label) and milestone selection (click on pixmap) are supported:
-
-- `onItemSelect(item)` — fires `handleItemSelect` on `ChangesEntity`, updates the shared details panel and syncs `CollectionEntity.selectedItem`
-- `onMilestoneSelect(item, milestone)` — fires `handleTimelineMilestoneSelect`, updates the details panel with milestone emphasis
-
-Selection state is stored in `sharedState.selectedItem` and restored when switching back to the temporal perspective via `TimelineGrid.selectItem(itemId)`.
-
-The `AbstractInteractionActivity` parent holds the canonical `sharedState` and coordinates perspective switching. `ChangesEntity.handlePerspectiveSwitch()` applies the shared state to whichever perspective is being activated.
-
-### 6.7 Perspective Toggle UI
-
-The perspective toggle buttons (`📋 Collection` / `📅 Temporal`) are rendered by `ChangesEntity.renderViewControls()` into the `#viewControls` container owned by `AbstractInteractionActivity`. Clicking a button calls `handlePerspectiveSwitch(perspective, sharedState)`.
+The perspective toggle buttons (`📋 Collection` / `📅 Temporal`) are rendered by `ChangesEntity.renderViewControls()` into the `#viewControls` container owned by `AbstractInteractionActivity`.
 
 ---
 
@@ -257,7 +284,7 @@ The Planning activity (`activities/planning/`) supports deployment and implement
 
 ### 11.1 Navigation and Tab Structure
 
-The Planning activity appears as a top-level nav tab alongside Elaboration. It uses the same edition picker as Elaboration (baseline + fromWave resolution, current working edition). The activity shell (`PlanningActivity extends AbstractInteractionActivity`) renders two tabs:
+The Planning activity appears as a top-level nav tab alongside Elaboration. It uses the same edition picker as Elaboration (baseline + fromWave resolution, current working edition). The activity shell (`PlanningActivity`) renders two tabs:
 
 | Tab | Status |
 |---|---|
@@ -266,78 +293,60 @@ The Planning activity appears as a top-level nav tab alongside Elaboration. It u
 
 ### 11.2 ON Plan Layout
 
-The ON Plan tab uses a **three-pane horizontal layout**:
+The ON Plan tab uses a **two-pane horizontal layout** (`grid-template-columns: 2fr 1fr`):
 
-- **Left pane** — ON tree (`ONTreeComponent`, implemented via `TreeTableEntity`)
-- **Centre pane** — ON Gantt (`GanttGrid`)
-- **Right pane** — Selected ON details (`RequirementForm` read-only + `Implemented By` tab)
+- **Left pane** — `TemporalGrid` with structured ON hierarchy rows
+- **Right pane** — Selected ON details (stub — `RequirementForm` read-only + `Implemented By` tab to follow)
 
-All three panes share a single data load. ONs are fetched once via `GET /requirements?type=ON` (with edition parameters). `ONPlanning` distributes the loaded data to the tree and the Gantt.
+All data is loaded once by `ONPlanning` via `GET /requirements` (type=ON and type=OR, with edition parameters).
 
-### 11.3 ON Tree (Left Pane)
+### 11.3 TemporalGrid Row Structure (Left Pane)
 
-The ON tree is a `TreeTableEntity` instance configured with a single hierarchy column (no additional table columns). The `pathBuilder` builds paths from real `refines` relationships:
+`ONPlanning` configures `TemporalGrid` with three row kinds that together represent the ON hierarchy:
 
-- Root ONs (no `refines` parent) appear as top-level nodes.
-- ONs that refine another ON appear as child nodes under their parent.
-- The path type for all nodes is `on-node`; folder nodes (e.g. `drg-folder`) may be prepended if DrG grouping is active.
+| Row kind | Content | Source |
+|---|---|---|
+| `separator` | DrG display name (e.g. "NM B2B") | `on.drg` grouped |
+| `group` | Root ON — no `refinesParents`; expand/collapse toggle | `addGroupRow` |
+| `child` | Refined ON — has `refinesParents`; indented label | `addChildRow(id, parentId, ...)` |
 
-The tree supports the same filter injection pattern as the Elaboration tree-table perspective. Initial filter configuration includes:
+Collapsing a group row hides all its child rows. The expanded state is preserved across re-renders.
 
-| Filter | Source |
-|---|---|
-| DrG | `DraftingGroup` enum |
-| Strategic document | `referenceDocuments` from `setupData` |
+ONs with a `tentative` period get two milestones — `period-start` (▶) and `period-end` (◀) — rendered as icon markers on the timeline track. ONs without `tentative` get an empty row (row reserved, no markers).
 
-Expand/collapse on the tree drives which ON rows are visible in the Gantt. The tree notifies `ONPlanning` on expansion state change; `ONPlanning` calls `GanttGrid.setData()` with the updated visible ON list.
+Ticks are one per integer year across the computed interval. The default interval is derived from the union of all ON `tentative` periods.
 
-### 11.4 ON Gantt (Centre Pane)
-
-The Gantt is a `GanttGrid` instance (§5.4). It is initialised with:
+### 11.4 Milestone Rendering
 
 ```javascript
-new GanttGrid(app, entityConfig, options = {
-    minYear: 2025,
-    maxYear: 2045,
-    onItemSelect: (on) => onPlanEntity.handleONSelect(on)
+temporalGrid.setMilestoneRendering({
+    mode: 'icon',
+    eventTypes: {
+        'period-start': { icon: '▶', colour: '#2563eb' },
+        'period-end':   { icon: '◀', colour: '#2563eb' }
+    }
 })
 ```
 
-Each visible ON (root or child of an expanded node) is rendered as one row. The bar spans the ON's `tentative` period if set; the row is empty otherwise. Selecting a row fires `onItemSelect`, which updates both the right panel and the tree selection.
-
-The zoom control (§5.3) is rendered by `AbstractTimelineGrid` above the grid. The default time window is computed from the union of all loaded ON `tentative` periods via `GanttGrid.initializeTimeWindow()`.
-
 ### 11.5 ON Details (Right Pane)
 
-The right pane reuses `RequirementForm` in **read-only mode** with one additional tab: **Implemented By**.
+Clicking any `group` or `child` row fires the selection listener. `ONPlanning.handleGridSelect(id)` looks up the ON entity and renders a details stub in the right pane showing title, DrG, maturity, tentative period, and the list of ORs implementing the ON (derived client-side from loaded OR data via `implementedONs`).
 
-The `Implemented By` tab renders a flat read-only list of ORs that carry an `implements` relationship to the selected ON. The list is derived client-side by filtering the loaded OR dataset (`type=OR`) for entries whose `implementedONs` array contains the selected ON's id. Each list entry shows the OR code, title, and maturity.
+Full `RequirementForm` read-only integration with an `Implemented By` tab is planned for a subsequent step.
 
-The existing form tab order is preserved; `Implemented By` is appended as the last tab.
-
-### 11.6 Bidirectional Selection Sync
-
-Selection is coordinated by `ONPlanning` via `sharedState.selectedItem`:
-
-- Clicking a tree node → updates Gantt highlight + right panel
-- Clicking a Gantt row → updates tree selection + right panel
-- Both paths call the same `handleONSelect(on)` handler on `ONPlanning`
-
-### 11.7 File Structure
+### 11.6 File Structure
 
 ```
 activities/planning/
-├── planning-activity.js       PlanningActivity shell, tab management, edition picker
-├── on-planning.js          ONPlanning: data load, pane coordination, selection sync
-└── planning-activity.css      Three-pane layout overrides only
+├── planning-activity.js    PlanningActivity shell, tab management, edition picker
+├── on-planning.js          ONPlanning: data load, TemporalGrid config, selection, details stub
+└── planning.css            Two-pane layout, separator/group/child row styles
 
 components/odp/
-├── abstract-timeline-grid.js  AbstractTimelineGrid base class (§5.1)
-├── timeline-grid.js           TimelineGrid extends AbstractTimelineGrid (§5.2)
-└── gantt-grid.js              GanttGrid extends AbstractTimelineGrid (§5.4)
+└── temporal-grid.js        TemporalGrid: generic calendar timeline component (§5)
 
 shared/
-└── year-period.js             parseYearPeriod() shared utility (§5.3)
+└── year-period.js          parseYearPeriod() / formatYearPeriod() shared utilities (§5.5)
 ```
 
 ---

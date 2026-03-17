@@ -1,8 +1,7 @@
 import CollectionEntity from '../../components/odp/collection-entity.js';
 import ChangeForm from './change-form.js';
-import TimelineGrid from '../../components/odp/timeline-grid.js';
+import TemporalGrid from '../../components/odp/temporal-grid.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
-import { apiClient } from '../../shared/api-client.js';
 
 
 /**
@@ -20,7 +19,7 @@ export default class ChangesEntity {
         // Multi-perspective support
         this.currentPerspective = 'collection'; // 'collection' | 'temporal'
         this.data = []; // PARENT-OWNED: Single source of truth for all perspectives
-        this.timelineGrid = null;
+        this.temporalGrid = null;
 
         // Lifecycle state
         this.isActive = false; // Tracks if this entity view is currently active
@@ -31,7 +30,6 @@ export default class ChangesEntity {
             selectedItem: null,
             grouping: 'none',
             timeWindow: null,
-            eventTypeFilters: ['ANY'],
             currentTabIndex: 0
         };
 
@@ -117,92 +115,35 @@ export default class ChangesEntity {
 
         return waves.sort((a, b) => {
             if (a.year !== b.year) return a.year - b.year;
-            return a.quarter - b.quarter;
+            return (a.sequenceNumber || 0) - (b.sequenceNumber || 0);
         });
     }
 
     /**
-     * Calculate optimal time window showing all future setup waves
-     * @returns {Object} { start: Date, end: Date } or null if no future waves
+     * Calculate optimal time window showing all future setup waves.
+     * @returns {{ startYear: number, endYear: number } | null}
      */
     calculateOptimalTimeWindow() {
-
-        if (!this.setupData?.waves || this.setupData.waves.length === 0) {
-            return null;
-        }
+        if (!this.setupData?.waves || this.setupData.waves.length === 0) return null;
 
         const now = new Date();
 
-        // Filter for future waves only (>= today)
         const futureWaves = this.setupData.waves
             .map(wave => ({
                 wave,
-                date: wave.quarter
-                    ? new Date(wave.year, (wave.quarter - 1) * 3, 1)
-                    : new Date(wave.year, 0, 1) // Jan 1st if no quarter
+                date: wave.implementationDate
+                    ? new Date(wave.implementationDate)
+                    : new Date(wave.year, 0, 1)
             }))
             .filter(item => item.date >= now)
             .sort((a, b) => a.date - b.date);
 
-        futureWaves.forEach(item => {
-            console.log(`  - Wave ${item.wave.year}${item.wave.quarter ? ' Q'+item.wave.quarter : ''}: ${item.date}`);
-        });
+        if (futureWaves.length === 0) return null;
 
-        if (futureWaves.length === 0) {
-            return null; // No future waves
-        }
-
-        const firstWave = futureWaves[0].wave;
-        const lastWave = futureWaves[futureWaves.length - 1].wave;
-
-        const timeWindow = {
-            start: firstWave.quarter
-                ? new Date(firstWave.year, (firstWave.quarter - 1) * 3, 1)
-                : new Date(firstWave.year, 0, 1),
-            end: lastWave.quarter
-                ? new Date(lastWave.year, (lastWave.quarter - 1) * 3 + 3, 0)
-                : new Date(lastWave.year, 11, 31) // Dec 31st if no quarter
+        return {
+            startYear: futureWaves[0].wave.year,
+            endYear:   futureWaves[futureWaves.length - 1].wave.year
         };
-
-        return timeWindow;
-    }
-
-    /**
-     * Filter changes to only include those with milestones in the time window
-     * @param {Array} changes - Array of changes to filter
-     * @param {Object} timeWindow - { start: Date, end: Date }
-     * @returns {Array} Filtered changes
-     */
-    filterChangesByTimeWindow(changes, timeWindow) {
-
-        if (!timeWindow || !timeWindow.start || !timeWindow.end) {
-            return changes; // No filtering if time window not set
-        }
-
-        const filtered = changes.filter(change => {
-            // Include changes that have at least one milestone in the time window
-            if (!change.milestones || change.milestones.length === 0) {
-                return false; // Exclude changes without milestones
-            }
-
-            const hasMilestoneInWindow = change.milestones.some(milestone => {
-                const wave = this.findMilestoneWave(milestone);
-                if (!wave) {
-                    return false;
-                }
-
-                const waveDate = wave.quarter
-                    ? new Date(wave.year, (wave.quarter - 1) * 3, 1)
-                    : new Date(wave.year, 0, 1);
-
-                const inWindow = waveDate >= timeWindow.start && waveDate <= timeWindow.end;
-                return inWindow;
-            });
-
-            return hasMilestoneInWindow;
-        });
-
-        return filtered;
     }
 
     /**
@@ -235,7 +176,6 @@ export default class ChangesEntity {
     applySharedState(sharedState) {
         console.log('ChangesEntity.applySharedState:', sharedState);
 
-
         if (sharedState.selectedItem && this.collection) {
             this.collection.selectedItem = sharedState.selectedItem;
         }
@@ -249,22 +189,21 @@ export default class ChangesEntity {
             this.form.context.currentTabIndex = sharedState.currentTabIndex;
         }
 
-        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            if (sharedState.timeWindow) {
-                this.timelineGrid.updateTimeWindow(
-                    sharedState.timeWindow.start,
-                    sharedState.timeWindow.end
+        if (this.currentPerspective === 'temporal' && this.temporalGrid) {
+            if (sharedState.timeWindow?.startYear) {
+                this.temporalGrid.setTimeInterval(
+                    sharedState.timeWindow.startYear,
+                    sharedState.timeWindow.endYear
                 );
-            }
-            if (sharedState.eventTypeFilters) {
-                this.timelineGrid.setMilestoneFilters(sharedState.eventTypeFilters);
+                this.temporalGrid.setTicks(
+                    this._buildWaveTicks(sharedState.timeWindow.startYear, sharedState.timeWindow.endYear)
+                );
+                this._feedTemporalGrid(sharedState.timeWindow.startYear, sharedState.timeWindow.endYear);
             }
         }
 
         if (this.currentPerspective === 'collection') {
             this.collection.renderContent();
-        } else if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            this.timelineGrid.setData(this.data);
         }
     }
 
@@ -310,7 +249,6 @@ export default class ChangesEntity {
     }
 
     renderTemporalView(sharedState) {
-
         if (!this.container) return;
 
         this.container.innerHTML = `
@@ -320,58 +258,152 @@ export default class ChangesEntity {
         `;
 
         const timelineContainer = this.container.querySelector('#temporalTimelineArea');
-        this.timelineGrid = new TimelineGrid(this.app, this.entityConfig, this.setupData, {
-            onItemSelect: (item) => this.handleTimelineItemSelect(item),
-            onMilestoneSelect: (item, milestone) => this.handleTimelineMilestoneSelect(item, milestone)
+
+        // Create and configure TemporalGrid
+        this.temporalGrid = new TemporalGrid({
+            minYear: 2020,
+            maxYear: 2045
         });
-        this.timelineGrid.render(timelineContainer);
 
-        // Initialize time window if not already set
-        if (!this.sharedState.timeWindow) {
-            const optimalWindow = this.calculateOptimalTimeWindow();
-            if (optimalWindow) {
-                this.sharedState.timeWindow = optimalWindow;
+        // Register OC pixmap rendering spec
+        this.temporalGrid.setMilestoneRendering({
+            mode: 'pixmap',
+            rows: 1,
+            cols: 3,
+            eventTypes: {
+                'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
+                'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
+                'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
+                'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
+                'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
             }
-        }
+        });
 
-        // Apply time window to timeline grid
-        if (this.sharedState.timeWindow) {
-            this.timelineGrid.updateTimeWindow(
-                this.sharedState.timeWindow.start,
-                this.sharedState.timeWindow.end
-            );
-        }
+        // Register selection listener
+        this.temporalGrid.addSelectionListener((entityId) => {
+            this.handleTimelineItemSelect(entityId);
+        });
 
-        // Apply shared state if provided (may override)
-        if (sharedState) {
-            if (sharedState.timeWindow) {
-                this.sharedState.timeWindow = sharedState.timeWindow;
-                this.timelineGrid.updateTimeWindow(
-                    sharedState.timeWindow.start,
-                    sharedState.timeWindow.end
-                );
-            }
-            if (sharedState.eventTypeFilters) {
-                this.timelineGrid.setMilestoneFilters(sharedState.eventTypeFilters);
-            }
-        }
+        // React to user zoom changes — recompute ticks and re-filter data
+        this.temporalGrid.addTimeIntervalUpdateListener((startYear, endYear) => {
+            this.sharedState.timeWindow = { startYear, endYear };
+            const ticks = this._buildWaveTicks(startYear, endYear);
+            this.temporalGrid.setTicks(ticks);
+            this._feedTemporalGrid(startYear, endYear);
+        });
 
-        // Filter data by time window before displaying
-        let dataToShow = this.data;
+        // Determine initial time window
+        const window = this._resolveTimeWindow(sharedState);
+        const { startYear, endYear } = window;
 
-        if (this.sharedState.timeWindow) {
-            dataToShow = this.filterChangesByTimeWindow(dataToShow, this.sharedState.timeWindow);
-        }
+        // Set time interval and ticks
+        this.temporalGrid.setTimeInterval(startYear, endYear);
+        this.temporalGrid.setTicks(this._buildWaveTicks(startYear, endYear));
 
-        this.timelineGrid.setData(dataToShow);
+        // Feed data before render so rows exist when render() calls _render()
+        this._feedTemporalGrid(startYear, endYear);
 
-        // Restore selection: selectItem fires onItemSelect → updateDetailsPanel
+        // Mount
+        this.temporalGrid.render(timelineContainer);
+
+        // Restore selection
         if (this.sharedState.selectedItem) {
-            const itemId = this.getItemId(this.sharedState.selectedItem);
-            if (itemId) {
-                this.timelineGrid.selectItem(itemId);
-            }
+            const itemId = String(this.getItemId(this.sharedState.selectedItem));
+            this.temporalGrid.setTimeLineSelected(itemId, true);
         }
+    }
+
+    /**
+     * Compute the initial time window from sharedState or optimal wave range.
+     * Returns { startYear, endYear }.
+     */
+    _resolveTimeWindow(sharedState) {
+        if (sharedState?.timeWindow?.startYear) {
+            return sharedState.timeWindow;
+        }
+        const optimal = this.calculateOptimalTimeWindow();
+        if (optimal) {
+            return {
+                startYear: optimal.startYear,
+                endYear:   optimal.endYear
+            };
+        }
+        const now = new Date().getFullYear();
+        return { startYear: now, endYear: now + 3 };
+    }
+
+    /**
+     * Build wave tick descriptors for the given year range.
+     * Only waves whose date falls within [startYear, endYear] are included.
+     */
+    _buildWaveTicks(startYear, endYear) {
+        if (!this.setupData?.waves) return [];
+        const start = new Date(startYear, 0, 1);
+        const end   = new Date(endYear + 1, 0, 1);
+
+        return this.setupData.waves
+            .map(wave => ({
+                wave,
+                date: wave.implementationDate
+                    ? new Date(wave.implementationDate)
+                    : new Date(wave.year, 0, 1)
+            }))
+            .filter(({ date }) => date >= start && date < end)
+            .sort((a, b) => a.date - b.date)
+            .map(({ wave, date }) => ({
+                label: wave.sequenceNumber
+                    ? `Y${wave.year}Q${wave.sequenceNumber}`
+                    : String(wave.year),
+                date
+            }));
+    }
+
+    /**
+     * Feed filtered change data into the TemporalGrid as timeline rows.
+     */
+    _feedTemporalGrid(startYear, endYear) {
+        if (!this.temporalGrid) return;
+
+        this.temporalGrid.clearRows();
+
+        const start = new Date(startYear, 0, 1);
+        const end   = new Date(endYear + 1, 0, 1);
+
+        this.data.forEach(change => {
+            if (!change.milestones || change.milestones.length === 0) return;
+
+            // Only include changes that have at least one milestone in the window
+            const visibleMilestones = change.milestones.filter(m => {
+                const wave = this.findMilestoneWave(m);
+                if (!wave) return false;
+                const date = wave.implementationDate
+                    ? new Date(wave.implementationDate)
+                    : new Date(wave.year, 0, 1);
+                return date >= start && date < end;
+            });
+
+            if (visibleMilestones.length === 0) return;
+
+            const entityId = String(this.getItemId(change));
+            const label = change.code
+                ? `${change.code} – ${change.title}`
+                : (change.title || entityId);
+
+            const milestones = visibleMilestones.map(m => {
+                const wave = this.findMilestoneWave(m);
+                const date = wave.implementationDate
+                    ? new Date(wave.implementationDate)
+                    : new Date(wave.year, 0, 1);
+                return {
+                    label:       m.name || m.title || '',
+                    description: m.description || '',
+                    eventTypes:  m.eventTypes || [],
+                    date
+                };
+            });
+
+            this.temporalGrid.addTimeLine(entityId, label, milestones);
+        });
     }
 
     renderCollectionView(sharedState) {
@@ -386,23 +418,15 @@ export default class ChangesEntity {
             }
         }
 
-        // Apply time window filtering if set
-        let dataToShow = this.data;
-        if (this.sharedState.timeWindow) {
-            dataToShow = this.filterChangesByTimeWindow(dataToShow, this.sharedState.timeWindow);
-        }
-
-        this.collection.setData(dataToShow);
+        this.collection.setData(this.data);
         this.collection.render(this.container);
 
-        // Restore selection: selectItem fires onItemSelect → updateDetailsPanel
+        // Restore selection
         if (this.sharedState.selectedItem) {
             const itemId = this.getItemId(this.sharedState.selectedItem);
             if (itemId) {
-                // Look up fresh item from current data before re-selecting
                 const freshItem = this.data.find(d => this.getItemId(d) === itemId);
                 if (freshItem) {
-                    // Update stored reference so details panel shows fresh data
                     this.sharedState.selectedItem = freshItem;
                 }
                 this.collection.selectItem(itemId);
@@ -427,30 +451,21 @@ export default class ChangesEntity {
         // Update stored reference
         this.sharedState.selectedItem = freshItem;
 
-        if (this.currentPerspective === 'temporal' && this.timelineGrid) {
-            // selectItem fires onItemSelect → updateDetailsPanel
-            this.timelineGrid.selectItem(selectedId);
+        if (this.currentPerspective === 'temporal' && this.temporalGrid) {
+            this.temporalGrid.setTimeLineSelected(String(selectedId), true);
         } else {
             // selectItem fires onItemSelect → updateDetailsPanel
             this.collection.selectItem(selectedId);
         }
     }
 
-    handleTimelineItemSelect(item) {
+    handleTimelineItemSelect(entityId) {
+        const item = this.data.find(d => String(this.getItemId(d)) === String(entityId));
+        if (!item) return;
         this.handleItemSelect(item);
         if (this.collection) {
             this.collection.selectedItem = item;
         }
-        this.sharedState.selectedItem = item;
-
-        if (this.app.currentActivity?.updateSharedSelection) {
-            this.app.currentActivity.updateSharedSelection(item);
-        }
-    }
-
-    handleTimelineMilestoneSelect(item, milestone) {
-        this.handleItemSelect(item);
-        this.selectedMilestone = milestone;
         this.sharedState.selectedItem = item;
 
         if (this.app.currentActivity?.updateSharedSelection) {
@@ -609,9 +624,9 @@ export default class ChangesEntity {
     }
 
     cleanup() {
-        if (this.timelineGrid) {
-            this.timelineGrid.cleanup();
-            this.timelineGrid = null;
+        if (this.temporalGrid) {
+            this.temporalGrid.cleanup();
+            this.temporalGrid = null;
         }
 
         this.collection.cleanup();
@@ -653,7 +668,6 @@ export default class ChangesEntity {
         // Render based on perspective
         if (this.currentPerspective === 'temporal') {
             this.renderTemporalView(this.sharedState);
-            // renderTemporalView already calls timelineGrid.selectItem if selectedItem is set
         } else {
             this.collection.setData(this.data);
             this.collection.render(this.container);

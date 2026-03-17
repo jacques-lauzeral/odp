@@ -39,6 +39,7 @@ export default class TreeTableEntity {
         this.onItemSelect = options.onItemSelect || (() => {});
         this.onCreate = options.onCreate || (() => {});
         this.onDataLoaded = options.onDataLoaded || (() => {});
+        this.onExpansionChange = options.onExpansionChange || (() => {});
     }
 
     // ====================
@@ -120,9 +121,17 @@ export default class TreeTableEntity {
 
                     currentNode = currentNode.children[nodeId];
 
-                    // For leaf nodes, attach entity
+                    // Attach entity to leaf nodes, OR to any non-leaf path item
+                    // that carries an entityId (e.g. parent ON nodes in a refines hierarchy)
                     if (isLeaf) {
                         currentNode.entity = entity;
+                    } else if (pathItem.entityId && !currentNode.entity) {
+                        // Non-leaf with an entityId — find and attach the matching entity
+                        const parentEntity = this.requirementMap.get(pathItem.entityId) ||
+                            this.requirementMap.get(String(pathItem.entityId));
+                        if (parentEntity) {
+                            currentNode.entity = parentEntity;
+                        }
                     }
                 });
             } catch (error) {
@@ -518,6 +527,7 @@ export default class TreeTableEntity {
             this.expandedNodes.delete(nodeId);
         }
 
+        this.onExpansionChange(this.expandedNodes);
         this.renderContent();
     }
 
@@ -581,4 +591,40 @@ export default class TreeTableEntity {
             this.applyFilters(this.currentFilters);
         }
     }
-}
+
+    /**
+     * Return the flattened ordered list of currently visible nodes,
+     * in exactly the same order as rendered by renderTreeNodes().
+     * Each entry: { type: string, node: Object, entity: Object|null }
+     * Used by ONPlanning to build the matching temporal grid row sequence.
+     */
+    getVisibleFlatNodes() {
+        if (!this.treeData) return [];
+        const result = [];
+        this._collectVisibleNodes(this.treeData, result);
+        return result;
+    }
+
+    _collectVisibleNodes(node, result) {
+        const sortedChildren = Object.values(node.children)
+            .filter(child => child.visible)
+            .sort((a, b) => {
+                const typeOrder = {
+                    'on-node': 1,
+                    'or-node': 2,
+                    'drg': 3,
+                    'org-folder': 4
+                };
+                const typeA = typeOrder[a.type] || 99;
+                const typeB = typeOrder[b.type] || 99;
+                if (typeA !== typeB) return typeA - typeB;
+                return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+        sortedChildren.forEach(child => {
+            result.push({ type: child.type, node: child, entity: child.entity || null });
+            if (child.expanded && Object.keys(child.children).length > 0) {
+                this._collectVisibleNodes(child, result);
+            }
+        });
+    }}

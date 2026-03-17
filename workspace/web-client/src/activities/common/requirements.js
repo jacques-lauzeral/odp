@@ -190,13 +190,13 @@ export default class RequirementsEntity {
                 label: (pathItem) => pathItem.value
             },
             'on-node': {
-                icon: '🔷',
+                icon: '🎯',
                 iconColor: '#007bff',
                 expandable: (node) => node.children && Object.keys(node.children).length > 0,
                 label: (pathItem) => pathItem.value
             },
             'or-node': {
-                icon: '🟩',
+                icon: '📋',
                 iconColor: '#10b981',
                 expandable: (node) => node.children && Object.keys(node.children).length > 0,
                 label: (pathItem) => pathItem.value

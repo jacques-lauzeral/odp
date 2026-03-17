@@ -1,20 +1,22 @@
 import { apiClient } from '../../shared/api-client.js';
-import TreeTableEntity from '../../components/odp/tree-table-entity.js';
+import TemporalGrid from '../../components/odp/temporal-grid.js';
 import {
     DraftingGroup,
     getDraftingGroupDisplay
 } from '/shared/src/index.js';
+import { formatTentativeArray } from '/shared/src/model/year-period.js';
 
 /**
  * ONPlanning - ON Deployment and Implementation Plan
  *
- * Coordinates the three-pane ON Plan layout:
- *   - Left  : ON tree (TreeTableEntity, refines-based path builder)
- *   - Centre : ON Gantt (GanttGrid, year-based temporal view)
- *   - Right  : Selected ON details (RequirementForm read-only + Implemented By tab)
+ * Two-pane layout:
+ *   Left  : TemporalGrid (separator/group/child rows, year-based axis)
+ *   Right : Selected ON details (stub — RequirementForm to follow)
  *
- * Owns data loading, selection sync, and pane coordination.
- * GanttGrid is a stub reference until abstract-timeline-grid.js / gantt-grid.js are implemented.
+ * Row hierarchy in TemporalGrid:
+ *   separator  → DrG label (e.g. "NM B2B")
+ *   group      → root ON (refinesParents empty), collapsible
+ *   child      → ON with refinesParents, indented under its parent group
  */
 export default class ONPlanning {
     constructor(app, setupData, options = {}) {
@@ -25,19 +27,15 @@ export default class ONPlanning {
         this.container = null;
 
         // Loaded data
-        this.onData = [];       // All ONs fetched from API
-        this.orData = [];       // All ORs (for Implemented By resolution)
+        this.onData = [];   // All ONs
+        this.orData = [];   // All ORs (for Implemented By)
 
-        // Pane component instances (populated in render())
-        this.onTree = null;     // TreeTableEntity
-        this.ganttGrid = null;  // GanttGrid (stub - wired when component exists)
-        this.detailForm = null; // RequirementForm read-only (stub)
+        // Component instances
+        this.temporalGrid = null;
+        this.detailForm = null;  // RequirementForm stub
 
-        // Shared selection state
+        // Selection
         this.selectedON = null;
-
-        // Expanded ON ids in the tree (drives Gantt row visibility)
-        this.expandedONIds = new Set();
     }
 
     // ====================
@@ -46,30 +44,23 @@ export default class ONPlanning {
 
     async render(container) {
         this.container = container;
-
         try {
             this.renderLayout();
             await this.loadData();
-            this.initializeTree();
-            this.initializeGantt();
-            this.renderTree();
-            this.renderGantt();
+            this.initializeTemporalGrid();
+            this.renderTemporalGrid();
         } catch (error) {
             console.error('ONPlanning: render failed', error);
             this.renderError(error);
         }
     }
 
-    onDeactivated() {
-        // Preserve state before tab switch - nothing to do at skeleton stage
-    }
+    onDeactivated() {}
 
     cleanup() {
-        if (this.onTree?.cleanup) this.onTree.cleanup();
-        if (this.ganttGrid?.cleanup) this.ganttGrid.cleanup();
+        if (this.temporalGrid?.cleanup) this.temporalGrid.cleanup();
         this.container = null;
-        this.onTree = null;
-        this.ganttGrid = null;
+        this.temporalGrid = null;
         this.detailForm = null;
     }
 
@@ -83,10 +74,7 @@ export default class ONPlanning {
             ? '?' + new URLSearchParams(queryParams).toString()
             : '';
 
-        const [requirements] = await Promise.all([
-            apiClient.get(`/operational-requirements${queryString}`)
-        ]);
-
+        const requirements = await apiClient.get(`/operational-requirements${queryString}`);
         this.onData = (requirements || []).filter(r => r.type === 'ON');
         this.orData = (requirements || []).filter(r => r.type === 'OR');
 
@@ -95,17 +83,14 @@ export default class ONPlanning {
 
     async buildQueryParams() {
         const queryParams = {};
-
         if (this.editionContext &&
             this.editionContext !== 'repository' &&
             typeof this.editionContext === 'string' &&
             this.editionContext.match(/^\d+$/)) {
-
             const edition = await apiClient.get(`/odp-editions/${this.editionContext}`);
-            if (edition.baseline?.id) queryParams.baseline = edition.baseline.id;
+            if (edition.baseline?.id)      queryParams.baseline = edition.baseline.id;
             if (edition.startsFromWave?.id) queryParams.fromWave = edition.startsFromWave.id;
         }
-
         return queryParams;
     }
 
@@ -116,35 +101,23 @@ export default class ONPlanning {
     renderLayout() {
         this.container.innerHTML = `
             <div class="on-plan-layout">
-                <!-- Left pane: ON tree -->
-                <div class="on-plan-tree-pane" id="onTreePane">
-                    <div class="pane-header">Operational Needs</div>
-                    <div class="pane-content" id="onTreeContent">
+                <!-- Left pane: temporal grid -->
+                <div class="on-plan-grid-pane" id="onGridPane">
+                    <div class="pane-content" id="onGridContent">
                         <div class="loading-state">
                             <div class="spinner"></div>
-                            <p>Loading ONs...</p>
+                            <p>Loading plan...</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Centre pane: Gantt -->
-                <div class="on-plan-gantt-pane" id="onGanttPane">
-                    <div class="pane-header">Implementation Plan</div>
-                    <div class="pane-content" id="onGanttContent">
-                        <div class="loading-state">
-                            <div class="spinner"></div>
-                            <p>Loading Gantt...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right pane: Details -->
+                <!-- Right pane: details -->
                 <div class="on-plan-details-pane" id="onDetailsPane">
                     <div class="pane-content" id="onDetailsContent">
                         <div class="no-selection-message">
                             <div class="icon">📋</div>
                             <h3>No ON selected</h3>
-                            <p>Select an Operational Need from the tree to view its details.</p>
+                            <p>Select an Operational Need to view its details.</p>
                         </div>
                     </div>
                 </div>
@@ -163,178 +136,185 @@ export default class ONPlanning {
     }
 
     // ====================
-    // ON TREE (left pane)
+    // TEMPORAL GRID
     // ====================
 
-    initializeTree() {
-        this.onTree = new TreeTableEntity(this.app, {}, {
-            pathBuilder: (on, onMap) => this.buildONPath(on, onMap),
-            typeRenderers: {
-                'drg-folder': {
-                    icon: '📁',
-                    iconColor: '#666',
-                    expandable: true,
-                    label: (pathItem) => pathItem.value
-                },
-                'on-node': {
-                    icon: '🎯',
-                    iconColor: '#2563eb',
-                    expandable: (node) => Object.keys(node.children).length > 0,
-                    label: (pathItem) => pathItem.value
-                }
-            },
-            columns: [
-                { label: 'Operational Need', width: '100%' }
-            ],
-            filterMatchers: this.getFilterMatchers(),
-            onItemSelect: (on) => this.handleONSelect(on),
-            onDataLoaded: (count) => console.log(`ONTree: ${count} ONs visible`)
+    initializeTemporalGrid() {
+        this.temporalGrid = new TemporalGrid({
+            minYear: 2025,
+            maxYear: 2045
+        });
+
+        this.temporalGrid.setMilestoneRendering({
+            mode: 'icon',
+            eventTypes: {
+                'period-start': { icon: '▶', colour: '#2563eb' },
+                'period-end':   { icon: '◀', colour: '#2563eb' }
+            }
+        });
+
+        this.temporalGrid.addSelectionListener((id) => {
+            this.handleGridSelect(id);
+        });
+
+        this.temporalGrid.addTimeIntervalUpdateListener(() => {
+            // Re-feed on zoom change (rows unchanged, just re-render positions)
+            this._feedTemporalGrid();
         });
     }
 
+    renderTemporalGrid() {
+        const gridContainer = this.container.querySelector('#onGridContent');
+        if (!gridContainer || !this.temporalGrid) return;
+
+        const { startYear, endYear } = this._resolveTimeInterval();
+        this.temporalGrid.setTimeInterval(startYear, endYear);
+        this.temporalGrid.setTicks(this._buildYearTicks(startYear, endYear));
+
+        // Feed rows before render so grid has data on first _render() call
+        this._feedTemporalGrid();
+
+        this.temporalGrid.render(gridContainer);
+    }
+
     /**
-     * Build typed path for a single ON.
-     * Path: [drg-folder] → (parent-on-node →)* on-node
+     * Build all rows from ON data and feed into TemporalGrid.
      *
-     * @param {Object} on      - The ON entity
-     * @param {Map}    onMap   - id → ON lookup map
-     * @returns {Array}        - Typed path array for TreeTableEntity
+     * Row structure:
+     *   separator  — one per distinct DrG value
+     *   group      — root ONs (refinesParents empty), expandable
+     *   child      — ONs with a refinesParents entry, nested under parent group
+     *
+     * Ordering within each DrG: root ONs first (alphabetical by title),
+     * then children immediately after their parent group.
      */
-    buildONPath(on, onMap) {
-        const path = [];
+    _feedTemporalGrid() {
+        if (!this.temporalGrid) return;
+        this.temporalGrid.clearRows();
 
-        // DrG folder (top-level grouping)
-        if (on.drg) {
-            path.push({
-                type: 'drg-folder',
-                id: `drg-${on.drg}`,
-                value: getDraftingGroupDisplay(on.drg) || on.drg
-            });
-        }
+        // Group ONs by DrG
+        const byDrg = new Map();
+        const noDrg = [];
 
-        // Walk refines chain to build parent ON path segments
-        // Collect ancestor ids bottom-up, then reverse for top-down path
-        const ancestors = [];
-        let currentId = on.refinesId ?? on.refines?.id ?? null;
-
-        while (currentId) {
-            const parent = onMap.get(currentId);
-            if (!parent || ancestors.includes(currentId)) break; // guard against cycles
-            ancestors.unshift(currentId);
-            currentId = parent.refinesId ?? parent.refines?.id ?? null;
-        }
-
-        ancestors.forEach(ancestorId => {
-            const ancestor = onMap.get(ancestorId);
-            if (ancestor) {
-                path.push({
-                    type: 'on-node',
-                    id: `on-${ancestor.itemId || ancestor.id}`,
-                    value: ancestor.code
-                        ? `${ancestor.code} – ${ancestor.title}`
-                        : ancestor.title,
-                    entityId: ancestor.itemId || ancestor.id
-                });
+        this.onData.forEach(on => {
+            if (on.drg) {
+                if (!byDrg.has(on.drg)) byDrg.set(on.drg, []);
+                byDrg.get(on.drg).push(on);
+            } else {
+                noDrg.push(on);
             }
         });
 
-        // The ON itself (leaf)
-        path.push({
-            type: 'on-node',
-            id: `on-${on.itemId || on.id}`,
-            value: on.code
-                ? `${on.code} – ${on.title}`
-                : on.title,
-            entityId: on.itemId || on.id
+        // Build an ON lookup by id for parent resolution
+        const onById = new Map();
+        this.onData.forEach(on => {
+            onById.set(String(on.itemId || on.id), on);
         });
 
-        return path;
-    }
+        // Helper: determine if an ON is a root (no refinesParents)
+        const isRoot = (on) => !on.refinesParents || on.refinesParents.length === 0;
 
-    getFilterMatchers() {
-        return {
-            drg: (on, value) => !value || on.drg === value,
-            strategicDocument: (on, value) => {
-                if (!value) return true;
-                return (on.strategicDocuments || []).some(d =>
-                    String(d.id || d) === String(value)
-                );
-            }
+        // Helper: get parent id string
+        const parentIdOf = (on) => {
+            if (!on.refinesParents || on.refinesParents.length === 0) return null;
+            const ref = on.refinesParents[0];
+            return String(ref.itemId || ref.id || ref);
         };
-    }
 
-    renderTree() {
-        const treeContainer = this.container.querySelector('#onTreeContent');
-        if (!treeContainer || !this.onTree) return;
+        // Helper: emit group row + its children
+        const emitGroup = (rootOn, allOnsInDrg) => {
+            const groupId = String(rootOn.itemId || rootOn.id);
+            const label = rootOn.code ? `${rootOn.code} – ${rootOn.title}` : rootOn.title;
+            const milestones = this._buildMilestones(rootOn);
+            this.temporalGrid.addGroupRow(groupId, label, milestones);
 
-        this.onTree.render(treeContainer);
-        this.onTree.setData(this.onData);
-    }
+            // Children: ONs whose first refinesParent is this root
+            const children = allOnsInDrg
+                .filter(on => parentIdOf(on) === groupId)
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
-    // ====================
-    // GANTT (centre pane)
-    // ====================
+            children.forEach(child => {
+                const childId = String(child.itemId || child.id);
+                const childLabel = child.code ? `${child.code} – ${child.title}` : child.title;
+                const childMilestones = this._buildMilestones(child);
+                this.temporalGrid.addChildRow(childId, groupId, childLabel, childMilestones);
+            });
+        };
 
-    initializeGantt() {
-        // GanttGrid is a stub until abstract-timeline-grid.js / gantt-grid.js are implemented.
-        // The instance will be created here once the component exists:
-        //
-        // this.ganttGrid = new GanttGrid(this.app, {}, {
-        //     minYear: 2025,
-        //     maxYear: 2045,
-        //     onItemSelect: (on) => this.handleONSelect(on)
-        // });
-        this.ganttGrid = null;
-    }
+        // Emit rows per DrG
+        byDrg.forEach((ons, drg) => {
+            const drgLabel = getDraftingGroupDisplay(drg) || drg;
+            this.temporalGrid.addSeparatorRow(`drg:${drg}`, drgLabel);
 
-    renderGantt() {
-        const ganttContainer = this.container.querySelector('#onGanttContent');
-        if (!ganttContainer) return;
+            const roots = ons
+                .filter(isRoot)
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
-        if (!this.ganttGrid) {
-            // Placeholder until GanttGrid is implemented
-            ganttContainer.innerHTML = `
-                <div class="planning-placeholder">
-                    <div class="icon">📅</div>
-                    <p>Gantt view — coming in next step.</p>
-                </div>
-            `;
-            return;
+            roots.forEach(root => emitGroup(root, ons));
+        });
+
+        // ONs with no DrG — emit as flat group rows
+        if (noDrg.length > 0) {
+            this.temporalGrid.addSeparatorRow('drg:none', '(No DrG)');
+            noDrg.filter(isRoot)
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+                .forEach(root => emitGroup(root, noDrg));
         }
 
-        this.ganttGrid.render(ganttContainer);
-        this.ganttGrid.setData(this.getVisibleONs());
+        // Restore selection
+        if (this.selectedON) {
+            this.temporalGrid.setTimeLineSelected(
+                String(this.selectedON.itemId || this.selectedON.id), true
+            );
+        }
     }
 
     /**
-     * Returns the ONs that should appear as rows in the Gantt:
-     * root ONs + children of expanded ON nodes.
+     * Build period-start / period-end milestones from an ON's tentative field.
      */
-    getVisibleONs() {
-        return this.onData.filter(on => {
-            const parentId = on.refinesId ?? on.refines?.id ?? null;
-            if (!parentId) return true;                       // root ON always visible
-            return this.expandedONIds.has(String(parentId)); // child visible if parent expanded
-        });
+    _buildMilestones(on) {
+        if (!Array.isArray(on.tentative) || on.tentative.length < 2) return [];
+        const [startYear, endYear] = on.tentative;
+        return [
+            {
+                label: 'Start', description: 'Expected implementation start',
+                eventTypes: ['period-start'], date: new Date(startYear, 0, 1)
+            },
+            {
+                label: 'End', description: 'Expected implementation end',
+                eventTypes: ['period-end'], date: new Date(endYear, 0, 1)
+            }
+        ];
+    }
+
+    _resolveTimeInterval() {
+        const years = this.onData
+            .filter(on => Array.isArray(on.tentative) && on.tentative.length === 2)
+            .flatMap(on => on.tentative);
+
+        if (years.length > 0) {
+            return { startYear: Math.min(...years), endYear: Math.max(...years) };
+        }
+        const now = new Date().getFullYear();
+        return { startYear: now, endYear: now + 4 };
+    }
+
+    _buildYearTicks(startYear, endYear) {
+        const ticks = [];
+        for (let y = startYear; y <= endYear; y++) {
+            ticks.push({ label: String(y), date: new Date(y, 0, 1) });
+        }
+        return ticks;
     }
 
     // ====================
-    // SELECTION & DETAILS (right pane)
+    // SELECTION & DETAILS
     // ====================
 
-    handleONSelect(on) {
+    handleGridSelect(id) {
+        const on = this.onData.find(o => String(o.itemId || o.id) === String(id));
+        if (!on) return;
         this.selectedON = on;
-
-        // Sync tree selection
-        if (this.onTree) {
-            // TreeTableEntity.selectItem is not yet exposed — will be wired in next step
-        }
-
-        // Sync Gantt selection
-        if (this.ganttGrid?.selectItem) {
-            this.ganttGrid.selectItem(on.itemId || on.id);
-        }
-
         this.renderDetails(on);
     }
 
@@ -342,8 +322,6 @@ export default class ONPlanning {
         const detailsContainer = this.container.querySelector('#onDetailsContent');
         if (!detailsContainer) return;
 
-        // RequirementForm read-only + Implemented By tab stub
-        // Full implementation in next step — placeholder for now
         const implementedBy = this.getImplementedBy(on);
 
         detailsContainer.innerHTML = `
@@ -355,26 +333,22 @@ export default class ONPlanning {
                 <hr>
                 <h4>Implemented By (${implementedBy.length} ORs)</h4>
                 <ul>
-                    ${implementedBy.map(or => `<li>${or.code ? `${or.code} – ` : ''}${or.title}</li>`).join('') || '<li><em>None</em></li>'}
+                    ${implementedBy.map(or =>
+            `<li>${or.code ? `${or.code} – ` : ''}${or.title}</li>`
+        ).join('') || '<li><em>None</em></li>'}
                 </ul>
             </div>
         `;
     }
 
-    /**
-     * Derive ORs that implement the selected ON via the implements relationship.
-     */
     getImplementedBy(on) {
         const onId = String(on.itemId || on.id);
-        return this.orData.filter(or => {
-            const implementedONs = or.implementedONs || [];
-            return implementedONs.some(ref => String(ref.id || ref) === onId);
-        });
+        return this.orData.filter(or =>
+            (or.implementedONs || []).some(ref => String(ref.id || ref) === onId)
+        );
     }
 
     formatTentative(tentative) {
-        if (!Array.isArray(tentative) || tentative.length === 0) return '—';
-        const [start, end] = tentative;
-        return start === end ? String(start) : `${start}–${end}`;
+        return formatTentativeArray(tentative) || '—';
     }
 }

@@ -8,6 +8,7 @@ import {
     MaturityLevel,
     getMaturityLevelDisplay
 } from '/shared/src/index.js';
+import { parseYearPeriod, formatYearPeriod } from '/shared/src/model/year-period.js';
 import {
     requirementFieldDefinitions,
     requirementFormTitles,
@@ -449,30 +450,22 @@ export default class RequirementForm extends CollectionEntityForm {
 
     /**
      * Format [start, end] tentative array for display.
-     * [2026, 2026] → "2026", [2026, 2028] → "2026-2028"
+     * Delegates to shared formatYearPeriod utility.
      */
     formatTentative(value) {
         if (!value) return '';
         const [start, end] = value;
-        return start === end ? String(start) : `${start}-${end}`;
+        return formatYearPeriod({ startYear: start, endYear: end });
     }
 
     /**
      * Parse tentative text input into [start, end] array.
-     * "2026" → [2026, 2026], "2026-2028" → [2026, 2028]
+     * Delegates to shared parseYearPeriod utility.
      */
     parseTentative(text) {
-        if (!text) return null;
-        const rangeMatch = text.match(/^(\d{4})-(\d{4})$/);
-        if (rangeMatch) {
-            return [parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10)];
-        }
-        const yearMatch = text.match(/^(\d{4})$/);
-        if (yearMatch) {
-            const year = parseInt(yearMatch[1], 10);
-            return [year, year];
-        }
-        return null;
+        const parsed = parseYearPeriod(text);
+        if (!parsed) return null;
+        return [parsed.startYear, parsed.endYear];
     }
 
     // ====================

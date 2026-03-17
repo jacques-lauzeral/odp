@@ -1,127 +1,198 @@
 /* =============================================================================
-   Planning Activity — Layout
-   Three-pane horizontal layout for ON Plan tab.
-   Common chrome (tabs, header, loading, error states) inherits from
-   abstract-interaction-activity.css and base-components.css.
+   Planning Activity — Layout and TemporalGrid row styles
    ============================================================================= */
 
-/* --- Tab content area ------------------------------------------------------- */
+/* --- Activity root ---------------------------------------------------------- */
+
+.planning-activity {
+    padding: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.planning-header {
+    background: white;
+    border-bottom: 1px solid var(--border-primary);
+    padding: var(--space-6);
+    flex-shrink: 0;
+}
+
+.planning-header h1 { margin: 0 0 var(--space-2) 0; }
+.planning-header p  { margin: 0; color: var(--text-secondary); }
+
+/* --- Workspace -------------------------------------------------------------- */
+
+.planning-workspace {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
 
 .planning-tab-content {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-}
-
-/* --- Three-pane layout ------------------------------------------------------ */
-
-.on-plan-layout {
-    display: grid;
-    grid-template-columns: 1fr 2fr 2fr;
-    grid-template-rows: 1fr;
-    gap: var(--space-2, 8px);
-    flex: 1;
-    min-height: 0;
     overflow: hidden;
 }
 
-/* Shared pane styles */
-.on-plan-tree-pane,
-.on-plan-gantt-pane,
+/* --- Two-pane layout -------------------------------------------------------- */
+
+.on-plan-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-2);
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: var(--space-2);
+}
+
+.on-plan-grid-pane,
 .on-plan-details-pane {
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    background: var(--color-surface, #fff);
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: var(--radius-md, 6px);
+    background: white;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
 }
 
-.pane-header {
-    padding: var(--space-2, 8px) var(--space-3, 12px);
-    font-size: var(--text-sm, 0.875rem);
-    font-weight: 600;
-    color: var(--color-text-secondary, #6b7280);
-    border-bottom: 1px solid var(--color-border, #e5e7eb);
-    flex-shrink: 0;
+.on-plan-grid-pane .pane-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
 }
 
-.pane-content {
+.on-plan-details-pane .pane-content {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: var(--space-2, 8px);
+    padding: var(--space-3);
 }
 
-/* Gantt pane: no padding (grid owns its own internal layout) */
-.on-plan-gantt-pane .pane-content {
-    padding: 0;
+/* --- TemporalGrid in planning context --------------------------------------- */
+
+.on-plan-grid-pane .temporal-grid {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border: none;
+    border-radius: 0;
+}
+
+.on-plan-grid-pane .temporal-grid-inner {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
 }
 
-/* --- Placeholder states ----------------------------------------------------- */
+.on-plan-grid-pane .temporal-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    max-height: none;
+}
 
-.planning-placeholder {
+/* --- Separator row ---------------------------------------------------------- */
+
+.temporal-separator-row {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: var(--space-3, 12px);
-    height: 100%;
-    min-height: 200px;
-    color: var(--color-text-secondary, #6b7280);
+    padding: var(--space-1) var(--space-3);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    height: 28px;
+    box-sizing: border-box;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.temporal-separator-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* --- Group row -------------------------------------------------------------- */
+
+.temporal-group-row {
+    background: var(--bg-primary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.temporal-group-row:hover {
+    background: rgba(14, 165, 233, 0.04);
+}
+
+.temporal-group-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+.temporal-toggle-icon {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+    width: 12px;
     text-align: center;
-    padding: var(--space-6, 24px);
+    transition: color var(--transition-fast);
 }
 
-.planning-placeholder .icon {
-    font-size: 2.5rem;
+.temporal-toggle-icon:hover {
+    color: var(--accent-primary);
 }
 
-.planning-placeholder h3 {
-    margin: 0;
-    font-size: var(--text-lg, 1.125rem);
-    color: var(--color-text-primary, #111827);
+/* --- Child row -------------------------------------------------------------- */
+
+.temporal-child-row {
+    background: white;
 }
 
-.planning-placeholder p {
-    margin: 0;
-    font-size: var(--text-sm, 0.875rem);
+.temporal-child-row:hover {
+    background: rgba(14, 165, 233, 0.03);
 }
 
-/* --- Details stub (temporary until RequirementForm is wired) ---------------- */
-
-.on-details-stub {
-    padding: var(--space-3, 12px);
-    font-size: var(--text-sm, 0.875rem);
+.temporal-child-label {
+    padding-left: var(--space-6) !important; /* indentation */
 }
 
-.on-details-stub h3 {
-    margin: 0 0 var(--space-3, 12px);
-    font-size: var(--text-base, 1rem);
+/* --- Label column in planning (overrides temporal-components.css) ----------- */
+
+.on-plan-grid-pane .temporal-row-label {
+    width: 220px;
+    flex-shrink: 0;
+    padding: 0 var(--space-3);
+    border-right: 1px solid var(--border-primary);
+    display: flex;
+    align-items: center;
+    font-size: var(--font-size-sm);
+    overflow: hidden;
 }
 
-.on-details-stub h4 {
-    margin: var(--space-3, 12px) 0 var(--space-2, 8px);
-    font-size: var(--text-sm, 0.875rem);
-    color: var(--color-text-secondary, #6b7280);
+.on-plan-grid-pane .temporal-label-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.on-details-stub p {
-    margin: 0 0 var(--space-1, 4px);
-}
-
-.on-details-stub ul {
-    margin: 0;
-    padding-left: var(--space-4, 16px);
-}
-
-.on-details-stub hr {
-    border: none;
-    border-top: 1px solid var(--color-border, #e5e7eb);
-    margin: var(--space-3, 12px) 0;
+.on-plan-grid-pane .temporal-row-label-header {
+    width: 220px;
+    flex-shrink: 0;
 }
 
 /* --- Disabled tab ----------------------------------------------------------- */
@@ -130,3 +201,31 @@
     opacity: 0.45;
     cursor: not-allowed;
 }
+
+/* --- Details stub ----------------------------------------------------------- */
+
+.on-details-stub { font-size: var(--font-size-sm); }
+.on-details-stub h3 { margin: 0 0 var(--space-3); font-size: var(--font-size-base); }
+.on-details-stub h4 { margin: var(--space-3) 0 var(--space-2); font-size: var(--font-size-sm); color: var(--text-secondary); }
+.on-details-stub p  { margin: 0 0 var(--space-1); }
+.on-details-stub ul { margin: 0; padding-left: var(--space-4); }
+.on-details-stub hr { border: none; border-top: 1px solid var(--border-primary); margin: var(--space-3) 0; }
+
+/* --- Placeholder ------------------------------------------------------------ */
+
+.planning-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    height: 100%;
+    min-height: 200px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: var(--space-6);
+}
+
+.planning-placeholder .icon { font-size: 2.5rem; }
+.planning-placeholder h3 { margin: 0; color: var(--text-primary); }
+.planning-placeholder p  { margin: 0; font-size: var(--font-size-sm); }
