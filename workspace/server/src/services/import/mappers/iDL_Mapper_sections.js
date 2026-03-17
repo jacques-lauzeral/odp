@@ -5,7 +5,7 @@ import {textStartsWith} from "./utils.js";
 
 /**
  * Mapper for iDL section-based Word documents
- * Transforms hierarchical section structure into ODP entities
+ * Transforms hierarchical section structure into ODIP entities
  *
  * DOCUMENT STRUCTURE INTERPRETATION:
  * ==================================

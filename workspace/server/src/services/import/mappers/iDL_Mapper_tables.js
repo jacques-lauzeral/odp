@@ -3,7 +3,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * Mapper for iDL table-based Word documents (AURA, HMI, IAM, MAP, TCF, TCT, NFR, LoA, etc.)
- * Transforms paragraph/table structure into ODP entities
+ * Transforms paragraph/table structure into ODIP entities
  *
  * DOCUMENT STRUCTURE INTERPRETATION:
  * ==================================

@@ -1,4 +1,4 @@
-// Common utility functions for ODP Web Client
+// Common utility functions for ODIP Web Client
 
 // DOM manipulation helpers
 export const dom = {

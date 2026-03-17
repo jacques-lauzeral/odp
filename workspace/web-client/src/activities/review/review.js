@@ -93,7 +93,7 @@ export default class ReviewActivity extends AbstractInteractionActivity {
                             
                             <div class="target-option" data-target="edition">
                                 <div class="target-icon">📖</div>
-                                <h3>ODP Edition</h3>
+                                <h3>ODIP Edition</h3>
                                 <p>Review a specific published edition</p>
                                 <div class="edition-selector">
                                     <select id="editionSelect" class="form-control">

@@ -13,7 +13,7 @@ export class App {
     }
 
     async initialize() {
-        console.log('Initializing ODP Web Client...');
+        console.log('Initializing ODIP Web Client...');
 
         // Connect API client to app for user header
         apiClient.setApp(this);
@@ -31,7 +31,7 @@ export class App {
         // Load current route
         await this.handleRoute();
 
-        console.log('ODP Web Client initialized successfully');
+        console.log('ODIP Web Client initialized successfully');
     }
 
     setupRouting() {

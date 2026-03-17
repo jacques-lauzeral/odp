@@ -10,9 +10,9 @@ import {
 } from '../store/index.js';
 
 /**
- * ODPEditionService provides ODP Edition management operations.
- * Handles ODP Edition creation with automatic baseline creation and immutable access.
- * ODP Editions are read-only once created (no update/delete operations).
+ * ODPEditionService provides ODIP Edition management operations.
+ * Handles ODIP Edition creation with automatic baseline creation and immutable access.
+ * ODIP Editions are read-only once created (no update/delete operations).
  */
 export class ODPEditionService {
 
@@ -45,7 +45,7 @@ export class ODPEditionService {
     }
 
     /**
-     * Validate ODP Edition creation data
+     * Validate ODIP Edition creation data
      */
     _validateODPEditionData(data) {
         const { title, type, baselineId, startsFromWaveId } = data;
@@ -83,11 +83,11 @@ export class ODPEditionService {
     }
 
     // =============================================================================
-    // ODP EDITION OPERATIONS (Create + Read only - ODP Editions are immutable)
+    // ODIP EDITION OPERATIONS (Create + Read only - ODIP Editions are immutable)
     // =============================================================================
 
     /**
-     * Create new ODP Edition with automatic baseline creation if not provided
+     * Create new ODIP Edition with automatic baseline creation if not provided
      */
     async createODPEdition(data, userId) {
         const tx = createTransaction(userId);
@@ -110,7 +110,7 @@ export class ODPEditionService {
                 await this._validateBaselineReference(resolvedBaselineId, tx);
             }
 
-            // Create ODP Edition with resolved baseline ID
+            // Create ODIP Edition with resolved baseline ID
             const editionData = {
                 title: validatedData.title,
                 type: validatedData.type,
@@ -129,7 +129,7 @@ export class ODPEditionService {
     }
 
     /**
-     * Get ODP Edition by ID
+     * Get ODIP Edition by ID
      */
     async getODPEdition(id, userId) {
         const tx = createTransaction(userId);
@@ -144,7 +144,7 @@ export class ODPEditionService {
     }
 
     /**
-     * List all ODP Editions
+     * List all ODIP Editions
      */
     async listODPEditions(userId) {
         const tx = createTransaction(userId);
@@ -159,7 +159,7 @@ export class ODPEditionService {
     }
 
     /**
-     * Export ODP Edition or entire repository as ZIP archive
+     * Export ODIP Edition or entire repository as ZIP archive
      * @param {string|null} editionId - Edition ID for specific edition, null for entire repository
      * @param {string} userId - User ID for transaction
      * @returns {Promise<Buffer>} - ZIP file buffer

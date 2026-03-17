@@ -2,7 +2,7 @@ import { BaseStore } from './base-store.js';
 import { StoreError } from './transaction.js';
 
 /**
- * ODPEditionStore provides data access operations for ODP Editions.
+ * ODPEditionStore provides data access operations for ODIP Editions.
  * Extends BaseStore but overrides update/delete since editions are immutable.
  */
 export class ODPEditionStore extends BaseStore {
@@ -11,7 +11,7 @@ export class ODPEditionStore extends BaseStore {
     }
 
     /**
-     * Create new ODP Edition with baseline and wave references
+     * Create new ODIP Edition with baseline and wave references
      * @param {object} data - {title, type, baselineId, startsFromWaveId}
      * @param {Transaction} transaction - Must have user context
      * @returns {Promise<object>} Created edition with resolved references
@@ -208,14 +208,14 @@ export class ODPEditionStore extends BaseStore {
     }
 
     /**
-     * ODP Editions are immutable - update not supported
+     * ODIP Editions are immutable - update not supported
      */
     async update(id, data, transaction) {
         throw new StoreError('ODP Editions are immutable - update operation not supported');
     }
 
     /**
-     * ODP Editions are immutable - delete not supported
+     * ODIP Editions are immutable - delete not supported
      */
     async delete(id, transaction) {
         throw new StoreError('ODP Editions are immutable - delete operation not supported');

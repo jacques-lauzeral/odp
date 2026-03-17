@@ -1,7 +1,7 @@
 {
   "name": "@odp/web-client",
   "version": "1.0.0",
-  "description": "ODP Web Client - Operational Deployment Plan Management Interface",
+  "description": "ODIP Web Client - Operational Deployment Plan Management Interface",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
@@ -21,7 +21,7 @@
     "web-client",
     "vanilla-javascript"
   ],
-  "author": "ODP Development Team",
+  "author": "ODIP Development Team",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"

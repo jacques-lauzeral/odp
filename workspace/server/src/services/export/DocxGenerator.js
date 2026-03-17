@@ -304,7 +304,7 @@ class DocxGenerator {
         const folderSuffix = metadata.folder ? ` / ${metadata.folder}` : '';
 
         const doc = new Document({
-            creator: metadata.userId || 'ODP System',
+            creator: metadata.userId || 'ODIP System',
             title: `Requirements Export - ${metadata.drg}${folderSuffix}`,
             description: `Operational requirements for DRG: ${metadata.drg}${metadata.folder ? `, folder: ${metadata.folder}` : ''}`,
             styles: {

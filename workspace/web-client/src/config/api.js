@@ -1,4 +1,4 @@
-// API configuration for ODP Web Client
+// API configuration for ODIP Web Client
 export const apiConfig = {
     // Base API URL - defaults to same origin in development
     baseUrl: 'http://' + window.location.hostname + ':8080',

@@ -2,7 +2,7 @@
   "name": "@odp/cli",
   "version": "1.0.0",
   "type": "module",
-  "description": "Command line interface for ODP operations",
+  "description": "Command line interface for ODIP operations",
   "main": "src/index.js",
   "bin": {
     "odp": "src/index.js"

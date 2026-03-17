@@ -5,7 +5,7 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
 
 /**
  * Mapper for NM B2B Word documents
- * Transforms hierarchical section structure into ODP entities
+ * Transforms hierarchical section structure into ODIP entities
  *
  * DOCUMENT STRUCTURE INTERPRETATION:
  * ==================================

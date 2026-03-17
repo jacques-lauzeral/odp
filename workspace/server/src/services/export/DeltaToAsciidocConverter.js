@@ -3,7 +3,7 @@
  *
  * Converts Quill Delta JSON format to AsciiDoc-style plain text.
  * This converter processes Delta ops and produces AsciiDoc formatting markers
- * for use in ODP Edition template rendering.
+ * for use in ODIP Edition template rendering.
  *
  * Supported Delta operations:
  * ===========================

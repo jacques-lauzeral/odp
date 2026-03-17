@@ -4,7 +4,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
  * Mapper for 4DT Excel documents
- * Transforms tabular sheet structure into ODP entities
+ * Transforms tabular sheet structure into ODIP entities
  *
  * COLUMN INTERPRETATION:
  * ======================
@@ -71,7 +71,7 @@ class FourDTMapper extends Mapper {
     /**
      * Map of stakeholder synonyms to external IDs
      * Keys: variations found in Excel (including plural forms)
-     * Values: external IDs in the ODP system
+     * Values: external IDs in the ODIP system
      */
     static STAKEHOLDER_SYNONYM_MAP = {
         'AU': 'stakeholder:network/airspace_user',

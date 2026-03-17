@@ -5,7 +5,7 @@ import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-ev
 
 /**
  * Mapper for ASM_ATFCM Excel documents
- * Transforms tabular sheet structure into ODP entities
+ * Transforms tabular sheet structure into ODIP entities
  *
  * COLUMN INTERPRETATION:
  * ======================

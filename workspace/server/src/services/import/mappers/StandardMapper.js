@@ -168,7 +168,7 @@ export class StandardMapper {
                     }
                 }
 
-                // Alternative: detect from ODP ID field if present
+                // Alternative: detect from ODIP ID field if present
                 if (fieldName === 'odp id' && fieldValue) {
                     const lowerValue = fieldValue.toLowerCase();
                     if (lowerValue.startsWith('on:')) {

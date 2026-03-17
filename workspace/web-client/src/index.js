@@ -1,4 +1,4 @@
-// Main entry point for ODP Web Client
+// Main entry point for ODIP Web Client
 import { App } from './app.js';
 
 // Initialize application when DOM is ready
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await app.initialize();
 
     } catch (error) {
-        console.error('Failed to initialize ODP Web Client:', error);
+        console.error('Failed to initialize ODIP Web Client:', error);
 
         // Show error message to user
         const appContainer = document.getElementById('activity-container');
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             appContainer.innerHTML = `
                 <div class="error-container">
                     <h1>Error Loading Application</h1>
-                    <p>Failed to initialize ODP Web Client. Please refresh the page or contact support.</p>
+                    <p>Failed to initialize ODIP Web Client. Please refresh the page or contact support.</p>
                     <details>
                         <summary>Technical Details</summary>
                         <pre>${error.message}</pre>

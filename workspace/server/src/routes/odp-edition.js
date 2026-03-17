@@ -14,7 +14,7 @@ function getUserId(req) {
     return userId;
 }
 
-// List all ODP editions
+// List all ODIP editions
 router.get('/', async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
         const editions = await ODPEditionService.listODPEditions(userId);
         res.json(editions);
     } catch (error) {
-        console.error('Error fetching ODP editions:', error);
+        console.error('Error fetching ODIP editions:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
@@ -45,7 +45,7 @@ router.get('/export', async (req, res) => {
         res.setHeader('Content-Disposition', 'inline; filename="odp-repository.adoc"');
         res.send(asciiDoc);
     } catch (error) {
-        console.error('Error exporting ODP repository:', error);
+        console.error('Error exporting ODIP repository:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
@@ -54,7 +54,7 @@ router.get('/export', async (req, res) => {
     }
 });
 
-// Get ODP edition by ID
+// Get ODIP edition by ID
 router.get('/:id', async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -62,12 +62,12 @@ router.get('/:id', async (req, res) => {
         const edition = await ODPEditionService.getODPEdition(req.params.id, userId);
         if (!edition) {
             return res.status(404).json({
-                error: { code: 'NOT_FOUND', message: 'ODP Edition not found' }
+                error: { code: 'NOT_FOUND', message: 'ODIP Edition not found' }
             });
         }
         res.json(edition);
     } catch (error) {
-        console.error('Error fetching ODP edition:', error);
+        console.error('Error fetching ODIP edition:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
@@ -76,7 +76,7 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// Export specific ODP edition as AsciiDoc
+// Export specific ODIP edition as AsciiDoc
 router.get('/:id/export', async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -91,7 +91,7 @@ router.get('/:id/export', async (req, res) => {
         res.setHeader('Content-Disposition', `inline; filename="odp-edition-${editionId}.adoc"`);
         res.send(asciiDoc);
     } catch (error) {
-        console.error('Error exporting ODP edition:', error);
+        console.error('Error exporting ODIP edition:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('not found')) {
@@ -102,7 +102,7 @@ router.get('/:id/export', async (req, res) => {
     }
 });
 
-// Create new ODP edition (with auto-baseline creation if needed)
+// Create new ODIP edition (with auto-baseline creation if needed)
 router.post('/', async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -110,7 +110,7 @@ router.post('/', async (req, res) => {
         const edition = await ODPEditionService.createODPEdition(req.body, userId);
         res.status(201).json(edition);
     } catch (error) {
-        console.error('Error creating ODP edition:', error);
+        console.error('Error creating ODIP edition:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('is required') || error.message.includes('must be')) {
@@ -125,22 +125,22 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Update ODP edition - NOT SUPPORTED (ODP editions are immutable)
+// Update ODIP edition - NOT SUPPORTED (ODIP editions are immutable)
 router.put('/:id', async (req, res) => {
     res.status(405).json({
         error: {
             code: 'METHOD_NOT_ALLOWED',
-            message: 'ODP Edition update not supported - ODP editions are immutable once created'
+            message: 'ODIP Edition update not supported - ODIP editions are immutable once created'
         }
     });
 });
 
-// Delete ODP edition - NOT SUPPORTED (ODP editions are immutable)
+// Delete ODIP edition - NOT SUPPORTED (ODIP editions are immutable)
 router.delete('/:id', async (req, res) => {
     res.status(405).json({
         error: {
             code: 'METHOD_NOT_ALLOWED',
-            message: 'ODP Edition deletion not supported - ODP editions are immutable for historical integrity'
+            message: 'ODIP Edition deletion not supported - ODIP editions are immutable for historical integrity'
         }
     });
 });

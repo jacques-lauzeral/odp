@@ -1,5 +1,5 @@
 /**
- * Builds standardized external IDs for all ODP entity types
+ * Builds standardized external IDs for all ODIP entity types
  *
  * External ID Format: {type}:{type-specific-format}
  *

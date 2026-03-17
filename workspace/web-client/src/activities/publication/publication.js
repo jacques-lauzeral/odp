@@ -11,7 +11,7 @@ export default class PublicationActivity {
 
         // Single entity configuration
         this.entityConfig = {
-            name: 'ODP Editions',
+            name: 'ODIP Editions',
             endpoint: '/odp-editions',
             context: 'publication'
         };
@@ -51,8 +51,8 @@ export default class PublicationActivity {
         this.container.innerHTML = `
             <div class="publication-activity">
                 <div class="publication-header">
-                    <h1> ODP Publication  </h1>
-                    <p>Create and manage ODP editions for deployment planning</p>
+                    <h1> ODIP Publication  </h1>
+                    <p>Create and manage ODIP editions for deployment planning</p>
                 </div>
                 
                 <div class="publication-workspace">
@@ -144,7 +144,7 @@ export default class PublicationActivity {
                     <h1>
                         Publication
                     </h1>
-                    <p>Create and manage ODP editions for deployment planning</p>
+                    <p>Create and manage ODIP editions for deployment planning</p>
                     <div class="publication-stats">
                         <span class="edition-count">${this.editionCount} editions</span>
                     </div>
@@ -422,7 +422,7 @@ export default class PublicationActivity {
                         Publication
                         <span class="publication-context">Edition Management</span>
                     </h1>
-                    <p>Create and manage ODP editions for deployment planning</p>
+                    <p>Create and manage ODIP editions for deployment planning</p>
                 </div>
                 
                 <div class="publication-workspace">
@@ -444,7 +444,7 @@ export default class PublicationActivity {
         if (contentContainer) {
             contentContainer.innerHTML = `
                 <div class="error-state">
-                    <h3>Failed to Load ODP Editions</h3>
+                    <h3>Failed to Load ODIP Editions</h3>
                     <p>Error: ${error.message}</p>
                     <button class="btn btn-secondary" onclick="window.location.reload()">
                         Reload Page

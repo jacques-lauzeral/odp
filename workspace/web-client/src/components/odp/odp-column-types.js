@@ -1,6 +1,6 @@
 /**
- * ODP Column Types - Column type implementations for ODP-specific data
- * Handles setup data references, entity references, and ODP-specific formatting
+ * ODIP Column Types - Column type implementations for ODIP-specific data
+ * Handles setup data references, entity references, and ODIP-specific formatting
  * Updated for model evolution: DRG enum, new milestone events, enhanced field structure,
  * and annotated references for document references with notes
  */

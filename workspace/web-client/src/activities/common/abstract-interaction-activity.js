@@ -24,13 +24,13 @@ export default class AbstractInteractionActivity {
         this.config = {
             activityName: 'Interaction',
             context: 'Repository',
-            description: 'Interact with ODP content',
+            description: 'Interact with ODIP content',
             mode: 'edit', // 'edit' or 'review'
             dataSource: 'repository', // 'repository' or editionId
             ...config
         };
 
-        // Entity configuration for ODP Interaction Activities
+        // Entity configuration for ODIP Interaction Activities
         this.entities = {
             'requirements': {
                 name: 'Operational Requirements',

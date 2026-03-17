@@ -5,8 +5,8 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 
 /**
- * EditionCommands provides ODP Edition-specific commands.
- * ODP Editions are immutable (create, list, show only - no update/delete).
+ * EditionCommands provides ODIP Edition-specific commands.
+ * ODIP Editions are immutable (create, list, show only - no update/delete).
  */
 class EditionCommands {
     constructor(config) {
@@ -54,7 +54,7 @@ class EditionCommands {
      */
     createCommands(program) {
         const editionCommand = new Command('edition')
-            .description('Manage ODP editions (operational deployment plan publications)');
+            .description('Manage ODIP editions (operational deployment plan publications)');
 
         this.addListCommand(editionCommand);
         this.addShowCommand(editionCommand);
@@ -68,7 +68,7 @@ class EditionCommands {
     addListCommand(editionCommand) {
         editionCommand
             .command('list')
-            .description('List all ODP editions')
+            .description('List all ODIP editions')
             .action(async () => {
                 try {
                     const response = await fetch(`${this.baseUrl}/odp-editions`, {
@@ -82,7 +82,7 @@ class EditionCommands {
                     const editions = await response.json();
 
                     if (editions.length === 0) {
-                        console.log('No ODP editions found.');
+                        console.log('No ODIP editions found.');
                         return;
                     }
 
@@ -104,7 +104,7 @@ class EditionCommands {
 
                     console.log(table.toString());
                 } catch (error) {
-                    console.error('Error listing ODP editions:', error.message);
+                    console.error('Error listing ODIP editions:', error.message);
                     process.exit(1);
                 }
             });
@@ -113,7 +113,7 @@ class EditionCommands {
     addShowCommand(editionCommand) {
         editionCommand
             .command('show <id>')
-            .description('Show a specific ODP edition')
+            .description('Show a specific ODIP edition')
             .action(async (id) => {
                 try {
                     const response = await fetch(`${this.baseUrl}/odp-editions/${id}`, {
@@ -121,7 +121,7 @@ class EditionCommands {
                     });
 
                     if (response.status === 404) {
-                        console.error(`ODP edition with ID ${id} not found.`);
+                        console.error(`ODIP edition with ID ${id} not found.`);
                         process.exit(1);
                     }
 
@@ -156,7 +156,7 @@ class EditionCommands {
                         console.log('Starts From Waves: None');
                     }
                 } catch (error) {
-                    console.error('Error getting ODP edition:', error.message);
+                    console.error('Error getting ODIP edition:', error.message);
                     process.exit(1);
                 }
             });
@@ -165,7 +165,7 @@ class EditionCommands {
     addCreateCommand(editionCommand) {
         editionCommand
             .command('create <title>')
-            .description('Create a new ODP edition')
+            .description('Create a new ODIP edition')
             .requiredOption('--from <waveId>', 'Waves ID that this edition starts from')
             .option('--type <type>', 'Edition type (DRAFT or OFFICIAL)', 'DRAFT')
             .option('--baseline <baselineId>', 'Baseline ID (auto-created if not provided)')
@@ -182,7 +182,7 @@ class EditionCommands {
                         data.baselineId = parseInt(options.baseline, 10);
                     }
 
-                    console.log('Creating ODP edition...');
+                    console.log('Creating ODIP edition...');
 
                     const response = await fetch(`${this.baseUrl}/odp-editions`, {
                         method: 'POST',
@@ -197,7 +197,7 @@ class EditionCommands {
 
                     const edition = await response.json();
 
-                    console.log(`✓ Created ODP edition: ${edition.title} (ID: ${edition.id})`);
+                    console.log(`✓ Created ODIP edition: ${edition.title} (ID: ${edition.id})`);
                     console.log(`✓ Type: ${edition.type}`);
 
                     if (edition.startsFromWave) {
@@ -212,7 +212,7 @@ class EditionCommands {
                         console.log(`✓ Edition created at: ${new Date(edition.createdAt).toLocaleString()}`);
                     }
                 } catch (error) {
-                    console.error('Error creating ODP edition:', error.message);
+                    console.error('Error creating ODIP edition:', error.message);
                     process.exit(1);
                 }
             });
@@ -221,7 +221,7 @@ class EditionCommands {
     addExportCommand(editionCommand) {
         editionCommand
             .command('export <id>')
-            .description('Export a specific ODP edition as ZIP archive')
+            .description('Export a specific ODIP edition as ZIP archive')
             .requiredOption('-o, --output <path>', 'Output file path for ZIP archive')
             .action(async (id, options) => {
                 try {
@@ -230,7 +230,7 @@ class EditionCommands {
                     });
 
                     if (response.status === 404) {
-                        console.error(`ODP edition with ID ${id} not found.`);
+                        console.error(`ODIP edition with ID ${id} not found.`);
                         process.exit(1);
                     }
 
@@ -245,7 +245,7 @@ class EditionCommands {
                     fs.writeFileSync(options.output, zipBuffer);
                     console.log(`✓ Edition exported to: ${options.output}`);
                 } catch (error) {
-                    console.error('Error exporting ODP edition:', error.message);
+                    console.error('Error exporting ODIP edition:', error.message);
                     process.exit(1);
                 }
             });
@@ -254,7 +254,7 @@ class EditionCommands {
     addExportAllCommand(editionCommand) {
         editionCommand
             .command('export-all')
-            .description('Export entire ODP repository as ZIP archive')
+            .description('Export entire ODIP repository as ZIP archive')
             .requiredOption('-o, --output <path>', 'Output file path for ZIP archive')
             .action(async (options) => {
                 try {
@@ -273,7 +273,7 @@ class EditionCommands {
                     fs.writeFileSync(options.output, zipBuffer);
                     console.log(`✓ Repository exported to: ${options.output}`);
                 } catch (error) {
-                    console.error('Error exporting ODP repository:', error.message);
+                    console.error('Error exporting ODIP repository:', error.message);
                     process.exit(1);
                 }
             });

@@ -2,7 +2,7 @@ import { CollectionEntityForm } from '../../components/odp/collection-entity-for
 import { apiClient } from '../../shared/api-client.js';
 
 /**
- * ODPEditionForm - ODP Edition form configuration and handling
+ * ODPEditionForm - ODIP Edition form configuration and handling
  * Extends CollectionEntityForm using inheritance pattern
  * Matches the API schema for ODPEditionRequest
  */
@@ -118,11 +118,11 @@ export default class ODPEditionForm extends CollectionEntityForm {
     getFormTitle(mode) {
         switch (mode) {
             case 'create':
-                return 'Create ODP Edition';
+                return 'Create ODIP Edition';
             case 'read':
-                return 'ODP Edition Details';
+                return 'ODIP Edition Details';
             default:
-                return 'ODP Edition';
+                return 'ODIP Edition';
         }
     }
 
@@ -173,7 +173,7 @@ export default class ODPEditionForm extends CollectionEntityForm {
         if (mode === 'create') {
             return await apiClient.post(this.entityConfig.endpoint, data);
         } else {
-            throw new Error('ODP Editions cannot be updated once created');
+            throw new Error('ODIP Editions cannot be updated once created');
         }
     }
 

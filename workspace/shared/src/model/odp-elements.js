@@ -17,7 +17,7 @@ export const ORCost = {
     cost: 0   // integer, in MW
 };
 
-// ODP Elements
+// ODIP Elements
 
 export const OperationalRequirement = {
     itemId: '',

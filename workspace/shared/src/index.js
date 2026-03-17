@@ -12,7 +12,7 @@ export * from './model/utils.js';
 // Export setup elements
 export * from './model/setup-elements.js';
 
-// Export ODP elements
+// Export ODIP elements
 export * from './model/odp-elements.js';
 
 // Export request models

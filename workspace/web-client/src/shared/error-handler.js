@@ -1,4 +1,4 @@
-// Centralized error handling for ODP Web Client
+// Centralized error handling for ODIP Web Client
 export class ErrorHandler {
     constructor() {
         this.errorContainer = null;

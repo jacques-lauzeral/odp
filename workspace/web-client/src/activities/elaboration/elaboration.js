@@ -5,7 +5,7 @@ export default class ElaborationActivity extends AbstractInteractionActivity {
         super(app, {
             activityName: 'Elaboration',
             context: 'Repository',
-            description: 'Create and edit operational requirements and changes for the next ODP edition',
+            description: 'Create and edit operational requirements and changes for the next ODIP edition',
             mode: 'edit',
             dataSource: 'repository'
         });

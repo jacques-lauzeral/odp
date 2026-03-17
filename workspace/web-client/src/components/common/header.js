@@ -15,7 +15,7 @@ export default class Header {
         const headerHtml = `
             <header class="odp-header">
                 <div class="odp-header__brand">
-                    <h1 class="odp-header__title">ODP</h1>
+                    <h1 class="odp-header__title">ODIP</h1>
                 </div>
                 
                 <nav class="odp-header__nav">

@@ -9,7 +9,7 @@ import baseline from "../../routes/baseline.js";
 import DeltaToAsciidocConverter from './DeltaToAsciidocConverter.js';
 
 /**
- * ODPEditionAggregator handles complex data assembly for ODP Edition exports.
+ * ODPEditionAggregator handles complex data assembly for ODIP Edition exports.
  * Aggregates data from multiple services and builds the complete data structure
  * needed for AsciiDoc rendering.
  */
@@ -190,7 +190,7 @@ export class ODPEditionAggregator {
         }
 
         if (!edition) {
-            throw new Error(`ODP Edition with ID ${editionId} not found`);
+            throw new Error(`ODIP Edition with ID ${editionId} not found`);
         }
 
         // Import services
@@ -225,7 +225,7 @@ export class ODPEditionAggregator {
         const editionChanges = await operationalChangeService.getAll(userId, edition.baseline.id, edition.startsFromWave.id);
         const editionRequirements = await operationalRequirementService.getAll(userId, edition.baseline.id, edition.startsFromWave.id);
 
-        return this._buildExportData(editionWaves, editionChanges, editionRequirements, `ODP Edition ${edition.title}`, userId, startingWave);
+        return this._buildExportData(editionWaves, editionChanges, editionRequirements, `ODIP Edition ${edition.title}`, userId, startingWave);
     }
 
     async buildRepositoryExportData(userId) {
@@ -242,7 +242,7 @@ export class ODPEditionAggregator {
         const allChanges = await operationalChangeService.getAll(userId);
         const allRequirements = await operationalRequirementService.getAll(userId);
 
-        return this._buildExportData(allWaves, allChanges, allRequirements, 'ODP Repository', userId, null);
+        return this._buildExportData(allWaves, allChanges, allRequirements, 'ODIP Repository', userId, null);
     }
 
     /**

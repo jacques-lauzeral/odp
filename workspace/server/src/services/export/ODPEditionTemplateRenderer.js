@@ -39,7 +39,7 @@ class ODPEditionTemplateRenderer {
 
             // Ensure data has default values for optional fields
             const renderData = {
-                title: data.title || 'ODP Repository',
+                title: data.title || 'ODIP Repository',
                 waves: data.waves || [],
                 operationalChanges: data.operationalChanges || [],
                 operationalRequirements: data.operationalRequirements || [],

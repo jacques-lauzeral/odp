@@ -150,7 +150,7 @@ export default class Landing {
             const health = await apiClient.healthCheck();
 
             if (health.status === 'ok') {
-                statusDiv.textContent = 'Connected to ODP Server';
+                statusDiv.textContent = 'Connected to ODIP Server';
                 statusDiv.className = 'connection-status connected';
             } else {
                 statusDiv.textContent = 'Server connection issue';

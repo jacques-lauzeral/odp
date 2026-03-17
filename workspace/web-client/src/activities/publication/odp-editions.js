@@ -10,7 +10,7 @@ export default class ODPEditionsEntity {
         this.container = null;
         this.data = [];
 
-        // Initialize collection with ODP column types
+        // Initialize collection with ODIP column types
         this.collection = new CollectionEntity(app, entityConfig, {
             columnTypes: odpColumnTypes,
             context: { supportData },
@@ -22,7 +22,7 @@ export default class ODPEditionsEntity {
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Editions Yet',
-                description: 'Start creating ODP editions to publish deployment plans.',
+                description: 'Start creating ODIP editions to publish deployment plans.',
                 createButtonText: 'Create First Edition',
                 showCreateButton: true
             })
@@ -33,7 +33,7 @@ export default class ODPEditionsEntity {
 
         // Listen for save events
         document.addEventListener('entitySaved', async (e) => {
-            if (e.detail.entityType === 'ODP Editions') {
+            if (e.detail.entityType === 'ODIP Editions') {
                 await this.handleRefresh();
             }
         });

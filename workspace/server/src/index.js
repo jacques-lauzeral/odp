@@ -66,7 +66,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/hello', (req, res) => {
-    res.json({ status: 'ok', message: 'ODP Server running', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', message: 'ODIP Server running', timestamp: new Date().toISOString() });
 });
 
 // Import API Routes (before other routes for proper middleware precedence)
@@ -120,7 +120,7 @@ async function startServer() {
         MapperRegistry.registerImportMappers();
 
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`ODP Server running on port ${PORT}`);
+            console.log(`ODIP Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/hello`);
             console.log(`API endpoints:`);
             console.log(`Import Operations:`);

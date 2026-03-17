@@ -1,7 +1,7 @@
 {
   "name": "@odp/server",
   "version": "1.0.0",
-  "description": "ODP REST API server",
+  "description": "ODIP REST API server",
   "private": true,
   "type": "module",
   "main": "src/index.js",
