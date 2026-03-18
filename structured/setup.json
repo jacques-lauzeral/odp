@@ -489,7 +489,306 @@
       "externalId": "document:nsp/so10/4",
       "parentExternalId": "document:nsp/so10"
     },
-
+    {
+      "name": "ATMMP",
+      "description": "ATM Master Plan 2025",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO 1",
+      "description": "Alerts for reduction of collision risks on taxiways and runways",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo1",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 1.1",
+      "description": "Adapt airport ground safety nets to extend conflicting ATC clearances (CATC) to the entire aerodrome movement area, to enlarge the set of conformance monitoring (CMAC) alerting functions and to provide integrated occupancy/conflict status of a runway.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo1/da1.1",
+      "parentExternalId": "document:atmmp/sdo1"
+    },
+    {
+      "name": "ATMMP SDO 2",
+      "description": "Optimising airport and TMA environmental footprint",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 2.1",
+      "description": "Adapt airport ground safety nets to extend conflicting ATC clearances (CATC) to the entire aerodrome movement area, to enlarge the set of conformance monitoring (CMAC) alerting functions and to provide integrated occupancy/conflict status of a runway.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2/da2.1",
+      "parentExternalId": "document:atmmp/sdo2"
+    },
+    {
+      "name": "ATMMP SDO DA 2.2",
+      "description": "Implement solutions to better integrate large/very large airports and the network via an enhanced AOPs-NOP tactical, pre-tactical and strategic planning and AOP to AOP collaborative planning process.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2/da2.2",
+      "parentExternalId": "document:atmmp/sdo2"
+    },
+    {
+      "name": "ATMMP SDO DA 2.3",
+      "description": "Implement environmental performance management at airports and solutions to reduce the airport impact on emissions (single engine taxiing, engine-off taxiing though use of sustainable taxiing vehicles).",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2/da2.3",
+      "parentExternalId": "document:atmmp/sdo2"
+    },
+    {
+      "name": "ATMMP SDO DA 2.4",
+      "description": "Implement capabilities to better manage arrival constraints between various extended arrival management (E-AMAN) units in cross-border environments and to better integrate the out-of-area inbound flights.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2/da2.4",
+      "parentExternalId": "document:atmmp/sdo2"
+    },
+    {
+      "name": "ATMMP SDO DA 2.5",
+      "description": "Implement optimised descent operations using merge to point and advanced approach procedures (46) (i.e. second runway-aiming point (SRAP), increased second glide slope (ISGS), increased glide slope to a second runway aiming point (IGS-to-SRAP)), which aim to reduce the environmental impact (e.g. noise, fuel consumption, CO2 Who ANSP, AU, AU MIL,  AO, NM ANSP, AU  AO, NM ANSP, AU,  AO Where Airport, TMA,  En-route, Network Airport, Network Airport ANSP, AU Airport, TMA,  En-route, Network ANSP, AU, AU MIL, AO Airport, TMA,  En-route emissions) on the airport's neighbouring communities.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2/da2.5",
+      "parentExternalId": "document:atmmp/sdo2"
+    },
+    {
+      "name": "ATMMP SDO DA 2.6",
+      "description": "Implement new capabilities to increase airport runway capacity both on arrivals and departures using wake turbulence separations based on static aircraft characteristics, required surveillance performance (RSP) and runway occupancy time (ROT) characterisation of the leader aircraft.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo2/da2.6",
+      "parentExternalId": "document:atmmp/sdo2"
+    },
+    {
+      "name": "ATMMP SDO 3",
+      "description": "Dynamic airspace configuration",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo3",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 3.1",
+      "description": "Implement higher levels of granularity and dynamicity in airspace configurations, adjusted to traffic demand and military needs for airspace reservations, enabling cross-border coordination between all civil and military actors.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo3/da3.1",
+      "parentExternalId": "document:atmmp/sdo3"
+    },
+    {
+      "name": "ATMMP SDO DA 3.2",
+      "description": "Implement mission trajectory and dynamic mobile areas (DMAs) of type 1 and type 2 using the improved operational air traffic flight plan (iOAT FPL) into dynamic airspace configuration processes in the medium- to short-term ATM planning phase to support military airspace requirements.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo3/da3.2",
+      "parentExternalId": "document:atmmp/sdo3"
+    },
+    {
+      "name": "ATMMP SDO 4",
+      "description": "Increased automation support",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo4",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 4.1",
+      "description": "Implement sector team configurations, which in specific airspace configurations include the combination of one planning ATCO with two tactical/executive ATCOs in an en-route/eTMA environment.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo4/da4.1",
+      "parentExternalId": "document:atmmp/sdo4"
+    },
+    {
+      "name": "ATMMP SDO DA 4.2",
+      "description": "Implement automatic speech recognition (ASR), user profile management system (UPMS) and attention guidance (AG) to provide a higher automation environment to support the ATCO role.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo4/da4.2",
+      "parentExternalId": "document:atmmp/sdo4"
+    },
+    {
+      "name": "ATMMP SDO 5",
+      "description": "Transformation to trajectory-based operations (TBO)",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 5.1",
+      "description": "Implement enhanced conflict detection and resolution (CD&R) support tools by using aircraft-derived data (i.e. extended projected profile (EPP)) supported by the full implementation of ATS-B2 and high-resolution wind models.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.1",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO DA 5.2",
+      "description": "Implement multi-element clearances using controller pilot data link communications (CPDLC) with lateral and vertical data link clearances and increased ground automation tools (e.g. CD&R tools) and trajectory prediction supporting the earlier detection and resolution of potential conflicts.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.2",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO DA 5.3",
+      "description": "Implement a dynamic route availability document (RAD) to allow the dynamic management of restrictions based on traffic evolutions, better integration of letters of agreement (LoAs) between ATC centres and NM, and the provision of preliminary flight plans by airspace users. This will feed dynamic network constraints publications initiated the day before operations, to optimise the environmental performance of the network.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.3",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO DA 5.4",
+      "description": "Implement airspace user capabilities to provide, through the userdriven prioritisation process (UDPP), their preferences and priorities and influence ATFM arrival regulations.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.4",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO DA 5.5",
+      "description": "Implement interaction tools supporting the full integration of the flight operations centre (FOC) into the ATM network process, and the flight delay criticality concept, to better integrate airspace user priorities in flow management decisions.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.5",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO DA 5.6",
+      "description": "Exploit new FF-ICE/R1 trajectory services beyond the CP1 services (which are just the filing and trial services) to improve the completeness and accuracy of traffic load calculation and advanced network performance capabilities.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.6",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO DA 5.7",
+      "description": "Implement seamless ATC–ATC coordination and sharing with NM of the ATC–ATC exchanges (48), encompassing more complex coordination dialogues implying negotiation between controllers across ACC boundaries.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo5/da5.7",
+      "parentExternalId": "document:atmmp/sdo5"
+    },
+    {
+      "name": "ATMMP SDO 6",
+      "description": "Virtualisation of operations",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo6",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 6.1",
+      "description": "Implement virtual centres to enable decoupling of the ATM data service provider (ADSP) and ATSU through service interfaces that support new ways of dynamic ATS delegation (e.g. contingency delegation, night delegation (scheduled), fixed time delegation (scheduled), or 'on-demand').",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo6/da6.1",
+      "parentExternalId": "document:atmmp/sdo6"
+    },
+    {
+      "name": "ATMMP SDO DA 6.2",
+      "description": "Implement multiple remote tower module (MRTM) flexible and dynamic allocation of different MRTMs accommodated within a remote tower centre (RTC) that allows the ATCO to maintain situational awareness for two or more small airports. It includes the implementation of a low-cost surveillance service for supporting remote tower operations.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo6/da6.2",
+      "parentExternalId": "document:atmmp/sdo6"
+    },
+    {
+      "name": "ATMMP SDO 7",
+      "description": "Transition towards high performance of air–ground connectivity (multilink)",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo7",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 7.1",
+      "description": "Implement future air–ground communications network infrastructure, which supports multilink capability and complete mobility between different data links.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo7/da7.1",
+      "parentExternalId": "document:atmmp/sdo7"
+    },
+    {
+      "name": "ATMMP SDO DA 7.2",
+      "description": "Implement SatCom class B, which enables data and voice communication services using existing satellite technology systems in oceanic, remote, polar and progressively continental airspace.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo7/da7.2",
+      "parentExternalId": "document:atmmp/sdo7"
+    },
+    {
+      "name": "ATMMP SDO DA 7.3",
+      "description": "Implement VDL-M2 successor (e.g. terrestrial data link system L-band-digital aeronautical communication system (LDACS), data link for ATM and AOC operations over commercial communication systems (hyper-connected ATM), and satellite communications for both continental and remote/oceanic regions.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo7/da7.3",
+      "parentExternalId": "document:atmmp/sdo7"
+    },
+    {
+      "name": "ATMMP SDO 8",
+      "description": "Service-oriented delivery model (data-driven and cloud-based)",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo8",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 8.1",
+      "description": "Implement the new service-oriented delivery model (data-driven and cloud-based) covering all phases of flight and enabling: open ATM patterns enabling integration of components provided by various system providers to facilitate multi-vendor solutions using open platforms and interfaces; decoupling of service and infrastructure layers through cloud computing (including the various system components); a cloud-native architecture of components with standardised and open interfaces that can be deployed on commodity cloud technologies.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo8/da8.1",
+      "parentExternalId": "document:atmmp/sdo8"
+    },
+    {
+      "name": "ATMMP SDO 9",
+      "description": "CNS optimisation, modernisation and resilience",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo9",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 9.1",
+      "description": "Implement a secured surveillance functionality that enables detection and, when possible, mitigation of security threats that could affect the surveillance chain.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo9/da9.1",
+      "parentExternalId": "document:atmmp/sdo9"
+    },
+    {
+      "name": "ATMMP SDO DA 9.2",
+      "description": "Implement minimum operational network (MON).",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo9/da9.2",
+      "parentExternalId": "document:atmmp/sdo9"
+    },
+    {
+      "name": "ATMMP SDO DA 9.3",
+      "description": "Rationalise instrument landing systems (ILS) and implement efficiency measures/methods for more cost-effective maintenance of ILS, providing a link between ICAO Doc. 8071 and national CNS provision.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo9/da9.3",
+      "parentExternalId": "document:atmmp/sdo9"
+    },
+    {
+      "name": "ATMMP SDO DA 9.4",
+      "description": "Optimise surveillance, leveraging terrestrial and space-based information.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo9/da9.4",
+      "parentExternalId": "document:atmmp/sdo9"
+    },
+    {
+      "name": "ATMMP SDO 10",
+      "description": "Enable innovative air mobility (IAM) and drone operations",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo10",
+      "parentExternalId": "document:atmmp"
+    },
+    {
+      "name": "ATMMP SDO DA 10.1",
+      "description": "Implement system support and procedures to integrate instrument flight rules (IFR) RPAS and IAM in airspaces A to C, which are required to have detect and avoid (DAA) systems that perform at least as well as TCAS II (traffic alert and collision avoidance system) and see and avoid.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo10/da10.1",
+      "parentExternalId": "document:atmmp/sdo10"
+    },
+    {
+      "name": "ATMMP SDO DA 10.2",
+      "description": "Implement foundational (U1) and initial (U2) U-space services as established by the regulatory framework for U-space (Commission Implementing Regulation (EU) 2021/664).",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo10/da10.2",
+      "parentExternalId": "document:atmmp/sdo10"
+    },
+    {
+      "name": "ATMMP SDO DA 10.3",
+      "description": "Implement a common ATM–U-space interface and dynamic airspace reconfiguration service to help ATC actors in charge of airspace reconfigurations to increase safety, keeping crewed and uncrewed aircraft segregated within the designated U-space airspace.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo10/da10.3",
+      "parentExternalId": "document:atmmp/sdo10"
+    },
+    {
+      "name": "ATMMP SDO DA 10.4",
+      "description": "Implement simultaneous non-interfering (SNI) operations (e.g. parallel or convergent point-in-space (PinS) procedures) and capabilities (i.e. GNSS and the RNP navigation specification) allowing airspace users (e.g. rotorcraft, VTOL-capable aircraft, etc.) to operate to and from airports, vertiports and TMAs without conflicting with other traffic or requiring runway slots.",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:atmmp/sdo10/da10.4",
+      "parentExternalId": "document:atmmp/sdo10"
+    },
 
     {
       "name": "Commission Implementing Regulation (EU) 2021/116",
@@ -719,6 +1018,25 @@
       "name": "CCAMS Users",
       "description": "CCAMS Operational Users",
       "parentExternalId": "stakeholder:network"
+    }
+  ],
+  "domains": [
+    {
+      "externalId": "domain:flight",
+      "name": "Flight",
+      "description": "Flight domain"
+    },
+    {
+      "externalId": "domain:flight/preparation",
+      "name": "Flight Preparation",
+      "description": "Flight plan validation, routing assistance, and other services related to flight preparation/trial",
+      "parentExternalId": "domain:flight"
+    },
+    {
+      "externalId": "domain:flight/filing",
+      "name": "Flight Filing",
+      "description": "Flight plan filing",
+      "parentExternalId": "domain:flight"
     }
   ],
   "waves": [
