@@ -137,25 +137,25 @@ export default class RequirementsEntity {
             implementedONs: {
                 key: 'implementedONs', label: 'Implements', width: '150px',
                 type: 'implemented-ons', sortable: false,
-                maxDisplay: 1, groupPrefix: 'Implements', noneLabel: 'No Implementation',
+                maxDisplay: 3, groupPrefix: 'Implements',
                 appliesTo: ['or-node']
             },
             dependencies: {
                 key: 'dependencies', label: 'Depends On', width: '120px',
                 type: 'entity-reference-list', sortable: false,
-                maxDisplay: 1, groupPrefix: 'Depends On', noneLabel: 'No Dependencies',
+                maxDisplay: 3, groupPrefix: 'Depends On',
                 appliesTo: ['or-node']
             },
             impactedStakeholders: {
                 key: 'impactedStakeholders', label: 'Stakeholders', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
-                maxDisplay: 1, noneLabel: 'No Stakeholder Impact',
+                maxDisplay: 3,
                 appliesTo: ['or-node']
             },
             impactedDomains: {
                 key: 'impactedDomains', label: 'Domains', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
-                maxDisplay: 1, noneLabel: 'No Domain Impact',
+                maxDisplay: 3,
                 appliesTo: ['or-node']
             },
             updatedBy: {
