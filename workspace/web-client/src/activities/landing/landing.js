@@ -1,6 +1,5 @@
 // Landing page component with activity launcher
 import { dom, validate } from '../../shared/utils.js';
-import { apiClient } from '../../shared/api-client.js';
 
 export default class Landing {
     constructor(app) {
@@ -31,8 +30,8 @@ export default class Landing {
             this.showUserIdentification();
         }
 
-        // Perform health check
-        this.performHealthCheck();
+        // Reflect current connection status and listen for changes
+        this.initializeConnectionStatus();
     }
 
     initializeUserForm() {
@@ -139,27 +138,30 @@ export default class Landing {
         this.app.navigateTo(`/${activity}`);
     }
 
-    async performHealthCheck() {
+    initializeConnectionStatus() {
+        this.updateConnectionStatus('checking');
+        window.addEventListener('connection:change', (e) => {
+            this.updateConnectionStatus(e.detail.status);
+        });
+    }
+
+    updateConnectionStatus(status) {
         const statusDiv = dom.find('#connection-status', this.container);
         if (!statusDiv) return;
 
-        try {
-            statusDiv.textContent = 'Checking connection...';
-            statusDiv.className = 'connection-status checking';
-
-            const health = await apiClient.healthCheck();
-
-            if (health.status === 'ok') {
+        switch (status) {
+            case 'connected':
                 statusDiv.textContent = 'Connected to ODIP Server';
                 statusDiv.className = 'connection-status connected';
-            } else {
-                statusDiv.textContent = 'Server connection issue';
+                break;
+            case 'disconnected':
+                statusDiv.textContent = 'Unable to connect to server';
                 statusDiv.className = 'connection-status error';
-            }
-        } catch (error) {
-            statusDiv.textContent = 'Unable to connect to server';
-            statusDiv.className = 'connection-status error';
-            console.warn('Health check failed:', error);
+                break;
+            case 'checking':
+                statusDiv.textContent = 'Checking connection...';
+                statusDiv.className = 'connection-status checking';
+                break;
         }
     }
 

@@ -1,12 +1,9 @@
 import { dom } from '../../shared/utils.js';
-import { apiClient } from '../../shared/api-client.js';
 
 export default class Header {
     constructor(app) {
         this.app = app;
         this.container = null;
-        this.connectionCheckInterval = null;
-        this.connectionStatus = 'checking';
     }
 
     render(container) {
@@ -45,13 +42,11 @@ export default class Header {
 
         container.innerHTML = headerHtml;
         this.attachEventListeners();
-        this.startConnectionMonitoring();
         this.updateUserDisplay();
         this.updateActiveActivity();
     }
 
     attachEventListeners() {
-        // Activity navigation
         const navButtons = dom.findAll('[data-activity]', this.container);
         navButtons.forEach(button => {
             button.addEventListener('click', (e) => {
@@ -60,13 +55,16 @@ export default class Header {
             });
         });
 
-        // Mobile menu toggle
         const mobileToggle = dom.find('#mobile-nav-toggle', this.container);
         if (mobileToggle) {
             mobileToggle.addEventListener('click', () => {
                 this.toggleMobileMenu();
             });
         }
+
+        window.addEventListener('connection:change', (e) => {
+            this.updateConnectionStatus(e.detail.status);
+        });
     }
 
     navigateToActivity(activity) {
@@ -78,11 +76,9 @@ export default class Header {
         const currentPath = window.location.pathname;
         const currentActivity = this.getCurrentActivityFromPath(currentPath);
 
-        // Remove previous active states
         const navItems = dom.findAll('.odp-header__nav-item', this.container);
         navItems.forEach(item => item.classList.remove('odp-header__nav-item--active'));
 
-        // Set current active state
         const activeItem = dom.find(`[data-activity="${currentActivity}"]`, this.container);
         if (activeItem) {
             activeItem.classList.add('odp-header__nav-item--active');
@@ -103,25 +99,7 @@ export default class Header {
         }
     }
 
-    async startConnectionMonitoring() {
-        await this.checkConnection();
-
-        this.connectionCheckInterval = setInterval(async () => {
-            await this.checkConnection();
-        }, 10000);
-    }
-
-    async checkConnection() {
-        try {
-            await apiClient.get('/hello');
-            this.updateConnectionStatus('connected');
-        } catch (error) {
-            this.updateConnectionStatus('disconnected');
-        }
-    }
-
     updateConnectionStatus(status) {
-        this.connectionStatus = status;
         const statusElement = dom.find('#header-status', this.container);
         if (!statusElement) return;
 
@@ -160,12 +138,5 @@ export default class Header {
 
     onRouteChange() {
         this.updateActiveActivity();
-    }
-
-    cleanup() {
-        if (this.connectionCheckInterval) {
-            clearInterval(this.connectionCheckInterval);
-            this.connectionCheckInterval = null;
-        }
     }
 }

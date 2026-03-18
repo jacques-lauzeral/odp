@@ -289,6 +289,12 @@ The activity-specific files contain only what differs from the shared patterns. 
 
 The shared API client in `shared/` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
 
+### 10.1 Connection Monitoring
+
+Connection monitoring is owned by `App` (`app.js`), not by any UI component. On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator accordingly. No other component needs to handle the event unless it requires connection-awareness.
+
+The 60-second interval is intentional — the application is a low-concurrency internal tool and does not require sub-minute liveness detection.
+
 ---
 
 ## 11. Planning Activity

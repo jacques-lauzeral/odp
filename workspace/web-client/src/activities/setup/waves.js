@@ -24,7 +24,7 @@ export default class Waves extends ListEntity {
     getTableColumns() {
         return [
             { key: 'year', label: 'Year', type: 'number' },
-            { key: 'sequenceNumber', label: 'Sequence', type: 'number' },
+            { key: 'sequenceNumber', label: 'Sequence Number', type: 'number' },
             { key: 'implementationDate', label: 'Implementation Date', type: 'date' }
         ];
     }

@@ -1,7 +1,10 @@
 // Core application class with routing and activity management
 import { errorHandler } from './shared/error-handler.js';
 import { apiClient } from './shared/api-client.js';
+import { endpoints } from './config/api.js';
 import Header from './components/common/header.js';
+
+const CONNECTION_CHECK_INTERVAL = 60000;
 
 export class App {
     constructor(container) {
@@ -10,6 +13,7 @@ export class App {
         this.activities = new Map();
         this.user = null;
         this.header = null;
+        this.connectionCheckInterval = null;
     }
 
     async initialize() {
@@ -28,10 +32,31 @@ export class App {
         // Set up routing
         this.setupRouting();
 
+        // Start connection monitoring
+        this.startConnectionMonitoring();
+
         // Load current route
         await this.handleRoute();
 
         console.log('ODIP Web Client initialized successfully');
+    }
+
+    startConnectionMonitoring() {
+        this.checkConnection();
+        this.connectionCheckInterval = setInterval(() => this.checkConnection(), CONNECTION_CHECK_INTERVAL);
+    }
+
+    async checkConnection() {
+        try {
+            await apiClient.get(endpoints.health);
+            this.dispatchConnectionEvent('connected');
+        } catch {
+            this.dispatchConnectionEvent('disconnected');
+        }
+    }
+
+    dispatchConnectionEvent(status) {
+        window.dispatchEvent(new CustomEvent('connection:change', { detail: { status } }));
     }
 
     setupRouting() {
@@ -54,7 +79,6 @@ export class App {
 
         try {
             if (segments.length === 0) {
-                // Root path - load landing page
                 await this.loadActivity('landing');
             } else if (segments[0] === 'setup') {
                 await this.loadActivity('setup', segments.slice(1));
@@ -67,24 +91,21 @@ export class App {
             } else if (segments[0] === 'review') {
                 await this.loadActivity('review', segments.slice(1));
             } else {
-                // Unknown route - redirect to landing
                 this.navigateTo('/');
                 return;
             }
 
-            // Notify header of route change
             if (this.header) {
                 this.header.onRouteChange();
             }
         } catch (error) {
             errorHandler.handle(error, 'routing');
-            this.navigateTo('/'); // Fallback to landing page
+            this.navigateTo('/');
         }
     }
 
     async loadActivity(activityName, subPath = []) {
         if (this.currentActivity?.name === activityName) {
-            // Activity already loaded, just update sub-path
             if (this.currentActivity.handleSubPath) {
                 await this.currentActivity.handleSubPath(subPath);
             }
@@ -92,34 +113,28 @@ export class App {
         }
 
         try {
-            // Check cache first
             let activity = this.activities.get(activityName);
 
             if (!activity) {
-                // Dynamically import activity module
                 const module = await import(`./activities/${activityName}/${activityName}.js`);
                 const ActivityClass = module.default || module[this.capitalize(activityName)];
                 activity = new ActivityClass(this);
                 this.activities.set(activityName, activity);
             }
 
-            // Cleanup current activity
             if (this.currentActivity?.cleanup) {
                 await this.currentActivity.cleanup();
             }
 
-            // Set new current activity
             this.currentActivity = activity;
             this.currentActivity.name = activityName;
 
-            // Render activity
             await activity.render(this.container, subPath);
 
         } catch (error) {
             console.error(`Failed to load activity: ${activityName}`, error);
             errorHandler.handle(error, `activity-${activityName}`);
 
-            // Fallback to landing if not already there
             if (activityName !== 'landing') {
                 this.navigateTo('/');
             }
@@ -133,7 +148,6 @@ export class App {
         this.handleRoute();
     }
 
-    // Method for header navigation
     navigate(path) {
         this.navigateTo(path);
     }
@@ -141,8 +155,6 @@ export class App {
     setUser(userData) {
         this.user = userData;
         console.log('User set:', userData.name);
-
-        // Notify header of user change
         if (this.header) {
             this.header.onUserChange();
         }
@@ -150,6 +162,13 @@ export class App {
 
     getUser() {
         return this.user;
+    }
+
+    cleanup() {
+        if (this.connectionCheckInterval) {
+            clearInterval(this.connectionCheckInterval);
+            this.connectionCheckInterval = null;
+        }
     }
 
     capitalize(str) {

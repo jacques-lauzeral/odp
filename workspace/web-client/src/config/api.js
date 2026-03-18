@@ -31,7 +31,7 @@ export const endpoints = {
     odpEditions: '/odp-editions',
 
     // Health check
-    health: '/hello'
+    health: '/ping'
 };
 
 // Helper function to build full URL

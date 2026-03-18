@@ -70,7 +70,7 @@ app.use(standbyMiddleware);
 app.use('/admin', adminRouter);
 
 // Health check
-app.get('/hello', (req, res) => {
+app.get('/ping', (req, res) => {
     res.json({ status: 'ok', message: 'ODIP Server running', timestamp: new Date().toISOString() });
 });
 
@@ -126,7 +126,7 @@ async function startServer() {
 
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`ODIP Server running on port ${PORT}`);
-            console.log(`Health check: http://localhost:${PORT}/hello`);
+            console.log(`Health check: http://localhost:${PORT}/ping`);
             console.log(`API endpoints:`);
             console.log(`Import Operations:`);
             console.log(`  - POST http://localhost:${PORT}/import/setup (Content-Type: application/yaml)`);

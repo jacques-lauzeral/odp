@@ -1,6 +1,5 @@
 // API client for server communication
 import { apiConfig, buildUrl, buildQueryString } from '../config/api.js';
-import { errorHandler } from './error-handler.js';
 
 export class ApiClient {
     constructor(app = null) {
@@ -20,7 +19,6 @@ export class ApiClient {
             ...additionalHeaders
         };
 
-        // Add user header if user is identified and this isn't a health check
         if (this.app?.user?.name) {
             headers['x-user-id'] = this.app.user.name;
         }
@@ -38,26 +36,21 @@ export class ApiClient {
             subPath
         } = options;
 
-        // Build URL
         let url = buildUrl(endpoint, id, subPath);
 
-        // Add query parameters for GET requests
         if (method === 'GET' && params) {
             url += buildQueryString(params);
         }
 
-        // Prepare request options
         const requestOptions = {
             method,
             headers: this.getHeaders(headers)
         };
 
-        // Add body for non-GET requests
         if (method !== 'GET' && data) {
             requestOptions.body = JSON.stringify(data);
         }
 
-        // Create abort controller for timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         requestOptions.signal = controller.signal;
@@ -68,7 +61,6 @@ export class ApiClient {
             const response = await fetch(url, requestOptions);
             clearTimeout(timeoutId);
 
-            // Handle HTTP errors
             if (!response.ok) {
                 const errorData = await this.parseErrorResponse(response);
                 let message;
@@ -90,7 +82,6 @@ export class ApiClient {
                 throw error;
             }
 
-            // Parse response
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
                 const result = await response.json();
@@ -105,14 +96,12 @@ export class ApiClient {
         } catch (error) {
             clearTimeout(timeoutId);
 
-            // Handle abort/timeout
             if (error.name === 'AbortError') {
                 const timeoutError = new Error('Request timeout');
                 timeoutError.name = 'TimeoutError';
                 throw timeoutError;
             }
 
-            // Re-throw with context
             console.error(`API ${method} ${url} - Error:`, error);
             throw error;
         }
@@ -132,7 +121,6 @@ export class ApiClient {
         }
     }
 
-    // Convenience methods
     async get(endpoint, options = {}) {
         return this.request('GET', endpoint, options);
     }
@@ -153,7 +141,6 @@ export class ApiClient {
         return this.request('DELETE', endpoint, options);
     }
 
-    // Entity-specific convenience methods
     async listEntities(endpoint, params = {}) {
         return this.get(endpoint, { params });
     }
@@ -178,7 +165,6 @@ export class ApiClient {
         return this.delete(endpoint, { id });
     }
 
-    // Versioned entity methods
     async getEntityVersions(endpoint, id) {
         return this.get(endpoint, { id, subPath: 'versions' });
     }
@@ -187,7 +173,6 @@ export class ApiClient {
         return this.get(endpoint, { id, subPath: `versions/${versionNumber}` });
     }
 
-    // Milestone CRUD convenience methods
     async getMilestones(changeId, params = {}) {
         return this.get('/operational-changes', { id: changeId, subPath: 'milestones', params });
     }
@@ -220,16 +205,6 @@ export class ApiClient {
             subPath: `milestones/${milestoneId}`,
             data: { expectedVersionId }
         });
-    }
-
-    // Health check (no user header needed)
-    async healthCheck() {
-        try {
-            const result = await this.get('/hello');
-            return { status: 'ok', message: result };
-        } catch (error) {
-            return { status: 'error', error: error.message };
-        }
     }
 }
 
