@@ -80,10 +80,11 @@ Represents a strategic or regulatory document (e.g. CONOPS, EU Regulation, NSP) 
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
 | `name` | string | Short title, e.g. "iDL CONOPS" |
+| `description` | string | Optional long-form description |
 | `version` | string | Optional edition or version number |
 | `url` | string | Link to the physical document |
 
-Supports REFINES hierarchy (parent-child, max two levels).
+Supports REFINES hierarchy (parent-child, up to three levels: root / child / grandchild).
 
 #### Wave
 
@@ -269,7 +270,7 @@ An ODIP Edition acts as a "saved query": it references a baseline and a starting
 
 ### 4.1 Hierarchy — REFINES
 
-Used by hierarchical setup entities (StakeholderCategory, Domain) and by Requirements to express parent-child structuring.
+Used by hierarchical setup entities (StakeholderCategory, Domain, ReferenceDocument) and by Requirements to express parent-child structuring.
 
 ```
 (Child)-[:REFINES]->(Parent)

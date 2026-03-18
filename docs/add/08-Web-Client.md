@@ -46,10 +46,14 @@ Concrete subclasses declare only three things — no methods required:
 | Declaration | Purpose |
 |---|---|
 | `entityLabel` | Singular display name (e.g. `'Domain'`) |
-| `parentScope` | `'all'` — any non-self item as parent; `'roots'` — root items only (max two levels) |
-| `fields` | Array of `{ name, label, type, required }` for entity-specific fields |
+| `parentScope` | `'all'` — any non-self item as parent; `'roots'` — root items only (grandchildren blocked at UI level) |
+| `fields` | Array of `{ name, label, type, required }` for entity-specific fields, appended after `baseFields` |
 
-`ReferenceDocument` additionally overrides `getDisplayName()` to append the version.
+`TreeEntity` declares `baseFields = [{ name: 'description', label: 'Description', type: 'textarea', required: false }]` — rendered before subclass `fields` in all forms and detail views.
+
+The parent field uses `ReferenceManager` (inline single-select typeahead, `components/odp/reference-manager.js`) instead of a native `<select>`. The manager is wired after modal DOM insertion via `_initParentRM(modal)` and destroyed on `closeModal`.
+
+`ReferenceDocument` additionally overrides `getDisplayName()` to append the version. Its `parentScope` is `'all'`, supporting up to three levels (root / child / grandchild).
 
 ### 3.2 ListEntity
 
@@ -370,12 +374,24 @@ The following web client changes align the client with the Edition 4 data model 
 |---|---|
 | `DataCategory` removed | `data-categories.js` deleted; `TreeEntity` now covers `StakeholderCategory` and `Domain` only |
 | `Service` removed | `services.js` deleted |
-| `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field removed; `version` optional; `parentId` optional; now a `TreeEntity` (was `ListEntity`); endpoint `/reference-documents` |
+| `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field added (optional, textarea, inherited from `baseFields`); `version` optional; `parentId` optional; hierarchy up to three levels; now a `TreeEntity` (was `ListEntity`); endpoint `/reference-documents` |
 | `Domain` added | New `TreeEntity` (`domains.js`); has `contact` textarea field |
 | `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scopeId)` tuple; select options for wave and scope (domain) resolved from `setupData`; `planned` optional integer field added |
 | `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed; uniqueness check on `(year, sequenceNumber)` |
 
 `abstract-interaction-activity.js` `loadSetupData()` updated: `dataCategories`/`services`/`documents` replaced by `domains`/`referenceDocuments` loaded from `/domains` and `/reference-documents`.
+
+### 12.1b Field Type Vocabulary
+
+Form fields in `collection-entity-form.js` use the following type identifiers:
+
+| Type | Component | Cardinality | Notes |
+|---|---|---|---|
+| `select` | Native `<select>` | 1 | Enum choices (e.g. maturity, drg) |
+| `reference` | `ReferenceManager` | 0..1 | Inline typeahead; value wrapped in `[id]` array on save |
+| `reference-list` | `ReferenceListManager` | 0..n | Chip list + search popup |
+| `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Chip list + note per item |
+| `richtext` | Quill editor | — | Delta stored as stringified JSON |
 
 ### 12.2 Operational Requirement Fields
 
@@ -390,7 +406,7 @@ The following web client changes align the client with the Edition 4 data model 
 
 | Field | Type | Notes |
 |---|---|---|
-| `strategicDocuments` | `annotated-multiselect` | Rename of `documentReferences`; options from `referenceDocuments` setupData |
+| `strategicDocuments` | `annotated-reference-list` | Rename of `documentReferences`; options from `referenceDocuments` setupData |
 | `tentative` | `tentative` | Single text input; user enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array; displayed as `"2026"` or `"2026-2028"` |
 
 **Added to OR only (`visibleWhen: type === 'OR'`):**
@@ -398,7 +414,8 @@ The following web client changes align the client with the Edition 4 data model 
 | Field | Type | Notes |
 |---|---|---|
 | `nfrs` | `richtext` | Optional; operational non-functional requirements |
-| `impactedDomains` | `annotated-multiselect` | Options from `domains` setupData; note stored per domain |
+| `impactedDomains` | `annotated-reference-list` | Options from `domains` setupData; note stored per domain |
+| `refinesParents` | `reference` | Single-select typeahead via `ReferenceManager`; wraps selected id in `[id]` array on save; visible for both ON and OR |
 
 **Renamed:**
 
@@ -420,7 +437,7 @@ The following web client changes align the client with the Edition 4 data model 
 |---|---|---|
 | `maturity` | `select` | Required; options from `MaturityLevel` enum |
 | `cost` | `number` | Optional integer; placeholder "Integer value in MW" |
-| `dependencies` | `multiselect` | OCs that must precede this OC; options from OC list |
+| `dependencies` | `reference-list` | OCs that must precede this OC; options from OC list |
 | `additionalDocumentation` | `static-label` | Renders "Not available yet" in all modes; not submitted |
 
 **Renamed:**

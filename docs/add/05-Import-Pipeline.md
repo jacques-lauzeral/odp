@@ -77,7 +77,7 @@ Used for the round-trip (docx-loop) workflow. Processes exported ODIP `.docx` fi
 ### 3.4 Output Structure (`StructuredImportData`)
 
 ```
-referenceDocuments[]
+referenceDocuments[]      — {externalId, name, description (optional), version (optional), url, parentExternalId (optional)}
 stakeholderCategories[]   — {externalId|code, name, description}
 domains[]
 bandwidths[]

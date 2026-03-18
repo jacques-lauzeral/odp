@@ -193,7 +193,7 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 `WaveStore` inherits `BaseStore` only. Business rules: `year` is a 4-digit integer, `sequenceNumber` is a positive integer. The `(year, sequenceNumber)` pair is unique (e.g. wave `27#2`). `implementationDate` is optional (ISO format).
 
-`ReferenceDocumentStore` inherits `RefinableEntityStore → BaseStore`. Supports REFINES parent-child hierarchy consistent with `DomainStore` and `StakeholderCategoryStore`. Fields: `name`, `version` (optional), `url`, `parentId` (optional). Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
+`ReferenceDocumentStore` inherits `RefinableEntityStore → BaseStore`. Supports REFINES parent-child hierarchy consistent with `DomainStore` and `StakeholderCategoryStore`. Fields: `name`, `description` (optional), `version` (optional), `url`, `parentId` (optional). Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
 
 `BandwidthStore` inherits `BaseStore` only. Fields: `year`, `planned` (optional, integer, in MW), `waveId` (optional), `scopeId` (optional). The `(year, waveId, scopeId)` tuple is unique. NM internal — not exposed to external stakeholders.
 

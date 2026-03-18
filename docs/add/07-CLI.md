@@ -50,7 +50,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`domain`** supports `--parent <id>` (Domain REFINES hierarchy). Fields: `name`, `description`, `contact`.
 
-**`reference-document`** supports `--parent <id>` (ReferenceDocument REFINES hierarchy). Fields: `name`, `version`, `url`.
+**`reference-document`** supports `--parent <id>` (ReferenceDocument REFINES hierarchy). Fields: `name`, `description` (optional), `version` (optional), `url`. Hierarchy supports up to three levels (root / child / grandchild).
 
 **`bandwidth`** fields: `year`, `wave` (Wave ID), `scope` (Domain ID), `planned` (integer, MW). No parent.
 
