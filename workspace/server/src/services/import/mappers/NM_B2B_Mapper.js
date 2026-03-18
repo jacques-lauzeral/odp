@@ -413,14 +413,13 @@ class NM_B2B_Mapper extends Mapper {
             // Relative: same organizational path as current OR
             const title = reference.substring(2);
             const orgPath = this._getOrganizationalPath(currentPath);
-            pathTokens = [...orgPath, title];
+            pathTokens = [...orgPath, ...(title.includes('/') ? this._splitReferencePath(title) : [title.trim()])];
         } else if (reference.startsWith('/')) {
-            // Absolute: parse path and normalize
-            const pathString = reference.substring(1);
-            pathTokens = pathString.split('/');
+            // Absolute: parse path, respecting single-quoted tokens
+            pathTokens = this._splitReferencePath(reference.substring(1));
         } else {
-            // Fallback: parse path and normalize
-            pathTokens = reference.split('/').map(s => s.trim());
+            // Fallback: parse path, respecting single-quoted tokens
+            pathTokens = this._splitReferencePath(reference);
         }
 
         // Build ON object and get external ID
@@ -429,6 +428,38 @@ class NM_B2B_Mapper extends Mapper {
             path: this._getCleanedPath(pathTokens),
             title: pathTokens[pathTokens.length - 1] // Last segment as title
         }, 'on');
+    }
+
+    /**
+     * Split a reference path string into tokens.
+     * - '/' in path-parsing mode → segment separator
+     * - '/' in token-parsing mode (inside single quotes) → replaced with '_'
+     * - "'" toggles between path-parsing and token-parsing mode
+     * @param {string} pathString
+     * @returns {Array<string>}
+     * @private
+     */
+    _splitReferencePath(pathString) {
+        const tokens = [];
+        let current = '';
+        let inToken = false;
+
+        for (const ch of pathString) {
+            if (ch === "'") {
+                inToken = !inToken;
+            } else if (ch === '/') {
+                if (inToken) {
+                    current += '_';
+                } else {
+                    tokens.push(current.trim());
+                    current = '';
+                }
+            } else {
+                current += ch;
+            }
+        }
+        tokens.push(current.trim());
+        return tokens;
     }
 
     /**
@@ -455,6 +486,12 @@ class NM_B2B_Mapper extends Mapper {
 
         // Log mapped counts
         console.log(`Mapped entities - ONs: ${context.onMap.size}, ORs: ${context.orMap.size}, OCs: ${context.changeMap.size}`);
+
+        // Dump ON title -> externalId map for debugging reference resolution
+        console.log('ON map dump:');
+        for (const [externalId, on] of context.onMap) {
+            console.log(`  "${on.title}" -> ${externalId}`);
+        }
 
         return {
             referenceDocuments: [],

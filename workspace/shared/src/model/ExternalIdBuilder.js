@@ -10,9 +10,16 @@
  * - on|or: {drg}/{parent.externalId}/{title_normalized} OR {drg}/{path_normalized}/{title_normalized}
  * - oc: {drg}/{title_normalized}
  *
- * Normalization: lowercase + spaces replaced with underscores
+ * Normalization: lowercase + special characters replaced with underscores + collapse consecutive underscores
  */
 class ExternalIdBuilder {
+
+    /**
+     * Characters replaced by underscores during normalization.
+     * Extend this list if additional special characters are encountered.
+     */
+    static NORMALIZED_CHARS = [' ', '/', ',', '&'];
+
     /**
      * Build external ID for an entity
      * @param {Object} object - Entity data
@@ -151,11 +158,15 @@ class ExternalIdBuilder {
     }
 
     /**
-     * Normalize text: lowercase + replace spaces with underscores
+     * Normalize text: lowercase + replace NORMALIZED_CHARS with underscores + collapse consecutive underscores.
      * @private
      */
     static _normalize(text) {
-        return text.trim().toLowerCase().replace(/\s+/g, '_');
+        const escapedChars = ExternalIdBuilder.NORMALIZED_CHARS
+            .map(c => c.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&'))
+            .join('');
+        const pattern = new RegExp(`[${escapedChars}]+`, 'g');
+        return text.trim().toLowerCase().replace(pattern, '_');
     }
 }
 
