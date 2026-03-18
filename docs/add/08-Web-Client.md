@@ -267,21 +267,62 @@ The edition picker (available in Elaboration, Planning, and Review activities) r
 
 ## 9. CSS Architecture
 
-Modular CSS split across functional files loaded in dependency order:
+### 9.1 File Tree
 
-| File | Coverage |
-|---|---|
-| `main.css` | Design tokens, base styles, CSS variables |
-| `base-components.css` | Buttons, form controls, utilities, loading spinner |
-| `layout-components.css` | Header, navigation, modals, cards |
-| `table-components.css` | Collection tables, row selection, grouping, empty states |
-| `temporal-components.css` | Timeline grid, Gantt grid, wave/year visualisation, milestone connectors, zoom control |
-| `form-components.css` | Tabs, tags, multi-select, validation, alerts |
-| `feedback-components.css` | Status indicators, notifications, error states |
-| `activities/abstract-interaction-activity.css` | Shared interaction patterns for all collection perspectives |
-| `activities/<activity>.css` | Activity-specific overrides only |
+```
+styles/
+├── main.css                          Design tokens, CSS reset, typography, layout utilities
+├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
+├── feedback-components.css           Toasts, error notifications, loading/skeleton states
+├── layout-components.css             Top header, cards, modals
+├── landing.css                       Landing page layout and activity tiles
+├── components/
+│   ├── filter-bar.css                FilterBar chip component (add filter, chips, suggestions)
+│   ├── form-components.css           Form tabs, tag selector, multi-select, Quill integration
+│   ├── history-tab.css               History version list, diff popup
+│   ├── reference-list-manager.css    Inline chip list with search popup
+│   ├── table-components.css          Collection table, row selection, grouping, empty states
+│   ├── tree-table-components.css     Tree table with indentation levels
+│   └── temporal-components.css       TemporalGrid base styles
+└── activities/
+    ├── activity.css                  Base layout for all activities (root, workspace, filters bar, tabs)
+    ├── abstract-interaction-activity.css  Two-pane collection+details layout (elaboration, review)
+    ├── elaboration.css               Elaboration-specific overrides
+    ├── review.css                    Review-specific overrides and target selection screen
+    ├── planning.css                  Planning two-pane layout, ON plan panes, TemporalGrid context
+    ├── setup.css                     Setup entity tabs, three-pane layout, tree/list panes
+    └── publication.css               Publication-specific rules (edition count, action buttons)
+```
 
-The activity-specific files contain only what differs from the shared patterns. Common interaction chrome (tabs, filters, collection container layout, detail panels) lives in `abstract-interaction-activity.css`.
+### 9.2 Layer Hierarchy
+
+Files are loaded in strict dependency order: global → components → landing → activities.
+
+**Global** (`styles/`) — no dependencies between files at this level. `primitives.css` is the lowest-level layer; all other files may reference the tokens defined in `main.css`.
+
+**Components** (`styles/components/`) — depend only on global tokens. No component file references another component file or any activity file.
+
+**Activities** (`styles/activities/`) — depend on global and component layers. Within the activities layer, the load order is:
+
+1. `activity.css` — base for all activities
+2. `abstract-interaction-activity.css` — extends `activity.css` for the collection+details pattern
+3. Concrete activity files — extend either `activity.css` (planning, setup, publication) or `abstract-interaction-activity.css` (elaboration, review)
+
+### 9.3 Activity CSS Responsibilities
+
+| File | Extends | Owns |
+|---|---|---|
+| `activity.css` | — | Activity root layout, workspace flex chain, `.activity-filters`, `.interaction-tabs`, `.context-label`, `.no-selection-message` |
+| `abstract-interaction-activity.css` | `activity.css` | Two-pane grid, `.collection-container`, `.collection-left-column`, `.collection-details`, perspective toggle, view controls, details panel internals |
+| `elaboration.css` | `abstract-interaction-activity.css` | No current overrides |
+| `review.css` | `abstract-interaction-activity.css` | Read-only indicators, target selection screen |
+| `planning.css` | `activity.css` | ON plan two-pane layout, TemporalGrid context overrides, group/child row styles |
+| `setup.css` | `activity.css` | Entity tabs, three-pane layout, tree/list pane styles |
+| `publication.css` | `activity.css` | Edition count badge, publication action buttons, edition type badges |
+
+### 9.4 Activity Headers
+
+Activity-level headers (title + description blocks) have been removed from all activity pages. The global site header (`.odp-header`) is the sole persistent header. Context information (repository vs ODIP edition) is surfaced through the `.activity-filters` bar or the site header directly.
 
 ---
 

@@ -1,0 +1,188 @@
+/* ODIP Web Client - Activity Base
+ * Common layout foundation for all activities.
+ * Extended by: abstract-interaction-activity.css, planning.css, setup.css, publication.css
+ */
+
+/* --- Activity root ---------------------------------------------------------- */
+/* All concrete activity classes must be listed here.                           */
+
+.elaboration-activity,
+.review-activity,
+.publication-activity,
+.planning-activity,
+.setup-activity {
+    padding: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- Workspace -------------------------------------------------------------- */
+/* Each activity defines its own workspace class.                               */
+
+.elaboration-workspace,
+.review-workspace,
+.publication-workspace,
+.planning-workspace,
+.setup-workspace {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- Activity-level filters bar (full width, above workspace content) ------- */
+
+.activity-filters {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    padding: var(--space-4) var(--space-6);
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+/* --- Tabs strip (entity tabs or plan tabs) ---------------------------------- */
+
+.interaction-tabs {
+    display: flex;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    padding: 0 var(--space-6);
+    gap: var(--space-2);
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+
+.interaction-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+}
+
+.interaction-tab:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.interaction-tab--active {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+    background: white;
+}
+
+.interaction-tab--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.interaction-tab__name {
+    font-size: var(--font-size-sm);
+}
+
+.interaction-tab__count {
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-base);
+    min-width: 20px;
+    text-align: center;
+}
+
+.interaction-tab--active .interaction-tab__count {
+    background: var(--accent-primary);
+    color: white;
+}
+
+/* --- Context label ---------------------------------------------------------- */
+
+.context-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--primary-50);
+    color: var(--primary-700);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-base);
+    margin-left: var(--space-3);
+}
+
+/* --- No-selection placeholder (details pane) -------------------------------- */
+
+.no-selection-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-tertiary);
+    text-align: center;
+    padding: var(--space-8);
+}
+
+.no-selection-message .icon {
+    font-size: var(--font-size-4xl);
+    margin-bottom: var(--space-4);
+    opacity: 0.5;
+}
+
+.no-selection-message h3 {
+    margin-bottom: var(--space-2);
+    color: var(--text-secondary);
+}
+
+.no-selection-message p {
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+/* --- Item badges ------------------------------------------------------------ */
+
+.item-badge {
+    display: inline-block;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-base);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+}
+
+/* --- Responsive ------------------------------------------------------------- */
+
+@media (max-width: 768px) {
+    .interaction-tabs {
+        padding: 0 var(--space-4);
+        gap: var(--space-1);
+    }
+
+    .interaction-tab {
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .interaction-tab__name {
+        display: none;
+    }
+
+    .activity-filters {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-3);
+        padding: var(--space-4);
+    }
+}

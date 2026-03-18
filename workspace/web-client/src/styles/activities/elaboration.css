@@ -1,22 +1,4 @@
-/* ODIP Web Client - Elaboration Activity Specific Styles */
-/*
- * This file contains only Elaboration-specific styles.
- * Common interaction activity styles are in abstract-interaction-activity.css
+/* ODIP Web Client - Elaboration Activity
+ * Extends: activity.css, abstract-interaction-activity.css
+ * No elaboration-specific overrides currently needed.
  */
-
-/* Elaboration-specific overrides or customizations go here */
-
-/* If you need any elaboration-specific styling that differs from the shared styles,
-   add them below. Currently, all common styling has been moved to the shared file. */
-
-/* Example of activity-specific styling (uncomment if needed):
-
-.elaboration-activity .special-elaboration-feature {
-    // Elaboration-specific styling
-}
-
-.elaboration-workspace .unique-elaboration-element {
-    // Custom elaboration workspace elements
-}
-
-*/

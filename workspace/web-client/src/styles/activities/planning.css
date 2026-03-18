@@ -1,34 +1,18 @@
-/* =============================================================================
-   Planning Activity — Layout and TemporalGrid row styles
-   ============================================================================= */
+/* ODIP Web Client - Planning Activity
+ * Extends: activity.css
+ */
 
-/* --- Activity root ---------------------------------------------------------- */
+/* --- Two-pane layout -------------------------------------------------------- */
 
-.planning-activity {
-    padding: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.planning-header {
-    background: white;
-    border-bottom: 1px solid var(--border-primary);
-    padding: var(--space-6);
-    flex-shrink: 0;
-}
-
-.planning-header h1 { margin: 0 0 var(--space-2) 0; }
-.planning-header p  { margin: 0; color: var(--text-secondary); }
-
-/* --- Workspace -------------------------------------------------------------- */
-
-.planning-workspace {
+.on-plan-layout {
+    display: grid;
+    grid-template-columns: 2fr 4px 1fr;
+    gap: 0;
     flex: 1;
     min-height: 0;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    padding: var(--space-2);
+    column-gap: var(--space-2);
 }
 
 .planning-tab-content {
@@ -39,21 +23,8 @@
     overflow: hidden;
 }
 
-/* --- Two-pane layout -------------------------------------------------------- */
+/* --- Pane split divider ----------------------------------------------------- */
 
-.on-plan-layout {
-    display: grid;
-    /* grid-template-columns set inline by ONPlanning._bindSplitDivider */
-    grid-template-columns: 2fr 4px 1fr;
-    gap: 0;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    padding: var(--space-2);
-    column-gap: var(--space-2);
-}
-
-/* Pane split divider */
 .on-plan-split-divider {
     width: 4px;
     cursor: col-resize;
@@ -69,6 +40,8 @@
     background: var(--accent-primary);
     opacity: 0.6;
 }
+
+/* --- Panes ------------------------------------------------------------------ */
 
 .on-plan-grid-pane,
 .on-plan-details-pane {
@@ -121,7 +94,11 @@
     max-height: none;
 }
 
-/* --- Group row -------------------------------------------------------------- */
+.on-plan-grid-pane .temporal-row-label-header {
+    width: var(--temporal-label-width, 220px);
+}
+
+/* --- Group and child rows --------------------------------------------------- */
 
 .temporal-group-row {
     background: var(--bg-primary);
@@ -139,27 +116,12 @@
     cursor: pointer;
 }
 
-/* --- Child row -------------------------------------------------------------- */
-
 .temporal-child-row {
     background: white;
 }
 
 .temporal-child-row:hover {
     background: rgba(14, 165, 233, 0.03);
-}
-
-/* --- Label column in planning (overrides temporal-components.css) ----------- */
-
-.on-plan-grid-pane .temporal-row-label-header {
-    width: var(--temporal-label-width, 220px);
-}
-
-/* --- Disabled tab ----------------------------------------------------------- */
-
-.interaction-tab--disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
 }
 
 /* --- Details stub ----------------------------------------------------------- */

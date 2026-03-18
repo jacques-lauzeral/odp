@@ -1,31 +1,9 @@
-/* ODIP Web Client - Setup Management Activity Styles */
+/* ODIP Web Client - Setup Activity
+ * Extends: activity.css
+ */
 
-/* Setup Activity Layout */
-.setup-activity {
-    padding: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
+/* --- Entity tabs navigation ------------------------------------------------- */
 
-.setup-header {
-    background: white;
-    border-bottom: 1px solid var(--border-primary);
-    padding: var(--space-6);
-    flex-shrink: 0;
-}
-
-.setup-header h1 {
-    margin: 0 0 var(--space-2) 0;
-    color: var(--text-primary);
-}
-
-.setup-header p {
-    margin: 0;
-    color: var(--text-secondary);
-}
-
-/* Entity Tabs Navigation */
 .entity-tabs {
     display: flex;
     background: var(--bg-secondary);
@@ -82,7 +60,17 @@
     color: white;
 }
 
-/* Entity Component Wrappers - CRITICAL for scroll behavior */
+/* --- Entity workspace ------------------------------------------------------- */
+
+.entity-workspace {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- Entity component wrappers ---------------------------------------------- */
+
 .tree-entity,
 .list-entity {
     height: 100%;
@@ -91,7 +79,6 @@
     overflow: hidden;
 }
 
-/* List Entity Structure */
 .list-entity .entity-header {
     flex-shrink: 0;
 }
@@ -109,15 +96,8 @@
     padding: var(--space-4);
 }
 
-/* Entity Workspace */
-.entity-workspace {
-    flex: 1;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
+/* --- Three-pane layout (tree + detail + actions) ---------------------------- */
 
-/* Three-Pane Layout */
 .three-pane-layout {
     display: grid;
     grid-template-columns: 300px 1fr 250px;
@@ -155,15 +135,12 @@
     color: var(--text-primary);
 }
 
-/* Tree Container */
+/* --- Tree pane -------------------------------------------------------------- */
+
 .tree-container {
     flex: 1;
     overflow-y: auto;
     padding: var(--space-4);
-}
-
-.tree-nodes {
-    /* Tree content styles */
 }
 
 .tree-item {
@@ -227,7 +204,8 @@
     margin-left: var(--space-4);
 }
 
-/* Detail Container */
+/* --- Detail and actions panes ----------------------------------------------- */
+
 .detail-container {
     flex: 1;
     padding: var(--space-4);
@@ -243,15 +221,10 @@
     text-align: center;
 }
 
-.item-details {
-    /* Item details styles */
-}
-
-/* Actions Container */
 .actions-container {
     flex: 1;
     padding: var(--space-4);
-    overflow-y: auto;  /* ADD THIS LINE */
+    overflow-y: auto;
 }
 
 .action-buttons {
@@ -265,7 +238,8 @@
     justify-content: flex-start;
 }
 
-/* Simple Entity Layout (for Waves) */
+/* --- Simple entity layout (Waves, Bandwidths) ------------------------------- */
+
 .simple-entity-layout {
     padding: var(--space-6);
     height: 100%;
@@ -295,7 +269,8 @@
     flex-shrink: 0;
 }
 
-/* Table Container */
+/* --- Table container -------------------------------------------------------- */
+
 .table-container,
 .entity-table-container {
     background: white;
@@ -313,7 +288,6 @@
     gap: var(--space-2);
 }
 
-/* No Data State */
 .no-data {
     text-align: center;
     color: var(--text-tertiary);
@@ -321,33 +295,8 @@
     font-style: italic;
 }
 
-/* Loading State */
-.loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-8);
-    color: var(--text-secondary);
-}
+/* --- Badges ----------------------------------------------------------------- */
 
-.loading .spinner {
-    margin-bottom: var(--space-4);
-}
-
-/* Error State */
-.error-state {
-    text-align: center;
-    padding: var(--space-8);
-    color: var(--text-secondary);
-}
-
-.error-state h3 {
-    color: var(--error-500);
-    margin-bottom: var(--space-4);
-}
-
-/* Status Badges */
 .classification-badge {
     display: inline-block;
     padding: var(--space-1) var(--space-3);
@@ -358,25 +307,10 @@
     letter-spacing: 0.025em;
 }
 
-.classification-public {
-    background: var(--success-100);
-    color: var(--success-700);
-}
-
-.classification-internal {
-    background: var(--warning-100);
-    color: var(--warning-700);
-}
-
-.classification-confidential {
-    background: var(--error-100);
-    color: var(--error-700);
-}
-
-.classification-restricted {
-    background: var(--gray-900);
-    color: white;
-}
+.classification-public       { background: var(--success-100); color: var(--success-700); }
+.classification-internal     { background: var(--warning-100); color: var(--warning-700); }
+.classification-confidential { background: var(--error-100);   color: var(--error-700); }
+.classification-restricted   { background: var(--gray-900);    color: white; }
 
 .domain-badge {
     display: inline-block;
@@ -388,7 +322,8 @@
     font-weight: var(--font-weight-medium);
 }
 
-/* Warning Messages */
+/* --- Misc ------------------------------------------------------------------- */
+
 .warning-message {
     background: var(--warning-50);
     border: 1px solid var(--warning-200);
@@ -402,7 +337,6 @@
     color: var(--warning-800);
 }
 
-/* Form Text */
 .form-text {
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
@@ -412,9 +346,9 @@
     border-radius: var(--radius-md);
 }
 
-/* Responsive Design */
+/* --- Responsive ------------------------------------------------------------- */
+
 @media (max-width: 768px) {
-    /* Setup Activity Mobile */
     .entity-tabs {
         padding: 0 var(--space-4);
         gap: var(--space-1);
@@ -425,7 +359,7 @@
     }
 
     .entity-tab__name {
-        display: none; /* Show only counts on mobile */
+        display: none;
     }
 
     .three-pane-layout {

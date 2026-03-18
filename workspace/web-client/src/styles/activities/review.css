@@ -1,11 +1,10 @@
-/* ODIP Web Client - Review Activity Specific Styles */
-/*
- * This file contains only Review-specific styles.
- * Common interaction activity styles are in abstract-interaction-activity.css
+/* ODIP Web Client - Review Activity
+ * Extends: activity.css, abstract-interaction-activity.css
  */
 
 /* Review Mode Indicators */
 .review-activity .context-label {
+
     background: var(--info-50);
     color: var(--info-700);
 }
