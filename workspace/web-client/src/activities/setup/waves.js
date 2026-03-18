@@ -7,7 +7,7 @@ export default class Waves extends ListEntity {
     }
 
     getEntityDescription() {
-        return 'Timeline management for deployment planning';
+        return 'Timeline management for development and implementation planning';
     }
 
     getNewButtonText() {

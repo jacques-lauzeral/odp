@@ -94,7 +94,7 @@ export default class PlanningActivity {
             <div class="planning-activity">
                 <div class="planning-header">
                     <h1>Planning <span class="context-label">Repository</span></h1>
-                    <p>Visualise deployment and implementation planning across operational needs and changes.</p>
+                    <p>Visualise development and implementation planning across operational needs and changes.</p>
                 </div>
                 <div class="planning-workspace">
                     <div class="loading-state">
@@ -111,7 +111,7 @@ export default class PlanningActivity {
             <div class="planning-activity">
                 <div class="planning-header">
                     <h1>Planning <span class="context-label">Repository</span></h1>
-                    <p>Visualise deployment and implementation planning across operational needs and changes.</p>
+                    <p>Visualise development and implementation planning across operational needs and changes.</p>
                 </div>
 
                 <div class="planning-workspace">

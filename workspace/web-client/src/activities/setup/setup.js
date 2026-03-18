@@ -70,7 +70,7 @@ export default class Setup {
             <div class="setup-activity">
                 <div class="setup-header">
                     <h1>Setup</h1>
-                    <p>Configure reference data for operational deployment planning</p>
+                    <p>Configure reference data for operational development and implementation planning</p>
                 </div>
                 
                 <nav class="entity-tabs">

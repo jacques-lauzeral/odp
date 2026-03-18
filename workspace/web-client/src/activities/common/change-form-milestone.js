@@ -430,7 +430,7 @@ export class MilestoneManager {
                         <option value="">Not assigned</option>
                         ${this.renderWaveOptions(waveId)}
                     </select>
-                    <small class="form-text">Select the deployment wave for this milestone</small>
+                    <small class="form-text">Select the wave for this milestone</small>
                     <div class="validation-message"></div>
                 </div>
 

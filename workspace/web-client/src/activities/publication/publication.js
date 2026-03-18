@@ -52,7 +52,7 @@ export default class PublicationActivity {
             <div class="publication-activity">
                 <div class="publication-header">
                     <h1> ODIP Publication  </h1>
-                    <p>Create and manage ODIP editions for deployment planning</p>
+                    <p>Create and manage ODIP editions for development and implementation planning</p>
                 </div>
                 
                 <div class="publication-workspace">
@@ -144,7 +144,7 @@ export default class PublicationActivity {
                     <h1>
                         Publication
                     </h1>
-                    <p>Create and manage ODIP editions for deployment planning</p>
+                    <p>Create and manage ODIP editions for development and implementation planning</p>
                     <div class="publication-stats">
                         <span class="edition-count">${this.editionCount} editions</span>
                     </div>
@@ -422,7 +422,7 @@ export default class PublicationActivity {
                         Publication
                         <span class="publication-context">Edition Management</span>
                     </h1>
-                    <p>Create and manage ODIP editions for deployment planning</p>
+                    <p>Create and manage ODIP editions for development and implementation planning</p>
                 </div>
                 
                 <div class="publication-workspace">

@@ -22,7 +22,7 @@ export default class ODPEditionsEntity {
             getEmptyStateMessage: () => ({
                 icon: '📋',
                 title: 'No Editions Yet',
-                description: 'Start creating ODIP editions to publish deployment plans.',
+                description: 'Start creating ODIP editions to publish development and implementation plans.',
                 createButtonText: 'Create First Edition',
                 showCreateButton: true
             })
