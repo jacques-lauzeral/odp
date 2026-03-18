@@ -257,8 +257,8 @@ export default class ChangeForm extends CollectionEntityForm {
             }
         });
 
-        // documentReferences - keep full {id, title, note} structure for annotated-multiselect
-        // The annotated-multiselect manager expects this format
+        // documentReferences - keep full {id, title, note} structure for annotated-reference-list
+        // The AnnotatedMultiselectManager expects this format
 
         // Store milestones in milestone manager
         this.milestoneManager.setMilestones(transformed.milestones || []);

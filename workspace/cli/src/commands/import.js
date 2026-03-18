@@ -91,10 +91,9 @@ export class ImportCommands {
         let hasCreations = false;
 
         const countProperties = [
-            'documents',
+            'referenceDocuments',
             'stakeholderCategories',
-            'services',
-            'dataCategories',
+            'domains',
             'waves',
             'requirements',
             'changes'

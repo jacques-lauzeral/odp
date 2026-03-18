@@ -1,13 +1,14 @@
 import { async as asyncUtils } from '../../shared/utils.js';
 import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 import ReferenceListManager from './reference-list-manager.js';
+import ReferenceManager from './reference-manager.js';
 
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
  * Base class for entity-specific forms using inheritance
  *
  * Updated to support:
- * - annotated-multiselect field type for document references
+ * - annotated-reference-list field type for document references
  * - reference-list-manager for large multiselect lists (replaces native select multiple)
  */
 export class CollectionEntityForm {
@@ -25,11 +26,14 @@ export class CollectionEntityForm {
         // Tab state tracking
         this.currentTabIndex = 0; // Track the currently selected tab
 
-        // Annotated multiselect managers storage
+        // Annotated reference list managers storage
         this.annotatedMultiselectManagers = {};
 
         // NEW: Reference list managers storage
         this.referenceListManagers = {};
+
+        // Single-select reference managers (ReferenceManager)
+        this.referenceManagers = {};
 
         // Quill rich text editors storage
         this.quillEditors = {};
@@ -139,6 +143,7 @@ export class CollectionEntityForm {
         // Initialize managers after modal is shown
         this.initializeAnnotatedMultiselects();
         this.initializeReferenceListManagers();
+        this.initializeReferenceManagers();
         this.initializeQuillEditors();
     }
 
@@ -158,6 +163,7 @@ export class CollectionEntityForm {
         // Initialize managers after modal is shown
         this.initializeAnnotatedMultiselects();
         this.initializeReferenceListManagers();
+        this.initializeReferenceManagers();
         this.initializeQuillEditors();
     }
 
@@ -176,6 +182,7 @@ export class CollectionEntityForm {
         // Initialize managers for read-only mode (if needed)
         this.initializeAnnotatedMultiselects();
         this.initializeReferenceListManagers();
+        this.initializeReferenceManagers();
 
         // Initialize read-only richtext fields with disabled Quill editors
         this.initializeRichtextReadOnly();
@@ -317,8 +324,8 @@ export class CollectionEntityForm {
             return '<div id="history-tab-container" class="history-tab-container"></div>';
         }
 
-        // Special handling for annotated-multiselect
-        if (field.type === 'annotated-multiselect') {
+        // Special handling for annotated-reference-list
+        if (field.type === 'annotated-reference-list') {
             return this.renderAnnotatedMultiselectReadOnly(field, value);
         }
 
@@ -460,9 +467,13 @@ export class CollectionEntityForm {
                 html += `</select>`;
                 return html;
 
-            case 'multiselect':
+            case 'reference-list':
                 // Always use ReferenceListManager for consistent editing pattern
                 return this.renderReferenceListField(field, fieldId, value, required);
+
+            case 'reference':
+                // Single-select typeahead via ReferenceManager
+                return this.renderReferenceField(field, fieldId, value, required);
 
             case 'radio':
                 let radioHtml = `<div class="radio-group">`;
@@ -513,8 +524,8 @@ export class CollectionEntityForm {
             case 'hidden':
                 return `<input type="hidden" name="${field.key}" value="${this.escapeHtml(value || '')}">`;
 
-            case 'annotated-multiselect':
-                // Render placeholder for annotated-multiselect
+            case 'annotated-reference-list':
+                // Render placeholder for annotated-reference-list
                 return this.renderAnnotatedMultiselectField(field, fieldId, value, required);
 
             case 'history':
@@ -593,7 +604,7 @@ export class CollectionEntityForm {
             }
 
             const field = allFields.find(f => f.key === fieldKey);
-            if (!field || field.type !== 'multiselect') return;
+            if (!field || field.type !== 'reference-list') return;
 
             // Get current value
             const value = this.getFieldValue(this.currentItem, field);
@@ -638,6 +649,68 @@ export class CollectionEntityForm {
     }
 
     // ====================
+    // REFERENCE MANAGER SUPPORT (single-select typeahead)
+    // ====================
+
+    renderReferenceField(field, fieldId, value, required) {
+        return `
+            <div id="${fieldId}-container"
+                 class="reference-manager-placeholder"
+                 data-field-key="${field.key}"
+                 data-field-id="${fieldId}">
+            </div>
+        `;
+    }
+
+    initializeReferenceManagers() {
+        if (!this.currentModal) return;
+
+        const placeholders = this.currentModal.querySelectorAll('.reference-manager-placeholder');
+
+        placeholders.forEach(placeholder => {
+            const fieldKey = placeholder.dataset.fieldKey;
+            const fieldId  = placeholder.dataset.fieldId;
+
+            const allFields = [];
+            for (const section of this.getFieldDefinitions()) {
+                allFields.push(...(section.fields || [section]));
+            }
+            const field = allFields.find(f => f.key === fieldKey);
+            if (!field || field.type !== 'reference') return;
+
+            // value is an array (refinesParents) — take first element as single id
+            const rawValue = this.getFieldValue(this.currentItem, field);
+            const initialId = Array.isArray(rawValue) && rawValue.length > 0
+                ? rawValue[0]?.id ?? rawValue[0]
+                : null;
+
+            this.getFieldOptions(field).then(options => {
+                const manager = new ReferenceManager({
+                    fieldId,
+                    options,
+                    initialValue: initialId,
+                    placeholder: field.placeholder || 'Type to search...',
+                    readOnly: this.currentMode === 'read',
+                    onChange: () => {
+                        if (this.currentMode === 'edit' || this.currentMode === 'create') {
+                            this.markDirty();
+                        }
+                    }
+                });
+                manager.render(placeholder);
+                this.referenceManagers[fieldKey] = manager;
+            });
+        });
+    }
+
+    cleanupReferenceManagers() {
+        Object.values(this.referenceManagers).forEach(m => {
+            if (m && typeof m.destroy === 'function') m.destroy();
+        });
+        this.referenceManagers = {};
+    }
+
+    // ====================
     // ANNOTATED MULTISELECT SUPPORT
     // ====================
 
@@ -645,7 +718,7 @@ export class CollectionEntityForm {
         // Render placeholder container - actual manager will be instantiated after DOM insertion
         return `
             <div id="${fieldId}-container" 
-                 class="annotated-multiselect-placeholder" 
+                 class="annotated-reference-list-placeholder" 
                  data-field-key="${field.key}"
                  data-field-id="${fieldId}">
                 <!-- AnnotatedMultiselectManager will be inserted here -->
@@ -722,8 +795,8 @@ export class CollectionEntityForm {
     initializeAnnotatedMultiselects() {
         if (!this.currentModal) return;
 
-        // Find all annotated-multiselect placeholders
-        const placeholders = this.currentModal.querySelectorAll('.annotated-multiselect-placeholder');
+        // Find all annotated-reference-list placeholders
+        const placeholders = this.currentModal.querySelectorAll('.annotated-reference-list-placeholder');
 
         placeholders.forEach(placeholder => {
             const fieldKey = placeholder.dataset.fieldKey;
@@ -741,7 +814,7 @@ export class CollectionEntityForm {
             }
 
             const field = allFields.find(f => f.key === fieldKey);
-            if (!field || field.type !== 'annotated-multiselect') return;
+            if (!field || field.type !== 'annotated-reference-list') return;
 
             // Get current value
             const value = this.getFieldValue(this.currentItem, field);
@@ -959,7 +1032,7 @@ export class CollectionEntityForm {
         };
 
         // transformedItem is used for plain inputs/selects (strips objects to IDs, normalises arrays).
-        // Managers (multiselect, annotated-multiselect) must receive the raw API objects from
+        // Managers (multiselect, annotated-reference-list) must receive the raw API objects from
         // this.currentItem — exactly as initializeReferenceListManagers / initializeAnnotatedMultiselects
         // do on initial load — because their normalizeInitialValue expects {id, ...} objects, not plain numbers.
         const transformedItem = this.transformDataForEdit(this.currentItem);
@@ -999,14 +1072,14 @@ export class CollectionEntityForm {
                     break;
                 }
 
-                case 'annotated-multiselect': {
+                case 'annotated-reference-list': {
                     // Use rawValue: manager expects [{id, note, ...}] objects, not plain IDs
                     const manager = this.annotatedMultiselectManagers[field.key];
                     if (manager && typeof manager.destroy === 'function') manager.destroy();
                     delete this.annotatedMultiselectManagers[field.key];
 
                     const placeholder = this.currentModal.querySelector(
-                        `.annotated-multiselect-placeholder[data-field-key="${field.key}"]`
+                        `.annotated-reference-list-placeholder[data-field-key="${field.key}"]`
                     );
                     if (!placeholder) break;
 
@@ -1028,7 +1101,7 @@ export class CollectionEntityForm {
                     break;
                 }
 
-                case 'multiselect': {
+                case 'reference-list': {
                     // Use rawValue: manager expects [{id, title, ...}] objects, not plain IDs
                     const manager = this.referenceListManagers[field.key];
                     if (manager && typeof manager.destroy === 'function') manager.destroy();
@@ -1051,6 +1124,35 @@ export class CollectionEntityForm {
                         });
                         mgr.render(placeholder);
                         this.referenceListManagers[field.key] = mgr;
+                    });
+                    break;
+                }
+
+                case 'reference': {
+                    const mgr = this.referenceManagers[field.key];
+                    if (mgr && typeof mgr.destroy === 'function') mgr.destroy();
+                    delete this.referenceManagers[field.key];
+
+                    const placeholder = this.currentModal.querySelector(
+                        `.reference-manager-placeholder[data-field-key="${field.key}"]`
+                    );
+                    if (!placeholder) break;
+
+                    const initialId = Array.isArray(rawValue) && rawValue.length > 0
+                        ? rawValue[0]?.id ?? rawValue[0]
+                        : null;
+
+                    this.getFieldOptions(field).then(options => {
+                        const newMgr = new ReferenceManager({
+                            fieldId: placeholder.dataset.fieldId,
+                            options,
+                            initialValue: initialId,
+                            placeholder: field.placeholder || 'Type to search...',
+                            readOnly: false,
+                            onChange: () => this.markDirty()
+                        });
+                        newMgr.render(placeholder);
+                        this.referenceManagers[field.key] = newMgr;
                     });
                     break;
                 }
@@ -1328,6 +1430,7 @@ export class CollectionEntityForm {
         // Cleanup managers before closing
         this.cleanupAnnotatedMultiselects();
         this.cleanupReferenceListManagers();
+        this.cleanupReferenceManagers();
         this.cleanupQuillEditors();
 
         this._clearDirty();
@@ -1466,8 +1569,8 @@ export class CollectionEntityForm {
             // static-label has no input — nothing to collect
             if (field.type === 'static-label') continue;
 
-            // Special handling for annotated-multiselect
-            if (field.type === 'annotated-multiselect') {
+            // Special handling for annotated-reference-list
+            if (field.type === 'annotated-reference-list') {
                 const manager = this.annotatedMultiselectManagers[field.key];
                 if (manager) {
                     data[field.key] = manager.getValue();
@@ -1476,8 +1579,19 @@ export class CollectionEntityForm {
                 continue;
             }
 
-            // NEW: Special handling for multiselect with ReferenceListManager
-            if (field.type === 'multiselect') {
+            // Single-select reference (ReferenceManager) — wrap value in array
+            if (field.type === 'reference') {
+                const mgr = this.referenceManagers[field.key];
+                if (mgr) {
+                    const val = mgr.getValue();
+                    data[field.key] = val != null ? [val] : [];
+                    console.log('CollectionEntityForm.collectFormData %s (reference): %s', field.key, JSON.stringify(data[field.key]));
+                }
+                continue;
+            }
+
+            // Special handling for reference-list with ReferenceListManager
+            if (field.type === 'reference-list') {
                 // Check if this field uses ReferenceListManager
                 const manager = this.referenceListManagers[field.key];
                 if (manager) {

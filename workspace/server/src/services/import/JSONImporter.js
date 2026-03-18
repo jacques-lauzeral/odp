@@ -239,30 +239,73 @@ class JSONImporter {
     // Setup entity import methods
 
     async _importReferenceDocuments(documents, userId, context) {
+        // Build lookup map by externalId for recursive parent resolution
+        const docMap = new Map();
+        documents.forEach(doc => docMap.set(doc.externalId.toLowerCase(), doc));
+
         let count = 0;
-
         for (const docData of documents) {
-            try {
-                const createRequest = {
-                    name: docData.name,
-                    version: docData.version || '',
-                    url: docData.url || ''
-                };
-
-                const created = await ReferenceDocumentService.createItem(createRequest, userId);
-
-                context.setupIdMap.set(docData.externalId.toLowerCase(), created.id);
-                context.documentIdMap.set(docData.externalId.toLowerCase(), created.id);
-                count++;
-
-                console.log(`Created reference document: ${docData.externalId}`);
-
-            } catch (error) {
-                context.errors.push(`Failed to create reference document ${docData.externalId}: ${error.message}`);
-            }
+            const alreadyExists = context.documentIdMap.has(docData.externalId.toLowerCase());
+            const created = await this._importReferenceDocument(docData, docMap, userId, context);
+            if (created && !alreadyExists) count++;
         }
 
         return count;
+    }
+
+    /**
+     * Recursively import a reference document, ensuring parent exists first
+     * @private
+     */
+    async _importReferenceDocument(docData, docMap, userId, context) {
+        const externalId = docData.externalId.toLowerCase();
+
+        // Already imported (by a previous recursive call as a parent)
+        if (context.documentIdMap.has(externalId)) {
+            return context.documentIdMap.get(externalId);
+        }
+
+        let parentId = null;
+
+        if (docData.parentExternalId) {
+            const parentExternalId = docData.parentExternalId.toLowerCase();
+
+            if (context.documentIdMap.has(parentExternalId)) {
+                // Parent already in map (from DB or already imported in this run)
+                parentId = context.documentIdMap.get(parentExternalId);
+            } else {
+                // Parent not yet imported — recurse
+                const parentData = docMap.get(parentExternalId);
+                if (parentData) {
+                    parentId = await this._importReferenceDocument(parentData, docMap, userId, context);
+                } else {
+                    context.errors.push(`Parent ${docData.parentExternalId} not found for ${docData.externalId}`);
+                    return null;
+                }
+            }
+        }
+
+        try {
+            const createRequest = {
+                name: docData.name,
+                description: docData.description || '',
+                version: docData.version || '',
+                url: docData.url || '',
+                parentId: parentId
+            };
+
+            const created = await ReferenceDocumentService.createItem(createRequest, userId);
+
+            context.setupIdMap.set(externalId, created.id);
+            context.documentIdMap.set(externalId, created.id);
+
+            console.log(`Created reference document: ${docData.externalId}`);
+            return created.id;
+
+        } catch (error) {
+            context.errors.push(`Failed to create reference document ${docData.externalId}: ${error.message}`);
+            return null;
+        }
     }
 
     async _importStakeholderCategories(categories, userId, context) {
@@ -418,6 +461,7 @@ class JSONImporter {
                     sequenceNumber: waveData.sequenceNumber,
                     implementationDate: waveData.implementationDate
                 };
+                console.log(`Creating wave: ${waveData.year} ${waveData.sequenceNumber} ${waveData.implementationDate}`);
 
                 const created = await WaveService.createItem(createRequest, userId);
 

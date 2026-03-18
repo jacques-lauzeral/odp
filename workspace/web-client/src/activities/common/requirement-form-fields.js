@@ -164,7 +164,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'strategicDocuments',
                 label: 'Strategic Documents',
-                type: 'annotated-multiselect',
+                type: 'annotated-reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 visibleWhen: (data) => data.type === 'ON',
@@ -178,7 +178,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'implementedONs',
                 label: 'Implements (ON Requirements)',
-                type: 'multiselect',
+                type: 'reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
@@ -190,13 +190,13 @@ export const requirementFieldDefinitions = [
             },
             {
                 key: 'refinesParents',
-                label: 'Refines (Parent Requirements)',
-                type: 'multiselect',
+                label: 'Refines (Parent Requirement)',
+                type: 'reference',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                size: 5,
                 optionsKey: 'getParentRequirementOptions',
-                helpText: 'Select parent requirements that this requirement refines',
+                placeholder: 'Type to search parent requirement...',
+                helpText: 'Select the parent requirement that this requirement refines',
                 formatKey: 'formatEntityReferences'
             }
         ]
@@ -210,7 +210,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'impactedStakeholders',
                 label: 'Stakeholder Categories',
-                type: 'annotated-multiselect',
+                type: 'annotated-reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 visibleWhen: (data) => data.type === 'OR',
@@ -223,7 +223,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'impactedDomains',
                 label: 'Impacted Domains',
-                type: 'annotated-multiselect',
+                type: 'annotated-reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 visibleWhen: (data) => data.type === 'OR',
@@ -264,7 +264,7 @@ export const requirementFieldDefinitions = [
             {
                 key: 'dependencies',
                 label: 'Dependencies',
-                type: 'multiselect',
+                type: 'reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,

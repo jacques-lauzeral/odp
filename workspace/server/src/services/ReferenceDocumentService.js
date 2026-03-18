@@ -35,6 +35,9 @@ export class ReferenceDocumentService extends TreeItemService {
                 throw new Error(`Validation failed: missing required field: ${field}`);
             }
         }
+        if (data.description !== undefined && data.description !== null && typeof data.description !== 'string') {
+            throw new Error('Validation failed: description must be a string');
+        }
     }
 }
 

@@ -1,11 +1,15 @@
 import { dom } from '../../shared/utils.js';
 import { apiClient } from '../../shared/api-client.js';
+import ReferenceManager from '../../components/odp/reference-manager.js';
 
 export default class TreeEntity {
     // Subclass declarations
     entityLabel  = 'Item';
     parentScope  = 'all';   // 'all' | 'roots'
-    fields       = [];      // [{ name, label, type, required }]
+    baseFields   = [
+        { name: 'description', label: 'Description', type: 'textarea', required: false }
+    ];
+    fields       = [];      // [{ name, label, type, required }] — subclass-specific fields, appended after baseFields
 
     constructor(app, entityConfig) {
         this.app    = app;
@@ -14,6 +18,7 @@ export default class TreeEntity {
         this.data         = [];
         this.treeStructure = [];
         this.selectedItem  = null;
+        this.parentRM      = null;  // ReferenceManager instance for parent field
     }
 
     // ─── Data ────────────────────────────────────────────────────────────────
@@ -58,18 +63,6 @@ export default class TreeEntity {
         return this.data.some(d => d.parentId === itemId);
     }
 
-    parentOptions(excludeId, currentParentId = null) {
-        const candidates = this.parentScope === 'roots'
-            ? this.data.filter(d => d.parentId == null)
-            : this.data;
-        return candidates
-            .filter(d => d.id !== excludeId)
-            .map(d => {
-                const selected = currentParentId != null && d.id === currentParentId ? ' selected' : '';
-                return `<option value="${d.id}"${selected}>${this.escapeHtml(this.getDisplayName(d))}</option>`;
-            })
-            .join('');
-    }
 
     // ─── UI ──────────────────────────────────────────────────────────────────
 
@@ -148,7 +141,7 @@ export default class TreeEntity {
                     <label>Name</label>
                     <p>${this.escapeHtml(this.getDisplayName(item))}</p>
                 </div>
-                ${this.fields.filter(f => item[f.name] != null && item[f.name] !== '').map(f => `
+                ${[...this.baseFields, ...this.fields].filter(f => item[f.name] != null && item[f.name] !== '').map(f => `
                     <div class="detail-field">
                         <label>${f.label}</label>
                         ${f.type === 'url'
@@ -195,7 +188,7 @@ export default class TreeEntity {
     // ─── Forms ───────────────────────────────────────────────────────────────
 
     renderFields(item = {}) {
-        return this.fields.map(f => `
+        return [...this.baseFields, ...this.fields].map(f => `
             <div class="form-group">
                 <label for="field-${f.name}">${f.label}${f.required ? ' *' : ''}</label>
                 ${f.type === 'textarea'
@@ -212,15 +205,42 @@ export default class TreeEntity {
     }
 
     renderParentSelect(excludeId = null, currentParentId = null) {
+        // Placeholder — ReferenceManager is wired after DOM insertion in _initParentRM()
         return `
             <div class="form-group">
-                <label for="field-parentId">Parent</label>
-                <select id="field-parentId" name="parentId" class="form-control">
-                    <option value="">— None (root) —</option>
-                    ${this.parentOptions(excludeId, currentParentId)}
-                </select>
+                <label>Parent</label>
+                <div class="parent-rm-placeholder"
+                     data-exclude-id="${excludeId ?? ''}"
+                     data-current-parent-id="${currentParentId ?? ''}">
+                </div>
             </div>
         `;
+    }
+
+    _initParentRM(modal) {
+        const placeholder = modal.querySelector('.parent-rm-placeholder');
+        if (!placeholder) return;
+
+        const excludeId       = placeholder.dataset.excludeId       ? parseInt(placeholder.dataset.excludeId,       10) : null;
+        const currentParentId = placeholder.dataset.currentParentId ? parseInt(placeholder.dataset.currentParentId, 10) : null;
+
+        const options = this.data
+            .filter(d => d.id !== excludeId)
+            .map(d => ({ value: d.id, label: this.getDisplayName(d) }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+
+        if (this.parentRM) { this.parentRM.destroy(); this.parentRM = null; }
+
+        this.parentRM = new ReferenceManager({
+            fieldId:      'field-parentId',
+            options,
+            initialValue: currentParentId,
+            placeholder:  'Type to search parent...',
+            noneLabel:    '— None (root) —',
+            onChange:     () => {}
+        });
+
+        this.parentRM.render(placeholder);
     }
 
     showCreateForm(parentId = null) {
@@ -293,6 +313,7 @@ export default class TreeEntity {
             </div>
         `);
         const modal = document.querySelector(`#${id}`);
+        this._initParentRM(modal);
         modal.addEventListener('click', async e => {
             const btn = e.target.closest('[data-action]');
             if (!btn) return;
@@ -306,7 +327,10 @@ export default class TreeEntity {
         document.addEventListener('keydown', e => { if (e.key === 'Escape') this.closeModal(modal); });
     }
 
-    closeModal(modal) { modal.remove(); }
+    closeModal(modal) {
+        if (this.parentRM) { this.parentRM.destroy(); this.parentRM = null; }
+        modal.remove();
+    }
 
     // ─── Data collection ─────────────────────────────────────────────────────
 
@@ -320,11 +344,14 @@ export default class TreeEntity {
 
     buildPayload(raw) {
         const payload = { name: raw.name?.trim() };
-        this.fields.forEach(f => {
+        [...this.baseFields, ...this.fields].forEach(f => {
             const val = typeof raw[f.name] === 'string' ? raw[f.name].trim() : raw[f.name];
             if (val != null && val !== '') payload[f.name] = val;
         });
-        if (raw.parentId) payload.parentId = parseInt(raw.parentId, 10);
+        // parentId comes from ReferenceManager, not a plain form field
+        const parentIdVal = this.parentRM ? this.parentRM.getValue() : (raw.parentId || null);
+        if (parentIdVal != null && parentIdVal !== '') payload.parentId = parseInt(parentIdVal, 10);
+        else payload.parentId = null;
         return payload;
     }
 

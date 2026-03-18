@@ -138,7 +138,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'implementedORs',
                 label: 'Implements Requirements',
-                type: 'multiselect',
+                type: 'reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
@@ -150,7 +150,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'decommissionedORs',
                 label: 'Decommissions Requirements',
-                type: 'multiselect',
+                type: 'reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
@@ -187,7 +187,7 @@ export const changeFieldDefinitions = [
             {
                 key: 'dependencies',
                 label: 'Dependencies',
-                type: 'multiselect',
+                type: 'reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,

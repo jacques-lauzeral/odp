@@ -97,16 +97,24 @@ export class BaseCommands {
                         return;
                     }
 
+                    const listHeaders = this.fieldConfig.hasParent
+                        ? [...this.fieldConfig.headers, 'Parent ID']
+                        : this.fieldConfig.headers;
+                    const listColWidths = this.fieldConfig.hasParent
+                        ? [...this.fieldConfig.colWidths, 12]
+                        : this.fieldConfig.colWidths;
+
                     const table = new Table({
-                        head: this.fieldConfig.headers,
-                        colWidths: this.fieldConfig.colWidths
+                        head: listHeaders,
+                        colWidths: listColWidths
                     });
 
                     items.forEach(item => {
                         const row = [item.id];
                         this.fieldConfig.fields.forEach(field => {
-                            row.push(item[field]);
+                            row.push(item[field] ?? '');
                         });
+                        if (this.fieldConfig.hasParent) row.push(item.parentId ?? '');
                         table.push(row);
                     });
 
@@ -142,8 +150,11 @@ export class BaseCommands {
                     console.log(`ID: ${item.id}`);
                     this.fieldConfig.fields.forEach(field => {
                         const fieldName = field.charAt(0).toUpperCase() + field.slice(1);
-                        console.log(`${fieldName}: ${item[field]}`);
+                        console.log(`${fieldName}: ${item[field] ?? ''}`);
                     });
+                    if (this.fieldConfig.hasParent) {
+                        console.log(`Parent ID: ${item.parentId ?? '(none)'}`);
+                    }
                 } catch (error) {
                     console.error(`Error getting ${this.displayName}:`, error.message);
                     process.exit(1);

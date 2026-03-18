@@ -147,6 +147,9 @@ components:
           description: "Parent ReferenceDocument ID — optional, max two levels"
         name:
           type: string
+        description:
+          type: string
+          nullable: true
         version:
           type: string
           nullable: true
@@ -163,6 +166,9 @@ components:
           description: "Parent ReferenceDocument ID — optional, max two levels"
         name:
           type: string
+        description:
+          type: string
+          nullable: true
         version:
           type: string
           nullable: true

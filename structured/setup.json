@@ -1,5 +1,12 @@
 {
-  "documents": [
+  "referenceDocuments": [
+    {
+      "name": "High Level Network CONOPS 2029",
+      "description": "High Level Network CONOPS 2029",
+      "version": "1.0",
+      "url": "https://www.eurocontrol.int/publication/high-level-network-concept-operations-conops-2029",
+      "externalId": "document:asm_atfcm_conops"
+    },
     {
       "name": "ASM ATFCM CONOPS",
       "description": "ASM/ATFCM Integration Concept of Operations",
@@ -8,21 +15,21 @@
       "externalId": "document:asm_atfcm_conops"
     },
     {
-      "name": "FLOW CONOPS",
+      "name": "Flow CONOPS",
       "description": "Flow Integration Concept of Operations",
       "version": "1.0",
       "url": "https://www.eurocontrol.int/publication/flow-conops",
       "externalId": "document:flow_conops"
     },
     {
-      "name": "iDL CONOPS",
-      "description": "Integrated Data Layer (iDL) - Concept of Operations (CONOPS)",
+      "name": "iDL (Airspace) CONOPS",
+      "description": "Integrated Data Layer (Airspace) - Concept of Operations (CONOPS)",
       "version": "2.1",
       "url": "https://www.eurocontrol.int/publication/integrated-data-layer-idl-concept-operations-conops",
       "externalId": "document:idl_conops"
     },
     {
-      "name": "4D Trajectory CONOPS",
+      "name": "Network 4D Trajectory CONOPS",
       "description": "Network 4D Trajectory Concept of Operations (CONOPS)",
       "version": "1.0",
       "url": "https://www.eurocontrol.int/publication/network-4d-trajectory-conops",
@@ -36,14 +43,460 @@
       "externalId": "document:nm_b2b_conops"
     },
     {
-      "name": "iNM Roadmap",
-      "externalId": "document:inm_roadmap"
+      "name": "NSP",
+      "description": "Network Strategy Plan 2025-2029",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp"
     },
+    {
+      "name": "NSP SO 1",
+      "description": "Manage network performance through 'Network-minded' decision-making",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 1/1",
+      "description": "Operationally performant network and ATM/CNS services, established locally and/or network-wide",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1/1",
+      "parentExternalId": "document:nsp/so1"
+    },
+    {
+      "name": "NSP SO 1/2",
+      "description": "Improved predictability",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1/2",
+      "parentExternalId": "document:nsp/so1"
+    },
+    {
+      "name": "NSP SO 1/3",
+      "description": "Network performance cockpit (as part of iNM)",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1/3",
+      "parentExternalId": "document:nsp/so1"
+    },
+    {
+      "name": "NSP SO 1/4",
+      "description": "Continue to foster operational behaviours towards network performance",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1/4",
+      "parentExternalId": "document:nsp/so1"
+    },
+    {
+      "name": "NSP SO 1/5",
+      "description": "Strengthen operational stakeholders' performance planning",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1/5",
+      "parentExternalId": "document:nsp/so1"
+    },
+    {
+      "name": "NSP SO 1/6",
+      "description": "Further strengthen the close coordination of the whole cycle of technological modernisation for the execution of network functions",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so1/6",
+      "parentExternalId": "document:nsp/so1"
+    },
+    {
+      "name": "NSP SO 2",
+      "description": "Digitalise aviation through the deployment and integration of interoperable and secure information management systems",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 2/1",
+      "description": "Continue to implement the Network Interoperability Strategy",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2/1",
+      "parentExternalId": "document:nsp/so2"
+    },
+    {
+      "name": "NSP SO 2/2",
+      "description": "Developing technical infrastructure and tools to support network performance cockpit",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2/2",
+      "parentExternalId": "document:nsp/so2"
+    },
+    {
+      "name": "NSP SO 2/3",
+      "description": "Modernise the NM systems architecture",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2/3",
+      "parentExternalId": "document:nsp/so2"
+    },
+    {
+      "name": "NSP SO 2/4",
+      "description": "Support to the evolution of interoperability standards and their coordination at ICAO level",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2/4",
+      "parentExternalId": "document:nsp/so2"
+    },
+    {
+      "name": "NSP SO 2/5",
+      "description": "Aviation Network Information Reference",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2/5",
+      "parentExternalId": "document:nsp/so2"
+    },
+    {
+      "name": "NSP SO 2/6",
+      "description": "Implement European data management systems and aeronautical information relevant to the execution of network functions as well as an electronic integrated briefing portal (within iNM scope)",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so2/6",
+      "parentExternalId": "document:nsp/so2"
+    },
+    {
+      "name": "NSP SO 3",
+      "description": "Sustainable and optimised Network design",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 3/1",
+      "description": "Optimum network, responding to SES performance targets",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/1",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 3/2",
+      "description": "Further enhance NOP planning process to include network optimisation actions",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/2",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 3/3",
+      "description": "Further cross-border free route airspace implementation, in line with the ERNIP, Further TMA optimisation",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/3",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 3/4",
+      "description": "Further Advanced FUA implementation",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/4",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 3/5",
+      "description": "Optimum opening schemes",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/5",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 3/6",
+      "description": "Operational Excellence",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/6",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 3/7",
+      "description": "Network integration of new entrants",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so3/7",
+      "parentExternalId": "document:nsp/so3"
+    },
+    {
+      "name": "NSP SO 4",
+      "description": "Sustainable and optimised Network operations",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 4/1",
+      "description": "Modernise local/network ATM system capabilities",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/1",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 4/2",
+      "description": "Improve the quality of the European Aviation Network Planning Processes; Improve coordination of ATM transition projects",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/2",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 4/3",
+      "description": "Collaborative Traffic & Network Management; Transformation of DCB into a collaborative constraint management process; Ensure the management of an enhanced Demand Capacity Balancing process",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/3",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 4/4",
+      "description": "Implementation and coordination of end-to-end 4D Trajectories; EPP Conformance Monitoring; Integration of VFR and iOAT Flight planning; Evolve NM's role to become the planner and coordinator of the 4D Business/Mission Trajectory",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/4",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 4/5",
+      "description": "Integration of all major European airports into Network Operations",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/5",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 4/6",
+      "description": "Improved network situational awareness",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/6",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 4/7",
+      "description": "Monitor airspace user service improvements",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so4/7",
+      "parentExternalId": "document:nsp/so4"
+    },
+    {
+      "name": "NSP SO 5",
+      "description": "Aim to provide on-time operations for and at airport platforms with the support of the Network Manager",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so5",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 5/1",
+      "description": "On-time execution of schedules",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so5/1",
+      "parentExternalId": "document:nsp/so5"
+    },
+    {
+      "name": "NSP SO 5/2",
+      "description": "Extend NOP planning function to include the monitoring and identification of potential improvement measures for better on time execution of the airline schedules",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so5/2",
+      "parentExternalId": "document:nsp/so5"
+    },
+    {
+      "name": "NSP SO 5/3",
+      "description": "Support the operations at and around airport platforms with appropriate data",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so5/3",
+      "parentExternalId": "document:nsp/so5"
+    },
+    {
+      "name": "NSP SO 5/4",
+      "description": "Enhanced exchange of information between NMOC and APOC",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so5/4",
+      "parentExternalId": "document:nsp/so5"
+    },
+    {
+      "name": "NSP SO 5/5",
+      "description": "Inter-modal connectivity",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so5/5",
+      "parentExternalId": "document:nsp/so5"
+    },
+    {
+      "name": "NSP SO 6",
+      "description": "Ensure network resilience, safety and security and reinforce crisis management",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 6/1",
+      "description": "Identification of major safety risks from a Network perspective",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6/1",
+      "parentExternalId": "document:nsp/so6"
+    },
+    {
+      "name": "NSP SO 6/2",
+      "description": "Safety will be transparent and expressed in terms of actual operational risks",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6/2",
+      "parentExternalId": "document:nsp/so6"
+    },
+    {
+      "name": "NSP SO 6/3",
+      "description": "Cybersecurity",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6/3",
+      "parentExternalId": "document:nsp/so6"
+    },
+    {
+      "name": "NSP SO 6/4",
+      "description": "Implement security standards",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6/4",
+      "parentExternalId": "document:nsp/so6"
+    },
+    {
+      "name": "NSP SO 6/5",
+      "description": "Enhance crisis management and the EACCC",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6/5",
+      "parentExternalId": "document:nsp/so6"
+    },
+    {
+      "name": "NSP SO 6/6",
+      "description": "Resilience and upwards/downwards scalability and societal needs",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so6/6",
+      "parentExternalId": "document:nsp/so6"
+    },
+    {
+      "name": "NSP SO 7",
+      "description": "Optimise and Digitalise (as appropriate) ATM/CNS infrastructure and services to support evolutions towards more efficient network operations and services",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so7",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 7/1",
+      "description": "Optimised and effective use of the aeronautical radio frequencies",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so7/1",
+      "parentExternalId": "document:nsp/so7"
+    },
+    {
+      "name": "NSP SO 7/2",
+      "description": "Robust and transparent Radar Transponder Code Function, including the SSR code allocation process",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so7/2",
+      "parentExternalId": "document:nsp/so7"
+    },
+    {
+      "name": "NSP SO 7/3",
+      "description": "Monitoring and reporting of performance and real-time service status",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so7/3",
+      "parentExternalId": "document:nsp/so7"
+    },
+    {
+      "name": "NSP SO 7/4",
+      "description": "Propose and facilitate modernisation and decarbonisation of the ATM/CNS infrastructure",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so7/4",
+      "parentExternalId": "document:nsp/so7"
+    },
+    {
+      "name": "NSP SO 7/5",
+      "description": "Ensure the development and provision of common network support services",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so7/5",
+      "parentExternalId": "document:nsp/so7"
+    },
+    {
+      "name": "NSP SO 8",
+      "description": "Develop the network people and improve its flexibility through excellence",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so8",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 8/1",
+      "description": "Flexible ATS provision arrangements",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so8/1",
+      "parentExternalId": "document:nsp/so8"
+    },
+    {
+      "name": "NSP SO 8/2",
+      "description": "Functional mobility of Air Traffic Control staff, harmonise ATCO's employment requirements",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so8/2",
+      "parentExternalId": "document:nsp/so8"
+    },
+    {
+      "name": "NSP SO 8/3",
+      "description": "Performance indicators to monitor human factors and their impact on network performance",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so8/3",
+      "parentExternalId": "document:nsp/so8"
+    },
+    {
+      "name": "NSP SO 9",
+      "description": "Towards net zero emissions aviation",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so9",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 9/1",
+      "description": "Optimisation of flown trajectories",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so9/1",
+      "parentExternalId": "document:nsp/so9"
+    },
+    {
+      "name": "NSP SO 9/2",
+      "description": "Greener aviation in the areas of fuel consumption, gas emissions, noise reduction",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so9/2",
+      "parentExternalId": "document:nsp/so9"
+    },
+    {
+      "name": "NSP SO 9/3",
+      "description": "Operational and technical support to innovative concepts of operations and experimentation of new air transport vehicles",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so9/3",
+      "parentExternalId": "document:nsp/so9"
+    },
+    {
+      "name": "NSP SO 9/4",
+      "description": "Network Manager capabilities to support the EC's environment policy",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so9/4",
+      "parentExternalId": "document:nsp/so9"
+    },
+    {
+      "name": "NSP SO 10",
+      "description": "Support European aviation at global level",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so10",
+      "parentExternalId": "document:nsp"
+    },
+    {
+      "name": "NSP SO 10/1",
+      "description": "Network of Networks",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so10/1",
+      "parentExternalId": "document:nsp/so10"
+    },
+    {
+      "name": "NSP SO 10/2",
+      "description": "Collaborative partnerships",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so10/2",
+      "parentExternalId": "document:nsp/so10"
+    },
+    {
+      "name": "NSP SO 10/3",
+      "description": "Operational cooperation beyond Europe",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so10/3",
+      "parentExternalId": "document:nsp/so10"
+    },
+    {
+      "name": "NSP SO 10/4",
+      "description": "Implementation of common ATM standards",
+      "url": "https://www.eurocontrol.int/...",
+      "externalId": "document:nsp/so10/4",
+      "parentExternalId": "document:nsp/so10"
+    },
+
+
     {
       "name": "Commission Implementing Regulation (EU) 2021/116",
       "url": "https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32021R0116",
       "externalId": "document:commission_implementing_regulation_(eu)_2021/116"
     }
+
   ],
   "stakeholderCategories": [
     {
@@ -270,24 +723,28 @@
   ],
   "waves": [
     {
-      "externalId": "wave:2026",
-      "year": "2026"
+      "externalId": "wave:2027.1",
+      "year": "2027",
+      "sequenceNumber": 1,
+      "implementationDate": "2027-03-23"
     },
     {
-      "externalId": "wave:2027",
-      "year": "2027"
+      "externalId": "wave:2028.1",
+      "year": "2028",
+      "sequenceNumber": 1,
+      "implementationDate": "2028-04-11"
     },
     {
-      "externalId": "wave:2028",
-      "year": "2028"
+      "externalId": "wave:2029.1",
+      "year": "2029",
+      "sequenceNumber": 1,
+      "implementationDate": "2029-04-17"
     },
     {
-      "externalId": "wave:2029",
-      "year": "2029"
-    },
-    {
-      "externalId": "wave:2030",
-      "year": "2030"
+      "externalId": "wave:2030.1",
+      "year": "2030",
+      "sequenceNumber": 1,
+      "implementationDate": "2030-03-26"
     }
   ]
 }

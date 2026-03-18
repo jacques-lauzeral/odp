@@ -8,11 +8,11 @@ export function referenceDocumentCommands(program, config) {
         'reference document',    // displayName for messages
         config,
         {
-            fields: ['name', 'version', 'url'],
-            headers: ['ID', 'Name', 'Version', 'URL'],
-            colWidths: [10, 30, 15, 50],
-            createSignature: '<n> <version> <url>',
-            updateSignature: '<id> <n> <version> <url>',
+            fields: ['name', 'description', 'version', 'url'],
+            headers: ['ID', 'Name', 'Description', 'Version', 'URL'],
+            colWidths: [10, 30, 30, 15, 50],
+            createSignature: '<n> <description> <version> <url>',
+            updateSignature: '<id> <n> <description> <version> <url>',
             hasParent: true
         }
     );

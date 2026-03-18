@@ -3,9 +3,10 @@
 export const ReferenceDocument = {
     id: '',
     name: '',
-    version: '',  // optional
+    description: '', // optional
+    version: '',     // optional
     url: '',
-    parentId: null // optional
+    parentId: null    // optional
 };
 
 export const Wave = {
