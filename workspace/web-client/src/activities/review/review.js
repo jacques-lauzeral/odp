@@ -57,10 +57,6 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             // Show loading state while fetching editions
             this.container.innerHTML = `
                 <div class="review-activity">
-                    <div class="review-header">
-                        <h1>Review</h1>
-                        <p>Select what you want to review</p>
-                    </div>
                     <div class="target-selection-loading">
                         <div class="spinner"></div>
                         <p>Loading available editions...</p>
@@ -74,11 +70,6 @@ export default class ReviewActivity extends AbstractInteractionActivity {
             // Render target selection UI
             this.container.innerHTML = `
                 <div class="review-activity">
-                    <div class="review-header">
-                        <h1>Review</h1>
-                        <p>Select what you want to review</p>
-                    </div>
-                    
                     <div class="target-selection">
                         <div class="target-options">
                             <div class="target-option" data-target="repository">
@@ -216,11 +207,6 @@ export default class ReviewActivity extends AbstractInteractionActivity {
     renderTargetSelectionError(error) {
         this.container.innerHTML = `
             <div class="review-activity">
-                <div class="review-header">
-                    <h1>Review</h1>
-                    <p>Select what you want to review</p>
-                </div>
-                
                 <div class="error-container">
                     <h3>Failed to Load Review Options</h3>
                     <p>An error occurred while loading available editions for review.</p>

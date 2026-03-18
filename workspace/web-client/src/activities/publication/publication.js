@@ -50,11 +50,6 @@ export default class PublicationActivity {
     renderLoadingState() {
         this.container.innerHTML = `
             <div class="publication-activity">
-                <div class="publication-header">
-                    <h1> ODIP Publication  </h1>
-                    <p>Create and manage ODIP editions for development and implementation planning</p>
-                </div>
-                
                 <div class="publication-workspace">
                     <div class="collection-container">
                         <div class="loading-state">
@@ -140,16 +135,6 @@ export default class PublicationActivity {
     renderUI() {
         this.container.innerHTML = `
             <div class="publication-activity">
-                <div class="publication-header">
-                    <h1>
-                        Publication
-                    </h1>
-                    <p>Create and manage ODIP editions for development and implementation planning</p>
-                    <div class="publication-stats">
-                        <span class="edition-count">${this.editionCount} editions</span>
-                    </div>
-                </div>
-                
                 <div class="publication-workspace">
                     <!-- Activity-level filters above workspace -->
                     <div class="activity-filters" id="activityFilters">
@@ -157,6 +142,7 @@ export default class PublicationActivity {
                             ${this.renderFilterControls()}
                             <button class="filter-clear" id="clearAllFilters" title="Clear all filters">Clear All</button>
                         </div>
+                        <span class="edition-count">${this.editionCount} editions</span>
                     </div>
 
                     <div class="collection-container">
@@ -417,14 +403,6 @@ export default class PublicationActivity {
     renderError(error) {
         this.container.innerHTML = `
             <div class="publication-activity">
-                <div class="publication-header">
-                    <h1>
-                        Publication
-                        <span class="publication-context">Edition Management</span>
-                    </h1>
-                    <p>Create and manage ODIP editions for development and implementation planning</p>
-                </div>
-                
                 <div class="publication-workspace">
                     <div class="error-container">
                         <h3>Failed to Load Publication Activity</h3>

@@ -139,14 +139,6 @@ export default class AbstractInteractionActivity {
 
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
-                <div class="${activityClass}-header">
-                    <h1>
-                        ${this.config.activityName}
-                        <span class="context-label">${contextLabel}</span>
-                    </h1>
-                    <p>${this.config.description}</p>
-                </div>
-                
                 <div class="${activityClass}-workspace">
                     <div class="collection-container">
                         <div class="loading-state">
@@ -221,14 +213,6 @@ export default class AbstractInteractionActivity {
         // NEW LAYOUT: Filters above tabs, view controls managed by entities
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
-                <div class="${activityClass}-header">
-                    <h1>
-                        ${this.config.activityName}
-                        <span class="context-label">${contextLabel}</span>
-                    </h1>
-                    <p>${this.config.description}</p>
-                </div>
-                
                 <!-- Activity-level filters - FULL WIDTH -->
                 <div class="activity-filters" id="activityFilters">
                     <!-- Dynamic filters will be rendered here -->
@@ -1007,14 +991,6 @@ export default class AbstractInteractionActivity {
 
         this.container.innerHTML = `
             <div class="${activityClass}-activity">
-                <div class="${activityClass}-header">
-                    <h1>
-                        ${this.config.activityName}
-                        <span class="context-label">${this.getContextLabel()}</span>
-                    </h1>
-                    <p>${this.config.description}</p>
-                </div>
-                
                 <div class="${activityClass}-workspace">
                     <div class="error-container">
                         <h3>Failed to Load ${this.config.activityName} Activity</h3>

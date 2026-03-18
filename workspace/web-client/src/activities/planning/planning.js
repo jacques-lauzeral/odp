@@ -92,10 +92,6 @@ export default class PlanningActivity {
     renderLoadingState() {
         this.container.innerHTML = `
             <div class="planning-activity">
-                <div class="planning-header">
-                    <h1>Planning <span class="context-label">Repository</span></h1>
-                    <p>Visualise development and implementation planning across operational needs and changes.</p>
-                </div>
                 <div class="planning-workspace">
                     <div class="loading-state">
                         <div class="spinner"></div>
@@ -109,11 +105,6 @@ export default class PlanningActivity {
     renderUI() {
         this.container.innerHTML = `
             <div class="planning-activity">
-                <div class="planning-header">
-                    <h1>Planning <span class="context-label">Repository</span></h1>
-                    <p>Visualise development and implementation planning across operational needs and changes.</p>
-                </div>
-
                 <div class="planning-workspace">
                     <!-- Tab bar -->
                     <div class="interaction-tabs">
@@ -137,9 +128,6 @@ export default class PlanningActivity {
     renderError(error) {
         this.container.innerHTML = `
             <div class="planning-activity">
-                <div class="planning-header">
-                    <h1>Planning</h1>
-                </div>
                 <div class="planning-workspace">
                     <div class="error-container">
                         <h3>Failed to Load Planning Activity</h3>
