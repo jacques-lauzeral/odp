@@ -120,7 +120,7 @@ class DocxExtractor {
             // Log complete HTML to file for debugging
             const fs = await import('fs');
             const path = await import('path');
-            const logDir = path.join(process.cwd(), 'logs');
+            const logDir = process.env.LOG_PATH || path.join(process.cwd(), 'logs');
 
             // Ensure logs directory exists
             if (!fs.existsSync(logDir)) {
@@ -660,7 +660,7 @@ class DocxExtractor {
     _convertEmfToPng(emfBase64) {
         // Generate unique temp filenames
         const tempId = crypto.randomBytes(8).toString('hex');
-        const tempDir = path.join(process.cwd(), 'logs');
+        const tempDir = process.env.LOG_PATH || path.join(process.cwd(), 'logs');
         const emfPath = path.join(tempDir, `temp-${tempId}.emf`);
         const pngPath = path.join(tempDir, `temp-${tempId}.png`);
         const trimmedPngPath = path.join(tempDir, `temp-${tempId}-trimmed.png`);

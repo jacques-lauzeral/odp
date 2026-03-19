@@ -41,9 +41,13 @@ spec:
           value: "password123"
         - name: STATIC_CONTENT_PATH
           value: "/app/publication/web-site/static"
+        - name: LOG_PATH
+          value: "/odip/logs"
       volumeMounts:
         - name: odp-code
           mountPath: /app
+        - name: odip-runtime
+          mountPath: /odip
 
     # Web Client
     - name: web-client
@@ -59,9 +63,13 @@ spec:
   volumes:
     - name: neo4j-data
       hostPath:
-        path: $ODIP_DATA
+        path: $ODIP_HOME/data
         type: Directory
     - name: odp-code
+      hostPath:
+        path: $ODIP_REPO
+        type: Directory
+    - name: odip-runtime
       hostPath:
         path: $ODIP_HOME
         type: Directory

@@ -2,7 +2,9 @@
 
 # odip-backup - Automated periodic backup for ODIP Neo4j database
 #
-# Requires ODIP_HOME to be set in the environment.
+# Required environment variables:
+#   ODIP_REPO   Repository root
+#   ODIP_HOME   Runtime root (backups stored under $ODIP_HOME/backups/)
 #
 # Retention policy:
 #   daily   — 1 backup, refreshed every 24 hours
@@ -12,26 +14,24 @@
 # Promotion uses last-modified timestamps on dump files — no external state.
 #
 # Usage (typically called from cron):
-#   odip-backup [-e local|ec] [-b <backup-base-dir>]
+#   odip-backup [-b <backup-base-dir>]
 #
 # Cron example (nightly at 02:00):
-#   0 2 * * *  odip-backup >> ~/odip-backups/auto/odip-backup.log 2>&1
+#   0 2 * * *  odip-backup >> $ODIP_HOME/backups/auto/odip-backup.log 2>&1
 
 set -e
+
+if [[ -z "$ODIP_REPO" ]]; then
+    echo "Error: ODIP_REPO is not set."
+    exit 1
+fi
 
 if [[ -z "$ODIP_HOME" ]]; then
     echo "Error: ODIP_HOME is not set."
     exit 1
 fi
 
-if [[ -z "$ODIP_BACKUP" ]]; then
-    echo "Error: ODIP_BACKUP is not set. Add to your .bashrc:"
-    echo "  export ODIP_BACKUP=~/odip-backups"
-    exit 1
-fi
-
 # --- Defaults ---
-ENV="local"
 BACKUP_BASE=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADMIN_SCRIPT="$SCRIPT_DIR/odip-admin"
@@ -46,23 +46,21 @@ usage() {
 Usage: odip-backup [options]
 
 Options:
-  -e, --env <env>           Deployment environment: local (default) or ec
   -b, --backup-base <path>  Base directory for auto backups
-                            default: $ODIP_BACKUP/auto
+                            default: $ODIP_HOME/backups/auto
   -h, --help                Show this help
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -e|--env)   ENV="$2"; shift 2 ;;
         -b|--backup-base) BACKUP_BASE="$2"; shift 2 ;;
         -h|--help)  usage; exit 0 ;;
         *)          echo "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
-[[ -z "$BACKUP_BASE" ]] && BACKUP_BASE="${ODIP_BACKUP}/auto"
+[[ -z "$BACKUP_BASE" ]] && BACKUP_BASE="${ODIP_HOME}/backups/auto"
 
 DAILY_DIR="$BACKUP_BASE/daily"
 WEEKLY_DIR="$BACKUP_BASE/weekly"
@@ -102,7 +100,7 @@ promote() {
 
 # --- Main ---
 
-log "=== ODIP backup start (env=$ENV) ==="
+log "=== ODIP backup start ==="
 
 # Step 1 — Promotions (oldest first, before fresh dump)
 
@@ -122,7 +120,7 @@ if (( DAILY_AGE >= DAILY_THRESHOLD )); then
     log "Taking fresh dump (daily slot)"
     mkdir -p "$DAILY_DIR"
     chmod 777 "$DAILY_DIR"
-    bash "$ADMIN_SCRIPT" dump -e "$ENV" -b "$DAILY_DIR"
+    bash "$ADMIN_SCRIPT" dump -b "$DAILY_DIR"
     log "Daily dump complete"
 else
     NEXT=$(( DAILY_THRESHOLD - DAILY_AGE ))

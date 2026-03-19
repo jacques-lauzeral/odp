@@ -3,22 +3,21 @@
 # odip-admin - Administration utility for ODIP (Podman/Kubernetes)
 #
 # Required environment variables:
-#   ODIP_HOME              Repository root
-#   ODIP_DATA              Neo4j data directory (must be on local filesystem, not NFS)
-#   ODIP_BACKUP            Backup base directory
+#   ODIP_REPO              Repository root (source code, bin, Dockerfile)
+#   ODIP_HOME              Runtime root (data/, backups/, logs/)
 #   ODIP_DOCKER_REGISTRY   Docker registry (e.g. docker.io or yagi.cfmu.corp.eurocontrol.int:5000)
 #   ODIP_NPM_MODE          npm install mode: podman (default) or host
 
 set -e
 
-for var in ODIP_HOME ODIP_DATA ODIP_BACKUP ODIP_DOCKER_REGISTRY; do
+for var in ODIP_REPO ODIP_HOME ODIP_DOCKER_REGISTRY; do
     if [[ -z "${!var}" ]]; then
         echo "Error: $var is not set." >&2
         exit 1
     fi
 done
 
-YAML_FILE="${ODIP_HOME}/odip-deployment.yaml"
+YAML_FILE="${ODIP_REPO}/odip-deployment.yaml"
 SERVER_URL="http://localhost:8080"
 
 # --- Top-level help ---
@@ -49,10 +48,16 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
+ensure_runtime_dirs() {
+    mkdir -p "${ODIP_HOME}/data"
+    mkdir -p "${ODIP_HOME}/backups/auto"
+    mkdir -p "${ODIP_HOME}/logs"
+}
+
 extract_data_dir() {
     local data_dir="$1"
     if [[ -z "$data_dir" ]]; then
-        data_dir="$ODIP_DATA"
+        data_dir="${ODIP_HOME}/data"
         log "Using Neo4j data directory: $data_dir" >&2
     fi
     [[ ! -d "$data_dir" ]] && { echo "Error: Neo4j data directory does not exist: $data_dir" >&2; exit 1; }
@@ -101,16 +106,16 @@ install_host_dependencies() {
     log "Installing host dependencies (server, web-client, cli)"
     for workspace in server web-client cli; do
         log "npm install: workspace/$workspace"
-        (cd "${ODIP_HOME}/workspace/$workspace" && npm install)
+        (cd "${ODIP_REPO}/workspace/$workspace" && npm install)
     done
 }
 
 build_web_client() {
     log "Rebuilding web client image (ODIP_NPM_MODE=${ODIP_NPM_MODE:-podman})"
     if [[ "${ODIP_NPM_MODE:-podman}" == "host" ]]; then
-        podman build -f "${ODIP_HOME}/Dockerfile.web-client" --build-arg NPM_INSTALL=false -t odp-web-client:latest "$ODIP_HOME"
+        podman build -f "${ODIP_REPO}/Dockerfile.web-client" --build-arg NPM_INSTALL=false -t odp-web-client:latest "$ODIP_REPO"
     else
-        podman build -f "${ODIP_HOME}/Dockerfile.web-client" --build-arg NPM_INSTALL=true -t odp-web-client:latest "$ODIP_HOME"
+        podman build -f "${ODIP_REPO}/Dockerfile.web-client" --build-arg NPM_INSTALL=true -t odp-web-client:latest "$ODIP_REPO"
     fi
 }
 
@@ -137,6 +142,7 @@ EOF
             *) echo "Unknown option: $1" >&2; exit 1 ;;
         esac
     done
+    ensure_runtime_dirs
     [[ "$install" == true ]] && install_host_dependencies
     [[ "$rebuild" == true ]] && build_web_client
     log "Starting ODIP pod"
@@ -185,6 +191,7 @@ EOF
     done
     log "Stopping ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube --down -
+    ensure_runtime_dirs
     [[ "$install" == true ]] && install_host_dependencies
     [[ "$rebuild" == true ]] && build_web_client
     log "Starting ODIP pod"
@@ -224,8 +231,8 @@ Usage: odip-admin dump [options]
   Place server in standby, stop Neo4j, dump database, restart Neo4j, resume server.
 
 Options:
-  -b, --backup-dir <path>   Backup directory (default: $ODIP_BACKUP/<timestamp>)
-  -d, --data-dir <path>     Neo4j data directory (default: $ODIP_DATA)
+  -b, --backup-dir <path>   Backup directory (default: $ODIP_HOME/backups/<timestamp>)
+  -d, --data-dir <path>     Neo4j data directory (default: $ODIP_HOME/data)
   -i, --image <name>        Neo4j image (default: auto-detect from YAML)
   -h, --help                Show this help
 EOF
@@ -235,7 +242,7 @@ EOF
     done
     data_dir=$(extract_data_dir "$data_dir")
     neo4j_image=$(extract_neo4j_image "$neo4j_image")
-    [[ -z "$backup_dir" ]] && backup_dir="${ODIP_BACKUP}/$(date +%Y%m%d-%H%M)"
+    [[ -z "$backup_dir" ]] && backup_dir="${ODIP_HOME}/backups/$(date +%Y%m%d-%H%M)"
     log "Creating backup directory: $backup_dir"
     mkdir -p "$backup_dir"
     chmod 777 "$backup_dir"
@@ -268,7 +275,7 @@ Usage: odip-admin load [options]
 
 Options:
   -b, --backup-dir <path>   Backup directory containing neo4j.dump (required)
-  -d, --data-dir <path>     Neo4j data directory (default: $ODIP_DATA)
+  -d, --data-dir <path>     Neo4j data directory (default: $ODIP_HOME/data)
   -i, --image <name>        Neo4j image (default: auto-detect from YAML)
   -h, --help                Show this help
 EOF
@@ -311,8 +318,8 @@ Usage: odip-admin reset [options]
 
 Options:
   -t, --target <path>    Target directory for moved data
-                         (default: $ODIP_BACKUP/reset-<timestamp>)
-  -d, --data-dir <path>  Neo4j data directory (default: $ODIP_DATA)
+                         (default: $ODIP_HOME/backups/reset-<timestamp>)
+  -d, --data-dir <path>  Neo4j data directory (default: $ODIP_HOME/data)
   -i, --image <name>     Neo4j image (default: auto-detect from YAML)
   -h, --help             Show this help
 EOF
@@ -322,7 +329,7 @@ EOF
     done
     data_dir=$(extract_data_dir "$data_dir")
     neo4j_image=$(extract_neo4j_image "$neo4j_image")
-    [[ -z "$target_dir" ]] && target_dir="${ODIP_BACKUP}/reset-$(date +%Y%m%d-%H%M)"
+    [[ -z "$target_dir" ]] && target_dir="${ODIP_HOME}/backups/reset-$(date +%Y%m%d-%H%M)"
     echo "==> This will move all Neo4j data from:"
     echo "      $data_dir"
     echo "    to:"
@@ -390,7 +397,7 @@ cmd_dumps() {
         exit 0
     fi
 
-    local base="${ODIP_BACKUP}"
+    local base="${ODIP_HOME}/backups"
     local now; now=$(date +%s)
 
     printf "%-12s %-10s %s\n" "SLOT" "SIZE" "AGE"
