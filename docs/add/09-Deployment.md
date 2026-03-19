@@ -26,18 +26,27 @@ All environment-specific configuration is expressed through host shell variables
 
 | Variable | Purpose | Local example | EC example |
 |---|---|---|---|
-| `ODIP_HOME` | Repository root — resolves YAML, Dockerfile, CLI entry point | `~/works/github/odp` | `/auto/home/lau/works/bitbucket/odip-proto` |
-| `ODIP_DATA` | Neo4j data directory — **must be on local filesystem, not NFS** | `~/odp-data/neo4j` | `/cm/local_build/odip/data` |
-| `ODIP_BACKUP` | Backup base directory — **must be on local filesystem, not NFS** | `~/odip-backups` | `/cm/local_build/odip/backups` |
+| `ODIP_REPO` | Repository root — source code, bin scripts, Dockerfile | `~/works/github/odp` | `/cm/local_build/odip/repo` |
+| `ODIP_HOME` | Runtime root — contains `data/`, `backups/`, `logs/` — **must be on local filesystem, not NFS** | `~/odip` | `/cm/local_build/odip` |
 | `ODIP_DOCKER_REGISTRY` | Docker image registry | `docker.io` | `yagi.cfmu.corp.eurocontrol.int:5000` |
 | `ODIP_NPM_MODE` | npm install mode for web client image build: `podman` or `host` | `podman` | `host` |
 
-`ODIP_DATA` and `ODIP_BACKUP` must reside on a local filesystem. NFS-mounted paths block Neo4j's internal `chown` operations under rootless Podman.
+`ODIP_HOME` must reside on a local filesystem. NFS-mounted paths block Neo4j's internal `chown` operations under rootless Podman.
 
-Also add `$ODIP_HOME/bin` to `PATH`:
+The runtime directory structure under `ODIP_HOME` is created automatically by `odip-admin` on `start` and `restart`:
+
+```
+$ODIP_HOME/
+├── data/       Neo4j database files
+├── backups/    Manual and automated backups
+│   └── auto/   Automated backup slots (daily, weekly, monthly)
+└── logs/       Server log files (DocxExtractor, EMF conversion)
+```
+
+Also add `$ODIP_REPO/bin` to `PATH`:
 
 ```bash
-export PATH="$ODIP_HOME/bin:$PATH"
+export PATH="$ODIP_REPO/bin:$PATH"
 ```
 
 On EC, the system Node.js must also be on the path:
@@ -56,6 +65,27 @@ https-proxy=http://<user>:<password>@pac.eurocontrol.int:9512
 ```
 
 Special characters in the password must be URL-encoded (e.g. `@` → `%40`).
+
+### Full `.bashrc` example
+
+**Local:**
+```bash
+export ODIP_REPO=~/works/github/odp
+export ODIP_HOME=~/odip
+export ODIP_DOCKER_REGISTRY=docker.io
+export ODIP_NPM_MODE=podman
+export PATH="$ODIP_REPO/bin:$PATH"
+```
+
+**EC:**
+```bash
+export ODIP_REPO=/cm/local_build/odip/repo
+export ODIP_HOME=/cm/local_build/odip
+export ODIP_DOCKER_REGISTRY=yagi.cfmu.corp.eurocontrol.int:5000
+export ODIP_NPM_MODE=host
+export PATH="$ODIP_REPO/bin:$PATH"
+export PATH="/cm/cots/osm/node.24.11.1/bin:$PATH"
+```
 
 ---
 
@@ -98,7 +128,7 @@ CMD ["npm", "run", "dev"]
 
 The `NPM_INSTALL` build arg controls whether `npm install` runs inside the container:
 
-- `podman` mode (local): `COPY . .` does not include `node_modules`; container installs via `npm install` (internet access required)
+- `podman` mode (local): container installs via `npm install` (internet access required)
 - `host` mode (EC): `npm install` is run on the host first by `odip-admin` using the user's proxy-configured npm; `node_modules` is copied in via `COPY . .`; container skips install
 
 `odip-admin` passes the correct `--build-arg` automatically based on `ODIP_NPM_MODE`.
@@ -128,30 +158,21 @@ git clone <repository-url> && cd odip-proto
 # Set environment variables in ~/.bashrc (see section 3)
 source ~/.bashrc
 
-# Create data and backup directories
-mkdir -p $ODIP_DATA
-mkdir -p $ODIP_BACKUP/auto
-
-# Install workspace dependencies
-# Local:
-npm install
-# EC (proxy-authenticated npm, per workspace):
-cd workspace/server && npm install && cd ../..
-cd workspace/web-client && npm install && cd ../..
-cd workspace/cli && npm install && cd ../..
-
-# Build web client image and start
-odip-admin start --rebuild
+# First start — installs all workspace dependencies and builds web client image
+odip-admin start --install --rebuild
 ```
 
 ### Routine operations
 
 ```bash
 odip-admin start                             # start pod
-odip-admin start --rebuild                  # rebuild web client image then start
+odip-admin start --rebuild                   # rebuild web client image then start
+odip-admin start --install                   # npm install all workspaces then start
+odip-admin start --install --rebuild         # npm install + rebuild + start
 odip-admin stop                              # stop pod
 odip-admin restart                           # stop and restart
 odip-admin restart --rebuild                 # rebuild web client image then restart
+odip-admin restart --install                 # npm install all workspaces then restart
 ```
 
 ### Verify
@@ -168,7 +189,7 @@ curl -H "x-user-id: test" http://localhost:8080/ping
 
 ## 8. Data Management
 
-Neo4j data persists in the host-mounted volume at `$ODIP_DATA`. No database migrations are required — the schema is created implicitly by the store layer on first use.
+Neo4j data persists in `$ODIP_HOME/data`. No database migrations are required — the schema is created implicitly by the store layer on first use.
 
 ### 8.1 Manual Backup / Restore — `odip-admin`
 
@@ -181,9 +202,9 @@ Neo4j data persists in the host-mounted volume at `$ODIP_DATA`. No database migr
 | `reset` | Standby → stop Neo4j → move data dir → start Neo4j → resume (empty DB) |
 
 ```bash
-odip-admin dump                              # default: $ODIP_BACKUP/<timestamp>/neo4j.dump
+odip-admin dump                              # default: $ODIP_HOME/backups/<timestamp>/neo4j.dump
 odip-admin dump -b /path/to/backup
-odip-admin load -b $ODIP_BACKUP/20260211-1430
+odip-admin load -b $ODIP_HOME/backups/20260211-1430
 odip-admin reset                             # requires YES confirmation; data moved not deleted
 odip-admin standby                           # manual standby
 odip-admin resume                            # manual resume
@@ -206,19 +227,19 @@ Promotions run before the fresh dump so the pre-dump state propagates up the cha
 
 ```bash
 chmod +x bin/odip-backup
-mkdir -p $ODIP_BACKUP/auto
+mkdir -p $ODIP_HOME/backups/auto
 ```
 
 Add to crontab (`crontab -e`):
 
 ```cron
-0 2 * * *  odip-backup >> $ODIP_BACKUP/auto/odip-backup.log 2>&1
+0 2 * * *  odip-backup >> $ODIP_HOME/backups/auto/odip-backup.log 2>&1
 ```
 
 **Manual invocation**
 
 ```bash
-odip-backup                                  # default base dir from $ODIP_BACKUP
+odip-backup                                  # default base dir from $ODIP_HOME/backups/auto
 odip-backup -b /path/to/backup-base
 ```
 

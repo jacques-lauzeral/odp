@@ -13,18 +13,19 @@ Three principles govern all implementation decisions:
 ## 2. Workspace Layout
 
 ```
-odp/
+odip-proto/
 ├── bin/
-│   └── odp-admin-podman.bash
+│   ├── odip-admin          Pod lifecycle, backup / restore
+│   ├── odip-backup         Automated periodic backup
+│   └── odip-cli            CLI launcher
 ├── workspace/
-│   ├── shared/          @odp/shared — enums, models, utilities
-│   ├── server/          Express API, services, stores
-│   ├── cli/             Commander.js CLI
-│   └── web-client/      Vanilla JS SPA
+│   ├── shared/             @odp/shared — enums, models, utilities
+│   ├── server/             Express API, services, stores
+│   ├── cli/                Commander.js CLI
+│   └── web-client/         Vanilla JS SPA
 ├── Dockerfile.web-client
-├── odp-deployment-local.yaml
-├── odp-deployment-ec.yaml
-└── package.json         npm workspace root (type: "module")
+├── odip-deployment.yaml
+└── package.json            npm workspace root (type: "module")
 ```
 
 The workspace root uses npm workspaces with ES modules throughout (`"type": "module"`). All cross-workspace imports use the `@odp/shared` package name — never relative paths across workspace boundaries.
@@ -164,22 +165,25 @@ The API specification is split across modular files:
 
 ```bash
 # Start environment
-podman play kube odp-deployment-local.yaml
+odip-admin start
+
+# Start with npm install + web client rebuild (first time or after dependency changes)
+odip-admin start --install --rebuild
 
 # Watch logs
-podman logs -f odp-pod-odp-server
+odip-admin logs -f
 
 # Quick API smoke test
-curl -H "x-user-id: dev" http://localhost:8080/hello
+curl -H "x-user-id: dev" http://localhost:8080/ping
 
 # Run CLI against running server
-node workspace/cli/src/index.js stakeholder list
+odip-cli stakeholder list
 
 # Neo4j query console
 # Open http://localhost:7474  (neo4j / password123)
 ```
 
-Live reload via `nodemon` is active on the server container — saving a file in `workspace/server/src/` restarts the server automatically. The web client dev server also watches for changes within the running container image; source file changes on the host require rebuilding the web client image (`podman build -f Dockerfile.web-client -t odp-web-client:latest .`) and restarting the pod.
+Live reload via `nodemon` is active on the server container — saving a file in `workspace/server/src/` restarts the server automatically. The web client dev server watches for changes within the running container image; source file changes on the host require rebuilding the web client image via `odip-admin restart --rebuild`.
 
 ---
 
