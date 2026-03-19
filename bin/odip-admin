@@ -97,11 +97,17 @@ neo4j_start() {
     sleep 10
 }
 
+install_host_dependencies() {
+    log "Installing host dependencies (server, web-client, cli)"
+    for workspace in server web-client cli; do
+        log "npm install: workspace/$workspace"
+        (cd "${ODIP_HOME}/workspace/$workspace" && npm install)
+    done
+}
+
 build_web_client() {
     log "Rebuilding web client image (ODIP_NPM_MODE=${ODIP_NPM_MODE:-podman})"
     if [[ "${ODIP_NPM_MODE:-podman}" == "host" ]]; then
-        log "Installing web client dependencies on host"
-        (cd "${ODIP_HOME}/workspace/web-client" && npm install)
         podman build -f "${ODIP_HOME}/Dockerfile.web-client" --build-arg NPM_INSTALL=false -t odp-web-client:latest "$ODIP_HOME"
     else
         podman build -f "${ODIP_HOME}/Dockerfile.web-client" --build-arg NPM_INSTALL=true -t odp-web-client:latest "$ODIP_HOME"
@@ -129,6 +135,7 @@ EOF
             *) echo "Unknown option: $1" >&2; exit 1 ;;
         esac
     done
+    [[ "${ODIP_NPM_MODE:-podman}" == "host" ]] && install_host_dependencies
     [[ "$rebuild" == true ]] && build_web_client
     log "Starting ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube -
@@ -174,6 +181,7 @@ EOF
     done
     log "Stopping ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube --down -
+    [[ "${ODIP_NPM_MODE:-podman}" == "host" ]] && install_host_dependencies
     [[ "$rebuild" == true ]] && build_web_client
     log "Starting ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube -
