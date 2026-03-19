@@ -117,10 +117,11 @@ build_web_client() {
 # --- Commands ---
 
 cmd_start() {
-    local rebuild=false
+    local rebuild=false install=false
     while [[ $# -gt 0 ]]; do
         case $1 in
             --rebuild)  rebuild=true; shift ;;
+            --install)  install=true; shift ;;
             -h|--help)
                 cat << 'EOF'
 Usage: odip-admin start [options]
@@ -128,6 +129,7 @@ Usage: odip-admin start [options]
   Start the ODIP pod.
 
 Options:
+      --install     Run npm install for all workspaces (host mode only)
       --rebuild     Rebuild web client image before starting
   -h, --help        Show this help
 EOF
@@ -135,7 +137,7 @@ EOF
             *) echo "Unknown option: $1" >&2; exit 1 ;;
         esac
     done
-    [[ "${ODIP_NPM_MODE:-podman}" == "host" ]] && install_host_dependencies
+    [[ "$install" == true ]] && install_host_dependencies
     [[ "$rebuild" == true ]] && build_web_client
     log "Starting ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube -
@@ -161,10 +163,11 @@ EOF
 }
 
 cmd_restart() {
-    local rebuild=false
+    local rebuild=false install=false
     while [[ $# -gt 0 ]]; do
         case $1 in
             --rebuild)  rebuild=true; shift ;;
+            --install)  install=true; shift ;;
             -h|--help)
                 cat << 'EOF'
 Usage: odip-admin restart [options]
@@ -172,6 +175,7 @@ Usage: odip-admin restart [options]
   Stop and restart the ODIP pod.
 
 Options:
+      --install     Run npm install for all workspaces (host mode only)
       --rebuild     Rebuild web client image before restarting
   -h, --help        Show this help
 EOF
@@ -181,7 +185,7 @@ EOF
     done
     log "Stopping ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube --down -
-    [[ "${ODIP_NPM_MODE:-podman}" == "host" ]] && install_host_dependencies
+    [[ "$install" == true ]] && install_host_dependencies
     [[ "$rebuild" == true ]] && build_web_client
     log "Starting ODIP pod"
     envsubst < "$YAML_FILE" | podman play kube -
