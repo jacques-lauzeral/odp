@@ -5,10 +5,10 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "workspaces/shared",
-    "workspaces/server",
-    "workspaces/web-client",
-    "workspaces/cli"
+    "workspace/shared",
+    "workspace/server",
+    "workspace/web-client",
+    "workspace/cli"
   ],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",

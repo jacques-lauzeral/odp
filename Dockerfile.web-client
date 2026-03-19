@@ -1,22 +1,18 @@
 FROM node:20-alpine
 
+ARG NPM_INSTALL=true
+
 WORKDIR /app
-
-# Copy entire codebase
+# Copy entire codebase (including pre-installed node_modules if present)
 COPY . .
-
 # Pre-create the shared source structure
 RUN mkdir -p workspace/web-client/src/shared/src && \
     cp -r workspace/shared/src/* workspace/web-client/src/shared/src/
-
 # Set working directory to web-client
 WORKDIR /app/workspace/web-client
-
-# Install dependencies (including http-server)
-RUN npm install
-
+# Install dependencies unless host pre-installed them (ODIP_NPM_MODE=host)
+RUN if [ "$NPM_INSTALL" = "true" ]; then npm install; fi
 # Expose port
 EXPOSE 3000
-
 # Start web server
 CMD ["npm", "run", "dev"]

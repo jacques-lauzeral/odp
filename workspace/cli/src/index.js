@@ -1,6 +1,6 @@
 // workspace/cli/src/index.js
 import { Command } from 'commander';
-import config from '../config.json' assert { type: 'json' };
+import config from '../config.json' with { type: "json" };
 
 // Import entity command functions
 import { stakeholderCategoryCommands } from './commands/stakeholder-category.js';

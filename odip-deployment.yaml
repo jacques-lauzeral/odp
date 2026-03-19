@@ -7,7 +7,7 @@ spec:
 
     # Neo4j Database
     - name: neo4j
-      image: docker.io/neo4j:5.15
+      image: $ODIP_DOCKER_REGISTRY/neo4j:5.15
       ports:
         - containerPort: 7474
           hostPort: 7474
@@ -24,7 +24,7 @@ spec:
 
     # ODP Server
     - name: odp-server
-      image: docker.io/node:20
+      image: $ODIP_DOCKER_REGISTRY/node:20
       workingDir: /app/workspace/server
       ports:
         - containerPort: 80
@@ -40,12 +40,10 @@ spec:
         - name: NEO4J_PASSWORD
           value: "password123"
         - name: STATIC_CONTENT_PATH
-          value: "$ODIP_HOME/publication/web-site/static"
+          value: "/app/publication/web-site/static"
       volumeMounts:
         - name: odp-code
           mountPath: /app
-        - name: static-content
-          mountPath: $ODIP_HOME/publication/web-site/static
 
     # Web Client
     - name: web-client
@@ -66,8 +64,4 @@ spec:
     - name: odp-code
       hostPath:
         path: $ODIP_HOME
-        type: Directory
-    - name: static-content
-      hostPath:
-        path: $ODIP_HOME/publication/web-site/static
         type: Directory

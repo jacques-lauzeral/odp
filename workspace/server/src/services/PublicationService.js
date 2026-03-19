@@ -17,7 +17,7 @@ class PublicationService {
     constructor() {
         // Use environment variable for static content path, with fallback
         this.staticContentPath = process.env.STATIC_CONTENT_PATH ||
-            path.join(__dirname, '../../publication/web-site/static');
+            path.join(new URL('../../publication/web-site/static', import.meta.url).pathname);
     }
 
     /**

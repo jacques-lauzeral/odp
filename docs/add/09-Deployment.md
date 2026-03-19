@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-ODIP runs as a three-container pod managed by **Podman** with Kubernetes YAML configuration files. Two environment-specific files are maintained — one for local development (WSL/Ubuntu) and one for the Eurocontrol corporate environment — with identical pod structure and only path and image registry differences between them.
+ODIP runs as a three-container pod managed by **Podman** with a single Kubernetes YAML configuration file. Environment differences (image registry, data paths, npm install mode) are expressed entirely through host environment variables — no environment-specific YAML files are maintained.
 
 ---
 
@@ -12,78 +12,100 @@ Three containers share a single pod and communicate over localhost:
 
 | Container | Image | Port | Role |
 |---|---|---|---|
-| `neo4j` | neo4j:5.15 + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
-| `odp-server` | node:24 | 8080 (host) → 80 (container) | Express API + import/export services |
-| `web-client` | odp-web-client:latest (local build) | 3000 | Static web client dev server |
+| `neo4j` | `$ODIP_DOCKER_REGISTRY/neo4j:5.15` + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
+| `odp-server` | `$ODIP_DOCKER_REGISTRY/node:20` | 8080 (host) → 80 (container) | Express API + import/export services |
+| `web-client` | `odp-web-client:latest` (local build) | 3000 | Static web client dev server |
 
-The server container mounts the source code tree as a host volume and runs `nodemon` for live reload during development. The web client is built into a local container image once and rebuilt only when its dependencies change.
+The server container mounts the source code tree as a host volume and runs `nodemon` for live reload during development. The web client is built into a local container image once and rebuilt only when its source or dependencies change.
 
 ---
 
-## 3. Deployment Configurations
+## 3. Environment Variables
 
-### 3.1 Environment Differences
+All environment-specific configuration is expressed through host shell variables. Add to `~/.bashrc` (or `~/.kshrc` on EC):
 
-| Aspect | Local (`odip-deployment-local.yaml`) | Eurocontrol (`odip-deployment-ec.yaml`) |
-|---|---|---|
-| Base images | `docker.io/neo4j:5.15`, `docker.io/node:24` | `yagi.cfmu.corp.eurocontrol.int:5000/*` |
-| Neo4j data | `~/odp-data/neo4j` | `/auto/local_build/dhws097/ssd1/odp-data/neo4j` |
-| Source code | `~/odp/odp-main` | `/auto/home/lau/works/odp/odp-main` |
-| Node.js | System / nvm | `/cm/cots/osm/node.24.11.1/` |
+| Variable | Purpose | Local example | EC example |
+|---|---|---|---|
+| `ODIP_HOME` | Repository root — resolves YAML, Dockerfile, CLI entry point | `~/works/github/odp` | `/auto/home/lau/works/bitbucket/odip-proto` |
+| `ODIP_DATA` | Neo4j data directory — **must be on local filesystem, not NFS** | `~/odp-data/neo4j` | `/cm/local_build/odip/data` |
+| `ODIP_BACKUP` | Backup base directory — **must be on local filesystem, not NFS** | `~/odip-backups` | `/cm/local_build/odip/backups` |
+| `ODIP_DOCKER_REGISTRY` | Docker image registry | `docker.io` | `yagi.cfmu.corp.eurocontrol.int:5000` |
+| `ODIP_NPM_MODE` | npm install mode for web client image build: `podman` or `host` | `podman` | `host` |
 
-### 3.2 Common Environment Variables
+`ODIP_DATA` and `ODIP_BACKUP` must reside on a local filesystem. NFS-mounted paths block Neo4j's internal `chown` operations under rootless Podman.
 
-```yaml
-# Neo4j container
-NEO4J_AUTH: "neo4j/password123"
-NEO4J_PLUGINS: '["apoc"]'
+Also add `$ODIP_HOME/bin` to `PATH`:
 
-# Server container
-NODE_ENV: "development"
-NEO4J_URI: "bolt://localhost:7687"
-NEO4J_USER: "neo4j"
-NEO4J_PASSWORD: "password123"
+```bash
+export PATH="$ODIP_HOME/bin:$PATH"
 ```
 
-### 3.3 Web Client Dockerfile
+On EC, the system Node.js must also be on the path:
 
-```dockerfile
-FROM node:24-alpine
-WORKDIR /app
-COPY . .
-RUN mkdir -p workspace/web-client/src/shared/src && \
-    cp -r workspace/shared/src/* workspace/web-client/src/shared/src/
-WORKDIR /app/workspace/web-client
-EXPOSE 3000
-CMD ["npm", "run", "dev"]
+```bash
+export PATH="/cm/cots/osm/node.24.11.1/bin:$PATH"
 ```
 
-The Dockerfile copies the shared package into the web client source tree at build time to avoid workspace symlink issues inside the container.
+### npm proxy (EC only)
+
+The EC environment has no direct internet access. npm requires a corporate proxy configured in `~/.npmrc`:
+
+```
+http-proxy=http://<user>:<password>@pac.eurocontrol.int:9512
+https-proxy=http://<user>:<password>@pac.eurocontrol.int:9512
+```
+
+Special characters in the password must be URL-encoded (e.g. `@` → `%40`).
 
 ---
 
 ## 4. Repository Structure
 
 ```
-odp-main/
+odip-proto/
 ├── bin/
 │   ├── odip-admin              Pod lifecycle, backup / restore (manual)
 │   ├── odip-backup             Automated periodic backup
 │   └── odip-cli                CLI launcher
 ├── workspace/
-│   ├── cli/                        CLI tool
-│   ├── server/                     Express API server
-│   ├── shared/                     @odp/shared package
-│   └── web-client/                 Web client
+│   ├── cli/                    CLI tool
+│   ├── server/                 Express API server
+│   ├── shared/                 @odp/shared package
+│   └── web-client/             Web client
 ├── Dockerfile.web-client
-├── odip-deployment-ec.yaml
-├── odip-deployment-local.yaml
-└── package.json                    npm workspace root
+├── odip-deployment.yaml
+└── package.json                npm workspace root
 ```
 
 ---
 
-## 5. Access Points
+## 5. Web Client Dockerfile
+
+```dockerfile
+FROM node:20-alpine
+
+ARG NPM_INSTALL=true
+
+WORKDIR /app
+COPY . .
+RUN mkdir -p workspace/web-client/src/shared/src && \
+    cp -r workspace/shared/src/* workspace/web-client/src/shared/src/
+WORKDIR /app/workspace/web-client
+RUN if [ "$NPM_INSTALL" = "true" ]; then npm install; fi
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+```
+
+The `NPM_INSTALL` build arg controls whether `npm install` runs inside the container:
+
+- `podman` mode (local): `COPY . .` does not include `node_modules`; container installs via `npm install` (internet access required)
+- `host` mode (EC): `npm install` is run on the host first by `odip-admin` using the user's proxy-configured npm; `node_modules` is copied in via `COPY . .`; container skips install
+
+`odip-admin` passes the correct `--build-arg` automatically based on `ODIP_NPM_MODE`.
+
+---
+
+## 6. Access Points
 
 | Service | URL | Credentials |
 |---|---|---|
@@ -95,74 +117,60 @@ In the Eurocontrol environment the web client is accessible from remote browsers
 
 ---
 
-## 6. Environment Variables
-
-Add to `~/.bashrc`:
-
-```bash
-export ODIP_HOME=/home/jacques/works/github/odp
-export ODIP_DATA=~/odip-data
-export ODIP_BACKUP=~/odip-backups
-export PATH="$ODIP_HOME/bin:$PATH"
-```
-
-| Variable | Purpose |
-|---|---|
-| `ODIP_HOME` | Repository root — resolves YAML files, Dockerfile, CLI entry point |
-| `ODIP_DATA` | Neo4j data directory (`~/odip-data`) — used by `odip-admin` dump/load/reset and resolved in YAML via `envsubst` |
-| `ODIP_BACKUP` | Backup base directory — default root for all backup slots |
-
----
-
 ## 7. Deployment Procedures
 
-### Local Environment
+### One-time setup
 
 ```bash
-# One-time setup
-git clone <repository-url> odp-main && cd odp-main
+# Clone repository
+git clone <repository-url> && cd odip-proto
+
+# Set environment variables in ~/.bashrc (see section 3)
+source ~/.bashrc
+
+# Create data and backup directories
+mkdir -p $ODIP_DATA
+mkdir -p $ODIP_BACKUP/auto
+
+# Install workspace dependencies
+# Local:
 npm install
-mkdir -p ~/odp-data/neo4j
-# Edit odip-deployment-local.yaml: replace USERNAME with your username
-podman build -f Dockerfile.web-client -t odp-web-client:latest .
+# EC (proxy-authenticated npm, per workspace):
+cd workspace/server && npm install && cd ../..
+cd workspace/web-client && npm install && cd ../..
+cd workspace/cli && npm install && cd ../..
 
-# Start
-podman play kube odip-deployment-local.yaml
-
-# Stop
-podman play kube --down odip-deployment-local.yaml
+# Build web client image and start
+odip-admin start --rebuild
 ```
 
-### Eurocontrol Environment
+### Routine operations
 
 ```bash
-# One-time extras (beyond the local steps above)
-echo 'export PATH=/cm/cots/osm/node.24.11.1/bin:$PATH' >> ~/.bashrc && source ~/.bashrc
-mkdir -p /auto/local_build/dhws097/ssd1/odp-data/neo4j
-chmod 777 /auto/local_build/dhws097/ssd1/odp-data/neo4j
-# Reinstall sharp for Alpine Linux musl libc
-rm -rf node_modules/sharp
-npm install --os=linux --libc=musl --cpu=x64 sharp
-
-podman play kube odip-deployment-ec.yaml
+odip-admin start                             # start pod
+odip-admin start --rebuild                  # rebuild web client image then start
+odip-admin stop                              # stop pod
+odip-admin restart                           # stop and restart
+odip-admin restart --rebuild                 # rebuild web client image then restart
 ```
 
 ### Verify
 
 ```bash
-podman ps                                    # Expect 4 entries: infra + 3 app containers
+podman ps                                    # expect 4 entries: infra + 3 app containers
 podman logs odp-pod-neo4j      | tail -20
 podman logs odp-pod-odp-server | tail -30
 podman logs odp-pod-web-client | tail -20
-curl -H "x-user-id: test" http://localhost:8080/hello
+curl -H "x-user-id: test" http://localhost:8080/ping
 ```
 
 ---
+
 ## 8. Data Management
 
-Neo4j data persists in the host-mounted volume. No database migrations are required — the schema is created implicitly by the store layer on first use (Neo4j constraints are created at startup).
+Neo4j data persists in the host-mounted volume at `$ODIP_DATA`. No database migrations are required — the schema is created implicitly by the store layer on first use.
 
-### 7.1 Manual Backup / Restore — `odip-admin`
+### 8.1 Manual Backup / Restore — `odip-admin`
 
 `dump`, `load`, and `reset` operate on the Neo4j container only (not the whole pod). Before stopping Neo4j, the server is signalled to enter standby mode (503 on all non-admin requests); it resumes automatically once Neo4j is back up.
 
@@ -173,28 +181,16 @@ Neo4j data persists in the host-mounted volume. No database migrations are requi
 | `reset` | Standby → stop Neo4j → move data dir → start Neo4j → resume (empty DB) |
 
 ```bash
-odip-admin dump                              # default: ~/odip-backups/<timestamp>/neo4j.dump
+odip-admin dump                              # default: $ODIP_BACKUP/<timestamp>/neo4j.dump
 odip-admin dump -b /path/to/backup
-odip-admin load -b ~/odip-backups/20260211-1430
+odip-admin load -b $ODIP_BACKUP/20260211-1430
 odip-admin reset                             # requires YES confirmation; data moved not deleted
-odip-admin dump -e ec                        # Eurocontrol environment
 odip-admin standby                           # manual standby
 odip-admin resume                            # manual resume
+odip-admin dumps                             # list available backup slots
 ```
 
-### 7.2 Pod Lifecycle — `odip-admin`
-
-```bash
-odip-admin start
-odip-admin stop
-odip-admin restart
-odip-admin restart --rebuild                 # rebuilds web client image before restart
-odip-admin logs                              # stream server logs
-odip-admin logs --tail 50                   # last 50 lines
-odip-admin logs -f                          # follow
-```
-
-### 7.3 Automated Backup — `odip-backup`
+### 8.2 Automated Backup — `odip-backup`
 
 Three-slot rotation with fixed filenames. Cron wakes the script nightly; the age-threshold logic decides what action to take.
 
@@ -210,28 +206,23 @@ Promotions run before the fresh dump so the pre-dump state propagates up the cha
 
 ```bash
 chmod +x bin/odip-backup
-mkdir -p ~/odip-backups/auto
+mkdir -p $ODIP_BACKUP/auto
 ```
 
 Add to crontab (`crontab -e`):
 
 ```cron
-# Local environment — nightly at 02:00
-0 2 * * *  odip-backup >> ~/odip-backups/auto/odip-backup.log 2>&1
-
-# Eurocontrol environment — nightly at 02:00
-0 2 * * *  odip-backup -e ec >> ~/odip-backups/auto/odip-backup.log 2>&1
+0 2 * * *  odip-backup >> $ODIP_BACKUP/auto/odip-backup.log 2>&1
 ```
 
 **Manual invocation**
 
 ```bash
-odip-backup                                  # local, default base dir
-odip-backup -e ec
+odip-backup                                  # default base dir from $ODIP_BACKUP
 odip-backup -b /path/to/backup-base
 ```
 
-### 7.4 Server Standby Protocol
+### 8.3 Server Standby Protocol
 
 `odip-admin` signals the API server before stopping Neo4j and after restarting it, via two localhost-only endpoints:
 
