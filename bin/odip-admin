@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # odip-admin - Administration utility for ODIP (Podman/Kubernetes)
 #
 # Required environment variables:
