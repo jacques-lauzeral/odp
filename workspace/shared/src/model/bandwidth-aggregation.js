@@ -10,16 +10,18 @@
  *   - OCs with no OPS_DEPLOYMENT milestone are unplanned (backlog).
  *   - Each OC is attributed to its own DrG only (no cross-DrG apportionment).
  *
- * Bandwidth model (scopeId and waveId are both optional):
- *   (waveId, scopeId)  → per-wave, per-DrG   — shown in DrG cell
- *   (waveId, -)        → per-wave, global     — shown in Global column cell only
- *   (-, scopeId)       → per-year, per-DrG    — parked post-MVP
- *   (-, -)             → per-year, global     — parked post-MVP
+ * Bandwidth model (scope and waveId are both optional):
+ *   (waveId, scope)  → per-wave, per-DrG   — shown in DrG cell
+ *   (waveId, -)      → per-wave, global     — shown in Global column cell only
+ *   (-, scope)       → per-year, per-DrG    — parked post-MVP
+ *   (-, -)           → per-year, global     — parked post-MVP
  */
 
 import { idsEqual } from '/shared/src/index.js';
 
-const OPS_DEPLOYMENT = 'OPS_DEPLOYMENT';/**
+const OPS_DEPLOYMENT = 'OPS_DEPLOYMENT';
+
+/**
  * Resolve the wave ID of an OC's OPS_DEPLOYMENT milestone.
  * Returns null if no such milestone exists.
  *
@@ -55,12 +57,12 @@ export function resolveDeploymentWaveId(oc) {
  */
 export function buildMatrix(ocs, waves, bandwidths, drgs) {
     // Index bandwidths: (waveId, drg) → available MW
-    // scopeId absent = global bandwidth, distributed equally across all DrGs
+    // scope absent = global bandwidth for the wave (shown in Global column only)
     const bwIndex = new Map();       // (waveId, drg) → MW
-    const bwGlobal = new Map();      // waveId → MW  (global, no scopeId)
+    const bwGlobal = new Map();      // waveId → MW  (global, no scope)
     for (const bw of bandwidths) {
-        if (bw.scopeId) {
-            bwIndex.set(_key(bw.waveId, bw.scopeId), bw.planned ?? 0);
+        if (bw.scope) {
+            bwIndex.set(_key(bw.waveId, bw.scope), bw.planned ?? 0);
         } else {
             bwGlobal.set(String(bw.waveId), bw.planned ?? 0);
         }
@@ -103,8 +105,8 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
             continue;
         }
 
-        const cost   = oc.cost ?? 0;
-        const drg    = oc.drg;
+        const cost      = oc.cost ?? 0;
+        const drg       = oc.drg;
         const waveIdStr = String(waveId);
 
         // Per (waveId, drg) cell — available is per-DrG bandwidth only
