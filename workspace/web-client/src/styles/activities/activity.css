@@ -10,6 +10,7 @@
 .review-activity,
 .publication-activity,
 .planning-activity,
+.prioritisation-activity,
 .setup-activity {
     padding: 0;
     height: 100%;
@@ -24,6 +25,7 @@
 .review-workspace,
 .publication-workspace,
 .planning-workspace,
+.prioritisation-workspace,
 .setup-workspace {
     flex: 1;
     min-height: 0;

@@ -1,0 +1,403 @@
+/* ODIP Web Client — Prioritisation Activity
+ * Extends: activity.css (prioritisation-activity, prioritisation-workspace)
+ */
+
+/* =========================================================================
+   Toolbar
+   ========================================================================= */
+
+.prioritisation-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-6);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+}
+
+.prioritisation-toolbar__title {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-base);
+    color: var(--text-primary);
+}
+
+/* =========================================================================
+   Board container — full remaining height, horizontally scrollable
+   ========================================================================= */
+
+.prioritisation-board-container {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--space-4);
+}
+
+/* =========================================================================
+   Board — column layout
+   ========================================================================= */
+
+.prio-board {
+    display: flex;
+    flex-direction: column;
+    min-width: max-content;   /* allow horizontal scroll for many DrGs */
+    gap: 0;
+}
+
+/* =========================================================================
+   Column headers
+   ========================================================================= */
+
+.prio-board__col-headers {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: white;
+    border-bottom: 2px solid var(--border-secondary);
+}
+
+.prio-col-header {
+    flex: 1;
+    min-width: 160px;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    text-align: center;
+    border-right: 1px solid var(--border-primary);
+}
+
+.prio-col-header--label {
+    min-width: 100px;
+    flex: 0 0 100px;
+    text-align: left;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-xs);
+}
+
+.prio-col-header--global {
+    background: var(--bg-secondary);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    border-left: 2px solid var(--border-secondary);
+}
+
+/* =========================================================================
+   Row (wave or backlog)
+   ========================================================================= */
+
+.prio-board__rows {
+    display: flex;
+    flex-direction: column-reverse; /* nearest wave at bottom visually */
+}
+
+.prio-row {
+    display: flex;
+    border-bottom: 1px solid var(--border-primary);
+    min-height: 60px;
+    transition: min-height var(--transition-fast);
+}
+
+/* Spacer between rows for visual comfort */
+.prio-row + .prio-row {
+    margin-top: var(--space-2);
+}
+
+.prio-row--collapsed {
+    min-height: 0;
+    height: 32px;
+    overflow: hidden;
+}
+
+.prio-row--backlog {
+    border-top: 2px solid var(--border-secondary);
+    background: var(--bg-secondary);
+}
+
+/* =========================================================================
+   Row label (leftmost column)
+   ========================================================================= */
+
+.prio-row__label {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    min-width: 100px;
+    flex: 0 0 100px;
+    border-right: 1px solid var(--border-primary);
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 10;
+}
+
+.prio-row--backlog .prio-row__label {
+    background: var(--bg-secondary);
+}
+
+.prio-row__toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.prio-row__toggle:hover {
+    color: var(--accent-primary);
+}
+
+.prio-row__wave-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.prio-row__backlog-count {
+    display: inline-block;
+    background: var(--gray-200);
+    color: var(--text-secondary);
+    border-radius: var(--radius-base);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    padding: 0 var(--space-1);
+    margin-left: var(--space-1);
+}
+
+/* =========================================================================
+   Cell
+   ========================================================================= */
+
+.prio-cell {
+    flex: 1;
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-primary);
+    padding: var(--space-2);
+    gap: var(--space-1);
+    position: relative;
+    transition: background var(--transition-fast);
+}
+
+.prio-cell--global {
+    flex: 0 0 120px;
+    min-width: 120px;
+    background: var(--bg-secondary);
+    border-left: 2px solid var(--border-secondary);
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.prio-cell--backlog {
+    background: var(--bg-secondary);
+}
+
+/* Drop target highlight */
+.prio-cell--drag-over {
+    background: rgba(14, 165, 233, 0.08);
+    outline: 2px dashed var(--accent-primary);
+    outline-offset: -2px;
+}
+
+.prio-cell__cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    flex: 1;
+}
+
+.prio-cell__summary {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.prio-cell__mw {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+}
+
+/* =========================================================================
+   OC Card
+   ========================================================================= */
+
+.prio-card {
+    display: flex;
+    align-items: stretch;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    background: white;
+    cursor: grab;
+    overflow: hidden;
+    position: relative;
+    transition: box-shadow var(--transition-fast),
+    opacity   var(--transition-fast);
+    min-height: 2rem;
+}
+
+.prio-card:hover {
+    box-shadow: var(--shadow-md);
+    z-index: 1;
+}
+
+.prio-card--dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+/* Maturity colour strip on left edge */
+.prio-card::before {
+    content: '';
+    display: block;
+    width: 4px;
+    flex-shrink: 0;
+    background: var(--gray-300);
+}
+
+.prio-card--draft::before   { background: var(--gray-400); }
+.prio-card--advanced::before { background: var(--warning-500); }
+.prio-card--mature::before   { background: var(--success-500); }
+
+.prio-card__inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: var(--space-1) var(--space-2);
+    overflow: hidden;
+    min-width: 0;
+}
+
+.prio-card__title {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+.prio-card__cost {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    margin-top: auto;
+}
+
+.prio-card__deps-icon {
+    font-size: 10px;
+    opacity: 0.6;
+    margin-top: var(--space-1);
+}
+
+.prio-card__open {
+    display: none;
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    background: white;
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    padding: 0 var(--space-1);
+    cursor: pointer;
+    color: var(--accent-primary);
+    line-height: 1.4;
+}
+
+.prio-card:hover .prio-card__open {
+    display: block;
+}
+
+/* =========================================================================
+   Load bar
+   ========================================================================= */
+
+.prio-load-bar {
+    height: 6px;
+    background: var(--gray-100);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    flex-shrink: 0;
+    margin-top: var(--space-1);
+}
+
+.prio-load-bar__fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width var(--transition-base);
+}
+
+.prio-load-bar__fill--green  { background: var(--success-500); }
+.prio-load-bar__fill--orange { background: var(--warning-500); }
+.prio-load-bar__fill--red    { background: var(--error-500); }
+.prio-load-bar__fill--empty  { background: var(--gray-200); }
+
+/* In collapsed row: bar becomes the entire row height */
+.prio-row--collapsed .prio-load-bar {
+    height: 100%;
+    border-radius: 0;
+    margin: 0;
+}
+
+.prio-row--collapsed .prio-cell {
+    padding: 0;
+}
+
+.prio-row--collapsed .prio-cell__cards,
+.prio-row--collapsed .prio-cell__summary,
+.prio-row--collapsed .prio-cell__mw {
+    display: none;
+}
+
+/* =========================================================================
+   Dependency warning overlay
+   ========================================================================= */
+
+.prio-warning-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    border-radius: var(--radius-lg);
+}
+
+.prio-warning {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    max-width: 400px;
+    box-shadow: var(--shadow-lg);
+}
+
+.prio-warning h4 {
+    margin: 0 0 var(--space-3);
+    color: var(--warning-500);
+}
+
+.prio-warning p {
+    margin: 0 0 var(--space-2);
+    font-size: var(--font-size-sm);
+}
+
+.prio-warning__actions {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: flex-end;
+    margin-top: var(--space-4);
+}

@@ -90,6 +90,8 @@ export class App {
                 await this.loadActivity('publication', segments.slice(1));
             } else if (segments[0] === 'review') {
                 await this.loadActivity('review', segments.slice(1));
+            } else if (segments[0] === 'prioritisation') {
+                await this.loadActivity('prioritisation', segments.slice(1));
             } else {
                 this.navigateTo('/');
                 return;

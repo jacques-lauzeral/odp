@@ -180,7 +180,7 @@ export class ApiClient {
     async getMilestone(changeId, milestoneId, params = {}) {
         return this.get('/operational-changes', {
             id: changeId,
-            subPath: `milestones/${milestoneId}`,
+            subPath: `milestones/${encodeURIComponent(milestoneId)}`,
             params
         });
     }
@@ -195,14 +195,14 @@ export class ApiClient {
     async updateMilestone(changeId, milestoneId, milestoneData) {
         return this.put('/operational-changes', milestoneData, {
             id: changeId,
-            subPath: `milestones/${milestoneId}`
+            subPath: `milestones/${encodeURIComponent(milestoneId)}`
         });
     }
 
     async deleteMilestone(changeId, milestoneId, expectedVersionId) {
         return this.delete('/operational-changes', {
             id: changeId,
-            subPath: `milestones/${milestoneId}`,
+            subPath: `milestones/${encodeURIComponent(milestoneId)}`,
             data: { expectedVersionId }
         });
     }
