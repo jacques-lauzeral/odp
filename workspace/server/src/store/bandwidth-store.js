@@ -4,8 +4,8 @@ import { BaseStore } from './base-store.js';
  * BandwidthStore provides data access operations for Bandwidth nodes.
  * Extends BaseStore to inherit CRUD operations.
  *
- * Fields: year (integer), planned (integer, optional), waveId (optional), scopeId (optional Domain ID).
- * The (year, waveId, scopeId) tuple is unique — enforced at the service layer.
+ * Fields: year (integer), planned (integer, optional), waveId (optional), scope (optional DraftingGroup key).
+ * The (year, waveId, scope) tuple is unique — enforced at the service layer.
  */
 export class BandwidthStore extends BaseStore {
     constructor(driver) {

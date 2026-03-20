@@ -108,10 +108,11 @@ components:
           type: string
           nullable: true
           description: "Optional wave reference — undefined means year-level scope"
-        scopeId:
+        scope:
           type: string
+          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
           nullable: true
-          description: "Optional domain reference — undefined means global scope"
+          description: "Optional DrG scope — undefined means global scope"
         planned:
           type: integer
           nullable: true
@@ -127,10 +128,11 @@ components:
           type: string
           nullable: true
           description: "Optional wave reference — undefined means year-level scope"
-        scopeId:
+        scope:
           type: string
+          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
           nullable: true
-          description: "Optional domain reference — undefined means global scope"
+          description: "Optional DrG scope — undefined means global scope"
         planned:
           type: integer
           nullable: true

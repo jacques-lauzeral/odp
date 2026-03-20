@@ -1,15 +1,15 @@
 import ListEntity from './list-entity.js';
 import { apiClient } from '../../shared/api-client.js';
+import { DraftingGroup, DraftingGroupKeys } from '../../shared/src/model/drafting-groups.js';
 
 export default class Bandwidths extends ListEntity {
     constructor(app, entityConfig) {
         super(app, entityConfig);
         this.waves = [];
-        this.domains = [];
     }
 
     getEntityDescription() {
-        return 'Manage per-domain yearly effort bandwidths';
+        return 'Manage per-DrG yearly effort bandwidths';
     }
 
     getNewButtonText() {
@@ -24,10 +24,7 @@ export default class Bandwidths extends ListEntity {
 
     async loadReferenceData() {
         try {
-            [this.waves, this.domains] = await Promise.all([
-                apiClient.get('/waves'),
-                apiClient.get('/domains')
-            ]);
+            this.waves = await apiClient.get('/waves');
         } catch (error) {
             console.error('Failed to load reference data for bandwidths:', error);
         }
@@ -39,9 +36,9 @@ export default class Bandwidths extends ListEntity {
             // null waveId (year-level) sorts before wave-specific entries
             if (a.waveId == null && b.waveId != null) return -1;
             if (a.waveId != null && b.waveId == null) return 1;
-            // null scopeId (global) sorts before domain-specific entries
-            if (a.scopeId == null && b.scopeId != null) return -1;
-            if (a.scopeId != null && b.scopeId == null) return 1;
+            // null scope (global) sorts before DrG-specific entries
+            if (a.scope == null && b.scope != null) return -1;
+            if (a.scope != null && b.scope == null) return 1;
             return 0;
         });
     }
@@ -50,7 +47,7 @@ export default class Bandwidths extends ListEntity {
         return [
             { key: 'year', label: 'Year', type: 'number' },
             { key: 'waveId', label: 'Wave', type: 'wave-ref' },
-            { key: 'scopeId', label: 'Scope (Domain)', type: 'domain-ref' },
+            { key: 'scope', label: 'Scope (DrG)', type: 'drg-ref' },
             { key: 'planned', label: 'Planned (MW)', type: 'number' }
         ];
     }
@@ -60,9 +57,9 @@ export default class Bandwidths extends ListEntity {
             case 'wave-ref':
                 if (!value) return '<span class="text-secondary">Year-level</span>';
                 return this.getWaveLabel(value);
-            case 'domain-ref':
+            case 'drg-ref':
                 if (!value) return '<span class="text-secondary">Global</span>';
-                return this.getDomainName(value);
+                return DraftingGroup[value] ?? value;
             case 'number':
                 return value != null ? value : '-';
             default:
@@ -73,11 +70,6 @@ export default class Bandwidths extends ListEntity {
     getWaveLabel(waveId) {
         const wave = this.waves.find(w => w.id == waveId);
         return wave ? `${wave.year} / ${wave.sequenceNumber}` : `Wave ${waveId}`;
-    }
-
-    getDomainName(domainId) {
-        const domain = this.domains.find(d => d.id == domainId);
-        return domain ? domain.name : `Domain ${domainId}`;
     }
 
     renderRowActions(item) {
@@ -113,10 +105,9 @@ export default class Bandwidths extends ListEntity {
         ).join('');
     }
 
-    renderDomainOptions(selectedId = null) {
-        const sorted = [...this.domains].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        return sorted.map(d =>
-            `<option value="${d.id}" ${d.id == selectedId ? 'selected' : ''}>${d.name}</option>`
+    renderDrgOptions(selectedKey = null) {
+        return DraftingGroupKeys.map(key =>
+            `<option value="${key}" ${key === selectedKey ? 'selected' : ''}>${DraftingGroup[key]}</option>`
         ).join('');
     }
 
@@ -148,10 +139,10 @@ export default class Bandwidths extends ListEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="scopeId">Scope (Domain)</label>
-                                <select id="scopeId" name="scopeId" class="form-control form-select">
-                                    <option value="">Global (no specific domain)</option>
-                                    ${this.renderDomainOptions()}
+                                <label for="scope">Scope (DrG)</label>
+                                <select id="scope" name="scope" class="form-control form-select">
+                                    <option value="">Global (no specific DrG)</option>
+                                    ${this.renderDrgOptions()}
                                 </select>
                                 <small class="form-text">Leave empty for a global bandwidth entry</small>
                             </div>
@@ -206,10 +197,10 @@ export default class Bandwidths extends ListEntity {
                             </div>
                             
                             <div class="form-group">
-                                <label for="edit-scopeId">Scope (Domain)</label>
-                                <select id="edit-scopeId" name="scopeId" class="form-control form-select">
-                                    <option value="">Global (no specific domain)</option>
-                                    ${this.renderDomainOptions(item.scopeId)}
+                                <label for="edit-scope">Scope (DrG)</label>
+                                <select id="edit-scope" name="scope" class="form-control form-select">
+                                    <option value="">Global (no specific DrG)</option>
+                                    ${this.renderDrgOptions(item.scope)}
                                 </select>
                             </div>
 
@@ -235,7 +226,7 @@ export default class Bandwidths extends ListEntity {
 
     showDeleteConfirmation(item) {
         const waveLabel = item.waveId ? this.getWaveLabel(item.waveId) : 'Year-level';
-        const scopeLabel = item.scopeId ? this.getDomainName(item.scopeId) : 'Global';
+        const scopeLabel = item.scope ? (DraftingGroup[item.scope] ?? item.scope) : 'Global';
 
         const modalHtml = `
             <div class="modal-overlay" id="delete-modal">
@@ -318,22 +309,22 @@ export default class Bandwidths extends ListEntity {
             }
         });
 
-        // Uniqueness check on (year, waveId, scopeId)
+        // Uniqueness check on (year, waveId, scope)
         const yearField = modal.querySelector('[name="year"]');
         const waveField = modal.querySelector('[name="waveId"]');
-        const scopeField = modal.querySelector('[name="scopeId"]');
+        const scopeField = modal.querySelector('[name="scope"]');
         const currentId = modal.querySelector('[name="id"]')?.value;
 
         if (yearField?.value) {
             const year = parseInt(yearField.value);
             const waveId = waveField?.value || null;
-            const scopeId = scopeField?.value || null;
+            const scope = scopeField?.value || null;
             const numericCurrentId = currentId ? parseInt(currentId, 10) : null;
 
             const exists = this.data.some(b =>
                 b.year === year &&
                 (b.waveId ?? null) == (waveId ?? null) &&
-                (b.scopeId ?? null) == (scopeId ?? null) &&
+                (b.scope ?? null) === (scope ?? null) &&
                 b.id !== numericCurrentId
             );
 
@@ -370,7 +361,7 @@ export default class Bandwidths extends ListEntity {
         const data = {
             year: parseInt(formData.get('year')),
             waveId: formData.get('waveId') || undefined,
-            scopeId: formData.get('scopeId') || undefined,
+            scope: formData.get('scope') || undefined,
             planned: formData.get('planned') ? parseInt(formData.get('planned'), 10) : undefined
         };
 
@@ -394,7 +385,7 @@ export default class Bandwidths extends ListEntity {
         const data = {
             year: parseInt(formData.get('year')),
             waveId: formData.get('waveId') || undefined,
-            scopeId: formData.get('scopeId') || undefined,
+            scope: formData.get('scope') || undefined,
             planned: formData.get('planned') ? parseInt(formData.get('planned'), 10) : undefined
         };
 

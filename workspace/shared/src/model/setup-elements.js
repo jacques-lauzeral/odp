@@ -36,5 +36,5 @@ export const Bandwidth = {
     year: 0,
     planned: 0,     // optional - planned bandwidth in MW
     waveId: null,   // optional - null means yearly total
-    scopeId: null   // optional - null means global scope
+    scope: null     // optional - DraftingGroup key (e.g. 'IDL', 'NM_B2B'); null means global scope
 };

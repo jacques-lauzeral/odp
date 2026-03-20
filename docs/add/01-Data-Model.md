@@ -113,7 +113,9 @@ Supports REFINES hierarchy (parent-child, max two levels).
 
 #### Domain
 
-Represents a business domain, e.g. "Flight" or "Flow Management". Domains are used to characterise the impact of ORs and to assign ownership of ONs.
+Represents a business domain used to characterise the impact of ORs (e.g. "Flight Planning", "Flow Management").
+
+> **Terminology note**: the term *domain* has two distinct uses in the ODIP model. In this context it refers to the **Domain setup entity** — a structured list of impact areas that can be attached to ORs. It is unrelated to the concept of *competency domain* or *DrG scope*, which is expressed through the `DraftingGroup` enum (see §6.1).
 
 | Field | Type | Notes |
 |---|---|---|
@@ -126,17 +128,17 @@ Supports REFINES hierarchy (max two levels, top-level mandatory).
 
 #### Bandwidth
 
-Represents the per-domain yearly development effort (in MW), for NM internal planning. Not visible to external stakeholders.
+Represents yearly development effort (in MW) scoped to a Drafting Group, for NM internal planning. Not visible to external stakeholders.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
 | `year` | integer | The effort year |
 | `planned` | integer | Planned bandwidth in MW; optional |
-| `wave` | reference | Wave reference; optional — omitted means yearly total |
-| `scope` | reference | Domain reference; optional — omitted means global scope |
+| `waveId` | reference | Wave reference; optional — omitted means yearly total |
+| `scope` | DraftingGroup key | DrG scope (e.g. `IDL`, `NM_B2B`); optional — omitted means global scope |
 
-The `(year, wave, scope)` tuple is unique: no two Bandwidth records may share the same combination.
+The `(year, waveId, scope)` tuple is unique: no two Bandwidth records may share the same combination.
 
 ---
 
@@ -325,32 +327,23 @@ Milestones are independent — no sequencing or dependency between them is enfor
 
 ## 5. Versioning Model
 
-### 5.1 Dual-Node Pattern
+### 5.1 Version Creation
 
-Versioned entities use a two-node structure in Neo4j:
+Every mutation of an operational entity (OR or OC) creates a new `ItemVersion` node. The `LATEST_VERSION` pointer on the `Item` node is atomically moved to the new version. Previous versions remain accessible for historical navigation.
 
-- **Item node** — stable identity: id, title, createdAt, createdBy, latest_version
-- **ItemVersion node** — version-specific content: all content fields, relationships, milestones
+### 5.2 Version Context
 
-```
-OperationalRequirement (Item)
-    └──[:LATEST_VERSION]──► OperationalRequirementVersion (v3)
-                                └──[:VERSION_OF]──► OperationalRequirement
-```
+Queries accept optional context parameters that transparently select which version to return:
 
-### 5.2 Relationship Inheritance
-
-When a new version is created, relationships are resolved as follows:
-
-- **Not specified** in the update payload → inherited from previous version
-- **Specified** in the payload → replaces previous version's relationships
-- **Empty array** → clears all relationships of that type
-
-Previous versions retain their own relationship sets unchanged, ensuring historical accuracy.
+| Parameter | Effect |
+|---|---|
+| none | Returns the latest version |
+| `baselineId` | Returns the version captured at baseline creation time |
+| `fromWaveId` | Filters OCs to those with milestones at or after the given wave |
 
 ### 5.3 Optimistic Locking
 
-Updates require the client to supply `expectedVersionId` (the current version's node ID). If another user has updated the entity in the meantime, the server rejects the update with a `VERSION_CONFLICT` error, forcing the client to refresh before retrying.
+Clients must supply `expectedVersionId` on every update. If another user has updated the entity in the meantime, the server rejects the update with a `VERSION_CONFLICT` error, forcing the client to refresh before retrying.
 
 ### 5.4 Baseline Snapshots
 
@@ -361,6 +354,8 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 ## 6. Enumerations Reference
 
 ### 6.1 Drafting Groups (DRG)
+
+The `DraftingGroup` enum identifies the competency domain or drafting group responsible for a requirement, change, or bandwidth scope.
 
 | Key | Display |
 |---|---|
@@ -395,8 +390,9 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 
 | Key | Meaning |
 |---|---|
-| DRAFT | Draft edition |
-| OFFICIAL | Official published edition |
+| ALPHA | Alpha edition |
+| BETA | Beta edition |
+| RELEASE | Official release edition |
 
 ### 6.5 Milestone Event Types
 
@@ -427,47 +423,9 @@ Each milestone carries one or more event types from this list.
 | `lazyEquals(a, b)` | Compares two values that may be of mixed types (string, number, Neo4j Integer). Returns `true` if they resolve to the same integer. |
 | `idsEqual(id1, id2)` | Convenience wrapper — normalises both sides and compares. |
 
-```javascript
-normalizeId('42')          // → 42
-normalizeId(neo4jInteger)  // → 42  (calls .toNumber())
-normalizeId(null)          // throws Error('Invalid ID format')
+### 7.2 Comparator
 
-lazyEquals('42', 42)       // → true
-idsEqual(neo4jId, '42')    // → true
-```
-
-`lazyEquals` is intentionally limited to integer/string/Neo4j Integer types — it does not attempt deep object equality.
-
-### 7.2 ExternalIdBuilder
-
-`ExternalIdBuilder` constructs stable, human-readable external IDs for all entity types. External IDs are used by the import pipeline to identify entities across round-trip editing workflows (CREATE / UPDATE / SKIP decisions).
-
-**Format**: `{type}:{type-specific-path}`, where path segments are normalised (lowercase, spaces → underscores).
-
-| Entity type | Format |
-|---|---|
-| `domain`, `stakeholder` | `{type}:{parent.externalId}/{name}` or `{type}:{name}` |
-| `document`, `wave` | `{type}:{name_normalized}` |
-| `on`, `or` | `{type}:{drg}/{parent.externalId}/{title}` or `{type}:{drg}/{path}/{title}` |
-| `oc` | `oc:{drg}/{title_normalized}` |
-
-For requirements (ON/OR), `parent` and `path` are mutually exclusive — supplying both is a business rule violation.
-
-```javascript
-// Examples
-ExternalIdBuilder.buildExternalId({ name: 'Flow Management Position' }, 'stakeholder');
-// → 'stakeholder:flow_management_position'
-
-ExternalIdBuilder.buildExternalId({ drg: 'IDL', title: 'AIP Dataset Provision', path: ['Data'] }, 'or');
-// → 'or:idl/data/aip_dataset_provision'
-
-ExternalIdBuilder.buildExternalId({ drg: 'IDL', title: 'Deploy iDLAD v2' }, 'oc');
-// → 'oc:idl/deploy_idlad_v2'
-```
-
-### 7.3 Comparator
-
-`Comparator` detects field-level changes between an existing entity (from the database) and an incoming entity (from an import payload). It drives the CREATE / UPDATE / SKIP logic in the standard import workflow.
+`Comparator` (in `shared/src/model/`) compares two versions of the same entity to detect meaningful changes. It drives the CREATE / UPDATE / SKIP logic in the standard import workflow.
 
 Comparison is entity-type-aware, handling three categories of fields:
 

@@ -1,5 +1,6 @@
 import { SimpleItemService } from './SimpleItemService.js';
-import { bandwidthStore, waveStore, domainStore, createTransaction, commitTransaction, rollbackTransaction } from '../store/index.js';
+import { isDraftingGroupValid } from '@odp/shared';
+import { bandwidthStore, waveStore, createTransaction, commitTransaction, rollbackTransaction } from '../store/index.js';
 
 export class BandwidthService extends SimpleItemService {
     constructor() {
@@ -15,11 +16,13 @@ export class BandwidthService extends SimpleItemService {
 
     async _validateCreateData(data) {
         this._validateRequiredFields(data);
+        this._validateScope(data);
         await this._validateReferencedEntities(data);
     }
 
     async _validateUpdateData(data) {
         this._validateRequiredFields(data);
+        this._validateScope(data);
         await this._validateReferencedEntities(data);
     }
 
@@ -32,6 +35,14 @@ export class BandwidthService extends SimpleItemService {
         }
     }
 
+    _validateScope(data) {
+        if (data.scope !== undefined && data.scope !== null) {
+            if (!isDraftingGroupValid(data.scope)) {
+                throw new Error(`Validation failed: invalid DraftingGroup key: ${data.scope}`);
+            }
+        }
+    }
+
     async _validateReferencedEntities(data) {
         const tx = createTransaction('system');
         try {
@@ -39,13 +50,6 @@ export class BandwidthService extends SimpleItemService {
                 const waveExists = await waveStore().exists(data.waveId, tx);
                 if (!waveExists) {
                     throw new Error(`Validation failed: wave ${data.waveId} not found`);
-                }
-            }
-
-            if (data.scopeId !== undefined && data.scopeId !== null) {
-                const domainExists = await domainStore().exists(data.scopeId, tx);
-                if (!domainExists) {
-                    throw new Error(`Validation failed: domain ${data.scopeId} not found`);
                 }
             }
 

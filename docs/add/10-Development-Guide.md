@@ -48,7 +48,7 @@ export const isDraftingGroupValid    = (v) => DraftingGroupKeys.includes(v);
 export const getDraftingGroupDisplay = (k) => DraftingGroup[k] || k;
 ```
 
-Enums defined in `@odp/shared`: `DraftingGroup`, `ORType`, `ODIPEditionType`, `Visibility`, `MilestoneEvent`, `MaturityLevel`, `BandwidthScope`.
+Enums defined in `@odp/shared`: `DraftingGroup`, `ORType`, `ODIPEditionType`, `Visibility`, `MilestoneEvent`, `MaturityLevel`.
 
 ### Model Pattern
 

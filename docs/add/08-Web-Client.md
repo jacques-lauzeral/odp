@@ -426,7 +426,7 @@ The following web client changes align the client with the Edition 4 data model 
 | `Service` removed | `services.js` deleted |
 | `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field added (optional, textarea, inherited from `baseFields`); `version` optional; `parentId` optional; hierarchy up to three levels; now a `TreeEntity` (was `ListEntity`); endpoint `/reference-documents` |
 | `Domain` added | New `TreeEntity` (`domains.js`); has `contact` textarea field |
-| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scopeId)` tuple; select options for wave and scope (domain) resolved from `setupData`; `planned` optional integer field added |
+| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scope)` tuple; `scope` is a `DraftingGroup` enum key (DrG selector, not a Domain reference); `waveId` resolved from loaded waves; `planned` optional integer field added |
 | `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed; uniqueness check on `(year, sequenceNumber)` |
 
 `abstract-interaction-activity.js` `loadSetupData()` updated: `dataCategories`/`services`/`documents` replaced by `domains`/`referenceDocuments` loaded from `/domains` and `/reference-documents`.
@@ -546,7 +546,7 @@ All data is loaded from existing endpoints on activity mount:
 |--------|-------|
 | `GET /operational-changes` | OCs with `cost`, `drg`, `maturity`, `dependencies`, `milestones` |
 | `GET /waves` | Wave definitions (year, sequenceNumber, implementationDate) |
-| `GET /bandwidths` | Available MW per (waveId, scopeId) pair |
+| `GET /bandwidths` | Available MW per (waveId, scope) pair — `scope` is a DraftingGroup key |
 | `DraftingGroup` enum | Hardcoded column order; keys from `Object.keys(DraftingGroup)` |
 
 OR-level costs (`implementedORs[].cost`) are informational only and not used
@@ -571,9 +571,9 @@ no DOM, no API calls, framework-agnostic. Reusable server-side without modificat
 
 ```javascript
 {
-  cells:      Map<waveId, Map<drg, CellData>>,  // per (wave, DrG)
-  waveGlobal: Map<waveId, CellData>,             // per wave, all DrGs summed
-  unplanned:  OC[]                               // no OPS_DEPLOYMENT milestone
+    cells:      Map<waveId, Map<drg, CellData>>,  // per (wave, DrG)
+        waveGlobal: Map<waveId, CellData>,             // per wave, all DrGs summed
+        unplanned:  OC[]                               // no OPS_DEPLOYMENT milestone
 }
 
 // CellData
