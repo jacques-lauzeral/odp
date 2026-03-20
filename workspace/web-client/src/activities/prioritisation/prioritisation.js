@@ -9,12 +9,14 @@
  */
 import { apiClient }    from '../../shared/api-client.js';
 import { errorHandler } from '../../shared/error-handler.js';
-import { DraftingGroup } from '/shared/src/index.js';
 import PrioritisationGrid from './prioritisation-grid.js';
 import { buildMatrix }  from '../../shared/src/model/bandwidth-aggregation.js';
 
-// Ordered DrG rows
-const DRG_ORDER = Object.values(DraftingGroup);
+import { DraftingGroup } from '/shared/src/index.js';
+
+// Keys match the drg field values sent to/from the API (e.g. "RRT", "IDL")
+// Values are display labels — keys are the API identifiers
+const DRG_ORDER = Object.keys(DraftingGroup);
 
 export default class PrioritisationActivity {
     constructor(app) {
@@ -162,14 +164,14 @@ export default class PrioritisationActivity {
                 // Remove OPS_DEPLOYMENT milestone → move to backlog
                 if (milestone) {
                     await apiClient.delete(
-                        `/operational-changes/${oc.id}/milestones/${milestone.key}`,
+                        `/operational-changes/${oc.itemId}/milestones/${milestone.milestoneKey}`,
                         { expectedVersionId: oc.versionId }
                     );
                 }
             } else if (milestone) {
                 // Update existing OPS_DEPLOYMENT milestone wave
                 await apiClient.put(
-                    `/operational-changes/${oc.id}/milestones/${milestone.key}`,
+                    `/operational-changes/${oc.itemId}/milestones/${milestone.milestoneKey}`,
                     {
                         expectedVersionId: oc.versionId,
                         name:       milestone.name,
@@ -180,7 +182,7 @@ export default class PrioritisationActivity {
             } else {
                 // Create new OPS_DEPLOYMENT milestone
                 await apiClient.post(
-                    `/operational-changes/${oc.id}/milestones`,
+                    `/operational-changes/${oc.itemId}/milestones`,
                     {
                         expectedVersionId: oc.versionId,
                         name:       'OPS Deployment',
@@ -197,7 +199,7 @@ export default class PrioritisationActivity {
     }
 
     _handleOpenOC(oc) {
-        this.app.navigateTo(`/elaboration/changes/${oc.id}`);
+        this.app.navigateTo(`/elaboration/changes/${oc.itemId}`);
     }
 
     async _refresh() {

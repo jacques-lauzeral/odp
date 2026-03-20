@@ -264,18 +264,55 @@ notes for when they are tackled.
 
 ---
 
-## 6. Next Steps
+## 6. Implementation Status & Remaining Work
 
-Implement the Prioritisation activity in the following order:
+### 6.1 Completed
 
-1. `shared/src/bandwidth-aggregation.js` — pure aggregation module
-2. `activities/prioritisation/prioritisation.js` — activity shell
-3. `activities/prioritisation/prioritisation-grid.js` — grid component
-4. `activities/prioritisation/prioritisation.css` — grid styles
-5. `app.js` — new `/prioritisation` route
-6. `header.js` — new "Prioritisation" nav item
-7. `activity.css` — add `.prioritisation-activity` / `.prioritisation-workspace`
+All files delivered and working in browser:
 
-Pending confirmation before starting:
-- Nav label: "Prioritisation" — to confirm
-- OR data at init: load ORs for effort breakdown tooltips, or OCs alone for MVP?
+| File | Location | Status |
+|------|----------|--------|
+| `bandwidth-aggregation.js` | `shared/src/model/` | ✓ Done |
+| `prioritisation.js` | `activities/prioritisation/` | ✓ Done |
+| `prioritisation-grid.js` | `activities/prioritisation/` | ✓ Done |
+| `prioritisation.css` | `activities/prioritisation/` | ✓ Done |
+| `app.js` | root | ✓ Updated |
+| `header.js` | `components/common/` | ✓ Updated |
+| `landing.html` | `activities/landing/` | ✓ Updated |
+| `activity.css` | root | ✓ Updated |
+| `08-Web-Client.md` | ADD | ✓ Updated (wave label format) |
+| `operational-change-milestone-store.js` | server store | ✓ Bug fix: `description` default |
+
+### 6.2 Key Implementation Notes
+
+**DrG enum usage**: `Object.keys(DraftingGroup)` gives API-facing keys (e.g. `'RRT'`);
+`DraftingGroup[key]` gives display labels. Keys match `oc.drg` field from API.
+
+**Entity identity**: `oc.itemId` = stable entity identifier (used in API paths);
+`oc.versionId` = current version identifier (used as `expectedVersionId` for optimistic locking).
+
+**Milestone response shape**: `milestone.wave.id` (not `milestone.waveId`) — the API
+returns a full `wave` object. `waveId` only appears in request payloads.
+
+**Bandwidth model**: `scopeId` absent = wave × global (shown in Global column only);
+`scopeId` present = wave × DrG (shown in DrG cell). All wave IDs normalised to `String`
+as map keys to avoid number/string mismatch.
+
+**`OPS_DEPLOYMENT`** — used as a literal key string `'OPS_DEPLOYMENT'` (consistent with
+`changes.js`). The `MilestoneEventType` enum maps keys to display labels; keys are the
+API-facing strings.
+
+**Wave label format**: `{year}#{sequenceNumber}` (e.g. `2027#1`) — corrected in ADD §12.4
+and grid code. Previous format `Y{year}Q{sequenceNumber}` was wrong.
+
+**`idsEqual`** from `@odp/shared` — use for all entity id comparisons across layers.
+Never use raw `===` or `String()` coercion for id comparisons.
+
+### 6.3 Known Remaining Issues / Next Session
+
+- Drag-and-drop from backlog to wave: basic flow working; edge cases (e.g. OC with no
+  `drg`) need validation
+- ADD chapter 08 Prioritisation section not yet written — needs a new §12 or §13
+- ADD chapter 08 wave label fix delivered but not yet committed to project knowledge
+- `operational-change-milestone-store.js` server bug fix not yet in ADD
+- Continuity note should be updated to ADD format eventually

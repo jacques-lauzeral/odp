@@ -26,7 +26,7 @@ export class OperationalChangeMilestoneStore extends BaseStore {
 
         try {
             for (const milestoneData of milestonesData) {
-                const { milestoneKey, name, description, eventTypes, waveId } = milestoneData;
+                const { milestoneKey, name, description = '', eventTypes, waveId } = milestoneData;
 
                 // Generate new milestoneKey if not present (for new milestones)
                 const finalMilestoneKey = milestoneKey || `ms_${uuidv4()}`;

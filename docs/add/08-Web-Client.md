@@ -500,7 +500,7 @@ Form fields in `collection-entity-form.js` use the following type identifiers:
 
 Milestone `title` field renamed to `name` throughout `change-form-milestone.js`: form input id/name, `collectFormData`, `validateMilestone`, `prepareData`, `renderRow`, and the delete confirmation message.
 
-Wave label in milestone form and table now rendered as `Y{year}Q{sequenceNumber}` (the `name` field was removed from `Wave` in Edition 4).
+Wave label in milestone form and table now rendered as `{year}#{sequenceNumber}` (the `name` field was removed from `Wave` in Edition 4).
 
 ### 12.5 New Field Types in CollectionEntityForm
 

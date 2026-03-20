@@ -34,7 +34,7 @@
  *   update({ waves, matrix, allOcs })
  *   cleanup()
  */
-import { getDraftingGroupDisplay } from '/shared/src/index.js';
+import { getDraftingGroupDisplay, idsEqual } from '/shared/src/index.js';
 import {
     classifyLoad,
     cardHeight,
@@ -96,10 +96,10 @@ export default class PrioritisationGrid {
         this.container.innerHTML = `
             <div class="prio-board">
                 ${this._renderColumnHeaders()}
-                <div class="prio-board__rows">
+                <div class="prio-board__wave-rows">
                     ${orderedWaves.map(w => this._renderWaveRow(w)).join('')}
-                    ${this._renderBacklogRow()}
                 </div>
+                ${this._renderBacklogRow()}
             </div>
         `;
 
@@ -132,8 +132,8 @@ export default class PrioritisationGrid {
 
     _renderWaveRow(wave) {
         const collapsed  = this._collapsed.has(wave.id);
-        const waveLabel  = `Y${wave.year}Q${wave.sequenceNumber}`;
-        const waveGlobal = this.matrix.waveGlobal.get(wave.id)
+        const waveLabel  = `${wave.year}#${wave.sequenceNumber}`;
+        const waveGlobal = this.matrix.waveGlobal.get(String(wave.id))
             || { consumed: 0, available: 0, ocs: [] };
 
         return `
@@ -160,7 +160,7 @@ export default class PrioritisationGrid {
     }
 
     _renderCell(waveId, drg) {
-        const waveMap  = this.matrix.cells.get(waveId);
+        const waveMap  = this.matrix.cells.get(String(waveId));
         const cellData = waveMap?.get(drg) || { consumed: 0, available: 0, ocs: [] };
         const load     = classifyLoad(cellData.consumed, cellData.available);
         const ratio    = cellData.available > 0
@@ -260,17 +260,17 @@ export default class PrioritisationGrid {
             <div class="prio-card prio-card--${maturity}"
                  style="height: ${height}rem"
                  draggable="true"
-                 data-oc-id="${oc.id}"
+                 data-oc-id="${oc.itemId}"
                  data-oc-wave="${waveId || ''}"
                  data-oc-drg="${oc.drg || ''}"
-                 title="${_esc(oc.title || oc.id)}">
+                 title="${_esc(oc.title || oc.itemId)}">
                 <div class="prio-card__inner">
-                    <span class="prio-card__title">${_esc(oc.title || oc.id)}</span>
+                    <span class="prio-card__title">${_esc(oc.title || oc.itemId)}</span>
                     <span class="prio-card__cost">${costLabel}</span>
                     ${hasDeps ? '<span class="prio-card__deps-icon" title="Has dependencies">⛓</span>' : ''}
                 </div>
                 <button class="prio-card__open"
-                        data-open-oc="${oc.id}"
+                        data-open-oc="${oc.itemId}"
                         title="Open OC detail">↗</button>
             </div>
         `;
@@ -320,7 +320,7 @@ export default class PrioritisationGrid {
             btn.addEventListener('click', e => {
                 e.stopPropagation();
                 const ocId = btn.dataset.openOc;
-                const oc   = this.allOcs.find(o => o.id === ocId);
+                const oc   = this.allOcs.find(o => idsEqual(o.itemId, ocId));
                 if (oc) this.onOpenOC(oc);
             });
         });
@@ -346,7 +346,7 @@ export default class PrioritisationGrid {
         const card   = e.currentTarget;
         const ocId   = card.dataset.ocId;
         const waveId = card.dataset.ocWave || null;
-        const oc     = this.allOcs.find(o => o.id === ocId);
+        const oc     = this.allOcs.find(o => idsEqual(o.itemId, ocId));
         if (!oc) return;
 
         this._dragState = { oc, sourceWaveId: waveId || null };

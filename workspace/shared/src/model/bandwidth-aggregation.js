@@ -10,14 +10,16 @@
  *   - OCs with no OPS_DEPLOYMENT milestone are unplanned (backlog).
  *   - Each OC is attributed to its own DrG only (no cross-DrG apportionment).
  *
- * Parked post-MVP:
- *   - Per-milestone effort apportionment across waves
- *   - Cross-DrG cost apportionment for multi-DrG OCs
+ * Bandwidth model (scopeId and waveId are both optional):
+ *   (waveId, scopeId)  → per-wave, per-DrG   — shown in DrG cell
+ *   (waveId, -)        → per-wave, global     — shown in Global column cell only
+ *   (-, scopeId)       → per-year, per-DrG    — parked post-MVP
+ *   (-, -)             → per-year, global     — parked post-MVP
  */
 
-const OPS_DEPLOYMENT = 'OPS_DEPLOYMENT';
+import { idsEqual } from '/shared/src/index.js';
 
-/**
+const OPS_DEPLOYMENT = 'OPS_DEPLOYMENT';/**
  * Resolve the wave ID of an OC's OPS_DEPLOYMENT milestone.
  * Returns null if no such milestone exists.
  *
@@ -29,7 +31,7 @@ export function resolveDeploymentWaveId(oc) {
     const m = oc.milestones.find(
         m => Array.isArray(m.eventTypes) && m.eventTypes.includes(OPS_DEPLOYMENT)
     );
-    return m?.waveId ?? null;
+    return m?.wave?.id ?? null;
 }
 
 /**
@@ -53,14 +55,36 @@ export function resolveDeploymentWaveId(oc) {
  */
 export function buildMatrix(ocs, waves, bandwidths, drgs) {
     // Index bandwidths: (waveId, drg) → available MW
-    const bwIndex = new Map();
+    // scopeId absent = global bandwidth, distributed equally across all DrGs
+    const bwIndex = new Map();       // (waveId, drg) → MW
+    const bwGlobal = new Map();      // waveId → MW  (global, no scopeId)
     for (const bw of bandwidths) {
-        bwIndex.set(_key(bw.waveId, bw.scopeId), bw.planned ?? 0);
+        if (bw.scopeId) {
+            bwIndex.set(_key(bw.waveId, bw.scopeId), bw.planned ?? 0);
+        } else {
+            bwGlobal.set(String(bw.waveId), bw.planned ?? 0);
+        }
     }
 
     const cells      = new Map();
     const waveGlobal = new Map();
     const unplanned  = [];
+
+    // Pre-populate waveGlobal available for every wave upfront
+    // so bandwidth shows correctly even when no OCs are planned in that wave
+    for (const wave of waves) {
+        const waveId = String(wave.id);
+        const global = bwGlobal.get(waveId);
+        let available = 0;
+        if (global !== undefined) {
+            available = global;
+        } else {
+            for (const drg of drgs) {
+                available += bwIndex.get(_key(waveId, drg)) ?? 0;
+            }
+        }
+        waveGlobal.set(waveId, { consumed: 0, available, ocs: [] });
+    }
 
     for (const oc of ocs) {
         const waveId = resolveDeploymentWaveId(oc);
@@ -69,16 +93,17 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
             continue;
         }
 
-        const cost = oc.cost ?? 0;
-        const drg  = oc.drg;
+        const cost   = oc.cost ?? 0;
+        const drg    = oc.drg;
+        const waveIdStr = String(waveId);
 
-        // Per (waveId, drg) cell
-        if (!cells.has(waveId)) cells.set(waveId, new Map());
-        const waveMap = cells.get(waveId);
+        // Per (waveId, drg) cell — available is per-DrG bandwidth only
+        if (!cells.has(waveIdStr)) cells.set(waveIdStr, new Map());
+        const waveMap = cells.get(waveIdStr);
         if (!waveMap.has(drg)) {
             waveMap.set(drg, {
                 consumed:  0,
-                available: bwIndex.get(_key(waveId, drg)) ?? 0,
+                available: bwIndex.get(_key(waveIdStr, drg)) ?? 0,
                 ocs:       []
             });
         }
@@ -87,19 +112,13 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
         cell.ocs.push(oc);
 
         // Per wave global
-        if (!waveGlobal.has(waveId)) {
-            waveGlobal.set(waveId, { consumed: 0, available: 0, ocs: [] });
+        if (!waveGlobal.has(waveIdStr)) {
+            // Fallback: wave not in pre-populated set (unknown wave id)
+            waveGlobal.set(waveIdStr, { consumed: 0, available: 0, ocs: [] });
         }
-        const wg = waveGlobal.get(waveId);
+        const wg = waveGlobal.get(waveIdStr);
         wg.consumed += cost;
         wg.ocs.push(oc);
-    }
-
-    // available for waveGlobal = sum of bandwidth across all DrGs
-    for (const [waveId, wg] of waveGlobal) {
-        for (const drg of drgs) {
-            wg.available += bwIndex.get(_key(waveId, drg)) ?? 0;
-        }
     }
 
     return { cells, waveGlobal, unplanned };
@@ -145,10 +164,9 @@ export function checkDependencyViolations(oc, targetWaveId, allOcs, waves) {
     }
     const waveOrder = new Map(waves.map((w, i) => [w.id, i]));
     const targetIdx = waveOrder.get(targetWaveId) ?? Infinity;
-    const ocById    = new Map(allOcs.map(o => [o.id, o]));
     const offenders = [];
     for (const depId of oc.dependencies) {
-        const dep = ocById.get(depId);
+        const dep = allOcs.find(o => idsEqual(o.itemId, depId));
         if (!dep) continue;
         const depWaveId = resolveDeploymentWaveId(dep);
         if (!depWaveId) continue;
