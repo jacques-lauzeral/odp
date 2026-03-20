@@ -72,12 +72,17 @@ export default class PrioritisationActivity {
     }
 
     _computeMatrix() {
-        this.matrix = buildMatrix(
+        const result = buildMatrix(
             this.ocs,
             this.waves,
             this.bandwidths,
             DRG_ORDER
         );
+        if (!result) {
+            console.error('PrioritisationActivity: buildMatrix returned undefined — check import path');
+            throw new Error('Bandwidth matrix could not be computed.');
+        }
+        this.matrix = result;
     }
 
     // =========================================================================
@@ -163,15 +168,17 @@ export default class PrioritisationActivity {
             if (targetWaveId === null) {
                 // Remove OPS_DEPLOYMENT milestone → move to backlog
                 if (milestone) {
-                    await apiClient.delete(
-                        `/operational-changes/${oc.itemId}/milestones/${milestone.milestoneKey}`,
-                        { expectedVersionId: oc.versionId }
+                    await apiClient.deleteMilestone(
+                        oc.itemId,
+                        milestone.milestoneKey,
+                        oc.versionId
                     );
                 }
             } else if (milestone) {
                 // Update existing OPS_DEPLOYMENT milestone wave
-                await apiClient.put(
-                    `/operational-changes/${oc.itemId}/milestones/${milestone.milestoneKey}`,
+                await apiClient.updateMilestone(
+                    oc.itemId,
+                    milestone.milestoneKey,
                     {
                         expectedVersionId: oc.versionId,
                         name:       milestone.name,
@@ -181,8 +188,8 @@ export default class PrioritisationActivity {
                 );
             } else {
                 // Create new OPS_DEPLOYMENT milestone
-                await apiClient.post(
-                    `/operational-changes/${oc.itemId}/milestones`,
+                await apiClient.createMilestone(
+                    oc.itemId,
                     {
                         expectedVersionId: oc.versionId,
                         name:       'OPS Deployment',

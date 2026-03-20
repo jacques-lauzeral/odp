@@ -84,7 +84,7 @@
 }
 
 /* =========================================================================
-   Row (wave or backlog)
+   Row (wave or backlog sub-row)
    ========================================================================= */
 
 /* Wave rows only — reversed so nearest wave renders at bottom */
@@ -112,8 +112,42 @@
 }
 
 .prio-row--backlog {
-    border-top: 2px solid var(--border-secondary);
     background: var(--bg-secondary);
+}
+
+/* =========================================================================
+   Backlog section — wraps all 3 sub-rows
+   ========================================================================= */
+
+.prio-backlog-section {
+    border-top: 2px solid var(--border-secondary);
+    margin-top: var(--space-2);
+}
+
+.prio-backlog-section__header {
+    display: flex;
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-secondary);
+    position: sticky;
+    left: 0;
+}
+
+.prio-backlog-section__title {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Sub-row accent lines */
+.prio-row--backlog-mature  { border-left: 3px solid var(--success-500); }
+.prio-row--backlog-advanced { border-left: 3px solid var(--warning-500); }
+.prio-row--backlog-draft   {
+    border-left: 3px solid var(--gray-300);
+    opacity: 0.75;
 }
 
 /* =========================================================================
@@ -122,7 +156,7 @@
 
 .prio-row__label {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     min-width: 100px;
@@ -132,7 +166,8 @@
     left: 0;
     background: white;
     z-index: 10;
-    align-self: stretch;   /* stretch to full row height */
+    align-self: stretch;        /* stretch keeps the border running full row height */
+    padding-top: var(--space-2); /* content anchored at top */
 }
 
 .prio-row--backlog .prio-row__label {
@@ -173,6 +208,13 @@
     margin-left: var(--space-1);
 }
 
+.prio-row__draft-badge {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    margin-left: var(--space-1);
+    cursor: default;
+}
+
 /* =========================================================================
    Cell
    ========================================================================= */
@@ -197,7 +239,13 @@
     justify-content: center;
     align-items: center;
     text-align: center;
+    transition: background var(--transition-fast);
 }
+
+.prio-cell--global-load-green  { background: rgba(34, 197, 94,  0.12); }
+.prio-cell--global-load-orange { background: rgba(234, 179, 8,  0.15); }
+.prio-cell--global-load-red    { background: rgba(239, 68,  68, 0.12); }
+.prio-cell--global-load-empty  { background: var(--bg-secondary); }
 
 .prio-cell--backlog {
     background: var(--bg-secondary);
@@ -259,6 +307,16 @@
     cursor: grabbing;
 }
 
+/* Draft cards — non-draggable, informational only */
+.prio-card--no-drag {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.prio-card--no-drag:hover {
+    box-shadow: none;
+}
+
 /* Maturity colour strip on left edge */
 .prio-card::before {
     content: '';
@@ -268,7 +326,7 @@
     background: var(--gray-300);
 }
 
-.prio-card--draft::before   { background: var(--gray-400); }
+.prio-card--draft::before    { background: var(--gray-400); }
 .prio-card--advanced::before { background: var(--warning-500); }
 .prio-card--mature::before   { background: var(--success-500); }
 
@@ -323,6 +381,16 @@
     display: block;
 }
 
+/* Draft lock icon — always visible, replaces open button */
+.prio-card__draft-lock {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    font-size: 10px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 /* =========================================================================
    Load bar
    ========================================================================= */
@@ -347,21 +415,43 @@
 .prio-load-bar__fill--red    { background: var(--error-500); }
 .prio-load-bar__fill--empty  { background: var(--gray-200); }
 
-/* In collapsed row: bar becomes the entire row height */
+/* In collapsed row: bar sits at bottom, thin strip */
 .prio-row--collapsed .prio-load-bar {
-    height: 100%;
+    height: 4px;
     border-radius: 0;
     margin: 0;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
 }
 
 .prio-row--collapsed .prio-cell {
     padding: 0;
+    justify-content: center;
+    align-items: center;
 }
 
 .prio-row--collapsed .prio-cell__cards,
 .prio-row--collapsed .prio-cell__summary,
 .prio-row--collapsed .prio-cell__mw {
     display: none;
+}
+
+/* Effort summary shown only in collapsed rows */
+.prio-cell__collapsed-effort {
+    display: none;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    text-align: center;
+    padding: 0 var(--space-1);
+}
+
+.prio-row--collapsed .prio-cell__collapsed-effort {
+    display: block;
 }
 
 /* =========================================================================

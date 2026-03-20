@@ -65,6 +65,9 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
             bwGlobal.set(String(bw.waveId), bw.planned ?? 0);
         }
     }
+    // Note: bwIndex/bwGlobal only contain entries for waves/DrGs that have a bandwidth
+    // record. Missing entries (Map.get → undefined) mean "not configured" — distinct
+    // from an explicit 0 MW record.
 
     const cells      = new Map();
     const waveGlobal = new Map();
@@ -75,13 +78,20 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
     for (const wave of waves) {
         const waveId = String(wave.id);
         const global = bwGlobal.get(waveId);
-        let available = 0;
+        let available;
         if (global !== undefined) {
+            // Explicit global bandwidth record for this wave
             available = global;
         } else {
+            // Sum per-DrG records; if none exist at all, available stays null
+            let sum = null;
             for (const drg of drgs) {
-                available += bwIndex.get(_key(waveId, drg)) ?? 0;
+                const drg_bw = bwIndex.get(_key(waveId, drg));
+                if (drg_bw !== undefined) {
+                    sum = (sum ?? 0) + drg_bw;
+                }
             }
+            available = sum;  // null if no per-DrG records, number if any exist
         }
         waveGlobal.set(waveId, { consumed: 0, available, ocs: [] });
     }
@@ -101,9 +111,10 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
         if (!cells.has(waveIdStr)) cells.set(waveIdStr, new Map());
         const waveMap = cells.get(waveIdStr);
         if (!waveMap.has(drg)) {
+            const drg_bw = bwIndex.get(_key(waveIdStr, drg));
             waveMap.set(drg, {
                 consumed:  0,
-                available: bwIndex.get(_key(waveIdStr, drg)) ?? 0,
+                available: drg_bw !== undefined ? drg_bw : null,
                 ocs:       []
             });
         }
@@ -130,7 +141,8 @@ export function buildMatrix(ocs, waves, bandwidths, drgs) {
  * @returns {'green'|'orange'|'red'|'empty'}
  */
 export function classifyLoad(consumed, available) {
-    if (available === 0) return consumed > 0 ? 'red' : 'empty';
+    if (available === null || available === undefined) return 'empty';  // no record defined
+    if (available === 0) return consumed > 0 ? 'red' : 'empty';        // explicit 0 MW record
     const ratio = consumed / available;
     if (ratio < 0.8) return 'green';
     if (ratio < 1.2) return 'orange';

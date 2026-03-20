@@ -11,12 +11,13 @@ The ODIP web client is a Vanilla JavaScript single-page application (no framewor
 ```
 web-client/src/
 ├── activities/
-│   ├── landing/        User identification, activity tiles, connection status
-│   ├── setup/          Setup entity management + TreeEntity, ListEntity base classes
-│   ├── elaboration/    OR/OC authoring and browsing
-│   ├── planning/       ON/OC deployment and implementation planning
-│   ├── publication/    ODIP Edition management and export
-│   └── review/         Edition review interface (read-only)
+│   ├── landing/          User identification, activity tiles, connection status
+│   ├── setup/            Setup entity management + TreeEntity, ListEntity base classes
+│   ├── elaboration/      OR/OC authoring and browsing
+│   ├── planning/         ON/OC deployment and implementation planning
+│   ├── prioritisation/   OC bandwidth balancing and wave assignment (§13)
+│   ├── publication/      ODIP Edition management and export
+│   └── review/           Edition review interface (read-only)
 ├── components/
 │   ├── common/         Global navigation, error handling
 │   └── odp/            CollectionEntity, TreeTableEntity, TemporalGrid, form base classes
@@ -27,7 +28,7 @@ web-client/src/
 
 Every activity follows the same structural pattern:
 
-- **Layer 1** — Global chrome: persistent top navigation (`Landing | Setup | Elaboration | Planning | Publication | Review`), user context, connection status
+- **Layer 1** — Global chrome: persistent top navigation (`Landing | Setup | Elaboration | Planning | Prioritisation | Publication | Review`), user context, connection status
 - **Layer 2** — Activity workspace: activity-specific tabs, context selectors (edition picker), toolbars
 - **Layer 3** — Entity interactions: CRUD operations, detail panels, forms, relationship management
 
@@ -291,7 +292,8 @@ styles/
     ├── review.css                    Review-specific overrides and target selection screen
     ├── planning.css                  Planning two-pane layout, ON plan panes, TemporalGrid context
     ├── setup.css                     Setup entity tabs, three-pane layout, tree/list panes
-    └── publication.css               Publication-specific rules (edition count, action buttons)
+    ├── publication.css               Publication-specific rules (edition count, action buttons)
+    └── prioritisation.css            Prioritisation board layout, cards, load bars, backlog sub-rows
 ```
 
 ### 9.2 Layer Hierarchy
@@ -319,6 +321,7 @@ Files are loaded in strict dependency order: global → components → landing �
 | `planning.css` | `activity.css` | ON plan two-pane layout, TemporalGrid context overrides, group/child row styles |
 | `setup.css` | `activity.css` | Entity tabs, three-pane layout, tree/list pane styles |
 | `publication.css` | `activity.css` | Edition count badge, publication action buttons, edition type badges |
+| `prioritisation.css` | `activity.css` | Board layout, wave rows, DrG cells, OC cards, load bars, backlog sub-rows, collapse states |
 
 ### 9.4 Activity Headers
 
@@ -518,5 +521,172 @@ Two new `type` values added to `renderInput` / `renderReadOnlyField`:
 - Removed: `service`, `dataCategory`, `document` filters
 - Added: `domain` filter (suggest, options from `domains` setupData)
 - Renamed: `satisfies` → `implements`
+
+---
+
+## 13. Prioritisation Activity
+
+The Prioritisation activity (`activities/prioritisation/`) is a dedicated
+workspace for matching OC implementation effort against domain bandwidth
+constraints across waves. It is a fully independent top-level activity
+(`/prioritisation` route) — distinct from the Planning activity.
+
+### 13.1 Purpose and Scope
+
+The activity supports the iterative iCDM governance loop: assigning OCs to
+delivery waves, monitoring bandwidth consumption per DrG and globally, and
+identifying overloaded waves. Wave assignments are persisted via OPS_DEPLOYMENT
+milestones on OCs.
+
+### 13.2 Data Inputs
+
+All data is loaded from existing endpoints on activity mount:
+
+| Source | Usage |
+|--------|-------|
+| `GET /operational-changes` | OCs with `cost`, `drg`, `maturity`, `dependencies`, `milestones` |
+| `GET /waves` | Wave definitions (year, sequenceNumber, implementationDate) |
+| `GET /bandwidths` | Available MW per (waveId, scopeId) pair |
+| `DraftingGroup` enum | Hardcoded column order; keys from `Object.keys(DraftingGroup)` |
+
+OR-level costs (`implementedORs[].cost`) are informational only and not used
+for bandwidth aggregation.
+
+### 13.3 Bandwidth Aggregation Module
+
+Pure aggregation logic lives in `shared/src/model/bandwidth-aggregation.js` —
+no DOM, no API calls, framework-agnostic. Reusable server-side without modification.
+
+**Key exported functions:**
+
+| Function | Description |
+|----------|-------------|
+| `buildMatrix(ocs, waves, bandwidths, drgs)` | Returns `{ cells, waveGlobal, unplanned }` |
+| `resolveDeploymentWaveId(oc)` | Returns wave ID of OPS_DEPLOYMENT milestone, or null |
+| `classifyLoad(consumed, available)` | Returns `'green'`/`'orange'`/`'red'`/`'empty'` |
+| `cardHeight(cost)` | Returns card height in rem (logarithmic scale) |
+| `checkDependencyViolations(oc, targetWaveId, allOcs, waves)` | Returns `{ violated, offenders }` |
+
+**`AggregationMatrix` shape:**
+
+```javascript
+{
+  cells:      Map<waveId, Map<drg, CellData>>,  // per (wave, DrG)
+  waveGlobal: Map<waveId, CellData>,             // per wave, all DrGs summed
+  unplanned:  OC[]                               // no OPS_DEPLOYMENT milestone
+}
+
+// CellData
+{ consumed: number, available: number | null, ocs: OC[] }
+```
+
+**`available` sentinel values:**
+- `null` — no bandwidth record defined for this (wave, DrG) pair → grey, no load classification
+- `0` — explicit zero MW record exists → red if any OCs assigned
+- `> 0` — normal case; load classified by consumed/available ratio
+
+**Load colour thresholds:** green < 80%, orange 80–120%, red ≥ 120%.
+
+### 13.4 Grid Layout
+
+```
+┌─────────┬──────────┬──────────┬─────────┐
+│  Label  │   DrG 1  │   DrG N  │ Global  │
+├─────────┼──────────┼──────────┼─────────┤  ← furthest wave (top)
+│ 2029#1  │  cards   │  cards   │ tinted  │
+│         │  loadbar │  loadbar │ loadbar │
+├─────────┼──────────┼──────────┼─────────┤
+│ 2027#2  │  ...     │  ...     │  ...    │  ← nearest wave (bottom)
+├─────────┼──────────┼──────────┼─────────┤
+│ Mature  │  cards   │  cards   │  count  │  ← backlog sub-rows
+│ Advanced│  cards   │  cards   │  + MW   │
+│ Draft   │  cards   │  cards   │  count  │
+└─────────┴──────────┴──────────┴─────────┘
+```
+
+- **Columns**: one per DrG (hardcoded enum order) + rightmost Global column
+- **Wave rows**: ordered furthest-top to nearest-bottom (CSS `flex-direction: column-reverse` on the wave rows container)
+- **Wave label format**: `{year}#{sequenceNumber}` (e.g. `2027#1`)
+- **Global column**: tinted background (light green/orange/red) per load level, distinct from OC maturity strips
+
+### 13.5 OC Cards
+
+- Height proportional to cost: `h = 2 + 2·log10(max(1, cost))` rem, clamped 2–12 rem
+- Left colour strip indicates maturity: grey (Draft), amber (Advanced), green (Mature)
+- Shows: title (truncated), cost in MW, dependency icon (⛓) if any
+- Hover: open button (↗) navigates to `/elaboration/changes/{itemId}`
+- Draft cards: `cursor: not-allowed`, reduced opacity, lock icon (🔒), not draggable
+
+### 13.6 Wave Row Collapse
+
+Each wave row is individually collapsible:
+
+- Toggle button is anchored at top-left of the label cell (`align-items: flex-start`)
+  so it does not shift vertically on expand/collapse
+- **Collapsed state** (32px height):
+    - OC cards hidden
+    - Each DrG cell shows effort summary: `consumed / available MW` (if bandwidth
+      defined) or `consumed MW` (if not)
+    - Global cell shows the same summary
+    - Load bar rendered as a 4px strip at the bottom of each cell
+- **Expand on drop**: dropping an OC onto a collapsed wave row automatically expands it
+
+### 13.7 Backlog Section
+
+The backlog section is pinned below all wave rows and split into three
+independently collapsible sub-rows:
+
+| Sub-row  | Maturity   | Draggable | Accepts drops | Notes |
+|----------|------------|-----------|---------------|-------|
+| Mature   | `MATURE`   | Yes       | Yes           | — |
+| Advanced | `ADVANCED` | Yes       | Yes           | — |
+| Draft    | `DRAFT`    | No        | No            | Informational only |
+
+- A wave→backlog drop is only accepted by the sub-row matching the OC's maturity
+  (enforced at `dragover` — mismatched sub-rows reject the drop)
+- Backlog global cell shows OC count + total MW sum (MW omitted if no OC in
+  the sub-row has a cost set — applies especially to Draft)
+
+### 13.8 Drag-and-Drop
+
+- **Constraint**: only within the same DrG column; cross-DrG drops are rejected
+- **Wave assignment** (backlog → wave): creates OPS_DEPLOYMENT milestone via
+  `apiClient.createMilestone()`
+- **Wave reassignment** (wave → wave): updates OPS_DEPLOYMENT milestone via
+  `apiClient.updateMilestone()`
+- **Wave removal** (wave → backlog): deletes OPS_DEPLOYMENT milestone via
+  `apiClient.deleteMilestone()`
+- All three operations use the dedicated `apiClient` milestone methods, not raw
+  `delete/put/post`, to ensure `expectedVersionId` is placed in the request body
+  per the OpenAPI contract
+- **Dependency check**: on wave drop, `checkDependencyViolations()` is called;
+  violations surface a confirmation dialog but do not block the operation
+- After any successful API call, the activity reloads all data and redraws the grid
+
+### 13.9 File Structure
+
+```
+activities/prioritisation/
+├── prioritisation.js        Activity shell: data load, matrix compute, grid mount, API calls
+├── prioritisation-grid.js   PrioritisationGrid: board render, collapse, drag-and-drop
+└── prioritisation.css       Grid styles (extends activity.css)
+
+shared/src/model/
+└── bandwidth-aggregation.js Pure aggregation: buildMatrix, classifyLoad, cardHeight,
+                             checkDependencyViolations, resolveDeploymentWaveId
+```
+
+**Modified files:**
+- `app.js` — new `/prioritisation` route
+- `header.js` — new "Prioritisation" nav item
+- `activity.css` — `.prioritisation-activity`, `.prioritisation-workspace`
+- `landing.html` — Prioritisation activity tile
+
+### 13.10 CSS Conventions
+
+`prioritisation.css` extends `activity.css` (`.prioritisation-activity` /
+`.prioritisation-workspace` root classes). It does not extend
+`abstract-interaction-activity.css` — the Prioritisation activity uses a custom
+board layout, not the collection+details two-pane pattern.
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

@@ -6,13 +6,15 @@
  * Layout:
  *   Columns  = DrGs (left to right) + "Global" total column (rightmost)
  *   Rows     = waves ordered bottom=nearest, top=furthest
- *              + Backlog row pinned at the very bottom
- *   Each row is individually collapsible.
+ *              + Backlog section (3 sub-rows: Mature / Advanced / Draft)
+ *                pinned at the very bottom
+ *   Each wave row and each backlog sub-row is individually collapsible.
  *
  * OC cards:
  *   Height proportional to cost (logarithmic scale via cardHeight()).
  *   Drag-and-drop between wave rows within the same DrG column.
  *   Dragging from/to backlog assigns/removes OPS_DEPLOYMENT milestone.
+ *   Draft cards are non-draggable (informational only).
  *
  * Load indicator bar:
  *   Horizontal bar at bottom of each cell.
@@ -43,17 +45,29 @@ import {
 
 const BACKLOG_ROW_ID = '__backlog__';
 
+// Backlog sub-row IDs — one per maturity level, top-to-bottom render order
+const BACKLOG_MATURE   = '__backlog_MATURE__';
+const BACKLOG_ADVANCED = '__backlog_ADVANCED__';
+const BACKLOG_DRAFT    = '__backlog_DRAFT__';
+
+// Ordered maturity groups shown in the backlog section
+const BACKLOG_GROUPS = [
+    { key: 'MATURE',   rowId: BACKLOG_MATURE,   label: 'Mature'   },
+    { key: 'ADVANCED', rowId: BACKLOG_ADVANCED, label: 'Advanced' },
+    { key: 'DRAFT',    rowId: BACKLOG_DRAFT,    label: 'Draft'    },
+];
+
 export default class PrioritisationGrid {
     constructor(options) {
         this.waves     = options.waves     || [];
         this.drgs      = options.drgs      || [];
-        this.matrix    = options.matrix;
+        this.matrix    = options.matrix    || { cells: new Map(), waveGlobal: new Map(), unplanned: [] };
         this.allOcs    = options.allOcs    || [];
         this.onShiftOC = options.onShiftOC || (() => {});
         this.onOpenOC  = options.onOpenOC  || (() => {});
 
         this.container   = null;
-        this._collapsed  = new Set();   // Set of waveId | BACKLOG_ROW_ID
+        this._collapsed  = new Set();   // Set of waveId | backlog sub-row rowId
         this._dragState  = null;        // { oc, sourceWaveId }
 
         this._onDragStart  = this._onDragStart.bind(this);
@@ -88,7 +102,7 @@ export default class PrioritisationGrid {
     // =========================================================================
 
     _draw() {
-        if (!this.container) return;
+        if (!this.container || !this.matrix) return;
 
         // Waves ordered: furthest at top (index 0), nearest at bottom (last)
         const orderedWaves = this._sortedWaves();
@@ -99,7 +113,7 @@ export default class PrioritisationGrid {
                 <div class="prio-board__wave-rows">
                     ${orderedWaves.map(w => this._renderWaveRow(w)).join('')}
                 </div>
-                ${this._renderBacklogRow()}
+                ${this._renderBacklogSection()}
             </div>
         `;
 
@@ -131,10 +145,10 @@ export default class PrioritisationGrid {
     // =========================================================================
 
     _renderWaveRow(wave) {
-        const collapsed  = this._collapsed.has(wave.id);
+        const collapsed  = this._collapsed.has(String(wave.id));
         const waveLabel  = `${wave.year}#${wave.sequenceNumber}`;
         const waveGlobal = this.matrix.waveGlobal.get(String(wave.id))
-            || { consumed: 0, available: 0, ocs: [] };
+            || { consumed: 0, available: null, ocs: [] };
 
         return `
             <div class="prio-row ${collapsed ? 'prio-row--collapsed' : ''}"
@@ -143,7 +157,7 @@ export default class PrioritisationGrid {
                 <!-- Row label -->
                 <div class="prio-row__label">
                     <button class="prio-row__toggle"
-                            data-toggle-wave="${wave.id}"
+                            data-toggle-wave="${String(wave.id)}"
                             title="${collapsed ? 'Expand' : 'Collapse'}">
                         ${collapsed ? '▶' : '▼'}
                     </button>
@@ -151,23 +165,32 @@ export default class PrioritisationGrid {
                 </div>
 
                 <!-- DrG cells -->
-                ${this.drgs.map(drg => this._renderCell(wave.id, drg)).join('')}
+                ${this.drgs.map(drg => this._renderCell(wave.id, drg, collapsed)).join('')}
 
                 <!-- Global total cell -->
-                ${this._renderGlobalCell(wave.id, waveGlobal)}
+                ${this._renderGlobalCell(wave.id, waveGlobal, collapsed)}
             </div>
         `;
     }
 
-    _renderCell(waveId, drg) {
+    _renderCell(waveId, drg, collapsed = false) {
         const waveMap  = this.matrix.cells.get(String(waveId));
-        const cellData = waveMap?.get(drg) || { consumed: 0, available: 0, ocs: [] };
+        const cellData = waveMap?.get(drg) || { consumed: 0, available: null, ocs: [] };
         const load     = classifyLoad(cellData.consumed, cellData.available);
-        const ratio    = cellData.available > 0
+        const ratio    = (cellData.available != null && cellData.available > 0)
             ? Math.min(1, cellData.consumed / cellData.available)
             : (cellData.consumed > 0 ? 1 : 0);
 
         const cards = cellData.ocs.map(oc => this._renderCard(oc, waveId)).join('');
+
+        // Collapsed effort label: show consumed [/ available] MW when row is collapsed
+        const collapsedLabel = collapsed
+            ? `<span class="prio-cell__collapsed-effort">
+                   ${cellData.available != null
+                ? `${cellData.consumed} / ${cellData.available} MW`
+                : cellData.consumed > 0 ? `${cellData.consumed} MW` : ''}
+               </span>`
+            : '';
 
         return `
             <div class="prio-cell"
@@ -175,72 +198,111 @@ export default class PrioritisationGrid {
                  data-drg="${drg}"
                  data-drop-target="true">
                 <div class="prio-cell__cards">${cards}</div>
+                ${collapsedLabel}
                 ${this._renderLoadBar(ratio, load, cellData.consumed, cellData.available)}
             </div>
         `;
     }
 
-    _renderGlobalCell(waveId, cellData) {
+    _renderGlobalCell(waveId, cellData, collapsed = false) {
         const load  = classifyLoad(cellData.consumed, cellData.available);
-        const ratio = cellData.available > 0
+        const ratio = (cellData.available != null && cellData.available > 0)
             ? Math.min(1, cellData.consumed / cellData.available)
             : (cellData.consumed > 0 ? 1 : 0);
+        const mwText = cellData.available != null
+            ? `${cellData.consumed} / ${cellData.available} MW`
+            : `${cellData.consumed} MW`;
         return `
-            <div class="prio-cell prio-cell--global">
+            <div class="prio-cell prio-cell--global prio-cell--global-load-${load}">
                 <div class="prio-cell__summary">
-                    <span class="prio-cell__mw">${cellData.consumed} / ${cellData.available} MW</span>
+                    <span class="prio-cell__mw">${mwText}</span>
                 </div>
+                <span class="prio-cell__collapsed-effort">${mwText}</span>
                 ${this._renderLoadBar(ratio, load, cellData.consumed, cellData.available)}
             </div>
         `;
     }
 
     // =========================================================================
-    // BACKLOG ROW
+    // BACKLOG SECTION — 3 sub-rows (Mature / Advanced / Draft)
     // =========================================================================
 
-    _renderBacklogRow() {
-        const collapsed = this._collapsed.has(BACKLOG_ROW_ID);
-        const unplanned = this.matrix.unplanned;
+    _renderBacklogSection() {
+        // Partition unplanned OCs by maturity
+        const byMaturity = { MATURE: [], ADVANCED: [], DRAFT: [] };
+        for (const oc of this.matrix.unplanned) {
+            const key = (oc.maturity || 'DRAFT').toUpperCase();
+            if (byMaturity[key]) byMaturity[key].push(oc);
+            else byMaturity.DRAFT.push(oc);  // unknown maturity → treat as draft
+        }
 
-        // Group unplanned OCs by DrG
+        const totalCount = this.matrix.unplanned.length;
+
+        const subRows = BACKLOG_GROUPS.map(group =>
+            this._renderBacklogSubRow(group, byMaturity[group.key])
+        ).join('');
+
+        return `
+            <div class="prio-backlog-section">
+                <div class="prio-backlog-section__header">
+                    <span class="prio-backlog-section__title">
+                        Backlog
+                        <span class="prio-row__backlog-count">${totalCount}</span>
+                    </span>
+                </div>
+                ${subRows}
+            </div>
+        `;
+    }
+
+    _renderBacklogSubRow(group, ocs) {
+        const { key, rowId, label } = group;
+        const collapsed  = this._collapsed.has(rowId);
+        const isDraft    = key === 'DRAFT';
+        const count      = ocs.length;
+
+        // Group OCs by DrG for cell rendering
         const byDrg = new Map();
-        for (const oc of unplanned) {
+        for (const oc of ocs) {
             const drg = oc.drg || '__none__';
             if (!byDrg.has(drg)) byDrg.set(drg, []);
             byDrg.get(drg).push(oc);
         }
 
         const cells = this.drgs.map(drg => {
-            const ocs   = byDrg.get(drg) || [];
-            const cards = ocs.map(oc => this._renderCard(oc, null)).join('');
+            const drgsOcs = byDrg.get(drg) || [];
+            const cards   = drgsOcs.map(oc => this._renderCard(oc, null)).join('');
             return `
                 <div class="prio-cell prio-cell--backlog"
                      data-wave-id="${BACKLOG_ROW_ID}"
                      data-drg="${drg}"
-                     data-drop-target="true">
+                     ${isDraft ? '' : 'data-drop-target="true"'}>
                     <div class="prio-cell__cards">${cards}</div>
                 </div>
             `;
         }).join('');
 
         return `
-            <div class="prio-row prio-row--backlog ${collapsed ? 'prio-row--collapsed' : ''}"
-                 data-wave-id="${BACKLOG_ROW_ID}">
+            <div class="prio-row prio-row--backlog prio-row--backlog-${key.toLowerCase()} ${collapsed ? 'prio-row--collapsed' : ''}"
+                 data-wave-id="${rowId}">
+
                 <div class="prio-row__label">
                     <button class="prio-row__toggle"
-                            data-toggle-wave="${BACKLOG_ROW_ID}"
+                            data-toggle-wave="${rowId}"
                             title="${collapsed ? 'Expand' : 'Collapse'}">
                         ${collapsed ? '▶' : '▼'}
                     </button>
                     <span class="prio-row__wave-label">
-                        Backlog
-                        <span class="prio-row__backlog-count">${unplanned.length}</span>
+                        ${_esc(label)}
+                        <span class="prio-row__backlog-count">${count}</span>
                     </span>
+                    ${isDraft ? '<span class="prio-row__draft-badge" title="Draft OCs cannot be prioritised">ℹ</span>' : ''}
                 </div>
+
                 ${cells}
+
                 <div class="prio-cell prio-cell--global prio-cell--backlog">
-                    <span class="prio-cell__mw">${unplanned.length} OC${unplanned.length !== 1 ? 's' : ''}</span>
+                    ${_backlogGlobalLabel(ocs)}
                 </div>
             </div>
         `;
@@ -251,15 +313,16 @@ export default class PrioritisationGrid {
     // =========================================================================
 
     _renderCard(oc, waveId) {
-        const height  = cardHeight(oc.cost ?? 0);
+        const height   = cardHeight(oc.cost ?? 0);
         const maturity = (oc.maturity || '').toLowerCase();
+        const isDraft  = maturity === 'draft';
         const costLabel = oc.cost != null ? `${oc.cost} MW` : '— MW';
         const hasDeps = Array.isArray(oc.dependencies) && oc.dependencies.length > 0;
 
         return `
-            <div class="prio-card prio-card--${maturity}"
+            <div class="prio-card prio-card--${maturity} ${isDraft ? 'prio-card--no-drag' : ''}"
                  style="height: ${height}rem"
-                 draggable="true"
+                 ${isDraft ? '' : 'draggable="true"'}
                  data-oc-id="${oc.itemId}"
                  data-oc-wave="${waveId || ''}"
                  data-oc-drg="${oc.drg || ''}"
@@ -269,9 +332,12 @@ export default class PrioritisationGrid {
                     <span class="prio-card__cost">${costLabel}</span>
                     ${hasDeps ? '<span class="prio-card__deps-icon" title="Has dependencies">⛓</span>' : ''}
                 </div>
-                <button class="prio-card__open"
-                        data-open-oc="${oc.itemId}"
-                        title="Open OC detail">↗</button>
+                ${isDraft
+            ? '<span class="prio-card__draft-lock" title="Draft — not yet eligible for prioritisation">🔒</span>'
+            : `<button class="prio-card__open"
+                               data-open-oc="${oc.itemId}"
+                               title="Open OC detail">↗</button>`
+        }
             </div>
         `;
     }
@@ -282,7 +348,7 @@ export default class PrioritisationGrid {
 
     _renderLoadBar(ratio, load, consumed, available) {
         const pct     = Math.round(ratio * 100);
-        const tooltip = available > 0
+        const tooltip = (available != null && available > 0)
             ? `${consumed} / ${available} MW (${pct}%)`
             : consumed > 0 ? `${consumed} MW (no bandwidth defined)` : 'No load';
 
@@ -301,15 +367,15 @@ export default class PrioritisationGrid {
     _bindEvents() {
         if (!this.container) return;
 
-        // Row toggle (collapse/expand)
+        // Row toggle (collapse/expand) — covers wave rows and backlog sub-rows
         this.container.querySelectorAll('[data-toggle-wave]').forEach(btn => {
             btn.addEventListener('click', e => {
                 e.stopPropagation();
-                const waveId = btn.dataset.toggleWave;
-                if (this._collapsed.has(waveId)) {
-                    this._collapsed.delete(waveId);
+                const rowId = btn.dataset.toggleWave;
+                if (this._collapsed.has(rowId)) {
+                    this._collapsed.delete(rowId);
                 } else {
-                    this._collapsed.add(waveId);
+                    this._collapsed.add(rowId);
                 }
                 this._draw();
             });
@@ -325,7 +391,7 @@ export default class PrioritisationGrid {
             });
         });
 
-        // Drag-and-drop
+        // Drag-and-drop — only draggable cards (non-draft)
         this.container.querySelectorAll('[draggable="true"]').forEach(card => {
             card.addEventListener('dragstart', this._onDragStart);
             card.addEventListener('dragend',   this._onDragEnd);
@@ -364,14 +430,24 @@ export default class PrioritisationGrid {
 
     _onDragOver(e) {
         if (!this._dragState) return;
-        const cell  = e.currentTarget;
-        const cellDrg    = cell.dataset.drg;
-        const sourceDrg  = this._dragState.oc.drg;
+        const cell     = e.currentTarget;
+        const cellDrg  = cell.dataset.drg;
+        const cellWave = cell.dataset.waveId;
+        const { oc }   = this._dragState;
 
         // Only allow drop within same DrG column
-        if (cellDrg !== sourceDrg) {
+        if (cellDrg !== oc.drg) {
             e.dataTransfer.dropEffect = 'none';
             return;
+        }
+
+        // Backlog sub-rows: only accept drop if OC maturity matches the sub-row
+        if (cellWave === BACKLOG_MATURE || cellWave === BACKLOG_ADVANCED) {
+            const expectedRowId = `__backlog_${(oc.maturity || '').toUpperCase()}__`;
+            if (cellWave !== expectedRowId) {
+                e.dataTransfer.dropEffect = 'none';
+                return;
+            }
         }
 
         e.preventDefault();
@@ -391,16 +467,29 @@ export default class PrioritisationGrid {
         if (!this._dragState) return;
 
         const { oc, sourceWaveId } = this._dragState;
-        const targetWaveId = cell.dataset.waveId === BACKLOG_ROW_ID
-            ? null
-            : cell.dataset.waveId;
+
+        // Backlog sub-rows all resolve to null (unplanned) for the API call
+        const rawTargetWaveId = cell.dataset.waveId;
+        const targetWaveId = (
+            rawTargetWaveId === BACKLOG_ROW_ID ||
+            rawTargetWaveId === BACKLOG_MATURE  ||
+            rawTargetWaveId === BACKLOG_ADVANCED
+        ) ? null : rawTargetWaveId;
+
         const cellDrg = cell.dataset.drg;
 
         // Guard: same DrG only
         if (cellDrg !== oc.drg) return;
 
-        // No-op: dropped onto same wave
-        if (targetWaveId === sourceWaveId) return;
+        // No-op: dropped onto same wave (compare normalised values)
+        const normSource = sourceWaveId || null;
+        const normTarget = targetWaveId || null;
+        if (normTarget === normSource) return;
+
+        // Expand collapsed target wave row so the result is immediately visible
+        if (targetWaveId && this._collapsed.has(targetWaveId)) {
+            this._collapsed.delete(targetWaveId);
+        }
 
         // Dependency check (skip if moving to backlog)
         if (targetWaveId) {
@@ -462,6 +551,18 @@ export default class PrioritisationGrid {
             return b.sequenceNumber - a.sequenceNumber;
         });
     }
+}
+
+function _backlogGlobalLabel(ocs) {
+    const count  = ocs.length;
+    const totalMw = ocs.reduce((sum, oc) => sum + (oc.cost ?? 0), 0);
+    const hasCost = ocs.some(oc => oc.cost != null);
+    const countLabel = `${count} OC${count !== 1 ? 's' : ''}`;
+    const mwLabel    = hasCost ? `${totalMw} MW` : null;
+    return `
+        <span class="prio-cell__mw">${countLabel}</span>
+        ${mwLabel ? `<span class="prio-cell__mw">${mwLabel}</span>` : ''}
+    `;
 }
 
 function _esc(str) {
