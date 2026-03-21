@@ -395,7 +395,17 @@ export class OperationalChangeService extends VersionedItemService {
         if (!Array.isArray(milestones)) {
             throw new Error('Validation failed: milestones must be an array');
         }
+        const names = new Set();
         for (const milestone of milestones) {
+            if (!milestone.name || typeof milestone.name !== 'string' || milestone.name.trim() === '') {
+                throw new Error('Validation failed: each milestone must have a non-empty name');
+            }
+            const normalizedName = milestone.name.trim();
+            if (names.has(normalizedName)) {
+                throw new Error(`Validation failed: duplicate milestone name: "${normalizedName}"`);
+            }
+            names.add(normalizedName);
+
             if (milestone.eventTypes !== undefined) {
                 if (!Array.isArray(milestone.eventTypes)) {
                     throw new Error('Validation failed: milestone eventTypes must be an array');

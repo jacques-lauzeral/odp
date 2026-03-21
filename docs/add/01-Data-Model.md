@@ -425,9 +425,18 @@ Each milestone carries one or more event types from this list.
 
 ### 7.2 Comparator
 
-`Comparator` (in `shared/src/model/`) compares two versions of the same entity to detect meaningful changes. It drives the CREATE / UPDATE / SKIP logic in the standard import workflow.
+`Comparator` (in `shared/src/model/`) compares two versions of the same entity to detect meaningful changes. It serves two distinct use cases with different requirements:
 
-Comparison is entity-type-aware, handling three categories of fields:
+| Use case | Caller | `ignoreMilestones` |
+|---|---|---|
+| Import pipeline (CREATE/UPDATE/SKIP) | `ImportService` | `true` (default) |
+| User-facing version diff | `DiffPopup` (web client) | `false` |
+
+**`compareOperationalRequirement(existing, incoming)`** — milestones are not applicable to OR.
+
+**`compareOperationalChange(existing, incoming, ignoreMilestones = true)`** — the `ignoreMilestones` default preserves import behaviour with no call-site changes required. When `false`, milestone changes are included via `_compareMilestones()`.
+
+Comparison is entity-type-aware, handling these field categories:
 
 | Category | Comparison strategy |
 |---|---|
@@ -435,15 +444,39 @@ Comparison is entity-type-aware, handling three categories of fields:
 | Rich text fields (Quill delta JSON) | Structural normalisation — empty delta variants (`{}`, `{"ops":[]}`, single `\n`) all resolve to `''`; valid content is re-serialised before comparison |
 | Reference arrays (`refinesParents`, `implementedORs`, …) | Sorted ID comparison (order-insensitive) |
 | Annotated reference arrays (`strategicDocuments`, …) | Sorted `{id, note}` comparison |
+| Milestones | Name-keyed map comparison (see below) |
 
-Milestones are excluded from OC comparison — they have their own independent lifecycle.
+**Milestone comparison algorithm (`_compareMilestones`):**
+
+Milestones are compared as `Map<name, milestone>` where `milestone.name` is the business identifier. Name uniqueness within a version is enforced by the service layer (see Chapter 03 §3.5), making this map-based approach safe.
+
+| Outcome | Condition |
+|---|---|
+| Added | `name` present in new map, absent in old map |
+| Removed | `name` present in old map, absent in new map |
+| Modified | `name` present in both maps; field-level diff detects a change |
+
+Rename is not detectable — it appears as remove + add, which is acceptable.
+
+Field-level comparison for modified milestones covers: `description` (rich text normalisation), `eventTypes` (order-insensitive sorted array), `wave` (ID comparison via `wave.id`).
+
+**Change entry shapes:**
 
 ```javascript
-const result = Comparator.compareOperationalRequirement(existing, incoming);
-// → { hasChanges: true, changes: [{ field: 'statement', oldValue: '...', newValue: '...' }] }
-```
+// Scalar / rich text
+{ field: 'statement', oldValue: '...', newValue: '...' }
 
-The `changes` array carries the original (un-normalised) values for reference arrays, so the import UI can render titles and codes alongside the diff.
+// Reference array (original objects preserved for title/code rendering)
+{ field: 'implementedORs', oldValue: [ref, ...], newValue: [ref, ...] }
+
+// Milestones (only when ignoreMilestones = false)
+{
+    field: 'milestones',
+    added:    [ milestone, ... ],
+    removed:  [ milestone, ... ],
+    modified: [ { name: string, changes: [ { field, oldValue, newValue }, ... ] }, ... ]
+}
+```
 
 ---
 

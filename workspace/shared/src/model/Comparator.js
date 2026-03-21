@@ -57,9 +57,11 @@ class Comparator {
      * Compare two OperationalChange entities
      * @param {Object} existing - Current entity from database
      * @param {Object} incoming - New entity data from import
+     * @param {boolean} ignoreMilestones - When true (default), milestones are excluded from comparison.
+     *   Pass false for user-facing diff where milestone changes must be visible.
      * @returns {Object} { hasChanges: boolean, changes: [...] }
      */
-    static compareOperationalChange(existing, incoming) {
+    static compareOperationalChange(existing, incoming, ignoreMilestones = true) {
         const changes = [];
         const richTextFields = this.RICH_TEXT_FIELDS.OperationalChange;
 
@@ -82,13 +84,87 @@ class Comparator {
         this._compareReferenceArray(changes, 'decommissionedORs', existing.decommissionedORs, incoming.decommissionedORs);
         this._compareReferenceArray(changes, 'dependencies', existing.dependencies, incoming.dependencies);
 
-        // Note: Milestones are not compared - they have their own lifecycle
+        // Note: Milestones are not compared when ignoreMilestones=true (import path).
+        // Pass ignoreMilestones=false for user-facing diff.
+        if (!ignoreMilestones) {
+            this._compareMilestones(changes, existing.milestones, incoming.milestones);
+        }
+
         // Note: orCosts are not compared - managed separately
 
         return {
             hasChanges: changes.length > 0,
             changes
         };
+    }
+
+    /**
+     * Compare two milestone arrays using milestone.name as the business identifier.
+     * Name uniqueness is enforced by the service layer, so map-based comparison is safe.
+     * Detects: added milestones, removed milestones, and field-level changes on existing ones.
+     * @private
+     */
+    static _compareMilestones(changes, oldMilestones, newMilestones) {
+        const oldMap = new Map((Array.isArray(oldMilestones) ? oldMilestones : []).map(m => [m.name, m]));
+        const newMap = new Map((Array.isArray(newMilestones) ? newMilestones : []).map(m => [m.name, m]));
+
+        const added   = [];
+        const removed = [];
+        const modified = [];
+
+        for (const [name, newM] of newMap) {
+            if (!oldMap.has(name)) {
+                added.push(newM);
+            } else {
+                const oldM = oldMap.get(name);
+                const fieldChanges = this._compareMilestoneFields(oldM, newM);
+                if (fieldChanges.length > 0) {
+                    modified.push({ name, changes: fieldChanges });
+                }
+            }
+        }
+
+        for (const [name, oldM] of oldMap) {
+            if (!newMap.has(name)) {
+                removed.push(oldM);
+            }
+        }
+
+        if (added.length > 0 || removed.length > 0 || modified.length > 0) {
+            changes.push({
+                field: 'milestones',
+                added,
+                removed,
+                modified
+            });
+        }
+    }
+
+    /**
+     * Field-level comparison between two milestone objects with the same name.
+     * @private
+     */
+    static _compareMilestoneFields(oldM, newM) {
+        const fieldChanges = [];
+        const richTextFields = this.RICH_TEXT_FIELDS.Milestone;
+
+        this._compareField(fieldChanges, 'description', oldM.description, newM.description, richTextFields.includes('description'));
+
+        // eventTypes: order-insensitive string array comparison
+        const oldTypes = Array.isArray(oldM.eventTypes) ? [...oldM.eventTypes].sort() : [];
+        const newTypes = Array.isArray(newM.eventTypes) ? [...newM.eventTypes].sort() : [];
+        if (JSON.stringify(oldTypes) !== JSON.stringify(newTypes)) {
+            fieldChanges.push({ field: 'eventTypes', oldValue: oldM.eventTypes, newValue: newM.eventTypes });
+        }
+
+        // wave: compare by ID (wave reference object or null)
+        const oldWaveId = oldM.wave?.id ?? oldM.waveId ?? null;
+        const newWaveId = newM.wave?.id ?? newM.waveId ?? null;
+        if (oldWaveId !== newWaveId) {
+            fieldChanges.push({ field: 'wave', oldValue: oldM.wave ?? null, newValue: newM.wave ?? null });
+        }
+
+        return fieldChanges;
     }
 
     // ==================== Private Helper Methods ====================

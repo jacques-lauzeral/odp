@@ -69,13 +69,15 @@ export class DiffPopup {
             ]);
 
             // Comparator detects changes (B=old, A=new)
+            // ignoreMilestones=false: user diff must show milestone changes
             let { hasChanges, changes } = this._entityType === 'operational-changes'
-                ? Comparator.compareOperationalChange(entityB, entityA)
+                ? Comparator.compareOperationalChange(entityB, entityA, false)
                 : Comparator.compareOperationalRequirement(entityB, entityA);
 
             // Second pass: suppress false positives on scalar/rich-text fields
             changes = changes.filter(change => {
                 if (this._isReferenceArrayField(change.field)) return true;
+                if (change.field === 'milestones') return true;
                 const oldText = this._toPlainText(change.oldValue);
                 const newText = this._toPlainText(change.newValue);
                 return oldText !== newText;
@@ -192,6 +194,10 @@ export class DiffPopup {
     // ─────────────────────────────────────────────────────────────
 
     _renderFieldBlock(change) {
+        if (change.field === 'milestones') {
+            return this._renderMilestoneDiff(change);
+        }
+
         const content = this._isReferenceArrayField(change.field)
             ? this._renderRefArrayDiff(change.oldValue, change.newValue)
             : this._renderScalarDiff(change.oldValue, change.newValue);
@@ -366,6 +372,63 @@ export class DiffPopup {
             </div>`;
     }
 
+    /**
+     * Render milestone-level diff block.
+     * Groups added, removed, and modified milestones under a single "Milestones" heading.
+     * @private
+     */
+    _renderMilestoneDiff(change) {
+        const { added = [], removed = [], modified = [] } = change;
+        let inner = '';
+
+        for (const m of removed) {
+            inner += `<div class="diff-milestone-row diff-milestone-row--removed">
+                <span class="diff-ref-chip diff-ref-chip--removed">− ${this._esc(m.name)}</span>
+            </div>`;
+        }
+
+        for (const m of added) {
+            inner += `<div class="diff-milestone-row diff-milestone-row--added">
+                <span class="diff-ref-chip diff-ref-chip--added">+ ${this._esc(m.name)}</span>
+            </div>`;
+        }
+
+        for (const { name, changes: fieldChanges } of modified) {
+            const fieldRows = fieldChanges.map(fc => {
+                let content;
+                if (fc.field === 'eventTypes') {
+                    const oldTypes = Array.isArray(fc.oldValue) ? fc.oldValue : [];
+                    const newTypes = Array.isArray(fc.newValue) ? fc.newValue : [];
+                    content = this._renderRefArrayDiff(
+                        oldTypes.map(t => ({ id: t, title: t })),
+                        newTypes.map(t => ({ id: t, title: t }))
+                    );
+                } else if (fc.field === 'wave') {
+                    const oldLabel = fc.oldValue ? (fc.oldValue.title || `Wave ${fc.oldValue.id}`) : '(none)';
+                    const newLabel = fc.newValue ? (fc.newValue.title || `Wave ${fc.newValue.id}`) : '(none)';
+                    content = this._renderScalarDiff(oldLabel, newLabel);
+                } else {
+                    content = this._renderScalarDiff(fc.oldValue, fc.newValue);
+                }
+                return `<div class="diff-milestone-field">
+                    <span class="diff-milestone-field-name">${this._esc(this._fieldLabel(fc.field))}</span>
+                    ${content}
+                </div>`;
+            }).join('');
+
+            inner += `<div class="diff-milestone-row diff-milestone-row--modified">
+                <div class="diff-milestone-name">~ ${this._esc(name)}</div>
+                ${fieldRows}
+            </div>`;
+        }
+
+        return `
+            <div class="diff-field-block">
+                <div class="diff-field-name">${this._esc(this._fieldLabel('milestones'))}</div>
+                <div class="diff-milestone-list">${inner}</div>
+            </div>`;
+    }
+
     // ─────────────────────────────────────────────────────────────
     // TEXT EXTRACTION
     // ─────────────────────────────────────────────────────────────
@@ -428,9 +491,9 @@ export class DiffPopup {
 
     _isReferenceArrayField(fieldName) {
         return [
-            'refinesParents', 'implementedONs', 'dependsOnRequirements',
-            'impactsStakeholderCategories', 'impactsData', 'impactsServices',
-            'satisfiesRequirements', 'supersedsRequirements', 'documentReferences'
+            'refinesParents', 'implementedONs', 'dependencies',
+            'impactedStakeholders', 'impactedDomains', 'strategicDocuments',
+            'implementedORs', 'decommissionedORs'
         ].includes(fieldName);
     }
 
@@ -451,28 +514,34 @@ export class DiffPopup {
 
     _fieldLabel(fieldName) {
         const labels = {
-            title:                        'Title',
-            type:                         'Type',
-            drg:                          'Drafting Group',
-            visibility:                   'Visibility',
-            path:                         'Path',
-            statement:                    'Statement',
-            rationale:                    'Rationale',
-            flows:                        'Flows',
-            privateNotes:                 'Private Notes',
-            purpose:                      'Purpose',
-            initialState:                 'Initial State',
-            finalState:                   'Final State',
-            details:                      'Implementation Details',
-            refinesParents:               'Refines (Parents)',
-            implementedONs:               'Implements (ONs)',
-            dependsOnRequirements:        'Depends On (Requirements)',
-            impactsStakeholderCategories: 'Stakeholder Categories',
-            impactsData:                  'Data Categories',
-            impactsServices:              'Services',
-            satisfiesRequirements:        'Satisfies Requirements',
-            supersedsRequirements:        'Supersedes Requirements',
-            documentReferences:           'Document References'
+            title:                  'Title',
+            type:                   'Type',
+            drg:                    'Drafting Group',
+            maturity:               'Maturity',
+            path:                   'Path',
+            cost:                   'Cost',
+            statement:              'Statement',
+            rationale:              'Rationale',
+            flows:                  'Flows',
+            nfrs:                   'Non-Functional Requirements',
+            privateNotes:           'Private Notes',
+            purpose:                'Purpose',
+            initialState:           'Initial State',
+            finalState:             'Final State',
+            details:                'Implementation Details',
+            refinesParents:         'Refines (Parents)',
+            implementedONs:         'Implements (ONs)',
+            dependencies:           'Depends On',
+            impactedStakeholders:   'Stakeholder Categories',
+            impactedDomains:        'Domains',
+            strategicDocuments:     'Strategic Documents',
+            implementedORs:         'Implements (ORs)',
+            decommissionedORs:      'Decommissions (ORs)',
+            milestones:             'Milestones',
+            // milestone sub-fields
+            description:            'Description',
+            eventTypes:             'Event Types',
+            wave:                   'Wave',
         };
         return labels[fieldName] || fieldName;
     }

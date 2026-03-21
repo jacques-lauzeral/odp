@@ -98,10 +98,10 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 ```javascript
 // TimelineMilestone
 {
-    label: string,        // short display label
-        description: string,  // tooltip / detail text
-    eventTypes: string[], // one or more event type keys
-    date: Date            // calendar position
+  label: string,        // short display label
+          description: string,  // tooltip / detail text
+        eventTypes: string[], // one or more event type keys
+        date: Date            // calendar position
 }
 ```
 
@@ -145,12 +145,12 @@ One call per instance before adding rows. Two modes:
 
 ```javascript
 {
-    mode: 'pixmap', rows: 1, cols: 3,
-        eventTypes: {
-        'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
-        'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
-        'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
-    }
+  mode: 'pixmap', rows: 1, cols: 3,
+          eventTypes: {
+    'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
+    'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
+    'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
+  }
 }
 ```
 
@@ -219,16 +219,16 @@ The zoom control (§5.5) is the primary user-facing mechanism for adjusting the 
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-    mode: 'pixmap',
-    rows: 1,
-    cols: 3,
-    eventTypes: {
-        'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
-        'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
-        'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
-        'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
-        'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
-    }
+  mode: 'pixmap',
+  rows: 1,
+  cols: 3,
+  eventTypes: {
+    'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
+    'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
+    'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
+    'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
+    'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
+  }
 })
 ```
 
@@ -339,6 +339,29 @@ Connection monitoring is owned by `App` (`app.js`), not by any UI component. On 
 
 The 60-second interval is intentional — the application is a low-concurrency internal tool and does not require sub-minute liveness detection.
 
+### 10.2 DiffPopup
+
+`DiffPopup` (`components/odp/diff-popup.js`) renders a modal comparison between two versions of an entity. It is opened from the history tab and is the sole consumer of `Comparator` on the client side.
+
+**Responsibilities:**
+- Fetch both versions in parallel via `GET /{entityType}/{id}/versions/{versionNumber}`
+- Delegate change detection to `Comparator` — passes `ignoreMilestones: false` for OC diffs so milestone changes are included
+- Apply a second-pass false-positive filter on scalar/rich-text fields (suppresses cases where Quill JSON differs structurally but renders identically in plain text)
+- Render field-level diffs: word-level Myers diff with character-level fallback for scalar/rich-text; added/removed chip columns for reference arrays; structured added/removed/modified blocks for milestones
+- Provide an in-popup version selector to change the comparison target without reopening
+
+**Change entry shapes produced by `Comparator`:**
+
+| Field type | Shape |
+|---|---|
+| Scalar / rich text | `{ field, oldValue, newValue }` |
+| Reference array | `{ field, oldValue: ref[], newValue: ref[] }` |
+| Milestones | `{ field: 'milestones', added: milestone[], removed: milestone[], modified: [{name, changes: fieldChange[]}] }` |
+
+**Known design debt:** `DiffPopup` currently uses `_isReferenceArrayField(fieldName)` (a hardcoded list of field names) and an explicit `change.field === 'milestones'` guard to drive rendering dispatch. The planned refactor will replace this with a `type` property on each change entry set by `Comparator`, making `DiffPopup` fully business-agnostic.
+
+**False-positive filter caveat:** the second-pass filter operates on `oldValue`/`newValue` and must explicitly exempt any change entry that does not carry those properties (currently `milestones`). This exemption will be unnecessary once the type-based dispatch refactor is complete.
+
 ---
 
 ## 11. Planning Activity
@@ -383,11 +406,11 @@ Ticks are one per integer year across the computed interval. The default interva
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-    mode: 'icon',
-    eventTypes: {
-        'period-start': { icon: '▶', colour: '#2563eb' },
-        'period-end':   { icon: '◀', colour: '#2563eb' }
-    }
+  mode: 'icon',
+  eventTypes: {
+    'period-start': { icon: '▶', colour: '#2563eb' },
+    'period-end':   { icon: '◀', colour: '#2563eb' }
+  }
 })
 ```
 
@@ -571,9 +594,9 @@ no DOM, no API calls, framework-agnostic. Reusable server-side without modificat
 
 ```javascript
 {
-    cells:      Map<waveId, Map<drg, CellData>>,  // per (wave, DrG)
-        waveGlobal: Map<waveId, CellData>,             // per wave, all DrGs summed
-        unplanned:  OC[]                               // no OPS_DEPLOYMENT milestone
+  cells:      Map<waveId, Map<drg, CellData>>,  // per (wave, DrG)
+          waveGlobal: Map<waveId, CellData>,             // per wave, all DrGs summed
+          unplanned:  OC[]                               // no OPS_DEPLOYMENT milestone
 }
 
 // CellData
@@ -624,11 +647,11 @@ Each wave row is individually collapsible:
 - Toggle button is anchored at top-left of the label cell (`align-items: flex-start`)
   so it does not shift vertically on expand/collapse
 - **Collapsed state** (32px height):
-    - OC cards hidden
-    - Each DrG cell shows effort summary: `consumed / available MW` (if bandwidth
-      defined) or `consumed MW` (if not)
-    - Global cell shows the same summary
-    - Load bar rendered as a 4px strip at the bottom of each cell
+  - OC cards hidden
+  - Each DrG cell shows effort summary: `consumed / available MW` (if bandwidth
+    defined) or `consumed MW` (if not)
+  - Global cell shows the same summary
+  - Load bar rendered as a 4px strip at the bottom of each cell
 - **Expand on drop**: dropping an OC onto a collapsed wave row automatically expands it
 
 ### 13.7 Backlog Section

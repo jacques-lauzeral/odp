@@ -164,6 +164,8 @@ Validation rules:
 - `cost` if present must be an integer
 - `orCosts` items must be `{orId, cost}` with integer `cost`; each `orId` validated for existence
 - `eventTypes` on milestones must be valid `MilestoneEventType` values (array)
+- each milestone must have a non-empty `name`; missing or blank `name` is rejected
+- milestone `name` must be unique within the array (case-sensitive, trimmed); duplicate names are rejected — this uniqueness invariant is required by the diff algorithm which uses `name` as the business identifier for milestone map comparison
 - `implementedORs` and `decommissionedORs` IDs validated for existence
 - `dependencies` (OC item IDs) validated for existence and cycle-free via `store.hasDependsOnCycle()` — checked per dependency in a `'system'` transaction
 - `_computePatchedPayload` maps reference objects back to ID arrays using `ref.id` (not `ref.itemId`)
