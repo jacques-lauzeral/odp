@@ -85,19 +85,19 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     whereConditions.push('version.maturity = $maturity');
                     params.maturity = filters.maturity;
                 }
-                if (filters.document && Array.isArray(filters.document) && filters.document.length > 0) {
+                if (filters.strategicDocument !== undefined && filters.strategicDocument !== null) {
                     whereConditions.push(`EXISTS {
-                    MATCH (version)-[:REFERENCES]->(doc:ReferenceDocument) 
-                    WHERE id(doc) IN $document
+                    MATCH (version)-[:REFERENCES]->(doc:ReferenceDocument)
+                    WHERE id(doc) = $strategicDocument
                 }`);
-                    params.document = filters.document.map(id => this.normalizeId(id));
+                    params.strategicDocument = this.normalizeId(filters.strategicDocument);
                 }
-                if (filters.stakeholderCategory && Array.isArray(filters.stakeholderCategory) && filters.stakeholderCategory.length > 0) {
+                if (filters.stakeholderCategory !== undefined && filters.stakeholderCategory !== null) {
                     whereConditions.push(`EXISTS {
-                    MATCH (version)-[:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory) 
-                    WHERE id(sc) IN $stakeholderCategory
+                    MATCH (version)-[:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
+                    WHERE id(sc) = $stakeholderCategory
                 }`);
-                    params.stakeholderCategory = filters.stakeholderCategory.map(id => this.normalizeId(id));
+                    params.stakeholderCategory = this.normalizeId(filters.stakeholderCategory);
                 }
                 if (filters.domain !== undefined && filters.domain !== null) {
                     whereConditions.push(`EXISTS {

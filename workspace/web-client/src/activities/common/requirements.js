@@ -138,25 +138,31 @@ export default class RequirementsEntity {
                 key: 'implementedONs', label: 'Implements', width: '150px',
                 type: 'implemented-ons', sortable: false,
                 maxDisplay: 3, groupPrefix: 'Implements',
-                appliesTo: ['or-node']
+                appliesTo: ['on-node']
             },
             dependencies: {
                 key: 'dependencies', label: 'Depends On', width: '120px',
                 type: 'entity-reference-list', sortable: false,
                 maxDisplay: 3, groupPrefix: 'Depends On',
-                appliesTo: ['or-node']
+                appliesTo: ['on-node']
             },
             impactedStakeholders: {
                 key: 'impactedStakeholders', label: 'Stakeholders', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
                 maxDisplay: 3,
-                appliesTo: ['or-node']
+                appliesTo: ['on-node']
             },
             impactedDomains: {
                 key: 'impactedDomains', label: 'Domains', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
                 maxDisplay: 3,
-                appliesTo: ['or-node']
+                appliesTo: ['on-node']
+            },
+            strategicDocuments: {
+                key: 'strategicDocuments', label: 'Strategic', width: '120px',
+                type: 'annotated-reference-list', sortable: false,
+                maxDisplay: 3,
+                appliesTo: ['on-node']
             },
             updatedBy: {
                 key: 'updatedBy', label: 'Updated By', width: '100px',
@@ -179,7 +185,7 @@ export default class RequirementsEntity {
         const c = RequirementsEntity._cols();
         return [
             'code', 'type', 'maturity', 'title', 'drg',
-            'refinesParents', 'implementedONs', 'dependencies',
+            'strategicDocuments', 'implementedONs', 'dependencies',
             'impactedStakeholders', 'impactedDomains'
         ].map(k => c[k]);
     }
@@ -190,6 +196,7 @@ export default class RequirementsEntity {
             { key: 'type', label: 'Type' },
             { key: 'maturity', label: 'Maturity' },
             { key: 'drg', label: 'Drafting Group' },
+            { key: 'strategicDocuments', label: 'Strategic' },
             { key: 'refinesParents', label: 'Refines' },
             { key: 'implementedONs', label: 'Implements' },
             { key: 'dependencies', label: 'Dependencies' },

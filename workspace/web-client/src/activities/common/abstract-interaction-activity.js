@@ -643,6 +643,13 @@ export default class AbstractInteractionActivity {
                 options: this.buildDraftingGroupOptions()
             },
             {
+                key: 'strategicDocument',
+                label: 'Strategic Document',
+                inputType: 'suggest',
+                placeholder: 'Type to search strategic documents...',
+                options: this.buildOptionsFromSetupData('referenceDocuments')
+            },
+            {
                 key: 'stakeholderCategory',
                 label: 'Stakeholder Impact',
                 inputType: 'suggest',

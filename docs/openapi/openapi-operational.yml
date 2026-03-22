@@ -61,15 +61,22 @@ paths:
           required: false
           schema:
             type: string
-          description: "Filter by impacted stakeholder category ID(s). Comma-separated for OR logic. OR type only."
-          example: "123,456"
+          description: "Filter by impacted stakeholder category ID. Single ID. OR type only."
+          example: "123"
         - name: domain
           in: query
           required: false
           schema:
             type: string
-          description: "Filter by domain ID. For ONs: filters by assigned domain. For ORs: filters by impacted domains. Comma-separated for OR logic."
+          description: "Filter by domain ID. Single ID. For ONs: filters by assigned domain. For ORs: filters by impacted domains."
           example: "42"
+        - name: strategicDocument
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter by referenced strategic document ID. Single ID. ON type only."
+          example: "13"
 
         # Relationship-based filtering parameters
         - name: refinesParent

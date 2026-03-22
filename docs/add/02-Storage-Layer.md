@@ -224,7 +224,9 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `drg` | `string\|null` | Exact match on DRG enum value |
 | `maturity` | `string\|null` | Exact match on maturity enum value |
 | `path` | `string\|null` | Array membership (`$path IN version.path`) |
-| `stakeholderCategory` | `number[]\|null` | EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory |
+| `stakeholderCategory` | `number\|null` | Single ID — EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory. OR type only |
+| `domain` | `number\|null` | Single ID — EXISTS via IMPACTS_DOMAIN → Domain |
+| `strategicDocument` | `number\|null` | Single ID — EXISTS via REFERENCES → ReferenceDocument. ON type only |
 | `refinesParent` | `number\|null` | Single OR item ID — EXISTS via REFINES |
 | `dependsOn` | `number\|null` | Single OR item ID — EXISTS via DEPENDS_ON |
 | `implementedON` | `number\|null` | Single ON item ID — EXISTS via IMPLEMENTS |

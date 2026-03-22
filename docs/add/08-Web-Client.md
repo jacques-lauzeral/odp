@@ -543,7 +543,12 @@ Two new `type` values added to `renderInput` / `renderReadOnlyField`:
 
 - Removed: `service`, `dataCategory`, `document` filters
 - Added: `domain` filter (suggest, options from `domains` setupData)
+- Added: `strategicDocument` filter (suggest, options from `referenceDocuments` setupData; ON type only)
 - Renamed: `satisfies` → `implements`
+
+All three relationship filters (`domain`, `stakeholderCategory`, `strategicDocument`) are scalar — a single ID is passed to the API and matched with `WHERE id(x) = $x` in the store.
+
+**`RequirementsEntity` column config**: `strategicDocuments` column has `appliesTo: ['on-node']` (ON only). **Grouping config** includes `strategicDocuments` as a grouping option.
 
 ---
 
