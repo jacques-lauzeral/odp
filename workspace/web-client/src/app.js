@@ -14,6 +14,7 @@ export class App {
         this.user = null;
         this.header = null;
         this.connectionCheckInterval = null;
+        this.connectionStatus = 'checking';
     }
 
     async initialize() {
@@ -56,7 +57,12 @@ export class App {
     }
 
     dispatchConnectionEvent(status) {
+        this.connectionStatus = status;
         window.dispatchEvent(new CustomEvent('connection:change', { detail: { status } }));
+    }
+
+    getConnectionStatus() {
+        return this.connectionStatus;
     }
 
     setupRouting() {

@@ -139,7 +139,7 @@ export default class Landing {
     }
 
     initializeConnectionStatus() {
-        this.updateConnectionStatus('checking');
+        this.updateConnectionStatus(this.app.getConnectionStatus());
         window.addEventListener('connection:change', (e) => {
             this.updateConnectionStatus(e.detail.status);
         });
