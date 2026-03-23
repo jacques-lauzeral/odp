@@ -39,7 +39,9 @@ The runtime directory structure under `ODIP_HOME` is created automatically by `o
 $ODIP_HOME/
 ├── data/       Neo4j database files
 ├── backups/    Manual and automated backups
-│   └── auto/   Automated backup slots (daily, weekly, monthly)
+│   ├── auto/   Automated backup slots (daily, weekly, monthly)
+│   ├── adhoc/  Manual ad-hoc dumps
+│   └── reset/  Pre-reset dumps
 └── logs/       Server log files (DocxExtractor, EMF conversion)
 ```
 
@@ -199,16 +201,16 @@ Neo4j data persists in `$ODIP_HOME/data`. No database migrations are required �
 |---|---|
 | `dump` | Standby → stop Neo4j → `neo4j-admin dump` → start Neo4j → resume |
 | `load` | Standby → stop Neo4j → `neo4j-admin load --overwrite` → start Neo4j → resume |
-| `reset` | Standby → stop Neo4j → move data dir → start Neo4j → resume (empty DB) |
+| `reset` | Standby → stop Neo4j → `neo4j-admin dump` → delete data dir → start Neo4j → resume (empty DB) |
 
 ```bash
-odip-admin dump                              # default: $ODIP_HOME/backups/<timestamp>/neo4j.dump
+odip-admin dump                              # default: $ODIP_HOME/backups/adhoc/<timestamp>/neo4j.dump
 odip-admin dump -b /path/to/backup
-odip-admin load -b $ODIP_HOME/backups/20260211-1430
-odip-admin reset                             # requires YES confirmation; data moved not deleted
+odip-admin load -b adhoc/20260211-1430       # relative paths are resolved to absolute
+odip-admin reset                             # requires YES confirmation; pre-reset dump saved to backups/reset/<timestamp>/
 odip-admin standby                           # manual standby
 odip-admin resume                            # manual resume
-odip-admin dumps                             # list available backup slots
+odip-admin dumps                             # list dumps across auto / adhoc / reset sections
 ```
 
 ### 8.2 Automated Backup — `odip-backup`
