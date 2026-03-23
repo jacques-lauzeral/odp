@@ -117,6 +117,12 @@ External ID → internal Neo4j ID mapping is built incrementally as entities are
 
 **Error handling**: greedy — errors on individual entities are collected and reported in the `ImportSummary` without aborting the entire import. Each entity is imported in its own transaction; a failure rolls back only that entity.
 
+**DRAFT-first creation pattern**: All requirements are created in phase 2 with `maturity: 'DRAFT'`, regardless of the target maturity in the structured data. The real maturity is applied in phase 3 alongside resolved references. This is necessary because the service layer enforces maturity-gated validation rules — for example, ADVANCED and MATURE requirements must have `strategicDocuments` or `refinesParents` (ONs) and `implementedONs` or `refinesParents` (ORs) — which cannot be satisfied until references are resolved. Creating with DRAFT bypasses these gates at creation time; phase 3 sets the final maturity after all references are in place.
+
+**Reference document resolution**: Reference documents are resolved via a dedicated `_resolveDocumentReferences` helper that looks up entries in `documentIdMap` (keyed by `ExternalIdBuilder.buildExternalId(doc, 'refdoc')`). This is distinct from `_resolveExternalIds`, which uses `globalRefMap` (stakeholders, domains, requirements). The separation is necessary because reference documents are stored in a different map and use the `refdoc:` prefix rather than the entity-type prefixes used by other entities.
+
+**`tentative` field**: Passed through in the phase 3 update request from `reqData.tentative`, falling back to `current.tentative` if not provided by the mapper. Required for MATURE ON requirements.
+
 ### 4.2 StandardImporter
 
 Used for round-trip (docx-loop) re-import. Entities are identified by their ODIP `code`. For each entity the importer compares the incoming payload against the current database state and applies one of three outcomes:

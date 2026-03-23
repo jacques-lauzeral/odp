@@ -5,7 +5,7 @@
       "description": "High Level Network CONOPS 2029",
       "version": "1.0",
       "url": "https://www.eurocontrol.int/publication/high-level-network-concept-operations-conops-2029",
-      "externalId": "document:asm_atfcm_conops"
+      "externalId": "document:high_level_network_conops_2029"
     },
     {
       "name": "ASM ATFCM CONOPS",
@@ -1027,9 +1027,15 @@
       "description": "Flight domain"
     },
     {
-      "externalId": "domain:flight/preparation",
-      "name": "Flight Preparation",
-      "description": "Flight plan validation, routing assistance, and other services related to flight preparation/trial",
+      "externalId": "domain:flight/planning",
+      "name": "Flight Planning",
+      "description": "Flight plan validation and other services related to flight planning",
+      "parentExternalId": "domain:flight"
+    },
+    {
+      "externalId": "domain:flight/rerouting",
+      "name": "Flight Rerouting",
+      "description": "Flight rerouting support",
       "parentExternalId": "domain:flight"
     },
     {

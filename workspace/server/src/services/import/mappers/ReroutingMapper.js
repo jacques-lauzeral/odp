@@ -3,95 +3,179 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
 import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
- * Mapper for REROUTING Excel documents
- * Transforms tabular sheet structure into ODIP entities
+ * Mapper for REROUTING Excel documents (Edition 4 structure)
  *
- * COLUMN INTERPRETATION:
- * ======================
+ * INPUT STRUCTURE:
+ * ================
+ * Two sheets: RR-ON and RR-OR. No OC sheet — OCs are dropped.
  *
- * ON (Operational Need) Extraction:
- * ---------------------------------
- * - 'ON ID' → internal tracking only, not used in external ID
- * - 'ON' → title (used for external ID generation)
- * - 'ON Definition' → parsed into statement and rationale
- *   - "What:" section → statement
- *   - "Why:" section → rationale
- *   - "Focus:" section → appended to statement
+ * Row 0 in each sheet is a header/label row and is skipped (identified by
+ * __EMPTY === 'ID' or 'OR ID').
  *
- * OR (Operational Requirement) Extraction:
- * ----------------------------------------
- * - 'RR ID' → internal tracking only, not used in external ID
- * - 'Title' → title (used for external ID generation)
- * - 'What (Detailed Requirement)' + 'Fit Criteria' → statement (concatenated)
- * - 'Why (Rationale)' + 'Opportunities/Risks' → rationale (concatenated)
- * - 'Use Case' → flows
- * - 'Comments' + 'Data (and other Enabler)' → privateNotes (concatenated)
- * - 'ON ID' → implementedONs (resolved via internal ID map)
- * - 'Stakeholders' → impactedStakeholders (parsed and mapped)
- * - 'OC ID' → used for OC-OR relationship tracking (resolved via internal ID map)
- * - type: 'OR', drg: 'RRT' (hardcoded)
+ * COLUMN RESOLUTION:
+ * ==================
+ * Excel column headers are long descriptive strings that may contain minor
+ * formatting variations (e.g. different quote characters) across Excel versions.
+ * Rather than hardcoding exact header strings, the mapper uses _col(row, keyword)
+ * which finds the column whose header contains the given distinctive substring
+ * (case-insensitive). Special columns __EMPTY and __EMPTY_1 are accessed directly.
  *
- * OC (Operational Change) Extraction:
- * -----------------------------------
- * - 'OC ID' → internal tracking only ('RR-OC-' prefix removed), not used in external ID
- * - 'OC Name' → title (used for external ID generation)
- * - 'OC Description' → parsed into purpose and details
- *   - Text before "In essence:" → details
- *   - Text after "In essence:" → purpose
- * - 'Target maturity' → M1 milestone (API_PUBLICATION, wave:YYYY)
- * - 'Target implementation' → M2 milestone (OPS_DEPLOYMENT, wave:YYYY)
- * - implementedORs → populated after all rows processed (relationship array)
- * - drg: 'RRT' (hardcoded)
+ * ON (Operational Need) — sheet: RR-ON
+ * -------------------------------------
+ * COL_ON_ID         → internal tracking ID (e.g. ON-RR-01); used to build
+ *                     onIdToExternalId map for OR→ON resolution
+ * COL_ON_TITLE      → title; also drives externalId generation
+ * COL_ON_STATEMENT  → statement (Quill Delta via AsciiDoc converter)
+ * COL_ON_RATIONALE  → rationale (Quill Delta)
+ * COL_ON_FLOWS      → flows (Quill Delta)
+ * COL_ON_NOTES      → privateNotes (Quill Delta); unresolved references
+ *                     are appended here
+ * COL_ON_REFERENCES → strategicDocuments: fuzzy-matched against REFERENCE_DOC_MAP;
+ *                     each line parsed as "<Name>, Ed. <version> / <note>" or
+ *                     "<Name> <version> / <note>"; unresolved lines are warned
+ *                     and appended to privateNotes
+ * __EMPTY_1         → maturity: 'Mature' → 'MATURE', 'Advanced' → 'ADVANCED',
+ *                     'Defined' → 'DRAFT'
+ * __EMPTY_2         → tentative: parsed as [startYear, endYear]; single year → [year, year]
+ * COL_ON_REFINES    → ignored (RRT DrG does not use ON→ON refines)
+ * COL_ON_AUTHOR     → ignored
+ * COL_ON_ADDL_DOC   → ignored
  *
- * External ID Format:
- * -------------------
- * - ON: oc:rrt/{title_normalized}
- * - OR: or:rrt/{title_normalized}
- * - OC: oc:rrt/{title_normalized}
+ * OR (Operational Requirement) — sheet: RR-OR
+ * --------------------------------------------
+ * COL_OR_ID         → internal tracking ID (e.g. OR-RR-1-01); used to build
+ *                     orIdToExternalId map for deferred Refines/Dependencies
+ *                     resolution
+ * COL_OR_TITLE      → title; drives externalId generation
+ * COL_OR_STATEMENT  → statement (Quill Delta)
+ * COL_OR_RATIONALE  → rationale (Quill Delta)
+ * COL_OR_FLOWS      → flows (Quill Delta)
+ * COL_OR_NOTES      → privateNotes (Quill Delta); unresolved domains and
+ *                     'Network Operations' are appended here
+ * COL_OR_IMPLEMENTS → implementedONs: one or more ON internal IDs (comma/
+ *                     semicolon separated); resolved via onIdToExternalId
+ * COL_OR_REFINES    → refinesParents: single OR internal ID; deferred
+ *                     resolution via orIdToExternalId after all ORs parsed
+ * COL_OR_DEPS       → dependencies: one or more OR internal IDs (comma
+ *                     separated); deferred resolution via orIdToExternalId
+ * COL_OR_IMPACT     → parsed into two sub-sections:
+ *                       "Stakeholder categories:" → impactedStakeholders
+ *                         (split by ';', mapped via STAKEHOLDER_SYNONYM_MAP)
+ *                       "Domains/services:" → impactedDomains
+ *                         (split by ';', mapped via DOMAIN_SYNONYM_MAP;
+ *                          'Network Operations' and other unresolved tokens
+ *                          are warned and appended to privateNotes)
+ * COL_OR_MATURITY   → maturity: accessed via row[''] (empty string key); same value mapping as ON
+ * COL_OR_AUTHOR     → ignored
+ * COL_OR_REFERENCES → ignored
+ * COL_OR_ADDL_DOC   → ignored
+ * COL_OR_COST       → ignored
  *
- * Stakeholder Mapping:
- * --------------------
- * Excel values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
- * - 'NM' / 'NMOC' → stakeholder:network/nm / stakeholder:network/nm/nmoc
- * - 'ANSP' / 'ANSPs' → stakeholder:network/ansp
- * - 'FMP' / 'FMPs' → stakeholder:network/ansp/fmp
- * - 'AO' → stakeholder:network/airspace_user/ao
- * - 'External Users' → ignored
- * - Comma and slash delimiters handled (',', '/')
+ * MATURITY MAPPING:
+ * =================
+ * 'Mature'   → 'MATURE'
+ * 'Advanced' → 'ADVANCED'
+ * 'Defined'  → 'DRAFT'
  *
- * IGNORED COLUMNS:
- * ----------------
- * The following columns are intentionally not imported:
- * - 'Contribution (e.g.CONOPS)'
- * - 'Priority'
- * - 'Date'
- * - 'Originator'
- * - 'Dependencies'
- * - 'Impacted Services'
- * - 'Main Topic'
- * - 'Reviewer'
+ * STAKEHOLDER SYNONYM MAP:
+ * ========================
+ * 'Airspace Users' / 'Airspace User' → stakeholder:network/airspace_user
+ * 'NMOC'                             → stakeholder:network/nm/nmoc
+ * 'NM'                               → stakeholder:network/nm
+ * 'ANSP' / 'ANSPs'                   → stakeholder:network/ansp
+ * 'ANSP/FMP'                         → stakeholder:network/ansp +
+ *                                       stakeholder:network/ansp/fmp
+ * 'FMP' / 'FMPs'                     → stakeholder:network/ansp/fmp
+ * 'AO'                               → stakeholder:network/airspace_user/ao
+ *
+ * DOMAIN SYNONYM MAP:
+ * ===================
+ * 'Flight Planning'    → domain:flight/flight_planning
+ * 'Rerouting Support'  → domain:flight/flight_rerouting
+ * 'Network Operations' → warn + append to privateNotes (not mapped)
+ *
+ * REFERENCE DOCUMENT MATCHING:
+ * =============================
+ * Each reference line is parsed with this pattern:
+ *   "<Name>, Ed. <version> / <note>"   (Ed. prefix variant)
+ *   "<Name> <version> / <note>"        (space-separated variant)
+ *   "<Name> / <note>"                  (no version)
+ * The name portion is matched case-insensitively against REFERENCE_DOC_MAP
+ * keyword keys. Matched → { externalId, note } added to strategicDocuments.
+ * Unmatched → warn + append raw line to privateNotes.
+ *
+ * REFERENCE_DOC_MAP keywords → externalId:
+ * 'ASM/ATFCM'         → refdoc:asm_atfcm_conops
+ * 'ASM ATFCM'         → refdoc:asm_atfcm_conops
+ * '4DT'               → refdoc:network_4d_trajectory_conops
+ * 'Network 4D'        → refdoc:network_4d_trajectory_conops
+ * 'iDL'               → refdoc:idl__airspace__conops
+ * 'NM B2B'            → refdoc:nm_b2b_conops
+ * 'Flow'              → refdoc:flow_conops
+ * 'NSP'               → refdoc:nsp
+ * 'Network Strategy'  → refdoc:nsp
+ * 'ATMMP'             → refdoc:atmmp
  *
  * RELATIONSHIPS:
- * --------------
- * - ON → OR: One-to-many (ON.externalId stored in OR.implementedONs)
- * - OC → OR: One-to-many (OR.externalId stored in OC.implementedORs)
+ * ==============
+ * ON → OR : implementedONs (resolved during OR processing)
+ * OR → OR : refinesParents (deferred — resolved after all ORs parsed)
+ * OR → OR : dependencies   (deferred — resolved after all ORs parsed)
  */
+
+// ---------------------------------------------------------------------------
+// Maturity mapping
+// ---------------------------------------------------------------------------
+const MATURITY_MAP = {
+    'Mature': 'MATURE',
+    'Advanced': 'ADVANCED',
+    'Defined': 'DRAFT'
+};
+
+// ---------------------------------------------------------------------------
+// Stakeholder synonym map
+// Tokens that appear in the Impact cell's "Stakeholder categories:" subsection.
+// ANSP/FMP is a compound token that expands to two externalIds.
+// ---------------------------------------------------------------------------
+const STAKEHOLDER_SYNONYM_MAP = {
+    'Airspace Users': ['stakeholder:network/airspace_user'],
+    'Airspace User': ['stakeholder:network/airspace_user'],
+    'NMOC': ['stakeholder:network/nm/nmoc'],
+    'NM': ['stakeholder:network/nm'],
+    'ANSP': ['stakeholder:network/ansp'],
+    'ANSPs': ['stakeholder:network/ansp'],
+    'ANSP/FMP': ['stakeholder:network/ansp', 'stakeholder:network/ansp/fmp'],
+    'FMP': ['stakeholder:network/ansp/fmp'],
+    'FMPs': ['stakeholder:network/ansp/fmp'],
+    'AO': ['stakeholder:network/airspace_user/ao']
+};
+
+// ---------------------------------------------------------------------------
+// Domain synonym map
+// Tokens that appear in the Impact cell's "Domains/services:" subsection.
+// Unresolved tokens (including 'Network Operations') are NOT in this map
+// and will be warned + appended to privateNotes.
+// ---------------------------------------------------------------------------
+const DOMAIN_SYNONYM_MAP = {
+    'Flight Planning': 'domain:flight/flight_planning',
+    'Rerouting Support': 'domain:flight/flight_rerouting'
+};
+
+// ---------------------------------------------------------------------------
+// Reference document keyword map
+// Keys are lowercase substrings to match against the reference name portion.
+// ---------------------------------------------------------------------------
+const REFERENCE_DOC_MAP = [
+    { keywords: ['asm/atfcm', 'asm atfcm'], externalId: 'refdoc:asm_atfcm_conops' },
+    { keywords: ['network 4d', '4dt', '4d trajectory'], externalId: 'refdoc:network_4d_trajectory_conops' },
+    { keywords: ['idl'], externalId: 'refdoc:idl__airspace__conops' },
+    { keywords: ['nm b2b'], externalId: 'refdoc:nm_b2b_conops' },
+    { keywords: ['flow conops', 'flow integration'], externalId: 'refdoc:flow_conops' },
+    { keywords: ['network strategy plan', 'nsp'], externalId: 'refdoc:nsp' },
+    { keywords: ['atmmp', 'atm master plan'], externalId: 'refdoc:atmmp' }
+];
+
 class ReroutingMapper extends Mapper {
-    /**
-     * Map of stakeholder synonyms to external IDs
-     * Keys: variations found in Excel (including plural forms)
-     * Values: external IDs in the ODIP system
-     */
-    static STAKEHOLDER_SYNONYM_MAP = {
-        'NM': 'stakeholder:network/nm',
-        'NMOC': 'stakeholder:network/nm/nmoc',
-        'ANSP': 'stakeholder:network/ansp',
-        'ANSPs': 'stakeholder:network/ansp',
-        'FMP': 'stakeholder:network/ansp/fmp',
-        'FMPs': 'stakeholder:network/ansp/fmp',
-        'AO': 'stakeholder:network/airspace_user/ao'
-        // 'External Users' is ignored
-    };
 
     constructor() {
         super();
@@ -99,592 +183,430 @@ class ReroutingMapper extends Mapper {
     }
 
     /**
-     * Map raw extracted Excel data to structured import format
+     * Map raw extracted Excel data to structured import format.
      * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @returns {Object} StructuredImportData with all entity collections
+     * @returns {Object} StructuredImportData
      */
     map(rawData) {
         console.log('ReroutingMapper: Processing raw data from Excel extraction');
 
-        const result = this._processNMRRSheet(rawData);
+        const onSheet = (rawData.sheets || []).find(s => s.name === 'RR-ON');
+        const orSheet = (rawData.sheets || []).find(s => s.name === 'RR-OR');
 
-        console.log(`Mapped ${result.needs.length} needs (ONs), ${result.requirements.length} requirements (ORs), and ${result.changes.length} changes (OCs) from NM-RR sheet`);
+        if (!onSheet) console.warn('WARNING: RR-ON sheet not found');
+        if (!orSheet) console.warn('WARNING: RR-OR sheet not found');
+
+        // Build onIdToExternalId map while extracting ONs
+        const onIdToExternalId = new Map();
+        const needs = onSheet ? this._processONSheet(onSheet, onIdToExternalId) : [];
+
+        // Extract ORs with deferred Refines/Dependencies resolution
+        const { requirements, orIdToExternalId } = orSheet
+            ? this._processORSheet(orSheet, onIdToExternalId)
+            : { requirements: [], orIdToExternalId: new Map() };
+
+        // Resolve deferred OR→OR references
+        this._resolveOrReferences(requirements, orIdToExternalId);
+
+        console.log(`Mapped ${needs.length} ONs and ${requirements.length} ORs from RRT sheets`);
 
         return {
             referenceDocuments: [],
             stakeholderCategories: [],
             waves: [],
-            requirements: [...result.needs, ...result.requirements],
-            changes: [...result.changes]
+            requirements: [...needs, ...requirements],
+            changes: []
         };
     }
 
+    // -------------------------------------------------------------------------
+    // ON sheet processing
+    // -------------------------------------------------------------------------
+
     /**
-     * Process NM-RR sheet and extract ONs, ORs, and OCs
-     * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @returns {Object} { needs: [], requirements: [], changes: [] }
+     * Process RR-ON sheet and populate onIdToExternalId map.
+     * @param {Object} sheet
+     * @param {Map} onIdToExternalId - populated in place
+     * @returns {Array} ON objects
      * @private
      */
-    _processNMRRSheet(rawData) {
-        const needsMap = new Map(); // Map<externalId, ON>
-        const changesMap = new Map(); // Map<externalId, OC>
+    _processONSheet(sheet, onIdToExternalId) {
+        const needs = [];
+
+        for (const row of sheet.rows) {
+            // Skip header row
+            if (row['__EMPTY'] === 'ID') continue;
+
+            const internalId = (row['__EMPTY'] || '').trim();
+            if (!internalId) continue;
+
+            const need = this._extractNeed(row);
+            if (need) {
+                needs.push(need);
+                onIdToExternalId.set(internalId, need.externalId);
+            }
+        }
+
+        console.log(`RR-ON: extracted ${needs.length} ONs`);
+        return needs;
+    }
+
+    /**
+     * Extract a single ON from a row.
+     * @param {Object} row
+     * @returns {Object|null}
+     * @private
+     */
+    _extractNeed(row) {
+        const title = (this._col(row, "need'. Keep short") || '').trim();
+        if (!title) return null;
+
+        const rawNotes = (this._col(row, "NM Private Notes") || '').trim();
+        const { strategicDocuments, unresolvedRefs } = this._parseReferences(this._col(row, "References (Mandatory (1))"));
+
+        // Append unresolved references to privateNotes
+        let privateNotesText = rawNotes;
+        if (unresolvedRefs.length > 0) {
+            const unresolvedBlock = 'Unresolved references:\n\n' + unresolvedRefs.join('\n');
+            privateNotesText = privateNotesText
+                ? privateNotesText + '\n\n---\n\n' + unresolvedBlock
+                : unresolvedBlock;
+        }
+
+        const need = {
+            type: 'ON',
+            drg: 'RRT',
+            title,
+            path: [title],
+            statement: this.converter.asciidocToDelta((this._col(row, "Express as a need") || '').trim() || null),
+            rationale: this.converter.asciidocToDelta((this._col(row, "Justify the need") || '').trim() || null),
+            flows: this.converter.asciidocToDelta((this._col(row, "flow examples that clarify the need") || '').trim() || null),
+            privateNotes: this.converter.asciidocToDelta(privateNotesText || null),
+            maturity: this._mapMaturity(row['__EMPTY_1']),
+            tentative: this._parseTentative(row['__EMPTY_2']),
+            strategicDocuments
+        };
+
+        need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
+        return need;
+    }
+
+    // -------------------------------------------------------------------------
+    // OR sheet processing
+    // -------------------------------------------------------------------------
+
+    /**
+     * Process RR-OR sheet.
+     * Returns requirements array and the orIdToExternalId map for deferred resolution.
+     * @param {Object} sheet
+     * @param {Map} onIdToExternalId
+     * @returns {{ requirements: Array, orIdToExternalId: Map }}
+     * @private
+     */
+    _processORSheet(sheet, onIdToExternalId) {
         const requirements = [];
+        const orIdToExternalId = new Map();
 
-        // Internal ID to External ID mappings
-        const onIdToExternalId = new Map(); // Map<ON_ID, externalId>
-        const ocIdToExternalId = new Map(); // Map<OC_ID, externalId>
+        // First pass: extract all ORs and build orIdToExternalId
+        for (const row of sheet.rows) {
+            // Skip header row
+            if (row['__EMPTY'] === 'OR ID') continue;
 
-        // Track OC -> OR relationships (using external IDs)
-        const ocToOrMap = new Map(); // Map<ocExternalId, Set<orExternalId>>
+            const internalId = (row['__EMPTY'] || '').trim();
+            if (!internalId) continue;
 
-        // Find NM-RR sheet
-        const nmrrSheet = (rawData.sheets || []).find(sheet =>
-            sheet.name === 'NM-RR'
+            const requirement = this._extractRequirement(row, onIdToExternalId);
+            if (requirement) {
+                // Temporarily store raw internal IDs for deferred resolution
+                requirement._rawRefines = (this._col(row, "OR Reference - Reference to parent OR") || '').trim() || null;
+                requirement._rawDeps = (this._col(row, "Dependencies (Optional)") || '').trim() || null;
+
+                requirements.push(requirement);
+                orIdToExternalId.set(internalId, requirement.externalId);
+            }
+        }
+
+        console.log(`RR-OR: extracted ${requirements.length} ORs`);
+        return { requirements, orIdToExternalId };
+    }
+
+    /**
+     * Extract a single OR from a row.
+     * @param {Object} row
+     * @param {Map} onIdToExternalId
+     * @returns {Object|null}
+     * @private
+     */
+    _extractRequirement(row, onIdToExternalId) {
+        const title = (this._col(row, "require'. Keep short") || '').trim();
+        if (!title) return null;
+
+        // Resolve implementedONs
+        const implementedONs = this._resolveIds(
+            this._col(row, "Implements (Mandatory"), onIdToExternalId, 'ON', title
         );
 
-        if (!nmrrSheet) {
-            console.warn('WARNING: NM-RR sheet not found in Excel workbook');
-            return { needs: [], requirements: [], changes: [] };
+        // Parse Impact column
+        const { impactedStakeholders, impactedDomains, unresolvedDomains } =
+            this._parseImpact(this._col(row, "Stakeholder categories [Reference list]"));
+
+        // Build privateNotes — start with raw notes, append unresolved domains
+        const rawNotes = (this._col(row, "NM Private Notes") || '').trim();
+        let privateNotesText = rawNotes;
+        if (unresolvedDomains.length > 0) {
+            const block = 'Unresolved domains/services:\n\n' + unresolvedDomains.join('\n');
+            privateNotesText = privateNotesText
+                ? privateNotesText + '\n\n---\n\n' + block
+                : block;
         }
 
-        console.log(`Found NM-RR sheet with ${nmrrSheet.rows.length} rows`);
-
-        // Process each row
-        for (const row of nmrrSheet.rows) {
-            const requirement = this._processNMRRRow(
-                row,
-                needsMap,
-                changesMap,
-                ocToOrMap,
-                onIdToExternalId,
-                ocIdToExternalId
-            );
-            if (requirement) {
-                requirements.push(requirement);
-            }
-        }
-
-        // Now populate implementedORs for each OC
-        for (const [ocExternalId, orExternalIds] of ocToOrMap.entries()) {
-            const oc = changesMap.get(ocExternalId);
-            if (oc) {
-                oc.implementedORs = Array.from(orExternalIds);
-            }
-        }
-
-        console.log(`Mapped ${needsMap.size} needs (ONs), ${requirements.length} requirements (ORs), and ${changesMap.size} changes (OCs)`);
-        console.log(`OC-OR relationships: ${ocToOrMap.size} OCs linked to ORs`);
-
-        return {
-            needs: Array.from(needsMap.values()),
-            requirements: requirements,
-            changes: Array.from(changesMap.values())
+        const requirement = {
+            type: 'OR',
+            drg: 'RRT',
+            title,
+            statement: this.converter.asciidocToDelta((this._col(row, "Express as a requirement") || '').trim() || null),
+            rationale: this.converter.asciidocToDelta((this._col(row, "Justify the requirement") || '').trim() || null),
+            flows: this.converter.asciidocToDelta((this._col(row, "flow examples that clarify the requirement") || '').trim() || null),
+            privateNotes: this.converter.asciidocToDelta(privateNotesText || null),
+            implementedONs,
+            refinesParents: [],   // populated by _resolveOrReferences
+            dependencies: [],     // populated by _resolveOrReferences
+            impactedStakeholders,
+            impactedDomains,
+            maturity: this._mapMaturity(row[''])
         };
-    }
 
-    /**
-     * Process a single row from NM-RR sheet
-     * Extracts ON (if new), OC (if new), and OR
-     * @param {Object} row - Row object with column headers as keys
-     * @param {Map} needsMap - Map of ON externalId -> ON object
-     * @param {Map} changesMap - Map of OC externalId -> OC object
-     * @param {Map} ocToOrMap - Map of OC externalId -> Set of OR externalIds
-     * @param {Map} onIdToExternalId - Map of ON internal ID -> external ID
-     * @param {Map} ocIdToExternalId - Map of OC internal ID -> external ID
-     * @returns {Object|null} Requirement object or null if invalid
-     * @private
-     */
-    _processNMRRRow(row, needsMap, changesMap, ocToOrMap, onIdToExternalId, ocIdToExternalId) {
-        // Extract ON ID from column A
-        const onId = row['ON ID'];
-        let onExternalId = null;
-        let need = null;
-
-        if (onId && onId.trim() !== '') {
-            const normalizedOnId = onId.trim();
-
-            // Check if we already processed this ON
-            if (onIdToExternalId.has(normalizedOnId)) {
-                onExternalId = onIdToExternalId.get(normalizedOnId);
-                // Retrieve ON from needsMap
-                need = needsMap.get(onExternalId);
-            } else {
-                // Extract the full ON object
-                need = this._extractNeed(row);
-                if (need) {
-                    onExternalId = need.externalId;
-                    // Store in both maps
-                    needsMap.set(onExternalId, need);
-                    onIdToExternalId.set(normalizedOnId, onExternalId);
-                }
-            }
-        }
-
-        // Extract OC ID from OC ID column
-        const ocId = row['OC ID'];
-        let ocExternalId = null;
-
-        if (ocId && ocId.trim() !== '') {
-            const normalizedOcId = this._cleanOcId(ocId.trim());
-
-            // Check if we already processed this OC
-            if (ocIdToExternalId.has(normalizedOcId)) {
-                ocExternalId = ocIdToExternalId.get(normalizedOcId);
-            } else {
-                // Extract the full OC object
-                const change = this._extractChange(row);
-                if (change) {
-                    ocExternalId = change.externalId;
-                    // Store in both maps
-                    changesMap.set(ocExternalId, change);
-                    ocIdToExternalId.set(normalizedOcId, ocExternalId);
-                }
-            }
-        }
-
-        // Extract the OR (Operational Requirement), passing the need for path inheritance
-        const requirement = this._extractRequirement(row, need);
-
-        if (!requirement) {
-            return null;
-        }
-
-        // Link OR -> ON
-        if (onExternalId) {
-            requirement.implementedONs = [onExternalId];
-        }
-
-        // Track OC -> OR relationship (for later processing)
-        if (ocExternalId) {
-            if (!ocToOrMap.has(ocExternalId)) {
-                ocToOrMap.set(ocExternalId, new Set());
-            }
-            ocToOrMap.get(ocExternalId).add(requirement.externalId);
-        }
-
+        requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
         return requirement;
     }
 
     /**
-     * Clean OC ID by removing 'RR-OC-' prefix
-     * @param {string} ocId - Raw OC ID from Excel
-     * @returns {string} Cleaned OC ID
+     * Second pass: resolve raw internal OR IDs stored in _rawRefines / _rawDeps.
+     * Cleans up temporary fields after resolution.
+     * @param {Array} requirements
+     * @param {Map} orIdToExternalId
      * @private
      */
-    _cleanOcId(ocId) {
-        if (ocId.startsWith('RR-OC-')) {
-            return ocId.substring(6);
+    _resolveOrReferences(requirements, orIdToExternalId) {
+        for (const req of requirements) {
+            if (req._rawRefines) {
+                req.refinesParents = this._resolveIds(
+                    req._rawRefines, orIdToExternalId, 'OR (refines)', req.title
+                );
+            }
+            if (req._rawDeps) {
+                req.dependencies = this._resolveIds(
+                    req._rawDeps, orIdToExternalId, 'OR (dependency)', req.title
+                );
+            }
+            delete req._rawRefines;
+            delete req._rawDeps;
         }
-        return ocId;
+    }
+
+    // -------------------------------------------------------------------------
+    // Parsing helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Map maturity string to ODIP maturity value.
+     * @param {string} value
+     * @returns {string|null}
+     * @private
+     */
+    _mapMaturity(value) {
+        if (!value) return null;
+        const trimmed = value.trim();
+        return MATURITY_MAP[trimmed] ?? null;
     }
 
     /**
-     * Extract ON (Operational Need) from row
-     * @param {Object} row - Row object
-     * @returns {Object|null} ON object
+     * Resolve a comma/semicolon-separated list of internal IDs to externalIds.
+     * Warns on unresolved IDs.
+     * @param {string} rawValue
+     * @param {Map} idMap
+     * @param {string} context - for warning messages
+     * @param {string} entityTitle - for warning messages
+     * @returns {Array<string>} resolved externalIds
      * @private
      */
-    _extractNeed(row) {
-        const onTitle = row['ON'];
-        const onDefinition = row['ON Definition'];
+    _resolveIds(rawValue, idMap, context, entityTitle) {
+        if (!rawValue || rawValue.trim() === '') return [];
 
-        if (!onTitle || !onDefinition) {
-            return null;
-        }
+        const tokens = rawValue.split(/[,;]/).map(t => t.trim()).filter(Boolean);
+        const resolved = [];
 
-        const { statement, rationale } = this._extractNeedStatementAndRationale(onDefinition);
-
-        // Build object first
-        const need = {
-            type: 'ON',
-            drg: 'RRT',
-            title: onTitle.trim(),
-            path: [onTitle.trim()],
-            statement: this.converter.asciidocToDelta(statement),
-            rationale: this.converter.asciidocToDelta(rationale)
-        };
-
-        // Add external ID using the complete object (no path needed)
-        need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
-
-        return need;
-    }
-
-    /**
-     * Extract statement and rationale from ON Definition
-     * Parses structured text with "What:", "Why:", and "Focus:" sections
-     * @param {string} definition - ON Definition text from Excel
-     * @returns {Object} { statement, rationale }
-     * @private
-     */
-    _extractNeedStatementAndRationale(definition) {
-        let statement = null;
-        let rationale = null;
-
-        if (!definition || definition.trim() === '') {
-            return { statement, rationale };
-        }
-
-        const text = definition.trim();
-
-        // Extract "What:" section
-        const whatMatch = text.match(/What:\s*([\s\S]*?)(?=Why:|Focus:|$)/i);
-        if (whatMatch) {
-            statement = whatMatch[1].trim();
-        }
-
-        // Extract "Why:" section
-        const whyMatch = text.match(/Why:\s*([\s\S]*?)(?=Focus:|$)/i);
-        if (whyMatch) {
-            rationale = whyMatch[1].trim();
-        }
-
-        // Extract "Focus:" section and append to statement
-        const focusMatch = text.match(/Focus:\s*([\s\S]*?)$/i);
-        if (focusMatch) {
-            const focus = focusMatch[1].trim();
-            if (statement) {
-                statement += '\n\n**Focus:**\n\n' + focus;
+        for (const token of tokens) {
+            const externalId = idMap.get(token);
+            if (externalId) {
+                resolved.push(externalId);
             } else {
-                statement = '**Focus:**\n\n' + focus;
+                console.warn(`WARNING: Unresolved ${context} reference "${token}" in "${entityTitle}"`);
             }
         }
 
-        return { statement, rationale };
+        return resolved;
     }
 
     /**
-     * Extract OC (Operational Change) from row
-     * @param {Object} row - Row object
-     * @returns {Object|null} OC object
+     * Parse the Impact column into stakeholders, domains, and unresolved domains.
+     * Format:
+     *   "Stakeholder categories:\n<token>; <token>\n\nDomains/services:\n<token>; <token>"
+     *
+     * @param {string} impactText
+     * @returns {{ impactedStakeholders: Array, impactedDomains: Array, unresolvedDomains: Array }}
      * @private
      */
-    _extractChange(row) {
-        const ocName = row['OC Name'];
-        const ocDescription = row['OC Description'];
+    _parseImpact(impactText) {
+        const impactedStakeholders = [];
+        const impactedDomains = [];
+        const unresolvedDomains = [];
 
-        if (!ocName) {
-            return null;
+        if (!impactText || impactText.trim() === '') {
+            return { impactedStakeholders, impactedDomains, unresolvedDomains };
         }
 
-        const { purpose, details } = this._extractChangeDescription(ocDescription);
+        // Split into subsections
+        const stakeholderMatch = impactText.match(/Stakeholder categories:\s*([\s\S]*?)(?=Domains\/services:|$)/i);
+        const domainsMatch = impactText.match(/Domains\/services:\s*([\s\S]*?)$/i);
 
-        // Build object first
-        const change = {
-            drg: 'RRT',
-            title: ocName.trim(),
-            purpose: this.converter.asciidocToDelta(purpose),
-            details: this.converter.asciidocToDelta(details),
-            implementedORs: [],  // Will be populated after all rows processed
-            milestones: this._extractMilestones(row)
-        };
-
-        // Add external ID using the complete object (no path needed)
-        change.externalId = ExternalIdBuilder.buildExternalId(change, 'oc');
-
-        return change;
-    }
-
-    /**
-     * Extract milestones from Target maturity and Target implementation columns
-     * @param {Object} row - Row object
-     * @returns {Array} Array of milestone objects
-     * @private
-     */
-    _extractMilestones(row) {
-        const milestones = [];
-
-        // M1 - API Publication from Target maturity
-        const targetMaturity = row['Target maturity'];
-        if (targetMaturity) {
-            const year = this._parseYear(targetMaturity);
-            if (year) {
-                milestones.push({
-                    name: 'M1',
-                    wave: `wave:${year}`,
-                    eventTypes: ['API_PUBLICATION']
-                });
+        // Parse stakeholders
+        if (stakeholderMatch) {
+            const seenIds = new Set();
+            const tokens = stakeholderMatch[1].split(';').map(t => t.trim()).filter(Boolean);
+            for (const token of tokens) {
+                const externalIds = STAKEHOLDER_SYNONYM_MAP[token];
+                if (externalIds) {
+                    for (const id of externalIds) {
+                        if (!seenIds.has(id)) {
+                            impactedStakeholders.push({ externalId: id });
+                            seenIds.add(id);
+                        }
+                    }
+                } else {
+                    console.warn(`WARNING: Unknown stakeholder token: "${token}"`);
+                }
             }
         }
 
-        // M2 - OPS Deployment from Target implementation
-        const targetImplementation = row['Target implementation'];
-        if (targetImplementation) {
-            const year = this._parseYear(targetImplementation);
-            if (year) {
-                milestones.push({
-                    name: 'M2',
-                    wave: `wave:${year}`,
-                    eventTypes: ['OPS_DEPLOYMENT']
-                });
+        // Parse domains
+        if (domainsMatch) {
+            const seenIds = new Set();
+            const tokens = domainsMatch[1].split(';').map(t => t.trim()).filter(Boolean);
+            for (const token of tokens) {
+                const externalId = DOMAIN_SYNONYM_MAP[token];
+                if (externalId) {
+                    if (!seenIds.has(externalId)) {
+                        impactedDomains.push({ externalId });
+                        seenIds.add(externalId);
+                    }
+                } else {
+                    console.warn(`WARNING: Unresolved domain token: "${token}" — appending to privateNotes`);
+                    unresolvedDomains.push(token);
+                }
             }
         }
 
-        return milestones;
+        return { impactedStakeholders, impactedDomains, unresolvedDomains };
     }
 
     /**
-     * Parse year from date string
-     * Handles various date formats and returns 4-digit year
-     * @param {string|number} dateValue - Date value from Excel
-     * @returns {string|null} 4-digit year or null if invalid
+     * Parse the References column into strategicDocuments and unresolved lines.
+     * Each line is matched against REFERENCE_DOC_MAP by keyword.
+     * Parsing pattern: "<Name>, Ed. <version> / <note>"
+     *                  "<Name> <version> / <note>"
+     *                  "<Name> / <note>"
+     *
+     * @param {string} referencesText
+     * @returns {{ strategicDocuments: Array, unresolvedRefs: Array<string> }}
      * @private
      */
-    _parseYear(dateValue) {
-        if (!dateValue) {
-            return null;
+    _parseReferences(referencesText) {
+        const strategicDocuments = [];
+        const unresolvedRefs = [];
+
+        if (!referencesText || referencesText.trim() === '') {
+            return { strategicDocuments, unresolvedRefs };
         }
 
-        const value = String(dateValue).trim();
+        const lines = referencesText.split('\n').map(l => l.trim()).filter(Boolean);
 
-        // Try to extract 4-digit year
-        const yearMatch = value.match(/\b(20\d{2})\b/);
-        if (yearMatch) {
-            return yearMatch[1];
+        for (const line of lines) {
+            // Split name from note at ' / '
+            const slashIdx = line.indexOf(' / ');
+            const namePart = slashIdx !== -1 ? line.substring(0, slashIdx).trim() : line;
+            const note = slashIdx !== -1 ? line.substring(slashIdx + 3).trim() : null;
+
+            // Normalize name: remove "Ed." and version numbers for matching
+            const normalizedName = namePart
+                .replace(/,?\s*Ed\.\s*[\d.]+/i, '')
+                .replace(/\s+v?[\d.]+$/i, '')
+                .trim()
+                .toLowerCase();
+
+            const match = REFERENCE_DOC_MAP.find(entry =>
+                entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
+            );
+
+            if (match) {
+                const entry = { externalId: match.externalId };
+                if (note) entry.note = note;
+                // Avoid duplicate externalId+note combinations
+                const duplicate = strategicDocuments.some(
+                    d => d.externalId === entry.externalId && d.note === entry.note
+                );
+                if (!duplicate) {
+                    strategicDocuments.push(entry);
+                }
+            } else {
+                console.warn(`WARNING: Unresolved reference: "${line}"`);
+                unresolvedRefs.push(line);
+            }
         }
 
-        // Try to extract 2-digit year and convert to 4-digit
-        const shortYearMatch = value.match(/\b(\d{2})\b/);
-        if (shortYearMatch) {
-            const shortYear = parseInt(shortYearMatch[1], 10);
-            // Assume 20xx for years 00-99
-            return `20${shortYear.toString().padStart(2, '0')}`;
-        }
+        return { strategicDocuments, unresolvedRefs };
+    }
 
+    /**
+     * Parse tentative year range from ON sheet.
+     * Accepts: "2028" → [2028, 2028], "2028-2029" → [2028, 2029]
+     * @param {string} value
+     * @returns {Array|null}
+     * @private
+     */
+    _parseTentative(value) {
+        if (!value || value.trim() === '') return null;
+        const text = value.trim();
+        const rangeMatch = text.match(/^(20\d{2})-(20\d{2})$/);
+        if (rangeMatch) {
+            return [parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10)];
+        }
+        const singleMatch = text.match(/^(20\d{2})$/);
+        if (singleMatch) {
+            const year = parseInt(singleMatch[1], 10);
+            return [year, year];
+        }
+        console.warn(`WARNING: Cannot parse tentative value: "${text}"`);
         return null;
     }
 
     /**
-     * Parse OC Description into purpose and details
-     * Text before "In essence:" → details
-     * Text after "In essence:" → purpose
-     * @param {string} description - OC Description from Excel
-     * @returns {Object} { purpose, details }
+     * Find a row value by a distinctive keyword substring of the column header.
+     * Case-insensitive match. Returns empty string if no matching column found.
+     * Use this instead of hardcoded exact column header strings, which are fragile
+     * due to minor formatting variations (quote characters, whitespace) across
+     * Excel versions.
+     * @param {Object} row - Row object with column headers as keys
+     * @param {string} keyword - Distinctive substring of the column header
+     * @returns {string} Cell value or empty string
      * @private
      */
-    _extractChangeDescription(description) {
-        if (!description || description.trim() === '') {
-            return { purpose: null, details: null };
-        }
-
-        const text = description.trim();
-        const inEssencePos = text.indexOf('In essence:');
-
-        let purpose = null;
-        let details = null;
-
-        if (inEssencePos !== -1) {
-            // Text before "In essence:" goes to details
-            details = text.substring(0, inEssencePos).trim();
-
-            // Text after "In essence:" goes to purpose
-            purpose = text.substring(inEssencePos + 11).trim();
-        } else {
-            // No "In essence:" found, put everything in details
-            details = text;
-        }
-
-        return { purpose, details };
+    _col(row, keyword) {
+        const lowerKeyword = keyword.toLowerCase();
+        const key = Object.keys(row).find(k => k.toLowerCase().includes(lowerKeyword));
+        return key !== undefined ? (row[key] || '') : '';
     }
 
-    /**
-     * Extract OR (Operational Requirement) from row
-     * @param {Object} row - Row object
-     * @param {Object|null} need - ON object to inherit path from
-     * @returns {Object|null} OR object
-     * @private
-     */
-    _extractRequirement(row, need = null) {
-        const title = row['Title'];
-
-        if (!title) {
-            return null;
-        }
-
-        // Parse stakeholders
-        const impactedStakeholders = this._parseStakeholders(row['Stakeholders']);
-
-        // Build object first
-        const requirement = {
-            type: 'OR',
-            drg: 'RRT',
-            title: title.trim(),
-            path: need ? need.path : undefined,
-            statement: this.converter.asciidocToDelta(this._extractRequirementStatement(row)),
-            rationale: this.converter.asciidocToDelta(this._extractRequirementRationale(row)),
-            flows: this.converter.asciidocToDelta(this._extractRequirementFlows(row)),
-            privateNotes: this.converter.asciidocToDelta(this._extractRequirementPrivateNotes(row)),
-            implementedONs: [],  // Will be populated by caller
-            impactedStakeholders: impactedStakeholders
-        };
-
-        // Add external ID using the complete object (no path needed)
-        requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
-
-        return requirement;
-    }
-
-    /**
-     * Extract statement from row
-     * Appends Fit Criteria if present
-     * @param {Object} row - Row object
-     * @returns {string|null} Statement text
-     * @private
-     */
-    _extractRequirementStatement(row) {
-        const statement = row['What (Detailed Requirement)'];
-        const fitCriteria = row['Fit Criteria'];
-
-        if (!statement && !fitCriteria) {
-            return null;
-        }
-
-        let result = statement || '';
-
-        // Append Fit Criteria if present
-        if (fitCriteria && fitCriteria.trim() !== '') {
-            if (result) {
-                result += '\n\n**Fit Criteria:**\n\n' + fitCriteria.trim();
-            } else {
-                result = '**Fit Criteria:**\n\n' + fitCriteria.trim();
-            }
-        }
-
-        return result || null;
-    }
-
-    /**
-     * Extract rationale from row
-     * Appends Opportunities/Risks if present
-     * @param {Object} row - Row object
-     * @returns {string|null} Rationale text
-     * @private
-     */
-    _extractRequirementRationale(row) {
-        const rationale = row['Why (Rationale)'];
-        const opportunitiesRisks = row['Opportunities/Risks'];
-
-        if (!rationale && !opportunitiesRisks) {
-            return null;
-        }
-
-        let result = rationale || '';
-
-        // Append Opportunities/Risks if present
-        if (opportunitiesRisks && opportunitiesRisks.trim() !== '') {
-            if (result) {
-                result += '\n\n**Opportunities/Risks:**\n\n' + opportunitiesRisks.trim();
-            } else {
-                result = '**Opportunities/Risks:**\n\n' + opportunitiesRisks.trim();
-            }
-        }
-
-        return result || null;
-    }
-
-    /**
-     * Extract flows from row
-     * Uses Use Case as content
-     * @param {Object} row - Row object
-     * @returns {string|null} Flows text
-     * @private
-     */
-    _extractRequirementFlows(row) {
-        const useCase = row['Use Case'];
-
-        if (!useCase || useCase.trim() === '') {
-            return null;
-        }
-
-        return 'Use Case:\n\n' + useCase.trim();
-    }
-
-    /**
-     * Extract private notes from row
-     * Includes Comments and Data (and other Enabler) sections
-     * @param {Object} row - Row object
-     * @returns {string|null} Private notes text
-     * @private
-     */
-    _extractRequirementPrivateNotes(row) {
-        const comments = row['Comments'];
-        const dataEnablers = row['Data (and other Enabler)'];
-
-        if (!comments && !dataEnablers) {
-            return null;
-        }
-
-        let result = '';
-
-        // Add Comments section if present
-        if (comments && comments.trim() !== '') {
-            result = `**Comments:**\n\n${comments.trim()}`;
-        }
-
-        // Add Data section if present
-        if (dataEnablers && dataEnablers.trim() !== '') {
-            if (result) {
-                result += '\n\n---\n\n**Data (and other Enabler):**\n\n' + dataEnablers.trim();
-            } else {
-                result = '**Data (and other Enabler):**\n\n' + dataEnablers.trim();
-            }
-        }
-
-        return result || null;
-    }
-
-    /**
-     * Parse stakeholders column and map to reference objects
-     * @param {string} stakeholdersText - Comma-separated stakeholder text from Excel
-     * @returns {Array<{externalId: string}>} Array of unique stakeholder references
-     * @private
-     */
-    _parseStakeholders(stakeholdersText) {
-        if (!stakeholdersText || stakeholdersText.trim() === '') {
-            return [];
-        }
-
-        const stakeholderRefs = [];
-        const seenIds = new Set();  // Track duplicates
-
-        // Split by comma and slash
-        const tokens = stakeholdersText.split(/[,/]/).map(t => t.trim()).filter(t => t);
-
-        for (const token of tokens) {
-            // Skip 'External Users'
-            if (token === 'External Users') {
-                continue;
-            }
-
-            const externalId = ReroutingMapper.STAKEHOLDER_SYNONYM_MAP[token];
-
-            if (externalId) {
-                // Avoid duplicates
-                if (!seenIds.has(externalId)) {
-                    stakeholderRefs.push({ externalId });
-                    seenIds.add(externalId);
-                }
-            } else {
-                console.warn(`Unknown stakeholder token: "${token}" in text: "${stakeholdersText}"`);
-            }
-        }
-
-        return stakeholderRefs;
-    }
-
-    /**
-     * Return empty output structure
-     * @private
-     */
-    _emptyOutput() {
-        return {
-            referenceDocuments: [],
-            stakeholderCategories: [],
-            waves: [],
-            requirements: [],
-            changes: []
-        };
-    }
 }
 
 export default ReroutingMapper;

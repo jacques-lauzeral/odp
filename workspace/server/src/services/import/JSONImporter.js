@@ -562,7 +562,7 @@ class JSONImporter {
                     rationale: reqData.rationale || '',
                     flows: reqData.flows || '',
                     privateNotes: reqData.privateNotes || '',
-                    maturity: reqData.maturity || 'DRAFT',
+                    maturity: 'DRAFT',  // Always create as DRAFT; real maturity applied in phase 3 after references are resolved
                     path: reqData.path || [],
                     drg: reqData.drg,
                     // All reference fields empty initially
@@ -608,9 +608,9 @@ class JSONImporter {
         // Get current requirement for version control
         const current = await OperationalRequirementService.getById(requirementId, userId);
 
-        // Resolve all reference types
+        // Resolve refinesParents from array of externalIds
         const refinesParents = this._resolveExternalIds(
-            reqData.parent ? [reqData.parent.externalId] : [],
+            reqData.refinesParents || [],
             context
         );
 
@@ -634,7 +634,13 @@ class JSONImporter {
             context
         );
 
-        // Build update request with all resolved references
+        // Resolve strategicDocuments via documentIdMap (not globalRefMap)
+        const strategicDocuments = this._resolveDocumentReferences(
+            reqData.strategicDocuments || [],
+            context
+        );
+
+        // Build update request with all resolved references and real maturity
         const updateRequest = {
             title: current.title,
             type: current.type,
@@ -642,14 +648,16 @@ class JSONImporter {
             rationale: current.rationale,
             flows: current.flows,
             privateNotes: current.privateNotes,
-            maturity: current.maturity,
+            maturity: reqData.maturity || current.maturity,
             path: current.path,
             drg: current.drg,
+            tentative: reqData.tentative !== undefined ? reqData.tentative : (current.tentative || null),
             refinesParents: refinesParents,
             impactedStakeholders: impactedStakeholders,
             impactedDomains: impactedDomains,
             implementedONs: implementedONs,
-            dependencies: dependencies
+            dependencies: dependencies,
+            strategicDocuments: strategicDocuments
         };
 
         // Update in single transaction
@@ -829,7 +837,43 @@ class JSONImporter {
         return resolved;
     }
 
-}
+    _resolveDocumentReferences(documentRefs, context) {
+        if (!Array.isArray(documentRefs)) {
+            return [];
+        }
 
+        const resolved = [];
+        const missing = [];
+
+        for (const ref of documentRefs) {
+            if (typeof ref !== 'object' || ref === null) {
+                context.warnings.push(`Invalid document reference format (expected object): ${JSON.stringify(ref)}`);
+                continue;
+            }
+
+            const externalId = ref.externalId;
+            if (!externalId) {
+                context.warnings.push(`Document reference missing externalId field: ${JSON.stringify(ref)}`);
+                continue;
+            }
+
+            const internalId = context.documentIdMap.get(externalId.toLowerCase());
+            if (internalId !== undefined) {
+                const entry = { id: internalId };
+                if (ref.note) entry.note = ref.note;
+                resolved.push(entry);
+            } else {
+                missing.push(externalId);
+            }
+        }
+
+        if (missing.length > 0) {
+            context.warnings.push(`Missing document references: ${missing.join(', ')}`);
+        }
+
+        return resolved;
+    }
+
+}
 
 export default new JSONImporter();
