@@ -658,7 +658,7 @@ export default class AbstractInteractionActivity {
             },
             {
                 key: 'domain',
-                label: 'Domain',
+                label: 'Domain Impact',
                 inputType: 'suggest',
                 placeholder: 'Type to search domains...',
                 options: this.buildOptionsFromSetupData('domains')
