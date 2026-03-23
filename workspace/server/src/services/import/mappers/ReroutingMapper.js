@@ -200,9 +200,12 @@ class ReroutingMapper extends Mapper {
         const onIdToExternalId = new Map();
         const needs = onSheet ? this._processONSheet(onSheet, onIdToExternalId) : [];
 
+        // Build onNeedsMap: externalId -> ON object (for OR path resolution)
+        const onNeedsMap = new Map(needs.map(n => [n.externalId, n]));
+
         // Extract ORs with deferred Refines/Dependencies resolution
         const { requirements, orIdToExternalId } = orSheet
-            ? this._processORSheet(orSheet, onIdToExternalId)
+            ? this._processORSheet(orSheet, onIdToExternalId, onNeedsMap)
             : { requirements: [], orIdToExternalId: new Map() };
 
         // Resolve deferred OR→OR references
@@ -303,7 +306,7 @@ class ReroutingMapper extends Mapper {
      * @returns {{ requirements: Array, orIdToExternalId: Map }}
      * @private
      */
-    _processORSheet(sheet, onIdToExternalId) {
+    _processORSheet(sheet, onIdToExternalId, onNeedsMap) {
         const requirements = [];
         const orIdToExternalId = new Map();
 
@@ -315,7 +318,7 @@ class ReroutingMapper extends Mapper {
             const internalId = (row['__EMPTY'] || '').trim();
             if (!internalId) continue;
 
-            const requirement = this._extractRequirement(row, onIdToExternalId);
+            const requirement = this._extractRequirement(row, onIdToExternalId, onNeedsMap);
             if (requirement) {
                 // Temporarily store raw internal IDs for deferred resolution
                 requirement._rawRefines = (this._col(row, "OR Reference - Reference to parent OR") || '').trim() || null;
@@ -337,7 +340,7 @@ class ReroutingMapper extends Mapper {
      * @returns {Object|null}
      * @private
      */
-    _extractRequirement(row, onIdToExternalId) {
+    _extractRequirement(row, onIdToExternalId, onNeedsMap) {
         const title = (this._col(row, "require'. Keep short") || '').trim();
         if (!title) return null;
 
@@ -345,6 +348,16 @@ class ReroutingMapper extends Mapper {
         const implementedONs = this._resolveIds(
             this._col(row, "Implements (Mandatory"), onIdToExternalId, 'ON', title
         );
+
+        // Derive path from first implemented ON
+        let path;
+        const implementsRaw = (this._col(row, "Implements (Mandatory") || '').trim();
+        const firstOnId = implementsRaw.split(/[,;]/)[0].trim();
+        const firstOnExternalId = firstOnId ? onIdToExternalId.get(firstOnId) : null;
+        const firstOn = firstOnExternalId ? onNeedsMap.get(firstOnExternalId) : null;
+        if (firstOn && firstOn.path) {
+            path = firstOn.path;
+        }
 
         // Parse Impact column
         const { impactedStakeholders, impactedDomains, unresolvedDomains } =
@@ -364,6 +377,7 @@ class ReroutingMapper extends Mapper {
             type: 'OR',
             drg: 'RRT',
             title,
+            path,
             statement: this.converter.asciidocToDelta((this._col(row, "Express as a requirement") || '').trim() || null),
             rationale: this.converter.asciidocToDelta((this._col(row, "Justify the requirement") || '').trim() || null),
             flows: this.converter.asciidocToDelta((this._col(row, "flow examples that clarify the requirement") || '').trim() || null),
