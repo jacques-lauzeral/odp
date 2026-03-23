@@ -133,7 +133,7 @@ export const changeFieldDefinitions = [
 
     // Traceability Section
     {
-        title: 'Traceability',
+        title: 'Contents',
         fields: [
             {
                 key: 'implementedORs',
