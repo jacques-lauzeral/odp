@@ -736,16 +736,27 @@ export class CollectionEntityForm {
             `;
         }
 
-        const formatted = value.map(ref => {
+        const sorted = [...value].sort((a, b) => {
+            const ta = (a?.title || a?.name || a?.id || '').toLowerCase();
+            const tb = (b?.title || b?.name || b?.id || '').toLowerCase();
+            return ta.localeCompare(tb);
+        });
+
+        const formatted = sorted.map(ref => {
             const title = this.escapeHtml(ref.title || ref.name || ref.id);
-            const note = ref.note && ref.note.trim() ? ` <span class="note-badge">[${this.escapeHtml(ref.note)}]</span>` : '';
-            return `<div class="ref-item">${title}${note}</div>`;
+            const note = ref.note && ref.note.trim()
+                ? `<div class="annotated-ref-note">${this.escapeHtml(ref.note)}</div>`
+                : '';
+            return `<div class="annotated-ref-item">
+                <span class="annotated-ref-bullet">&#8226;</span>
+                <div class="annotated-ref-body"><span class="annotated-ref-title">${title}</span>${note}</div>
+            </div>`;
         }).join('');
 
         return `
             <div class="detail-field">
                 <label>${this.escapeHtml(field.label)}</label>
-                <div class="detail-value">${formatted}</div>
+                <div class="detail-value annotated-ref-list">${formatted}</div>
             </div>
         `;
     }

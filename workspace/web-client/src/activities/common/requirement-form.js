@@ -441,11 +441,19 @@ export default class RequirementForm extends CollectionEntityForm {
     formatAnnotatedReferences(values) {
         if (!values || !Array.isArray(values) || values.length === 0) return 'None';
 
-        return values.map(ref => {
-            const title = ref.title || ref.name || ref.id || 'Unknown';
-            const note = ref.note ? ` (${ref.note})` : '';
-            return `${title}${note}`;
-        }).join(', ');
+        const sorted = [...values].sort((a, b) => {
+            const ta = (a?.title || a?.name || a?.id || '').toLowerCase();
+            const tb = (b?.title || b?.name || b?.id || '').toLowerCase();
+            return ta.localeCompare(tb);
+        });
+
+        return sorted.map(ref => {
+            const title = this.escapeHtml(ref.title || ref.name || ref.id || 'Unknown');
+            const note = ref.note
+                ? `<div class="annotated-ref-note">${this.escapeHtml(ref.note)}</div>`
+                : '';
+            return `<div class="annotated-ref-item">${title}${note}</div>`;
+        }).join('');
     }
 
     /**

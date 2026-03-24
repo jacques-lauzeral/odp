@@ -446,6 +446,58 @@
     justify-content: flex-end;
 }
 
+
+/* Annotated Reference List - Read-Only Detail View */
+.annotated-ref-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.annotated-ref-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2, 0.5rem);
+    padding: var(--space-2, 0.5rem) 0;
+    border-bottom: 1px solid var(--border-secondary, #f3f4f6);
+}
+
+.annotated-ref-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.annotated-ref-item:first-child {
+    padding-top: 0;
+}
+
+.annotated-ref-bullet {
+    color: var(--text-tertiary, #9ca3af);
+    font-size: var(--font-size-sm, 0.875rem);
+    flex-shrink: 0;
+    line-height: 1.4;
+}
+
+.annotated-ref-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 0.25rem);
+    min-width: 0;
+}
+
+.annotated-ref-title {
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--text-primary, #111827);
+    line-height: 1.4;
+}
+
+.annotated-ref-note {
+    font-size: var(--font-size-xs, 0.75rem);
+    color: var(--text-tertiary, #6b7280);
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
 /* Quill Rich Text Editor Integration */
 .quill-editor {
     background-color: white;

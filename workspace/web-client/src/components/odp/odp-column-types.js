@@ -424,28 +424,27 @@ export const annotatedReferenceListColumn = {
     /**
      * Render a list of annotated references (EntityReference with optional notes)
      * Format: {id, title, note}
-     * Display: "Title[Note text]" with full note in tooltip
+     * Display: title only (sorted alphabetically), note excluded from column view
      */
     render: (value, column, item, context) => {
         if (!value || !Array.isArray(value) || value.length === 0) {
             return column.noneLabel || '-';
         }
 
+        // Sort alphabetically by title before display
+        const sorted = [...value].sort((a, b) => {
+            const ta = (a?.title || a?.name || a?.id || '').toLowerCase();
+            const tb = (b?.title || b?.name || b?.id || '').toLowerCase();
+            return ta.localeCompare(tb);
+        });
+
         // Show first few items with overflow indicator
         const maxDisplay = column.maxDisplay || 2;
-        const displayItems = value.slice(0, maxDisplay);
-        const remainingCount = value.length - displayItems.length;
+        const displayItems = sorted.slice(0, maxDisplay);
+        const remainingCount = sorted.length - displayItems.length;
 
         let html = displayItems.map(ref => {
             const title = escapeHtml(ref?.title || ref?.name || ref?.id || 'Unknown');
-            const note = ref?.note;
-
-            if (note && note.trim() !== '') {
-                const truncatedNote = truncate(note, 16);
-                const fullNote = escapeHtml(note);
-                return `<span class="ref-with-note" title="${fullNote}">${title} [${escapeHtml(truncatedNote)}]</span>`;
-            }
-
             return `<span class="reference-item">${title}</span>`;
         }).join(', ');
 
