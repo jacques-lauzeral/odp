@@ -7,8 +7,8 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * INPUT STRUCTURE:
  * ================
- * Two sheets: RR-ON and RR-OR. No OC sheet — OCs are dropped.
- *
+ * Two sheets: RR-ON (Operational Needs) and RR-OR (Operational Requirements).
+ * No OC sheet — OCs are not present in this DrG's material.
  * Row 0 in each sheet is a header/label row and is skipped (identified by
  * __EMPTY === 'ID' or 'OR ID').
  *
@@ -18,58 +18,52 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * formatting variations (e.g. different quote characters) across Excel versions.
  * Rather than hardcoding exact header strings, the mapper uses _col(row, keyword)
  * which finds the column whose header contains the given distinctive substring
- * (case-insensitive). Special columns __EMPTY and __EMPTY_1 are accessed directly.
+ * (case-insensitive). Special columns __EMPTY, __EMPTY_1, __EMPTY_2, and row['']
+ * are accessed directly by key.
  *
  * ON (Operational Need) — sheet: RR-ON
  * -------------------------------------
- * COL_ON_ID         → internal tracking ID (e.g. ON-RR-01); used to build
- *                     onIdToExternalId map for OR→ON resolution
- * COL_ON_TITLE      → title; also drives externalId generation
- * COL_ON_STATEMENT  → statement (Quill Delta via AsciiDoc converter)
- * COL_ON_RATIONALE  → rationale (Quill Delta)
- * COL_ON_FLOWS      → flows (Quill Delta)
- * COL_ON_NOTES      → privateNotes (Quill Delta); unresolved references
- *                     are appended here
- * COL_ON_REFERENCES → strategicDocuments: fuzzy-matched against REFERENCE_DOC_MAP;
- *                     each line parsed as "<Name>, Ed. <version> / <note>" or
- *                     "<Name> <version> / <note>"; unresolved lines are warned
- *                     and appended to privateNotes
- * __EMPTY_1         → maturity: 'Mature' → 'MATURE', 'Advanced' → 'ADVANCED',
- *                     'Defined' → 'DRAFT'
- * __EMPTY_2         → tentative: parsed as [startYear, endYear]; single year → [year, year]
- * COL_ON_REFINES    → ignored (RRT DrG does not use ON→ON refines)
- * COL_ON_AUTHOR     → ignored
- * COL_ON_ADDL_DOC   → ignored
+ * __EMPTY                            → internal tracking ID (e.g. ON-RR-01);
+ *                                      used to build onIdToExternalId map
+ * keyword: "need'. Keep short"       → title; drives externalId and path
+ * keyword: "Express as a need"       → statement (Quill Delta)
+ * keyword: "Justify the need"        → rationale (Quill Delta)
+ * keyword: "clarify the need"        → flows (Quill Delta)
+ * keyword: "NM Private Notes"        → privateNotes (Quill Delta);
+ *                                      unresolved references appended here
+ * keyword: "References (Mandatory"   → strategicDocuments (see REFERENCE
+ *                                      DOCUMENT MATCHING below)
+ * __EMPTY_1                          → maturity (see MATURITY MAPPING)
+ * __EMPTY_2                          → tentative: "YYYY" → [YYYY, YYYY];
+ *                                      "YYYY-YYYY" → [start, end]
+ * keyword: "ON Reference - Reference to parent ON" → ignored (RRT does not
+ *                                      use ON→ON refines)
+ * Author, Additional Documentation   → ignored
  *
  * OR (Operational Requirement) — sheet: RR-OR
  * --------------------------------------------
- * COL_OR_ID         → internal tracking ID (e.g. OR-RR-1-01); used to build
- *                     orIdToExternalId map for deferred Refines/Dependencies
- *                     resolution
- * COL_OR_TITLE      → title; drives externalId generation
- * COL_OR_STATEMENT  → statement (Quill Delta)
- * COL_OR_RATIONALE  → rationale (Quill Delta)
- * COL_OR_FLOWS      → flows (Quill Delta)
- * COL_OR_NOTES      → privateNotes (Quill Delta); unresolved domains and
- *                     'Network Operations' are appended here
- * COL_OR_IMPLEMENTS → implementedONs: one or more ON internal IDs (comma/
- *                     semicolon separated); resolved via onIdToExternalId
- * COL_OR_REFINES    → refinesParents: single OR internal ID; deferred
- *                     resolution via orIdToExternalId after all ORs parsed
- * COL_OR_DEPS       → dependencies: one or more OR internal IDs (comma
- *                     separated); deferred resolution via orIdToExternalId
- * COL_OR_IMPACT     → parsed into two sub-sections:
- *                       "Stakeholder categories:" → impactedStakeholders
- *                         (split by ';', mapped via STAKEHOLDER_SYNONYM_MAP)
- *                       "Domains/services:" → impactedDomains
- *                         (split by ';', mapped via DOMAIN_SYNONYM_MAP;
- *                          'Network Operations' and other unresolved tokens
- *                          are warned and appended to privateNotes)
- * COL_OR_MATURITY   → maturity: accessed via row[''] (empty string key); same value mapping as ON
- * COL_OR_AUTHOR     → ignored
- * COL_OR_REFERENCES → ignored
- * COL_OR_ADDL_DOC   → ignored
- * COL_OR_COST       → ignored
+ * __EMPTY                            → internal tracking ID (e.g. OR-RR-1-01);
+ *                                      used to build orIdToExternalId map
+ * keyword: "require'. Keep short"    → title; drives externalId generation
+ * keyword: "Express as a requirement"→ statement (Quill Delta)
+ * keyword: "Justify the requirement" → rationale (Quill Delta)
+ * keyword: "clarify the requirement" → flows (Quill Delta)
+ * keyword: "NM Private Notes"        → privateNotes (Quill Delta);
+ *                                      unresolved domains appended here
+ * keyword: "Implements (Mandatory"   → implementedONs (ON internal IDs,
+ *                                      comma/semicolon separated); first ON
+ *                                      also drives OR path (inherits ON title)
+ * keyword: "OR Reference - Reference to parent OR" → refinesParents (single
+ *                                      OR internal ID); deferred resolution
+ * keyword: "Dependencies (Optional)" → dependencies (OR internal IDs, comma
+ *                                      separated); deferred resolution
+ * keyword: "Stakeholder categories"  → impactedStakeholders (split by ';',
+ *                                      mapped via STAKEHOLDER_SYNONYM_MAP)
+ *                                      and impactedDomains (split by ';',
+ *                                      mapped via DOMAIN_SYNONYM_MAP)
+ * row[''] (empty key)                → maturity (see MATURITY MAPPING)
+ * Author, References, Additional
+ * Documentation, Cost Assessment     → ignored
  *
  * MATURITY MAPPING:
  * =================
@@ -96,25 +90,27 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * REFERENCE DOCUMENT MATCHING:
  * =============================
- * Each reference line is parsed with this pattern:
- *   "<Name>, Ed. <version> / <note>"   (Ed. prefix variant)
- *   "<Name> <version> / <note>"        (space-separated variant)
- *   "<Name> / <note>"                  (no version)
- * The name portion is matched case-insensitively against REFERENCE_DOC_MAP
- * keyword keys. Matched → { externalId, note } added to strategicDocuments.
- * Unmatched → warn + append raw line to privateNotes.
+ * The References column is parsed line by line. Each line follows:
+ *   "<n>, Ed. <version> / <note>"  or
+ *   "<n> <version> / <note>"       or
+ *   "<n> / <note>"
+ * Before line-by-line processing, _expandNspReferences detects the pattern:
+ *   "Network Strategy Plan ... SO# / SO# / ..."
+ * and expands it into individual "NSP SO #" lines, each resolving to
+ * refdoc:nsp_so_# via ExternalIdBuilder normalization.
+ * All other names are matched against REFERENCE_DOC_MAP keywords.
+ * If the same document is referenced multiple times (different notes), a
+ * single strategicDocuments entry is created with all notes joined by ';\n'.
+ * Unresolved lines are warned and appended to privateNotes.
  *
- * REFERENCE_DOC_MAP keywords → externalId:
- * 'ASM/ATFCM'         → refdoc:asm_atfcm_conops
- * 'ASM ATFCM'         → refdoc:asm_atfcm_conops
- * '4DT'               → refdoc:network_4d_trajectory_conops
- * 'Network 4D'        → refdoc:network_4d_trajectory_conops
- * 'iDL'               → refdoc:idl__airspace__conops
- * 'NM B2B'            → refdoc:nm_b2b_conops
- * 'Flow'              → refdoc:flow_conops
- * 'NSP'               → refdoc:nsp
- * 'Network Strategy'  → refdoc:nsp
- * 'ATMMP'             → refdoc:atmmp
+ * REFERENCE_DOC_MAP keywords → refdoc externalId:
+ * 'ASM/ATFCM' / 'ASM ATFCM'  → refdoc:asm_atfcm_conops
+ * 'Network 4D' / '4DT'        → refdoc:network_4d_trajectory_conops
+ * 'iDL'                       → refdoc:idl__airspace__conops
+ * 'NM B2B'                    → refdoc:nm_b2b_conops
+ * 'Flow'                      → refdoc:flow_conops
+ * 'NSP' / 'Network Strategy'  → refdoc:nsp (root; individual SOs via expansion)
+ * 'ATMMP'                     → refdoc:atmmp
  *
  * RELATIONSHIPS:
  * ==============
@@ -536,14 +532,19 @@ class ReroutingMapper extends Mapper {
      * @private
      */
     _parseReferences(referencesText) {
-        const strategicDocuments = [];
         const unresolvedRefs = [];
 
         if (!referencesText || referencesText.trim() === '') {
-            return { strategicDocuments, unresolvedRefs };
+            return { strategicDocuments: [], unresolvedRefs };
         }
 
-        const lines = referencesText.split('\n').map(l => l.trim()).filter(Boolean);
+        const lines = this._expandNspReferences(
+            referencesText.split('\n').map(l => l.trim()).filter(Boolean)
+        );
+
+        // Accumulate notes per externalId — same document referenced multiple times
+        // with different notes gets a single entry with notes joined by ';\n'
+        const notesMap = new Map(); // externalId -> string[]
 
         for (const line of lines) {
             // Split name from note at ' / '
@@ -558,19 +559,23 @@ class ReroutingMapper extends Mapper {
                 .trim()
                 .toLowerCase();
 
-            const match = REFERENCE_DOC_MAP.find(entry =>
-                entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
-            );
+            // Special case: expanded NSP SO lines e.g. "NSP SO 1"
+            const nspSoMatch = namePart.match(/^NSP SO (\d+)$/i);
+            const externalId = nspSoMatch
+                ? `refdoc:nsp_so_${nspSoMatch[1]}`
+                : (() => {
+                    const match = REFERENCE_DOC_MAP.find(entry =>
+                        entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
+                    );
+                    return match ? match.externalId : null;
+                })();
 
-            if (match) {
-                const entry = { externalId: match.externalId };
-                if (note) entry.note = note;
-                // Avoid duplicate externalId+note combinations
-                const duplicate = strategicDocuments.some(
-                    d => d.externalId === entry.externalId && d.note === entry.note
-                );
-                if (!duplicate) {
-                    strategicDocuments.push(entry);
+            if (externalId) {
+                if (!notesMap.has(externalId)) {
+                    notesMap.set(externalId, []);
+                }
+                if (note) {
+                    notesMap.get(externalId).push(note);
                 }
             } else {
                 console.warn(`WARNING: Unresolved reference: "${line}"`);
@@ -578,7 +583,47 @@ class ReroutingMapper extends Mapper {
             }
         }
 
+        // Build strategicDocuments array — one entry per externalId
+        const strategicDocuments = [];
+        for (const [externalId, notes] of notesMap.entries()) {
+            const entry = { externalId };
+            if (notes.length > 0) {
+                entry.note = notes.join(';\n');
+            }
+            strategicDocuments.push(entry);
+        }
+
         return { strategicDocuments, unresolvedRefs };
+    }
+
+    /**
+     * Expand NSP multi-SO reference lines into individual lines.
+     * Pattern: "Network Strategy Plan 2025-2029 SO1 / SO4 / SO9"
+     * Expands to: ["NSP SO 1", "NSP SO 4", "NSP SO 9"]
+     * Each expanded line is then processed by the normal reference matching pipeline,
+     * where "NSP SO 1" normalizes to refdoc:nsp_so_1 via ExternalIdBuilder.
+     * Non-matching lines are returned unchanged.
+     * @param {string[]} lines
+     * @returns {string[]}
+     * @private
+     */
+    _expandNspReferences(lines) {
+        const expanded = [];
+        for (const line of lines) {
+            // Detect: "Network Strategy Plan ... SO# / SO# / ..."
+            const nspMatch = line.match(/^Network Strategy Plan[^S]*(SO\d+(?:\s*\/\s*SO\d+)+)/i);
+            if (nspMatch) {
+                const soTokens = nspMatch[1].split('/').map(t => t.trim()).filter(Boolean);
+                for (const token of soTokens) {
+                    // Normalise token: "SO1" → "NSP SO 1", "SO10" → "NSP SO 10"
+                    const soNum = token.replace(/^SO/i, '').trim();
+                    expanded.push(`NSP SO ${soNum}`);
+                }
+            } else {
+                expanded.push(line);
+            }
+        }
+        return expanded;
     }
 
     /**
