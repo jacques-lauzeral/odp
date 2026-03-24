@@ -138,25 +138,25 @@ export default class RequirementsEntity {
                 key: 'implementedONs', label: 'Implements', width: '150px',
                 type: 'implemented-ons', sortable: false,
                 maxDisplay: 3, groupPrefix: 'Implements',
-                appliesTo: ['on-node']
+                appliesTo: ['or-node']
             },
             dependencies: {
                 key: 'dependencies', label: 'Depends On', width: '120px',
                 type: 'entity-reference-list', sortable: false,
                 maxDisplay: 3, groupPrefix: 'Depends On',
-                appliesTo: ['on-node']
+                appliesTo: ['or-node']
             },
             impactedStakeholders: {
                 key: 'impactedStakeholders', label: 'Stakeholders', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
                 maxDisplay: 3, setupEntity: 'stakeholderCategories',
-                appliesTo: ['on-node']
+                appliesTo: ['or-node']
             },
             impactedDomains: {
                 key: 'impactedDomains', label: 'Domains', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
                 maxDisplay: 3, setupEntity: 'domains',
-                appliesTo: ['on-node']
+                appliesTo: ['or-node']
             },
             strategicDocuments: {
                 key: 'strategicDocuments', label: 'Strategic', width: '120px',
@@ -289,8 +289,8 @@ export default class RequirementsEntity {
     getTreeColumns() {
         const c = RequirementsEntity._cols();
         return [
-            'title', 'code', 'maturity', 'implementedONs', 'dependencies',
-            'impactedStakeholders', 'impactedDomains', 'updatedBy', 'updatedAt'
+            'title', 'code', 'maturity', 'strategicDocuments',
+            'implementedONs', 'dependencies', 'impactedStakeholders', 'impactedDomains'
         ].map(k => c[k]);
     }
 

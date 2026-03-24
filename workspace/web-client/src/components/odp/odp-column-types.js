@@ -30,6 +30,7 @@ export const setupDataColumn = {
      * @param {Object} context - Context object containing setupData
      */
     render: (value, column, item, context) => {
+        context = context ?? item; // callers pass context in item position
         if (!value) return '-';
 
         // If value is already an object with name/title, use it directly
@@ -148,6 +149,7 @@ export const multiSetupDataColumn = {
      * Render multiple setup data references
      */
     render: (value, column, item, context) => {
+        context = context ?? item; // callers pass context in item position
         if (!value || !Array.isArray(value) || value.length === 0) {
             return '-';
         }
@@ -424,9 +426,10 @@ export const annotatedReferenceListColumn = {
     /**
      * Render a list of annotated references (EntityReference with optional notes)
      * Format: {id, title, note}
-     * Display: title only (sorted alphabetically), note excluded from column view
+     * Display: "Title[Note text]" with full note in tooltip
      */
     render: (value, column, item, context) => {
+        context = context ?? item; // callers pass context in item position
         if (!value || !Array.isArray(value) || value.length === 0) {
             return column.noneLabel || '-';
         }
@@ -448,8 +451,7 @@ export const annotatedReferenceListColumn = {
             if (!context?.setupData || !column.setupEntity) return undefined;
             const collection = context.setupData[column.setupEntity];
             if (!Array.isArray(collection)) return undefined;
-            // eslint-disable-next-line eqeqeq
-            const match = collection.find(e => e.id == refId);
+            const match = collection.find(e => e.id == refId); // eslint-disable-line eqeqeq
             return match?.description || undefined;
         };
 
@@ -548,6 +550,7 @@ export const waveColumn = {
      * Render wave with year/quarter format
      */
     render: (value, column, item, context) => {
+        context = context ?? item; // callers pass context in item position
         if (!value) return '-';
 
         // If value is a wave object
