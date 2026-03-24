@@ -725,22 +725,23 @@ class DocxExtractor {
     }
 
     /**
-     * Resize image to normalized width while preserving aspect ratio
-     * Only resizes images LARGER than max width - small icons preserved as-is
-     * Max width: 12.5cm = 472 pixels at 96 DPI
+     * Resize image to fit within normalised bounds while preserving aspect ratio.
+     * Only resizes images LARGER than the bounding box - small icons preserved as-is.
+     * Max size: 600 × 840 px (~15.9cm × 22.2cm at 96 DPI, within A4 content area)
      * @param {string} base64Image - Base64 encoded image data
      * @param {string} contentType - MIME type (e.g., 'image/png', 'image/jpeg')
      * @returns {Promise<string>} Base64 encoded resized image (or original if smaller)
      * @private
      */
     async _resizeImage(base64Image, contentType) {
-        const MAX_WIDTH = 472; // 12.5cm at 96 DPI
+        const MAX_WIDTH = 600;  // ~15.9cm at 96 DPI
+        const MAX_HEIGHT = 840; // ~22.2cm at 96 DPI
 
         try {
             // Decode base64 to buffer
             const imageBuffer = Buffer.from(base64Image, 'base64');
 
-            // Get image metadata to calculate aspect ratio
+            // Get image metadata to check dimensions
             const metadata = await sharp(imageBuffer).metadata();
 
             if (!metadata.width || !metadata.height) {
@@ -748,24 +749,20 @@ class DocxExtractor {
                 return base64Image;
             }
 
-            // Only resize if image is LARGER than max width
+            // Only resize if image exceeds either bound
             // Small images (icons, inline graphics) preserved at original size
-            if (metadata.width <= MAX_WIDTH) {
-                console.log(`Keeping original size: ${metadata.width}x${metadata.height} (≤${MAX_WIDTH}px)`);
+            if (metadata.width <= MAX_WIDTH && metadata.height <= MAX_HEIGHT) {
+                console.log(`Keeping original size: ${metadata.width}x${metadata.height} (within bounds)`);
                 return base64Image;
             }
 
-            // Calculate proportional height based on max width
-            const aspectRatio = metadata.height / metadata.width;
-            const targetHeight = Math.round(MAX_WIDTH * aspectRatio);
+            console.log(`Resizing large image: ${metadata.width}x${metadata.height} → max ${MAX_WIDTH}x${MAX_HEIGHT}`);
 
-            console.log(`Resizing large image: ${metadata.width}x${metadata.height} → ${MAX_WIDTH}x${targetHeight}`);
-
-            // Resize image maintaining aspect ratio
+            // Resize to fit within bounding box, preserving aspect ratio, never enlarging
             const resizedBuffer = await sharp(imageBuffer)
-                .resize(MAX_WIDTH, targetHeight, {
-                    fit: 'fill', // Exact dimensions (aspect ratio already calculated)
-                    withoutEnlargement: true // Never enlarge - safety check
+                .resize(MAX_WIDTH, MAX_HEIGHT, {
+                    fit: 'inside',          // Preserve aspect ratio, fit within bounds
+                    withoutEnlargement: true // Never enlarge
                 })
                 .toBuffer();
 

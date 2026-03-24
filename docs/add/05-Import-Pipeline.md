@@ -37,7 +37,7 @@ Parses document binary into a generic intermediate JSON representation. No busin
 - `sections[]`: hierarchical sections with `level`, `title`, `path`, `content.paragraphs`, `content.tables` — for Word documents
 - `sheets[]`: named sheets with `rows[]` — for Excel documents
 
-**Rich text handling**: paragraph text is output as AsciiDoc. Images are extracted and converted from EMF → PNG, then embedded inline as `image::data:image/png;base64,...[]` syntax. Image conversion failures are non-blocking — a warning is added to the summary and the paragraph continues without the image.
+**Rich text handling**: paragraph text is output as AsciiDoc. Images are extracted and converted from EMF → PNG, then embedded inline as `image::data:image/png;base64,...[]` syntax. Image conversion failures are non-blocking — a warning is added to the summary and the paragraph continues without the image. All extracted images are normalised to fit within a **600 × 840 px** bounding box (~15.9 × 22.2 cm at 96 DPI, within the A4 content area); aspect ratio is preserved and images smaller than the bounds are not enlarged.
 
 **`HierarchicalDocxExtractor`** handles a ZIP file containing a folder structure of `.docx` files (used by some DrGs that organise requirements across multiple documents in a folder hierarchy). Output carries a `zipEntryCount` metadata field.
 
