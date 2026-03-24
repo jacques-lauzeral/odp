@@ -463,8 +463,44 @@ Form fields in `collection-entity-form.js` use the following type identifiers:
 | `select` | Native `<select>` | 1 | Enum choices (e.g. maturity, drg) |
 | `reference` | `ReferenceManager` | 0..1 | Inline typeahead; value wrapped in `[id]` array on save |
 | `reference-list` | `ReferenceListManager` | 0..n | Chip list + search popup |
-| `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Chip list + note per item |
+| `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Table with per-item note; see §12.1c |
 | `richtext` | Quill editor | — | Delta stored as stringified JSON |
+
+### 12.1c Annotated Reference List — Rendering & Metadata
+
+**Edit / create mode (`AnnotatedMultiselectManager`)**
+
+Each selected item is displayed in an editable table row. The note field is a `<textarea>` (multi-line), allowing line breaks to be entered and preserved. Line breaks are stored as `\n` in the note string and rendered with `white-space: pre-line` in view rows.
+
+**Read-only mode (`renderAnnotatedMultiselectReadOnly`)**
+
+Items are rendered as a structured block list, sorted alphabetically by title. Each item renders as:
+
+```
+• Title (or link if url available)
+  note text (if present, muted, smaller font, pre-line)
+```
+
+`visibleWhen` is **not evaluated** in read mode — all `annotated-reference-list` fields are always rendered regardless of item type.
+
+**Metadata resolution (`_resolveAnnotatedRefMeta`)**
+
+Fields declare a `setupEntity` property referencing a `setupData` collection key (e.g. `'referenceDocuments'`). At render time, `_resolveAnnotatedRefMeta(field, refId)` looks up the full object by id and returns `{ description, url }`.
+
+- `description` — rendered as a native `title` tooltip on the item title (both form and column)
+- `url` — when present on `strategicDocuments` items, the title renders as `<a href target="_blank">` instead of a plain `<span>`
+
+**Column rendering (`annotatedReferenceListColumn`)**
+
+Items sorted alphabetically; title only displayed (note excluded). If `column.setupEntity` is set, `description` is resolved from `context.setupData` and added as a `title` tooltip.
+
+**`setupEntity` mapping:**
+
+| Field | `setupEntity` |
+|---|---|
+| `strategicDocuments` | `referenceDocuments` |
+| `impactedStakeholders` | `stakeholderCategories` |
+| `impactedDomains` | `domains` |
 
 ### 12.2 Operational Requirement Fields
 
@@ -479,7 +515,7 @@ Form fields in `collection-entity-form.js` use the following type identifiers:
 
 | Field | Type | Notes |
 |---|---|---|
-| `strategicDocuments` | `annotated-reference-list` | Rename of `documentReferences`; options from `referenceDocuments` setupData |
+| `strategicDocuments` | `annotated-reference-list` | Rename of `documentReferences`; options from `referenceDocuments` setupData; `setupEntity: 'referenceDocuments'`; titles link to `url` if present |
 | `tentative` | `tentative` | Single text input; user enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array; displayed as `"2026"` or `"2026-2028"` |
 
 **Added to OR only (`visibleWhen: type === 'OR'`):**
@@ -487,8 +523,11 @@ Form fields in `collection-entity-form.js` use the following type identifiers:
 | Field | Type | Notes |
 |---|---|---|
 | `nfrs` | `richtext` | Optional; operational non-functional requirements |
-| `impactedDomains` | `annotated-reference-list` | Options from `domains` setupData; note stored per domain |
+| `impactedStakeholders` | `annotated-reference-list` | Options from `stakeholderCategories` setupData; `setupEntity: 'stakeholderCategories'`; note stored per stakeholder |
+| `impactedDomains` | `annotated-reference-list` | Options from `domains` setupData; `setupEntity: 'domains'`; note stored per domain |
 | `refinesParents` | `reference` | Single-select typeahead via `ReferenceManager`; wraps selected id in `[id]` array on save; visible for both ON and OR |
+
+Note: `visibleWhen` conditions are enforced in `create` and `edit` modes via `renderField`. In `read` mode all fields are always rendered.
 
 **Renamed:**
 
