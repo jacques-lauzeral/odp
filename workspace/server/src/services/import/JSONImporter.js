@@ -563,7 +563,7 @@ class JSONImporter {
                     flows: reqData.flows || '',
                     privateNotes: reqData.privateNotes || '',
                     maturity: 'DRAFT',  // Always create as DRAFT; real maturity applied in phase 3 after references are resolved
-                    path: reqData.path || [],
+                    path: reqData.path ?? [],
                     drg: reqData.drg,
                     // All reference fields empty initially
                     refinesParents: [],
@@ -649,7 +649,7 @@ class JSONImporter {
             flows: current.flows,
             privateNotes: current.privateNotes,
             maturity: reqData.maturity || current.maturity,
-            path: current.path,
+            path: refinesParents.length > 0 ? null : current.path,
             drg: current.drg,
             tentative: reqData.tentative !== undefined ? reqData.tentative : (current.tentative || null),
             refinesParents: refinesParents,

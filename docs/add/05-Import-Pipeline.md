@@ -37,7 +37,7 @@ Parses document binary into a generic intermediate JSON representation. No busin
 - `sections[]`: hierarchical sections with `level`, `title`, `path`, `content.paragraphs`, `content.tables` — for Word documents
 - `sheets[]`: named sheets with `rows[]` — for Excel documents
 
-**Rich text handling**: paragraph text is output as AsciiDoc. Images are extracted and converted from EMF → PNG, then embedded inline as `image::data:image/png;base64,...[]` syntax. Image conversion failures are non-blocking — a warning is added to the summary and the paragraph continues without the image. All extracted images are normalised to fit within a **600 × 840 px** bounding box (~15.9 × 22.2 cm at 96 DPI, within the A4 content area); aspect ratio is preserved and images smaller than the bounds are not enlarged.
+**Rich text handling**: paragraph text is output as AsciiDoc. Images are extracted and converted from EMF → PNG, then embedded inline as `image::data:image/png;base64,...[]` syntax. Image conversion failures are non-blocking — a warning is added to the summary and the paragraph continues without the image.
 
 **`HierarchicalDocxExtractor`** handles a ZIP file containing a folder structure of `.docx` files (used by some DrGs that organise requirements across multiple documents in a folder hierarchy). Output carries a `zipEntryCount` metadata field.
 
@@ -69,6 +69,10 @@ The `/import/map/{drg}` endpoint accepts a `?specific=` flag selecting between t
 `MapperRegistry` holds one registered mapper per DrG code. All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DRG enum values: `4DT`, `AIRPORT`, `ASM_ATFCM`, `CRISIS_FAAS`, `FLOW`, `IDL`, `NM_B2B`, `NMUI`, `PERF`, `RRT`, `TCF`.
 
 Each mapper is responsible for: entity identification, field extraction, AsciiDoc → Quill Delta conversion for rich text fields, and cross-reference resolution (section hierarchy → `refinesParents`, "Implemented ONs" → `implementedONs`, impact references → IMPACTS arrays).
+
+**Output normalisation (all DrG mappers)**: The `cleanEntity` helper in `_buildOutput` strips null/empty fields and translates the internal `parent: { externalId }` field to `refinesParents: [externalId]` (array format expected by `JSONImporter`). The `parent` field is never emitted in the structured output.
+
+**NM_B2B_Mapper — implicit ConOPS reference**: Root ONs (no `parent`) that carry no explicit `strategicDocuments` automatically receive a reference to the NM B2B ConOPS document (`refdoc:nm_b2b_conops`) with a `note` field set to the organisational path of the requirement (e.g. `Section: 'Technical Aspects / Environments'`). Child ONs (`parent` set) are excluded from this injection — their `strategicDocuments` list remains empty.
 
 ### 3.3 StandardMapper
 
@@ -122,6 +126,8 @@ External ID → internal Neo4j ID mapping is built incrementally as entities are
 **Reference document resolution**: Reference documents are resolved via a dedicated `_resolveDocumentReferences` helper that looks up entries in `documentIdMap` (keyed by `ExternalIdBuilder.buildExternalId(doc, 'refdoc')`). This is distinct from `_resolveExternalIds`, which uses `globalRefMap` (stakeholders, domains, requirements). The separation is necessary because reference documents are stored in a different map and use the `refdoc:` prefix rather than the entity-type prefixes used by other entities.
 
 **`tentative` field**: Passed through in the phase 3 update request from `reqData.tentative`, falling back to `current.tentative` if not provided by the mapper. Required for MATURE ON requirements.
+
+**`path` / `refinesParents` XOR enforcement**: In phase 3, if `refinesParents` resolves to a non-empty array, `path` is set to `null` in the update request. This enforces the business rule that a requirement cannot have both a path and a parent simultaneously. The phase 2 create request uses `reqData.path ?? []` — preserving `null` (child requirements) as-is rather than defaulting to `[]`.
 
 ### 4.2 StandardImporter
 

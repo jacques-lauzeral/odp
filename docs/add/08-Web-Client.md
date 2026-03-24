@@ -70,6 +70,12 @@ Used for tree-table perspectives on ORs/OCs and for the ON tree in the Planning 
 
 The `pathBuilder` may produce **virtual hierarchy** (e.g. `drg-folder → on-node` derived from entity attributes) or **graph-based hierarchy** (e.g. `parent-on-node → child-on-node` derived from real `refines` relationships). Both modes are supported without component modification — the distinction lives entirely in the `pathBuilder` implementation provided by the parent entity.
 
+**Build algorithm invariants:**
+
+- Each path item carries an `id` used as the node key. Intermediate nodes (folders, parent entities) must carry `entityId` so the build algorithm can attach the entity to the node for cell rendering.
+- When a node already exists as a leaf but is later traversed as an intermediate node (parent processed before child in entity load order), it is demoted: `isLeaf = false`, `expandable = true`. This ensures correct rendering regardless of entity ordering.
+- Column renderers receive `context` in the `item` argument position (3rd arg) due to a call-site convention in both `CollectionEntity` and `TreeTableEntity`. Affected renderers normalise with `context = context ?? item` at the top of their render function.
+
 Filter matchers are injected as `options.filterMatchers` (same predicate map used by `CollectionEntity`), enabling consistent filter behaviour across all perspectives that share a `TreeTableEntity`.
 
 ### 3.5 CollectionEntityForm
@@ -587,7 +593,26 @@ Two new `type` values added to `renderInput` / `renderReadOnlyField`:
 
 All three relationship filters (`domain`, `stakeholderCategory`, `strategicDocument`) are scalar — a single ID is passed to the API and matched with `WHERE id(x) = $x` in the store.
 
-**`RequirementsEntity` column config**: `strategicDocuments` column has `appliesTo: ['on-node']` (ON only). **Grouping config** includes `strategicDocuments` as a grouping option.
+**`RequirementsEntity` column config:**
+
+| Column | `appliesTo` | Notes |
+|---|---|---|
+| `strategicDocuments` | `['on-node']` | ON only |
+| `implementedONs` | `['or-node']` | OR only |
+| `dependencies` | `['or-node']` | OR only |
+| `impactedStakeholders` | `['or-node']` | OR only |
+| `impactedDomains` | `['or-node']` | OR only |
+
+Tree column list: `title`, `code`, `maturity`, `strategicDocuments`, `implementedONs`, `dependencies`, `impactedStakeholders`, `impactedDomains`.
+
+**`RequirementsEntity` path builder (`buildRequirementTreePath`) priority:**
+
+1. `refinesParents` — if present, nest under the parent ON/OR node (graph-based hierarchy); `path` is ignored
+2. `path` — if no refines relation, build virtual folder nodes from the path array
+
+The data model guarantees that if `refinesParents` is set, the parent will always be present in the entity map. No fallback is needed. Note: the JSON importer is responsible for clearing `path` when `refinesParents` is set on import.
+
+**Grouping config** includes `strategicDocuments` as a grouping option.
 
 ---
 

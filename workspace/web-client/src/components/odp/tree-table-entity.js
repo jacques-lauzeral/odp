@@ -117,6 +117,11 @@ export default class TreeTableEntity {
                                 ? renderer.label(pathItem)
                                 : pathItem.value
                         };
+                    } else if (!isLeaf && currentNode.children[nodeId].isLeaf) {
+                        // Node was previously inserted as a leaf but now has children —
+                        // demote it to a non-leaf (refines hierarchy: parent processed before child)
+                        currentNode.children[nodeId].isLeaf = false;
+                        currentNode.children[nodeId].expandable = true;
                     }
 
                     currentNode = currentNode.children[nodeId];

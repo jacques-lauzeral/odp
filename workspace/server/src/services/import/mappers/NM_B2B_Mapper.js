@@ -175,13 +175,13 @@ class NM_B2B_Mapper extends Mapper {
             req.externalId = ExternalIdBuilder.buildExternalId(req, type.toLowerCase());
 
             // Add implicit ConOPS document reference for ONs if not explicitly provided
-            if (type === 'ON' && (!req.strategicDocuments || req.strategicDocuments.length === 0)) {
+            if (type === 'ON' && !parentReq && (!req.strategicDocuments || req.strategicDocuments.length === 0)) {
                 const conopsExternalId = ExternalIdBuilder.buildExternalId({
                     name: "NM B2B ConOPS",
                     version: "2.1"
                 }, 'refdoc');
                 req.strategicDocuments = [{
-                    documentExternalId: conopsExternalId,
+                    externalId: conopsExternalId,
                     note: `Section: '${this._getOrganizationalPathString(subsection.path)}'`
                 }];
             }
@@ -367,7 +367,7 @@ class NM_B2B_Mapper extends Mapper {
                 result.strategicDocuments = parsedDocRefs;
             } else {
                 const refsText = parsedDocRefs
-                    .map(r => r.note ? `${r.documentExternalId}: ${r.note}` : r.documentExternalId)
+                    .map(r => r.note ? `${r.externalId}: ${r.note}` : r.externalId)
                     .join('\n');
                 result.privateNotes = this.converter.asciidocToDelta(`**References:**\n${refsText}`);
             }
@@ -388,14 +388,14 @@ class NM_B2B_Mapper extends Mapper {
             const secondColonIndex = text.indexOf(':', firstColonIndex + 1);
             if (secondColonIndex > 0) {
                 return {
-                    documentExternalId: text.substring(0, secondColonIndex).trim(),
+                    externalId: text.substring(0, secondColonIndex).trim(),
                     note: text.substring(secondColonIndex + 1).trim()
                 };
             }
         }
         // No note, just the document external ID
         return {
-            documentExternalId: text.trim()
+            externalId: text.trim()
         };
     }
 
@@ -474,10 +474,15 @@ class NM_B2B_Mapper extends Mapper {
         const cleanEntity = (entity) => {
             const cleaned = {};
             for (const [key, value] of Object.entries(entity)) {
+                if (key === 'parent') continue; // translated below
                 if (value === null || value === undefined) continue;
                 if (Array.isArray(value) && value.length === 0) continue;
                 if (value === '') continue;
                 cleaned[key] = value;
+            }
+            // Translate parent.externalId to refinesParents array
+            if (entity.parent && entity.parent.externalId) {
+                cleaned.refinesParents = [entity.parent.externalId];
             }
             return cleaned;
         };

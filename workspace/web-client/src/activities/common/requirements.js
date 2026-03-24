@@ -242,6 +242,12 @@ export default class RequirementsEntity {
             if (parent) {
                 const parentPath = this.buildRequirementTreePath(parent, entityMap);
                 if (parentPath.length > 1) {
+                    // Carry entityId on the parent's own path item so the tree can
+                    // attach the parent entity to that intermediate node
+                    const parentLeafItem = parentPath[parentPath.length - 1];
+                    if (parentLeafItem && !parentLeafItem.entityId) {
+                        parentLeafItem.entityId = parent.itemId || parent.id;
+                    }
                     path.push(...parentPath.slice(1));
                 }
             }
@@ -251,6 +257,7 @@ export default class RequirementsEntity {
             type: requirement.type === 'ON' ? 'on-node' : 'or-node',
             value: requirement.title,
             id: requirement.itemId || requirement.id,
+            entityId: requirement.itemId || requirement.id,
             entity: requirement
         });
 
