@@ -109,12 +109,11 @@ export default class AnnotatedMultiselectManager {
                         <span class="document-title">${this.escapeHtml(item.title)}</span>
                     </td>
                     <td class="cell-note">
-                        <input 
-                            type="text" 
-                            class="form-control form-control-sm edit-note-input" 
+                        <textarea
+                            class="form-control form-control-sm edit-note-input"
                             data-item-id="${item.id}"
-                            value="${this.escapeHtml(item.note || '')}"
-                            maxlength="${this.config.maxNoteLength}">
+                            rows="3"
+                            maxlength="${this.config.maxNoteLength}">${this.escapeHtml(item.note || '')}</textarea>
                     </td>
                     <td class="cell-actions">
                         <button 
@@ -141,7 +140,7 @@ export default class AnnotatedMultiselectManager {
                 </td>
                 <td class="cell-note">
                     ${item.note ?
-            `<span class="note-text">${this.escapeHtml(item.note)}</span>` :
+            `<span class="note-text" style="white-space: pre-line;">${this.escapeHtml(item.note)}</span>` :
             `<span class="note-empty">No note</span>`
         }
                 </td>

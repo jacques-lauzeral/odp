@@ -169,35 +169,35 @@ export const requirementFieldDefinitions = [
                 required: false,
                 visibleWhen: (data) => data.type === 'ON',
                 maxNoteLength: 200,
-                placeholder: 'Select reference documents...',
-                noteLabel: 'Entry Point / Note',
+                placeholder: 'Select strategic documents...',
+                noteLabel: 'Note',
                 optionsKey: 'getReferenceDocumentOptions',
                 setupEntity: 'referenceDocuments',
-                helpText: 'Strategic reference documents and entry points for this operational need',
+                helpText: 'Strategic documents for this operational need',
                 formatKey: 'formatAnnotatedReferences'
             },
             {
                 key: 'implementedONs',
-                label: 'Implements (ON Requirements)',
+                label: 'Implements (ONs)',
                 type: 'reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 size: 5,
                 visibleWhen: (data) => data.type === 'OR',
                 optionsKey: 'getONRequirementOptions',
-                helpText: 'Select ON-type requirements that this OR implements',
+                helpText: 'Select ONs that this OR implements',
                 formatKey: 'formatEntityReferences',
                 formatArgs: ['ON']
             },
             {
                 key: 'refinesParents',
-                label: 'Refines (Parent Requirement)',
+                label: 'Refines (Parent)',
                 type: 'reference',
                 modes: ['create', 'read', 'edit'],
                 required: false,
                 optionsKey: 'getParentRequirementOptions',
-                placeholder: 'Type to search parent requirement...',
-                helpText: 'Select the parent requirement that this requirement refines',
+                placeholder: 'Type to search parent...',
+                helpText: 'Select the parent',
                 formatKey: 'formatEntityReferences'
             }
         ]
