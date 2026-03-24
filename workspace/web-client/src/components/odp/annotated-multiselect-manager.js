@@ -178,7 +178,7 @@ export default class AnnotatedMultiselectManager {
                         ${availableOptions.length === 0 ? 'disabled' : ''}>
                         <option value="">${this.config.placeholder}</option>
                         ${availableOptions.map(opt => `
-                            <option value="${opt.value}">${this.escapeHtml(opt.label)}</option>
+                            <option value="${opt.value}"${opt.description ? ` title="${this.escapeHtml(opt.description)}"` : ''}>${this.escapeHtml(opt.label)}</option>
                         `).join('')}
                     </select>
                 </div>
@@ -338,7 +338,7 @@ export default class AnnotatedMultiselectManager {
             dropdown.innerHTML = `
                 <option value="">${this.config.placeholder}</option>
                 ${availableOptions.map(opt => `
-                    <option value="${opt.value}">${this.escapeHtml(opt.label)}</option>
+                    <option value="${opt.value}"${opt.description ? ` title="${this.escapeHtml(opt.description)}"` : ''}>${this.escapeHtml(opt.label)}</option>
                 `).join('')}
             `;
             dropdown.disabled = availableOptions.length === 0;

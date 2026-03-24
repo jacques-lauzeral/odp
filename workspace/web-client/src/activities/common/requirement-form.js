@@ -327,7 +327,8 @@ export default class RequirementForm extends CollectionEntityForm {
         if (!this.setupData?.referenceDocuments) return [];
         return this.setupData.referenceDocuments.map(doc => ({
             value: doc.id,
-            label: doc.version ? `${doc.name} (${doc.version})` : doc.name
+            label: doc.version ? `${doc.name} (${doc.version})` : doc.name,
+            description: doc.description || undefined
         }));
     }
 
@@ -335,7 +336,8 @@ export default class RequirementForm extends CollectionEntityForm {
         if (!this.setupData?.[entityName]) return [];
         return this.setupData[entityName].map(entity => ({
             value: parseInt(entity.id, 10),
-            label: entity.name || entity.title || entity.id
+            label: entity.name || entity.title || entity.id,
+            description: entity.description || undefined
         }));
     }
 
