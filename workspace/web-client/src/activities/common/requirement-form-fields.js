@@ -172,6 +172,7 @@ export const requirementFieldDefinitions = [
                 placeholder: 'Select reference documents...',
                 noteLabel: 'Entry Point / Note',
                 optionsKey: 'getReferenceDocumentOptions',
+                setupEntity: 'referenceDocuments',
                 helpText: 'Strategic reference documents and entry points for this operational need',
                 formatKey: 'formatAnnotatedReferences'
             },
@@ -218,6 +219,7 @@ export const requirementFieldDefinitions = [
                 placeholder: 'Select stakeholder categories...',
                 noteLabel: 'Impact Note',
                 optionsKey: 'getStakeholderCategoryOptions',
+                setupEntity: 'stakeholderCategories',
                 helpText: 'Select affected stakeholder categories and optionally add notes about the nature of the impact'
             },
             {
@@ -231,6 +233,7 @@ export const requirementFieldDefinitions = [
                 placeholder: 'Select impacted domains...',
                 noteLabel: 'Impact Note',
                 optionsKey: 'getDomainOptions',
+                setupEntity: 'domains',
                 helpText: 'Select business domains impacted by this operational requirement',
                 formatKey: 'formatAnnotatedReferences'
             }

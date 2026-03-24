@@ -726,6 +726,25 @@ export class CollectionEntityForm {
         `;
     }
 
+    /**
+     * Resolve description and url for an annotated ref item from setupData.
+     * Uses field.setupEntity to identify the collection (e.g. 'referenceDocuments').
+     * Returns { description, url } — both may be undefined.
+     */
+    _resolveAnnotatedRefMeta(field, refId) {
+        const setupData = this.context?.setupData;
+        if (!setupData || !field.setupEntity) return {};
+        const collection = setupData[field.setupEntity];
+        if (!Array.isArray(collection)) return {};
+        // eslint-disable-next-line eqeqeq
+        const match = collection.find(e => e.id == refId);
+        if (!match) return {};
+        return {
+            description: match.description || undefined,
+            url: match.url || undefined
+        };
+    }
+
     renderAnnotatedMultiselectReadOnly(field, value) {
         if (!value || !Array.isArray(value) || value.length === 0) {
             return `
@@ -743,13 +762,20 @@ export class CollectionEntityForm {
         });
 
         const formatted = sorted.map(ref => {
-            const title = this.escapeHtml(ref.title || ref.name || ref.id);
+            const { description, url } = this._resolveAnnotatedRefMeta(field, ref.id);
+            const titleText = ref.title || ref.name || ref.id;
+            const tooltip = description ? ` title="${this.escapeHtml(description)}"` : '';
+
+            const titleEl = url
+                ? `<a class="annotated-ref-link" href="${this.escapeHtml(url)}" target="_blank" rel="noopener"${tooltip}>${this.escapeHtml(titleText)}</a>`
+                : `<span class="annotated-ref-title"${tooltip}>${this.escapeHtml(titleText)}</span>`;
+
             const note = ref.note && ref.note.trim()
                 ? `<div class="annotated-ref-note">${this.escapeHtml(ref.note)}</div>`
                 : '';
             return `<div class="annotated-ref-item">
                 <span class="annotated-ref-bullet">&#8226;</span>
-                <div class="annotated-ref-body"><span class="annotated-ref-title">${title}</span>${note}</div>
+                <div class="annotated-ref-body">${titleEl}${note}</div>
             </div>`;
         }).join('');
 

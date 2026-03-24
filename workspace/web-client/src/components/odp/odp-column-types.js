@@ -443,9 +443,21 @@ export const annotatedReferenceListColumn = {
         const displayItems = sorted.slice(0, maxDisplay);
         const remainingCount = sorted.length - displayItems.length;
 
+        // Resolve description from setupData for tooltip if setupEntity provided
+        const resolveDescription = (refId) => {
+            if (!context?.setupData || !column.setupEntity) return undefined;
+            const collection = context.setupData[column.setupEntity];
+            if (!Array.isArray(collection)) return undefined;
+            // eslint-disable-next-line eqeqeq
+            const match = collection.find(e => e.id == refId);
+            return match?.description || undefined;
+        };
+
         let html = displayItems.map(ref => {
             const title = escapeHtml(ref?.title || ref?.name || ref?.id || 'Unknown');
-            return `<span class="reference-item">${title}</span>`;
+            const description = resolveDescription(ref?.id);
+            const tooltip = description ? ` title="${escapeHtml(description)}"` : '';
+            return `<span class="reference-item"${tooltip}>${title}</span>`;
         }).join(', ');
 
         if (remainingCount > 0) {

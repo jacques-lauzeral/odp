@@ -498,6 +498,16 @@
     white-space: pre-line;
 }
 
+.annotated-ref-link {
+    color: var(--color-primary, #2563eb);
+    text-decoration: none;
+    font-size: var(--font-size-sm, 0.875rem);
+}
+
+.annotated-ref-link:hover {
+    text-decoration: underline;
+}
+
 /* Quill Rich Text Editor Integration */
 .quill-editor {
     background-color: white;

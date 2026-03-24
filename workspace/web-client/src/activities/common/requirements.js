@@ -149,19 +149,19 @@ export default class RequirementsEntity {
             impactedStakeholders: {
                 key: 'impactedStakeholders', label: 'Stakeholders', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
-                maxDisplay: 3,
+                maxDisplay: 3, setupEntity: 'stakeholderCategories',
                 appliesTo: ['on-node']
             },
             impactedDomains: {
                 key: 'impactedDomains', label: 'Domains', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
-                maxDisplay: 3,
+                maxDisplay: 3, setupEntity: 'domains',
                 appliesTo: ['on-node']
             },
             strategicDocuments: {
                 key: 'strategicDocuments', label: 'Strategic', width: '120px',
                 type: 'annotated-reference-list', sortable: false,
-                maxDisplay: 3,
+                maxDisplay: 3, setupEntity: 'referenceDocuments',
                 appliesTo: ['on-node']
             },
             updatedBy: {
