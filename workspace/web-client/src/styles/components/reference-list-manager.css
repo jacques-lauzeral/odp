@@ -175,6 +175,84 @@
 .search-popup-results::-webkit-scrollbar-thumb { background: var(--border-primary); border-radius: var(--radius-sm); }
 .search-popup-results::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
+
+/* --- Read-only bullet list -------------------------------------------------- */
+/* When rendered inside a detail-field (read mode), display as a plain bullet    */
+/* list rather than a bordered chip container.                                   */
+
+.detail-field .reference-list-inline {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+    padding: 0;
+    border: none;
+    background: none;
+    min-height: unset;
+}
+
+.detail-field .reference-list-inline .selected-chip {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-size: var(--font-size-sm);
+    white-space: normal;
+    text-align: left;
+}
+
+.detail-field .reference-list-inline .selected-chip::before {
+    content: "•";
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+/* Plain "None" — font-style reset, consistent with annotated-reference-list */
+.detail-field .reference-list-inline .empty-state-inline {
+    padding: 0;
+    font-style: normal;
+    color: var(--text-primary);
+}
+
+
+/* --- Reference manager read-only (single-select, inside detail-field) ------- */
+
+.detail-field .reference-manager {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 0;
+}
+
+.detail-field .reference-manager .selected-chip {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-size: var(--font-size-sm);
+    white-space: normal;
+    text-align: left;
+}
+
+.detail-field .reference-manager .selected-chip::before {
+    content: "•";
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+/* Plain "None" — font-style reset, consistent with annotated-reference-list */
+.detail-field .reference-manager .reference-manager-none {
+    font-style: normal;
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
 /* --- Responsive ------------------------------------------------------------- */
 
 @media (max-width: 768px) {

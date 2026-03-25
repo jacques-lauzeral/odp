@@ -82,6 +82,10 @@ Filter matchers are injected as `options.filterMatchers` (same predicate map use
 
 Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement virtual methods: `getFieldDefinitions()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
 
+**Read-only field rendering** (`renderReadOnlyField`) handles all field types including `reference-list` and `reference` — both emit their standard placeholder divs in read mode so that `initializeReferenceListManagers` and `initializeReferenceManagers` can hydrate them with options and initial values. All read-only fields are wrapped in a `detail-field` + `<label>` envelope.
+
+**`initializeReadOnlyInPanel(container, item)`** — canonical entry point for non-modal read-only rendering (details panels, planning pane). Temporarily sets `currentModal`/`currentItem`/`currentMode`, runs all four initializers (`initializeAnnotatedMultiselects`, `initializeReferenceListManagers`, `initializeReferenceManagers`, `initializeRichtextReadOnly`), then clears `currentModal`. All details panel update methods (`updateDetailsPanel` in `requirements.js`, `changes.js`, and `renderDetails` in `on-planning.js`) use this method.
+
 ---
 
 ## 4. Multi-Perspective Pattern
@@ -388,9 +392,9 @@ The Planning activity appears as a top-level nav tab alongside Elaboration. It u
 The ON Plan tab uses a **two-pane horizontal layout** (`grid-template-columns: 2fr 1fr`):
 
 - **Left pane** — `TemporalGrid` with structured ON hierarchy rows
-- **Right pane** — Selected ON details (stub — `RequirementForm` read-only + `Implemented By` tab to follow)
+- **Right pane** — Selected ON details rendered via `RequirementForm` read-only view
 
-All data is loaded once by `ONPlanning` via `GET /requirements` (type=ON and type=OR, with edition parameters).
+`PlanningActivity.loadSetupData()` fetches setup entities and all operational requirements in parallel. `ONPlanning` splits the loaded requirements into `onData` (type=ON) client-side — no separate API call. The full requirements list is passed to `RequirementForm` via `setupData.requirements` for option resolution.
 
 ### 11.3 TemporalGrid Row Structure (Left Pane)
 
@@ -422,17 +426,26 @@ temporalGrid.setMilestoneRendering({
 
 ### 11.5 ON Details (Right Pane)
 
-Clicking any `group` or `child` row fires the selection listener. `ONPlanning.handleGridSelect(id)` looks up the ON entity and renders a details stub in the right pane showing title, DrG, maturity, tentative period, and the list of ORs implementing the ON (derived client-side from loaded OR data via `implementedONs`).
+Clicking any `group` or `child` row fires the selection listener. `ONPlanning.handleGridSelect(id)` looks up the ON entity and calls `renderDetails(on)`, which:
 
-Full `RequirementForm` read-only integration with an `Implemented By` tab is planned for a subsequent step.
+1. Reads the currently active tab index from the details container (`getCurrentTabInPanel`)
+2. Sets `requirementForm.context.currentTabIndex` to preserve it across re-renders
+3. Calls `await requirementForm.generateReadOnlyView(on, true)` and injects the HTML
+4. Calls `requirementForm.initializeReadOnlyInPanel(detailsContainer, on)` to hydrate all managers
+5. Restores the active tab via `switchTabInPanel` if non-zero
+
+The selected tab index is preserved across ON selection changes via `this.currentTabIndex` on the `ONPlanning` instance, wired to `onTabChange` in the `RequirementForm` context.
 
 ### 11.6 File Structure
 
 ```
 activities/planning/
-├── planning-activity.js    PlanningActivity shell, tab management, edition picker
-├── on-planning.js          ONPlanning: data load, TemporalGrid config, selection, details stub
+├── planning-activity.js    PlanningActivity shell, tab management, setup data load
+├── on-planning.js          ONPlanning: data split, TemporalGrid config, selection, details
 └── planning.css            Two-pane layout, separator/group/child row styles
+
+activities/common/
+└── requirement-form.js     RequirementForm (shared between Elaboration, Review, Planning)
 
 components/odp/
 └── temporal-grid.js        TemporalGrid: generic calendar timeline component (§5)
@@ -471,6 +484,10 @@ Form fields in `collection-entity-form.js` use the following type identifiers:
 | `reference-list` | `ReferenceListManager` | 0..n | Chip list + search popup |
 | `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Table with per-item note; see §12.1c |
 | `richtext` | Quill editor | — | Delta stored as stringified JSON |
+
+**Read-only rendering of `reference-list` and `reference`:** Both types emit placeholder divs in read mode (same as edit mode) so that `initializeReferenceListManagers` / `initializeReferenceManagers` hydrate them via their async options pipeline. In read mode, `ReferenceListManager` renders chips as a plain bullet list (CSS scoped to `.detail-field` context) and displays "None" when empty. `visibleWhen` is **not evaluated** at HTML generation time — field visibility in read mode is controlled by calling `updateFieldVisibility` after injection.
+
+**ID comparison:** All ID normalization and comparison uses `idsEqual` / `normalizeId` from `/shared/src/index.js`. Direct `parseInt` or string coercion for ID comparison is avoided throughout form code.
 
 ### 12.1c Annotated Reference List — Rendering & Metadata
 
@@ -533,7 +550,13 @@ Items sorted alphabetically; title only displayed (note excluded). If `column.se
 | `impactedDomains` | `annotated-reference-list` | Options from `domains` setupData; `setupEntity: 'domains'`; note stored per domain |
 | `refinesParents` | `reference` | Single-select typeahead via `ReferenceManager`; wraps selected id in `[id]` array on save; visible for both ON and OR |
 
-Note: `visibleWhen` conditions are enforced in `create` and `edit` modes via `renderField`. In `read` mode all fields are always rendered.
+**Added to ON only (`visibleWhen: type === 'ON'`, read mode only):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `implementedBy` | `reference-list` | Read mode only (`modes: ['read']`); options resolved via `getImplementedByOptions`; initial value pre-computed by `transformDataForRead` → `_computeImplementedByIds` from `setupData.requirements` |
+
+Note: `visibleWhen` conditions are enforced in `create` and `edit` modes via `renderField`. In `read` mode all fields are always rendered. `implementedBy` is a computed field — its value is derived client-side from `setupData.requirements` in the Planning context. In Elaboration/Review contexts where `setupData.requirements` is not loaded, it will render empty. A future improvement will move this computation to the server side (returned by `GET /operational-requirements/{id}`).
 
 **Renamed:**
 
@@ -575,14 +598,20 @@ Wave label in milestone form and table now rendered as `{year}#{sequenceNumber}`
 
 ### 12.5 New Field Types in CollectionEntityForm
 
-Two new `type` values added to `renderInput` / `renderReadOnlyField`:
+Field types added to `renderInput` / `renderReadOnlyField`:
 
 | Type | Edit rendering | Read rendering | Notes |
 |---|---|---|---|
 | `static-label` | `<div>` with `staticText` content, no `name` attribute | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
 | `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` array as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed in `RequirementForm.transformDataForSave` via `parseTentative()` which delegates to `parseYearPeriod()` in `shared/year-period.js` |
+| `reference-list` | `ReferenceListManager` placeholder | `detail-field` wrapper + label + `ReferenceListManager` placeholder (read-only, bullet list) | Previously fell through to generic formatter in read mode; now emits placeholder so async options pipeline runs |
+| `reference` | `ReferenceManager` placeholder | `detail-field` wrapper + label + `ReferenceManager` placeholder (read-only) | Same fix as `reference-list` |
 
-### 12.6 Filter Bar
+### 12.6 RequirementForm Location
+
+`RequirementForm` is located at `activities/common/requirement-form.js` (not `activities/elaboration/`). It is shared between Elaboration, Review, and Planning activities. `requirement-form-fields.js` lives alongside it at `activities/common/requirement-form-fields.js`.
+
+### 12.7 Filter Bar
 
 `getFilterConfig()` in `abstract-interaction-activity.js` updated:
 

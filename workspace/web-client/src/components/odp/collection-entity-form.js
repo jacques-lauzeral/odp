@@ -193,6 +193,29 @@ export class CollectionEntityForm {
         return await this.generateForm('read', transformedItem, preserveTabIndex);
     }
 
+    /**
+     * Initialize all read-only managers after injecting generateReadOnlyView HTML
+     * into a non-modal container (details panel, planning pane, etc.).
+     *
+     * Temporarily sets currentModal to the container so all manager initializers
+     * can locate their placeholders, then clears it.
+     *
+     * @param {HTMLElement} container - The element containing the injected HTML
+     * @param {object} item - The item whose data was rendered
+     */
+    initializeReadOnlyInPanel(container, item) {
+        this.currentModal = container;
+        this.currentItem  = item;
+        this.currentMode  = 'read';
+
+        this.initializeAnnotatedMultiselects();
+        this.initializeReferenceListManagers();
+        this.initializeReferenceManagers();
+        this.initializeRichtextReadOnly(container);
+
+        this.currentModal = null;
+    }
+
     // ====================
     // FORM GENERATION
     // ====================
@@ -327,6 +350,29 @@ export class CollectionEntityForm {
         // Special handling for annotated-reference-list
         if (field.type === 'annotated-reference-list') {
             return this.renderAnnotatedMultiselectReadOnly(field, value);
+        }
+
+        // Special handling for reference-list: emit detail-field wrapper + label +
+        // placeholder so initializeReferenceListManagers can hydrate it (read-only mode)
+        if (field.type === 'reference-list') {
+            const fieldId = `field-${field.key.replace(/\./g, '-')}`;
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    ${this.renderReferenceListField(field, fieldId, value, false)}
+                </div>
+            `;
+        }
+
+        // Special handling for reference (single-select typeahead): same pattern
+        if (field.type === 'reference') {
+            const fieldId = `field-${field.key.replace(/\./g, '-')}`;
+            return `
+                <div class="detail-field">
+                    <label>${this.escapeHtml(field.label)}</label>
+                    ${this.renderReferenceField(field, fieldId, value, false)}
+                </div>
+            `;
         }
 
         // Special handling for richtext
@@ -617,7 +663,7 @@ export class CollectionEntityForm {
                     options: options,
                     initialValue: value || [],
                     placeholder: field.placeholder || 'Search items...',
-                    emptyMessage: field.emptyMessage || 'No items selected',
+                    emptyMessage: this.currentMode === 'read' ? 'None' : (field.emptyMessage || 'No items selected'),
                     readOnly: this.currentMode === 'read',
                     onChange: (newValue) => {
                         console.log(`${fieldKey} changed:`, newValue);
@@ -1155,7 +1201,7 @@ export class CollectionEntityForm {
                             options,
                             initialValue: rawValue || [],
                             placeholder: field.placeholder || 'Search items...',
-                            emptyMessage: field.emptyMessage || 'No items selected',
+                            emptyMessage: this.currentMode === 'read' ? 'None' : (field.emptyMessage || 'No items selected'),
                             readOnly: false,
                             onChange: (newValue) => console.log(`${field.key} changed:`, newValue)
                         });

@@ -190,6 +190,19 @@ export const requirementFieldDefinitions = [
                 formatArgs: ['ON']
             },
             {
+                key: 'implementedBy',
+                label: 'Implemented By (ORs)',
+                type: 'reference-list',
+                modes: ['read'],
+                required: false,
+                size: 5,
+                visibleWhen: (data) => data.type === 'ON',
+                optionsKey: 'getImplementedByOptions',
+                helpText: 'ORs that implement this ON',
+                formatKey: 'formatEntityReferences',
+                formatArgs: ['OR']
+            },
+            {
                 key: 'refinesParents',
                 label: 'Refines (Parent)',
                 type: 'reference',

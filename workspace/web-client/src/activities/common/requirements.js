@@ -377,7 +377,8 @@ export default class RequirementsEntity {
             <div class="details-scrollable-content">${detailsHtml}</div>
         `;
 
-        this.form.initializeRichtextReadOnly(detailsContainer);
+        // Initialize all read-only managers after HTML insertion
+        this.form.initializeReadOnlyInPanel(detailsContainer, item);
 
         if (currentTab !== null && currentTab !== 0) {
             this.switchTabInPanel(detailsContainer, currentTab);

@@ -6,7 +6,9 @@ import {
     getDraftingGroupDisplay,
     getOperationalRequirementTypeDisplay,
     MaturityLevel,
-    getMaturityLevelDisplay
+    getMaturityLevelDisplay,
+    idsEqual,
+    normalizeId
 } from '/shared/src/index.js';
 import { parseYearPeriod, formatYearPeriod } from '/shared/src/model/year-period.js';
 import {
@@ -207,7 +209,22 @@ export default class RequirementForm extends CollectionEntityForm {
 
     transformDataForRead(item) {
         if (!item) return {};
-        return { ...item };
+        const transformed = { ...item };
+        // Compute implementedBy IDs for ONs (not stored on item, derived from setupData)
+        if (item.type === 'ON') {
+            transformed.implementedBy = this._computeImplementedByIds(item);
+        }
+        return transformed;
+    }
+
+    _computeImplementedByIds(item) {
+        const requirements = this.setupData?.requirements || [];
+        if (!item?.itemId && !item?.id) return [];
+        return requirements
+            .filter(r => r.type === 'OR' &&
+                Array.isArray(r.implementedONs) &&
+                r.implementedONs.some(ref => idsEqual(ref.id ?? ref.itemId ?? ref, item.itemId ?? item.id)))
+            .map(r => normalizeId(r.itemId || r.id));
     }
 
     transformDataForEdit(item) {
@@ -257,7 +274,7 @@ export default class RequirementForm extends CollectionEntityForm {
             return await apiClient.post(this.entityConfig.endpoint, data);
         } else {
             if (!item) throw new Error('No item provided for update');
-            const itemId = parseInt(item.itemId || item.id, 10);
+            const itemId = normalizeId(item.itemId || item.id);
             return await apiClient.put(`${this.entityConfig.endpoint}/${itemId}`, data);
         }
     }
@@ -335,7 +352,7 @@ export default class RequirementForm extends CollectionEntityForm {
     getSetupDataOptions(entityName) {
         if (!this.setupData?.[entityName]) return [];
         return this.setupData[entityName].map(entity => ({
-            value: parseInt(entity.id, 10),
+            value: normalizeId(entity.id),
             label: entity.name || entity.title || entity.id,
             description: entity.description || undefined
         }));
@@ -351,7 +368,7 @@ export default class RequirementForm extends CollectionEntityForm {
             const requirements = await apiClient.get(this.entityConfig.endpoint);
             const options = requirements
                 .map(req => ({
-                    value: parseInt(req.itemId || req.id, 10),
+                    value: normalizeId(req.itemId || req.id),
                     label: `${req.code}: ${req.title}`,
                     group: req.type
                 }))
@@ -380,7 +397,7 @@ export default class RequirementForm extends CollectionEntityForm {
             const options = requirements
                 .filter(req => req.type === 'ON')
                 .map(req => ({
-                    value: parseInt(req.itemId || req.id, 10),
+                    value: normalizeId(req.itemId || req.id),
                     label: `${req.code}: ${req.title}`
                 }))
                 .sort((a, b) => a.label.localeCompare(b.label));
@@ -394,6 +411,20 @@ export default class RequirementForm extends CollectionEntityForm {
         }
     }
 
+    getImplementedByOptions(context, currentItem) {
+        // Returns all ORs as label-resolution options.
+        // The actual selection (initialValue) is pre-computed by _computeImplementedByIds
+        // via transformDataForRead, so ReferenceListManager receives the correct IDs.
+        const requirements = this.setupData?.requirements || [];
+        return requirements
+            .filter(r => r.type === 'OR')
+            .map(r => ({
+                value: normalizeId(r.itemId || r.id),
+                label: r.code ? `${r.code}: ${r.title}` : r.title
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+    }
+
     async getDependencyRequirementOptions() {
         try {
             const now = Date.now();
@@ -405,7 +436,7 @@ export default class RequirementForm extends CollectionEntityForm {
             const options = requirements
                 .filter(req => req.type === 'OR')
                 .map(req => ({
-                    value: parseInt(req.itemId || req.id, 10),
+                    value: normalizeId(req.itemId || req.id),
                     label: `${req.code}: ${req.title}`
                 }))
                 .sort((a, b) => a.label.localeCompare(b.label));

@@ -66,19 +66,22 @@ export default class PlanningActivity {
                 stakeholderCategories,
                 domains,
                 referenceDocuments,
-                waves
+                waves,
+                requirements
             ] = await Promise.all([
                 apiClient.get('/stakeholder-categories'),
                 apiClient.get('/domains'),
                 apiClient.get('/reference-documents'),
-                apiClient.get('/waves')
+                apiClient.get('/waves'),
+                apiClient.get('/operational-requirements')
             ]);
 
             this.setupData = {
                 stakeholderCategories: stakeholderCategories || [],
                 domains: domains || [],
                 referenceDocuments: referenceDocuments || [],
-                waves: waves || []
+                waves: waves || [],
+                requirements: requirements || []
             };
         } catch (error) {
             throw new Error(`Failed to load setup data: ${error.message}`);

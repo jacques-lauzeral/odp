@@ -72,7 +72,7 @@ export default class ReferenceListManager {
 
         // Render chips
         if (this.selectedIds.length === 0) {
-            html += '<span class="empty-state-inline">No items selected</span>';
+            html += `<span class="empty-state-inline">${this.config.emptyMessage}</span>`;
         } else {
             html += this.selectedIds.map(id => this.renderChip(id)).join('');
         }

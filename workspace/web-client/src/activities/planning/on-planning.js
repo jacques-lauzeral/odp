@@ -1,4 +1,3 @@
-import { apiClient } from '../../shared/api-client.js';
 import TemporalGrid from '../../components/odp/temporal-grid.js';
 import RequirementForm from '../common/requirement-form.js';
 import {
@@ -76,28 +75,9 @@ export default class ONPlanning {
     // ====================
 
     async loadData() {
-        const queryParams = await this.buildQueryParams();
-        const queryString = Object.keys(queryParams).length > 0
-            ? '?' + new URLSearchParams(queryParams).toString()
-            : '';
-
-        const requirements = await apiClient.get(`/operational-requirements${queryString}`);
-        this.onData = (requirements || []).filter(r => r.type === 'ON');
-
-        console.log(`ONPlanning: loaded ${this.onData.length} ONs`);
-    }
-
-    async buildQueryParams() {
-        const queryParams = {};
-        if (this.editionContext &&
-            this.editionContext !== 'repository' &&
-            typeof this.editionContext === 'string' &&
-            this.editionContext.match(/^\d+$/)) {
-            const edition = await apiClient.get(`/odp-editions/${this.editionContext}`);
-            if (edition.baseline?.id)       queryParams.baseline = edition.baseline.id;
-            if (edition.startsFromWave?.id) queryParams.fromWave = edition.startsFromWave.id;
-        }
-        return queryParams;
+        const requirements = this.setupData.requirements || [];
+        this.onData = requirements.filter(r => r.type === 'ON');
+        console.log(`ONPlanning: ${this.onData.length} ONs from preloaded requirements`);
     }
 
     // ====================
@@ -411,17 +391,7 @@ export default class ONPlanning {
 
             // Point currentModal at the details container so all initializers
             // can locate their placeholders via the standard currentModal queries.
-            this.requirementForm.currentModal = detailsContainer;
-            this.requirementForm.currentItem  = on;
-            this.requirementForm.currentMode  = 'read';
-
-            this.requirementForm.initializeAnnotatedMultiselects();
-            this.requirementForm.initializeReferenceListManagers();
-            this.requirementForm.initializeReferenceManagers();
-            this.requirementForm.initializeRichtextReadOnly(detailsContainer);
-
-            // Restore currentModal to null — ONPlanning does not own a modal.
-            this.requirementForm.currentModal = null;
+            this.requirementForm.initializeReadOnlyInPanel(detailsContainer, on);
 
             if (currentTab !== null && currentTab !== 0) {
                 this.switchTabInPanel(detailsContainer, currentTab);

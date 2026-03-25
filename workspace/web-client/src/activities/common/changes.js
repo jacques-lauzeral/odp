@@ -610,8 +610,8 @@ export default class ChangesEntity {
         <div class="details-scrollable-content">${detailsHtml}</div>
     `;
 
-        // Initialize richtext fields after HTML insertion
-        this.form.initializeRichtextReadOnly(detailsContainer);
+        // Initialize all read-only managers after HTML insertion
+        this.form.initializeReadOnlyInPanel(detailsContainer, item);
 
         if (currentTab !== null && currentTab !== 0) {
             this.switchTabInPanel(detailsContainer, currentTab);
