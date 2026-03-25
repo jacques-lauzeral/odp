@@ -1,5 +1,6 @@
 import { apiClient } from '../../shared/api-client.js';
 import TemporalGrid from '../../components/odp/temporal-grid.js';
+import RequirementForm from '../common/requirement-form.js';
 import {
     DraftingGroup,
     getDraftingGroupDisplay
@@ -11,7 +12,7 @@ import { formatTentativeArray } from '/shared/src/model/year-period.js';
  *
  * Two-pane layout:
  *   Left  : TemporalGrid (separator/group/child rows, year-based axis)
- *   Right : Selected ON details (stub — RequirementForm to follow)
+ *   Right : Selected ON details (RequirementForm read-only view)
  *
  * Row hierarchy in TemporalGrid:
  *   separator  → DrG label (e.g. "NM B2B")
@@ -27,15 +28,17 @@ export default class ONPlanning {
         this.container = null;
 
         // Loaded data
-        this.onData = [];   // All ONs
-        this.orData = [];   // All ORs (for Implemented By)
+        this.onData = [];
 
         // Component instances
         this.temporalGrid = null;
-        this.detailForm = null;  // RequirementForm stub
+        this.requirementForm = null;
 
         // Selection
         this.selectedON = null;
+
+        // Preserved tab index across selection changes
+        this.currentTabIndex = 0;
 
         // Pane split ratio: fraction of width allocated to temporal grid (0.2–0.9)
         this.splitRatio = 0.67;
@@ -50,6 +53,7 @@ export default class ONPlanning {
         try {
             this.renderLayout();
             await this.loadData();
+            this.initializeRequirementForm();
             this.initializeTemporalGrid();
             this.renderTemporalGrid();
         } catch (error) {
@@ -64,7 +68,7 @@ export default class ONPlanning {
         if (this.temporalGrid?.cleanup) this.temporalGrid.cleanup();
         this.container = null;
         this.temporalGrid = null;
-        this.detailForm = null;
+        this.requirementForm = null;
     }
 
     // ====================
@@ -79,9 +83,8 @@ export default class ONPlanning {
 
         const requirements = await apiClient.get(`/operational-requirements${queryString}`);
         this.onData = (requirements || []).filter(r => r.type === 'ON');
-        this.orData = (requirements || []).filter(r => r.type === 'OR');
 
-        console.log(`ONPlanning: loaded ${this.onData.length} ONs, ${this.orData.length} ORs`);
+        console.log(`ONPlanning: loaded ${this.onData.length} ONs`);
     }
 
     async buildQueryParams() {
@@ -91,7 +94,7 @@ export default class ONPlanning {
             typeof this.editionContext === 'string' &&
             this.editionContext.match(/^\d+$/)) {
             const edition = await apiClient.get(`/odp-editions/${this.editionContext}`);
-            if (edition.baseline?.id)      queryParams.baseline = edition.baseline.id;
+            if (edition.baseline?.id)       queryParams.baseline = edition.baseline.id;
             if (edition.startsFromWave?.id) queryParams.fromWave = edition.startsFromWave.id;
         }
         return queryParams;
@@ -180,6 +183,23 @@ export default class ONPlanning {
     }
 
     // ====================
+    // REQUIREMENT FORM
+    // ====================
+
+    initializeRequirementForm() {
+        this.requirementForm = new RequirementForm(
+            { endpoint: '/operational-requirements' },
+            {
+                setupData: this.setupData,
+                currentTabIndex: this.currentTabIndex,
+                onTabChange: (index) => {
+                    this.currentTabIndex = index;
+                }
+            }
+        );
+    }
+
+    // ====================
     // TEMPORAL GRID
     // ====================
 
@@ -202,7 +222,6 @@ export default class ONPlanning {
         });
 
         this.temporalGrid.addTimeIntervalUpdateListener(() => {
-            // Re-feed on zoom change (rows unchanged, just re-render positions)
             this._feedTemporalGrid();
         });
     }
@@ -215,7 +234,6 @@ export default class ONPlanning {
         this.temporalGrid.setTimeInterval(startYear, endYear);
         this.temporalGrid.setTicks(this._buildYearTicks(startYear, endYear));
 
-        // Feed rows before render so grid has data on first _render() call
         this._feedTemporalGrid();
 
         this.temporalGrid.render(gridContainer);
@@ -249,12 +267,6 @@ export default class ONPlanning {
             }
         });
 
-        // Build an ON lookup by id for parent resolution
-        const onById = new Map();
-        this.onData.forEach(on => {
-            onById.set(String(on.itemId || on.id), on);
-        });
-
         // Helper: determine if an ON is a root (no refinesParents)
         const isRoot = (on) => !on.refinesParents || on.refinesParents.length === 0;
 
@@ -271,7 +283,6 @@ export default class ONPlanning {
             const label = rootOn.code ? `${rootOn.code} – ${rootOn.title}` : rootOn.title;
             const milestones = this._buildMilestones(rootOn);
 
-            // Children: ONs whose first refinesParent is this root
             const children = allOnsInDrg
                 .filter(on => parentIdOf(on) === groupId)
                 .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
@@ -284,7 +295,6 @@ export default class ONPlanning {
                     this.temporalGrid.addChildRow(childId, groupId, childLabel, this._buildMilestones(child));
                 });
             } else {
-                // No children — flat row, not expandable
                 this.temporalGrid.addRow(groupId, label, milestones);
             }
         };
@@ -366,37 +376,64 @@ export default class ONPlanning {
         this.renderDetails(on);
     }
 
-    renderDetails(on) {
-        const detailsContainer = this.container.querySelector('#onDetailsContent');
-        if (!detailsContainer) return;
+    getCurrentTabInPanel(container) {
+        const activeTab = container.querySelector('.tab-header.active');
+        return activeTab ? parseInt(activeTab.dataset.tab, 10) : 0;
+    }
 
-        const implementedBy = this.getImplementedBy(on);
+    switchTabInPanel(container, tabIndex) {
+        container.querySelectorAll('.tab-header').forEach(h =>
+            h.classList.toggle('active', h.dataset.tab === tabIndex.toString()));
+        container.querySelectorAll('.tab-panel').forEach(p =>
+            p.classList.toggle('active', p.dataset.tab === tabIndex.toString()));
+
+        this.requirementForm.context.currentTabIndex = tabIndex;
+        this.currentTabIndex = tabIndex;
+    }
+
+    async renderDetails(on) {
+        const detailsContainer = this.container.querySelector('#onDetailsContent');
+        if (!detailsContainer || !this.requirementForm) return;
+
+        const currentTab = this.getCurrentTabInPanel(detailsContainer);
 
         detailsContainer.innerHTML = `
-            <div class="on-details-stub">
-                <h3>${on.code ? `${on.code} – ` : ''}${on.title}</h3>
-                <p><strong>DrG:</strong> ${on.drg || '—'}</p>
-                <p><strong>Maturity:</strong> ${on.maturity || '—'}</p>
-                <p><strong>Tentative:</strong> ${this.formatTentative(on.tentative)}</p>
-                <hr>
-                <h4>Implemented By (${implementedBy.length} ORs)</h4>
-                <ul>
-                    ${implementedBy.map(or =>
-            `<li>${or.code ? `${or.code} – ` : ''}${or.title}</li>`
-        ).join('') || '<li><em>None</em></li>'}
-                </ul>
+            <div class="loading-state">
+                <div class="spinner"></div>
             </div>
         `;
-    }
 
-    getImplementedBy(on) {
-        const onId = String(on.itemId || on.id);
-        return this.orData.filter(or =>
-            (or.implementedONs || []).some(ref => String(ref.id || ref) === onId)
-        );
-    }
+        try {
+            this.requirementForm.context.currentTabIndex = currentTab;
+            const html = await this.requirementForm.generateReadOnlyView(on, true);
 
-    formatTentative(tentative) {
-        return formatTentativeArray(tentative) || '—';
+            detailsContainer.innerHTML = html;
+
+            // Point currentModal at the details container so all initializers
+            // can locate their placeholders via the standard currentModal queries.
+            this.requirementForm.currentModal = detailsContainer;
+            this.requirementForm.currentItem  = on;
+            this.requirementForm.currentMode  = 'read';
+
+            this.requirementForm.initializeAnnotatedMultiselects();
+            this.requirementForm.initializeReferenceListManagers();
+            this.requirementForm.initializeReferenceManagers();
+            this.requirementForm.initializeRichtextReadOnly(detailsContainer);
+
+            // Restore currentModal to null — ONPlanning does not own a modal.
+            this.requirementForm.currentModal = null;
+
+            if (currentTab !== null && currentTab !== 0) {
+                this.switchTabInPanel(detailsContainer, currentTab);
+            }
+
+        } catch (error) {
+            console.error('ONPlanning: failed to render ON details', error);
+            detailsContainer.innerHTML = `
+                <div class="error-state">
+                    <p>Failed to load details: ${error.message}</p>
+                </div>
+            `;
+        }
     }
 }
