@@ -174,16 +174,27 @@ class NM_B2B_Mapper extends Mapper {
             // Generate external ID using the complete object
             req.externalId = ExternalIdBuilder.buildExternalId(req, type.toLowerCase());
 
-            // Add implicit ConOPS document reference for ONs if not explicitly provided
-            if (type === 'ON' && !parentReq && (!req.strategicDocuments || req.strategicDocuments.length === 0)) {
-                const conopsExternalId = ExternalIdBuilder.buildExternalId({
-                    name: "NM B2B ConOPS",
-                    version: "2.1"
+            // Add implicit document references for root ONs
+            if (type === 'ON' && !parentReq) {
+                const nspSo2ExternalId = ExternalIdBuilder.buildExternalId({
+                    name: "NSP SO 2",
+                    parentExternalId: "refdoc:nsp"
                 }, 'refdoc');
-                req.strategicDocuments = [{
-                    externalId: conopsExternalId,
-                    note: `Section: '${this._getOrganizationalPathString(subsection.path)}'`
-                }];
+                const implicitRefs = [{ externalId: nspSo2ExternalId }];
+
+                // Add ConOPS reference if no explicit strategic documents provided
+                if (!req.strategicDocuments || req.strategicDocuments.length === 0) {
+                    const conopsExternalId = ExternalIdBuilder.buildExternalId({
+                        name: "NM B2B ConOPS",
+                        version: "2.1"
+                    }, 'refdoc');
+                    implicitRefs.push({
+                        externalId: conopsExternalId,
+                        note: `Section: '${this._getOrganizationalPathString(subsection.path)}'`
+                    });
+                }
+
+                req.strategicDocuments = [...(req.strategicDocuments || []), ...implicitRefs];
             }
 
             const map = type === 'ON' ? context.onMap : context.orMap;
