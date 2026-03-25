@@ -41,17 +41,26 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  * - "Statement:" → statement (multi-paragraph concatenation)
  * - "Rationale:" → rationale (multi-paragraph concatenation)
  * - "Flow:" / "Flows:" / "Flow example:" / "Flow examples:" → flows
+ * - "Tentative:" → tentative year range (ON-type only)
+ *   - Format: "YYYY" → [YYYY, YYYY] or "YYYY-YYYY" → [start, end]
  * - "Implemented ONs:" → implementedONs array (OR-type only)
  *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
  *   - Relative references resolved using current entity's organizational path
  * - "References:" / "Reference:" → strategicDocuments (ONs) / privateNotes (ORs)
  *   - Format: "- document:external_id" or "- document:external_id: note text"
  *
- * Document References (Default Behavior):
- * ----------------------------------------
- * - All ONs automatically reference "NM B2B ConOPS" document if no explicit references found
- * - Note field populated with organizational path: "Section: 'Path/To/Requirement'"
- * - Explicit references in document override this default behavior
+ * Document References (Implicit Injection for Root ONs):
+ * -------------------------------------------------------
+ * Root ONs (ONs that do not refine a parent ON) always receive two implicit
+ * strategic document references, appended after any explicit references:
+ *
+ * 1. NSP SO 2 (refdoc:nsp/nsp_so_2) — injected unconditionally on all root ONs
+ * 2. NM B2B ConOPS (refdoc:nm_b2b_conops) — injected only when no explicit
+ *    "References:" are found in the document; note field set to the organisational
+ *    path of the requirement: "Section: 'Path/To/Requirement'"
+ *
+ * Child ONs (refining a parent ON) receive no implicit references.
+ * ORs receive no implicit references.
  *
  * External ID Format:
  * -------------------
@@ -60,9 +69,9 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  *
  * Reference Documents:
  * --------------------
- * Pre-populated in mapper context:
- * - "NM B2B ConOPS" (v2.1) - default reference for all ONs
- * - "Commission Implementing Regulation (EU) 2021/116"
+ * Implicit references injected for root ONs:
+ * - "NM B2B ConOPS" (refdoc:nm_b2b_conops) — conditional, see above
+ * - "NSP SO 2" (refdoc:nsp/nsp_so_2) — unconditional
  *
  * Validation:
  * -----------
