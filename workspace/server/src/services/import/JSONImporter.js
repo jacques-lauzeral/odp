@@ -651,7 +651,7 @@ class JSONImporter {
             maturity: reqData.maturity || current.maturity,
             path: refinesParents.length > 0 ? null : current.path,
             drg: current.drg,
-            tentative: reqData.tentative !== undefined ? reqData.tentative : (current.tentative || null),
+            tentative: reqData.tentative != null ? reqData.tentative : (current.tentative ?? null),
             refinesParents: refinesParents,
             impactedStakeholders: impactedStakeholders,
             impactedDomains: impactedDomains,

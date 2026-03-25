@@ -291,6 +291,7 @@ class NM_B2B_Mapper extends Mapper {
         let flows = '';
         let implementedONs = [];
         let parsedDocRefs = [];
+        let tentative = null;
         let currentSection = null;
 
         for (const p of paragraphs) {
@@ -319,6 +320,9 @@ class NM_B2B_Mapper extends Mapper {
                 }
             } else if (textStartsWith(text, 'Implemented ONs:')) {
                 currentSection = 'implementedONs';
+            } else if (textStartsWith(text, 'Tentative:')) {
+                currentSection = 'tentative';
+                tentative = this._parseTentative(text.substring('Tentative:'.length).trim());
             } else if (textStartsWith(text, 'References:', 'Reference:')) {
                 currentSection = 'references';
             } else if (currentSection === 'statement' && text) {
@@ -357,7 +361,8 @@ class NM_B2B_Mapper extends Mapper {
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale),
             flows: this.converter.asciidocToDelta(flows),
-            implementedONs: type === 'OR' ? implementedONs : []
+            implementedONs: type === 'OR' ? implementedONs : [],
+            tentative: type === 'ON' ? tentative : null
         };
 
         // ONs: explicit refs become strategicDocuments
@@ -381,6 +386,26 @@ class NM_B2B_Mapper extends Mapper {
      * Format: "DOC_ID" or "DOC_ID: note text"
      * @private
      */
+    /**
+     * Parse tentative year or year range into a [start, end] array
+     * Formats: 'YYYY' or 'YYYY-YYYY'
+     * @param {string} text
+     * @returns {number[]|null}
+     * @private
+     */
+    _parseTentative(text) {
+        const rangeMatch = text.match(/^(\d{4})-(\d{4})$/);
+        if (rangeMatch) {
+            return [parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10)];
+        }
+        const singleMatch = text.match(/^(\d{4})$/);
+        if (singleMatch) {
+            const year = parseInt(singleMatch[1], 10);
+            return [year, year];
+        }
+        return null;
+    }
+
     _parseDocumentReference(text) {
         // Find the second colon (first is part of external ID like "document:...")
         const firstColonIndex = text.indexOf(':');

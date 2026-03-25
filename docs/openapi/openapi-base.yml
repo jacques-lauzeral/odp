@@ -210,14 +210,13 @@ components:
 
     # Operational Entity Schemas
     TentativeRange:
-      type: object
-      description: "Year range for tentative implementation time [start, end] where start <= end"
-      required: [start, end]
-      properties:
-        start:
-          type: integer
-        end:
-          type: integer
+      type: array
+      description: "Year range for tentative implementation time as [start, end] where start <= end"
+      items:
+        type: integer
+      minItems: 2
+      maxItems: 2
+      example: [2028, 2030]
 
     ORCost:
       type: object
