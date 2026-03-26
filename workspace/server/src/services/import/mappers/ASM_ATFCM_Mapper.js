@@ -1,242 +1,391 @@
 import Mapper from '../Mapper.js';
 import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
-import { MilestoneEventKeys } from '../../../../../shared/src/model/milestone-events.js';
 
 /**
- * Mapper for ASM_ATFCM Excel documents
- * Transforms tabular sheet structure into ODIP entities
+ * Mapper for ASM_ATFCM Excel documents — Edition 4 structure
  *
- * COLUMN INTERPRETATION:
+ * WORKBOOK STRUCTURE:
+ * ===================
+ * The Edition 4 workbook organises content across multiple sheets per wave:
+ *
+ *   Wave 2027:  ONOR2027 (main), ONOR2027-ad hoc RSA, ONOR2027-Dynamic RAD,
+ *               ONOR2027-AIrspace scenario, ONOR2027-iOAT FPL,
+ *               ONOR2027-Notification, ONOR2027-monitoring, ONOR2027-CBA-CBO
+ *   Wave 2028:  ONOR 2028 (main), ONOR 2028 AS structures, ONOR 2028 Rolling,
+ *               ONOR 2028 NIASIM, ONOR 2028 CDM
+ *   Wave 2029:  ONOR2029 (main), ONOR2029 Dynamic ATM, ONOR2029 NIASIM,
+ *               ONOR2029 Rolling Process, ONOR2029 POST-OPS,
+ *               ONOR2029 CDM evolution, ONOR2029 Monitoring evolution
+ *   OC sheets:  OC 2027, OC 2028, OC 2029  (not processed by this mapper)
+ *
+ * ON/OR HIERARCHY PER WAVE:
+ * ==========================
+ * Each wave has a set of ROOT ONs (low ON codes) that act as structural folders,
+ * each grouping a set of CHILD ONs and their implementing ORs.
+ *
+ * Root ONs are identified by ON code number ≤ wave threshold:
+ *   Wave 2027: threshold = 7   (codes 01–07)
+ *   Wave 2028: threshold = 4   (codes 01–04)
+ *   Wave 2029: threshold = 6   (codes 01–06)
+ *
+ * --- WAVE 2027 ROOT / CHILD ON STRUCTURE ---
+ *
+ * 1. Ad-hoc airspace structure evolution
+ *    a. Ad-hoc extension of area horizontal/vertical profile
+ *    b. Ad-hoc creation
+ *    c. AD-HOC RSAs
+ *    d. CDM process for ad-hoc requests
+ *    e. Trigger assessment of ad hoc area
+ *    f. Digital NOTAM for ad hoc airspace structure
+ * 2. Dynamic RAD evolution
+ *    a. Dynamic RAD evolution
+ * 3. Dynamic scenarios evolution
+ *    a. Implement grouping restrictions associated to airspace scenario
+ *    b. Publication of grouping restrictions associated to airspace scenarios
+ *    c. Management of restrictions group associated to an airspace scenario
+ *    d. Implementation of restrictions grouping scenarios
+ *    e. Management of restrictions group scenario
+ *    f. Cross border airspace scenarios and CDM
+ * 4. iOAT FPL evolution
+ *    a. iOAT FPL linked with RSA
+ *    b. iOAT FPL and RSA for MIL AU
+ *    c. iOAT FPL and RSA for NM
+ *    d. iOAT FPL with RSA distribution to EXT
+ *    e. Impact of iOAT FPL on sector load
+ * 5. Notification process evolution
+ *    a. Distribution of e-AMI message in case of B2B failure
+ *    b. Event based rerouting option
+ *    c. Rolling events publication
+ *    d. EAUP/EUUP Map display
+ *    e. Rerouting considering AUs feedback
+ * 6. Enhance Monitoring function with ASM data
+ *    a. Impact of ARES activation on sector load
+ * 7. CBO/CBA evolution
+ *    a. Dynamic Lead AMC
+ *
+ * --- WAVE 2028 ROOT / CHILD ON STRUCTURE ---
+ *
+ * 1. Enhanced ASM structures evolution
+ *    a. ATC volumes
+ *    b. Implementation of DMAs types 1 and 2
+ *    c. Management of restrictions group associated to an airspace scenario
+ *    d. Airspace scenarios/configuration using modular solutions
+ *    e. Improve FBZ usage
+ *    f. Management of DMAs types 1 and 2
+ *    g. Event based time expression for RSA availability
+ *    h. SIDs/STARs closure via AUP/UUP
+ * 2. Rolling process evolution
+ *    a. Early notification of airspace data
+ *    b. Alignment of EAUP/EUUP with ADP and DNP
+ *    c. Full rolling AUP-UUP
+ *    d. Publication of NIL UUP
+ *    e. Rolling events publication
+ * 3. NIA/SIM further evolution
+ *    a. Capability to retrieve historical and future traffic/airspace data
+ *    b. Complexity Information
+ *    c. Spot Management
+ *    d. Hotspot Management
+ *    e. Application of pre-defined ASM/ATFCM solutions
+ *    f. Identification of flights for specific measures
+ *    g. NIA for AUP/UUP
+ *    h. Extended Use of STAM Measures for Airborne Flights and Downstream Congestion Management
+ * 4. Enhanced CDM evolution
+ *    a. Collaborative Assessment of ASM/FUA Solutions
+ *    b. Continuous Collaborative Decision-Making across operational phases
+ *    c. Interoperability for sharing coordination proposals between local and NM
+ *
+ * --- WAVE 2029 ROOT / CHILD ON STRUCTURE ---
+ *
+ * 1. Dynamic ATM features evolution
+ *    a. Implementation of DMAs type 3
+ *    b. Flexible parameters for RSAs
+ *    c. Dynamic creation of scenarios
+ *    d. Management of DMAs type 3
+ *    e. Dynamic ATS delegation
+ *    f. Dynamic cross-border airspace solutions
+ *    g. Implementation of combined scenarios
+ * 2. NIA/SIM further evolution
+ *    a. Assessment based on performance indicators
+ *    b. Network Impact Assessment for airspace scenarios
+ *    c. Comparing ASM/ATFCM solutions
+ *    d. Display of best ASM/ATFCM solutions
+ *    e. Network best ASM/ATFCM solutions
+ *    f. NIA supported by AI/ML capabilities
+ *    g. Access to previous archived analysis
+ * 3. Rolling Process evolution
+ *    a. Full rolling AUP-UUP
+ *    b. Extension of Planning closer to EOBT
+ * 4. POST-OPS evolution
+ *    a. Post Ops Analysis
+ *    b. Traceability through the entire lifecycle
+ * 5. Further CDM process evolution
+ *    a. Sharing information of combined scenarios
+ *    b. Continuous Collaborative Decision-Making across operational phases
+ * 6. Enhanced Monitoring evolution
+ *    a. Enrich flight trajectories with AI
+ *    b. More accurate prediction of demand (traffic and airspace)
+ *    c. New Monitoring Values
+ *
+ * ON IDENTITY AND DEDUPLICATION:
+ * ================================
+ * - Root ON identity key: (wave, normalized ON code number)
+ *   externalId: on:asm_atfcm/{wave}/{code_num_padded}
+ *   e.g. on:asm_atfcm/2027/01
+ * - Child ON identity key: (wave, normalized ON code number)
+ *   externalId: on:asm_atfcm/{wave}/{code_num_padded}
+ *   e.g. on:asm_atfcm/2027/15
+ * - Canonical title: taken from the first occurrence across sheets
+ *   (root ONs: from their dedicated topic sheet; child ONs: first sheet encounter)
+ * - Code normalization: strips extra whitespace, e.g. 'ON -01' → '01'
+ *
+ * CHILD → ROOT LINKAGE:
  * ======================
+ * Each row carries an 'ON reference:' column containing the title of the parent
+ * ON (root or intermediate). The mapper resolves this title against a
+ * title→externalId map built from root ON entries, to populate refinesParents.
+ * Title matching is case-insensitive and trimmed.
  *
- * ON (Operational Need) Extraction (from "ON OR OC" sheet):
- * ---------------------------------
- * - '#' → internal tracking only, not used in external ID
- * - 'ON Title:' → title (used for external ID generation and grouping)
- * - 'ON Statement' → statement (aggregated if multiple distinct values)
- * - 'ON Rationale' → rationale (aggregated if multiple distinct values)
- * - 'Assigned to' → privateNotes
- * - 'Step' → path[0] (first element of hierarchical path)
- * - 'CONOPS Improvement reference' → path[1] (second element of hierarchical path)
- * - type: 'ON', drg: 'ASM_ATFCM' (hardcoded)
+ * OR → ON LINKAGE:
+ * =================
+ * Each OR row belongs to the ON identified by the ON Code / ON Title columns
+ * in the same row. The OR's implementedONs references that ON's externalId.
  *
- * OR (Operational Requirement) Extraction (from "ON OR OC" sheet):
- * ----------------------------------------
- * - '#' → row number (included in OR privateNotes)
- * - 'OR Title:' → title (used for external ID generation)
- * - 'Detailed requirement:\r\nStatement' → statement (base)
- * - 'Fit Criteria: (keep it under the statement)' → appended to statement if not empty/TBD
- * - 'Rationale:' → rationale (base)
- * - 'Opportunities & Risks:\r\n(keep)' → appended to rationale if not empty/TBD
- * - 'ON Title:' → implementedONs (resolved via ON title map)
- * - 'Step' → path[0] (first element of hierarchical path)
- * - 'CONOPS Improvement reference' → path[1] (second element of hierarchical path)
- * - 'Stakeholders:' → impactedStakeholders (parsed via synonym map)
- * - 'INM Roadmap reference (code)' → privateNotes (as INM Roadmap Reference section)
- * - 'Originator:' → privateNotes
- * - 'OR Code' → privateNotes
- * - 'Dependencies:' → privateNotes
- * - 'Priority (Implementing Year)' → privateNotes
- * - 'Data (and other Enablers):' → privateNotes (raw value, skipped if TBD/N/A/empty)
- * - 'Impacted Services:' → privateNotes (raw value, skipped if TBD/N/A/empty)
- * - 'Remark' → privateNotes
- * - type: 'OR', drg: 'ASM_ATFCM' (hardcoded)
+ * OR STATEMENT COLUMN VARIANTS:
+ * ==============================
+ * The OR statement column header varies across sheet generations:
+ *   2027 sheets:            'OR Statement'
+ *   2028 main + subtopics:  '' (empty key — Excel unnamed column)
+ *   2028 AS structures:     'OR statement'  (lowercase s)
+ *   2029 sheets:            'Detailed requirement:\r\nOR Statement'
+ * The mapper uses _resolveOrStatementColumn() to normalise across all variants.
  *
- * OC (Operational Change) Extraction (from "OCs for 2027" sheet):
- * -----------------------------------
- * - 'Number/Code' → externalId (direct use)
- * - 'Title' → title
- * - 'Purpose' → purpose (rich text)
- * - 'Initial State' → initialState (rich text)
- * - 'Final State' → finalState (rich text)
- * - 'Details' → details (rich text)
- * - 'Satisfied Ors' → implementedORs (semicolon-delimited list)
- * - 'Superseded Ors' → decommissionedORs (semicolon-delimited, "N/A" → empty array)
- * - 'Additional documents' → privateNotes (appended as Additional Documents section)
- * - 'Milestones' → milestones (single milestone: name='M1', wave='wave:2027', eventTypes=[parsed values])
- * - 'Remarks' → privateNotes (combined with other fields)
- * - 'Dependences' → privateNotes (appended as Dependencies section)
- * - 'Cost assessment' → privateNotes (appended as Cost Assessment section)
- * - 'Pirotity' → privateNotes (appended as Priority section)
- * - drg: 'ASM_ATFCM' (hardcoded)
+ * COLUMN INTERPRETATION — ONOR SHEETS:
+ * ======================================
+ * ON extraction:
+ *   'ON Code:'                           → identity key (normalized)
+ *   'ON Title:'                          → title (canonical: first occurrence wins)
+ *   'ON Statement'                       → statement
+ *   'ON Rationale'                       → rationale
+ *   'Step'                               → path[0]
+ *   'CONOPS Improvement reference'       → path[1]
+ *   type: 'ON', drg: 'ASM_ATFCM'        (hardcoded)
  *
- * ON Private Notes (from "ON OR OC" sheet):
- * -----------------
- * - 'Assigned to' → privateNotes
+ * OR extraction:
+ *   'OR Title:'                          → title
+ *   OR statement column (variant)        → statement base
+ *   'Fit Criteria: (keep it under the statement)' → appended to statement
+ *   'Rationale:'                         → rationale base
+ *   'Opportunities and risks: (keep)'   → appended to rationale
+ *   'Stakeholders:'                      → impactedStakeholders
+ *   'Dependencies:'                      → privateNotes
+ *   'Priority (Implementing Year)'       → privateNotes
+ *   'Data (and other Enablers):'         → privateNotes
+ *   'Impacted Services:'                 → privateNotes
+ *   'iNM Roadmap reference (code)'      → privateNotes
+ *   'iDL Roadmap Step'                  → privateNotes
+ *   'NSP SOs reference'                 → privateNotes
+ *   'Remark'                            → privateNotes
+ *   'OR Code'                           → privateNotes
+ *   '#'                                 → privateNotes (row number, optional)
+ *   type: 'OR', drg: 'ASM_ATFCM'        (hardcoded)
  *
- * OR Private Notes Format (from "ON OR OC" sheet):
- * ------------------------
- * # [value]
+ * IGNORED COLUMNS:
+ * =================
+ *   'Origin'                  — redundant with document reference
+ *   'ON reference:'           — used internally for root linkage only
+ *   'Operational Change (Code)' — always empty
+ *   '__EMPTY', '📌 Row counts', 'Value' — Excel artefacts on main 2027 sheet
  *
- * Originator: [value]
+ * EXTERNAL ID FORMAT:
+ * ====================
+ *   ON (root):  on:asm_atfcm/{wave}/{code_num}   e.g. on:asm_atfcm/2027/01
+ *   ON (child): on:asm_atfcm/{wave}/{code_num}   e.g. on:asm_atfcm/2027/15
+ *   OR:         or:asm_atfcm/{wave}/{title_normalized}
  *
- * OR Code: [value]
+ * PATH:
+ * ======
+ *   Root ONs:  path = [Step, CONOPS Improvement reference] (structural grouping)
+ *   Child ONs: path = [Step, CONOPS Improvement reference]
+ *   ORs:       no path (ORs are grouped under their parent ON)
  *
- * Dependencies: [value]
+ * OR PRIVATE NOTES FORMAT:
+ * =========================
+ * # [row number]
  *
- * Priority (Implementing Year): [value]
+ * **OR Code:** [value]
  *
- * Data (and other Enablers): [value]
+ * **Dependencies:** [value]
  *
- * Impacted Services: [value]
+ * **Priority (Implementing Year):** [value]
  *
- * Stakeholders (unmapped): [comma-separated list of unmapped stakeholder names]
+ * **Data (and other Enablers):** [value]
  *
- * Remark: [value]
+ * **Impacted Services:** [value]
  *
- * (empty fields and TBD/N/A values are skipped)
+ * **iNM Roadmap Reference:** [value]
  *
- * OC Private Notes Format (from "OCs for 2027" sheet):
- * ------------------------
- * Number/Code: [value]
+ * **iDL Roadmap Step:** [value]
  *
- * Remarks: [value]
+ * **NSP SOs Reference:** [value]
  *
- * Dependencies: [value]
+ * **Stakeholders (unmapped):** [comma-separated]
  *
- * Cost Assessment: [value]
+ * **Remark:** [value]
  *
- * Priority: [value]
- *
- * (empty fields and N/A values are skipped)
- *
- * External ID Format:
- * -------------------
- * - ON: on:asm_atfcm/{title_normalized}
- * - OR: or:asm_atfcm/{title_normalized}
- * - OC: {Number/Code value} (used directly from Excel)
- *
- * Path:
- * -----
- * - ONs: path = [Step, CONOPS Improvement reference] (both optional, hierarchical grouping)
- * - ORs: path = [Step, CONOPS Improvement reference] (both optional, hierarchical grouping)
- * - OCs: no path attribute (OCs don't support hierarchy)
- *
- * IGNORED COLUMNS (from "ON OR OC" sheet):
- * ----------------
- * The following columns are intentionally not imported:
- * - 'Origin' - redundant with document reference
- * - 'Date:' - not relevant for structured data
- * - 'ON reference:' - redundant with ON Title
- * - 'Step' - no longer used for OC generation
- * - 'Operational Change (Code)' - always empty in source data
- *
- * IGNORED COLUMNS (from "OCs for 2027" sheet):
- * ----------------
- * - 'Cost assessment' - captured in privateNotes
- * - 'Pirotity' - captured in privateNotes
- *
- * RELATIONSHIPS:
- * --------------
- * - ON → OR: One-to-many (ON.externalId stored in OR.implementedONs)
- * - OC → OR: One-to-many (OR.externalId stored in OC.implementedORs)
+ * (empty, TBD, N/A values are skipped)
  */
+
+// Root ON code thresholds per wave — codes <= threshold are root ONs
+const ROOT_THRESHOLDS = {
+    '2027': 7,
+    '2028': 4,
+    '2029': 6
+};
+
+/**
+ * Static child-code → root-code mapping per wave.
+ * Derived from the authoritative ON/OR structure tables in the mapper header.
+ * ON reference: column is NOT used for root linkage (it self-references the child title).
+ *
+ * Wave 2027 root ranges:
+ *   01 (Ad-hoc airspace structure evolution):  08–10, 18–21
+ *   02 (Dynamic RAD evolution):                (no dedicated child ONs — ORs only)
+ *   03 (Dynamic scenarios evolution):           08–10, 17
+ *   04 (iOAT FPL evolution):                   11–16
+ *   05 (Notification process evolution):        20, 22–25
+ *   06 (Enhance Monitoring function):           15–16
+ *   07 (CBO/CBA evolution):                    (no dedicated child ONs)
+ *
+ * Wave 2028 root ranges:
+ *   01 (Enhanced ASM structures evolution):    26–31, 48–49
+ *   02 (Rolling process evolution):            40, 43, 45–47
+ *   03 (NIA/SIM further evolution):            32–38, 44
+ *   04 (Enhanced CDM evolution):               39, 41–42
+ *
+ * Wave 2029 root ranges:
+ *   01 (Dynamic ATM features evolution):       50–55
+ *   02 (NIA/SIM further evolution):            57–62, 64–66
+ *   03 (Rolling Process evolution):            68, 70
+ *   04 (POST-OPS evolution):                   69, 71
+ *   05 (Further CDM process evolution):        56, 67
+ *   06 (Enhanced Monitoring evolution):        57–59
+ */
+const CHILD_TO_ROOT_MAP = {
+    '2027': {
+        8: 1,  9: 1, 10: 1, 18: 1, 19: 1, 20: 1, 21: 1,  // root 01
+        // root 02: no child ONs
+        17: 3,                                               // root 03 (cross-border CDM)
+        11: 4, 12: 4, 13: 4, 14: 4, 15: 4, 16: 4,         // root 04
+        22: 5, 23: 5, 24: 5, 25: 5,                        // root 05
+        // root 06: impact of ARES (15) and iOAT FPL (16) shared with root 04
+        // root 07: no child ONs
+    },
+    '2028': {
+        26: 1, 27: 1, 28: 1, 29: 1, 30: 1, 31: 1, 48: 1, 49: 1,  // root 01
+        40: 2, 43: 2, 45: 2, 46: 2, 47: 2,                         // root 02
+        32: 3, 33: 3, 34: 3, 35: 3, 36: 3, 37: 3, 38: 3, 44: 3,  // root 03
+        39: 4, 41: 4, 42: 4,                                        // root 04
+    },
+    '2029': {
+        50: 1, 51: 1, 52: 1, 53: 1, 54: 1, 55: 1,         // root 01
+        57: 2, 58: 2, 59: 2, 60: 2, 61: 2, 62: 2,          // root 02 (also 63–66)
+        63: 2, 64: 2, 65: 2, 66: 2,
+        68: 3, 70: 3,                                        // root 03
+        69: 4, 71: 4,                                        // root 04
+        56: 5, 67: 5,                                        // root 05
+        // root 06 shares 57–59 with root 02 — monitoring ONs appear under both
+    }
+};
+
+// ONOR sheet name patterns per wave
+const WAVE_SHEET_PATTERNS = {
+    '2027': /^ONOR\s*2027/i,
+    '2028': /^ONOR\s*2028/i,
+    '2029': /^ONOR\s*2029/i
+};
+
+// OR statement column candidates, in priority order
+const OR_STATEMENT_COLUMN_CANDIDATES = [
+    'OR Statement',
+    'OR statement',
+    '',
+    'Detailed requirement:\r\nOR Statement',
+    'Detailed requirement:\r\nStatement'
+];
+
 class AsmAtfcmMapper extends Mapper {
 
     /**
-     * Map of stakeholder synonyms to external IDs
-     * Keys: variations found in ASM_ATFCM Excel (case-sensitive)
-     * Values: external IDs matching setup.json stakeholder categories
-     *
-     * Special values:
-     * - null: explicitly ignored tokens (e.g., 'External Systems')
+     * Stakeholder synonym map — title tokens → externalId
+     * null values are explicitly ignored tokens
      */
     static STAKEHOLDER_SYNONYM_MAP = {
-        // Network Manager variations
         'NM': 'stakeholder:network/nm',
         'NMOC': 'stakeholder:network/nm/nmoc',
         'Network Manager': 'stakeholder:network/nm',
         'NM B2B Office': 'stakeholder:network/nm',
         'Network Manager Operations Centre': 'stakeholder:network/nm/nmoc',
-
-        // Weather Operations Centre
         'WOC': 'stakeholder:network/nm/woc',
         'WOCs': 'stakeholder:network/nm/woc',
-
-        // ANSP variations
         'ANSP': 'stakeholder:network/ansp',
         'ANSPs': 'stakeholder:network/ansp',
-        'ANSPs MIL': 'stakeholder:network/ansp',  // ANSPs including Military
-
-        // Flow Management Position
+        'ANSPs MIL': 'stakeholder:network/ansp',
         'FMP': 'stakeholder:network/ansp/fmp',
         'FMPs': 'stakeholder:network/ansp/fmp',
-        'FM': 'stakeholder:network/ansp/fmp',  // Abbreviation for Flow Management
+        'FM': 'stakeholder:network/ansp/fmp',
         'Local FMPs': 'stakeholder:network/ansp/fmp',
         'Local FMP': 'stakeholder:network/ansp/fmp',
         'Flow Management Positions': 'stakeholder:network/ansp/fmp',
-
-        // Airspace Management Cell
         'AMC': 'stakeholder:network/ansp/amc',
         'AMCs': 'stakeholder:network/ansp/amc',
         'Local AMCs': 'stakeholder:network/ansp/amc',
-        'local AMCs': 'stakeholder:network/ansp/amc',  // lowercase variant
+        'local AMCs': 'stakeholder:network/ansp/amc',
         'Local AMC': 'stakeholder:network/ansp/amc',
         'Airspace Management Cells': 'stakeholder:network/ansp/amc',
-
-        // Air Traffic Control
         'ATC Unit': 'stakeholder:network/ansp/atc_unit',
         'ATC Units': 'stakeholder:network/ansp/atc_unit',
         'Air Traffic Control Units': 'stakeholder:network/ansp/atc_unit',
         'Civil/Military ATC Units': 'stakeholder:network/ansp/atc_unit',
-        'Civil, Military ATC Units': 'stakeholder:network/ansp/atc_unit',  // Fallback for comma variant
-
-        // Air Traffic Service
+        'Civil, Military ATC Units': 'stakeholder:network/ansp/atc_unit',
         'ATSUs': 'stakeholder:network/ansp/ats_unit',
         'ATSU': 'stakeholder:network/ansp/ats_unit',
-
-        // Airspace User variations
         'AU': 'stakeholder:network/airspace_user',
         'AUs': 'stakeholder:network/airspace_user',
-        'Aus': 'stakeholder:network/airspace_user',  // Typo variant
+        'Aus': 'stakeholder:network/airspace_user',
         'Airspace Users': 'stakeholder:network/airspace_user',
         'Airspace User': 'stakeholder:network/airspace_user',
-
-        // Aircraft Operator
         'AO': 'stakeholder:network/airspace_user/ao',
         'AOs': 'stakeholder:network/airspace_user/ao',
         'Airlines': 'stakeholder:network/airspace_user/ao',
         'Airlines/AU': 'stakeholder:network/airspace_user/ao',
-
-        // Computerized Flight Service Provider
         'CFSP': 'stakeholder:network/airspace_user/cfsp',
         'CFSPs': 'stakeholder:network/airspace_user/cfsp',
-
-        // Military variations
         'Military': 'stakeholder:network/military',
         'MIL': 'stakeholder:network/military',
         'MIL AU': 'stakeholder:network/military',
         'Military Operational Units': 'stakeholder:network/military',
         'Military authorities': 'stakeholder:network/military',
-
-        // System Integrators and Developers
         'System Integrators': 'stakeholder:network/system_integrator',
         'System Developers': 'stakeholder:network/system_integrator',
         'IT Admins': 'stakeholder:network/system_integrator',
         'Stakeholder IT Admins': 'stakeholder:network/system_integrator',
-
-        // National Authorities
         'National Authority': 'stakeholder:network/national_authority',
         'NSA': 'stakeholder:network/national_authority',
-
-        // European Aviation Safety Agency
         'EASA': 'stakeholder:network/easa',
-
-        // Explicitly ignored - technical/generic terms, vague groupings
+        // Explicitly ignored
         'External Systems': null,
         'External Users': null,
-        'EXT': null,  // External (too vague)
-        'relevant ASM actors': null,  // Too generic
-        'local ASM actor': null,  // Too generic
-        'local ASM': null,  // Fragment from "local ASM/ATFCM actors"
-        'ATFCM actors': null,  // Fragment from "local ASM/ATFCM actors"
-        'All CDM stakeholders: FMPs': null,  // Prefix text, not a stakeholder
-        'AMC. FMP': null,  // Malformed (period instead of comma)
-        'System Developers (EAUP': null,  // Incomplete after parenthetical removal
-        'ADP platforms)': null  // Fragment after parenthetical removal
+        'EXT': null,
+        'relevant ASM actors': null,
+        'local ASM actor': null,
+        'local ASM': null,
+        'ATFCM actors': null,
+        'All CDM stakeholders: FMPs': null,
+        'AMC. FMP': null,
+        'System Developers (EAUP': null,
+        'ADP platforms)': null
     };
-
 
     constructor() {
         super();
@@ -244,702 +393,498 @@ class AsmAtfcmMapper extends Mapper {
     }
 
     /**
-     * Map raw extracted Excel data to structured import format
+     * Map raw extracted Excel data to structured import format.
+     * Processes all ONOR sheets across all waves; OC sheets are ignored.
+     *
      * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @returns {Object} StructuredImportData with all entity collections
+     * @returns {Object} StructuredImportData
      */
     map(rawData) {
-        console.log('AsmAtfcmMapper: Processing raw data from Excel extraction');
+        console.log('AsmAtfcmMapper: Processing Edition 4 multi-sheet workbook');
 
-        // OR Code → externalId map for OC resolution
-        const orCodeMap = new Map();
+        const allNeeds = [];       // root ONs + child ONs, deduplicated
+        const allRequirements = []; // ORs across all sheets
 
-        // Process ON OR sheet for needs and requirements
-        const onOrResult = this._processOnOrSheet(rawData, orCodeMap);
-        console.log(`Mapped ${onOrResult.needs.length} needs (ONs) and ${onOrResult.requirements.length} requirements (ORs) from ON OR OC sheet`);
-        console.log(`Built OR Code map with ${orCodeMap.size} entries`);
+        for (const wave of ['2027', '2028', '2029']) {
+            const waveSheets = this._getSheetsForWave(rawData, wave);
+            if (waveSheets.length === 0) {
+                console.warn(`AsmAtfcmMapper: No ONOR sheets found for wave ${wave}`);
+                continue;
+            }
 
-        // Process OCs for 2027 sheet for changes
-        const changes = this._processOcSheet(rawData, orCodeMap);
-        console.log(`Mapped ${changes.length} changes (OCs) from OCs for 2027 sheet`);
+            console.log(`AsmAtfcmMapper: Processing wave ${wave} — ${waveSheets.length} sheets`);
+            const waveResult = this._processWave(wave, waveSheets);
+            allNeeds.push(...waveResult.needs);
+            allRequirements.push(...waveResult.requirements);
+        }
+
+        console.log(`AsmAtfcmMapper: Total — ${allNeeds.length} ONs, ${allRequirements.length} ORs`);
 
         return {
             referenceDocuments: [],
             stakeholderCategories: [],
             waves: [],
-            requirements: [...onOrResult.needs, ...onOrResult.requirements],
-            changes: changes
+            requirements: [...allNeeds, ...allRequirements],
+            changes: []
         };
     }
 
+    // ─── Wave processing ──────────────────────────────────────────────────────
+
     /**
-     * Process ON OR sheet and extract ONs and ORs
-     * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @param {Map<string, string>} orCodeMap - Map to populate with OR Code → externalId
-     * @returns {Object} { needs: [], requirements: [] }
+     * Get all ONOR sheets for a given wave, sorted so the main sheet comes first.
+     * @param {Object} rawData
+     * @param {string} wave - '2027' | '2028' | '2029'
+     * @returns {Array} Ordered sheet objects
      * @private
      */
-    _processOnOrSheet(rawData, orCodeMap) {
-        const needsMap = new Map(); // Map<externalId, ON>
-        const requirements = [];
+    _getSheetsForWave(rawData, wave) {
+        const pattern = WAVE_SHEET_PATTERNS[wave];
+        const sheets = (rawData.sheets || []).filter(s => pattern.test(s.name.trim()));
 
-        // Internal ON Title to External ID mapping
-        const onTitleToExternalId = new Map(); // Map<ON_Title, externalId>
-
-        // Find ON OR OC sheet
-        const onOrOcSheet = (rawData.sheets || []).find(sheet =>
-            sheet.name === 'ON OR OC'
-        );
-
-        if (!onOrOcSheet) {
-            console.warn('WARNING: ON OR OC sheet not found in Excel workbook');
-            return { needs: [], requirements: [] };
-        }
-
-        console.log(`Found ON OR OC sheet with ${onOrOcSheet.rows.length} rows`);
-
-        // Process each row
-        for (const row of onOrOcSheet.rows) {
-            const result = this._processOnOrRow(
-                row,
-                needsMap,
-                onTitleToExternalId,
-                orCodeMap
-            );
-
-            if (result.requirement) {
-                requirements.push(result.requirement);
-            }
-        }
-
-        console.log(`Mapped ${needsMap.size} needs (ONs) and ${requirements.length} requirements (ORs)`);
-
-        // Apply Delta conversion to all text fields before returning
-        const needs = Array.from(needsMap.values()).map(need => ({
-            ...need,
-            statement: this.converter.asciidocToDelta(need.statement),
-            rationale: this.converter.asciidocToDelta(need.rationale),
-            privateNotes: this.converter.asciidocToDelta(need.privateNotes)
-        }));
-
-        const wrappedRequirements = requirements.map(req => ({
-            ...req,
-            statement: this.converter.asciidocToDelta(req.statement),
-            rationale: this.converter.asciidocToDelta(req.rationale),
-            privateNotes: this.converter.asciidocToDelta(req.privateNotes)
-        }));
-
-        return {
-            needs: needs,
-            requirements: wrappedRequirements
-        };
+        // Sort: main sheet (name matches exactly ONOR{wave} or ONOR {wave}) first
+        const mainPattern = new RegExp(`^ONOR\\s*${wave}\\s*$`, 'i');
+        return sheets.sort((a, b) => {
+            const aMain = mainPattern.test(a.name.trim()) ? 0 : 1;
+            const bMain = mainPattern.test(b.name.trim()) ? 0 : 1;
+            return aMain - bMain;
+        });
     }
 
     /**
-     * Process a single row from ON OR sheet
-     * Extracts ON (if new) and OR
-     * @param {Object} row - Row object with column headers as keys
-     * @param {Map} needsMap - Map of ON externalId -> ON object
-     * @param {Map} onTitleToExternalId - Map of ON Title -> external ID
-     * @param {Map<string, string>} orCodeMap - Map to populate with OR Code → externalId
-     * @returns {Object} { requirement: Object|null }
+     * Process all ONOR sheets for a wave, building deduplicated ONs and ORs.
+     * @param {string} wave
+     * @param {Array} sheets
+     * @returns {{ needs: Array, requirements: Array }}
      * @private
      */
-    _processOnOrRow(row, needsMap, onTitleToExternalId, orCodeMap) {
-        // Extract ON Title
-        const onTitle = row['ON Title:'];
-        let onExternalId = null;
+    _processWave(wave, sheets) {
+        const threshold = ROOT_THRESHOLDS[wave];
 
-        if (onTitle && onTitle.trim() !== '') {
-            const normalizedOnTitle = onTitle.trim();
+        // Shared state across all sheets in this wave
+        const onMap = new Map();  // externalId → ON object (dedup)
+        const orMap = new Map();  // externalId → OR object (dedup by title+wave)
 
-            // Check if we already processed this ON
-            if (onTitleToExternalId.has(normalizedOnTitle)) {
-                // ON already exists - check if we need to append statement/rationale
-                onExternalId = onTitleToExternalId.get(normalizedOnTitle);
-                const existingNeed = needsMap.get(onExternalId);
-                this._appendNeedContentIfDifferent(existingNeed, row);
-            } else {
-                // Extract the full ON object
-                const need = this._extractNeed(row);
-                if (need) {
-                    onExternalId = need.externalId;
-                    // Store in both maps
-                    needsMap.set(onExternalId, need);
-                    onTitleToExternalId.set(normalizedOnTitle, onExternalId);
+        for (const sheet of sheets) {
+            console.log(`  Sheet "${sheet.name}": ${sheet.rows.length} rows`);
+            const orStatementKey = this._resolveOrStatementColumn(sheet);
+
+            for (const row of sheet.rows) {
+                // Skip header-leaked rows
+                if (this._isHeaderRow(row)) continue;
+
+                const onCodeNum = this._normalizeCodeNumber(row['ON Code:']);
+                if (onCodeNum === null) continue;
+
+                const onTitle = (row['ON Title:'] || '').trim();
+                if (!onTitle) continue;
+
+                const isRoot = onCodeNum <= threshold;
+                const onExternalId = this._buildOnExternalId(wave, onCodeNum);
+
+                // Create or update the ON entry
+                if (!onMap.has(onExternalId)) {
+                    const on = this._buildOn(wave, onCodeNum, onTitle, row, isRoot);
+                    onMap.set(onExternalId, on);
+                } else {
+                    // Append statement/rationale if this sheet adds new content
+                    this._mergeOnContent(onMap.get(onExternalId), row);
+                }
+
+                // Resolve parent for child ONs via static code-range map
+                // and inherit root ON path
+                if (!isRoot) {
+                    const on = onMap.get(onExternalId);
+                    if (on.refinesParents.length === 0) {
+                        const rootCodeNum = (CHILD_TO_ROOT_MAP[wave] || {})[onCodeNum];
+                        if (rootCodeNum != null) {
+                            const rootId = this._buildOnExternalId(wave, rootCodeNum);
+                            on.refinesParents = [rootId];
+                            // Path resolved in second pass after all sheets processed
+                        } else {
+                            console.warn(`AsmAtfcmMapper: No root mapping for child ON code ${onCodeNum} in wave ${wave}`);
+                        }
+                    }
+                }
+
+                // Extract OR from this row
+                const orTitle = (row['OR Title:'] || '').trim();
+                if (!orTitle) continue;
+
+                const orExternalId = this._buildOrExternalId(wave, orTitle);
+                if (!orMap.has(orExternalId)) {
+                    const or = this._buildOr(wave, orTitle, onExternalId, row, orStatementKey);
+                    if (or) orMap.set(orExternalId, or);
                 }
             }
-        } else {
-            console.warn(`Row ${row['#']}: OR exists but no ON Title found`);
         }
 
-        // Build the OR object
-        const requirement = this._extractRequirement(row);
-        if (!requirement) {
-            return { requirement: null };
-        }
+        // Apply Delta conversion — roots first so refinesParents references are always satisfied
+        const needsOrdered = [
+            ...Array.from(onMap.values()).filter(on => on.isRoot),
+            ...Array.from(onMap.values()).filter(on => !on.isRoot)
+        ];
+        const needs = needsOrdered.map(on => ({
+            ...on,
+            statement: this.converter.asciidocToDelta(on.statement),
+            rationale: this.converter.asciidocToDelta(on.rationale),
+            privateNotes: this.converter.asciidocToDelta(on.privateNotes)
+        }));
 
-        // Add ON reference if exists
-        if (onExternalId) {
-            requirement.implementedONs = [onExternalId];
-        }
+        const requirements = Array.from(orMap.values()).map(or => ({
+            ...or,
+            statement: this.converter.asciidocToDelta(or.statement),
+            rationale: this.converter.asciidocToDelta(or.rationale),
+            privateNotes: this.converter.asciidocToDelta(or.privateNotes)
+        }));
 
-        // Populate OR Code map for OC resolution
-        const orCode = row['OR Code'];
-        if (orCode && orCode.trim() !== '') {
-            orCodeMap.set(orCode.trim(), requirement.externalId);
-        }
-
-        return { requirement };
+        return { needs, requirements };
     }
 
-    /**
-     * Append statement/rationale to existing need if different
-     * @param {Object} existingNeed - Existing ON object
-     * @param {Object} row - Row object with new data
-     * @private
-     */
-    _appendNeedContentIfDifferent(existingNeed, row) {
-        const newStatement = row['ON Statement'];
-        const newRationale = row['ON Rationale'];
-
-        // Append statement if different and non-empty
-        if (newStatement && newStatement.trim() !== '') {
-            const trimmedNew = newStatement.trim();
-            if (existingNeed.statement && !existingNeed.statement.includes(trimmedNew)) {
-                existingNeed.statement += '\n\n' + trimmedNew;
-            }
-        }
-
-        // Append rationale if different and non-empty
-        if (newRationale && newRationale.trim() !== '') {
-            const trimmedNew = newRationale.trim();
-            if (existingNeed.rationale && !existingNeed.rationale.includes(trimmedNew)) {
-                existingNeed.rationale += '\n\n' + trimmedNew;
-            }
-        }
-    }
+    // ─── ON building ──────────────────────────────────────────────────────────
 
     /**
-     * Extract ON (Operational Need) from row
-     * @param {Object} row - Row object with column headers as keys
-     * @returns {Object|null} ON object or null if invalid
+     * Build a new ON object from a row.
+     * @param {string} wave
+     * @param {number} codeNum
+     * @param {string} title
+     * @param {Object} row
+     * @param {boolean} isRoot
+     * @returns {Object}
      * @private
      */
-    _extractNeed(row) {
-        const onTitle = row['ON Title:'];
-        const onStatement = row['ON Statement'];
-        const onRationale = row['ON Rationale'];
-        const assignedTo = row['Assigned to'];
-        const step = row['Step'];
-        const conopsReference = row['CONOPS Improvement reference'];
+    _buildOn(wave, codeNum, title, row, isRoot) {
+        const step = (row['Step'] || '').trim();
+        const conops = (row['CONOPS Improvement reference'] || '').trim();
+        const path = this._buildPath(step, conops);
 
-        if (!onTitle || onTitle.trim() === '') {
-            return null;
-        }
+        const statement = (row['ON Statement'] || '').trim() || null;
+        const rationale = (row['ON Rationale'] || '').trim() || null;
+        const year = parseInt(wave, 10);
 
-        // Build path from Step and CONOPS Improvement reference
-        const path = this._buildPath(step, conopsReference);
-
-        // Build object first
-        const need = {
+        return {
+            externalId: this._buildOnExternalId(wave, codeNum),
             type: 'ON',
             drg: 'ASM_ATFCM',
-            title: onTitle.trim(),
-            path: path,
-            statement: onStatement && onStatement.trim() !== '' ? onStatement.trim() : null,
-            rationale: onRationale && onRationale.trim() !== '' ? onRationale.trim() : null,
-            privateNotes: assignedTo && assignedTo.trim() !== '' ? `**Assigned to:** ${assignedTo.trim()}` : null
+            title,
+            path,
+            statement,
+            rationale,
+            tentative: [year, year],
+            refinesParents: [],
+            privateNotes: null
         };
-
-        // Add external ID using the complete object (no path needed for ID generation)
-        need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
-
-        return need;
     }
 
     /**
-     * Extract OR (Operational Requirement) from row
-     * @param {Object} row - Row object with column headers as keys
-     * @returns {Object|null} OR object or null if invalid
+     * Merge new statement/rationale content into an existing ON if not already present.
+     * @param {Object} existingOn
+     * @param {Object} row
      * @private
      */
-    _extractRequirement(row) {
-        const orTitle = row['OR Title:'];
-        const step = row['Step'];
-        const conopsReference = row['CONOPS Improvement reference'];
+    _mergeOnContent(existingOn, row) {
+        const newStatement = (row['ON Statement'] || '').trim();
+        const newRationale = (row['ON Rationale'] || '').trim();
 
-        if (!orTitle || orTitle.trim() === '') {
-            return null;
+        if (newStatement && existingOn.statement && !existingOn.statement.includes(newStatement)) {
+            existingOn.statement += '\n\n' + newStatement;
+        } else if (newStatement && !existingOn.statement) {
+            existingOn.statement = newStatement;
         }
 
-        // Build statement
-        const baseStatement = row['Detailed requirement:\r\nStatement'];
-        const fitCriteria = row['Fit Criteria: (keep it under the statement)'];
+        if (newRationale && existingOn.rationale && !existingOn.rationale.includes(newRationale)) {
+            existingOn.rationale += '\n\n' + newRationale;
+        } else if (newRationale && !existingOn.rationale) {
+            existingOn.rationale = newRationale;
+        }
+    }
 
+    // ─── OR building ──────────────────────────────────────────────────────────
+
+    /**
+     * Build a new OR object from a row.
+     * @param {string} wave
+     * @param {string} orTitle
+     * @param {string} onExternalId - Parent ON externalId
+     * @param {Object} row
+     * @param {string} orStatementKey - Resolved OR statement column name
+     * @returns {Object|null}
+     * @private
+     */
+    _buildOr(wave, orTitle, onExternalId, row, orStatementKey) {
+        const step = (row['Step'] || '').trim();
+        const conops = (row['CONOPS Improvement reference'] || '').trim();
+        const path = this._buildPath(step, conops);
+        // Statement
+        const baseStatement = (row[orStatementKey] || '').trim();
+        const fitCriteria = (row['Fit Criteria: (keep it under the statement)'] || '').trim();
         let statement = null;
-        if (baseStatement && baseStatement.trim() !== '') {
-            statement = baseStatement.trim();
-
-            // Append Fit Criteria if present and not empty/TBD
+        if (baseStatement) {
+            statement = baseStatement;
             if (this._isValidContent(fitCriteria)) {
-                statement += '\n\n**Fit Criteria:**\n\n' + fitCriteria.trim();
+                statement += '\n\n**Fit Criteria:**\n\n' + fitCriteria;
             }
         }
 
-        // Build rationale
-        const baseRationale = row['Rationale:'];
-        const opportunitiesRisks = row['Opportunities & Risks:\r\n(keep)'];
-
+        // Rationale
+        const baseRationale = (row['Rationale:'] || '').trim();
+        const opRisks = (row['Opportunities and risks: (keep)'] || '').trim();
         let rationale = null;
-        if (baseRationale && baseRationale.trim() !== '') {
-            rationale = baseRationale.trim();
-
-            // Append Opportunities & Risks if present and not empty/TBD
-            if (this._isValidContent(opportunitiesRisks)) {
-                rationale += '\n\n**Opportunities & Risks:**\n\n' + opportunitiesRisks.trim();
+        if (baseRationale) {
+            rationale = baseRationale;
+            if (this._isValidContent(opRisks)) {
+                rationale += '\n\n**Opportunities and Risks:**\n\n' + opRisks;
             }
         }
 
-        // Parse stakeholders
-        const stakeholderResult = this._parseStakeholders(row['Stakeholders:']);
+        // Stakeholders
+        const stakeholderResult = this._parseStakeholders(row['Stakeholders:'] || '');
 
-        // INM Roadmap reference goes to privateNotes (no document references on ORs in v4)
-        const inmRoadmapRef = row['INM Roadmap reference (code)'];
+        // Strategic documents: NSP SOs + ASM-ATFCM ConOPS improvement reference
+        const nspRefs = this._parseNspSoReferences(row['NSP SOs reference'] || '');
+        const conopsRefs = this._parseConopsReference(row['CONOPS Improvement reference'] || '');
+        const strategicDocuments = [...nspRefs, ...conopsRefs];
 
-        // Build path from Step and CONOPS Improvement reference
-        const path = this._buildPath(step, conopsReference);
+        // Private notes
+        const privateNotes = this._buildOrPrivateNotes(row, stakeholderResult.unmapped);
 
-        // Build private notes (including unmapped stakeholders and INM roadmap ref if any)
-        const privateNotes = this._extractRequirementPrivateNotes(row, stakeholderResult.unmapped, inmRoadmapRef);
-
-        // Build object first
-        const requirement = {
+        return {
+            externalId: this._buildOrExternalId(wave, orTitle),
             type: 'OR',
             drg: 'ASM_ATFCM',
-            title: orTitle.trim(),
-            path: path,
-            statement: statement,
-            rationale: rationale,
-            privateNotes: privateNotes,
-            implementedONs: [],  // Will be populated by caller
-            impactedStakeholders: stakeholderResult.refs
+            title: orTitle,
+            path,
+            statement,
+            rationale,
+            privateNotes,
+            implementedONs: [onExternalId],
+            impactedStakeholders: stakeholderResult.refs,
+            strategicDocuments: strategicDocuments.length > 0 ? strategicDocuments : undefined
         };
-
-        // Add external ID using the complete object (no path needed)
-        requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
-
-        return requirement;
     }
 
     /**
-     * Build path array from Step and CONOPS Improvement reference
-     * @param {string} step - Step column value
-     * @param {string} conopsReference - CONOPS Improvement reference column value
-     * @returns {Array<string>|null} Path array or null if both empty
+     * Build OR private notes from multiple columns.
+     * @param {Object} row
+     * @param {Array<string>} unmappedStakeholders
+     * @returns {string|null}
      * @private
      */
-    _buildPath(step, conopsReference) {
-        const pathSegments = [];
-
-        if (step && step.trim() !== '') {
-            pathSegments.push(step.trim());
-        }
-
-        if (conopsReference && conopsReference.trim() !== '') {
-            pathSegments.push(conopsReference.trim());
-        }
-
-        return pathSegments.length > 0 ? pathSegments : null;
-    }
-
-    /**
-     * Extract private notes for OR
-     * @param {Object} row - Row object
-     * @param {Array<string>} unmappedStakeholders - Unmapped stakeholder names
-     * @returns {string|null} Private notes text
-     * @private
-     */
-    _extractRequirementPrivateNotes(row, unmappedStakeholders = [], inmRoadmapRef = null) {
-        const rowNumber = row['#'];
-        const originator = row['Originator:'];
-        const orCode = row['OR Code'];
-        const dependencies = row['Dependencies:'];
-        const priority = row['Priority (Implementing Year)'];
-        const dataEnablers = row['Data (and other Enablers):'];
-        const impactedServices = row['Impacted Services:'];
-        const remark = row['Remark'];
-
+    _buildOrPrivateNotes(row, unmappedStakeholders = []) {
         const parts = [];
 
-        if (rowNumber && rowNumber.toString().trim() !== '') {
-            parts.push(`# ${rowNumber.toString().trim()}`);
-        }
+        const rowNum = (row['#'] || '').toString().trim();
+        if (rowNum) parts.push(`# ${rowNum}`);
 
-        if (originator && originator.trim() !== '') {
-            parts.push(`**Originator:** ${originator.trim()}`);
-        }
+        const orCode = (row['OR Code'] || '').trim();
+        if (orCode) parts.push(`**OR Code:** ${orCode}`);
 
-        if (orCode && orCode.trim() !== '') {
-            parts.push(`**OR Code:** ${orCode.trim()}`);
-        }
+        const dependencies = (row['Dependencies:'] || '').trim();
+        if (this._isValidPrivateNote(dependencies)) parts.push(`**Dependencies:** ${dependencies}`);
 
-        if (this._isValidPrivateNote(dependencies)) {
-            parts.push(`**Dependencies:** ${dependencies.trim()}`);
-        }
+        const priority = (row['Priority (Implementing Year)'] || '').trim();
+        if (this._isValidPrivateNote(priority)) parts.push(`**Priority (Implementing Year):** ${priority}`);
 
-        if (priority && priority.trim() !== '') {
-            parts.push(`**Priority (Implementing Year):** ${priority.trim()}`);
-        }
+        const dataEnablers = (row['Data (and other Enablers):'] || '').trim();
+        if (this._isValidPrivateNote(dataEnablers)) parts.push(`**Data (and other Enablers):** ${dataEnablers}`);
 
-        if (this._isValidPrivateNote(dataEnablers)) {
-            parts.push(`**Data (and other Enablers):** ${dataEnablers.trim()}`);
-        }
+        const impactedServices = (row['Impacted Services:'] || '').trim();
+        if (this._isValidPrivateNote(impactedServices)) parts.push(`**Impacted Services:** ${impactedServices}`);
 
-        if (this._isValidPrivateNote(impactedServices)) {
-            parts.push(`**Impacted Services:** ${impactedServices.trim()}`);
-        }
+        const inmRef = (row['iNM Roadmap reference (code)'] || '').trim();
+        if (this._isValidPrivateNote(inmRef)) parts.push(`**iNM Roadmap Reference:** ${inmRef}`);
 
-        if (inmRoadmapRef && inmRoadmapRef.trim() !== '') {
-            parts.push(`**INM Roadmap Reference:** ${inmRoadmapRef.trim()}`);
-        }
+        const idlStep = (row['iDL Roadmap Step'] || '').trim();
+        if (this._isValidPrivateNote(idlStep)) parts.push(`**iDL Roadmap Step:** ${idlStep}`);
 
-        if (unmappedStakeholders && unmappedStakeholders.length > 0) {
+        const nspRef = (row['NSP SOs reference'] || '').trim();
+        if (this._isValidPrivateNote(nspRef)) parts.push(`**NSP SOs Reference:** ${nspRef}`);
+
+        if (unmappedStakeholders.length > 0) {
             parts.push(`**Stakeholders (unmapped):** ${unmappedStakeholders.join(', ')}`);
         }
 
-        if (remark && remark.trim() !== '') {
-            parts.push(`**Remark:** ${remark.trim()}`);
-        }
+        const remark = (row['Remark'] || '').trim();
+        if (this._isValidPrivateNote(remark)) parts.push(`**Remark:** ${remark}`);
 
         return parts.length > 0 ? parts.join('\n\n') : null;
     }
 
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
     /**
-     * Process OCs for 2027 sheet and extract OCs
-     * @param {Object} rawData - RawExtractedData from XlsxExtractor
-     * @param {Map<string, string>} orCodeMap - Map of OR Code to externalId
-     * @returns {Array} Array of OC objects
+     * Build ON externalId from wave and numeric code.
+     * @param {string} wave
+     * @param {number} codeNum
+     * @returns {string}
      * @private
      */
-    _processOcSheet(rawData, orCodeMap) {
-        const changes = [];
-
-        // Find OCs for 2027 sheet
-        const ocSheet = (rawData.sheets || []).find(sheet =>
-            sheet.name === 'OCs for 2027'
-        );
-
-        if (!ocSheet) {
-            console.warn('WARNING: OCs for 2027 sheet not found in Excel workbook');
-            return [];
-        }
-
-        console.log(`Found OCs for 2027 sheet with ${ocSheet.rows.length} rows`);
-
-        // Process each row
-        for (const row of ocSheet.rows) {
-            const change = this._extractChange(row, orCodeMap);
-            if (change) {
-                changes.push(change);
-            }
-        }
-
-        // Apply Delta conversion to all text fields before returning
-        const wrappedChanges = changes.map(change => ({
-            ...change,
-            purpose: this.converter.asciidocToDelta(change.purpose),
-            initialState: this.converter.asciidocToDelta(change.initialState),
-            finalState: this.converter.asciidocToDelta(change.finalState),
-            details: this.converter.asciidocToDelta(change.details),
-            privateNotes: this.converter.asciidocToDelta(change.privateNotes)
-        }));
-
-        return wrappedChanges;
+    _buildOnExternalId(wave, codeNum) {
+        return `on:asm_atfcm/${wave}/${String(codeNum).padStart(2, '0')}`;
     }
 
     /**
-     * Extract OC (Operational Change) from OCs for 2027 sheet row
-     * @param {Object} row - Row object with column headers as keys
-     * @param {Map<string, string>} orCodeMap - Map of OR Code to externalId
-     * @returns {Object|null} OC object or null if invalid
+     * Build OR externalId from wave and title.
+     * @param {string} wave
+     * @param {string} title
+     * @returns {string}
      * @private
      */
-    _extractChange(row, orCodeMap) {
-        const externalId = row['Number/Code'];
-        const title = row['Title'];
-
-        if (!externalId || externalId.trim() === '' || !title || title.trim() === '') {
-            console.warn('Skipping OC row: missing Number/Code or Title');
-            return null;
-        }
-
-        // Parse implemented ORs (semicolon-delimited OR codes → resolve to external IDs)
-        const implementedORs = this._resolveOrCodes(row['Satisfied Ors'], orCodeMap, 'Satisfied Ors');
-
-        // Parse decommissioned ORs (semicolon-delimited OR codes → resolve to external IDs)
-        const decommissionedORs = this._resolveOrCodes(row['Superseded Ors'], orCodeMap, 'Superseded Ors', true);
-
-        // Parse milestones
-        const milestones = this._parseOcMilestones(row['Milestones']);
-
-        // Build private notes from multiple fields
-        const privateNotes = this._extractChangePrivateNotes(row);
-
-        // Build the change object
-        const change = {
-            externalId: externalId.trim(),
-            title: title.trim(),
-            purpose: row['Purpose'] && row['Purpose'].trim() !== '' ? row['Purpose'].trim() : null,
-            initialState: row['Initial State'] && row['Initial State'].trim() !== '' ? row['Initial State'].trim() : null,
-            finalState: row['Final State'] && row['Final State'].trim() !== '' ? row['Final State'].trim() : null,
-            details: row['Details'] && row['Details'].trim() !== '' ? row['Details'].trim() : null,
-            drg: 'ASM_ATFCM',
-            implementedORs: implementedORs,
-            decommissionedORs: decommissionedORs,
-            milestones: milestones,
-            privateNotes: privateNotes
-        };
-
-        return change;
+    _buildOrExternalId(wave, title) {
+        const normalized = title.toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_|_$/g, '');
+        return `or:asm_atfcm/${wave}/${normalized}`;
     }
 
     /**
-     * Extract private notes for OC from multiple columns
-     * @param {Object} row - Row object
-     * @returns {string|null} Private notes text
+     * Extract and normalize the numeric part of an ON Code string.
+     * Returns null if not parseable or if it is a header literal.
+     * e.g. 'ASM/ATFCM - ON -01' → 1, 'ASM/ATFCM - ON - 07' → 7
+     * @param {string} code
+     * @returns {number|null}
      * @private
      */
-    _extractChangePrivateNotes(row) {
-        const numberCode = row['Number/Code'];
-        const remarks = row['Remarks'];
-        const dependences = row['Dependences'];
-        const costAssessment = row['Cost assessment'];
-        const priority = row['Pirotity'];
-        const additionalDocuments = row['Additional documents'];
-
-        const parts = [];
-
-        if (numberCode && numberCode.trim() !== '') {
-            parts.push(`**Number/Code:** ${numberCode.trim()}`);
-        }
-
-        if (remarks && remarks.trim() !== '' && this._isValidPrivateNote(remarks)) {
-            parts.push(`**Remarks:** ${remarks.trim()}`);
-        }
-
-        if (dependences && dependences.trim() !== '' && this._isValidPrivateNote(dependences)) {
-            parts.push(`**Dependencies:** ${dependences.trim()}`);
-        }
-
-        if (costAssessment && costAssessment.trim() !== '' && this._isValidPrivateNote(costAssessment)) {
-            parts.push(`**Cost Assessment:** ${costAssessment.trim()}`);
-        }
-
-        if (priority && priority.trim() !== '' && this._isValidPrivateNote(priority)) {
-            parts.push(`**Priority:** ${priority.trim()}`);
-        }
-
-        if (additionalDocuments && additionalDocuments.trim() !== '' && this._isValidPrivateNote(additionalDocuments)) {
-            parts.push(`**Additional Documents:** ${additionalDocuments.trim()}`);
-        }
-
-        return parts.length > 0 ? parts.join('\n\n') : null;
+    _normalizeCodeNumber(code) {
+        if (!code || typeof code !== 'string') return null;
+        const trimmed = code.trim();
+        if (trimmed === '' || trimmed === 'ON Code:') return null;
+        const m = trimmed.match(/(\d+)\s*$/);
+        return m ? parseInt(m[1], 10) : null;
     }
 
     /**
-     * Resolve OR codes to external IDs using orCodeMap
-     * @param {string} text - Semicolon-delimited OR codes
-     * @param {Map<string, string>} orCodeMap - Map of OR Code to externalId
-     * @param {string} fieldName - Field name for logging
-     * @param {boolean} handleNA - If true, treat "N/A" as empty
-     * @returns {Array<string>} Array of external IDs
+     * Determine the OR statement column key for a given sheet.
+     * Falls back through known variants; warns if none found.
+     * @param {Object} sheet
+     * @returns {string}
      * @private
      */
-    _resolveOrCodes(text, orCodeMap, fieldName, handleNA = false) {
-        if (!text || text.trim() === '') {
-            return [];
+    _resolveOrStatementColumn(sheet) {
+        if (!sheet.rows || sheet.rows.length === 0) return OR_STATEMENT_COLUMN_CANDIDATES[0];
+        const keys = Object.keys(sheet.rows[0]);
+        const found = OR_STATEMENT_COLUMN_CANDIDATES.find(candidate => keys.includes(candidate));
+        if (!found && found !== '') {
+            console.warn(`AsmAtfcmMapper: No OR statement column found in sheet "${sheet.name}"`);
         }
-
-        // Handle "N/A" case
-        if (handleNA && text.trim().toUpperCase() === 'N/A') {
-            return [];
-        }
-
-        const resolvedIds = [];
-        const unresolvedCodes = [];
-
-        const orCodes = text
-            .split(';')
-            .map(code => code.trim())
-            .filter(code => code !== '');
-
-        for (const orCode of orCodes) {
-            const externalId = orCodeMap.get(orCode);
-            if (externalId) {
-                resolvedIds.push(externalId);
-            } else {
-                unresolvedCodes.push(orCode);
-            }
-        }
-
-        // Log warnings for unresolved codes
-        if (unresolvedCodes.length > 0) {
-            console.warn(
-                `Unresolved OR codes in ${fieldName}: ` +
-                unresolvedCodes.join(', ')
-            );
-        }
-
-        return resolvedIds;
+        return found ?? OR_STATEMENT_COLUMN_CANDIDATES[0];
     }
 
     /**
-     * Parse milestones text and map to a single milestone object with eventTypes array
-     * @param {string} text - Line-delimited milestone descriptions
-     * @returns {Array<{title: string, wave: string, eventTypes: Array<string>}>} Array with single milestone object (or empty)
+     * Detect header-leaked rows (where the ON Code cell contains the literal header text).
+     * @param {Object} row
+     * @returns {boolean}
      * @private
      */
-    _parseOcMilestones(text) {
-        if (!text || text.trim() === '') {
-            return [];
-        }
-
-        const eventTypes = [];
-        const lines = text.split('\n').map(line => line.trim()).filter(line => line !== '');
-
-        for (const line of lines) {
-            const eventType = this._mapMilestoneTextToEventType(line);
-            if (eventType) {
-                eventTypes.push(eventType);
-            }
-        }
-
-        // Return single milestone with all event types, or empty array if no valid events
-        if (eventTypes.length === 0) {
-            return [];
-        }
-
-        return [{
-            name: 'M1',
-            wave: 'wave:2027',
-            eventTypes: eventTypes
-        }];
+    _isHeaderRow(row) {
+        const code = (row['ON Code:'] || '').trim();
+        return code === 'ON Code:';
     }
 
     /**
-     * Map milestone text to eventType enum
-     * @param {string} text - Milestone description text
-     * @returns {string|null} Event type or null if not recognized
+     * Build path array from Step and CONOPS Improvement reference.
+     * @param {string} step
+     * @param {string} conops
+     * @returns {Array<string>|null}
      * @private
      */
-    _mapMilestoneTextToEventType(text) {
-        const normalized = text.toLowerCase().trim();
-
-        // Map recognized patterns to event types using shared enum
-        if (normalized.includes('nm b2b api ops deployment') ||
-            normalized.includes('b2b api ops deployment')) {
-            return MilestoneEventKeys[0]; // 'OPS_DEPLOYMENT'
-        }
-
-        if (normalized.includes('nmui ops deployment') ||
-            normalized.includes('ui ops deployment')) {
-            return MilestoneEventKeys[2]; // 'UI_TEST_DEPLOYMENT'
-        }
-
-        // Ignore "Service Activation" and other unrecognized patterns
-        return null;
+    _buildPath(step, conops) {
+        const first = step ? step.split('\n')[0].trim() : null;
+        return first ? [first] : null;
     }
 
     /**
-     * Parse stakeholders column and map to reference objects
-     * Handles multiple delimiters: comma, semicolon, slash, bullet point, newline
-     * Skips explicitly ignored tokens (mapped to null)
-     * Logs warnings for unmapped tokens
-     *
-     * @param {string} stakeholdersText - Delimited stakeholder text from Excel
-     * @returns {Object} { refs: Array<{externalId}>, unmapped: Array<string> }
+     * Parse NSP SOs reference column into strategicDocuments entries.
+     * Handles multi-value cells (newline-separated), e.g. "SO1/3\nSO3/4".
+     * Maps SO{x}/{y} → document:nsp/so{x}/{y}
+     * @param {string} text
+     * @returns {Array<{externalId: string}>}
      * @private
      */
-    _parseStakeholders(stakeholdersText) {
-        if (!stakeholdersText || stakeholdersText.trim() === '') {
-            return { refs: [], unmapped: [] };
-        }
+    _parseNspSoReferences(text) {
+        if (!this._isValidContent(text)) return [];
 
-        const stakeholderRefs = [];
-        const seenIds = new Set();  // Prevent duplicates
-        const unmappedTokens = [];  // Track unknowns (preserve order)
-
-        // Split by comma, semicolon, slash, bullet point, or newline
-        const tokens = stakeholdersText
-            .split(/[,;/•\n]/)
+        return text
+            .split('\n')
             .map(t => t.trim())
-            .filter(t => t && t !== '');
+            .filter(t => t && /^SO\d+\/\d+$/i.test(t))
+            .map(t => ({ externalId: `refdoc:nsp_${t.toLowerCase().replace(/^so(\d+)\/(\d+)$/, 'so_$1_$2')}` }));
+    }
 
-        for (let token of tokens) {
-            // Remove parenthetical text (e.g., "(EAUP/ADP platforms)" or "(EAUP, ADP platforms)")
-            token = token.replace(/\s*\([^)]*\)\s*/g, '').trim();
+    /**
+     * Parse CONOPS Improvement reference into a strategicDocuments entry.
+     * Uses fixed refdoc:asm_atfcm_conops with the topic as note.
+     * Takes only the first line of multi-line cells.
+     * @param {string} text
+     * @returns {Array<{externalId: string, note: string}>}
+     * @private
+     */
+    _parseConopsReference(text) {
+        if (!this._isValidContent(text)) return [];
+        const note = text.split('\n')[0].trim();
+        if (!note) return [];
+        return [{ externalId: 'refdoc:asm_atfcm_conops', note }];
+    }
 
-            if (!token) continue;
+    /**
+     * Parse stakeholders column into refs and unmapped tokens.
+     * @param {string} text
+     * @returns {{ refs: Array<{externalId}>, unmapped: Array<string> }}
+     * @private
+     */
+    _parseStakeholders(text) {
+        if (!text || text.trim() === '') return { refs: [], unmapped: [] };
 
+        const refs = [];
+        const seenIds = new Set();
+        const unmapped = [];
+
+        const tokens = text
+            .split(/[,;/•\n]/)
+            .map(t => t.replace(/\s*\([^)]*\)\s*/g, '').trim())
+            .filter(Boolean);
+
+        for (const token of tokens) {
             const externalId = AsmAtfcmMapper.STAKEHOLDER_SYNONYM_MAP[token];
-
-            if (externalId === null) {
-                // Explicitly ignored (e.g., 'External Systems')
-                continue;
-            }
-
+            if (externalId === null) continue; // explicitly ignored
             if (externalId) {
-                // Valid mapping found - avoid duplicates
                 if (!seenIds.has(externalId)) {
-                    stakeholderRefs.push({ externalId });
+                    refs.push({ externalId });
                     seenIds.add(externalId);
                 }
             } else {
-                // Unknown token - track for reporting and private notes
-                if (!unmappedTokens.includes(token)) {
-                    unmappedTokens.push(token);
+                if (!unmapped.includes(token)) {
+                    unmapped.push(token);
+                    console.warn(`AsmAtfcmMapper: Unmapped stakeholder "${token}"`);
                 }
             }
         }
 
-        // Report unmapped tokens (helps identify missing synonyms)
-        if (unmappedTokens.length > 0) {
-            console.warn(
-                `Unmapped stakeholders in "${stakeholdersText}": ` +
-                unmappedTokens.join(', ')
-            );
-        }
-
-        return { refs: stakeholderRefs, unmapped: unmappedTokens };
+        return { refs, unmapped };
     }
 
     /**
-     * Check if content is valid for private notes (not empty, not TBD, not N/A)
-     * @param {string} content - Content to check
-     * @returns {boolean} True if content is valid
+     * Check if a value is valid for inclusion (not empty, TBD, or N/A).
+     * @param {string} value
+     * @returns {boolean}
      * @private
      */
-    _isValidPrivateNote(content) {
-        if (!content || content.trim() === '') {
-            return false;
-        }
-        const normalized = content.trim().toUpperCase();
-        return normalized !== 'TBD' && normalized !== 'N/A';
+    _isValidContent(value) {
+        if (!value || value.trim() === '') return false;
+        const u = value.trim().toUpperCase();
+        return u !== 'TBD';
     }
 
     /**
-     * Check if content is valid (not empty and not "TBD")
-     * @param {string} content - Content to check
-     * @returns {boolean} True if content is valid
+     * Check if a value is valid for private notes (not empty, TBD, or N/A).
+     * @param {string} value
+     * @returns {boolean}
      * @private
      */
-    _isValidContent(content) {
-        if (!content || content.trim() === '') {
-            return false;
-        }
-        const normalized = content.trim().toUpperCase();
-        return normalized !== 'TBD';
+    _isValidPrivateNote(value) {
+        if (!value || value.trim() === '') return false;
+        const u = value.trim().toUpperCase();
+        return u !== 'TBD' && u !== 'N/A';
     }
 }
 
