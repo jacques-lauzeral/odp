@@ -42,6 +42,28 @@ export default class ONPlanning {
 
         // Pane split ratio: fraction of width allocated to temporal grid (0.2–0.9)
         this.splitRatio = 0.67;
+
+        // Reload grid when an ON is saved
+        this._onEntitySaved = async (e) => {
+            if (e.detail?.entityType !== 'Operational Requirements') return;
+            const requirements = await this._reloadRequirements();
+            if (requirements) {
+                this.requirements = requirements;
+                this.onData = requirements.filter(r => r.type === 'ON');
+                this._feedTemporalGrid();
+                // Refresh details if the saved item is currently selected
+                if (this.selectedON) {
+                    const fresh = this.onData.find(
+                        o => String(o.itemId || o.id) === String(this.selectedON.itemId || this.selectedON.id)
+                    );
+                    if (fresh) {
+                        this.selectedON = fresh;
+                        this.renderDetails(fresh);
+                    }
+                }
+            }
+        };
+        document.addEventListener('entitySaved', this._onEntitySaved);
     }
 
     // ====================
@@ -64,7 +86,18 @@ export default class ONPlanning {
 
     onDeactivated() {}
 
+    _escapeHtml(str) {
+        if (!str) return '';
+        const d = document.createElement('div');
+        d.textContent = String(str);
+        return d.innerHTML;
+    }
+
     cleanup() {
+        if (this._onEntitySaved) {
+            document.removeEventListener('entitySaved', this._onEntitySaved);
+            this._onEntitySaved = null;
+        }
         if (this.temporalGrid?.cleanup) this.temporalGrid.cleanup();
         this.container = null;
         this.temporalGrid = null;
@@ -78,6 +111,16 @@ export default class ONPlanning {
     async loadData() {
         this.onData = this.requirements.filter(r => r.type === 'ON');
         console.log(`ONPlanning: ${this.onData.length} ONs from preloaded requirements`);
+    }
+
+    async _reloadRequirements() {
+        try {
+            const { apiClient } = await import('../../shared/api-client.js');
+            return await apiClient.get('/operational-requirements');
+        } catch (e) {
+            console.error('ONPlanning: failed to reload requirements', e);
+            return null;
+        }
     }
 
     // ====================
@@ -168,7 +211,7 @@ export default class ONPlanning {
 
     initializeRequirementForm() {
         this.requirementForm = new RequirementForm(
-            { endpoint: '/operational-requirements' },
+            { endpoint: '/operational-requirements', name: 'Operational Requirements' },
             {
                 setupData: this.setupData,
                 getSetupData: () => this.setupData,
@@ -389,15 +432,27 @@ export default class ONPlanning {
             this.requirementForm.context.currentTabIndex = currentTab;
             const html = await this.requirementForm.generateReadOnlyView(on, true);
 
-            detailsContainer.innerHTML = html;
+            detailsContainer.innerHTML = `
+                <div class="details-sticky-header">
+                    <div class="item-title-section">
+                        <h3 class="item-title">${this._escapeHtml(on.title || `ON ${on.itemId}`)}</h3>
+                        <span class="item-id">[${on.code || on.itemId}]</span>
+                    </div>
+                    <div class="details-actions">
+                        <button class="btn btn-primary btn-sm" id="onEditBtn">Edit</button>
+                    </div>
+                </div>
+                <div class="details-scrollable-content">${html}</div>
+            `;
 
-            // Point currentModal at the details container so all initializers
-            // can locate their placeholders via the standard currentModal queries.
             this.requirementForm.initializeReadOnlyInPanel(detailsContainer, on);
 
             if (currentTab !== null && currentTab !== 0) {
                 this.switchTabInPanel(detailsContainer, currentTab);
             }
+
+            detailsContainer.querySelector('#onEditBtn')
+                ?.addEventListener('click', () => this.requirementForm.showEditModal(on));
 
         } catch (error) {
             console.error('ONPlanning: failed to render ON details', error);
