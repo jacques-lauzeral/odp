@@ -19,9 +19,10 @@ import { formatTentativeArray } from '/shared/src/model/year-period.js';
  *   child      → ON with refinesParents, indented under its parent group
  */
 export default class ONPlanning {
-    constructor(app, setupData, options = {}) {
+    constructor(app, setupData, requirements, options = {}) {
         this.app = app;
         this.setupData = setupData;
+        this.requirements = requirements || [];
         this.editionContext = options.editionContext || 'repository';
 
         this.container = null;
@@ -75,8 +76,7 @@ export default class ONPlanning {
     // ====================
 
     async loadData() {
-        const requirements = this.setupData.requirements || [];
-        this.onData = requirements.filter(r => r.type === 'ON');
+        this.onData = this.requirements.filter(r => r.type === 'ON');
         console.log(`ONPlanning: ${this.onData.length} ONs from preloaded requirements`);
     }
 
@@ -171,6 +171,8 @@ export default class ONPlanning {
             { endpoint: '/operational-requirements' },
             {
                 setupData: this.setupData,
+                getSetupData: () => this.setupData,
+                getRequirements: () => this.requirements,
                 currentTabIndex: this.currentTabIndex,
                 onTabChange: (index) => {
                     this.currentTabIndex = index;

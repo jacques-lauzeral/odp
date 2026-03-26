@@ -28,7 +28,7 @@ export default class ReferenceManager {
             fieldId:     config.fieldId,
             options:     config.options     || [],
             placeholder: config.placeholder || 'Type to search...',
-            noneLabel:   config.noneLabel   || '— None —',
+            noneLabel:   config.noneLabel   || 'None',
             readOnly:    config.readOnly    || false,
             onChange:    config.onChange    || (() => {})
         };

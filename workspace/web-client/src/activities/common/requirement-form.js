@@ -29,8 +29,6 @@ export default class RequirementForm extends CollectionEntityForm {
     constructor(entityConfig, context) {
         super(entityConfig, context);
 
-        this.setupData = context?.setupData || context;
-
         // Cache for parent requirements, ON requirements, and dependency requirements
         this.parentRequirementsCache = null;
         this.parentRequirementsCacheTime = 0;
@@ -222,7 +220,7 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     _computeRefinedByIds(item) {
-        const requirements = this.setupData?.requirements || [];
+        const requirements = this.context.getRequirements?.() || [];
         if (!item?.itemId && !item?.id) return [];
         const targetId = normalizeId(item.itemId ?? item.id);
         return requirements
@@ -236,7 +234,7 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     _computeImplementedByIds(item) {
-        const requirements = this.setupData?.requirements || [];
+        const requirements = this.context.getRequirements?.() || [];
         if (requirements.length === 0) {
             console.warn('[RequirementForm] _computeImplementedByIds: setupData.requirements is empty');
         }
@@ -366,8 +364,9 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     getReferenceDocumentOptions() {
-        if (!this.setupData?.referenceDocuments) return [];
-        return this.setupData.referenceDocuments.map(doc => ({
+        const setupData = this.context.getSetupData?.() || {};
+        if (!setupData.referenceDocuments) return [];
+        return setupData.referenceDocuments.map(doc => ({
             value: doc.id,
             label: doc.version ? `${doc.name} (${doc.version})` : doc.name,
             description: doc.description || undefined
@@ -375,8 +374,9 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     getSetupDataOptions(entityName) {
-        if (!this.setupData?.[entityName]) return [];
-        return this.setupData[entityName].map(entity => ({
+        const setupData = this.context.getSetupData?.() || {};
+        if (!setupData[entityName]) return [];
+        return setupData[entityName].map(entity => ({
             value: normalizeId(entity.id),
             label: entity.name || entity.title || entity.id,
             description: entity.description || undefined
@@ -437,7 +437,7 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     getAllRequirementOptions() {
-        const requirements = this.setupData?.requirements || [];
+        const requirements = this.context.getRequirements?.() || [];
         return requirements
             .map(r => ({
                 value: normalizeId(r.itemId || r.id),
@@ -450,7 +450,7 @@ export default class RequirementForm extends CollectionEntityForm {
         // Returns all ORs as label-resolution options.
         // The actual selection (initialValue) is pre-computed by _computeImplementedByIds
         // via transformDataForRead, so ReferenceListManager receives the correct IDs.
-        const requirements = this.setupData?.requirements || [];
+        const requirements = this.context.getRequirements?.() || [];
         return requirements
             .filter(r => r.type === 'OR')
             .map(r => ({

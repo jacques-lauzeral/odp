@@ -57,6 +57,8 @@ export default class RequirementsEntity {
 
         this.form = new RequirementForm(entityConfig, {
             setupData,
+            getSetupData: () => this.setupData,
+            getRequirements: () => this.data,
             currentTabIndex: 0,
             onTabChange: (index) => {
                 this.sharedState.currentTabIndex = index;

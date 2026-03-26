@@ -23,6 +23,7 @@ export default class PlanningActivity {
 
         // ONPlanning instance - created on first ON Plan activation
         this.onPlanEntity = null;
+        this.requirements = [];
 
         // Edition context (resolved from edition picker, same as Elaboration)
         this.editionContext = 'repository';
@@ -80,9 +81,10 @@ export default class PlanningActivity {
                 stakeholderCategories: stakeholderCategories || [],
                 domains: domains || [],
                 referenceDocuments: referenceDocuments || [],
-                waves: waves || [],
-                requirements: requirements || []
+                waves: waves || []
             };
+
+            this.requirements = requirements || [];
         } catch (error) {
             throw new Error(`Failed to load setup data: ${error.message}`);
         }
@@ -195,7 +197,7 @@ export default class PlanningActivity {
         // Lazy-create ONPlanning on first activation
         if (!this.onPlanEntity) {
             const { default: ONPlanning } = await import('./on-planning.js');
-            this.onPlanEntity = new ONPlanning(this.app, this.setupData, {
+            this.onPlanEntity = new ONPlanning(this.app, this.setupData, this.requirements, {
                 editionContext: this.editionContext
             });
         }
