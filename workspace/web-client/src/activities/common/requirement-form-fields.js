@@ -228,10 +228,9 @@ export const requirementFieldDefinitions = [
         ]
     },
 
-    // Impact Section (OR only)
+    // Impact Section
     {
         title: 'Impact',
-        visibleWhen: (data) => data.type === 'OR',
         fields: [
             {
                 key: 'impactedStakeholders',

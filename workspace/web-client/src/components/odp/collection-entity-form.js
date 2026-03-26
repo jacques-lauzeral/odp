@@ -238,8 +238,7 @@ export class CollectionEntityForm {
         // Generate tab headers
         let visibleTabIndex = 0;
         sections.forEach((section, index) => {
-            const visibleFields = this.getVisibleFields(section.fields || [section], mode);
-            if (visibleFields.length === 0) return;
+            if (!this.isSectionVisible(section, mode, item)) return;
 
             const isActive = visibleTabIndex === activeTabIndex;
             html += `
@@ -256,12 +255,12 @@ export class CollectionEntityForm {
         // Generate tab content panels
         visibleTabIndex = 0;
         for (const section of sections) {
-            const visibleFields = this.getVisibleFields(section.fields || [section], mode);
-            if (visibleFields.length === 0) continue;
+            if (!this.isSectionVisible(section, mode, item)) continue;
 
             const isActive = visibleTabIndex === activeTabIndex;
             html += `<div class="tab-panel ${isActive ? 'active' : ''}" data-tab="${visibleTabIndex}">`;
 
+            const visibleFields = this.getVisibleFields(section.fields || [section], mode, item);
             for (const field of visibleFields) {
                 console.log('generateForm ' + mode + '/' + section.title + '/' + field.key);
                 html += await this.renderField(field, this.getFieldValue(item, field), mode);
@@ -280,11 +279,19 @@ export class CollectionEntityForm {
         return fields;
     }
 
-    getVisibleFields(fields, mode) {
+    getVisibleFields(fields, mode, item = null) {
         return fields.filter(field => {
-            if (!field.modes) return true;
-            return field.modes.includes(mode);
+            if (field.modes && !field.modes.includes(mode)) return false;
+            if (field.visibleWhen && item) return field.visibleWhen(item);
+            return true;
         });
+    }
+
+    isSectionVisible(section, mode, item = null) {
+        const fields = (section.fields || [section]).filter(field =>
+            !field.modes || field.modes.includes(mode)
+        );
+        return fields.length > 0;
     }
 
     getFieldValue(item, field) {
