@@ -326,8 +326,8 @@ class AsmAtfcmMapper extends Mapper {
         'Network Manager': 'stakeholder:network/nm',
         'NM B2B Office': 'stakeholder:network/nm',
         'Network Manager Operations Centre': 'stakeholder:network/nm/nmoc',
-        'WOC': 'stakeholder:network/nm/woc',
-        'WOCs': 'stakeholder:network/nm/woc',
+        'WOC': 'stakeholder:network/nm/weather',
+        'WOCs': 'stakeholder:network/nm/weather',
         'ANSP': 'stakeholder:network/ansp',
         'ANSPs': 'stakeholder:network/ansp',
         'ANSPs MIL': 'stakeholder:network/ansp',
@@ -343,36 +343,36 @@ class AsmAtfcmMapper extends Mapper {
         'local AMCs': 'stakeholder:network/ansp/amc',
         'Local AMC': 'stakeholder:network/ansp/amc',
         'Airspace Management Cells': 'stakeholder:network/ansp/amc',
-        'ATC Unit': 'stakeholder:network/ansp/atc_unit',
-        'ATC Units': 'stakeholder:network/ansp/atc_unit',
-        'Air Traffic Control Units': 'stakeholder:network/ansp/atc_unit',
-        'Civil/Military ATC Units': 'stakeholder:network/ansp/atc_unit',
-        'Civil, Military ATC Units': 'stakeholder:network/ansp/atc_unit',
-        'ATSUs': 'stakeholder:network/ansp/ats_unit',
-        'ATSU': 'stakeholder:network/ansp/ats_unit',
+        'ATC Unit': 'stakeholder:network/ansp/atc',
+        'ATC Units': 'stakeholder:network/ansp/atc',
+        'Air Traffic Control Units': 'stakeholder:network/ansp/atc',
+        'Civil/Military ATC Units': ['stakeholder:network/ansp/atc', 'stakeholder:network/ansp/mil'],
+        'Civil Military ATC Units': ['stakeholder:network/ansp/atc', 'stakeholder:network/ansp/mil'],
+        'Military ATC Units': ['stakeholder:network/ansp/atc', 'stakeholder:network/ansp/mil'],
+        'Civil, Military ATC Units': ['stakeholder:network/ansp/atc', 'stakeholder:network/ansp/mil'],
+        'ATSUs': 'stakeholder:network/ansp/ats',
+        'ATSU': 'stakeholder:network/ansp/ats',
         'AU': 'stakeholder:network/airspace_user',
         'AUs': 'stakeholder:network/airspace_user',
         'Aus': 'stakeholder:network/airspace_user',
         'Airspace Users': 'stakeholder:network/airspace_user',
         'Airspace User': 'stakeholder:network/airspace_user',
-        'AO': 'stakeholder:network/airspace_user/ao',
-        'AOs': 'stakeholder:network/airspace_user/ao',
-        'Airlines': 'stakeholder:network/airspace_user/ao',
-        'Airlines/AU': 'stakeholder:network/airspace_user/ao',
+        'AO': 'stakeholder:network/airspace_user',
+        'AOs': 'stakeholder:network/airspace_user',
+        'Airlines': 'stakeholder:network/airspace_user',
+        'Airlines/AU': 'stakeholder:network/airspace_user',
         'CFSP': 'stakeholder:network/airspace_user/cfsp',
         'CFSPs': 'stakeholder:network/airspace_user/cfsp',
-        'Military': 'stakeholder:network/military',
-        'MIL': 'stakeholder:network/military',
-        'MIL AU': 'stakeholder:network/military',
-        'Military Operational Units': 'stakeholder:network/military',
-        'Military authorities': 'stakeholder:network/military',
-        'System Integrators': 'stakeholder:network/system_integrator',
-        'System Developers': 'stakeholder:network/system_integrator',
-        'IT Admins': 'stakeholder:network/system_integrator',
-        'Stakeholder IT Admins': 'stakeholder:network/system_integrator',
-        'National Authority': 'stakeholder:network/national_authority',
-        'NSA': 'stakeholder:network/national_authority',
-        'EASA': 'stakeholder:network/easa',
+        'Military': 'stakeholder:network/ansp/mil',
+        'MIL': 'stakeholder:network/ansp/mil',
+        'MIL AU': 'stakeholder:network/ansp/mil',
+        'Military Operational Units': 'stakeholder:network/ansp/mil',
+        'Military authorities': 'stakeholder:network/ansp/mil',
+        // No equivalent in setup — fall through to unmapped handler (logged + private notes)
+        // 'System Integrators', 'System Developers', 'IT Admins', 'Stakeholder IT Admins'
+        'National Authority': 'stakeholder:network/national_european_authority',
+        'NSA': 'stakeholder:network/national_european_authority',
+        'EASA': 'stakeholder:network/national_european_authority',
         // Explicitly ignored
         'External Systems': null,
         'External Users': null,
@@ -839,18 +839,24 @@ class AsmAtfcmMapper extends Mapper {
         const seenIds = new Set();
         const unmapped = [];
 
-        const tokens = text
+        // Pre-substitute compound slash tokens before the slash-delimiter split
+        const normalizedText = text.replace(/Civil\/Military ATC Units/gi, 'Civil Military ATC Units');
+
+        const tokens = normalizedText
             .split(/[,;/•\n]/)
             .map(t => t.replace(/\s*\([^)]*\)\s*/g, '').trim())
             .filter(Boolean);
 
         for (const token of tokens) {
-            const externalId = AsmAtfcmMapper.STAKEHOLDER_SYNONYM_MAP[token];
-            if (externalId === null) continue; // explicitly ignored
-            if (externalId) {
-                if (!seenIds.has(externalId)) {
-                    refs.push({ externalId });
-                    seenIds.add(externalId);
+            const mapping = AsmAtfcmMapper.STAKEHOLDER_SYNONYM_MAP[token];
+            if (mapping === null) continue; // explicitly ignored
+            if (mapping) {
+                const targets = Array.isArray(mapping) ? mapping : [mapping];
+                for (const externalId of targets) {
+                    if (!seenIds.has(externalId)) {
+                        refs.push({ externalId });
+                        seenIds.add(externalId);
+                    }
                 }
             } else {
                 if (!unmapped.includes(token)) {
