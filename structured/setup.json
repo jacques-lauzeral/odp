@@ -817,8 +817,8 @@
     },
     {
       "externalId": "stakeholder:network/nm/crisis",
-      "description": "CRISIS",
-      "name": "NM crisis management and crisis exercises",
+      "description": "NM crisis management and crisis exercises",
+      "name": "CRISIS",
       "parentExternalId": "stakeholder:network/nm"
     },
     {
