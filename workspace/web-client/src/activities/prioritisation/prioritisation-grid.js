@@ -183,14 +183,9 @@ export default class PrioritisationGrid {
 
         const cards = cellData.ocs.map(oc => this._renderCard(oc, waveId)).join('');
 
-        // Collapsed effort label: show consumed [/ available] MW when row is collapsed
-        const collapsedLabel = collapsed
-            ? `<span class="prio-cell__collapsed-effort">
-                   ${cellData.available != null
-                ? `${cellData.consumed} / ${cellData.available} MW`
-                : cellData.consumed > 0 ? `${cellData.consumed} MW` : ''}
-               </span>`
-            : '';
+        const summaryText = cellData.available != null
+            ? `${cellData.consumed} / ${cellData.available}`
+            : cellData.consumed > 0 ? `${cellData.consumed}` : '';
 
         return `
             <div class="prio-cell"
@@ -198,8 +193,10 @@ export default class PrioritisationGrid {
                  data-drg="${drg}"
                  data-drop-target="true">
                 <div class="prio-cell__cards">${cards}</div>
-                ${collapsedLabel}
-                ${this._renderLoadBar(ratio, load, cellData.consumed, cellData.available)}
+                <div class="prio-cell__footer">
+                    <span class="prio-cell__effort">${summaryText}</span>
+                    ${this._renderLoadBar(ratio, load, cellData.consumed, cellData.available)}
+                </div>
             </div>
         `;
     }
@@ -210,15 +207,14 @@ export default class PrioritisationGrid {
             ? Math.min(1, cellData.consumed / cellData.available)
             : (cellData.consumed > 0 ? 1 : 0);
         const mwText = cellData.available != null
-            ? `${cellData.consumed} / ${cellData.available} MW`
-            : `${cellData.consumed} MW`;
+            ? `${cellData.consumed} / ${cellData.available}`
+            : `${cellData.consumed}`;
         return `
             <div class="prio-cell prio-cell--global prio-cell--global-load-${load}">
-                <div class="prio-cell__summary">
-                    <span class="prio-cell__mw">${mwText}</span>
+                <div class="prio-cell__footer">
+                    <span class="prio-cell__effort">${mwText}</span>
+                    ${this._renderLoadBar(ratio, load, cellData.consumed, cellData.available)}
                 </div>
-                <span class="prio-cell__collapsed-effort">${mwText}</span>
-                ${this._renderLoadBar(ratio, load, cellData.consumed, cellData.available)}
             </div>
         `;
     }
