@@ -938,6 +938,11 @@
   ],
   "domains": [
     {
+      "externalId": "domain:airspace",
+      "name": "Airspace",
+      "description": "Airspace domain"
+    },
+    {
       "externalId": "domain:flight",
       "name": "Flight",
       "description": "Flight domain"
@@ -959,6 +964,11 @@
       "name": "Flight Filing",
       "description": "Flight plan filing",
       "parentExternalId": "domain:flight"
+    },
+    {
+      "externalId": "domain:flow",
+      "name": "Flow",
+      "description": "Flow domain"
     }
   ],
   "waves": [
