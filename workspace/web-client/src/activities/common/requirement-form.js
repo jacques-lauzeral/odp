@@ -62,6 +62,10 @@ export default class RequirementForm extends CollectionEntityForm {
             hydrated.options = this[field.optionsKey].bind(this);
         }
 
+        if (field.computeKey && this[field.computeKey]) {
+            hydrated.compute = (item) => this[field.computeKey](item);
+        }
+
         if (field.formatKey && this[field.formatKey]) {
             if (field.formatArgs) {
                 hydrated.format = (value) => this[field.formatKey](value, ...field.formatArgs);
@@ -217,13 +221,34 @@ export default class RequirementForm extends CollectionEntityForm {
         return transformed;
     }
 
-    _computeImplementedByIds(item) {
+    _computeRefinedByIds(item) {
         const requirements = this.setupData?.requirements || [];
         if (!item?.itemId && !item?.id) return [];
+        const targetId = normalizeId(item.itemId ?? item.id);
+        return requirements
+            .filter(r =>
+                Array.isArray(r.refinesParents) &&
+                r.refinesParents.some(ref => {
+                    const refId = normalizeId(ref?.id ?? ref?.itemId ?? ref);
+                    return idsEqual(refId, targetId);
+                }))
+            .map(r => normalizeId(r.itemId || r.id));
+    }
+
+    _computeImplementedByIds(item) {
+        const requirements = this.setupData?.requirements || [];
+        if (requirements.length === 0) {
+            console.warn('[RequirementForm] _computeImplementedByIds: setupData.requirements is empty');
+        }
+        if (!item?.itemId && !item?.id) return [];
+        const targetId = normalizeId(item.itemId ?? item.id);
         return requirements
             .filter(r => r.type === 'OR' &&
                 Array.isArray(r.implementedONs) &&
-                r.implementedONs.some(ref => idsEqual(ref.id ?? ref.itemId ?? ref, item.itemId ?? item.id)))
+                r.implementedONs.some(ref => {
+                    const refId = normalizeId(ref?.itemId ?? ref?.id ?? ref);
+                    return idsEqual(refId, targetId);
+                }))
             .map(r => normalizeId(r.itemId || r.id));
     }
 
@@ -409,6 +434,16 @@ export default class RequirementForm extends CollectionEntityForm {
             console.error('Failed to load ON requirements:', error);
             return [];
         }
+    }
+
+    getAllRequirementOptions() {
+        const requirements = this.setupData?.requirements || [];
+        return requirements
+            .map(r => ({
+                value: normalizeId(r.itemId || r.id),
+                label: r.code ? `${r.code}: ${r.title}` : r.title
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
     }
 
     getImplementedByOptions(context, currentItem) {

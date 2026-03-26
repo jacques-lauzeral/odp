@@ -177,6 +177,28 @@ export const requirementFieldDefinitions = [
                 formatKey: 'formatAnnotatedReferences'
             },
             {
+                key: 'refinesParents',
+                label: 'Refines (Parent)',
+                type: 'reference',
+                modes: ['create', 'read', 'edit'],
+                required: false,
+                optionsKey: 'getParentRequirementOptions',
+                placeholder: 'Type to search parent...',
+                helpText: 'Select the parent',
+                formatKey: 'formatEntityReferences'
+            },
+            {
+                key: 'refinedBy',
+                label: 'Refined By',
+                type: 'reference-list',
+                modes: ['read'],
+                required: false,
+                optionsKey: 'getAllRequirementOptions',
+                computeKey: '_computeRefinedByIds',
+                helpText: 'Requirements that refine this one',
+                formatKey: 'formatEntityReferences'
+            },
+            {
                 key: 'implementedONs',
                 label: 'Implements (ONs)',
                 type: 'reference-list',
@@ -198,20 +220,10 @@ export const requirementFieldDefinitions = [
                 size: 5,
                 visibleWhen: (data) => data.type === 'ON',
                 optionsKey: 'getImplementedByOptions',
+                computeKey: '_computeImplementedByIds',
                 helpText: 'ORs that implement this ON',
                 formatKey: 'formatEntityReferences',
                 formatArgs: ['OR']
-            },
-            {
-                key: 'refinesParents',
-                label: 'Refines (Parent)',
-                type: 'reference',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                optionsKey: 'getParentRequirementOptions',
-                placeholder: 'Type to search parent...',
-                helpText: 'Select the parent',
-                formatKey: 'formatEntityReferences'
             }
         ]
     },

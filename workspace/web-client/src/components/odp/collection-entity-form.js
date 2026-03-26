@@ -652,8 +652,11 @@ export class CollectionEntityForm {
             const field = allFields.find(f => f.key === fieldKey);
             if (!field || field.type !== 'reference-list') return;
 
-            // Get current value
-            const value = this.getFieldValue(this.currentItem, field);
+            // Get current value — use compute function for computed fields,
+            // otherwise read directly from currentItem
+            const value = field.compute
+                ? field.compute(this.currentItem)
+                : this.getFieldValue(this.currentItem, field);
 
             // Get options (resolve async if needed)
             this.getFieldOptions(field).then(options => {
