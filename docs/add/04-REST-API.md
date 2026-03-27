@@ -27,8 +27,8 @@ DELETE /:id        → service.deleteItem(id, userId)
 Used by `operational-requirement.js` and `operational-change.js`. Wires the full versioned entity surface including multi-context list/get, patch, and version history endpoints:
 
 ```
-GET    /                          → service.getAll(userId, baselineId, fromWaveId, filters)
-GET    /:id                       → service.getById(id, userId, baselineId, fromWaveId)
+GET    /                          → service.getAll(userId, baselineId, fromWaveId, filters, projection)
+GET    /:id                       → service.getById(id, userId, baselineId, fromWaveId, projection)
 GET    /:id/versions              → service.getVersionHistory(id, userId)
 GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, userId)
 POST   /                          → service.create(body, userId)
@@ -36,6 +36,8 @@ PUT    /:id                       → service.update(id, body, expectedVersionId
 PATCH  /:id                       → service.patch(id, body, expectedVersionId, userId)
 DELETE /:id                       → service.delete(id, userId)
 ```
+
+`projection` is extracted from `req.query.projection` via `getProjection(req, allowed)`. Allowed values on `GET /` are `summary` and `standard`; on `GET /:id` they are `standard` and `extended`. Default is `standard` in both cases. An invalid value returns 400.
 
 `operational-change.js` extends this with milestone sub-resource routes:
 

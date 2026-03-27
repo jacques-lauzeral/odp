@@ -2,7 +2,7 @@
 
 ## Status
 
-Design complete. Implementation planned in four phases. No phase has been started.
+Phase 1 complete. Phases 2–4 not started.
 
 ---
 
@@ -28,40 +28,59 @@ Three projection levels are defined for `OperationalRequirement` and `Operationa
 | `standard` | list and single-item endpoints | Full entity payload as currently returned. Excludes derived attributes only. Default — backward compatible. |
 | `extended` | single-item endpoints only | Standard payload enriched with derived (reverse-traversal) attributes. |
 
-**Rich text fields** excluded from `summary`: `statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `initialState`.
+**Rich text fields** excluded from `summary` — OperationalRequirement: `statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `additionalDocumentation`. OperationalChange: `purpose`, `initialState`, `finalState`, `details`, `privateNotes`, `additionalDocumentation`.
 
 **Derived attributes** available only in `extended`:
 
 | Entity type | Attribute | Description |
 |---|---|---|
-| `OperationalRequirement` (ON) | `implementedBy` | ORs whose `implementedONs` references this ON |
-| `OperationalRequirement` (OR) | `implementedBy` | OCs whose `implementedORs` references this OR |
+| `OperationalRequirement` (ON) | `implementedByORs` | ORs whose `implementedONs` references this ON |
+| `OperationalRequirement` (OR) | `implementedByOCs` | OCs whose `implementedORs` references this OR |
+| `OperationalRequirement` (OR) | `decommissionedByOCs` | OCs whose `decommissionedORs` references this OR |
+| `OperationalRequirement` (both) | `refinedBy` | Requirements whose `refinesParents` references this requirement |
+| `OperationalRequirement` (OR) | `requiredByORs` | ORs whose `dependencies` references this OR |
+| `OperationalChange` | `requiredByOCs` | OCs whose `dependencies` references this OC |
+
+#### Shared model
+
+Field set definitions and projection-to-field-set mappings are owned by `shared/src/model/projections.js`. Three field sets are defined per entity type: `summary`, `rich-text`, `derived`. Three functions are exported:
+
+- `getProjectionFieldSets(projectionName)` → ordered field set names for a projection
+- `getFieldSetFields(entityType, fieldSetName)` → field names in a field set
+- `getProjectionFields(entityType, projectionName)` → flat merged field list (convenience)
+
+The store layer calls `getProjectionFields` to determine exactly which fields and relationships to fetch. The projection name is never interpreted by the store itself.
 
 #### Storage layer
 
-`OperationalRequirementStore` and `OperationalChangeStore` gain a `projection` parameter on `findAll` and `findById`:
+`OperationalRequirementStore` and `OperationalChangeStore` gain a `projection` parameter as the fifth positional argument on `findAll` and `findById`:
 
-- `findAll(tx, options)` — `options.projection`: `'summary'` | `'standard'` (default: `'standard'`)
-- `findById(itemId, tx, options)` — `options.projection`: `'standard'` | `'extended'` (default: `'standard'`)
+- `findAll(tx, baselineId?, fromWaveId?, filters?, projection?)` — `projection`: `'summary'` | `'standard'` (default: `'standard'`); `'extended'` throws
+- `findById(itemId, tx, baselineId?, fromWaveId?, projection?)` — `projection`: `'standard'` | `'extended'` (default: `'standard'`); `'summary'` throws
 
-The store applies the projection mechanically — fetching only the relationships and properties required for the requested level. `extended` projection performs the additional reverse-traversal queries needed to resolve derived attributes.
+`buildFindAllQuery` receives the resolved field list and gates each OPTIONAL MATCH and RETURN column on field membership. `_buildRelationshipReferences` on `OperationalChangeStore` accepts an optional `fields` parameter and fetches only the relationships present in the list.
 
-Internal service operations that require full field access (e.g. type-checking `implementedONs` on create/update) always use `standard` projection regardless of the caller's requested projection.
+Internal service operations (validation, type-checking) always call the store without a `projection` argument, defaulting to `'standard'`.
 
 #### REST API
 
 **List endpoints** (`GET /operational-requirements`, `GET /operational-changes`):
 - New query parameter: `projection` — values: `summary` | `standard`
 - Default: `standard` (backward compatible)
-- `extended` is not available on list endpoints
+- `extended` is not available on list endpoints; returns 400
 
 **Single-item endpoints** (`GET /operational-requirements/{id}`, `GET /operational-changes/{id}`):
 - New query parameter: `projection` — values: `standard` | `extended`
 - Default: `standard` (backward compatible)
+- `summary` is not available on single-item endpoints; returns 400
 
-OpenAPI schemas to define:
-- `OperationalRequirementSummary`, `OperationalRequirement` (current), `OperationalRequirementExtended`
-- `OperationalChangeSummary`, `OperationalChange` (current), `OperationalChangeExtended`
+`projection` extraction and validation is handled by `VersionedItemRouter.getProjection(req, allowed)`.
+
+OpenAPI schemas: `OperationalRequirement` and `OperationalChange` schemas in `openapi-base.yml` are annotated with projection-level comments per field. Separate `Summary` and `Extended` named schemas were not introduced — the single annotated schema serves all three projections.
+
+#### CLI
+
+`requirement list` and `change list` support `--projection summary|standard` (default: `standard`). `requirement show` and `change show` support `--projection standard|extended` (default: `standard`). List tables always render all rich-text columns, showing `—` when the field is absent. Show output renders `(not in projection)` for absent fields and always prints the derived fields section, showing `None` or `(not in projection)` as appropriate.
 
 ---
 
@@ -241,18 +260,24 @@ activities/browse/
 
 ## 3. Migration Plan
 
-### Phase 1 — Server-Side Projections
+### Phase 1 — Server-Side Projections ✓ Complete
 
-**Scope:** Storage layer, service layer, REST API, OpenAPI schemas.
+**Scope:** Shared model, storage layer, service layer, REST API, OpenAPI schemas, CLI.
 
 **Dependencies:** None. Fully self-contained and transparent to the web client.
 
 **Deliverables:**
-- `projection` parameter on `findAll` and `findById` in `OperationalRequirementStore` and `OperationalChangeStore`
-- `projection` query parameter on list and single-item endpoints
-- Three OpenAPI response schemas per entity type (`Summary`, standard, `Extended`)
-- ADD chapter 01 updated with `Projection` annotation column on all field tables
-- ADD chapters 02, 03, 04 updated to reflect projection parameter
+- `shared/src/model/projections.js` — field set definitions (`summary`, `rich-text`, `derived`) per entity type; `getProjectionFieldSets`, `getFieldSetFields`, `getProjectionFields` functions
+- `shared/src/model/odp-elements.js` — `OperationalRequirement` and `OperationalChange` models annotated with projection level per field; derived fields added
+- `projection` positional parameter (5th) on `findAll` and `findById` in `OperationalRequirementStore` and `OperationalChangeStore`
+- `buildFindAllQuery` field-list-driven OPTIONAL MATCH and RETURN gating
+- `_buildRelationshipReferences` on `OperationalChangeStore` gated by field list
+- `getAll` and `getById` on `VersionedItemService` pass `projection` through to store
+- `projection` query parameter on list and single-item endpoints via `VersionedItemRouter.getProjection`
+- `openapi-base.yml` — `OperationalRequirement` and `OperationalChange` schemas annotated with projection-level comments per field; derived fields added
+- `openapi-operational.yml` — `projection` parameter on all four GET endpoints
+- CLI — `--projection` on `requirement list`, `requirement show`, `change list`, `change show`
+- ADD chapters 01, 02, 03, 04, 07 updated to reflect projection parameter
 
 ---
 
@@ -300,4 +325,4 @@ activities/browse/
 - `pushState` / `popstate` wired for Browse hop navigation
 - `app.js` and `header.js` updated: new Browse route and nav tab
 - ADD chapter 08 updated: new §Browse Activity
-- 
+-

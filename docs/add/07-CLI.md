@@ -60,8 +60,8 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 | Command | Action |
 |---|---|
-| `requirement list` | List (supports `--baseline`, `--edition`, filter flags) |
-| `requirement show <itemId>` | Show latest version |
+| `requirement list` | List (supports `--baseline`, `--edition`, filter flags, `--projection`) |
+| `requirement show <itemId>` | Show latest version (supports `--projection`) |
 | `requirement show <itemId> --baseline <id>` | Show in baseline context |
 | `requirement show <itemId> --edition <id>` | Show in edition context |
 | `requirement create <title>` | Create |
@@ -73,14 +73,18 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`requirement list` filter flags**: `--type ON|OR`, `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
 
+**`requirement list` projection**: `--projection summary|standard` (default: `standard`). `summary` omits rich-text fields; all six rich-text columns render `—` in the list table.
+
+**`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`.
+
 **`requirement create/update` options**: `--type`, `--drg`, `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--impacted-domains`, `--maturity`, `--dependencies`, `--nfrs`.
 
 ### Operational Changes
 
 | Command | Action |
 |---|---|
-| `change list` | List (supports `--baseline`, `--edition`, filter flags) |
-| `change show <itemId>` | Show latest version |
+| `change list` | List (supports `--baseline`, `--edition`, filter flags, `--projection`) |
+| `change show <itemId>` | Show latest version (supports `--projection`) |
 | `change show <itemId> --baseline <id>` | Show in baseline context |
 | `change show <itemId> --edition <id>` | Show in edition context |
 | `change create <title>` | Create |
@@ -91,6 +95,10 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `change show-version <itemId> <versionNumber>` | Show specific version |
 
 **`change list` filter flags**: `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
+
+**`change list` projection**: `--projection summary|standard` (default: `standard`). `summary` omits rich-text fields; all six rich-text columns render `—` in the list table.
+
+**`change show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends the derived field `requiredByOCs`. Fields absent from the projection render as `(not in projection)`.
 
 **`change create/update` options**: `--purpose`, `--drg`, `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
 
@@ -157,6 +165,8 @@ The following command files were removed in the Edition 4 model update:
 ### VersionedCommands (operational entities)
 
 `VersionedCommands` extends `BaseCommands` and adds: version history, show-version, baseline/edition context resolution, and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
+
+`addListCommand` and `addShowCommand` in `VersionedCommands` both support `--projection`. The projection value is validated before the request is issued; an invalid value exits with a non-zero code. The projection is appended as a query parameter only when non-default. List tables always include all rich-text columns, rendering `—` when the field is absent from the response.
 
 ---
 

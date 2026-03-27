@@ -230,8 +230,14 @@ components:
           type: integer
 
     OperationalRequirement:
+      description: |
+        Operational Requirement response. Fields present depend on the requested projection:
+          summary  — identity + scalar + reference fields only
+          standard — summary fields + rich-text fields (default)
+          extended — standard fields + derived (reverse-traversal) fields
       type: object
       properties:
+        # --- summary fields (all projections) ---
         itemId:
           type: string
         title:
@@ -251,18 +257,6 @@ components:
         type:
           type: string
           enum: [ON, OR]
-        statement:
-          type: string
-        rationale:
-          type: string
-        flows:
-          type: string
-        privateNotes:
-          type: string
-        additionalDocumentation:
-          type: string
-          nullable: true
-          description: "Placeholder for attachments"
         maturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
@@ -277,10 +271,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OperationalEntityReference'
-        # ON-only fields
-        domain:
-          $ref: '#/components/schemas/AnnotatedReference'
-          description: "Domain reference — ON only"
+        # ON-only — summary
         strategicDocuments:
           type: array
           items:
@@ -289,7 +280,7 @@ components:
         tentative:
           $ref: '#/components/schemas/TentativeRange'
           description: "Tentative implementation time range — ON only"
-        # OR-only fields
+        # OR-only — summary
         implementedONs:
           type: array
           items:
@@ -310,10 +301,49 @@ components:
           items:
             $ref: '#/components/schemas/AnnotatedReference'
           description: "Impacted domains — OR only"
+        # --- rich-text fields (standard and extended projections only) ---
+        statement:
+          type: string
+        rationale:
+          type: string
+        flows:
+          type: string
         nfrs:
           type: string
           nullable: true
           description: "Non-functional requirements — OR only"
+        privateNotes:
+          type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+          description: "Placeholder for attachments"
+        # --- derived fields (extended projection only — reverse-traversal) ---
+        implementedByORs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "ORs whose implementedONs references this ON — ON only. Extended projection only."
+        implementedByOCs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "OCs whose implementedORs references this OR — OR only. Extended projection only."
+        decommissionedByOCs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "OCs whose decommissionedORs references this OR — OR only. Extended projection only."
+        refinedBy:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "Requirements whose refinesParents references this requirement. Extended projection only."
+        requiredByORs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "ORs whose dependencies references this OR — OR only. Extended projection only."
 
     OperationalRequirementRequest:
       type: object
@@ -539,8 +569,14 @@ components:
           $ref: '#/components/schemas/OperationalChangeVersionRef'
 
     OperationalChange:
+      description: |
+        Operational Change response. Fields present depend on the requested projection:
+          summary  — identity + scalar + reference fields only
+          standard — summary fields + rich-text fields (default)
+          extended — standard fields + derived (reverse-traversal) fields
       type: object
       properties:
+        # --- summary fields (all projections) ---
         itemId:
           type: string
         title:
@@ -557,30 +593,9 @@ components:
         code:
           type: string
           description: "System-generated unique code for this change"
-        purpose:
-          type: string
-        initialState:
-          type: string
-        finalState:
-          type: string
-        details:
-          type: string
-        privateNotes:
-          type: string
-        additionalDocumentation:
-          type: string
-          nullable: true
-          description: "Placeholder for attachments"
         maturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
-        cost:
-          type: integer
-          nullable: true
-        orCosts:
-          type: array
-          items:
-            $ref: '#/components/schemas/ORCost'
         path:
           type: array
           items:
@@ -607,6 +622,34 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Milestone'
+        cost:
+          type: integer
+          nullable: true
+        orCosts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ORCost'
+        # --- rich-text fields (standard and extended projections only) ---
+        purpose:
+          type: string
+        initialState:
+          type: string
+        finalState:
+          type: string
+        details:
+          type: string
+        privateNotes:
+          type: string
+        additionalDocumentation:
+          type: string
+          nullable: true
+          description: "Placeholder for attachments"
+        # --- derived fields (extended projection only — reverse-traversal) ---
+        requiredByOCs:
+          type: array
+          items:
+            $ref: '#/components/schemas/OperationalEntityReference'
+          description: "OCs whose dependencies references this OC. Extended projection only."
 
     OperationalChangeBaseRequest:
       description: "Content fields for an OperationalChange. Does not include milestones — those are managed exclusively via the dedicated milestone endpoints."

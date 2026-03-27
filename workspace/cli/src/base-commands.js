@@ -436,11 +436,21 @@ export class VersionedCommands extends BaseCommands {
             .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
+            .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
-                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
+                    if (!['summary', 'standard'].includes(options.projection)) {
+                        console.error(`Invalid projection: ${options.projection}. Valid values: summary, standard`);
+                        process.exit(1);
+                    }
 
-                    const response = await fetch(url, {
+                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
+                    const separator = url.includes('?') ? '&' : '?';
+                    const finalUrl = options.projection !== 'standard'
+                        ? `${url}${separator}projection=${options.projection}`
+                        : url;
+
+                    const response = await fetch(finalUrl, {
                         headers: this.createHeaders()
                     });
 
@@ -491,11 +501,21 @@ export class VersionedCommands extends BaseCommands {
             .description(`Show a specific ${this.displayName} (latest version, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show item as it existed in specified baseline')
             .option('--edition <id>', 'Show item in specified edition context (mutually exclusive with --baseline)')
+            .option('--projection <projection>', 'Response projection: standard | extended (default: standard)', 'standard')
             .action(async (itemId, options) => {
                 try {
-                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}/${itemId}`, options);
+                    if (!['standard', 'extended'].includes(options.projection)) {
+                        console.error(`Invalid projection: ${options.projection}. Valid values: standard, extended`);
+                        process.exit(1);
+                    }
 
-                    const response = await fetch(url, {
+                    const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}/${itemId}`, options);
+                    const separator = url.includes('?') ? '&' : '?';
+                    const finalUrl = options.projection !== 'standard'
+                        ? `${url}${separator}projection=${options.projection}`
+                        : url;
+
+                    const response = await fetch(finalUrl, {
                         headers: this.createHeaders()
                     });
 

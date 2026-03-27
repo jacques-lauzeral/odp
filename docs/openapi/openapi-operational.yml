@@ -100,6 +100,14 @@ paths:
             type: string
           description: "Filter by ON Item ID: return ORs that implement the given ON (IMPLEMENTS relationship). Single Item ID."
           example: "42"
+        - name: projection
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary, standard]
+            default: standard
+          description: "Response projection. summary excludes rich-text fields. Default: standard."
       responses:
         '200':
           description: Success
@@ -162,6 +170,14 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering"
+        - name: projection
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [standard, extended]
+            default: standard
+          description: "Response projection. extended adds reverse-traversal derived fields. Default: standard."
       responses:
         '200':
           description: Success
@@ -379,6 +395,14 @@ paths:
             type: string
           description: "Filter by OR Item ID: return OCs that implement the given OR (IMPLEMENTS relationship). Single Item ID."
           example: "42"
+        - name: projection
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary, standard]
+            default: standard
+          description: "Response projection. summary excludes rich-text fields. Default: standard."
       responses:
         '200':
           description: Success
@@ -441,6 +465,14 @@ paths:
           schema:
             type: string
           description: "Optional wave ID for filtering"
+        - name: projection
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [standard, extended]
+            default: standard
+          description: "Response projection. extended adds reverse-traversal derived fields. Default: standard."
       responses:
         '200':
           description: Success

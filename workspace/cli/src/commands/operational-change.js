@@ -37,6 +37,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
             .option('--path <path>', 'Filter by path element')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via IMPLEMENTS/DECOMMISSIONS requirements (comma-separated)')
+            .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
                     if (options.drg && !isDraftingGroupValid(options.drg)) {
@@ -45,9 +46,17 @@ class OperationalChangeCommands extends VersionedCommands {
                         process.exit(1);
                     }
 
+                    if (!['summary', 'standard'].includes(options.projection)) {
+                        console.error(`Invalid projection: ${options.projection}. Valid values: summary, standard`);
+                        process.exit(1);
+                    }
+
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
                     const filterParams = this.buildContentFilterParams(options);
+                    if (options.projection !== 'standard') {
+                        filterParams.push(`projection=${options.projection}`);
+                    }
                     const finalUrl = this.appendFilterParams(url, filterParams);
 
                     const response = await fetch(finalUrl, {
@@ -73,9 +82,11 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'DRG', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 15, 12, 20, 10, 20]
+                        head: ['Item ID', 'Code', 'DRG', 'Title', 'Version', 'Created By', 'Purpose', 'Initial State', 'Final State', 'Details', 'Private Notes', 'Add. Doc.'],
+                        colWidths: [10, 15, 12, 20, 10, 20, 18, 18, 18, 18, 18, 18]
                     });
+
+                    const trunc = (val) => val ? String(val).substring(0, 16) : '—';
 
                     items.forEach(item => {
                         const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
@@ -86,7 +97,13 @@ class OperationalChangeCommands extends VersionedCommands {
                             drgDisplay,
                             item.title,
                             item.version,
-                            item.createdBy
+                            item.createdBy,
+                            trunc(item.purpose),
+                            trunc(item.initialState),
+                            trunc(item.finalState),
+                            trunc(item.details),
+                            trunc(item.privateNotes),
+                            trunc(item.additionalDocumentation)
                         ]);
                     });
 
@@ -137,49 +154,42 @@ class OperationalChangeCommands extends VersionedCommands {
     displayItemDetails(item) {
         super.displayItemDetails(item);
 
-        console.log(`Code: ${item.code || 'Not set'}`);
-        console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : 'Not set'}`);
-        console.log(`Maturity: ${item.maturity || 'Not set'}`);
-        console.log(`Purpose: ${item.purpose || ''}`);
-        console.log(`Initial State: ${item.initialState || 'Not specified'}`);
-        console.log(`Final State: ${item.finalState || 'Not specified'}`);
-        console.log(`Details: ${item.details || 'Not specified'}`);
-        console.log(`Cost: ${item.cost != null ? item.cost : 'Not set'}`);
-        console.log(`Private Notes: ${item.privateNotes || 'None'}`);
+        console.log(`Code: ${item.code || '—'}`);
+        console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : '—'}`);
+        console.log(`Maturity: ${item.maturity || '—'}`);
+        console.log(`Cost: ${item.cost != null ? item.cost : '—'}`);
+        console.log(`Path: ${item.path && item.path.length > 0 ? item.path.join(' > ') : '—'}`);
 
-        if (item.path && item.path.length > 0) {
-            console.log(`Path: ${item.path.join(' > ')}`);
-        }
+        // rich-text fields — standard and extended projections
+        console.log(`\nPurpose: ${item.purpose !== undefined ? (item.purpose || '—') : '(not in projection)'}`);
+        console.log(`Initial State: ${item.initialState !== undefined ? (item.initialState || '—') : '(not in projection)'}`);
+        console.log(`Final State: ${item.finalState !== undefined ? (item.finalState || '—') : '(not in projection)'}`);
+        console.log(`Details: ${item.details !== undefined ? (item.details || '—') : '(not in projection)'}`);
+        console.log(`Private Notes: ${item.privateNotes !== undefined ? (item.privateNotes || '—') : '(not in projection)'}`);
+        console.log(`Additional Documentation: ${item.additionalDocumentation !== undefined ? (item.additionalDocumentation || '—') : '(not in projection)'}`);
 
+        // relationship fields
+        console.log(`\nImplements ORs:`);
         if (item.implementedORs && item.implementedORs.length > 0) {
-            console.log(`\nImplements ORs:`);
-            item.implementedORs.forEach(req => {
-                console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`);
-            });
-        }
+            item.implementedORs.forEach(req => console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`));
+        } else { console.log(`  None`); }
 
+        console.log(`Decommissions ORs:`);
         if (item.decommissionedORs && item.decommissionedORs.length > 0) {
-            console.log(`\nDecommissions ORs:`);
-            item.decommissionedORs.forEach(req => {
-                console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`);
-            });
-        }
+            item.decommissionedORs.forEach(req => console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`));
+        } else { console.log(`  None`); }
 
-        if (item.dependsOnChanges && item.dependsOnChanges.length > 0) {
-            console.log(`\nDepends On Changes:`);
-            item.dependsOnChanges.forEach(dep => {
-                console.log(`  - ${dep.code} [ID: ${dep.id}] ${dep.title}`);
-            });
-        }
+        console.log(`Depends On Changes:`);
+        if (item.dependencies && item.dependencies.length > 0) {
+            item.dependencies.forEach(dep => console.log(`  - ${dep.code} [ID: ${dep.id}] ${dep.title}`));
+        } else { console.log(`  None`); }
 
+        console.log(`Milestones:`);
         if (item.milestones && item.milestones.length > 0) {
-            console.log(`\nMilestones:`);
-
             const table = new Table({
                 head: ['Name', 'Event Types', 'Wave'],
                 colWidths: [25, 35, 15]
             });
-
             item.milestones.forEach(milestone => {
                 const eventTypesDisplay = milestone.eventTypes && milestone.eventTypes.length > 0
                     ? milestone.eventTypes.map(et => getMilestoneEventDisplay(et)).join(', ')
@@ -187,16 +197,17 @@ class OperationalChangeCommands extends VersionedCommands {
                 const wave = milestone.wave
                     ? `${milestone.wave.year}.${milestone.wave.sequenceNumber}`
                     : 'Not targeted';
-
-                table.push([
-                    milestone.name || 'Unnamed',
-                    eventTypesDisplay,
-                    wave
-                ]);
+                table.push([milestone.name || 'Unnamed', eventTypesDisplay, wave]);
             });
-
             console.log(table.toString());
-        }
+        } else { console.log(`  None`); }
+
+        // derived fields — extended projection only
+        console.log(`\n--- Derived fields (extended projection) ---`);
+        console.log(`Required By (OCs): ${item.requiredByOCs !== undefined ? '' : '(not in projection)'}`);
+        if (item.requiredByOCs && item.requiredByOCs.length > 0) {
+            item.requiredByOCs.forEach(oc => console.log(`  - ${oc.code} [ID: ${oc.id}] ${oc.title}`));
+        } else if (item.requiredByOCs !== undefined) { console.log(`  None`); }
     }
 
     validateDRG(drg) {

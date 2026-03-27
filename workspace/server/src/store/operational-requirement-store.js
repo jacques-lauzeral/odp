@@ -1,5 +1,6 @@
 import { VersionedItemStore } from './versioned-item-store.js';
 import { StoreError } from './transaction.js';
+import { getProjectionFields } from '../../../shared/src/index.js';
 
 /**
  * Store for OperationalRequirement items with versioning and relationship management.
@@ -29,8 +30,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * Loads ALL items with ALL relationships in a SINGLE query
      * Eliminates N+1 query problem
      */
-    buildFindAllQuery(baselineId, fromWaveId, filters) {
+    buildFindAllQuery(baselineId, fromWaveId, filters, fields = null) {
         try {
+            // If no field list provided, include everything (standard behaviour)
+            const includeField = fields ? (f => fields.includes(f)) : () => true;
+
             let cypher, params = {};
             let whereConditions = [];
 
@@ -141,56 +145,80 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }
             }
 
-            // *** KEY OPTIMIZATION: Load ALL relationships in OPTIONAL MATCH clauses ***
-            cypher += `
-            
+            // Relationship OPTIONAL MATCHes — emitted only when field is in projection
+            if (includeField('refinesParents')) {
+                cypher += `
             OPTIONAL MATCH (version)-[:REFINES]->(parent:${this.nodeLabel})-[:LATEST_VERSION]->(parentVersion:${this.versionLabel})
-            
+            `;
+            }
+            if (includeField('impactedStakeholders')) {
+                cypher += `
             OPTIONAL MATCH (version)-[scRel:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
-            
+            `;
+            }
+            if (includeField('impactedDomains')) {
+                cypher += `
             OPTIONAL MATCH (version)-[dRel:IMPACTS_DOMAIN]->(dom:Domain)
-            
+            `;
+            }
+            if (includeField('implementedONs')) {
+                cypher += `
             OPTIONAL MATCH (version)-[:IMPLEMENTS]->(on:${this.nodeLabel})-[:LATEST_VERSION]->(onVersion:${this.versionLabel})
             WHERE onVersion.type = 'ON'
-            
+            `;
+            }
+            if (includeField('strategicDocuments')) {
+                cypher += `
             OPTIONAL MATCH (version)-[docRel:REFERENCES]->(doc:ReferenceDocument)
-            
+            `;
+            }
+            if (includeField('dependencies')) {
+                cypher += `
             OPTIONAL MATCH (version)-[:DEPENDS_ON]->(depReq:${this.nodeLabel})-[:LATEST_VERSION]->(depReqVersion:${this.versionLabel})
-            
-            RETURN 
-                id(item) as itemId, 
+            `;
+            }
+
+            // Build RETURN clause — always include identity fields, gate the rest
+            const versionFields = [
+                'type', 'drg', 'maturity', 'path', 'tentative',
+                'statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'
+            ].filter(includeField);
+
+            cypher += `
+            RETURN
+                id(item) as itemId,
                 item.code as code,
                 item.title as title,
-                id(version) as versionId, 
+                id(version) as versionId,
                 version.version as version,
-                version.createdAt as createdAt, 
+                version.createdAt as createdAt,
                 version.createdBy as createdBy,
-                version { .* } as versionData,
-                
-                collect(DISTINCT CASE WHEN parent IS NOT NULL 
-                    THEN {id: id(parent), code: parent.code, title: parent.title, type: parentVersion.type} 
-                    ELSE NULL END) as refinesParents,
-                
-                collect(DISTINCT CASE WHEN sc IS NOT NULL 
-                    THEN {id: id(sc), title: sc.name, note: scRel.note} 
-                    ELSE NULL END) as impactedStakeholders,
-                
-                collect(DISTINCT CASE WHEN dom IS NOT NULL 
-                    THEN {id: id(dom), title: dom.name, note: dRel.note} 
-                    ELSE NULL END) as impactedDomains,
-                
-                collect(DISTINCT CASE WHEN on IS NOT NULL 
-                    THEN {id: id(on), code: on.code, title: on.title, type: onVersion.type} 
-                    ELSE NULL END) as implementedONs,
-                
-                collect(DISTINCT CASE WHEN doc IS NOT NULL 
-                    THEN {id: id(doc), title: doc.name, note: docRel.note} 
-                    ELSE NULL END) as strategicDocuments,
-                
-                collect(DISTINCT CASE WHEN depReq IS NOT NULL 
-                    THEN {id: id(depReq), code: depReq.code, title: depReq.title} 
-                    ELSE NULL END) as dependencies
-                
+                ${versionFields.map(f => `version.${f} as ${f}`).join(',\n                ')}
+                ${includeField('refinesParents') ? `,
+                collect(DISTINCT CASE WHEN parent IS NOT NULL
+                    THEN {id: id(parent), code: parent.code, title: parent.title, type: parentVersion.type}
+                    ELSE NULL END) as refinesParents` : ''}
+                ${includeField('impactedStakeholders') ? `,
+                collect(DISTINCT CASE WHEN sc IS NOT NULL
+                    THEN {id: id(sc), title: sc.name, note: scRel.note}
+                    ELSE NULL END) as impactedStakeholders` : ''}
+                ${includeField('impactedDomains') ? `,
+                collect(DISTINCT CASE WHEN dom IS NOT NULL
+                    THEN {id: id(dom), title: dom.name, note: dRel.note}
+                    ELSE NULL END) as impactedDomains` : ''}
+                ${includeField('implementedONs') ? `,
+                collect(DISTINCT CASE WHEN on IS NOT NULL
+                    THEN {id: id(on), code: on.code, title: on.title, type: onVersion.type}
+                    ELSE NULL END) as implementedONs` : ''}
+                ${includeField('strategicDocuments') ? `,
+                collect(DISTINCT CASE WHEN doc IS NOT NULL
+                    THEN {id: id(doc), title: doc.name, note: docRel.note}
+                    ELSE NULL END) as strategicDocuments` : ''}
+                ${includeField('dependencies') ? `,
+                collect(DISTINCT CASE WHEN depReq IS NOT NULL
+                    THEN {id: id(depReq), code: depReq.code, title: depReq.title}
+                    ELSE NULL END) as dependencies` : ''}
+
             ORDER BY item.title
         `;
 
@@ -204,20 +232,22 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * Refactored findAll - uses single query with aggregated relationships
      * No more N+1 queries!
      */
-    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
+    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}, projection = 'standard') {
         try {
+            if (projection === 'extended') {
+                throw new StoreError("Projection 'extended' is not valid on findAll — use findById");
+            }
+
+            const fields = getProjectionFields('requirement', projection);
+            const includeField = f => fields.includes(f);
+
             // Step 1: Execute single optimized query
-            const queryObj = this.buildFindAllQuery(baselineId, null, filters);
+            const queryObj = this.buildFindAllQuery(baselineId, null, filters, fields);
             const result = await transaction.run(queryObj.cypher, queryObj.params);
 
-            // Step 2: Transform records (relationships already loaded)
+            // Step 2: Transform records
             const items = [];
             for (const record of result.records) {
-                const versionData = record.get('versionData');
-                delete versionData.version;
-                delete versionData.createdAt;
-                delete versionData.createdBy;
-
                 const item = {
                     itemId: this.normalizeId(record.get('itemId')),
                     title: record.get('title'),
@@ -226,21 +256,34 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     version: this.normalizeId(record.get('version')),
                     createdAt: record.get('createdAt'),
                     createdBy: record.get('createdBy'),
-                    ...versionData,
-
-                    // Relationships already aggregated in query - just filter nulls
-                    refinesParents: this._filterNullsAndNormalize(record.get('refinesParents')),
-                    impactedStakeholders: this._filterNullsAndNormalize(record.get('impactedStakeholders')),
-                    impactedDomains: this._filterNullsAndNormalize(record.get('impactedDomains')),
-                    implementedONs: this._filterNullsAndNormalize(record.get('implementedONs')),
-                    strategicDocuments: this._filterNullsAndNormalize(record.get('strategicDocuments')),
-                    dependencies: this._filterNullsAndNormalize(record.get('dependencies'))
                 };
+
+                // Scalar version fields — only those in projection
+                const scalarVersionFields = [
+                    'type', 'drg', 'maturity', 'path', 'tentative',
+                    'statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'
+                ];
+                for (const f of scalarVersionFields) {
+                    if (includeField(f)) {
+                        item[f] = record.get(f);
+                    }
+                }
+
+                // Relationship fields — only those in projection
+                const relFields = [
+                    'refinesParents', 'impactedStakeholders', 'impactedDomains',
+                    'implementedONs', 'strategicDocuments', 'dependencies'
+                ];
+                for (const f of relFields) {
+                    if (includeField(f)) {
+                        item[f] = this._filterNullsAndNormalize(record.get(f));
+                    }
+                }
 
                 items.push(item);
             }
 
-            // Step 3: Apply wave filtering (unchanged)
+            // Step 3: Apply wave filtering
             if (fromWaveId !== null) {
                 const acceptedReqIds = await this._computeWaveFilteredRequirements(
                     fromWaveId,
@@ -252,6 +295,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             return items;
         } catch (error) {
+            if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
         }
     }
@@ -650,9 +694,13 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * @param {number|null} fromWaveId - Optional wave filtering
      * @returns {Promise<object|null>} OperationalRequirement with relationships or null
      */
-    async findById(itemId, transaction, baselineId = null, fromWaveId = null) {
+    async findById(itemId, transaction, baselineId = null, fromWaveId = null, projection = 'standard') {
         try {
-            // Step 1: Get base result (current or baseline)
+            if (projection === 'summary') {
+                throw new StoreError("Projection 'summary' is not valid on findById — use findAll");
+            }
+
+            // Step 1: Get standard result
             const baseResult = await super.findById(itemId, transaction, baselineId);
             if (!baseResult) {
                 return null;
@@ -661,11 +709,76 @@ export class OperationalRequirementStore extends VersionedItemStore {
             // Step 2: Apply wave filtering if specified
             if (fromWaveId !== null) {
                 const passesFilter = await this._checkWaveFilter(baseResult.itemId, fromWaveId, transaction, baselineId);
-                return passesFilter ? baseResult : null;
+                if (!passesFilter) return null;
             }
 
-            return baseResult;
+            if (projection !== 'extended') {
+                return baseResult;
+            }
+
+            // Step 3: Extended — append derived (reverse-traversal) fields
+            const numericItemId = this.normalizeId(itemId);
+
+            // implementedByORs — ORs whose implementedONs references this ON
+            const implementedByORsResult = await transaction.run(`
+                MATCH (orVersion:${this.versionLabel})-[:IMPLEMENTS]->(item:${this.nodeLabel})
+                MATCH (orVersion)-[:VERSION_OF]->(orItem:${this.nodeLabel})-[:LATEST_VERSION]->(orVersion)
+                WHERE id(item) = $itemId
+                RETURN id(orItem) as id, orItem.title as title, orItem.code as code, orVersion.type as type
+                ORDER BY orItem.title
+            `, { itemId: numericItemId });
+            const implementedByORs = implementedByORsResult.records.map(r => this._buildReference(r));
+
+            // implementedByOCs — OCs whose implementedORs references this OR
+            const implementedByOCsResult = await transaction.run(`
+                MATCH (ocVersion:OperationalChangeVersion)-[:IMPLEMENTS]->(item:${this.nodeLabel})
+                MATCH (ocVersion)-[:VERSION_OF]->(ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
+                WHERE id(item) = $itemId
+                RETURN id(ocItem) as id, ocItem.title as title, ocItem.code as code
+                ORDER BY ocItem.title
+            `, { itemId: numericItemId });
+            const implementedByOCs = implementedByOCsResult.records.map(r => this._buildReference(r));
+
+            // decommissionedByOCs — OCs whose decommissionedORs references this OR
+            const decommissionedByOCsResult = await transaction.run(`
+                MATCH (ocVersion:OperationalChangeVersion)-[:DECOMMISSIONS]->(item:${this.nodeLabel})
+                MATCH (ocVersion)-[:VERSION_OF]->(ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
+                WHERE id(item) = $itemId
+                RETURN id(ocItem) as id, ocItem.title as title, ocItem.code as code
+                ORDER BY ocItem.title
+            `, { itemId: numericItemId });
+            const decommissionedByOCs = decommissionedByOCsResult.records.map(r => this._buildReference(r));
+
+            // refinedBy — requirements whose refinesParents references this requirement
+            const refinedByResult = await transaction.run(`
+                MATCH (childVersion:${this.versionLabel})-[:REFINES]->(item:${this.nodeLabel})
+                MATCH (childVersion)-[:VERSION_OF]->(childItem:${this.nodeLabel})-[:LATEST_VERSION]->(childVersion)
+                WHERE id(item) = $itemId
+                RETURN id(childItem) as id, childItem.title as title, childItem.code as code, childVersion.type as type
+                ORDER BY childItem.title
+            `, { itemId: numericItemId });
+            const refinedBy = refinedByResult.records.map(r => this._buildReference(r));
+
+            // requiredByORs — ORs whose dependencies references this OR
+            const requiredByORsResult = await transaction.run(`
+                MATCH (orVersion:${this.versionLabel})-[:DEPENDS_ON]->(item:${this.nodeLabel})
+                MATCH (orVersion)-[:VERSION_OF]->(orItem:${this.nodeLabel})-[:LATEST_VERSION]->(orVersion)
+                WHERE id(item) = $itemId
+                RETURN id(orItem) as id, orItem.title as title, orItem.code as code, orVersion.type as type
+                ORDER BY orItem.title
+            `, { itemId: numericItemId });
+            const requiredByORs = requiredByORsResult.records.map(r => this._buildReference(r));
+
+            return {
+                ...baseResult,
+                implementedByORs,
+                implementedByOCs,
+                decommissionedByOCs,
+                refinedBy,
+                requiredByORs,
+            };
         } catch (error) {
+            if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID with multi-context: ${error.message}`, error);
         }
     }

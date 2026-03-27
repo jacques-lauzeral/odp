@@ -39,6 +39,20 @@ export class VersionedItemRouter {
     }
 
     /**
+     * Extract and validate projection from query parameters
+     * @param {Object} req - Express request object
+     * @param {string[]} allowed - Allowed projection values for this endpoint
+     * @returns {string} projection value
+     */
+    getProjection(req, allowed) {
+        const projection = req.query.projection || 'standard';
+        if (!allowed.includes(projection)) {
+            throw new Error(`Invalid projection '${projection}'. Allowed values: ${allowed.join(', ')}`);
+        }
+        return projection;
+    }
+
+    /**
      * Extract content filters from query parameters
      * Must be implemented by concrete router classes for entity-specific filtering
      * @param {Object} req - Express request object
@@ -56,9 +70,10 @@ export class VersionedItemRouter {
                 const baselineId = this.getBaselineId(req);
                 const fromWaveId = this.getFromWaveId(req);
                 const filters = this.getContentFilters(req);
+                const projection = this.getProjection(req, ['summary', 'standard']);
 
-                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}, filters:`, filters);
-                const entities = await this.service.getAll(userId, baselineId, fromWaveId, filters);
+                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}, projection: ${projection}, filters:`, filters);
+                const entities = await this.service.getAll(userId, baselineId, fromWaveId, filters, projection);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
@@ -66,7 +81,7 @@ export class VersionedItemRouter {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Invalid filter parameter') || error.message.includes('Invalid category ID')) {
+                } else if (error.message.includes('Invalid filter parameter') || error.message.includes('Invalid category ID') || error.message.includes('Invalid projection')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
@@ -80,8 +95,9 @@ export class VersionedItemRouter {
                 const userId = this.getUserId(req);
                 const baselineId = this.getBaselineId(req);
                 const fromWaveId = this.getFromWaveId(req);
-                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}`);
-                const entity = await this.service.getById(req.params.id, userId, baselineId, fromWaveId);
+                const projection = this.getProjection(req, ['standard', 'extended']);
+                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}, projection: ${projection}`);
+                const entity = await this.service.getById(req.params.id, userId, baselineId, fromWaveId, projection);
                 if (!entity) {
                     const context = baselineId ? ` in baseline ${baselineId}` : '';
                     const waveContext = fromWaveId ? ` (wave filtered)` : '';
@@ -95,6 +111,8 @@ export class VersionedItemRouter {
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+                } else if (error.message.includes('Invalid projection')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

@@ -151,10 +151,11 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 
 **Abstract methods** (must be implemented by concrete stores):
 - `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
-- `_buildRelationshipReferences(versionId, tx)` — loads relationships as Reference objects `{id, title, code}`
+- `_buildRelationshipReferences(versionId, tx, fields?)` — loads relationships as Reference objects `{id, title, code}`; `fields` is the projection field list — only relationships whose field name is included are fetched
 - `_createRelationshipsFromIds(versionId, relationshipIds, tx)` — writes all relationships for a version
-- `buildFindAllQuery(baselineId, fromWaveId, filters)` — builds entity-specific optimised Cypher for list queries
-- `findAll(tx, baselineId?, fromWaveId?, filters?)` — list with multi-context and content filtering (abstract)
+- `buildFindAllQuery(baselineId, fromWaveId, filters, fields?)` — builds entity-specific optimised Cypher for list queries; `fields` is the projection field list driving which OPTIONAL MATCHes and RETURN columns are emitted
+- `findAll(tx, baselineId?, fromWaveId?, filters?, projection?)` — list with multi-context, content filtering, and projection support; throws if `projection = 'extended'`
+- `findById(itemId, tx, baselineId?, fromWaveId?, projection?)` — single item with projection support; throws if `projection = 'summary'`; `extended` projection appends derived fields via additional reverse-traversal queries
 - `_checkWaveFilter(itemId, fromWaveId, tx, baselineId?)` — per-entity wave filter logic (abstract)
 - `_getEntityTypeForCode(data)` — returns `'ON'`, `'OR'`, or `'OC'` for code generation (abstract)
 
@@ -201,7 +202,7 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 ### 4.2 OperationalRequirementStore (`operational-requirement-store.js`)
 
-Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extended with optional context: `findById(itemId, tx, baselineId?, fromWaveId?)`.
+Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extended with optional context and projection: `findById(itemId, tx, baselineId?, fromWaveId?, projection?)`.
 
 **Relationship fields** (returned by `findAll`/`findById`, accepted by `create`/`update`):
 
@@ -214,7 +215,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `impactedDomains` | `IMPACTS_DOMAIN` → Domain | OR only | `note` |
 | `dependencies` | `DEPENDS_ON` → OR Item | OR only | — |
 
-**`findAll(tx, baselineId?, fromWaveId?, filters?)`** — uses a single aggregated query (no N+1). Wave filtering applies a 3-hop `REFINES|IMPLEMENTS` upward cascade. Filters object:
+**`findAll(tx, baselineId?, fromWaveId?, filters?, projection?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Wave filtering applies a 3-hop `REFINES|IMPLEMENTS` upward cascade. Filters object:
 
 | Filter field | Type | Behaviour |
 |---|---|---|
@@ -241,6 +242,16 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findRequirementsThatImplement(onItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code, type}>` — OR requirements that IMPLEMENT a given ON
 
+**`findById` — `extended` projection**: performs the standard load then appends derived fields via additional reverse-traversal queries:
+
+| Derived field | Query |
+|---|---|
+| `implementedByORs` | OR versions with `IMPLEMENTS → this item` whose version is `LATEST_VERSION` |
+| `implementedByOCs` | OC versions with `IMPLEMENTS → this item` whose version is `LATEST_VERSION` |
+| `decommissionedByOCs` | OC versions with `DECOMMISSIONS → this item` whose version is `LATEST_VERSION` |
+| `refinedBy` | Requirement versions with `REFINES → this item` whose version is `LATEST_VERSION` |
+| `requiredByORs` | OR versions with `DEPENDS_ON → this item` whose version is `LATEST_VERSION` |
+
 **Not implemented**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`
 
 ---
@@ -249,7 +260,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegated** to an internal `OperationalChangeMilestoneStore` instance (see §4.6). Additional public methods:
 
-**`findAll(tx, baselineId?, fromWaveId?, filters?)`** — wave filtering is applied as a post-query set operation via `_computeWaveFilteredChanges`. Filters object:
+**`findAll(tx, baselineId?, fromWaveId?, filters?, projection?)`** — wave filtering is applied as a post-query set operation via `_computeWaveFilteredChanges`. `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('change', projection)` drives which scalar fields are projected in the RETURN clause, and whether `_buildRelationshipReferences` is called per item. Filters object:
 
 | Filter field | Type | Behaviour |
 |---|---|---|
@@ -264,6 +275,14 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 **`findChangesThatImplementRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>` — OCs that IMPLEMENT the given OR
 
 **`findChangesThatDecommissionRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>` — OCs that DECOMMISSION the given OR
+
+**`findById(itemId, tx, baselineId?, fromWaveId?, projection?)`** — `extended` projection appends the following derived field via reverse-traversal query:
+
+| Derived field | Query |
+|---|---|
+| `requiredByOCs` | OC versions with `DEPENDS_ON → this item` whose version is `LATEST_VERSION` |
+
+**`_buildRelationshipReferences(versionId, tx, fields?)`** — fetches only the relationship queries whose field name is present in `fields`. When `fields` is `null` (internal calls), all relationships are fetched.
 
 **Milestone delegation** — the following are thin wrappers that forward to `this.milestoneStore`:
 

@@ -102,10 +102,10 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 | `create(payload, userId)` | Validate then create at version 1 |
 | `update(itemId, payload, expectedVersionId, userId)` | Validate then create new version |
 | `patch(itemId, patchPayload, expectedVersionId, userId)` | Partial update — merges with current via `_computePatchedPayload`, then validates and updates |
-| `getById(itemId, userId, baselineId?, fromWaveId?)` | Fetch with optional context |
+| `getById(itemId, userId, baselineId?, fromWaveId?, projection?)` | Fetch with optional context and projection; passes `projection` through to `store.findById` |
 | `getByIdAndVersion(itemId, versionNumber, userId)` | Fetch specific historical version |
 | `getVersionHistory(itemId, userId)` | All versions, newest first |
-| `getAll(userId, baselineId?, fromWaveId?, filters?)` | List with optional context and filters |
+| `getAll(userId, baselineId?, fromWaveId?, filters?, projection?)` | List with optional context, filters, and projection; passes `projection` through to `store.findAll` |
 | `delete(itemId, userId)` | Delete item and all versions |
 | `_validateCreatePayload(payload)` *(abstract)* | Must be implemented by subclass |
 | `_validateUpdatePayload(payload, itemId?)` *(abstract)* | Must be implemented by subclass; `itemId` is `null` on create, set on update/patch |
