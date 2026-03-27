@@ -15,5 +15,8 @@ export * from './model/setup-elements.js';
 // Export ODIP elements
 export * from './model/odp-elements.js';
 
+// Export projections
+export * from './model/projections.js';
+
 // Export request models
 export * from './messages/messages.js';

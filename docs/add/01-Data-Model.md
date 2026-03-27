@@ -42,6 +42,7 @@ shared/src/
     ├── odp-edition-types.js  # Edition type enum (ALPHA, BETA, RELEASE)
     ├── odp-elements.js       # Operational and management entity models
     ├── or-types.js           # OR type enum (ON, OR)
+    ├── projections.js        # Projection definitions and field set mappings
     ├── setup-elements.js     # Setup entity models
     └── utils.js              # ID normalisation, lazy comparison
 ```
@@ -168,31 +169,41 @@ Several attributes are type-specific. The service layer enforces these rules; th
 
 **Version node fields** (per version):
 
-| Field | Type | ON/OR | Cardinality | Notes |
-|---|---|---|---|---|
-| `version` | integer | both | mandatory | Sequential (1, 2, 3…) |
-| `type` | enum | both | mandatory | ON \| OR |
-| `drg` | enum | both | mandatory | Drafting Group (see §6.1) |
-| `maturity` | enum | both | mandatory | DRAFT \| ADVANCED \| MATURE |
-| `statement` | rich text | both | mandatory | Core requirement statement |
-| `rationale` | rich text | both | mandatory | Justification |
-| `flows` | rich text | both | optional | Flow descriptions and flow examples |
-| `privateNotes` | rich text | both | optional | Internal notes, not shared with other organisations |
-| `additionalDocumentation` | attachments | both | optional | Supporting documents |
-| `path` | string[] | both | optional | Folder hierarchy for navigation |
-| `tentative` | integer[] | **ON only** | mandatory (root ON), optional (child ON) | Tentative implementation time: `[year]` or `[start, end]` where start ≤ end |
-| `nfrs` | rich text | **OR only** | optional | Non-functional requirements from business perspective |
+| Field | Type | ON/OR | Cardinality | Projection | Notes |
+|---|---|---|---|---|---|
+| `version` | integer | both | mandatory | summary | Sequential (1, 2, 3…) |
+| `type` | enum | both | mandatory | summary | ON \| OR |
+| `drg` | enum | both | mandatory | summary | Drafting Group (see §6.1) |
+| `maturity` | enum | both | mandatory | summary | DRAFT \| ADVANCED \| MATURE |
+| `path` | string[] | both | optional | summary | Folder hierarchy for navigation |
+| `tentative` | integer[] | **ON only** | mandatory (root ON), optional (child ON) | summary | Tentative implementation time: `[year]` or `[start, end]` where start ≤ end |
+| `nfrs` | rich text | **OR only** | optional | standard | Non-functional requirements from business perspective |
+| `statement` | rich text | both | mandatory | standard | Core requirement statement |
+| `rationale` | rich text | both | mandatory | standard | Justification |
+| `flows` | rich text | both | optional | standard | Flow descriptions and flow examples |
+| `privateNotes` | rich text | both | optional | standard | Internal notes, not shared with other organisations |
+| `additionalDocumentation` | attachments | both | optional | standard | Supporting documents |
 
 **Version relationship fields**:
 
-| Relationship | ON/OR | Cardinality | Notes |
-|---|---|---|---|
-| `refines` | both | optional | Parent Requirement of same type |
-| `strategicDocuments` | **ON only** | mandatory (root ON), optional otherwise | Annotated list of ReferenceDocuments |
-| `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | List of implemented ONs |
-| `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | List of StakeholderCategories |
-| `impactedDomains` | **OR only** | mandatory (root OR), optional otherwise | List of Domains |
-| `dependencies` | **OR only** | optional | List of ORs that must be implemented before this OR |
+| Relationship | ON/OR | Cardinality | Projection | Notes |
+|---|---|---|---|---|
+| `refines` | both | optional | summary | Parent Requirement of same type |
+| `strategicDocuments` | **ON only** | mandatory (root ON), optional otherwise | summary | Annotated list of ReferenceDocuments |
+| `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | summary | List of implemented ONs |
+| `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | summary | List of StakeholderCategories |
+| `impactedDomains` | **OR only** | mandatory (root OR), optional otherwise | summary | List of Domains |
+| `dependencies` | **OR only** | optional | summary | List of ORs that must be implemented before this OR |
+
+**Derived fields** (reverse-traversal, available in `extended` projection only):
+
+| Field | ON/OR | Notes |
+|---|---|---|
+| `implementedByORs` | **ON only** | ORs whose `implementedONs` references this ON |
+| `implementedByOCs` | **OR only** | OCs whose `implementedORs` references this OR |
+| `decommissionedByOCs` | **OR only** | OCs whose `decommissionedORs` references this OR |
+| `refinedBy` | both | Requirements whose `refinesParents` references this requirement |
+| `requiredByORs` | **OR only** | ORs whose `dependencies` references this OR |
 
 #### Operational Change (OC)
 
@@ -202,29 +213,35 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 
 **Version node fields**:
 
-| Field | Type | Cardinality | Notes |
-|---|---|---|---|
-| `version` | integer | mandatory | Sequential |
-| `drg` | enum | mandatory | Drafting Group |
-| `maturity` | enum | mandatory | DRAFT \| ADVANCED \| MATURE |
-| `purpose` | rich text | mandatory | Why the OC is needed |
-| `initialState` | rich text | mandatory | Current operational situation before deployment |
-| `finalState` | rich text | mandatory | Target operational situation after deployment |
-| `details` | rich text | mandatory | Additional deployment detail |
-| `cost` | integer | optional | Estimated development cost in MW |
-| `privateNotes` | rich text | optional | Internal notes |
-| `additionalDocumentation` | attachments | optional | Supporting documents |
-| `path` | string[] | optional | Folder hierarchy |
+| Field | Type | Cardinality | Projection | Notes |
+|---|---|---|---|---|
+| `version` | integer | mandatory | summary | Sequential |
+| `drg` | enum | mandatory | summary | Drafting Group |
+| `maturity` | enum | mandatory | summary | DRAFT \| ADVANCED \| MATURE |
+| `cost` | integer | optional | summary | Estimated development cost in MW |
+| `path` | string[] | optional | summary | Folder hierarchy |
+| `purpose` | rich text | mandatory | standard | Why the OC is needed |
+| `initialState` | rich text | mandatory | standard | Current operational situation before deployment |
+| `finalState` | rich text | mandatory | standard | Target operational situation after deployment |
+| `details` | rich text | mandatory | standard | Additional deployment detail |
+| `privateNotes` | rich text | optional | standard | Internal notes |
+| `additionalDocumentation` | attachments | optional | standard | Supporting documents |
 
 **Version relationship fields**:
 
-| Relationship | Cardinality | Notes |
-|---|---|---|
-| `implementedORs` | optional | ORs satisfied by this OC |
-| `decommissionedORs` | optional | ORs fully decommissioned by this OC |
-| `dependencies` | optional | OCs that must be deployed before this OC |
-| `milestones` | optional | Deployment milestones (see §4.4) |
-| `orCosts` | optional | Per-OR cost breakdown (see ORCost below) |
+| Relationship | Cardinality | Projection | Notes |
+|---|---|---|---|
+| `implementedORs` | optional | summary | ORs satisfied by this OC |
+| `decommissionedORs` | optional | summary | ORs fully decommissioned by this OC |
+| `dependencies` | optional | summary | OCs that must be deployed before this OC |
+| `milestones` | optional | summary | Deployment milestones (see §4.4) |
+| `orCosts` | optional | summary | Per-OR cost breakdown (see ORCost below) |
+
+**Derived fields** (reverse-traversal, available in `extended` projection only):
+
+| Field | Notes |
+|---|---|
+| `requiredByOCs` | OCs whose `dependencies` references this OC |
 
 **ORCost**: Represents the cost of an OR in the context of this OC.
 
@@ -265,6 +282,36 @@ A published edition of the ODIP, built from a baseline with a starting wave.
 | `createdBy` | string | |
 
 An ODIP Edition acts as a "saved query": it references a baseline and a starting wave, exposing only OCs with milestones at or after that wave, and only the ORs referenced by those filtered OCs.
+
+---
+
+## 3.4 Projection Model
+
+Operational entity responses support three projection levels, controlling which fields are returned. The projection is specified via the `projection` query parameter on list and single-item endpoints.
+
+| Projection | Available on | Field sets included |
+|---|---|---|
+| `summary` | list endpoints only | summary fields only |
+| `standard` | list and single-item endpoints | summary + rich-text fields (default) |
+| `extended` | single-item endpoints only | summary + rich-text + derived fields |
+
+**Field sets:**
+
+| Field set | Description |
+|---|---|
+| `summary` | Scalar and reference fields sufficient for list views, grids, and filter operations. Excludes rich text and derived attributes. |
+| `rich-text` | Rich text content fields (`statement`, `rationale`, `flows`, etc.). Added on top of `summary` for `standard` and `extended`. |
+| `derived` | Reverse-traversal attributes computed at query time. Added on top of `standard` for `extended` only. |
+
+The projection definitions and field-set mappings are owned by `shared/src/model/projections.js`, which exposes three functions:
+
+| Function | Description |
+|---|---|
+| `getProjectionFieldSets(projectionName)` | Returns the ordered list of field set names for a projection |
+| `getFieldSetFields(entityType, fieldSetName)` | Returns the field names in a field set for an entity type |
+| `getProjectionFields(entityType, projectionName)` | Convenience composition — returns the full flat field list for a projection |
+
+The store layer calls `getProjectionFields` to determine exactly which fields and relationships to fetch from Neo4j, ensuring no over-fetching regardless of projection.
 
 ---
 
@@ -472,7 +519,7 @@ Field-level comparison for modified milestones covers: `description` (rich text 
 // Milestones (only when ignoreMilestones = false)
 {
     field: 'milestones',
-    added:    [ milestone, ... ],
+        added:    [ milestone, ... ],
     removed:  [ milestone, ... ],
     modified: [ { name: string, changes: [ { field, oldValue, newValue }, ... ] }, ... ]
 }

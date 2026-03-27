@@ -98,13 +98,12 @@ export class VersionedItemService {
      * @param {number|null} baselineId - Optional baseline ID for historical context
      * @param {number|null} fromWaveId - Optional wave ID for filtering
      */
-    async getById(itemId, userId, baselineId = null, fromWaveId = null) {
+    async getById(itemId, userId, baselineId = null, fromWaveId = null, projection = 'standard') {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entity = await store.findById(itemId, tx, baselineId, fromWaveId);
+            const entity = await store.findById(itemId, tx, baselineId, fromWaveId, projection);
             await commitTransaction(tx);
-            console.log('VersionedItemService.getById', entity);
             return entity;
         } catch (error) {
             await rollbackTransaction(tx);
@@ -151,11 +150,11 @@ export class VersionedItemService {
      * @param {number|null} fromWaveId - Optional wave ID for filtering
      * @param {object} filters - Optional content filtering parameters
      */
-    async getAll(userId, baselineId = null, fromWaveId = null, filters = {}) {
+    async getAll(userId, baselineId = null, fromWaveId = null, filters = {}, projection = 'standard') {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entities = await store.findAll(tx, baselineId, fromWaveId, filters);
+            const entities = await store.findAll(tx, baselineId, fromWaveId, filters, projection);
             await commitTransaction(tx);
             return entities;
         } catch (error) {
