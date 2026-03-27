@@ -300,3 +300,4 @@ activities/browse/
 - `pushState` / `popstate` wired for Browse hop navigation
 - `app.js` and `header.js` updated: new Browse route and nav tab
 - ADD chapter 08 updated: new §Browse Activity
+- 
