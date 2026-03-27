@@ -7,7 +7,8 @@ import {
     createTransaction,
     commitTransaction,
     rollbackTransaction,
-    operationalRequirementStore
+    operationalRequirementStore,
+    referenceDocumentStore
 } from '../../../store/index.js';
 import DeltaToAsciidocConverter from '../../export/DeltaToAsciidocConverter.js';
 
@@ -55,6 +56,9 @@ export class DetailsModuleGenerator {
 
             // Initialize image collection
             this.allImages = [];
+
+            // Preload reference documents for strategic document resolution
+            this.documentLookup = await this._fetchReferenceDocuments();
 
             // Build lookup maps for cross-references (by itemId)
             // For refining children, we'll update their paths after tree building
@@ -192,6 +196,26 @@ export class DetailsModuleGenerator {
      * Fetch all ONs and ORs from database
      * @private
      */
+    /**
+     * Fetch all reference documents and build a lookup map by id
+     * @private
+     */
+    async _fetchReferenceDocuments() {
+        const tx = createTransaction(this.userId);
+        try {
+            const docs = await referenceDocumentStore().findAll(tx);
+            await commitTransaction(tx);
+            const lookup = new Map();
+            for (const doc of docs) {
+                lookup.set(doc.id, doc);
+            }
+            return lookup;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
     async _fetchONsAndORs() {
         const tx = createTransaction(this.userId);
         try {
@@ -832,6 +856,21 @@ export class DetailsModuleGenerator {
                         file: `on-${subOn.id}.adoc`
                     };
                 }).filter(Boolean)
+            } : null,
+            strategicDocuments: on.strategicDocuments && on.strategicDocuments.length > 0 ? {
+                items: on.strategicDocuments.map(ref => {
+                    const doc = this.documentLookup.get(ref.id);
+                    if (!doc) {
+                        console.warn(`ON ${on.itemId} references document ${ref.id} which was not found in lookup`);
+                        return { title: ref.title, note: ref.note || null, url: null, version: null };
+                    }
+                    return {
+                        title: doc.name,
+                        version: doc.version || null,
+                        url: doc.url || null,
+                        note: ref.note || null
+                    };
+                })
             } : null
         };
     }

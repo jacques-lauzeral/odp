@@ -31,8 +31,18 @@
 {{{flows}}}
 
 {{/flows}}
-{{#refinedBy}}
+{{#strategicDocuments}}
+== Strategic Documents
 
+[cols="2,1,3",options="header"]
+|===
+|Document |Version |Note
+{{#items}}
+|{{#url}}link:{{{url}}}[{{title}}]{{/url}}{{^url}}{{title}}{{/url}} |{{version}} |{{note}}
+{{/items}}
+|===
+{{/strategicDocuments}}
+{{#refinedBy}}
 == Refined By
 
 {{#items}}
@@ -40,7 +50,6 @@
 {{/items}}
 {{/refinedBy}}
 {{#implementedBy}}
-
 == Implemented By
 
 {{#items}}
