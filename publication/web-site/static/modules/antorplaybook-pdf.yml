@@ -1,0 +1,23 @@
+site:
+  title: ODIP
+  url: http://localhost:8081
+  start_page: odip:ROOT:index.adoc
+
+content:
+  sources:
+    - url: .
+      branches: HEAD
+
+antora:
+  extensions:
+    - require: '@antora/pdf-extension'
+      assembler_config: ./antora-assembler.yml
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    snapshot: true
+
+asciidoc:
+  attributes:
+    page-pagination: ''
