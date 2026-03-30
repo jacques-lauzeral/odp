@@ -290,37 +290,35 @@ class FlowMapper extends Mapper {
             ['nm', 'stakeholder:network/nm'],
             ['nmoc', 'stakeholder:network/nm/nmoc'],
             ['fmp', 'stakeholder:network/ansp/fmp'],
-            ['twr', 'stakeholder:network/ansp/twr'],
-            ['ao', 'stakeholder:network/airspace_user/ao'],
+            ['twr', 'stakeholder:network/ansp/atc'],
+            ['ao', 'stakeholder:network/airspace_user'],
             ['ansp', 'stakeholder:network/ansp'],
             ['amc', 'stakeholder:network/ansp/amc'],
             ['atc unit', 'stakeholder:network/ansp/atc'],
             ['nec', 'stakeholder:network/ansp/nec'],
             ['nrc', 'stakeholder:network/ansp/nrc'],
             ['cfsp', 'stakeholder:network/airspace_user/cfsp'],
-            ['apt unit', 'stakeholder:network/nm/apt_unit'],
-            ['airport domain', 'stakeholder:network/nm/airport_domain'],
-            ['woc', 'stakeholder:network/nm/woc'],
-            ['airport operator', 'stakeholder:network/airport_operator'],
+            ['apt unit', 'stakeholder:network/airport'],
+            ['airport domain', 'stakeholder:network/nm/airport'],
+            ['woc', 'stakeholder:network/nm/weather'],
+            ['airport operator', 'stakeholder:network/airport'],
             ['airspace user', 'stakeholder:network/airspace_user'],
-            ['national authority', 'stakeholder:network/national_authority'],
-            ['military', 'stakeholder:network/military'],
-            ['system integrator', 'stakeholder:network/system_integrator'],
-            ['easa', 'stakeholder:network/easa'],
-            ['ground handling agent', 'stakeholder:network/ground_handling_agent'],
-            ['third party supplier', 'stakeholder:network/third_party_supplier'],
-            ['surveillance data provider', 'stakeholder:network/surveillance_data_provider'],
+            ['national authority', 'stakeholder:network/national_european_authority'],
+            ['military', 'stakeholder:network/ansp/mil'],
+            ['easa', 'stakeholder:network/national_european_authority'],
+            ['ground handling agent', 'stakeholder:network/airport'],
+            // system integrator, third party supplier, surveillance data provider → unresolved (privateNotes)
 
             // Plurals
-            ['aos', 'stakeholder:network/airspace_user/ao'],
+            ['aos', 'stakeholder:network/airspace_user'],
             ['fmps', 'stakeholder:network/ansp/fmp'],
-            ['twrs', 'stakeholder:network/ansp/twr'],
+            ['twrs', 'stakeholder:network/ansp/atc'],
 
             // Abbreviations
             ['au', 'stakeholder:network/airspace_user'],
 
             // Synonyms
-            ['aerodrome', 'stakeholder:network/airport_operator'],
+            ['aerodrome', 'stakeholder:network/airport'],
 
             // Expanded forms
             ['national env coordination', 'stakeholder:network/ansp/nec'],
@@ -457,6 +455,9 @@ class FlowMapper extends Mapper {
         const currentPath = section.level > 1
             ? [...ancestorPath, section.title]
             : ancestorPath;
+
+        // Skip "archive" sections (case-insensitive)
+        if (section.title?.trim().toLowerCase() === 'archive') return;
 
         // Recurse into subsections
         for (const subsection of section.subsections || []) {
