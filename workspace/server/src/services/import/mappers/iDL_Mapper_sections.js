@@ -286,6 +286,7 @@ class iDL_Mapper_sections extends Mapper {
         let flows = '';
         let privateNotes = '';
         let maturity = null;
+        let additionalDocumentation = '';
         let implementedONs = [];
         let dependencies = [];
         let strategicDocuments = [];
@@ -357,8 +358,11 @@ class iDL_Mapper_sections extends Mapper {
                 // Consumed and discarded
                 currentSection = 'nfrs';
             } else if (textStartsWith(text, 'Additional documentation:')) {
-                // Consumed and discarded
                 currentSection = 'additionalDocumentation';
+                const value = text.substring(text.toLowerCase().indexOf('additional documentation:') + 'additional documentation:'.length).trim();
+                if (value && value.toLowerCase() !== 'none') {
+                    additionalDocumentation = value;
+                }
             } else if (textStartsWith(text, 'Maturity level:')) {
                 currentSection = 'maturityLevel';
                 const value = text.substring(text.toLowerCase().indexOf('maturity level:') + 'maturity level:'.length).trim();
@@ -396,6 +400,8 @@ class iDL_Mapper_sections extends Mapper {
                 flows += '\n\n' + text;
             }  else if (currentSection === 'privateNotes' && text) {
                 privateNotes += '\n\n' + text;
+            } else if (currentSection === 'additionalDocumentation' && text) {
+                additionalDocumentation += '\n\n' + text;
             } else if (currentSection === 'implementedONs') {
                 const lines = text.split('\n');
                 for (const line of lines) {
@@ -458,6 +464,13 @@ class iDL_Mapper_sections extends Mapper {
                 .join('\n');
             const refsNote = `**ConOPS References:**\n${refsText}`;
             privateNotes = privateNotes ? `${privateNotes}\n\n${refsNote}` : refsNote;
+        }
+
+        // Append additional documentation to statement if present
+        if (additionalDocumentation) {
+            statement = statement
+                ? `${statement}\n\n**Additional documentation:**\n\n${additionalDocumentation}`
+                : `**Additional documentation:**\n\n${additionalDocumentation}`;
         }
 
         const result = {
