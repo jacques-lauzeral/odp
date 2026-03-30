@@ -93,6 +93,45 @@ import {textStartsWith} from "./utils.js";
  * - Subsections without "Statement:" paragraph (organizational only, not requirements)
  */
 class iDL_Mapper_sections extends Mapper {
+
+    /**
+     * Alias map: normalized document name prefix → canonical refdoc external ID.
+     * Handles variant phrasings found in Word documents (e.g. "iDL CONOPS Ed. 2.1",
+     * "iDL CONOPS Edition 2.1") that all refer to the same setup document.
+     */
+    static DOCUMENT_ALIASES = {
+        'idl_(airspace)_conops': 'refdoc:idl_(airspace)_conops',
+        'idl_conops':            'refdoc:idl_(airspace)_conops'
+    };
+
+    /**
+     * Resolve a document name to a canonical refdoc external ID.
+     * First tries exact match, then prefix match against DOCUMENT_ALIASES.
+     * Returns null and warns if unresolved.
+     * @param {string} docName - Raw document name from document text
+     * @param {string} sectionTitle - For warning context
+     * @returns {string|null}
+     * @private
+     */
+    _resolveDocumentAlias(docName, sectionTitle) {
+        const normalized = ExternalIdBuilder._normalize(docName);
+
+        // Exact match
+        if (iDL_Mapper_sections.DOCUMENT_ALIASES[normalized]) {
+            return iDL_Mapper_sections.DOCUMENT_ALIASES[normalized];
+        }
+
+        // Prefix match (handles version suffixes like "_ed_2.1", "_edition_2.1")
+        for (const [prefix, externalId] of Object.entries(iDL_Mapper_sections.DOCUMENT_ALIASES)) {
+            if (normalized.startsWith(prefix)) {
+                return externalId;
+            }
+        }
+
+        console.warn(`WARNING: Cannot resolve "Strategic Documents:" name "${docName}" in section "${sectionTitle}"`);
+        return null;
+    }
+
     constructor() {
         super();
         this.converter = new AsciidocToDeltaConverter();
@@ -161,17 +200,24 @@ class iDL_Mapper_sections extends Mapper {
 
         if (isRequirement) {
             // Build the requirement object
+            // Note: parent field is used only for ExternalIdBuilder (expects { externalId }),
+            // then replaced with refinesParents array to match importer contract.
+            const parent = parentReq ? { externalId: parentReq.externalId } : null;
             const req = {
                 title: subsection.title,
                 type: type, // 'ON' or 'OR'
                 drg: 'IDL',
-                path: parentReq ? null : this._getCleanedPath(subsection.path, context),
-                parent: parentReq ? { externalId: parentReq.externalId } : null,
+                path: parent ? null : this._getCleanedPath(subsection.path, context),
+                parent,
                 ...this._extractRequirementDetails(subsection, type, context)
             };
 
-            // Generate external ID using the complete object
+            // Generate external ID using the complete object (requires parent in { externalId } shape)
             req.externalId = ExternalIdBuilder.buildExternalId(req, type.toLowerCase());
+
+            // Replace parent with refinesParents array to match importer contract
+            delete req.parent;
+            req.refinesParents = parent ? [parent.externalId] : [];
 
             const map = type === 'ON' ? context.onMap : context.orMap;
             map.set(req.externalId, req);
@@ -239,11 +285,16 @@ class iDL_Mapper_sections extends Mapper {
         let rationale = '';
         let flows = '';
         let privateNotes = '';
+        let maturity = null;
+        let additionalDocumentation = '';
         let implementedONs = [];
         let dependencies = [];
         let strategicDocuments = [];
         let conopsRefsForPrivateNotes = [];
         let currentSection = null;
+        // For Strategic Documents: resolved document ID and accumulated section bullet notes
+        let strategicDocumentExternalId = null;
+        let strategicDocumentNoteLines = [];
 
         // Terminator keywords for rationale section
         const rationaleTerminators = [
@@ -258,7 +309,12 @@ class iDL_Mapper_sections extends Mapper {
             'ConOPS Reference:',
             'ConOPS References:',
             'Private notes:',
-            'NM private notes:'
+            'NM private notes:',
+            'Maturity level:',
+            'Domain:',
+            'Strategic Documents:',
+            'NFRs:',
+            'Additional documentation:'
         ];
 
         for (const p of paragraphs) {
@@ -295,6 +351,44 @@ class iDL_Mapper_sections extends Mapper {
                 currentSection = 'privateNotes';
             } else if (textStartsWith(text, 'ConOPS Reference:', 'ConOPS References:')) {
                 currentSection = 'conopsReferences';
+            } else if (textStartsWith(text, 'Domain:')) {
+                // Consumed and discarded
+                currentSection = 'domain';
+            } else if (textStartsWith(text, 'NFRs:')) {
+                // Consumed and discarded
+                currentSection = 'nfrs';
+            } else if (textStartsWith(text, 'Additional documentation:')) {
+                currentSection = 'additionalDocumentation';
+                const value = text.substring(text.toLowerCase().indexOf('additional documentation:') + 'additional documentation:'.length).trim();
+                if (value && value.toLowerCase() !== 'none') {
+                    additionalDocumentation = value;
+                }
+            } else if (textStartsWith(text, 'Maturity level:')) {
+                currentSection = 'maturityLevel';
+                const value = text.substring(text.toLowerCase().indexOf('maturity level:') + 'maturity level:'.length).trim();
+                if (value) {
+                    maturity = value.toUpperCase();
+                }
+            } else if (textStartsWith(text, 'Strategic Documents:')) {
+                // Flush any previous strategic document block
+                if (strategicDocumentExternalId && strategicDocumentNoteLines.length > 0) {
+                    strategicDocuments.push({
+                        externalId: strategicDocumentExternalId,
+                        note: strategicDocumentNoteLines.join('\n')
+                    });
+                }
+                strategicDocumentExternalId = null;
+                strategicDocumentNoteLines = [];
+                currentSection = 'strategicDocuments';
+                // Parse inline document name after the keyword (e.g. "Strategic Documents: iDL CONOPS Ed. 2.1:")
+                const afterKeyword = text.substring(text.toLowerCase().indexOf('strategic documents:') + 'strategic documents:'.length).trim();
+                // Strip trailing colon if present
+                const docName = afterKeyword.replace(/:$/, '').trim();
+                if (docName) {
+                    strategicDocumentExternalId = this._resolveDocumentAlias(docName, subsection.title);
+                } else {
+                    console.warn(`WARNING: "Strategic Documents:" keyword has no document name in section "${subsection.title}"`);
+                }
             } else if (rationaleTerminators.some(term => textStartsWith(text, term))) {
                 // Hit a terminator, stop capturing rationale
                 currentSection = null;
@@ -306,6 +400,8 @@ class iDL_Mapper_sections extends Mapper {
                 flows += '\n\n' + text;
             }  else if (currentSection === 'privateNotes' && text) {
                 privateNotes += '\n\n' + text;
+            } else if (currentSection === 'additionalDocumentation' && text) {
+                additionalDocumentation += '\n\n' + text;
             } else if (currentSection === 'implementedONs') {
                 const lines = text.split('\n');
                 for (const line of lines) {
@@ -338,19 +434,43 @@ class iDL_Mapper_sections extends Mapper {
                         }
                     }
                 }
+            } else if (currentSection === 'strategicDocuments') {
+                const lines = text.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('* ')) {
+                        strategicDocumentNoteLines.push(line.substring(2).trim());
+                    }
+                }
             }
+        }
+
+        // Flush any pending Strategic Documents block
+        if (strategicDocumentExternalId && strategicDocumentNoteLines.length > 0) {
+            strategicDocuments.push({
+                externalId: strategicDocumentExternalId,
+                note: strategicDocumentNoteLines.join('\n')
+            });
+        } else if (strategicDocumentExternalId && strategicDocumentNoteLines.length === 0) {
+            console.warn(`WARNING: "Strategic Documents:" block for "${strategicDocumentExternalId}" has no section bullets in "${subsection.title}"`);
         }
 
         // For ONs: conops refs become strategicDocuments
         // For ORs: conops refs go to privateNotes
         if (type === 'ON') {
-            strategicDocuments = conopsRefsForPrivateNotes;
+            strategicDocuments = [...strategicDocuments, ...conopsRefsForPrivateNotes];
         } else if (conopsRefsForPrivateNotes.length > 0) {
             const refsText = conopsRefsForPrivateNotes
-                .map(r => r.note ? `${r.documentExternalId}: ${r.note}` : r.documentExternalId)
+                .map(r => r.note ? `${r.externalId}: ${r.note}` : r.externalId)
                 .join('\n');
             const refsNote = `**ConOPS References:**\n${refsText}`;
             privateNotes = privateNotes ? `${privateNotes}\n\n${refsNote}` : refsNote;
+        }
+
+        // Append additional documentation to statement if present
+        if (additionalDocumentation) {
+            statement = statement
+                ? `${statement}\n\n**Additional documentation:**\n\n${additionalDocumentation}`
+                : `**Additional documentation:**\n\n${additionalDocumentation}`;
         }
 
         const result = {
@@ -358,6 +478,7 @@ class iDL_Mapper_sections extends Mapper {
             rationale: this.converter.asciidocToDelta(rationale),
             flows: this.converter.asciidocToDelta(flows),
             privateNotes: this.converter.asciidocToDelta(privateNotes),
+            maturity: maturity,
             implementedONs: type === 'OR' ? implementedONs : [],
             dependencies: type === 'OR' ? dependencies : []
         };
@@ -373,8 +494,8 @@ class iDL_Mapper_sections extends Mapper {
     /**
      * Parse document reference from text
      * Handles three formats:
-     * 1. Full external ID: "document:idl_conops_v2.1" or "document:idl_conops_v2.1: note"
-     * 2. Section reference: "Section 4.1.1 - Title" (auto-maps to ConOPS)
+     * 1. Full external ID: "refdoc:idl_(airspace)_conops" or "refdoc:...: note"
+     * 2. Section reference: "Section 4.1.1 - Title" (auto-maps to iDL ConOPS)
      * 3. Placeholder: "<to be completed>" (ignored)
      * @private
      */
@@ -397,26 +518,24 @@ class iDL_Mapper_sections extends Mapper {
                 const thirdColonIndex = trimmedText.indexOf(':', secondColonIndex + 1);
                 if (thirdColonIndex > 0) {
                     return {
-                        documentExternalId: trimmedText.substring(0, thirdColonIndex).trim(),
+                        externalId: trimmedText.substring(0, thirdColonIndex).trim(),
                         note: trimmedText.substring(thirdColonIndex + 1).trim()
                     };
                 }
             }
             // No note, just the document external ID
             return {
-                documentExternalId: trimmedText
+                externalId: trimmedText
             };
         }
 
-        // Otherwise, treat as section reference - auto-map to ConOPS document
-        // Get the ConOPS document external ID from context
+        // Otherwise, treat as section reference - auto-map to iDL ConOPS document
         const conopsExternalId = ExternalIdBuilder.buildExternalId({
-            name: "iDL ConOPS",
-            version: "2.1"
-        }, 'document');
+            name: 'iDL (Airspace) CONOPS'
+        }, 'refdoc');
 
         return {
-            documentExternalId: conopsExternalId,
+            externalId: conopsExternalId,
             note: trimmedText
         };
     }
@@ -440,10 +559,10 @@ class iDL_Mapper_sections extends Mapper {
         } else if (reference.startsWith('/')) {
             // Absolute: parse path and normalize, prepend folder
             const pathString = reference.substring(1);
-            pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim())];
+            pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim()).filter(s => s.length > 0)];
         } else {
             // Fallback: parse path and normalize, prepend folder
-            pathTokens = [context.folder, ...reference.split('/').map(s => s.trim())];
+            pathTokens = [context.folder, ...reference.split('/').map(s => s.trim()).filter(s => s.length > 0)];
         }
 
         // Build ON object and get external ID
@@ -473,10 +592,10 @@ class iDL_Mapper_sections extends Mapper {
         } else if (reference.startsWith('/')) {
             // Absolute: parse path and normalize, prepend folder
             const pathString = reference.substring(1);
-            pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim())];
+            pathTokens = [context.folder, ...pathString.split('/').map(s => s.trim()).filter(s => s.length > 0)];
         } else {
             // Fallback: parse path and normalize, prepend folder
-            pathTokens = [context.folder, ...reference.split('/').map(s => s.trim())];
+            pathTokens = [context.folder, ...reference.split('/').map(s => s.trim()).filter(s => s.length > 0)];
         }
 
         // Build OR object and get external ID

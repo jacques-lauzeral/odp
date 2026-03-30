@@ -1,6 +1,7 @@
 import Mapper from "./Mapper.js";
 import NM_B2B_Mapper from "./mappers/NM_B2B_Mapper.js";
 import ReroutingMapper from "./mappers/ReroutingMapper.js";
+import iDL_Mapper_new_format from "./mappers/iDL_Mapper_new_format.js";
 import iDL_Mapper_sections from "./mappers/iDL_Mapper_sections.js";
 import iDL_Mapper_tables from "./mappers/iDL_Mapper_tables.js";
 import AirportMapper from "./mappers/AirportMapper.js";
@@ -81,9 +82,9 @@ class MapperRegistry {
         // IDL table-based folders
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'ADM' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'AURA' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'TCF' });
+        MapperRegistry.register('IDL', iDL_Mapper_new_format, { folder: 'TCF' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'NET' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'LoA' });
+        MapperRegistry.register('IDL', iDL_Mapper_new_format, { folder: 'LoA' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'IAM' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'MAP' });
         MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'NFR' });

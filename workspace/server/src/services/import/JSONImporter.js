@@ -561,6 +561,7 @@ class JSONImporter {
                     statement: reqData.statement || '',
                     rationale: reqData.rationale || '',
                     flows: reqData.flows || '',
+                    nfrs: reqData.nfrs || '',
                     privateNotes: reqData.privateNotes || '',
                     maturity: 'DRAFT',  // Always create as DRAFT; real maturity applied in phase 3 after references are resolved
                     path: reqData.path ?? [],
@@ -647,6 +648,7 @@ class JSONImporter {
             statement: current.statement,
             rationale: current.rationale,
             flows: current.flows,
+            nfrs: reqData.nfrs != null ? reqData.nfrs : (current.nfrs ?? null),
             privateNotes: current.privateNotes,
             maturity: reqData.maturity || current.maturity,
             path: refinesParents.length > 0 ? null : current.path,
