@@ -50,8 +50,11 @@ export default class ONPlanning {
             if (requirements) {
                 this.requirements = requirements;
                 this.onData = requirements.filter(r => r.type === 'ON');
+                // Preserve expansion state across re-feed
+                const snapshot = this.temporalGrid?.snapshotExpandedState();
                 this._feedTemporalGrid();
-                // Refresh details if the saved item is currently selected
+                if (snapshot) this.temporalGrid.restoreExpandedState(snapshot);
+                // Refresh details if the saved ON is currently selected
                 if (this.selectedON) {
                     const fresh = this.onData.find(
                         o => String(o.itemId || o.id) === String(this.selectedON.itemId || this.selectedON.id)
@@ -215,11 +218,7 @@ export default class ONPlanning {
             {
                 setupData: this.setupData,
                 getSetupData: () => this.setupData,
-                getRequirements: () => this.requirements,
-                currentTabIndex: this.currentTabIndex,
-                onTabChange: (index) => {
-                    this.currentTabIndex = index;
-                }
+                getRequirements: () => this.requirements
             }
         );
     }
@@ -268,18 +267,110 @@ export default class ONPlanning {
      * Build all rows from ON data and feed into TemporalGrid.
      *
      * Row structure:
-     *   separator  — one per distinct DrG value
-     *   group      — root ONs (refinesParents empty), expandable
-     *   child      — ONs with a refinesParents entry, nested under parent group
+     *   group (top, aggregate)    — DrG (alphabetical by display label)
+     *   group (nested, aggregate) — path[0] folder, only when >1 root ONs share the folder
+     *   group/flat                — root ON: group if has refining children, flat (addRow) if leaf
+     *   child                     — refining ON, always under its parent root ON group
      *
-     * Ordering within each DrG: root ONs first (alphabetical by title),
-     * then children immediately after their parent group.
+     * Promotion rule: a path[0] folder containing exactly one root ON is suppressed —
+     * the ON (and its children) are emitted directly under the DrG group.
+     *
+     * Aggregate timeline: DrG and folder groups receive a computed [min-start, max-end]
+     * milestone span derived from all ONs they contain (including refining ONs).
      */
     _feedTemporalGrid() {
         if (!this.temporalGrid) return;
         this.temporalGrid.clearRows();
 
-        // Group ONs by DrG
+        // Helper: is this ON a root (no refinesParents)?
+        const isRoot = (on) => !on.refinesParents || on.refinesParents.length === 0;
+
+        // Helper: parent id string for a refining ON
+        const parentIdOf = (on) => {
+            if (!on.refinesParents || on.refinesParents.length === 0) return null;
+            const ref = on.refinesParents[0];
+            return String(ref.itemId || ref.id || ref);
+        };
+
+        // Helper: path[0] folder label, or null
+        const pathFolderOf = (on) =>
+            (Array.isArray(on.path) && on.path.length > 0) ? on.path[0] : null;
+
+        // Helper: build aggregate [min-start, max-end] milestones for a set of ONs
+        const aggregateMilestones = (ons) => {
+            const years = ons
+                .filter(on => Array.isArray(on.tentative) && on.tentative.length === 2)
+                .flatMap(on => on.tentative);
+            if (years.length === 0) return [];
+            const minY = Math.min(...years);
+            const maxY = Math.max(...years);
+            return [
+                { label: 'Start', description: 'Earliest implementation start',
+                    eventTypes: ['period-start'], date: new Date(minY, 0, 1) },
+                { label: 'End',   description: 'Latest implementation end',
+                    eventTypes: ['period-end'],   date: new Date(maxY + 1, 0, 1) }
+            ];
+        };
+
+        // Helper: emit a root ON row + its refining children immediately after
+        const emitRootOn = (rootOn, allOnsInDrg, parentGroupId) => {
+            const groupId    = String(rootOn.itemId || rootOn.id);
+            const label      = rootOn.code ? `${rootOn.code} – ${rootOn.title}` : rootOn.title;
+            const milestones = this._buildMilestones(rootOn);
+
+            const children = allOnsInDrg
+                .filter(on => parentIdOf(on) === groupId)
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+
+            if (children.length > 0) {
+                this.temporalGrid.addGroupRow(groupId, label, milestones, parentGroupId);
+                children.forEach(child => {
+                    const childId    = String(child.itemId || child.id);
+                    const childLabel = child.code ? `${child.code} – ${child.title}` : child.title;
+                    this.temporalGrid.addChildRow(childId, groupId, childLabel, this._buildMilestones(child));
+                });
+            } else {
+                this.temporalGrid.addRow(groupId, label, milestones, parentGroupId);
+            }
+        };
+
+        // Helper: emit all rows for one DrG
+        const emitDrgOns = (ons, drgId) => {
+            const roots            = ons.filter(isRoot);
+            const rootsWithPath    = roots.filter(on => pathFolderOf(on) !== null);
+            const rootsWithoutPath = roots.filter(on => pathFolderOf(on) === null);
+
+            // Group roots-with-path by path[0]
+            const byFolder = new Map();
+            rootsWithPath.forEach(on => {
+                const folder = pathFolderOf(on);
+                if (!byFolder.has(folder)) byFolder.set(folder, []);
+                byFolder.get(folder).push(on);
+            });
+
+            // Emit path folders alphabetically; promote single-ON folders
+            [...byFolder.keys()].sort((a, b) => a.localeCompare(b)).forEach(folder => {
+                const folderOns = byFolder.get(folder);
+                if (folderOns.length > 1) {
+                    const folderId        = `${drgId}:folder:${folder}`;
+                    const folderMilestones = aggregateMilestones(folderOns);
+                    this.temporalGrid.addGroupRow(folderId, folder, folderMilestones, drgId, true);
+                    folderOns
+                        .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+                        .forEach(root => emitRootOn(root, ons, folderId));
+                } else {
+                    // Single-ON folder: promote directly under DrG group
+                    emitRootOn(folderOns[0], ons, drgId);
+                }
+            });
+
+            // Root ONs without a path go directly under DrG group
+            rootsWithoutPath
+                .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+                .forEach(root => emitRootOn(root, ons, drgId));
+        };
+
+        // Group ONs by DrG, sort DrG keys alphabetically by display label
         const byDrg = new Map();
         const noDrg = [];
 
@@ -292,56 +383,24 @@ export default class ONPlanning {
             }
         });
 
-        // Helper: determine if an ON is a root (no refinesParents)
-        const isRoot = (on) => !on.refinesParents || on.refinesParents.length === 0;
-
-        // Helper: get parent id string
-        const parentIdOf = (on) => {
-            if (!on.refinesParents || on.refinesParents.length === 0) return null;
-            const ref = on.refinesParents[0];
-            return String(ref.itemId || ref.id || ref);
-        };
-
-        // Helper: emit group row + its children (or flat row if no children)
-        const emitGroup = (rootOn, allOnsInDrg) => {
-            const groupId = String(rootOn.itemId || rootOn.id);
-            const label = rootOn.code ? `${rootOn.code} – ${rootOn.title}` : rootOn.title;
-            const milestones = this._buildMilestones(rootOn);
-
-            const children = allOnsInDrg
-                .filter(on => parentIdOf(on) === groupId)
-                .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-
-            if (children.length > 0) {
-                this.temporalGrid.addGroupRow(groupId, label, milestones);
-                children.forEach(child => {
-                    const childId = String(child.itemId || child.id);
-                    const childLabel = child.code ? `${child.code} – ${child.title}` : child.title;
-                    this.temporalGrid.addChildRow(childId, groupId, childLabel, this._buildMilestones(child));
-                });
-            } else {
-                this.temporalGrid.addRow(groupId, label, milestones);
-            }
-        };
-
-        // Emit rows per DrG
-        byDrg.forEach((ons, drg) => {
-            const drgLabel = getDraftingGroupDisplay(drg) || drg;
-            this.temporalGrid.addSeparatorRow(`drg:${drg}`, drgLabel);
-
-            const roots = ons
-                .filter(isRoot)
-                .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-
-            roots.forEach(root => emitGroup(root, ons));
+        [...byDrg.keys()].sort((a, b) => {
+            const la = getDraftingGroupDisplay(a) || a;
+            const lb = getDraftingGroupDisplay(b) || b;
+            return la.localeCompare(lb);
+        }).forEach(drg => {
+            const drgLabel      = getDraftingGroupDisplay(drg) || drg;
+            const drgOns        = byDrg.get(drg);
+            const drgMilestones = aggregateMilestones(drgOns);
+            this.temporalGrid.addGroupRow(`drg:${drg}`, drgLabel, drgMilestones, null, true);
+            emitDrgOns(drgOns, `drg:${drg}`);
         });
 
-        // ONs with no DrG — emit as flat group rows
+        // ONs with no DrG
         if (noDrg.length > 0) {
-            this.temporalGrid.addSeparatorRow('drg:none', '(No DrG)');
+            this.temporalGrid.addGroupRow('drg:none', '(No DrG)', aggregateMilestones(noDrg), null, true);
             noDrg.filter(isRoot)
                 .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-                .forEach(root => emitGroup(root, noDrg));
+                .forEach(root => emitRootOn(root, noDrg, 'drg:none'));
         }
 
         // Restore selection
@@ -396,9 +455,25 @@ export default class ONPlanning {
 
     handleGridSelect(id) {
         const on = this.onData.find(o => String(o.itemId || o.id) === String(id));
-        if (!on) return;
+        if (!on) {
+            this.selectedON = null;
+            this._renderBlankDetails();
+            return;
+        }
         this.selectedON = on;
         this.renderDetails(on);
+    }
+
+    _renderBlankDetails() {
+        const detailsContainer = this.container?.querySelector('#onDetailsContent');
+        if (!detailsContainer) return;
+        detailsContainer.innerHTML = `
+            <div class="no-selection-message">
+                <div class="icon">📋</div>
+                <h3>No ON selected</h3>
+                <p>Select an Operational Need to view its details.</p>
+            </div>
+        `;
     }
 
     getCurrentTabInPanel(container) {
@@ -420,7 +495,9 @@ export default class ONPlanning {
         const detailsContainer = this.container.querySelector('#onDetailsContent');
         if (!detailsContainer || !this.requirementForm) return;
 
-        const currentTab = this.getCurrentTabInPanel(detailsContainer);
+        // Read tab index from the form instance — updated by CollectionEntityForm's
+        // global tab delegation handler, which is the authoritative source of truth.
+        const currentTab = this.requirementForm.currentTabIndex ?? 0;
 
         detailsContainer.innerHTML = `
             <div class="loading-state">
@@ -429,7 +506,6 @@ export default class ONPlanning {
         `;
 
         try {
-            this.requirementForm.context.currentTabIndex = currentTab;
             const html = await this.requirementForm.generateReadOnlyView(on, true);
 
             detailsContainer.innerHTML = `
@@ -447,9 +523,14 @@ export default class ONPlanning {
 
             this.requirementForm.initializeReadOnlyInPanel(detailsContainer, on);
 
-            if (currentTab !== null && currentTab !== 0) {
-                this.switchTabInPanel(detailsContainer, currentTab);
-            }
+            // Re-bind tab clicks directly — the global delegation handler closes over
+            // the first-instantiated form, which may not be requirementForm. This ensures
+            // requirementForm.currentTabIndex is always updated when tabs are clicked here.
+            detailsContainer.querySelectorAll('.tab-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    this.requirementForm.currentTabIndex = parseInt(header.dataset.tab, 10);
+                });
+            });
 
             detailsContainer.querySelector('#onEditBtn')
                 ?.addEventListener('click', () => this.requirementForm.showEditModal(on));

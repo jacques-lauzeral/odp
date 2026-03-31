@@ -2,23 +2,35 @@
  * TemporalGrid - Generic calendar-based temporal visualisation component.
  *
  * Row hierarchy:
- *   separator  — full-width label, no timeline track, visual section header
- *   group      — label + timeline track + expand/collapse toggle
- *   child      — indented label + timeline track, visibility controlled by parent
+ *   group      — label + timeline track + expand/collapse toggle; supports one
+ *                level of nesting via optional parentId (parent must be a group)
+ *   child      — indented label + timeline track, visibility controlled by parent group
  *   timeline   — flat label + timeline track (no hierarchy)
+ *
+ * Group nesting (two levels max):
+ *   addGroupRow(drgId, label, milestones)            — top-level group (DrG)
+ *   addGroupRow(folderId, label, milestones, drgId)  — nested group (path folder)
+ *   addChildRow(onId, rootOnId, label, milestones)   — child of a group
+ *
+ * Visibility rules:
+ *   - A collapsed top-level group hides all nested groups and children beneath it
+ *   - A collapsed nested group hides its children but not sibling nested groups
  *
  * Public API
  * ----------
  * setTimeInterval(startYear, endYear)
  * setTicks(ticks)
  * setMilestoneRendering(spec)
- * addSeparatorRow(id, label)
- * addGroupRow(id, label, milestones)
+ * addGroupRow(id, label, milestones, parentId?)
  * addChildRow(id, parentId, label, milestones)
- * addTimeLine(id, label, milestones)
- * updateTimeLine(id, milestones)
+ * addRow(id, label, milestones, parentId?)
+ * updateRow(id, milestones)
  * removeRow(id)
  * clearRows()
+ * expandAll()              expand level-1 groups, collapse level-2
+ * collapseAll()            collapse all groups to level-1 only
+ * snapshotExpandedState()  → Map<id, boolean>
+ * restoreExpandedState(snapshot)
  * addSelectionListener(fn)
  * setTimeLineSelected(id, boolean)
  * getSelectedTimeLine()
@@ -73,6 +85,57 @@ export default class TemporalGrid {
     }
 
     // =========================================================================
+    // PUBLIC API — EXPANSION CONTROL
+    // =========================================================================
+
+    /**
+     * Expand all level-1 groups (reveals direct children — folders and pathless ONs).
+     * Level-2 groups are collapsed so only immediate children of level-1 are visible.
+     */
+    expandAll() {
+        this.rows.forEach(row => {
+            if (row.kind === 'group') {
+                row.expanded = !row.parentId; // level-1 expanded, level-2 collapsed
+            }
+        });
+        this._render();
+    }
+
+    /** Collapse all groups — only level-1 rows remain visible. */
+    collapseAll() {
+        this.rows.forEach(row => {
+            if (row.kind === 'group') row.expanded = false;
+        });
+        this._render();
+    }
+
+    /**
+     * Return a snapshot of current expanded states: Map<id, boolean>.
+     * Use before clearRows() to preserve state across re-feeds.
+     */
+    snapshotExpandedState() {
+        const snapshot = new Map();
+        this.rows.forEach(row => {
+            if (row.kind === 'group') snapshot.set(row.id, row.expanded);
+        });
+        return snapshot;
+    }
+
+    /**
+     * Restore expanded states from a snapshot produced by snapshotExpandedState().
+     * Must be called after all rows have been re-added.
+     */
+    restoreExpandedState(snapshot) {
+        if (!snapshot) return;
+        this.rows.forEach(row => {
+            if (row.kind === 'group' && snapshot.has(row.id)) {
+                row.expanded = snapshot.get(row.id);
+            }
+        });
+        this._render();
+    }
+
+    // =========================================================================
     // PUBLIC API — MILESTONE RENDERING
     // =========================================================================
 
@@ -84,23 +147,18 @@ export default class TemporalGrid {
     // PUBLIC API — ROW MANAGEMENT
     // =========================================================================
 
-    addSeparatorRow(id, label) {
+    addGroupRow(id, label, milestones = [], parentId = null, aggregate = false) {
         const key = String(id);
         const existing = this.rows.get(key);
-        this.rows.set(key, {
-            id: key, kind: 'separator', label: label || '', milestones: [],
-            expanded: existing?.expanded ?? true
-        });
-        this._render();
-    }
-
-    addGroupRow(id, label, milestones = []) {
-        const key = String(id);
-        const existing = this.rows.get(key);
+        // Default expanded state: level 1 (no parent) starts collapsed; level 2 starts expanded.
+        // Existing state always wins (preserves user interaction across re-renders).
+        const defaultExpanded = parentId ? true : false;
         this.rows.set(key, {
             id: key, kind: 'group', label: label || '',
             milestones: milestones.map(m => this._normaliseMilestone(m)),
-            expanded: existing?.expanded ?? true
+            expanded: existing?.expanded ?? defaultExpanded,
+            parentId: parentId ? String(parentId) : null,
+            aggregate
         });
         this._render();
     }
@@ -120,10 +178,11 @@ export default class TemporalGrid {
      * @param {string}        label
      * @param {Array}         milestones
      */
-    addRow(id, label, milestones = []) {
+    addRow(id, label, milestones = [], parentId = null) {
         this.rows.set(String(id), {
             id: String(id), kind: 'timeline', label: label || '',
-            milestones: milestones.map(m => this._normaliseMilestone(m))
+            milestones: milestones.map(m => this._normaliseMilestone(m)),
+            parentId: parentId ? String(parentId) : null
         });
         this._render();
     }
@@ -225,26 +284,92 @@ export default class TemporalGrid {
         this._updateSelectionUI();
     }
 
+    /**
+     * Walk ancestors of a row upward; return false if any ancestor is collapsed.
+     */
+    _isRowVisible(row) {
+        let current = row;
+        while (current.parentId) {
+            const parent = this.rows.get(current.parentId);
+            if (!parent) break;
+            if (!parent.expanded) return false;
+            current = parent;
+        }
+        return true;
+    }
+
+    /**
+     * Compute depth of a row (0 = top-level, 1 = one parent, 2 = two parents).
+     */
+    _rowDepth(row) {
+        let depth = 0;
+        let current = row;
+        while (current.parentId) {
+            const parent = this.rows.get(current.parentId);
+            if (!parent) break;
+            depth++;
+            current = parent;
+        }
+        return depth;
+    }
+
+    /**
+     * For a given row, collect the ordered list of sibling rows that share the
+     * same parent (or are all top-level), used to determine last-child status
+     * for tree-line rendering.
+     */
+    _siblingsOf(row) {
+        return [...this.rows.values()].filter(r => {
+            if (r.kind === 'group' && !r.parentId) {
+                // top-level groups: siblings of each other
+                return !row.parentId && r.kind === 'group';
+            }
+            return r.parentId === row.parentId;
+        });
+    }
+
+    /**
+     * Build tree-line prefix HTML for a row.
+     * Uses box-drawing characters rendered in a fixed-width label prefix area.
+     *
+     * depth 0 (DrG group)    : no prefix
+     * depth 1 (folder/ON)    : └─ or ├─ depending on last-child
+     * depth 2 (child/leaf ON): │  └─ or │  ├─
+     */
+    _renderTreePrefix(row, depth) {
+        if (depth === 0) return '';
+
+        const siblings = this._siblingsOf(row);
+        // Only count visible siblings (don't count hidden kinds that won't render)
+        const visibleSiblings = siblings.filter(s => this._isRowVisible(s));
+        const isLast = visibleSiblings.length === 0 ||
+            visibleSiblings[visibleSiblings.length - 1]?.id === row.id;
+
+        if (depth === 1) {
+            const elbow = isLast ? '└' : '├';
+            return `<span class="temporal-tree-prefix temporal-tree-d1"
+                         aria-hidden="true">${elbow}─</span>`;
+        }
+
+        // depth 2: need to know if the parent is last among its siblings too
+        const parent = row.parentId ? this.rows.get(row.parentId) : null;
+        let parentIsLast = true;
+        if (parent) {
+            const parentSiblings = this._siblingsOf(parent)
+                .filter(s => this._isRowVisible(s));
+            parentIsLast = parentSiblings.length === 0 ||
+                parentSiblings[parentSiblings.length - 1]?.id === parent.id;
+        }
+        const parentPipe = parentIsLast ? ' ' : '│';
+        const elbow = isLast ? '└' : '├';
+        return `<span class="temporal-tree-prefix temporal-tree-d2"
+                     aria-hidden="true">${parentPipe} ${elbow}─</span>`;
+    }
+
     _renderAllRows(visibleTicks) {
         const html = [];
-        let currentSeparatorExpanded = true; // true until a collapsed separator is encountered
-
         for (const row of this.rows.values()) {
-            if (row.kind === 'separator') {
-                currentSeparatorExpanded = row.expanded;
-                html.push(this._renderRowHtml(row, visibleTicks));
-                continue;
-            }
-
-            // Skip all non-separator rows when their owning separator is collapsed
-            if (!currentSeparatorExpanded) continue;
-
-            // Skip child rows when their parent group is collapsed
-            if (row.kind === 'child') {
-                const parent = this.rows.get(row.parentId);
-                if (parent && !parent.expanded) continue;
-            }
-
+            if (!this._isRowVisible(row)) continue;
             html.push(this._renderRowHtml(row, visibleTicks));
         }
         return html.join('');
@@ -256,32 +381,26 @@ export default class TemporalGrid {
 
     _renderRowHtml(row, visibleTicks) {
         switch (row.kind) {
-            case 'separator': return this._renderSeparatorRowHtml(row);
-            case 'group':     return this._renderGroupRowHtml(row, visibleTicks);
-            case 'child':     return this._renderChildRowHtml(row, visibleTicks);
-            case 'timeline':  return this._renderTimelineRowHtml(row, visibleTicks);
-            default:          return '';
+            case 'group':    return this._renderGroupRowHtml(row, visibleTicks);
+            case 'child':    return this._renderChildRowHtml(row, visibleTicks);
+            case 'timeline': return this._renderTimelineRowHtml(row, visibleTicks);
+            default:         return '';
         }
-    }
-
-    _renderSeparatorRowHtml(row) {
-        const toggleIcon = row.expanded ? '▼' : '▶';
-        return `
-            <div class="temporal-separator-row" data-row-id="${this._escapeAttr(row.id)}">
-                <span class="temporal-toggle-icon" data-toggle-id="${this._escapeAttr(row.id)}">${toggleIcon}</span>
-                <span class="temporal-separator-label"
-                      title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
-            </div>
-        `;
     }
 
     _renderGroupRowHtml(row, visibleTicks) {
         const isSelected = this.selectedId === row.id;
         const toggleIcon = row.expanded ? '▼' : '▶';
+        const depth = this._rowDepth(row);
+        const levelClass = depth === 0 ? 'temporal-group-row--top' : 'temporal-group-row--nested';
+        const aggregateClass = row.aggregate ? 'temporal-group-row--aggregate' : '';
+        const treePrefix = this._renderTreePrefix(row, depth);
         return `
-            <div class="temporal-row temporal-group-row ${isSelected ? 'temporal-row--selected' : ''}"
-                 data-row-id="${this._escapeAttr(row.id)}" data-kind="group">
+            <div class="temporal-row temporal-group-row ${levelClass} ${aggregateClass} ${isSelected ? 'temporal-row--selected' : ''}"
+                 data-row-id="${this._escapeAttr(row.id)}" data-kind="group" data-depth="${depth}"
+                 ${row.parentId ? `data-parent-id="${this._escapeAttr(row.parentId)}"` : ''}>
                 <div class="temporal-row-label temporal-group-label">
+                    ${treePrefix}
                     <span class="temporal-toggle-icon" data-toggle-id="${this._escapeAttr(row.id)}">${toggleIcon}</span>
                     <span class="temporal-label-text"
                           title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
@@ -297,11 +416,15 @@ export default class TemporalGrid {
 
     _renderChildRowHtml(row, visibleTicks) {
         const isSelected = this.selectedId === row.id;
+        const depth = this._rowDepth(row);
+        const treePrefix = this._renderTreePrefix(row, depth);
         return `
             <div class="temporal-row temporal-child-row ${isSelected ? 'temporal-row--selected' : ''}"
-                 data-row-id="${this._escapeAttr(row.id)}" data-kind="child"
+                 data-row-id="${this._escapeAttr(row.id)}" data-kind="child" data-depth="${depth}"
                  data-parent-id="${this._escapeAttr(row.parentId)}">
                 <div class="temporal-row-label temporal-child-label">
+                    ${treePrefix}
+                    <span class="temporal-toggle-spacer" aria-hidden="true"></span>
                     <span class="temporal-label-text"
                           title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
                 </div>
@@ -316,10 +439,14 @@ export default class TemporalGrid {
 
     _renderTimelineRowHtml(row, visibleTicks) {
         const isSelected = this.selectedId === row.id;
+        const depth = this._rowDepth(row);
+        const treePrefix = depth > 0 ? this._renderTreePrefix(row, depth) : '';
         return `
             <div class="temporal-row ${isSelected ? 'temporal-row--selected' : ''}"
-                 data-row-id="${this._escapeAttr(row.id)}" data-kind="timeline">
+                 data-row-id="${this._escapeAttr(row.id)}" data-kind="timeline" data-depth="${depth}">
                 <div class="temporal-row-label">
+                    ${treePrefix}
+                    <span class="temporal-toggle-spacer" aria-hidden="true"></span>
                     <span class="temporal-label-text"
                           title="${this._escapeAttr(row.label)}">${this._escapeHtml(row.label)}</span>
                 </div>
@@ -349,22 +476,34 @@ export default class TemporalGrid {
                     title="Enter a year (e.g. 2027) or range (e.g. 2026-2031)"/>
                 <span class="temporal-zoom-hint">${this.minYear}–${this.maxYear}</span>
             </div>
+            <div class="temporal-expansion-controls">
+                <button class="temporal-expand-btn" data-expand="all"   title="Expand all groups">⊞ Expand all</button>
+                <button class="temporal-expand-btn" data-collapse="all" title="Collapse all groups">⊟ Collapse all</button>
+            </div>
         `;
     }
 
     _bindZoomEvents() {
         if (!this.container) return;
         const input = this.container.querySelector('#temporalZoomInput');
-        if (!input) return;
-        input.addEventListener('change', () => {
-            const parsed = this._parseYearPeriod(input.value.trim());
-            if (parsed) {
-                this.setTimeInterval(parsed.startYear, parsed.endYear);
-            } else {
-                input.value = this.startYear === this.endYear
-                    ? String(this.startYear)
-                    : `${this.startYear}-${this.endYear}`;
-            }
+        if (input) {
+            input.addEventListener('change', () => {
+                const parsed = this._parseYearPeriod(input.value.trim());
+                if (parsed) {
+                    this.setTimeInterval(parsed.startYear, parsed.endYear);
+                } else {
+                    input.value = this.startYear === this.endYear
+                        ? String(this.startYear)
+                        : `${this.startYear}-${this.endYear}`;
+                }
+            });
+        }
+
+        this.container.querySelectorAll('.temporal-expand-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.dataset.expand === 'all')   this.expandAll();
+                else if (btn.dataset.collapse === 'all') this.collapseAll();
+            });
         });
     }
 
@@ -570,10 +709,19 @@ export default class TemporalGrid {
 
     _toggleGroup(id) {
         const row = this.rows.get(String(id));
-        if (!row || (row.kind !== 'group' && row.kind !== 'separator')) return;
+        if (!row || row.kind !== 'group') return;
         const body = this.container?.querySelector('#temporalBody');
         const scrollTop = body ? body.scrollTop : 0;
-        row.expanded = !row.expanded;
+        const expanding = !row.expanded;
+        row.expanded = expanding;
+        // When expanding, collapse direct child groups so only immediate children appear
+        if (expanding) {
+            this.rows.forEach(r => {
+                if (r.kind === 'group' && r.parentId === row.id) {
+                    r.expanded = false;
+                }
+            });
+        }
         this._render();
         const newBody = this.container?.querySelector('#temporalBody');
         if (newBody) newBody.scrollTop = scrollTop;

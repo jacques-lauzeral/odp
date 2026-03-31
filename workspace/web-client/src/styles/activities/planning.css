@@ -100,27 +100,54 @@
 
 /* --- Group and child rows --------------------------------------------------- */
 
-.temporal-group-row {
+/* Top-level DrG group — compact, sticky, strongest tint */
+.temporal-group-row--top {
+    background: var(--bg-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    min-height: 32px;
+}
+
+.temporal-group-row--top .temporal-row-label {
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+/* Nested folder group — lighter tint */
+.temporal-group-row--nested {
     background: var(--bg-primary);
+}
+
+.temporal-group-row--nested .temporal-row-label {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+/* Root ON group (collapsible, has children) — white */
+.temporal-group-row:not(.temporal-group-row--top):not(.temporal-group-row--nested) {
+    background: white;
     font-weight: var(--font-weight-semibold);
 }
 
-.temporal-group-row:hover {
+.temporal-group-row:not(.temporal-group-row--top):not(.temporal-group-row--nested):hover {
     background: rgba(14, 165, 233, 0.04);
 }
 
-.temporal-group-label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    cursor: pointer;
-}
-
-.temporal-child-row {
+/* Child ON and leaf ON rows — white */
+.temporal-child-row,
+.temporal-row[data-kind="timeline"][data-depth="1"],
+.temporal-row[data-kind="timeline"][data-depth="2"] {
     background: white;
 }
 
-.temporal-child-row:hover {
+.temporal-child-row:hover,
+.temporal-row[data-kind="timeline"][data-depth="1"]:hover,
+.temporal-row[data-kind="timeline"][data-depth="2"]:hover {
     background: rgba(14, 165, 233, 0.03);
 }
 
