@@ -64,6 +64,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - "Definitions (draft):" → appended to statement after Need Statement, before Fit Criteria
  * - "Fit Criteria:" → appended to statement with "Fit Criteria:" header (if present)
  * - "Rationale:" → rationale
+ * - "Maturity:" → maturity (case-insensitive: Defined→DRAFT, Advanced→ADVANCED, Mature→MATURE;
+ *   unrecognized value logs WARNING and defaults to DRAFT)
+ * - "Tentative:" → tentative year range ([year, year] or [start, end]); YYYY or YYYY-YYYY
  * - "Date:" → ignored
  * - "Originator:" → privateNotes entry (separated by \n\n from identifier)
  *
@@ -146,6 +149,15 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - Use Case injection: Log warnings if target ON not found or target is not an ON
  * - Statistics logged: resolved vs unresolved references
  *
+ * Warning Format:
+ * ---------------
+ * All warnings are emitted via _warn(msg), which prefixes the message with entity context
+ * when available: WARNING: {type} "{title}" at path {path} - {msg}
+ * _currentEntity is set at the start of each entity-scoped operation (_extractRequirement,
+ * _resolveDependencies loop, _resolveImplementedONs loop) and cleared on exit.
+ * Warnings emitted outside any entity scope (Use Case processing) fall back to:
+ * WARNING: {msg}
+ *
  * IGNORED CONTENT:
  * ----------------
  * - Level 1 section ("02 - ON and OR")
@@ -157,6 +169,22 @@ class FlowMapper extends Mapper {
     constructor() {
         super();
         this.converter = new AsciidocToDeltaConverter();
+        this._currentEntity = null; // Set during _extractRequirement for contextual warnings
+    }
+
+    /**
+     * Emit a warning prefixed with the current entity context (type, title, path).
+     * Falls back to plain console.warn if no entity context is set.
+     * @param {string} msg
+     * @private
+     */
+    _warn(msg) {
+        if (this._currentEntity) {
+            const { type, title, path } = this._currentEntity;
+            console.warn(`WARNING: ${type} "${title}" at path ${JSON.stringify(path)} - ${msg}`);
+        } else {
+            console.warn(`WARNING: ${msg}`);
+        }
     }
 
     /**
@@ -410,7 +438,7 @@ class FlowMapper extends Mapper {
 
             // If not found as OR title, warn and treat as free text
             if (!found && line.length > 0) {
-                console.warn(`WARNING: OR "${orExternalId}" - Could not resolve dependency: "${line}"`);
+                this._warn(`Could not resolve dependency: "${line}"`);
                 unmatchedText.push(line);
             }
         }
@@ -490,6 +518,9 @@ class FlowMapper extends Mapper {
             return;
         }
 
+        // Set entity context for contextual warnings (cleared on exit)
+        this._currentEntity = { type, title: tableData.title, path: this._normalizePathSegments(path) };
+
         // Build statement based on entity type
         let statement = null;
 
@@ -553,7 +584,7 @@ class FlowMapper extends Mapper {
 
         // VALIDATION: Rationale warning
         if (!rationale) {
-            console.warn(`WARNING: ${type} "${tableData.title}" at path ${JSON.stringify(path)} has no rationale`);
+            this._warn(`no rationale`);
         }
 
         // Extract ON Reference for ORs (store as-is, will resolve later)
@@ -610,6 +641,24 @@ class FlowMapper extends Mapper {
 
         const privateNotes = privateNotesParts.length > 0 ? privateNotesParts.join('\n\n') : null;
 
+        // Extract maturity and tentative for ONs
+        let maturity = null;
+        let tentative = null;
+        if (type === 'ON') {
+            const maturityRaw = tableData['maturity'];
+            if (!this._isPlaceholderOrEmpty(maturityRaw)) {
+                maturity = this._parseMaturity(maturityRaw);
+                if (maturity === null) {
+                    this._warn(`Unrecognized maturity value "${maturityRaw}" - defaulting to DRAFT`);
+                    maturity = 'DRAFT';
+                }
+            }
+            const tentativeRaw = tableData['tentative'];
+            if (!this._isPlaceholderOrEmpty(tentativeRaw)) {
+                tentative = this._parseTentative(tentativeRaw.trim());
+            }
+        }
+
         const requirement = {
             title: tableData.title,
             type: type,
@@ -618,6 +667,8 @@ class FlowMapper extends Mapper {
             statement: statement,
             rationale: rationale,
             privateNotes: privateNotes,
+            maturity: maturity,
+            tentative: type === 'ON' ? tentative : null,
             implementedONs: type === 'OR' ? implementedONs : [],
             impactedStakeholders: impactedStakeholders,
             dependencies: [],
@@ -646,6 +697,8 @@ class FlowMapper extends Mapper {
             const normalizedTitle = this._normalizeTextForMatching(requirement.title).toLowerCase().trim();
             context.titleMap.set(normalizedTitle, requirement.externalId);
         }
+
+        this._currentEntity = null;
     }
 
     /**
@@ -657,7 +710,7 @@ class FlowMapper extends Mapper {
 
         const onReference = tableData['on reference'];
         if (!onReference) {
-            console.warn(`Use Case without ON Reference found, skipping`);
+            this._warn(`Use Case without ON Reference found, skipping`);
             return;
         }
 
@@ -666,7 +719,7 @@ class FlowMapper extends Mapper {
         const flowOfActions = tableData['flow of actions'];
 
         if (!title || !flowOfActions) {
-            console.warn(`Use Case missing title or flow of actions, skipping`);
+            this._warn(`Use Case missing title or flow of actions, skipping`);
             return;
         }
 
@@ -770,6 +823,44 @@ class FlowMapper extends Mapper {
     }
 
     /**
+     * Parse maturity field value (case-insensitive) to MaturityLevel enum
+     * Defined → DRAFT, Advanced → ADVANCED, Mature → MATURE
+     * Unrecognized values return null (caller logs warning with entity context)
+     * @param {string} text
+     * @returns {string|null} MaturityLevel value, or null if unrecognized
+     * @private
+     */
+    _parseMaturity(text) {
+        if (!text) return null;
+        switch (text.trim().toLowerCase()) {
+            case 'defined':  return 'DRAFT';
+            case 'advanced': return 'ADVANCED';
+            case 'mature':   return 'MATURE';
+            default:         return null;
+        }
+    }
+
+    /**
+     * Parse tentative year or year range into a [start, end] array
+     * Formats: 'YYYY' or 'YYYY-YYYY'
+     * @param {string} text
+     * @returns {number[]|null}
+     * @private
+     */
+    _parseTentative(text) {
+        const rangeMatch = text.match(/^(\d{4})-(\d{4})$/);
+        if (rangeMatch) {
+            return [parseInt(rangeMatch[1], 10), parseInt(rangeMatch[2], 10)];
+        }
+        const singleMatch = text.match(/^(\d{4})$/);
+        if (singleMatch) {
+            const year = parseInt(singleMatch[1], 10);
+            return [year, year];
+        }
+        return null;
+    }
+
+    /**
      * Strip version suffix from reference string
      * Format: "ASM_ATFCM-ON-3_v1.0" -> "ASM_ATFCM-ON-3"
      * @private
@@ -802,6 +893,8 @@ class FlowMapper extends Mapper {
         for (const or of context.orMap.values()) {
             if (!or._rawDependencies) continue;
 
+            this._currentEntity = { type: 'OR', title: or.title, path: or._parentPath || [] };
+
             const { dependsOnRequirements, dependenciesNote } = this._processDependencies(
                 or._rawDependencies,
                 context,
@@ -820,6 +913,8 @@ class FlowMapper extends Mapper {
 
             // Clean up temporary field
             delete or._rawDependencies;
+
+            this._currentEntity = null;
 
             // Statistics
             totalDeps++;
@@ -904,7 +999,7 @@ class FlowMapper extends Mapper {
                     injectedFallback++;
                     console.log(`Injected Use Case via fallback for ON reference "${useCase.onReference}"`);
                 } else {
-                    console.warn(`Use Case references unknown ON identifier: "${useCase.onReference}"`);
+                    this._warn(`Use Case references unknown ON identifier: "${useCase.onReference}"`);
                     notFound++;
                 }
             }
@@ -942,6 +1037,8 @@ class FlowMapper extends Mapper {
         for (const or of context.orMap.values()) {
             if (!or.implementedONs || or.implementedONs.length === 0) continue;
 
+            this._currentEntity = { type: 'OR', title: or.title, path: or._parentPath || [] };
+
             const resolvedRefs = [];
             const unresolvedRefs = [];
 
@@ -976,13 +1073,11 @@ class FlowMapper extends Mapper {
                         resolvedFallback++;
                         console.log(`Resolved ON Reference "${onRef}" via parent section fallback for OR "${or.externalId}"`);
                     } else if (onsInParent.length === 0) {
-                        // No ONs in parent section - store as unresolved
-                        console.warn(`WARNING: OR "${or.externalId}" references unknown ON identifier "${onRef}" (no ONs in parent section)`);
+                        this._warn(`references unknown ON identifier "${onRef}" (no ONs in parent section)`);
                         unresolvedRefs.push(onRef);
                         unresolved++;
                     } else {
-                        // Multiple ONs in parent section - ambiguous, store as unresolved
-                        console.warn(`WARNING: OR "${or.externalId}" references unknown ON identifier "${onRef}" (${onsInParent.length} ONs in parent section - ambiguous)`);
+                        this._warn(`references unknown ON identifier "${onRef}" (${onsInParent.length} ONs in parent section - ambiguous)`);
                         unresolvedRefs.push(onRef);
                         unresolved++;
                     }
@@ -999,6 +1094,8 @@ class FlowMapper extends Mapper {
                     ? `${or.privateNotes}\n\n${unresolvedNote}`
                     : unresolvedNote;
             }
+
+            this._currentEntity = null;
         }
 
         console.log(`Implemented ONs resolution: ${totalRefs} references, ${resolvedDirect} direct matches, ${resolvedFallback} fallback resolutions, ${unresolved} unresolved (stored in privateNotes)`);
