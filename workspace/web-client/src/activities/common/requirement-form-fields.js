@@ -167,7 +167,7 @@ export const requirementFieldDefinitions = [
                 type: 'annotated-reference-list',
                 modes: ['create', 'read', 'edit'],
                 required: false,
-                visibleWhen: (data) => data.type === 'ON',
+                visibleWhen: (data, mode) => data.type === 'ON' || (['read', 'edit'].includes(mode) && data.strategicDocuments?.length > 0),
                 maxNoteLength: 200,
                 placeholder: 'Select strategic documents...',
                 noteLabel: 'Note',

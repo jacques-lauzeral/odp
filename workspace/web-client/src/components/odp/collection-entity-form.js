@@ -282,7 +282,7 @@ export class CollectionEntityForm {
     getVisibleFields(fields, mode, item = null) {
         return fields.filter(field => {
             if (field.modes && !field.modes.includes(mode)) return false;
-            if (field.visibleWhen && item) return field.visibleWhen(item);
+            if (field.visibleWhen && item) return field.visibleWhen(item, mode);
             return true;
         });
     }

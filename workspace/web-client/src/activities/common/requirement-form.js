@@ -199,7 +199,6 @@ export default class RequirementForm extends CollectionEntityForm {
             transformed.nfrs = undefined;
         } else {
             // ON-only fields must be cleared for ORs
-            transformed.strategicDocuments = [];
             transformed.tentative = undefined;
         }
 
@@ -558,8 +557,8 @@ export default class RequirementForm extends CollectionEntityForm {
             if (el) el.style.display = type === 'OR' ? 'block' : 'none';
         });
 
-        // Fields that are ON-only
-        const onOnlyFields = ['strategicDocuments', 'tentative'];
+        // Fields that are ON-only (strategicDocuments excluded: data-driven via visibleWhen)
+        const onOnlyFields = ['tentative'];
         onOnlyFields.forEach(fieldKey => {
             const el = this.currentModal?.querySelector(`[data-field="${fieldKey}"]`);
             if (el) el.style.display = type === 'ON' ? 'block' : 'none';
