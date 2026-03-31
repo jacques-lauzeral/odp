@@ -11,6 +11,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * Sheet 1: "Operational Needs" (ONs)
  * -----------------------------------
+ * - 'ON Reference' → used as key for ON→OR linking (e.g. '4DT01')
  * - 'Title' → title (used for external ID generation)
  * - 'Date' → ignored
  * - 'Originator' → privateNotes as "Originator: {name}"
@@ -30,11 +31,12 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - 'Originator' → privateNotes as "Originator: {name}"
  * - 'CONOPS Section' → appended to privateNotes as "CONOPS Section: {text}"
  * - 'Source Reference' → appended to privateNotes as "Source Reference: {text}"
+ * - 'ON Reference' → implementedONs (resolved via ON Reference code match, e.g. '4DT01')
+ * - 'Operational Need' → ignored
  * - 'Detailed Requirement' → statement (base)
  * - 'Fit Criteria' → appended to statement as "Fit Criteria:" paragraph
  * - 'Rationale' → rationale (base)
  * - 'Opportunities/Risks' → appended to rationale as "Opportunities / Risks:" paragraph
- * - 'Operational Need' → implementedONs (resolved via normalized title match)
  * - 'Stakeholders' → impactedStakeholders (parsed and mapped via synonym map)
  * - 'Data (and other Enabler)' → privateNotes as "Data (and other Enabler):\n\n{text}"
  * - 'Impacted Services' → privateNotes as "Impacted Services:\n\n{text}"
@@ -49,12 +51,13 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * Strategic Documents (ONs only):
  * --------------------
- * - ON: document:4d_trajectory_conops (if Source contains 'CONOPS')
+ * - ON: refdoc:network_4d_trajectory_conops (if Source contains 'CONOPS')
  *
  * Stakeholder Mapping:
  * --------------------
  * Excel values mapped to external IDs via STAKEHOLDER_SYNONYM_MAP:
  * - 'AU' → stakeholder:network/airspace_user
+ * - 'CIV AU' → stakeholder:network/airspace_user/ao_civ
  * - 'CFSP' → stakeholder:network/airspace_user/cfsp
  * - 'NM' → stakeholder:network/nm
  * - 'ANSP' / 'ANSPs' → stakeholder:network/ansp
@@ -63,9 +66,17 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * ON → OR Relationship:
  * ---------------------
- * - OR column 'Operational Need' contains ON title
- * - Matching uses normalized (trimmed, lowercase) title comparison
+ * - OR column 'ON Reference' contains the ON reference code (e.g. '4DT01')
+ * - Matching is direct string lookup against the ON reference code
  * - Multiple ORs can implement the same ON
+ *
+ * Title Deconfliction:
+ * --------------------
+ * - Applied independently per sheet (ONs and ORs separately)
+ * - If multiple rows share the same title, each is suffixed with a 1-based counter: '{title} (1)', '{title} (2)', etc.
+ * - Suffix order follows row order in the sheet
+ * - Unique titles are left unchanged
+ * - External IDs are rebuilt after suffixing, so they reflect the deconflicted title
  */
 class FourDTMapper extends Mapper {
     /**
@@ -75,6 +86,7 @@ class FourDTMapper extends Mapper {
      */
     static STAKEHOLDER_SYNONYM_MAP = {
         'AU': 'stakeholder:network/airspace_user',
+        'CIV AU': 'stakeholder:network/airspace_user/ao_civ',
         'CFSP': 'stakeholder:network/airspace_user/cfsp',
         'NM': 'stakeholder:network/nm',
         'ANSP': 'stakeholder:network/ansp',
@@ -106,9 +118,9 @@ class FourDTMapper extends Mapper {
         console.log(`Found Operational Needs sheet with ${needsSheet.rows.length} rows`);
         console.log(`Found Operational Requirements sheet with ${requirementsSheet.rows.length} rows`);
 
-        const onTitleMap = new Map();
-        const needs = this._processNeedsSheet(needsSheet, onTitleMap);
-        const requirements = this._processRequirementsSheet(requirementsSheet, onTitleMap);
+        const onReferenceMap = new Map();
+        const needs = this._processNeedsSheet(needsSheet, onReferenceMap);
+        const requirements = this._processRequirementsSheet(requirementsSheet, onReferenceMap);
 
         console.log(`Mapped ${needs.length} operational needs (ONs) and ${requirements.length} operational requirements (ORs)`);
 
@@ -128,27 +140,57 @@ class FourDTMapper extends Mapper {
         );
     }
 
-    _processNeedsSheet(sheet, onTitleMap) {
+    _processNeedsSheet(sheet, onReferenceMap) {
         const needs = [];
+
+        const titleCounts = new Map();
+        for (const row of sheet.rows) {
+            const title = row['Title'] ? row['Title'].trim() : null;
+            if (title) titleCounts.set(title, (titleCounts.get(title) || 0) + 1);
+        }
+        const titleCounters = new Map();
 
         for (const row of sheet.rows) {
             const need = this._extractNeed(row);
             if (need) {
+                const baseTitle = need.title;
+                if (titleCounts.get(baseTitle) > 1) {
+                    const index = (titleCounters.get(baseTitle) || 0) + 1;
+                    titleCounters.set(baseTitle, index);
+                    need.title = `${baseTitle} (${index})`;
+                    need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
+                }
                 needs.push(need);
-                const normalizedTitle = need.title.trim().toLowerCase();
-                onTitleMap.set(normalizedTitle, need.externalId);
+                const onReference = row['ON Reference'] ? row['ON Reference'].trim() : null;
+                if (onReference) {
+                    onReferenceMap.set(onReference, need.externalId);
+                }
             }
         }
 
         return needs;
     }
 
-    _processRequirementsSheet(sheet, onTitleMap) {
+    _processRequirementsSheet(sheet, onReferenceMap) {
         const requirements = [];
 
+        const titleCounts = new Map();
         for (const row of sheet.rows) {
-            const requirement = this._extractRequirement(row, onTitleMap);
+            const title = row['Title'] ? row['Title'].trim() : null;
+            if (title) titleCounts.set(title, (titleCounts.get(title) || 0) + 1);
+        }
+        const titleCounters = new Map();
+
+        for (const row of sheet.rows) {
+            const requirement = this._extractRequirement(row, onReferenceMap);
             if (requirement) {
+                const baseTitle = requirement.title;
+                if (titleCounts.get(baseTitle) > 1) {
+                    const index = (titleCounters.get(baseTitle) || 0) + 1;
+                    titleCounters.set(baseTitle, index);
+                    requirement.title = `${baseTitle} (${index})`;
+                    requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, 'or');
+                }
                 requirements.push(requirement);
             }
         }
@@ -223,7 +265,7 @@ class FourDTMapper extends Mapper {
 
             if (afterConops) {
                 strategicDocuments.push({
-                    documentExternalId: "document:4d_trajectory_conops",
+                    externalId: ExternalIdBuilder.buildExternalId({ name: 'Network 4D Trajectory CONOPS' }, 'refdoc'),
                     note: afterConops
                 });
             }
@@ -232,7 +274,7 @@ class FourDTMapper extends Mapper {
         return strategicDocuments.length > 0 ? strategicDocuments : [];
     }
 
-    _extractRequirement(row, onTitleMap) {
+    _extractRequirement(row, onReferenceMap) {
         const title = row['Title'];
 
         if (!title || title.trim() === '') {
@@ -242,7 +284,7 @@ class FourDTMapper extends Mapper {
         const statement = this._extractRequirementStatement(row);
         const rationale = this._extractRequirementRationale(row);
         const privateNotes = this._extractRequirementPrivateNotes(row);
-        const implementedONs = this._resolveImplementedONs(row, onTitleMap);
+        const implementedONs = this._resolveImplementedONs(row, onReferenceMap);
         const impactedStakeholders = this._parseStakeholders(row['Stakeholders']);
 
         const requirement = {
@@ -328,22 +370,21 @@ class FourDTMapper extends Mapper {
         return null;
     }
 
-    _resolveImplementedONs(row, onTitleMap) {
-        const operationalNeed = row['Operational Need'];
-        const operationalNeedText = operationalNeed ? operationalNeed.trim() : '';
+    _resolveImplementedONs(row, onReferenceMap) {
+        const onReference = row['ON Reference'];
+        const onReferenceText = onReference ? onReference.trim() : '';
 
-        if (!operationalNeedText || operationalNeedText === '') {
+        if (!onReferenceText) {
             return [];
         }
 
-        const normalizedNeed = operationalNeedText.trim().toLowerCase();
-        const onExternalId = onTitleMap.get(normalizedNeed);
+        const onExternalId = onReferenceMap.get(onReferenceText);
 
         if (onExternalId) {
             return [onExternalId];
         } else {
             const rowTitle = row['Title'] || '';
-            console.warn(`Unable to resolve ON reference: "${operationalNeedText}" (OR: "${rowTitle}")`);
+            console.warn(`Unable to resolve ON reference: "${onReferenceText}" (OR: "${rowTitle}")`);
             return [];
         }
     }
