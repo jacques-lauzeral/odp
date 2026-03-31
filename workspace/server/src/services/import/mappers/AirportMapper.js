@@ -52,9 +52,15 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - Output: { externalId: "stakeholder:network/nm/nmoc", note: "(Airport Function, NOC, SNOC)" }
  *
  * Synonym Handling:
- * - Plural forms: "Aircraft Operators" → "AO"
- * - Variations: "Aircraft Operator" → "AO"
- * - Compound names: "APT Unit (Airport Integration Team)" → "APT Unit"
+ * - Plural forms: "Aircraft Operators" → "AO" → stakeholder:network/airspace_user
+ * - "Aircraft Operator" / "AO" → stakeholder:network/airspace_user
+ * - "Airport Operator" / "Airport Operators" → stakeholder:network/airport
+ * - "APT Unit (Airport Integration Team)" → stakeholder:network/ansp/ats
+ * - "Airport Domain (APT Unit)" → stakeholder:network/nm/airport
+ * - "TWR" → stakeholder:network/ansp/atc
+ * - "National Authority" / "CAA" → stakeholder:network/national_european_authority
+ * - Ground Handling Agent / Ground Handling Agents / GHA → stakeholder:network/airport
+ * - Third Party Suppliers / Surveillance Data Provider: unresolvable — appended to privateNotes as "Unresolved Stakeholders"
  * - Case-insensitive matching throughout
  *
  * Setup Entities:
@@ -103,7 +109,11 @@ class AirportMapper extends Mapper {
 
         // Common abbreviations
         'caa': 'national authority',
-        'gha': 'ground handling agent',
+        'gha': 'airport',
+
+        // Ground handling agents map to Airport stakeholder
+        'ground handling agent': 'airport',
+        'ground handling agents': 'airport',
     };
 
     /**
@@ -115,16 +125,14 @@ class AirportMapper extends Mapper {
         { name: "ANSP", externalId: "stakeholder:network/ansp" },
         { name: "NMOC", externalId: "stakeholder:network/nm/nmoc" },
         { name: "FMP", externalId: "stakeholder:network/ansp/fmp" },
-        { name: "TWR", externalId: "stakeholder:network/ansp/twr" },
-        { name: "Airport Operator", externalId: "stakeholder:network/airport_operator" },
+        { name: "TWR", externalId: "stakeholder:network/ansp/atc" },
+        { name: "Airport Operator", externalId: "stakeholder:network/airport" },
+        { name: "Airport", externalId: "stakeholder:network/airport" },
         { name: "Airspace User", externalId: "stakeholder:network/airspace_user" },
-        { name: "AO", externalId: "stakeholder:network/airspace_user/ao" },
-        { name: "APT Unit", externalId: "stakeholder:network/nm/apt_unit" },
-        { name: "Airport Domain", externalId: "stakeholder:network/nm/airport_domain" },
-        { name: "National Authority", externalId: "stakeholder:network/national_authority" },
-        { name: "Ground Handling Agent", externalId: "stakeholder:network/ground_handling_agent" },
-        { name: "Third Party Supplier", externalId: "stakeholder:network/third_party_supplier" },
-        { name: "Surveillance Data Provider", externalId: "stakeholder:network/surveillance_data_provider" }
+        { name: "AO", externalId: "stakeholder:network/airspace_user" },
+        { name: "APT Unit", externalId: "stakeholder:network/ansp/ats" },
+        { name: "Airport Domain", externalId: "stakeholder:network/nm/airport" },
+        { name: "National Authority", externalId: "stakeholder:network/national_european_authority" },
     ];
 
     /**
@@ -350,13 +358,14 @@ class AirportMapper extends Mapper {
      * @returns {Object|null} Requirement object or null
      */
     _mapRequirementFromGroup(group, context) {
-        const { requirementTable, useCaseTable, path, type, title } = group;
+        const { requirementTable, useCaseTable, path, type } = group;
 
         const data = this._parseTableToKeyValue(requirementTable);
 
         console.log(`Mapping ${type}:`, JSON.stringify(Object.keys(data)));
 
         const requirementNumber = data['OR #'] || data['OR#'] || data['ON #'] || data['ON#'];
+        const title = data['Title'];
         const drg = 'AIRPORT';
 
         // Build statement with Fit Criteria appended
@@ -403,6 +412,13 @@ class AirportMapper extends Mapper {
             privateNotes += '\n\n**Regulatory Requirements:** ' + regulatoryReqs;
         }
 
+        const { resolved: impactedStakeholders, missing: unresolvedStakeholders } =
+            this._extractImpactedStakeholders(data['Stakeholders'], context);
+
+        if (unresolvedStakeholders.length > 0) {
+            privateNotes += '\n\n**Unresolved Stakeholders:** ' + unresolvedStakeholders.join(', ');
+        }
+
         // Build flows from Use Case table if present
         let flows = '';
         if (useCaseTable) {
@@ -424,7 +440,7 @@ class AirportMapper extends Mapper {
             path: path,
             drg: drg,
             refines: null,
-            impactedStakeholders: this._extractImpactedStakeholders(data['Stakeholders'], context),
+            impactedStakeholders: impactedStakeholders,
             implementedONs: type === 'OR' ? this._extractImplementedONs(data['ON Reference'], context) : [],
             strategicDocuments: type === 'ON' ? this._extractStrategicDocuments(regulatoryReqs, context) : []
         };
@@ -550,7 +566,7 @@ class AirportMapper extends Mapper {
      */
     _extractImpactedStakeholders(stakeholdersText, context) {
         if (!stakeholdersText) {
-            return [];
+            return { resolved: [], missing: [] };
         }
 
         const result = [];
@@ -609,7 +625,7 @@ class AirportMapper extends Mapper {
             console.warn(`Stakeholders not found in map: ${missing.join(', ')}`);
         }
 
-        return result;
+        return { resolved: result, missing };
     }
 
     /**
@@ -624,8 +640,7 @@ class AirportMapper extends Mapper {
         const stakeholderKeywords = [
             'NMOC', 'ANSP', 'FMP', 'Airport Operator', 'Aircraft Operator',
             'Airspace User', 'APT Unit', 'Airport Domain', 'National Authority',
-            'Ground Handling Agent', 'Third Party Supplier', 'Surveillance Data Provider',
-            'TWR', 'AO', 'CAA'
+            'Airport', 'TWR', 'AO', 'CAA'
         ];
 
         // Sort by length descending to match longer patterns first
