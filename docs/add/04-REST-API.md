@@ -24,11 +24,11 @@ DELETE /:id        → service.deleteItem(id, userId)
 
 ### 2.2 VersionedItemRouter
 
-Used by `operational-requirement.js` and `operational-change.js`. Wires the full versioned entity surface including multi-context list/get, patch, and version history endpoints:
+Used by `operational-requirement.js` and `operational-change.js`. Wires the full versioned entity surface including edition-context list/get, patch, and version history endpoints:
 
 ```
-GET    /                          → service.getAll(userId, baselineId, fromWaveId, filters, projection)
-GET    /:id                       → service.getById(id, userId, baselineId, fromWaveId, projection)
+GET    /                          → service.getAll(userId, editionId, filters, projection)
+GET    /:id                       → service.getById(id, userId, editionId, projection)
 GET    /:id/versions              → service.getVersionHistory(id, userId)
 GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, userId)
 POST   /                          → service.create(body, userId)
@@ -37,13 +37,15 @@ PATCH  /:id                       → service.patch(id, body, expectedVersionId,
 DELETE /:id                       → service.delete(id, userId)
 ```
 
+`editionId` is extracted from `req.query.edition` (optional). When absent the service queries the repository (latest versions).
+
 `projection` is extracted from `req.query.projection` via `getProjection(req, allowed)`. Allowed values on `GET /` are `summary` and `standard`; on `GET /:id` they are `standard` and `extended`. Default is `standard` in both cases. An invalid value returns 400.
 
 `operational-change.js` extends this with milestone sub-resource routes:
 
 ```
-GET    /:id/milestones                      → service.getMilestones(id, userId, ...)
-GET    /:id/milestones/:milestoneKey        → service.getMilestone(id, milestoneKey, userId, ...)
+GET    /:id/milestones                      → service.getMilestones(id, userId, editionId)
+GET    /:id/milestones/:milestoneKey        → service.getMilestone(id, milestoneKey, userId, editionId)
 POST   /:id/milestones                      → service.addMilestone(id, body, expectedVersionId, userId)
 PUT    /:id/milestones/:milestoneKey        → service.updateMilestone(id, milestoneKey, body, expectedVersionId, userId)
 DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, milestoneKey, expectedVersionId, userId)
@@ -55,11 +57,11 @@ DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, mile
 
 ---
 
-## 3. ODPEdition Context Resolution
+## 3. Edition Context Resolution
 
-The `odpEdition` query parameter is resolved at the route layer before the service is called. When present on a list or get request, the route handler fetches the edition record, extracts its `baselineId` and `startsFromWaveId`, and passes those as `baselineId` / `fromWaveId` to the service. Explicit `baseline` or `fromWave` parameters are ignored when `odpEdition` is provided.
+The `edition` query parameter is passed directly to the service layer — route handlers do not resolve it. When present on a list or get request, the route extracts `req.query.edition` and passes it as `editionId` to `service.getAll()` or `service.getById()`. The service resolves the edition context internally via `odpEditionStore().resolveContext()`.
 
-The service and store layers always receive resolved `baselineId` / `fromWaveId` — they have no knowledge of ODIP editions.
+Route handlers have no knowledge of baselines, waves, or maturity gates — those are internal implementation details of the service and store layers.
 
 ---
 
@@ -96,7 +98,7 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-operational.yml` | Operational requirements and changes |
 | `openapi-operational-milestones.yml` | Milestone sub-resource endpoints |
 | `openapi-baseline.yml` | Baselines |
-| `openapi-odp.yml` | ODIP editions |
+| `openapi-odp.yml` | ODIP editions (`Edition`, `EditionRequest` schemas) |
 | `openapi-import.yml` | Import endpoints |
 | `openapi-docx.yml` | DOCX export endpoint |
 | `openapi-publication.yml` | Publication endpoint |

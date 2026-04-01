@@ -102,16 +102,18 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 | `create(payload, userId)` | Validate then create at version 1 |
 | `update(itemId, payload, expectedVersionId, userId)` | Validate then create new version |
 | `patch(itemId, patchPayload, expectedVersionId, userId)` | Partial update — merges with current via `_computePatchedPayload`, then validates and updates |
-| `getById(itemId, userId, baselineId?, fromWaveId?, projection?)` | Fetch with optional context and projection; passes `projection` through to `store.findById` |
+| `getById(itemId, userId, editionId?, projection?)` | Fetch with optional edition context and projection; resolves edition to `{baselineId, editionId}` internally before calling store |
 | `getByIdAndVersion(itemId, versionNumber, userId)` | Fetch specific historical version |
 | `getVersionHistory(itemId, userId)` | All versions, newest first |
-| `getAll(userId, baselineId?, fromWaveId?, filters?, projection?)` | List with optional context, filters, and projection; passes `projection` through to `store.findAll` |
+| `getAll(userId, editionId?, filters?, projection?)` | List with optional edition context, filters, and projection; resolves edition internally before calling store |
 | `delete(itemId, userId)` | Delete item and all versions |
 | `_validateCreatePayload(payload)` *(abstract)* | Must be implemented by subclass |
 | `_validateUpdatePayload(payload, itemId?)` *(abstract)* | Must be implemented by subclass; `itemId` is `null` on create, set on update/patch |
 | `_computePatchedPayload(current, patchPayload)` *(abstract)* | Field merge logic; must be implemented by subclass |
 
-`patch()` is implemented entirely in the base class: it fetches the current entity, calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
+`patch()` is implemented entirely in the base class: it fetches the current entity (latest version), calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
+
+**Edition context resolution:** When `editionId` is provided to `getAll` or `getById`, the service calls `odpEditionStore().resolveContext(editionId, tx)` within the same transaction to obtain `{baselineId, editionId}`. It then passes `baselineId` as the store's positional argument and `editionId` via `filters.editionId`. The store applies `$editionId IN r.editions` as a WHERE condition on the `HAS_ITEMS` relationship. The route layer has no knowledge of baselines — it passes only `editionId` or `null`.
 
 ### 3.4 OperationalRequirementService
 
@@ -137,8 +139,8 @@ Additional milestone methods — all require `expectedVersionId` because each op
 
 | Method | Description |
 |---|---|
-| `getMilestones(itemId, userId, baselineId?, fromWaveId?)` | Returns `milestones` array from OC |
-| `getMilestone(itemId, milestoneKey, userId, baselineId?, fromWaveId?)` | Single milestone by stable `milestoneKey` |
+| `getMilestones(itemId, userId, baselineId?)` | Returns `milestones` array from OC |
+| `getMilestone(itemId, milestoneKey, userId, baselineId?)` | Single milestone by stable `milestoneKey` |
 | `addMilestone(itemId, milestoneData, expectedVersionId, userId)` | Appends milestone; returns `{milestone, operationalChange}` |
 | `updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, userId)` | Replaces milestone by key; returns `{milestone, operationalChange}` |
 | `deleteMilestone(itemId, milestoneKey, expectedVersionId, userId)` | Removes milestone by key; returns `{operationalChange}` |
@@ -192,14 +194,14 @@ Standalone management service. Editions are immutable once created.
 
 | Method | Description |
 |---|---|
-| `createODPEdition(data, userId)` | Create edition; auto-creates a baseline if none provided |
+| `createODPEdition(data, userId)` | Validate and create edition; auto-creates a baseline if none provided; `minONMaturity` validated and passed through to store |
 | `getODPEdition(id, userId)` | Fetch single edition |
 | `listODPEditions(userId)` | List all editions |
 | `exportAsAsciiDoc(editionId?, userId)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
 
-Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`), `startsFromWaveId`. `baselineId` is optional — if omitted a new baseline is auto-created with a generated title and linked to the edition. The wave and optional baseline are validated for existence before the edition is written.
+Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`), `startsFromWaveId`. Optional: `baselineId`, `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The wave and optional baseline are validated for existence before the edition is written.
 
-Edition context resolution (mapping an `odpEdition` query parameter to `{baselineId, fromWaveId}`) happens in the route layer, not the service.
+Edition context resolution (mapping an `edition` query parameter to `{baselineId, editionId}`) happens in the **service layer** (`VersionedItemService`), not in `ODIPEditionService`. `ODIPEditionService` is responsible only for edition lifecycle management.
 
 ---
 
@@ -265,7 +267,7 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | `OperationalRequirementService` | `VersionedItemService` | `OperationalRequirementStore` |
 | `OperationalChangeService` | `VersionedItemService` | `OperationalChangeStore` |
 | `BaselineService` | — | `BaselineStore` |
-| `ODIPEditionService` | — | `ODIPEditionStore`, `BaselineStore`, `WaveStore` |
+| `ODIPEditionService` | — | `ODPEditionStore`, `BaselineStore`, `WaveStore` |
 
 ---
 

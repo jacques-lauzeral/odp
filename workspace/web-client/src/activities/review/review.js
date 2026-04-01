@@ -116,10 +116,8 @@ export default class ReviewActivity extends AbstractInteractionActivity {
     async loadAvailableEditions() {
         try {
             const editions = await apiClient.get('/odp-editions');
-            // Filter to only show published editions
-            this.availableEditions = editions.filter(edition =>
-                edition.type === 'DRAFT' || edition.type === 'OFFICIAL'
-            );
+            // All edition types (DRAFT and OFFICIAL) are valid for review
+            this.availableEditions = Array.isArray(editions) ? editions : [];
         } catch (error) {
             console.warn('Failed to load editions:', error);
             this.availableEditions = [];

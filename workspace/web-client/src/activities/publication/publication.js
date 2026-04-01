@@ -277,10 +277,13 @@ export default class PublicationActivity {
             return baseOptions;
         }
 
-        const waveOptions = this.supportData.waves.map(wave => ({
-            value: wave.id,
-            label: wave.name || `${wave.year}.${wave.quarter}`
-        }));
+        const waveOptions = this.supportData.waves
+            .map(wave => ({
+                value: wave.id,
+                label: `${wave.year}#${wave.sequenceNumber}`,
+                sortKey: (wave.year * 100) + (wave.sequenceNumber || 0)
+            }))
+            .sort((a, b) => a.sortKey - b.sortKey);
 
         return baseOptions.concat(waveOptions);
     }

@@ -87,18 +87,21 @@ class EditionCommands {
                     }
 
                     const table = new Table({
-                        head: ['ID', 'Title', 'From', 'Baseline', 'Created At', 'Created By'],
-                        colWidths: [8, 25, 12, 15, 20, 15]
+                        head: ['ID', 'Title', 'Type', 'From Wave', 'Min Maturity', 'Baseline', 'Created At'],
+                        colWidths: [8, 25, 10, 12, 14, 12, 20]
                     });
 
                     editions.forEach(edition => {
+                        const wave = edition.startsFromWave;
+                        const waveLabel = wave ? `${wave.year}#${wave.sequenceNumber}` : '—';
                         table.push([
                             edition.id,
                             edition.title,
-                            edition.startsFromWave?.name || 'None',
-                            edition.baseline?.id || 'None',
-                            edition.createdAt ? new Date(edition.createdAt).toLocaleString() : 'N/A',
-                            edition.createdBy || 'N/A'
+                            edition.type,
+                            waveLabel,
+                            edition.minONMaturity || '—',
+                            edition.baseline?.id || '—',
+                            edition.createdAt ? new Date(edition.createdAt).toLocaleString() : '—'
                         ]);
                     });
 
@@ -151,9 +154,14 @@ class EditionCommands {
 
                     if (edition.startsFromWave) {
                         const wave = edition.startsFromWave;
-                        console.log(`Starts From Wave: ${wave.name} (${wave.year}.${wave.quarter}) - ${wave.date}`);
+                        const waveLabel = `${wave.year}#${wave.sequenceNumber}`;
+                        const impl = wave.implementationDate ? ` (${wave.implementationDate})` : '';
+                        console.log(`Starts From Wave: ${waveLabel}${impl} (ID: ${wave.id})`);
                     } else {
-                        console.log('Starts From Waves: None');
+                        console.log('Starts From Wave: —');
+                    }
+                    if (edition.minONMaturity) {
+                        console.log(`Min ON Maturity: ${edition.minONMaturity}`);
                     }
                 } catch (error) {
                     console.error('Error getting ODIP edition:', error.message);
@@ -166,20 +174,32 @@ class EditionCommands {
         editionCommand
             .command('create <title>')
             .description('Create a new ODIP edition')
-            .requiredOption('--from <waveId>', 'Waves ID that this edition starts from')
-            .option('--type <type>', 'Edition type (DRAFT or OFFICIAL)', 'DRAFT')
+            .option('--from <waveId>', 'Wave ID that this edition starts from (optional)')
+            .option('--type <type>', 'Edition type: DRAFT | OFFICIAL (default: DRAFT)', 'DRAFT')
             .option('--baseline <baselineId>', 'Baseline ID (auto-created if not provided)')
+            .option('--min-on-maturity <maturity>', 'Minimum ON maturity for content selection: DRAFT | ADVANCED | MATURE')
             .action(async (title, options) => {
                 try {
-                    const data = {
-                        title,
-                        startsFromWaveId: parseInt(options.from, 10),
-                        type: options.type
-                    };
+                    if (!['DRAFT', 'OFFICIAL'].includes(options.type)) {
+                        console.error(`Invalid type: ${options.type}. Valid values: DRAFT, OFFICIAL`);
+                        process.exit(1);
+                    }
 
-                    // Add baseline if provided
+                    if (options.minOnMaturity && !['DRAFT', 'ADVANCED', 'MATURE'].includes(options.minOnMaturity)) {
+                        console.error(`Invalid --min-on-maturity: ${options.minOnMaturity}. Valid values: DRAFT, ADVANCED, MATURE`);
+                        process.exit(1);
+                    }
+
+                    const data = { title, type: options.type };
+
+                    if (options.from) {
+                        data.startsFromWaveId = parseInt(options.from, 10);
+                    }
                     if (options.baseline) {
                         data.baselineId = parseInt(options.baseline, 10);
+                    }
+                    if (options.minOnMaturity) {
+                        data.minONMaturity = options.minOnMaturity;
                     }
 
                     console.log('Creating ODIP edition...');
@@ -201,15 +221,17 @@ class EditionCommands {
                     console.log(`✓ Type: ${edition.type}`);
 
                     if (edition.startsFromWave) {
-                        console.log(`✓ Starts from wave: ${edition.startsFromWave.name}`);
+                        const wave = edition.startsFromWave;
+                        console.log(`✓ Starts from wave: ${wave.year}#${wave.sequenceNumber} (ID: ${wave.id})`);
                     }
-
+                    if (edition.minONMaturity) {
+                        console.log(`✓ Min ON maturity: ${edition.minONMaturity}`);
+                    }
                     if (edition.baseline) {
                         console.log(`✓ Using baseline: ${edition.baseline.title} (ID: ${edition.baseline.id})`);
                     }
-
                     if (edition.createdAt) {
-                        console.log(`✓ Edition created at: ${new Date(edition.createdAt).toLocaleString()}`);
+                        console.log(`✓ Created at: ${new Date(edition.createdAt).toLocaleString()}`);
                     }
                 } catch (error) {
                     console.error('Error creating ODIP edition:', error.message);

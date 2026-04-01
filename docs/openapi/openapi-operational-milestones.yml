@@ -11,7 +11,7 @@ paths:
   # Milestone CRUD Endpoints
   /operational-changes/{id}/milestones:
     get:
-      summary: List all milestones for operational change (latest version, baseline context, or wave filtered)
+      summary: List all milestones for operational change (repository or edition context)
       tags: [Milestones]
       parameters:
         - name: id
@@ -20,18 +20,12 @@ paths:
           schema:
             type: string
           description: Operational Change Item ID
-        - name: baseline
+        - name: edition
           in: query
           required: false
           schema:
             type: string
-          description: "Optional baseline ID to get milestones as they existed at baseline time"
-        - name: fromWave
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Optional wave ID for filtering"
+          description: "Optional edition ID. When provided, returns milestones in the edition context. Omit for repository (latest version)."
       responses:
         '200':
           description: Success
@@ -42,13 +36,13 @@ paths:
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/Milestone'
         '404':
-          description: Operational Change not found or not captured in specified baseline
+          description: Operational Change not found or not included in specified edition
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Bad Request - Invalid baseline or wave ID
+          description: Bad Request - Invalid edition ID
           content:
             application/json:
               schema:

@@ -26,10 +26,10 @@ export class OperationalRequirementService extends VersionedItemService {
     // - create(payload, userId)
     // - update(itemId, payload, expectedVersionId, userId)
     // - patch(itemId, patchPayload, expectedVersionId, userId)
-    // - getById(itemId, userId, baselineId?, fromWaveId?)
+    // - getById(itemId, userId, editionId?, projection?)
     // - getByIdAndVersion(itemId, versionNumber, userId)
     // - getVersionHistory(itemId, userId)
-    // - getAll(userId, baselineId?, fromWaveId?, filters?)
+    // - getAll(userId, editionId?, filters?, projection?)
     // - delete(itemId, userId)
 
     async _validateCreatePayload(payload) {

@@ -529,27 +529,14 @@ export default class AbstractInteractionActivity {
                 try {
                     let endpoint = entity.endpoint;
 
-                    // Check if we have edition context that needs resolution
+                    // Pass edition ID directly — server resolves context internally
                     if (this.config.dataSource &&
                         this.config.dataSource !== 'repository' &&
                         this.config.dataSource !== 'Repository' &&
                         typeof this.config.dataSource === 'string' &&
                         this.config.dataSource.match(/^\d+$/)) {
 
-                        // Resolve edition context to baseline and wave IDs
-                        const edition = await apiClient.get(`/odp-editions/${this.config.dataSource}`);
-                        const queryParams = {};
-                        if (edition.baseline?.id) {
-                            queryParams.baseline = edition.baseline.id;
-                        }
-                        if (edition.startsFromWave?.id) {
-                            queryParams.fromWave = edition.startsFromWave.id;
-                        }
-
-                        if (Object.keys(queryParams).length > 0) {
-                            const queryString = new URLSearchParams(queryParams).toString();
-                            endpoint = `${endpoint}?${queryString}`;
-                        }
+                        endpoint = `${endpoint}?edition=${this.config.dataSource}`;
                     }
 
                     const response = await apiClient.get(endpoint);
@@ -880,21 +867,14 @@ export default class AbstractInteractionActivity {
     async buildQueryParams(filters) {
         const queryParams = {};
 
-        // Add edition context if available
+        // Add edition context if available — pass ID directly, server resolves internally
         const editionContext = this.config.dataSource;
         if (editionContext &&
             editionContext !== 'repository' &&
             editionContext !== 'Repository' &&
             typeof editionContext === 'string' &&
             editionContext.match(/^\d+$/)) {
-
-            const edition = await apiClient.get(`/odp-editions/${editionContext}`);
-            if (edition.baseline?.id) {
-                queryParams.baseline = edition.baseline.id;
-            }
-            if (edition.startsFromWave?.id) {
-                queryParams.fromWave = edition.startsFromWave.id;
-            }
+            queryParams.edition = editionContext;
         }
 
         // Add content filters
@@ -985,7 +965,7 @@ export default class AbstractInteractionActivity {
     }
 
     getWaveDate(wave) {
-        return new Date(wave.year, (wave.quarter - 1) * 3, 1);
+        return new Date(wave.year, (wave.sequenceNumber - 1) * 3, 1);
     }
 
     formatEventTypeName(eventType) {

@@ -22,14 +22,14 @@ export class VersionedItemStore extends BaseStore {
     }
 
     /**
-     * Build optimized query for findAll with multi-context and content filtering support
+     * Build optimized query for findAll with multi-context and content filtering support.
      * @abstract
      * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @param {object} filters - Content filtering parameters
+     * @param {object} filters - Content filtering parameters; may include editionId
+     * @param {string[]|null} fields - Projection field list
      * @returns {object} Query object with cypher and params
      */
-    buildFindAllQuery(baselineId, fromWaveId, filters) {
+    buildFindAllQuery(baselineId, filters, fields) {
         throw new Error('buildFindAllQuery must be implemented by concrete store');
     }
 
@@ -57,7 +57,6 @@ export class VersionedItemStore extends BaseStore {
             }
 
             const maxCode = result.records[0].get('code');
-            // Extract the numeric part from "XX-YYY-####"
             const numericPart = maxCode.substring(maxCode.lastIndexOf('-') + 1);
             return parseInt(numericPart, 10);
         } catch (error) {
@@ -95,7 +94,7 @@ export class VersionedItemStore extends BaseStore {
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
 
-            // Extract relationships from version data (null currentVersionId = create path, milestones taken from input)
+            // Extract relationships from version data (null currentVersionId = create path)
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData, null, transaction);
 
             // Generate code if drg is provided
@@ -144,7 +143,7 @@ export class VersionedItemStore extends BaseStore {
             // Create item relationships from ID arrays
             await this._createRelationshipsFromIds(versionId, relationshipIds, transaction);
 
-            // Get complete item with relationships as Reference objects
+            // Return complete item with relationships as Reference objects
             const completeItem = await this.findById(itemId, transaction);
             return completeItem;
         } catch (error) {
@@ -158,7 +157,7 @@ export class VersionedItemStore extends BaseStore {
             const numericItemId = this.normalizeId(itemId);
             const numericExpectedVersionId = this.normalizeId(expectedVersionId);
 
-            const { title, expectedVersionId: _, ...versionData } = data; // Remove expectedVersionId
+            const { title, expectedVersionId: _, ...versionData } = data;
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
 
@@ -186,12 +185,10 @@ export class VersionedItemStore extends BaseStore {
             // Extract relationships from input data (currentVersionId provided for milestone inheritance)
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData, currentVersionId, transaction);
 
-            // Sanitize contentData - prevent mismatch between received versionId and id(version)
-            console.log(`VersionItemStore.update() data: ${contentData}`);
+            // Sanitize contentData
             if ('versionId' in contentData) {
                 delete contentData.versionId;
             }
-            console.log(`VersionItemStore.update() sanitized data: ${contentData}`);
 
             const newVersion = currentVersionNumeric + 1;
 
@@ -204,7 +201,7 @@ export class VersionedItemStore extends BaseStore {
                 `, { itemId: numericItemId, title });
             }
 
-            // Create new ItemVersion (starts with no relationships)
+            // Create new ItemVersion
             const versionResult = await transaction.run(`
                 CREATE (version:${this.versionLabel} {
                     version: $newVersion,
@@ -218,29 +215,21 @@ export class VersionedItemStore extends BaseStore {
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
-            // Update Item-Version relationships (no property update needed)
+            // Update Item-Version relationships
             await transaction.run(`
                 MATCH (item:${this.nodeLabel})
                 WHERE id(item) = $itemId
-                
-                // Remove old LATEST_VERSION relationship
                 OPTIONAL MATCH (item)-[oldLatest:LATEST_VERSION]->(:${this.versionLabel})
                 DELETE oldLatest
-                
-                WITH item  // Required to carry item forward after DELETE
-                
-                // Create new relationships
+                WITH item
                 MATCH (version:${this.versionLabel})
                 WHERE id(version) = $versionId
                 CREATE (version)-[:VERSION_OF]->(item)
                 CREATE (item)-[:LATEST_VERSION]->(version)
             `, { itemId: numericItemId, versionId });
 
-            // Always use provided relationships — service layer (both update and patch)
-            // always sends a complete payload, so inheritance is never needed.
             await this._createRelationshipsFromIds(versionId, relationshipIds, transaction);
 
-            // Get complete item with relationships as Reference objects
             const completeItem = await this.findById(itemId, transaction);
             return completeItem;
         } catch (error) {
@@ -249,14 +238,26 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    async findById(itemId, transaction, baselineId = null, fromWaveId = null) {
+    /**
+     * Find item by ID with optional context.
+     * Exactly one of baselineId or editionId may be provided, or neither (latest version).
+     * When editionId is provided, baselineId must also be provided (resolved by service via resolveContext).
+     * Returns null if the item is not found, not in the baseline, or not in the edition.
+     *
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId
+     * @returns {Promise<object|null>}
+     */
+    async findById(itemId, transaction, baselineId = null, editionId = null) {
         try {
             const numericItemId = this.normalizeId(itemId);
 
             let query, params;
 
             if (baselineId === null) {
-                // Latest version query
+                // Latest version — no context
                 query = `
                     MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
                     WHERE id(item) = $itemId
@@ -266,9 +267,8 @@ export class VersionedItemStore extends BaseStore {
                            version { .* } as versionData
                 `;
                 params = { itemId: numericItemId };
-            } else {
-                // Baseline version query
-                const numericBaselineId = this.normalizeId(baselineId);
+            } else if (editionId === null) {
+                // Baseline context, no edition filter
                 query = `
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
                     WHERE id(baseline) = $baselineId AND id(item) = $itemId
@@ -277,7 +277,23 @@ export class VersionedItemStore extends BaseStore {
                            version.createdAt as createdAt, version.createdBy as createdBy,
                            version { .* } as versionData
                 `;
-                params = { baselineId: numericBaselineId, itemId: numericItemId };
+                params = { baselineId: this.normalizeId(baselineId), itemId: numericItemId };
+            } else {
+                // Edition context — baseline + edition membership check
+                query = `
+                    MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId AND id(item) = $itemId
+                      AND $editionId IN r.editions
+                    RETURN id(item) as itemId, item.title as title, item.code as code,
+                           id(version) as versionId, version.version as version,
+                           version.createdAt as createdAt, version.createdBy as createdBy,
+                           version { .* } as versionData
+                `;
+                params = {
+                    baselineId: this.normalizeId(baselineId),
+                    itemId: numericItemId,
+                    editionId: this.normalizeId(editionId)
+                };
             }
 
             const result = await transaction.run(query, params);
@@ -286,28 +302,25 @@ export class VersionedItemStore extends BaseStore {
                 return null;
             }
 
-            const record = result.records[0];
-            const versionData = record.get('versionData');
+            const rec = result.records[0];
+            const versionData = rec.get('versionData');
 
-            // Remove internal properties from version data
             delete versionData.version;
             delete versionData.createdAt;
             delete versionData.createdBy;
 
             const baseItem = {
-                itemId: this.normalizeId(record.get('itemId')),
-                title: record.get('title'),
-                code: record.get('code'),
-                versionId: this.normalizeId(record.get('versionId')),
-                version: this.normalizeId(record.get('version')),
-                createdAt: record.get('createdAt'),
-                createdBy: record.get('createdBy'),
+                itemId: this.normalizeId(rec.get('itemId')),
+                title: rec.get('title'),
+                code: rec.get('code'),
+                versionId: this.normalizeId(rec.get('versionId')),
+                version: this.normalizeId(rec.get('version')),
+                createdAt: rec.get('createdAt'),
+                createdBy: rec.get('createdBy'),
                 ...versionData
             };
 
-            // Get relationships as Reference objects
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-
             return { ...baseItem, ...relationshipReferences };
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
@@ -334,7 +347,6 @@ export class VersionedItemStore extends BaseStore {
             const record = result.records[0];
             const versionData = record.get('versionData');
 
-            // Remove internal properties from version data
             delete versionData.version;
             delete versionData.createdAt;
             delete versionData.createdBy;
@@ -350,9 +362,7 @@ export class VersionedItemStore extends BaseStore {
                 ...versionData
             };
 
-            // Get relationships as Reference objects for this specific version
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-
             return { ...baseItem, ...relationshipReferences };
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID and version: ${error.message}`, error);
@@ -363,7 +373,6 @@ export class VersionedItemStore extends BaseStore {
         try {
             const numericItemId = this.normalizeId(itemId);
 
-            // First check if item exists
             const itemExists = await this.exists(numericItemId, transaction);
             if (!itemExists) {
                 throw new StoreError('Item not found');
@@ -394,36 +403,21 @@ export class VersionedItemStore extends BaseStore {
     }
 
     /**
-     * Find all items (latest versions, baseline context, wave filtered, and content filtered)
-     * MUST be implemented by concrete stores with optimized query patterns
+     * Find all items with optional context and projection.
+     * MUST be implemented by concrete stores.
      * @abstract
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline ID for historical context
-     * @param {number|null} fromWaveId - Optional wave ID for filtering
-     * @param {object} filters - Optional content filtering parameters
-     * @returns {Promise<Array<object>>} Array of items with all relationships
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId - Baseline context; mutually exclusive with editionId in filters
+     * @param {object} filters - Content filters; may include editionId
+     * @param {string} projection
+     * @returns {Promise<Array<object>>}
      */
-    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}) {
+    async findAll(transaction, baselineId = null, filters = {}, projection = 'standard') {
         throw new Error('findAll must be implemented by concrete store');
     }
 
-    /**
-     * Check if item passes wave filter - abstract method for concrete stores to implement
-     * @abstract
-     * @param {number} itemId - Item ID
-     * @param {number} fromWaveId - Wave ID for filtering
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @returns {Promise<boolean>} True if item passes wave filter
-     */
-    async _checkWaveFilter(itemId, fromWaveId, transaction, baselineId = null) {
-        throw new Error('_checkWaveFilter must be implemented by concrete store');
-    }
+    // Helper methods
 
-    // Helper methods for concrete stores to use
-
-    // Check if any relationship IDs are provided
-    // Helper to build Reference objects from Neo4j results
     _buildReference(record, titleField = 'title') {
         const ref = {
             id: this.normalizeId(record.get('id')),
@@ -431,7 +425,6 @@ export class VersionedItemStore extends BaseStore {
             code: record.get('code')
         };
 
-        // Add additional fields if present
         const additionalFields = ['type', 'name', 'year', 'sequenceNumber', 'implementationDate'];
         additionalFields.forEach(field => {
             try {
@@ -447,17 +440,16 @@ export class VersionedItemStore extends BaseStore {
         return ref;
     }
 
-    // Helper to validate referenced items exist
     async _validateReferences(label, ids, transaction) {
         if (!Array.isArray(ids) || ids.length === 0) return;
 
         const normalizedIds = ids.map(id => this.normalizeId(id));
 
         const result = await transaction.run(`
-        MATCH (item:${label}) 
-        WHERE id(item) IN $ids
-        RETURN id(item) as foundId
-    `, { ids: normalizedIds });
+            MATCH (item:${label})
+            WHERE id(item) IN $ids
+            RETURN id(item) as foundId
+        `, { ids: normalizedIds });
 
         const foundIds = new Set(
             result.records.map(record => this.normalizeId(record.get('foundId')))

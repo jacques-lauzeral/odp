@@ -1,17 +1,17 @@
 openapi: 3.0.3
 
 info:
-  title: ODP REST API / ODP Edition Management
-  description: ODP Edition Management Operations for the Operational Deployment Plan Management API
+  title: ODP REST API / Edition Management
+  description: ODIP Edition Management Operations
   version: 1.0.0
   contact:
     name: ODP Development Team
 
 paths:
-  # ODIP Edition CRUD Endpoints
+  # Edition CRUD Endpoints
   /odp-editions:
     get:
-      summary: List all ODP editions
+      summary: List all ODIP editions
       tags: [ODP]
       responses:
         '200':
@@ -21,7 +21,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
+                  $ref: 'openapi-base.yml#/components/schemas/Edition'
         '500':
           description: Internal Server Error
           content:
@@ -30,25 +30,25 @@ paths:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
     post:
-      summary: Create new ODP edition
+      summary: Create new ODIP Edition
       tags: [ODP]
       description: |
-        Creates a new ODP Edition by referencing an existing baseline and specifying 
-        a starting wave. The edition provides a filtered view of the baseline content
-        based on the wave timeline.
+        Creates a new ODIP Edition referencing an existing baseline. The edition
+        defines an optional wave lower bound and/or an optional minimum ON maturity
+        gate, together driving the content selection algorithm when the edition is queried.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: 'openapi-base.yml#/components/schemas/ODPEditionRequest'
+              $ref: 'openapi-base.yml#/components/schemas/EditionRequest'
       responses:
         '201':
-          description: ODP Edition created successfully
+          description: ODIP Edition created successfully
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
+                $ref: 'openapi-base.yml#/components/schemas/Edition'
         '400':
           description: Bad Request - Invalid baseline or wave reference
           content:
@@ -64,7 +64,7 @@ paths:
 
   /odp-editions/{id}:
     get:
-      summary: Get ODP edition by ID
+      summary: Get ODIP Edition by ID
       tags: [ODP]
       parameters:
         - name: id
@@ -72,16 +72,16 @@ paths:
           required: true
           schema:
             type: string
-          description: ODP Edition ID
+          description: Edition ID
       responses:
         '200':
           description: Success
           content:
             application/json:
               schema:
-                $ref: 'openapi-base.yml#/components/schemas/ODPEdition'
+                $ref: 'openapi-base.yml#/components/schemas/Edition'
         '404':
-          description: ODP Edition not found
+          description: Edition not found
           content:
             application/json:
               schema:
@@ -89,19 +89,20 @@ paths:
 
   /odp-editions/{id}/export:
     get:
-      summary: Export ODP edition as AsciiDoc
+      summary: Export ODIP Edition as AsciiDoc
       tags: [ODP]
       description: |
-        Exports a specific ODP Edition as an AsciiDoc document. The export includes
-        all waves, milestones, and deliverables associated with the edition, formatted
-        as a structured AsciiDoc document suitable for documentation generation.
+        Exports a specific ODIP Edition as an AsciiDoc document. The export includes
+        all content selected by the edition's content selection algorithm (wave filter
+        and/or ON maturity gate), formatted as a structured AsciiDoc document suitable
+        for documentation generation.
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: string
-          description: ODP Edition ID
+          description: Edition ID
       responses:
         '200':
           description: Success - AsciiDoc document
@@ -111,7 +112,7 @@ paths:
                 type: string
                 description: AsciiDoc formatted document
         '404':
-          description: ODP Edition not found
+          description: Edition not found
           content:
             application/json:
               schema:

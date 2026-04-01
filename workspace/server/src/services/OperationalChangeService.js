@@ -26,19 +26,22 @@ export class OperationalChangeService extends VersionedItemService {
     // - create(payload, userId)
     // - update(itemId, payload, expectedVersionId, userId)
     // - patch(itemId, patchPayload, expectedVersionId, userId)
-    // - getById(itemId, userId, baselineId?, fromWaveId?)
+    // - getById(itemId, userId, editionId?, projection?)
     // - getByIdAndVersion(itemId, versionNumber, userId)
     // - getVersionHistory(itemId, userId)
-    // - getAll(userId, baselineId?, fromWaveId?, filters?)
+    // - getAll(userId, editionId?, filters?, projection?)
     // - delete(itemId, userId)
 
     /**
-     * Get all milestones for operational change (latest version, baseline context, or wave filtered)
+     * Get all milestones for operational change (latest version or baseline context)
+     * @param {number} itemId
+     * @param {string} userId
+     * @param {number|null} baselineId
      */
-    async getMilestones(itemId, userId, baselineId = null, fromWaveId = null) {
+    async getMilestones(itemId, userId, baselineId = null) {
         const tx = createTransaction(userId);
         try {
-            const operationalChange = await this.getStore().findById(itemId, tx, baselineId, fromWaveId);
+            const operationalChange = await this.getStore().findById(itemId, tx, baselineId);
             if (!operationalChange) {
                 throw new Error('Operational change not found');
             }
@@ -51,12 +54,16 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     /**
-     * Get specific milestone by milestoneKey (latest version, baseline context, or wave filtered)
+     * Get specific milestone by milestoneKey (latest version or baseline context)
+     * @param {number} itemId
+     * @param {string} milestoneKey
+     * @param {string} userId
+     * @param {number|null} baselineId
      */
-    async getMilestone(itemId, milestoneKey, userId, baselineId = null, fromWaveId = null) {
+    async getMilestone(itemId, milestoneKey, userId, baselineId = null) {
         const tx = createTransaction(userId);
         try {
-            const milestone = await this.getStore().findMilestoneByKey(itemId, milestoneKey, tx, baselineId, fromWaveId);
+            const milestone = await this.getStore().findMilestoneByKey(itemId, milestoneKey, tx, baselineId);
             if (!milestone) {
                 throw new Error('Milestone not found');
             }
@@ -317,18 +324,15 @@ export class OperationalChangeService extends VersionedItemService {
         };
 
         if (level >= 1) {
-            // ADVANCED: purpose required
             if (!payload.purpose || isDeltaEmpty(payload.purpose)) {
                 throw new Error('Validation failed: purpose is required for maturity ADVANCED or MATURE');
             }
-            // ADVANCED: implementedORs non-empty
             if (!payload.implementedORs || payload.implementedORs.length === 0) {
                 throw new Error('Validation failed: implementedORs is required for maturity ADVANCED or MATURE');
             }
         }
 
         if (level >= 2) {
-            // MATURE: initialState, finalState, cost required
             if (!payload.initialState || isDeltaEmpty(payload.initialState)) {
                 throw new Error('Validation failed: initialState is required for maturity MATURE');
             }
@@ -351,7 +355,6 @@ export class OperationalChangeService extends VersionedItemService {
             }
         }
 
-        // Validate orCosts item structure
         if (payload.orCosts) {
             for (const item of payload.orCosts) {
                 if (typeof item !== 'object' || item === null) {
@@ -366,7 +369,6 @@ export class OperationalChangeService extends VersionedItemService {
             }
         }
 
-        // Validate cost field
         if (payload.cost !== undefined && payload.cost !== null && !Number.isInteger(payload.cost)) {
             throw new Error('Validation failed: cost must be an integer');
         }

@@ -17,6 +17,27 @@ export const ORCost = {
     cost: 0   // integer, in MW
 };
 
+// Management Entities
+
+export const Baseline = {
+    id: '',
+    title: '',
+    createdAt: '',
+    createdBy: '',
+    capturedItemCount: 0
+};
+
+export const Edition = {
+    id: '',
+    title: '',
+    type: '',               // DRAFT | OFFICIAL
+    createdAt: '',
+    createdBy: '',
+    baseline: null,         // AnnotatedReference {id, title, note}
+    startsFromWave: null,   // AnnotatedReference {id, title, note}, optional
+    minONMaturity: null     // DRAFT | ADVANCED | MATURE, optional
+};
+
 // ODIP Elements
 
 export const OperationalRequirement = {
@@ -32,15 +53,15 @@ export const OperationalRequirement = {
     maturity: '',               // DRAFT | ADVANCED | MATURE
     path: [],                   // array of strings
     drg: '',                    // DraftingGroup enum
-    refinesParents: [],         // array of OperationalEntityReference
+    refinesParents: [],         // array of OperationalEntityReference {id, code, title, type}
     // ON only — summary
     tentative: null,            // year period [year] or [start, end] where start <= end
-    strategicDocuments: [],     // array of AnnotatedReference (ReferenceDocument)
+    strategicDocuments: [],     // array of AnnotatedReference {id, title, note} (ReferenceDocument)
     // OR only — summary
-    implementedONs: [],         // array of OperationalEntityReference
-    impactedStakeholders: [],   // array of AnnotatedReference (StakeholderCategory)
-    impactedDomains: [],        // array of AnnotatedReference (Domain)
-    dependencies: [],           // array of OperationalEntityReference (OR)
+    implementedONs: [],         // array of OperationalEntityReference {id, code, title, type}
+    impactedStakeholders: [],   // array of AnnotatedReference {id, title, note} (StakeholderCategory)
+    impactedDomains: [],        // array of AnnotatedReference {id, title, note} (Domain)
+    dependencies: [],           // array of OperationalEntityReference {id, code, title, type} (OR)
 
     // rich-text fields — available in standard and extended projections only
     statement: '',              // rich text
@@ -51,11 +72,11 @@ export const OperationalRequirement = {
     additionalDocumentation: [],// attachments — standard and extended only
 
     // derived fields — available in extended projection only (reverse-traversal)
-    implementedByORs: [],       // ORs whose implementedONs references this ON — ON only
-    implementedByOCs: [],       // OCs whose implementedORs references this OR — OR only
-    decommissionedByOCs: [],    // OCs whose decommissionedORs references this OR — OR only
-    refinedBy: [],              // requirements whose refinesParents references this requirement
-    requiredByORs: [],          // ORs whose dependencies references this OR — OR only
+    implementedByORs: [],       // array of OperationalEntityReference {id, code, title, type} — ON only
+    implementedByOCs: [],       // array of OperationalEntityReference {id, code, title, type} — OR only
+    decommissionedByOCs: [],    // array of OperationalEntityReference {id, code, title, type} — OR only
+    refinedBy: [],              // array of OperationalEntityReference {id, code, title, type}
+    requiredByORs: [],          // array of OperationalEntityReference {id, code, title, type} — OR only
 };
 
 export const Milestone = {
@@ -64,7 +85,7 @@ export const Milestone = {
     name: '',        // short text
     description: '', // rich text, optional
     eventTypes: [],  // array of MilestoneEventType keys
-    wave: null       // Wave object or null
+    wave: null       // Wave {id, year, sequenceNumber, implementationDate} or null
 };
 
 export const OperationalChange = {
@@ -79,9 +100,9 @@ export const OperationalChange = {
     maturity: '',               // DRAFT | ADVANCED | MATURE
     path: [],                   // array of strings
     drg: '',                    // DraftingGroup enum
-    implementedORs: [],         // array of OperationalEntityReference
-    decommissionedORs: [],      // array of OperationalEntityReference
-    dependencies: [],           // array of OperationalEntityReference (OC)
+    implementedORs: [],         // array of OperationalEntityReference {id, code, title, type}
+    decommissionedORs: [],      // array of OperationalEntityReference {id, code, title, type}
+    dependencies: [],           // array of OperationalEntityReference {id, code, title, type} (OC)
     milestones: [],             // array of Milestone
     cost: null,                 // integer, in MW, optional
     orCosts: [],                // array of ORCost
@@ -95,5 +116,5 @@ export const OperationalChange = {
     additionalDocumentation: [],// attachments — standard and extended only
 
     // derived fields — available in extended projection only (reverse-traversal)
-    requiredByOCs: [],          // OCs whose dependencies references this OC
+    requiredByOCs: [],          // array of OperationalEntityReference {id, code, title, type}
 };

@@ -2,13 +2,13 @@ import { Router } from 'express';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
- * Handles versioned REST operations with user context, optimistic locking, multi-context support, content filtering, and consistent error handling.
+ * Handles versioned REST operations with user context, optimistic locking, edition context, content filtering, and consistent error handling.
  */
 export class VersionedItemRouter {
     constructor(service, entityName, entityDisplayName = null) {
         this.service = service;
-        this.entityName = entityName; // for logging (e.g., 'operational-requirement')
-        this.entityDisplayName = entityDisplayName || entityName; // for error messages (e.g., 'Operational Requirement')
+        this.entityName = entityName;
+        this.entityDisplayName = entityDisplayName || entityName;
         this.router = Router();
         this.setupRoutes();
     }
@@ -25,17 +25,10 @@ export class VersionedItemRouter {
     }
 
     /**
-     * Extract baseline ID from query parameters
+     * Extract edition ID from query parameters
      */
-    getBaselineId(req) {
-        return req.query.baseline || null;
-    }
-
-    /**
-     * Extract fromWave ID from query parameters
-     */
-    getFromWaveId(req) {
-        return req.query.fromWave || null;
+    getEditionId(req) {
+        return req.query.edition || null;
     }
 
     /**
@@ -63,23 +56,22 @@ export class VersionedItemRouter {
     }
 
     setupRoutes() {
-        // List all entities (latest versions, baseline context, wave filtered, and content filtered)
+        // List all entities (repository or edition context, content filtered)
         this.router.get('/', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                const baselineId = this.getBaselineId(req);
-                const fromWaveId = this.getFromWaveId(req);
+                const editionId = this.getEditionId(req);
                 const filters = this.getContentFilters(req);
                 const projection = this.getProjection(req, ['summary', 'standard']);
 
-                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}, projection: ${projection}, filters:`, filters);
-                const entities = await this.service.getAll(userId, baselineId, fromWaveId, filters, projection);
+                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, editionId: ${editionId}, projection: ${projection}, filters:`, filters);
+                const entities = await this.service.getAll(userId, editionId, filters, projection);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+                } else if (error.message.includes('Edition not found') || error.message.includes('ODPEdition not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Invalid filter parameter') || error.message.includes('Invalid category ID') || error.message.includes('Invalid projection')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
@@ -89,20 +81,18 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get entity by ID (latest version, baseline context, or wave filtered)
+        // Get entity by ID (repository or edition context)
         this.router.get('/:id', async (req, res) => {
             try {
                 const userId = this.getUserId(req);
-                const baselineId = this.getBaselineId(req);
-                const fromWaveId = this.getFromWaveId(req);
+                const editionId = this.getEditionId(req);
                 const projection = this.getProjection(req, ['standard', 'extended']);
-                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, baselineId: ${baselineId}, fromWaveId: ${fromWaveId}, projection: ${projection}`);
-                const entity = await this.service.getById(req.params.id, userId, baselineId, fromWaveId, projection);
+                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, editionId: ${editionId}, projection: ${projection}`);
+                const entity = await this.service.getById(req.params.id, userId, editionId, projection);
                 if (!entity) {
-                    const context = baselineId ? ` in baseline ${baselineId}` : '';
-                    const waveContext = fromWaveId ? ` (wave filtered)` : '';
+                    const context = editionId ? ` in edition ${editionId}` : '';
                     return res.status(404).json({
-                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found${context}${waveContext}` }
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found${context}` }
                     });
                 }
                 res.json(entity);
@@ -110,7 +100,7 @@ export class VersionedItemRouter {
                 console.error(`Error fetching ${this.entityName}:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Baseline not found') || error.message.includes('Wave not found')) {
+                } else if (error.message.includes('Edition not found') || error.message.includes('ODPEdition not found')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Invalid projection')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });

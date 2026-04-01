@@ -344,66 +344,16 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Resolve edition to baseline and fromWave parameters
-     */
-    async resolveEditionContext(editionId) {
-        try {
-            const response = await fetch(`${this.baseUrl}/odp-editions/${editionId}`, {
-                headers: this.createHeaders()
-            });
-
-            if (response.status === 404) {
-                throw new Error(`Edition with ID ${editionId} not found`);
-            }
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const edition = await response.json();
-            return {
-                baselineId: edition.baseline?.id,
-                fromWaveId: edition.startsFromWave?.id,
-                editionTitle: edition.title
-            };
-        } catch (error) {
-            throw new Error(`Error resolving edition: ${error.message}`);
-        }
-    }
-
-    /**
-     * Build URL with context parameters (baseline/fromWave from edition or direct params)
+     * Build URL with optional edition context parameter.
+     * Edition resolution happens server-side — CLI passes edition ID directly.
      */
     async buildContextUrl(baseUrl, options) {
         let url = baseUrl;
         let contextDisplay = '';
 
-        // Validate mutual exclusivity
-        if (options.baseline && options.edition) {
-            throw new Error('Cannot use both --baseline and --edition options together');
-        }
-
         if (options.edition) {
-            // Resolve edition to baseline + fromWave
-            const context = await this.resolveEditionContext(options.edition);
-            const params = [];
-
-            if (context.baselineId) {
-                params.push(`baseline=${context.baselineId}`);
-            }
-            if (context.fromWaveId) {
-                params.push(`fromWave=${context.fromWaveId}`);
-            }
-
-            if (params.length > 0) {
-                url += `?${params.join('&')}`;
-            }
-
+            url += `?edition=${options.edition}`;
             contextDisplay = ` (Edition ${options.edition})`;
-        } else if (options.baseline) {
-            // Direct baseline parameter
-            url += `?baseline=${options.baseline}`;
-            contextDisplay = ` (Baseline ${options.baseline})`;
         }
 
         return { url, contextDisplay };
@@ -428,14 +378,13 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Override list command for versioned items with baseline and edition support
+     * Override list command for versioned items with edition support
      */
     addListCommand(itemCommand) {
         itemCommand
             .command('list')
-            .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
-            .option('--baseline <id>', 'Show items as they existed in specified baseline')
-            .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
+            .description(`List all ${this.displayName}s (repository or edition context)`)
+            .option('--edition <id>', 'Show items in specified edition context')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
@@ -456,7 +405,7 @@ export class VersionedCommands extends BaseCommands {
 
                     if (!response.ok) {
                         if (response.status === 400) {
-                            throw new Error(`Invalid baseline or wave ID in context`);
+                            throw new Error(`Invalid edition ID in context`);
                         }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
@@ -493,14 +442,13 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Override show command for versioned items with baseline and edition support
+     * Override show command for versioned items with edition support
      */
     addShowCommand(itemCommand) {
         itemCommand
             .command('show <itemId>')
-            .description(`Show a specific ${this.displayName} (latest version, baseline context, or edition context)`)
-            .option('--baseline <id>', 'Show item as it existed in specified baseline')
-            .option('--edition <id>', 'Show item in specified edition context (mutually exclusive with --baseline)')
+            .description(`Show a specific ${this.displayName} (repository or edition context)`)
+            .option('--edition <id>', 'Show item in specified edition context')
             .option('--projection <projection>', 'Response projection: standard | extended (default: standard)', 'standard')
             .action(async (itemId, options) => {
                 try {
@@ -526,7 +474,7 @@ export class VersionedCommands extends BaseCommands {
 
                     if (!response.ok) {
                         if (response.status === 400) {
-                            throw new Error(`Invalid baseline or wave ID in context`);
+                            throw new Error(`Invalid edition ID in context`);
                         }
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
@@ -624,8 +572,7 @@ export class VersionedCommands extends BaseCommands {
      */
     addEditionSupportToMilestoneCommand(command) {
         return command
-            .option('--baseline <id>', 'Show as it existed in specified baseline')
-            .option('--edition <id>', 'Show in specified edition context (mutually exclusive with --baseline)');
+            .option('--edition <id>', 'Show in specified edition context');
     }
 
     /**

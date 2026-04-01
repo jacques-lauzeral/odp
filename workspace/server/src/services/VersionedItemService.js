@@ -1,14 +1,22 @@
 import {
     createTransaction,
     commitTransaction,
-    rollbackTransaction
+    rollbackTransaction,
+    odpEditionStore
 } from '../store/index.js';
 
 /**
  * VersionedItemService provides versioned CRUD operations with transaction management and user context.
  * Root class for operational entities (versioned with optimistic locking).
- * Enhanced with multi-context operations for baseline-aware and wave filtering support.
- * Enhanced with content filtering support for operational entities.
+ *
+ * Multi-context support:
+ *   - No context: latest versions
+ *   - Baseline context: baselineId provided
+ *   - Edition context: editionId provided — service resolves to {baselineId, editionId} via
+ *     odpEditionStore().resolveContext(), then passes both to the store
+ *
+ * baselineId and editionId are mutually exclusive. Wave filtering has been removed —
+ * edition content selection is pre-computed at edition creation time.
  */
 export class VersionedItemService {
     constructor(storeGetter) {
@@ -69,19 +77,14 @@ export class VersionedItemService {
         try {
             const store = this.getStore();
 
-            // Fetch current version within the same transaction
             const current = await store.findById(itemId, tx);
             if (!current) {
                 throw new Error('Entity not found');
             }
 
-            // Delegate field merging to subclass
             const completePayload = await this._computePatchedPayload(current, patchPayload);
-
-            // Validate the complete payload
             await this._validateUpdatePayload(completePayload, itemId);
 
-            // Perform the update within the same transaction
             const entity = await store.update(itemId, completePayload, expectedVersionId, tx);
             await commitTransaction(tx);
             return entity;
@@ -92,17 +95,30 @@ export class VersionedItemService {
     }
 
     /**
-     * Get entity by ID (latest version, baseline context, or wave filtered)
-     * @param {number} itemId - Item ID
-     * @param {string} userId - User ID
-     * @param {number|null} baselineId - Optional baseline ID for historical context
-     * @param {number|null} fromWaveId - Optional wave ID for filtering
+     * Get entity by ID with optional edition context.
+     * When editionId is provided, the service resolves it to {baselineId, editionId}
+     * before calling the store.
+     *
+     * @param {number} itemId
+     * @param {string} userId
+     * @param {number|null} editionId - Edition context, or null for latest version
+     * @param {string} projection
      */
-    async getById(itemId, userId, baselineId = null, fromWaveId = null, projection = 'standard') {
+    async getById(itemId, userId, editionId = null, projection = 'standard') {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entity = await store.findById(itemId, tx, baselineId, fromWaveId, projection);
+
+            let resolvedBaselineId = null;
+            let resolvedEditionId = null;
+
+            if (editionId !== null) {
+                const context = await odpEditionStore().resolveContext(editionId, tx);
+                resolvedBaselineId = context.baselineId;
+                resolvedEditionId = context.editionId;
+            }
+
+            const entity = await store.findById(itemId, tx, resolvedBaselineId, resolvedEditionId, projection);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -144,17 +160,30 @@ export class VersionedItemService {
     }
 
     /**
-     * List all entities (latest versions, baseline context, wave filtered, and content filtered)
-     * @param {string} userId - User ID
-     * @param {number|null} baselineId - Optional baseline ID for historical context
-     * @param {number|null} fromWaveId - Optional wave ID for filtering
-     * @param {object} filters - Optional content filtering parameters
+     * List all entities with optional edition context, content filtering, and projection.
+     * When editionId is provided, the service resolves it to {baselineId, editionId} via
+     * odpEditionStore().resolveContext() and passes both to the store.
+     *
+     * @param {string} userId
+     * @param {number|null} editionId - Edition context, or null for latest versions
+     * @param {object} filters - Content filters
+     * @param {string} projection
      */
-    async getAll(userId, baselineId = null, fromWaveId = null, filters = {}, projection = 'standard') {
+    async getAll(userId, editionId = null, filters = {}, projection = 'standard') {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entities = await store.findAll(tx, baselineId, fromWaveId, filters, projection);
+
+            let resolvedBaselineId = null;
+            let resolvedFilters = filters;
+
+            if (editionId !== null) {
+                const context = await odpEditionStore().resolveContext(editionId, tx);
+                resolvedBaselineId = context.baselineId;
+                resolvedFilters = { ...filters, editionId: context.editionId };
+            }
+
+            const entities = await store.findAll(tx, resolvedBaselineId, resolvedFilters, projection);
             await commitTransaction(tx);
             return entities;
         } catch (error) {

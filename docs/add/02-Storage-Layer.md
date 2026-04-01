@@ -9,7 +9,7 @@ Key responsibilities:
 - Hierarchical relationship management (REFINES)
 - Versioned entity lifecycle with optimistic locking
 - Complete relationship payload per version (no inheritance fallback)
-- Multi-context querying (baseline snapshots and wave filtering)
+- Multi-context querying (baseline snapshots and edition filtering)
 - Transaction boundary management
 
 ---
@@ -153,10 +153,9 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
 - `_buildRelationshipReferences(versionId, tx, fields?)` — loads relationships as Reference objects `{id, title, code}`; `fields` is the projection field list — only relationships whose field name is included are fetched
 - `_createRelationshipsFromIds(versionId, relationshipIds, tx)` — writes all relationships for a version
-- `buildFindAllQuery(baselineId, fromWaveId, filters, fields?)` — builds entity-specific optimised Cypher for list queries; `fields` is the projection field list driving which OPTIONAL MATCHes and RETURN columns are emitted
-- `findAll(tx, baselineId?, fromWaveId?, filters?, projection?)` — list with multi-context, content filtering, and projection support; throws if `projection = 'extended'`
-- `findById(itemId, tx, baselineId?, fromWaveId?, projection?)` — single item with projection support; throws if `projection = 'summary'`; `extended` projection appends derived fields via additional reverse-traversal queries
-- `_checkWaveFilter(itemId, fromWaveId, tx, baselineId?)` — per-entity wave filter logic (abstract)
+- `buildFindAllQuery(baselineId, filters, fields?)` — builds entity-specific optimised Cypher for list queries; `fields` is the projection field list driving which OPTIONAL MATCHes and RETURN columns are emitted; when `filters.editionId` is present the `HAS_ITEMS` relationship is aliased as `r` and `$editionId IN r.editions` is added as a WHERE condition
+- `findAll(tx, baselineId?, filters?, projection?)` — list with multi-context, content filtering, and projection support; throws if `projection = 'extended'`
+- `findById(itemId, tx, baselineId?, editionId?, projection?)` — single item with context and projection support; throws if `projection = 'summary'`; `extended` projection appends derived fields via additional reverse-traversal queries; returns `null` if item not found or not a member of the edition
 - `_getEntityTypeForCode(data)` — returns `'ON'`, `'OR'`, or `'OC'` for code generation (abstract)
 
 **Internal helpers:**
@@ -215,10 +214,11 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `impactedDomains` | `IMPACTS_DOMAIN` → Domain | OR only | `note` |
 | `dependencies` | `DEPENDS_ON` → OR Item | OR only | — |
 
-**`findAll(tx, baselineId?, fromWaveId?, filters?, projection?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Wave filtering applies a 3-hop `REFINES|IMPLEMENTS` upward cascade. Filters object:
+**`findAll(tx, baselineId?, filters?, projection?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Filters object:
 
 | Filter field | Type | Behaviour |
 |---|---|---|
+| `editionId` | `number\|null` | Edition membership — `$editionId IN r.editions` on baseline `HAS_ITEMS` relationship; requires `baselineId` to be set |
 | `type` | `'ON'\|'OR'\|null` | Exact match on version field |
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS across statement, rationale, flows, privateNotes |
@@ -260,10 +260,11 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegated** to an internal `OperationalChangeMilestoneStore` instance (see §4.6). Additional public methods:
 
-**`findAll(tx, baselineId?, fromWaveId?, filters?, projection?)`** — wave filtering is applied as a post-query set operation via `_computeWaveFilteredChanges`. `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('change', projection)` drives which scalar fields are projected in the RETURN clause, and whether `_buildRelationshipReferences` is called per item. Filters object:
+**`findAll(tx, baselineId?, filters?, projection?)`** — wave filtering is removed; edition filtering applied via `filters.editionId` when present. `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('change', projection)` drives which scalar fields are projected in the RETURN clause, and whether `_buildRelationshipReferences` is called per item. Filters object:
 
 | Filter field | Type | Behaviour |
 |---|---|---|
+| `editionId` | `number\|null` | Edition membership — `$editionId IN r.editions` on baseline `HAS_ITEMS` relationship; requires `baselineId` to be set |
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS search across purpose, initialState, finalState, details, privateNotes |
 | `drg` | `string\|null` | Exact match on DRG enum value |
@@ -276,7 +277,7 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 
 **`findChangesThatDecommissionRequirement(requirementItemId, tx, baselineId?, fromWaveId?)`** → `Array<{id, title, code}>` — OCs that DECOMMISSION the given OR
 
-**`findById(itemId, tx, baselineId?, fromWaveId?, projection?)`** — `extended` projection appends the following derived field via reverse-traversal query:
+**`findById(itemId, tx, baselineId?, editionId?, projection?)`** — `extended` projection appends the following derived field via reverse-traversal query:
 
 | Derived field | Query |
 |---|---|
@@ -286,9 +287,9 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 
 **Milestone delegation** — the following are thin wrappers that forward to `this.milestoneStore`:
 
-- **`findMilestonesByChange(itemId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
-- **`findMilestoneByKey(itemId, milestoneKey, tx, baselineId?, fromWaveId?)`** → `object|null`
-- **`findMilestonesByWave(waveId, tx, baselineId?, fromWaveId?)`** → `Array<object>`
+- **`findMilestonesByChange(itemId, tx, baselineId?)`** → `Array<object>`
+- **`findMilestoneByKey(itemId, milestoneKey, tx, baselineId?)`** → `object|null`
+- **`findMilestonesByWave(waveId, tx, baselineId?)`** → `Array<object>`
 
 **Not implemented in this store**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`. Dependencies are returned inline as part of `findById` / `findAll` results.
 
@@ -314,13 +315,32 @@ Inherits `BaseStore`. `update()` and `delete()` are overridden to throw `StoreEr
 
 Inherits `BaseStore`. `update()` and `delete()` are overridden to throw `StoreError` — editions are immutable.
 
-**`create({title, type, baselineId, startsFromWaveId}, tx)`** — validates baseline and wave exist, creates node with `EXPOSES` → Baseline and `STARTS_FROM` → Wave. Returns the bare edition object (no sub-objects). Throws `StoreError('Invalid baseline reference')` or `StoreError('Invalid wave reference')`.
+**`create({title, type, baselineId, startsFromWaveId, minONMaturity?}, tx)`** — creates the `ODPEdition` node (storing `minONMaturity` as a node property when provided), creates `EXPOSES` → Baseline and `STARTS_FROM` → Wave relationships, then runs the content selection algorithm via `_computeEditionVersionIds()` and patches matching `HAS_ITEMS` relationships by appending the edition ID to their `editions` array property.
 
 **`findById(id, tx)`** → edition enriched with `baseline: {id, title, createdAt}` and `startsFromWave: {id, year, sequenceNumber, implementationDate}` sub-objects
 
 **`findAll(tx)`** → all editions with same enrichment, ordered by `createdAt DESC`
 
-**`resolveContext(odpEditionId, tx)`** → `{baselineId, fromWaveId}` — used exclusively by the route layer to resolve an edition to its context parameters. Throws `StoreError('ODPEdition not found')`.
+**`resolveContext(editionId, tx)`** → `{baselineId, editionId}` — used exclusively by the service layer to resolve an edition to its context parameters before calling operational store methods. Throws `StoreError('Edition not found')`.
+
+**`_computeEditionVersionIds(baselineId, fromWaveId, minONMaturity, tx)`** *(private)* — runs the two-path selection algorithm and returns a `Set` of version node IDs already present in baseline `HAS_ITEMS` relationships.
+
+**Tentative path (ON/OR-based):**
+1. **Lead ONs** — baseline `HAS_ITEMS` ON versions where `tentative IS NOT NULL`. If `fromWaveId` set: `effectiveEnd(tentative) > fromWave.implementationDate` where `effectiveEnd([x,y]) = {y+1}-01-01`. If `minONMaturity` set: maturity numeric rank >= minONMaturity rank (`DRAFT=0`, `ADVANCED=1`, `MATURE=2`); absent maturity treated as `DRAFT`.
+2. **Downward ON cascade** — baseline ON versions that `REFINES*1..` any accepted ON item.
+3. **OR inclusion** — baseline OR versions that `IMPLEMENTS` any accepted ON item.
+4. **Downward OR cascade** — baseline OR versions that `REFINES*1..` any accepted OR item.
+
+**OC path (change-based):**
+5. **Lead OCs** — baseline OC versions with at least one milestone. If `fromWaveId` set: milestone must have a `TARGETS` wave with `implementationDate >= fromWave.implementationDate`.
+6. **OR/ON inclusion** — baseline OR versions `IMPLEMENTS|DECOMMISSIONS`-linked to accepted OC versions; baseline ON versions `IMPLEMENTS`-linked to those OR versions.
+
+Result is the union of both paths. The patch query:
+```cypher
+MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version)
+WHERE id(baseline) = $baselineId AND id(version) IN $versionIds
+SET r.editions = coalesce(r.editions, []) + $editionId
+```
 
 ---
 
@@ -445,8 +465,8 @@ The client must supply `expectedVersionId` (the `versionId` of the version it la
 (Milestone)-[:TARGETS]->(Wave)
 
 // Management
-(Baseline)-[:HAS_ITEMS]->(ORVersion)
-(Baseline)-[:HAS_ITEMS]->(OCVersion)
+(Baseline)-[:HAS_ITEMS {editions: [editionId, ...]}]->(ORVersion)
+(Baseline)-[:HAS_ITEMS {editions: [editionId, ...]}]->(OCVersion)
 (ODIPEdition)-[:EXPOSES]->(Baseline)
 (ODIPEdition)-[:STARTS_FROM]->(Wave)
 ```
@@ -490,9 +510,7 @@ All operational entity queries accept optional context parameters that transpare
 |---|---|---|
 | Current state | none | Returns latest versions via `LATEST_VERSION` |
 | Historical | `baselineId` | Returns versions captured in baseline via `HAS_ITEMS` |
-| Wave-filtered | `fromWaveId` | Returns latest versions; OCs filtered by milestone date, ORs by OC reference |
-| Historical + filtered | `baselineId` + `fromWaveId` | Combines both |
-| ODIP Edition | `odpEditionId` | Route layer resolves to `baselineId` + `fromWaveId` before calling store |
+| Edition | `baselineId` + `filters.editionId` | Returns baseline versions where `$editionId IN r.editions` on the `HAS_ITEMS` relationship |
 
 ### 7.2 Baseline Queries
 
@@ -513,37 +531,37 @@ WHERE id(baseline) = $baselineId AND id(item) = $itemId
 RETURN item, version
 ```
 
-### 7.3 Wave Filtering
+### 7.3 Edition Filtering
 
-Wave filtering cascades from milestones upward:
+Edition content is pre-computed at edition creation time by `ODPEditionStore._computeEditionVersionIds()`. The algorithm marks matching `HAS_ITEMS` relationships by appending the edition ID to their `editions` array property. At query time, filtering is a single extra WHERE condition on the aliased relationship:
 
-1. **OCs**: include only those with at least one milestone targeting a wave at or after `fromWave`
-2. **ORs**: include only those referenced by a filtered OC via `IMPLEMENTS` or `DECOMMISSIONS`, plus all ancestors via `REFINES` (upward cascade)
-
-```javascript
-// Wave filter check for OC
-async _checkWaveFilter(version, fromWaveId, transaction) {
-    if (this.entityType === 'OperationalChange') {
-        return await this._hasMilestoneAtOrAfterWave(version.versionId, fromWaveId, transaction);
-    } else if (this.entityType === 'OperationalRequirement') {
-        return await this._isReferencedByFilteredOCs(version.itemId, fromWaveId, transaction);
-    }
-    return true;
-}
+```cypher
+MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version)-[:VERSION_OF]->(item)
+WHERE id(baseline) = $baselineId
+  AND $editionId IN r.editions
 ```
 
-### 7.4 ODIP Edition Parameter Resolution
+`HAS_ITEMS` relationships with no `editions` property (created before any edition referenced the baseline) are treated as not belonging to any edition. Multiple editions per baseline are supported — each appends its own ID to the relevant subset of `HAS_ITEMS` relationships.
 
-`ODIPEdition` resolution happens at the **route layer**, not in the store. The store always receives resolved `baselineId` and `fromWaveId` parameters and has no knowledge of editions.
+### 7.4 Edition Context Resolution
+
+Edition context resolution happens in the **service layer** (`VersionedItemService`), not the route or store layer. The route extracts `req.query.edition` and passes it as `editionId` to `service.getAll()` or `service.getById()`. The service calls `odpEditionStore().resolveContext(editionId, tx)` within the same transaction to obtain `{baselineId, editionId}`, then passes `baselineId` as the positional argument and `editionId` via `filters.editionId` to the store.
+
+The store has no knowledge of editions beyond the `$editionId IN r.editions` filter condition. `HAS_ITEMS` relationships carry an `editions` array property populated at edition creation time by `_computeEditionVersionIds()`.
 
 ```javascript
-// Route layer
-if (req.query.odpEdition) {
-    const context = await odpEditionStore().resolveContext(req.query.odpEdition, tx);
-    baselineId = context.baselineId;
-    fromWaveId = context.fromWaveId;
+// Service layer (VersionedItemService.getAll)
+if (editionId !== null) {
+    const context = await odpEditionStore().resolveContext(editionId, tx);
+    resolvedBaselineId = context.baselineId;
+    resolvedFilters = { ...filters, editionId: context.editionId };
 }
-const results = await operationalRequirementStore().findAll(tx, baselineId, fromWaveId);
+await store.findAll(tx, resolvedBaselineId, resolvedFilters, projection);
+
+// Store layer (buildFindAllQuery, baseline path)
+MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version)-[:VERSION_OF]->(item)
+WHERE id(baseline) = $baselineId
+  AND $editionId IN r.editions   ← only when edition context active
 ```
 
 ---

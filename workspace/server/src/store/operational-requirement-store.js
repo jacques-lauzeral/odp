@@ -6,7 +6,14 @@ import { getProjectionFields } from '../../../shared/src/index.js';
  * Store for OperationalRequirement items with versioning and relationship management.
  * Handles REFINES, IMPACTS_STAKEHOLDER, IMPACTS_DOMAIN, REFERENCES (ON only),
  * IMPLEMENTS (OR only), and DEPENDS_ON (OR only) relationships.
- * Supports baseline, wave filtering, and content filtering for multi-context operations.
+ *
+ * Supports three query contexts (mutually exclusive):
+ *   - No context: latest versions via LATEST_VERSION
+ *   - Baseline context: versions captured in baseline via HAS_ITEMS
+ *   - Edition context: baseline versions further filtered by HAS_ITEMS.editions membership
+ *
+ * Wave filtering has been removed — edition content selection is pre-computed at
+ * edition creation time by ODPEditionStore._computeEditionVersionIds().
  */
 export class OperationalRequirementStore extends VersionedItemStore {
     constructor(driver) {
@@ -15,46 +22,50 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Get entity type prefix for code generation
-     * Returns 'ON' or 'OR' based on the type field in data
-     * @param {object} data - Entity data
-     * @returns {string} Entity type prefix ('ON' or 'OR')
      */
     _getEntityTypeForCode(data) {
-        // The type field determines if this is ON or OR
-        return data.type || 'OR'; // Default to 'OR' if not specified
+        return data.type || 'OR';
     }
 
-
     /**
-     * Optimized buildFindAllQuery for OperationalRequirementStore
-     * Loads ALL items with ALL relationships in a SINGLE query
-     * Eliminates N+1 query problem
+     * Build optimized single-query for findAll with multi-context, edition filtering,
+     * content filtering, and projection support.
+     *
+     * @param {number|null} baselineId - Baseline context (null = latest versions)
+     * @param {object} filters - Content filters; may include editionId
+     * @param {string[]|null} fields - Projection field list (null = include all)
+     * @returns {{cypher: string, params: object}}
      */
-    buildFindAllQuery(baselineId, fromWaveId, filters, fields = null) {
+    buildFindAllQuery(baselineId, filters, fields = null) {
         try {
-            // If no field list provided, include everything (standard behaviour)
+            console.log(`[ORStore.buildFindAllQuery] baselineId: ${baselineId}, filters: ${JSON.stringify(filters)}`);
             const includeField = fields ? (f => fields.includes(f)) : () => true;
 
             let cypher, params = {};
             let whereConditions = [];
 
-            // Base query structure with relationship loading
             if (baselineId === null) {
                 // Latest versions query
                 cypher = `
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
             `;
             } else {
-                // Baseline versions query
+                // Baseline (or edition) versions query — alias HAS_ITEMS as r for edition filter
                 const numericBaselineId = this.normalizeId(baselineId);
                 cypher = `
-                MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
                 WHERE id(baseline) = $baselineId
             `;
                 params.baselineId = numericBaselineId;
+
+                // Edition membership filter
+                if (filters && filters.editionId !== undefined && filters.editionId !== null) {
+                    whereConditions.push('$editionId IN r.editions');
+                    params.editionId = this.normalizeId(filters.editionId);
+                }
             }
 
-            // Apply content filtering conditions (existing logic - unchanged)
+            // Content filtering conditions
             if (filters && Object.keys(filters).length > 0) {
                 if (filters.type) {
                     whereConditions.push('version.type = $type');
@@ -110,8 +121,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }`);
                     params.domain = this.normalizeId(filters.domain);
                 }
-
-                // Relationship-based filtering
                 if (filters.refinesParent !== undefined && filters.refinesParent !== null) {
                     whereConditions.push(`EXISTS {
                     MATCH (version)-[:REFINES]->(parent:${this.nodeLabel})
@@ -229,10 +238,16 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Refactored findAll - uses single query with aggregated relationships
-     * No more N+1 queries!
+     * Find all requirements with optional baseline/edition context, content filtering,
+     * and projection.
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId - Baseline context; must be set when editionId is in filters
+     * @param {object} filters - Content filters; may include editionId
+     * @param {string} projection - 'summary' | 'standard' (default); 'extended' rejected
+     * @returns {Promise<Array<object>>}
      */
-    async findAll(transaction, baselineId = null, fromWaveId = null, filters = {}, projection = 'standard') {
+    async findAll(transaction, baselineId = null, filters = {}, projection = 'standard') {
         try {
             if (projection === 'extended') {
                 throw new StoreError("Projection 'extended' is not valid on findAll — use findById");
@@ -241,11 +256,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const fields = getProjectionFields('requirement', projection);
             const includeField = f => fields.includes(f);
 
-            // Step 1: Execute single optimized query
-            const queryObj = this.buildFindAllQuery(baselineId, null, filters, fields);
+            const queryObj = this.buildFindAllQuery(baselineId, filters, fields);
+            console.log(`[ORStore.findAll] params: ${JSON.stringify(queryObj.params)}`);
             const result = await transaction.run(queryObj.cypher, queryObj.params);
+            console.log(`[ORStore.findAll] query returned ${result.records.length} record(s)`);
 
-            // Step 2: Transform records
             const items = [];
             for (const record of result.records) {
                 const item = {
@@ -258,7 +273,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     createdBy: record.get('createdBy'),
                 };
 
-                // Scalar version fields — only those in projection
                 const scalarVersionFields = [
                     'type', 'drg', 'maturity', 'path', 'tentative',
                     'statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'
@@ -269,7 +283,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     }
                 }
 
-                // Relationship fields — only those in projection
                 const relFields = [
                     'refinesParents', 'impactedStakeholders', 'impactedDomains',
                     'implementedONs', 'strategicDocuments', 'dependencies'
@@ -283,20 +296,98 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 items.push(item);
             }
 
-            // Step 3: Apply wave filtering
-            if (fromWaveId !== null) {
-                const acceptedReqIds = await this._computeWaveFilteredRequirements(
-                    fromWaveId,
-                    transaction,
-                    baselineId
-                );
-                return items.filter(item => acceptedReqIds.has(item.itemId));
-            }
-
             return items;
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find all ${this.nodeLabel}s: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find OperationalRequirement by ID with optional context and projection.
+     *
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId - When set, baselineId must also be set
+     * @param {string} projection - 'standard' | 'extended' (default: 'standard'); 'summary' rejected
+     * @returns {Promise<object|null>}
+     */
+    async findById(itemId, transaction, baselineId = null, editionId = null, projection = 'standard') {
+        try {
+            if (projection === 'summary') {
+                throw new StoreError("Projection 'summary' is not valid on findById — use findAll");
+            }
+
+            // Step 1: Get standard result via base class
+            const baseResult = await super.findById(itemId, transaction, baselineId, editionId);
+            if (!baseResult) {
+                return null;
+            }
+
+            if (projection !== 'extended') {
+                return baseResult;
+            }
+
+            // Step 2: Extended — append derived (reverse-traversal) fields
+            const numericItemId = this.normalizeId(itemId);
+
+            const implementedByORsResult = await transaction.run(`
+                MATCH (orVersion:${this.versionLabel})-[:IMPLEMENTS]->(item:${this.nodeLabel})
+                MATCH (orVersion)-[:VERSION_OF]->(orItem:${this.nodeLabel})-[:LATEST_VERSION]->(orVersion)
+                WHERE id(item) = $itemId
+                RETURN id(orItem) as id, orItem.title as title, orItem.code as code, orVersion.type as type
+                ORDER BY orItem.title
+            `, { itemId: numericItemId });
+            const implementedByORs = implementedByORsResult.records.map(r => this._buildReference(r));
+
+            const implementedByOCsResult = await transaction.run(`
+                MATCH (ocVersion:OperationalChangeVersion)-[:IMPLEMENTS]->(item:${this.nodeLabel})
+                MATCH (ocVersion)-[:VERSION_OF]->(ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
+                WHERE id(item) = $itemId
+                RETURN id(ocItem) as id, ocItem.title as title, ocItem.code as code
+                ORDER BY ocItem.title
+            `, { itemId: numericItemId });
+            const implementedByOCs = implementedByOCsResult.records.map(r => this._buildReference(r));
+
+            const decommissionedByOCsResult = await transaction.run(`
+                MATCH (ocVersion:OperationalChangeVersion)-[:DECOMMISSIONS]->(item:${this.nodeLabel})
+                MATCH (ocVersion)-[:VERSION_OF]->(ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
+                WHERE id(item) = $itemId
+                RETURN id(ocItem) as id, ocItem.title as title, ocItem.code as code
+                ORDER BY ocItem.title
+            `, { itemId: numericItemId });
+            const decommissionedByOCs = decommissionedByOCsResult.records.map(r => this._buildReference(r));
+
+            const refinedByResult = await transaction.run(`
+                MATCH (childVersion:${this.versionLabel})-[:REFINES]->(item:${this.nodeLabel})
+                MATCH (childVersion)-[:VERSION_OF]->(childItem:${this.nodeLabel})-[:LATEST_VERSION]->(childVersion)
+                WHERE id(item) = $itemId
+                RETURN id(childItem) as id, childItem.title as title, childItem.code as code, childVersion.type as type
+                ORDER BY childItem.title
+            `, { itemId: numericItemId });
+            const refinedBy = refinedByResult.records.map(r => this._buildReference(r));
+
+            const requiredByORsResult = await transaction.run(`
+                MATCH (orVersion:${this.versionLabel})-[:DEPENDS_ON]->(item:${this.nodeLabel})
+                MATCH (orVersion)-[:VERSION_OF]->(orItem:${this.nodeLabel})-[:LATEST_VERSION]->(orVersion)
+                WHERE id(item) = $itemId
+                RETURN id(orItem) as id, orItem.title as title, orItem.code as code, orVersion.type as type
+                ORDER BY orItem.title
+            `, { itemId: numericItemId });
+            const requiredByORs = requiredByORsResult.records.map(r => this._buildReference(r));
+
+            return {
+                ...baseResult,
+                implementedByORs,
+                implementedByOCs,
+                decommissionedByOCs,
+                refinedBy,
+                requiredByORs,
+            };
+        } catch (error) {
+            if (error instanceof StoreError) throw error;
+            throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
         }
     }
 
@@ -308,29 +399,17 @@ export class OperationalRequirementStore extends VersionedItemStore {
         return array
             .filter(item => item !== null)
             .map(item => {
-                // Normalize all ID fields
                 const normalized = { ...item };
-                if (normalized.id !== undefined) {
-                    normalized.id = this.normalizeId(normalized.id);
-                }
-                if (normalized.itemId !== undefined) {
-                    normalized.itemId = this.normalizeId(normalized.itemId);
-                }
-                if (normalized.versionId !== undefined) {
-                    normalized.versionId = this.normalizeId(normalized.versionId);
-                }
-                if (normalized.version !== undefined) {
-                    normalized.version = this.normalizeId(normalized.version);
-                }
+                if (normalized.id !== undefined) normalized.id = this.normalizeId(normalized.id);
+                if (normalized.itemId !== undefined) normalized.itemId = this.normalizeId(normalized.itemId);
+                if (normalized.versionId !== undefined) normalized.versionId = this.normalizeId(normalized.versionId);
+                if (normalized.version !== undefined) normalized.version = this.normalizeId(normalized.version);
                 return normalized;
             });
     }
 
     /**
      * Extract relationship ID arrays from input data
-     * @private
-     * @param {object} data - Input data
-     * @returns {object} - {relationshipIds, ...contentData}
      */
     async _extractRelationshipIdsFromInput(data, currentVersionId, transaction) {
         const {
@@ -346,11 +425,11 @@ export class OperationalRequirementStore extends VersionedItemStore {
         return {
             relationshipIds: {
                 refinesParents: refinesParents || [],
-                impactedStakeholders: impactedStakeholders || [],   // OR only — {id, note?}
-                impactedDomains: impactedDomains || [],             // OR only — {id, note?}
-                implementedONs: implementedONs || [],               // OR only — item IDs
-                strategicDocuments: strategicDocuments || [],       // ON only — {id, note?}
-                dependencies: dependencies || []                    // OR only — item IDs
+                impactedStakeholders: impactedStakeholders || [],
+                impactedDomains: impactedDomains || [],
+                implementedONs: implementedONs || [],
+                strategicDocuments: strategicDocuments || [],
+                dependencies: dependencies || []
             },
             ...contentData
         };
@@ -358,14 +437,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Build relationship Reference objects for display from version relationships
-     * @private
-     * @param {number} versionId - ItemVersion node ID
-     * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<object>} Relationships with Reference objects
      */
     async _buildRelationshipReferences(versionId, transaction) {
         try {
-            // REFINES relationships (to OperationalRequirement Items)
             const refinesResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:REFINES]->(parent:OperationalRequirement)-[:LATEST_VERSION]->(parentVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId
@@ -374,7 +448,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId });
             const refinesParents = refinesResult.records.map(record => this._buildReference(record));
 
-            // IMPACTS_STAKEHOLDER relationships (with note) — OR only
             const stakeholderResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[rel:IMPACTS_STAKEHOLDER]->(target:StakeholderCategory)
                 WHERE id(version) = $versionId
@@ -387,7 +460,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 note: record.get('note') || ''
             }));
 
-            // IMPACTS_DOMAIN relationships (with note) — OR only
             const domainResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[rel:IMPACTS_DOMAIN]->(target:Domain)
                 WHERE id(version) = $versionId
@@ -400,7 +472,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 note: record.get('note') || ''
             }));
 
-            // IMPLEMENTS relationships (to ON-type requirements) — OR only
             const implementedONsResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:IMPLEMENTS]->(target:OperationalRequirement)-[:LATEST_VERSION]->(targetVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId AND targetVersion.type = 'ON'
@@ -409,7 +480,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId });
             const implementedONs = implementedONsResult.records.map(record => this._buildReference(record));
 
-            // REFERENCES relationships to ReferenceDocuments (with note) — ON only
             const referencesResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[rel:REFERENCES]->(doc:ReferenceDocument)
                 WHERE id(version) = $versionId
@@ -423,7 +493,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 note: record.get('note') || ''
             }));
 
-            // DEPENDS_ON relationships (Version -> Item) — OR only
             const dependsOnResult = await transaction.run(`
                 MATCH (version:${this.versionLabel})-[:DEPENDS_ON]->(reqItem:OperationalRequirement)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
                 WHERE id(version) = $versionId
@@ -432,32 +501,14 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId });
             const dependencies = dependsOnResult.records.map(record => this._buildReference(record));
 
-            return {
-                refinesParents,
-                impactedStakeholders,
-                impactedDomains,
-                implementedONs,
-                strategicDocuments,
-                dependencies
-            };
+            return { refinesParents, impactedStakeholders, impactedDomains, implementedONs, strategicDocuments, dependencies };
         } catch (error) {
             throw new StoreError(`Failed to build relationship references: ${error.message}`, error);
         }
     }
 
     /**
-     * Extract relationship ID arrays from existing version for inheritance
-     * @private
-     * @param {number} versionId - ItemVersion node ID
-     * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<object>} Current relationships as ID arrays
-     */
-    /**
      * Create fresh relationships for a version from ID arrays
-     * @private
-     * @param {number} versionId - ItemVersion node ID
-     * @param {object} relationshipIds - Relationship data with ID arrays
-     * @param {Transaction} transaction - Transaction instance
      */
     async _createRelationshipsFromIds(versionId, relationshipIds, transaction) {
         try {
@@ -482,7 +533,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             const itemId = this.normalizeId(versionCheck.records[0].get('itemId'));
 
-            // Create REFINES relationships
             if (refinesParents.length > 0) {
                 const normalizedParentIds = refinesParents.map(id => this.normalizeId(id));
                 if (normalizedParentIds.includes(itemId)) {
@@ -499,13 +549,9 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId, parentIds: normalizedParentIds });
             }
 
-            // Create IMPACTS_STAKEHOLDER relationships (OR only)
             await this._createAnnotatedRelationships(versionId, 'IMPACTS_STAKEHOLDER', 'StakeholderCategory', impactedStakeholders, transaction);
-
-            // Create IMPACTS_DOMAIN relationships (OR only)
             await this._createAnnotatedRelationships(versionId, 'IMPACTS_DOMAIN', 'Domain', impactedDomains, transaction);
 
-            // Create IMPLEMENTS relationships (OR only)
             if (implementedONs.length > 0) {
                 const normalizedONIds = implementedONs.map(id => this.normalizeId(id));
                 await this._validateReferences('OperationalRequirement', normalizedONIds, transaction);
@@ -519,10 +565,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId, onIds: normalizedONIds });
             }
 
-            // Create REFERENCES relationships to ReferenceDocuments (ON only)
             await this._createAnnotatedRelationships(versionId, 'REFERENCES', 'ReferenceDocument', strategicDocuments, transaction);
 
-            // Create DEPENDS_ON relationships (OR only)
             if (dependencies.length > 0) {
                 const normalizedDepIds = dependencies.map(id => this.normalizeId(id));
                 if (normalizedDepIds.includes(itemId)) {
@@ -547,7 +591,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Create annotated relationships (with optional note property) to a target label
-     * @private
      */
     async _createAnnotatedRelationships(versionId, relType, targetLabel, refs, transaction) {
         if (refs.length === 0) return;
@@ -570,236 +613,23 @@ export class OperationalRequirementStore extends VersionedItemStore {
         }
     }
 
-
-    /**
-     * Compute set of requirement IDs that pass wave filter (multi-hop expansion)
-     * Optimized: runs complex queries once instead of per-requirement
-     *
-     * Logic:
-     * 1. Find OCs with milestones at/after fromWave
-     * 2. Find requirements directly implemented/decommissioned by those OCs
-     * 3. Climb up the hierarchy via REFINES/IMPLEMENTS relationships (up to 3 levels)
-     *
-     * LIMITATIONS:
-     * - Fixed depth of 3 hops (directReq -> parent -> grandparent -> great-grandparent)
-     * - Cannot use variable-length patterns [:REFINES|IMPLEMENTS*0..] because the path
-     *   alternates between Item and Version nodes (Version -> Item -> Version -> Item)
-     * - Deeper hierarchies (>3 levels) will be truncated
-     * - If your requirement hierarchies exceed 3 levels, increase the hop count below
-     */
-    async _computeWaveFilteredRequirements(fromWaveId, transaction, baselineId = null) {
-        try {
-            const normalizedFromWaveId = this.normalizeId(fromWaveId);
-            let query, params;
-
-            if (baselineId === null) {
-                query = `
-                MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-                
-                // Step 1: Find OCs with milestones at/after fromWave
-                MATCH (change:OperationalChange)-[:LATEST_VERSION]->(changeVersion:OperationalChangeVersion)
-                WHERE EXISTS {
-                    MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                    WHERE (targetWave.year > fromWave.year)
-                       OR (targetWave.year = fromWave.year AND 
-                           COALESCE(targetWave.sequenceNumber, 0) >= COALESCE(fromWave.sequenceNumber, 0))
-                }
-                
-                // Step 2: Find requirements directly implemented/decommissioned by these OCs
-                MATCH (changeVersion)-[:IMPLEMENTS|DECOMMISSIONS]->(directReq:OperationalRequirement)
-                MATCH (directReq)-[:LATEST_VERSION]->(directReqVersion:OperationalRequirementVersion)
-                
-                // Step 3: Multi-hop expansion (3 levels)
-                
-                // Hop 1: Direct parents/ONs
-                OPTIONAL MATCH (reachable1:OperationalRequirement)-[:LATEST_VERSION]->(reachable1Version:OperationalRequirementVersion)
-                WHERE (directReqVersion)-[:REFINES|IMPLEMENTS]->(reachable1)
-                
-                // Hop 2: Grandparents/parent ONs
-                OPTIONAL MATCH (reachable2:OperationalRequirement)-[:LATEST_VERSION]->(reachable2Version:OperationalRequirementVersion)
-                WHERE (reachable1Version)-[:REFINES|IMPLEMENTS]->(reachable2)
-                
-                // Hop 3: Great-grandparents/grandparent ONs
-                OPTIONAL MATCH (reachable3:OperationalRequirement)-[:LATEST_VERSION]->(reachable3Version:OperationalRequirementVersion)
-                WHERE (reachable2Version)-[:REFINES|IMPLEMENTS]->(reachable3)
-                
-                RETURN collect(DISTINCT id(directReq)) + 
-                       collect(DISTINCT id(reachable1)) + 
-                       collect(DISTINCT id(reachable2)) + 
-                       collect(DISTINCT id(reachable3)) as acceptedReqIds
-            `;
-                params = { fromWaveId: normalizedFromWaveId };
-            } else {
-                const numericBaselineId = this.normalizeId(baselineId);
-                query = `
-                MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-                MATCH (baseline:Baseline)-[:HAS_ITEMS]->(changeVersion:OperationalChangeVersion)
-                      -[:VERSION_OF]->(change:OperationalChange)
-                WHERE id(baseline) = $baselineId
-                AND EXISTS {
-                    MATCH (changeVersion)<-[:BELONGS_TO]-(milestone)-[:TARGETS]->(targetWave:Wave)
-                    WHERE (targetWave.year > fromWave.year)
-                       OR (targetWave.year = fromWave.year AND 
-                           COALESCE(targetWave.sequenceNumber, 0) >= COALESCE(fromWave.sequenceNumber, 0))
-                }
-                
-                // Step 2: Find requirements satisfied/superseded by these OCs
-                MATCH (changeVersion)-[:IMPLEMENTS|DECOMMISSIONS]->(directReq:OperationalRequirement)
-                MATCH (baseline)-[:HAS_ITEMS]->(directReqVersion:OperationalRequirementVersion)
-                      -[:VERSION_OF]->(directReq)
-                
-                // Step 3: Multi-hop expansion (3 levels) within baseline
-                
-                // Hop 1: Direct parents/ONs
-                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(reachable1Version:OperationalRequirementVersion)
-                              -[:VERSION_OF]->(reachable1:OperationalRequirement)
-                WHERE (directReqVersion)-[:REFINES|IMPLEMENTS]->(reachable1)
-                
-                // Hop 2: Grandparents/parent ONs
-                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(reachable2Version:OperationalRequirementVersion)
-                              -[:VERSION_OF]->(reachable2:OperationalRequirement)
-                WHERE (reachable1Version)-[:REFINES|IMPLEMENTS]->(reachable2)
-                
-                // Hop 3: Great-grandparents/grandparent ONs
-                OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(reachable3Version:OperationalRequirementVersion)
-                              -[:VERSION_OF]->(reachable3:OperationalRequirement)
-                WHERE (reachable2Version)-[:REFINES|IMPLEMENTS]->(reachable3)
-                
-                RETURN collect(DISTINCT id(directReq)) + 
-                       collect(DISTINCT id(reachable1)) + 
-                       collect(DISTINCT id(reachable2)) + 
-                       collect(DISTINCT id(reachable3)) as acceptedReqIds
-            `;
-                params = { fromWaveId: normalizedFromWaveId, baselineId: numericBaselineId };
-            }
-
-            const result = await transaction.run(query, params);
-            const reqIds = result.records[0]?.get('acceptedReqIds') || [];
-
-            // Filter out null values that may come from optional matches
-            return new Set(reqIds.filter(id => id !== null).map(id => this.normalizeId(id)));
-        } catch (error) {
-            throw new StoreError(
-                `Failed to compute wave-filtered requirements: ${error.message}`,
-                error
-            );
-        }
-    }
-
-    /**
-     * Find OperationalRequirement by ID with multi-context support
-     * @param {number} itemId - OperationalRequirement Item ID
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<object|null>} OperationalRequirement with relationships or null
-     */
-    async findById(itemId, transaction, baselineId = null, fromWaveId = null, projection = 'standard') {
-        try {
-            if (projection === 'summary') {
-                throw new StoreError("Projection 'summary' is not valid on findById — use findAll");
-            }
-
-            // Step 1: Get standard result
-            const baseResult = await super.findById(itemId, transaction, baselineId);
-            if (!baseResult) {
-                return null;
-            }
-
-            // Step 2: Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const passesFilter = await this._checkWaveFilter(baseResult.itemId, fromWaveId, transaction, baselineId);
-                if (!passesFilter) return null;
-            }
-
-            if (projection !== 'extended') {
-                return baseResult;
-            }
-
-            // Step 3: Extended — append derived (reverse-traversal) fields
-            const numericItemId = this.normalizeId(itemId);
-
-            // implementedByORs — ORs whose implementedONs references this ON
-            const implementedByORsResult = await transaction.run(`
-                MATCH (orVersion:${this.versionLabel})-[:IMPLEMENTS]->(item:${this.nodeLabel})
-                MATCH (orVersion)-[:VERSION_OF]->(orItem:${this.nodeLabel})-[:LATEST_VERSION]->(orVersion)
-                WHERE id(item) = $itemId
-                RETURN id(orItem) as id, orItem.title as title, orItem.code as code, orVersion.type as type
-                ORDER BY orItem.title
-            `, { itemId: numericItemId });
-            const implementedByORs = implementedByORsResult.records.map(r => this._buildReference(r));
-
-            // implementedByOCs — OCs whose implementedORs references this OR
-            const implementedByOCsResult = await transaction.run(`
-                MATCH (ocVersion:OperationalChangeVersion)-[:IMPLEMENTS]->(item:${this.nodeLabel})
-                MATCH (ocVersion)-[:VERSION_OF]->(ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
-                WHERE id(item) = $itemId
-                RETURN id(ocItem) as id, ocItem.title as title, ocItem.code as code
-                ORDER BY ocItem.title
-            `, { itemId: numericItemId });
-            const implementedByOCs = implementedByOCsResult.records.map(r => this._buildReference(r));
-
-            // decommissionedByOCs — OCs whose decommissionedORs references this OR
-            const decommissionedByOCsResult = await transaction.run(`
-                MATCH (ocVersion:OperationalChangeVersion)-[:DECOMMISSIONS]->(item:${this.nodeLabel})
-                MATCH (ocVersion)-[:VERSION_OF]->(ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
-                WHERE id(item) = $itemId
-                RETURN id(ocItem) as id, ocItem.title as title, ocItem.code as code
-                ORDER BY ocItem.title
-            `, { itemId: numericItemId });
-            const decommissionedByOCs = decommissionedByOCsResult.records.map(r => this._buildReference(r));
-
-            // refinedBy — requirements whose refinesParents references this requirement
-            const refinedByResult = await transaction.run(`
-                MATCH (childVersion:${this.versionLabel})-[:REFINES]->(item:${this.nodeLabel})
-                MATCH (childVersion)-[:VERSION_OF]->(childItem:${this.nodeLabel})-[:LATEST_VERSION]->(childVersion)
-                WHERE id(item) = $itemId
-                RETURN id(childItem) as id, childItem.title as title, childItem.code as code, childVersion.type as type
-                ORDER BY childItem.title
-            `, { itemId: numericItemId });
-            const refinedBy = refinedByResult.records.map(r => this._buildReference(r));
-
-            // requiredByORs — ORs whose dependencies references this OR
-            const requiredByORsResult = await transaction.run(`
-                MATCH (orVersion:${this.versionLabel})-[:DEPENDS_ON]->(item:${this.nodeLabel})
-                MATCH (orVersion)-[:VERSION_OF]->(orItem:${this.nodeLabel})-[:LATEST_VERSION]->(orVersion)
-                WHERE id(item) = $itemId
-                RETURN id(orItem) as id, orItem.title as title, orItem.code as code, orVersion.type as type
-                ORDER BY orItem.title
-            `, { itemId: numericItemId });
-            const requiredByORs = requiredByORsResult.records.map(r => this._buildReference(r));
-
-            return {
-                ...baseResult,
-                implementedByORs,
-                implementedByOCs,
-                decommissionedByOCs,
-                refinedBy,
-                requiredByORs,
-            };
-        } catch (error) {
-            if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to find ${this.nodeLabel} by ID with multi-context: ${error.message}`, error);
-        }
-    }
-
-    // Additional query methods with baseline and wave filtering support
+    // =========================================================================
+    // Additional query methods
+    // =========================================================================
 
     /**
      * Find requirements that are children of the given requirement (inverse REFINES)
-     * @param {number} itemId - Parent requirement Item ID
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Child requirements with Reference structure
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @returns {Promise<Array<object>>}
      */
-    async findChildren(itemId, transaction, baselineId = null, fromWaveId = null) {
+    async findChildren(itemId, transaction, baselineId = null) {
         try {
             const normalizedItemId = this.normalizeId(itemId);
             let query, params;
 
             if (baselineId === null) {
-                // Latest versions query
                 query = `
                     MATCH (parent:OperationalRequirement)<-[:REFINES]-(childVersion:OperationalRequirementVersion)
                     MATCH (childVersion)-[:VERSION_OF]->(child:OperationalRequirement)
@@ -810,7 +640,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 `;
                 params = { itemId: normalizedItemId };
             } else {
-                // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(childVersion:OperationalRequirementVersion)-[:REFINES]->(parent:OperationalRequirement)
@@ -823,21 +652,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             const result = await transaction.run(query, params);
-            const children = result.records.map(record => this._buildReference(record));
-
-            // Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const filteredChildren = [];
-                for (const child of children) {
-                    const passesFilter = await this._checkWaveFilter(child.id, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredChildren.push(child);
-                    }
-                }
-                return filteredChildren;
-            }
-
-            return children;
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find children requirements: ${error.message}`, error);
         }
@@ -845,20 +660,16 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Find requirements that impact a specific item
-     * @param {string} targetLabel - Target item label ('StakeholderCategories', 'Data', 'Services')
-     * @param {number} targetId - Target item ID
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Requirements that impact the target with Reference structure
+     * @param {string} targetLabel - 'StakeholderCategory' | 'Domain'
+     * @param {number} targetId
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @returns {Promise<Array<object>>}
      */
-    async findRequirementsThatImpact(targetLabel, targetId, transaction, baselineId = null, fromWaveId = null) {
+    async findRequirementsThatImpact(targetLabel, targetId, transaction, baselineId = null) {
         try {
             const normalizedTargetId = this.normalizeId(targetId);
-
-            // Determine relationship type based on target label
             const relType = targetLabel === 'StakeholderCategory' ? 'IMPACTS_STAKEHOLDER' : 'IMPACTS_DOMAIN';
-
             let query, params;
 
             if (baselineId === null) {
@@ -884,21 +695,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             const result = await transaction.run(query, params);
-            const requirements = result.records.map(record => this._buildReference(record));
-
-            // Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const filteredRequirements = [];
-                for (const requirement of requirements) {
-                    const passesFilter = await this._checkWaveFilter(requirement.id, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredRequirements.push(requirement);
-                    }
-                }
-                return filteredRequirements;
-            }
-
-            return requirements;
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find requirements that impact ${targetLabel}: ${error.message}`, error);
         }
@@ -906,19 +703,17 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Find requirements that implement a specific ON-type requirement
-     * @param {number} onItemId - ON-type requirement Item ID
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Requirements that implement the ON with Reference structure
+     * @param {number} onItemId
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @returns {Promise<Array<object>>}
      */
-    async findRequirementsThatImplement(onItemId, transaction, baselineId = null, fromWaveId = null) {
+    async findRequirementsThatImplement(onItemId, transaction, baselineId = null) {
         try {
             const normalizedOnId = this.normalizeId(onItemId);
             let query, params;
 
             if (baselineId === null) {
-                // Latest versions query
                 query = `
                 MATCH (on:OperationalRequirement)<-[:IMPLEMENTS]-(version:OperationalRequirementVersion)
                 MATCH (version)-[:VERSION_OF]->(item:OperationalRequirement)
@@ -929,7 +724,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `;
                 params = { onItemId: normalizedOnId };
             } else {
-                // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
                 MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalRequirementVersion)-[:IMPLEMENTS]->(on:OperationalRequirement)
@@ -942,21 +736,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             const result = await transaction.run(query, params);
-            const requirements = result.records.map(record => this._buildReference(record));
-
-            // Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const filteredRequirements = [];
-                for (const requirement of requirements) {
-                    const passesFilter = await this._checkWaveFilter(requirement.id, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredRequirements.push(requirement);
-                    }
-                }
-                return filteredRequirements;
-            }
-
-            return requirements;
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find requirements that implement ON: ${error.message}`, error);
         }
@@ -964,19 +744,17 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Find parent requirements for a specific requirement
-     * @param {number} itemId - Child requirement Item ID
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Parent requirements with Reference structure
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @returns {Promise<Array<object>>}
      */
-    async findParents(itemId, transaction, baselineId = null, fromWaveId = null) {
+    async findParents(itemId, transaction, baselineId = null) {
         try {
             const normalizedItemId = this.normalizeId(itemId);
             let query, params;
 
             if (baselineId === null) {
-                // Latest versions query
                 query = `
                     MATCH (child:OperationalRequirement)-[:LATEST_VERSION]->(childVersion:OperationalRequirementVersion)
                     MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
@@ -987,14 +765,13 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 `;
                 params = { itemId: normalizedItemId };
             } else {
-                // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(childVersion:OperationalRequirementVersion)-[:VERSION_OF]->(child:OperationalRequirement)
                     MATCH (childVersion)-[:REFINES]->(parent:OperationalRequirement)
                     OPTIONAL MATCH (baseline)-[:HAS_ITEMS]->(parentVersion:OperationalRequirementVersion)-[:VERSION_OF]->(parent)
                     WHERE id(baseline) = $baselineId AND id(child) = $itemId
-                    RETURN id(parent) as id, parent.title as title, 
+                    RETURN id(parent) as id, parent.title as title,
                            CASE WHEN parentVersion IS NOT NULL THEN parentVersion.type ELSE 'N/A' END as type
                     ORDER BY parent.title
                 `;
@@ -1002,21 +779,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             const result = await transaction.run(query, params);
-            const parents = result.records.map(record => this._buildReference(record));
-
-            // Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const filteredParents = [];
-                for (const parent of parents) {
-                    const passesFilter = await this._checkWaveFilter(parent.id, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredParents.push(parent);
-                    }
-                }
-                return filteredParents;
-            }
-
-            return parents;
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find parent requirements: ${error.message}`, error);
         }
@@ -1024,17 +787,15 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
     /**
      * Find all root requirements (no parents)
-     * @param {Transaction} transaction - Transaction instance
-     * @param {number|null} baselineId - Optional baseline context
-     * @param {number|null} fromWaveId - Optional wave filtering
-     * @returns {Promise<Array<object>>} Root requirements with Reference structure
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @returns {Promise<Array<object>>}
      */
-    async findRoots(transaction, baselineId = null, fromWaveId = null) {
+    async findRoots(transaction, baselineId = null) {
         try {
             let query, params = {};
 
             if (baselineId === null) {
-                // Latest versions query
                 query = `
                     MATCH (item:OperationalRequirement)-[:LATEST_VERSION]->(version:OperationalRequirementVersion)
                     WHERE NOT EXISTS((version)-[:REFINES]->(:OperationalRequirement))
@@ -1042,7 +803,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     ORDER BY item.title
                 `;
             } else {
-                // Baseline versions query
                 const numericBaselineId = this.normalizeId(baselineId);
                 query = `
                     MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalRequirementVersion)-[:VERSION_OF]->(item:OperationalRequirement)
@@ -1054,34 +814,14 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             const result = await transaction.run(query, params);
-            const roots = result.records.map(record => this._buildReference(record));
-
-            // Apply wave filtering if specified
-            if (fromWaveId !== null) {
-                const filteredRoots = [];
-                for (const root of roots) {
-                    const passesFilter = await this._checkWaveFilter(root.id, fromWaveId, transaction, baselineId);
-                    if (passesFilter) {
-                        filteredRoots.push(root);
-                    }
-                }
-                return filteredRoots;
-            }
-
-            return roots;
+            return result.records.map(record => this._buildReference(record));
         } catch (error) {
             throw new StoreError(`Failed to find root requirements: ${error.message}`, error);
         }
     }
 
     /**
-     * Check whether adding a REFINES edge from itemId to candidateParentId would create a cycle.
-     * Returns true if (candidateParent)-[:REFINES*]->(item) path already exists.
-     *
-     * @param {number} itemId - The item that would do the refining
-     * @param {number} candidateParentId - The item that would be refined
-     * @param {Transaction} transaction
-     * @returns {Promise<boolean>}
+     * Check whether adding a REFINES edge would create a cycle.
      */
     async hasRefinesCycle(itemId, candidateParentId, transaction) {
         try {
@@ -1102,13 +842,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Check whether adding a DEPENDS_ON edge from itemId to candidateDependencyId would create a cycle.
-     * Returns true if (candidateDependency)-[:DEPENDS_ON*]->(item) path already exists.
-     *
-     * @param {number} itemId - The item that would declare the dependency
-     * @param {number} candidateDependencyId - The item that would be depended on
-     * @param {Transaction} transaction
-     * @returns {Promise<boolean>}
+     * Check whether adding a DEPENDS_ON edge would create a cycle.
      */
     async hasDependsOnCycle(itemId, candidateDependencyId, transaction) {
         try {

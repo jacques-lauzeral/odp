@@ -6,7 +6,7 @@ The ODIP data model is organised into three categories of entities:
 
 - **Setup Entities** — reference data configured once and referenced throughout (reference documents, stakeholder categories, domains, bandwidths, waves)
 - **Operational Entities** — versioned content authored by contributors (operational requirements, operational changes)
-- **Management Entities** — immutable lifecycle records (baselines, ODIP editions)
+- **Management Entities** — immutable lifecycle records (baselines, editions)
 
 All entity definitions are centralised in the `@odp/shared` workspace package, providing a single source of truth consumed by the server, CLI, and web client.
 
@@ -39,7 +39,7 @@ shared/src/
     ├── drafting-groups.js    # DRG enum + validation helpers
     ├── maturity-levels.js    # Maturity level enum (DRAFT, ADVANCED, MATURE)
     ├── milestone-events.js   # Milestone event types
-    ├── odp-edition-types.js  # Edition type enum (ALPHA, BETA, RELEASE)
+    ├── odp-edition-types.js  # Edition type enum (DRAFT, OFFICIAL)
     ├── odp-elements.js       # Operational and management entity models
     ├── or-types.js           # OR type enum (ON, OR)
     ├── projections.js        # Projection definitions and field set mappings
@@ -266,22 +266,41 @@ An immutable snapshot of the repository at a point in time.
 | `title` | string | Short human-readable identifier |
 | `createdAt` | timestamp | |
 | `createdBy` | string | |
+| `capturedItemCount` | integer | Number of OR/OC versions captured at creation time |
 
 At creation, the baseline captures `HAS_ITEMS` relationships pointing to the specific `ItemVersion` nodes that were latest at that moment.
 
-#### ODIP Edition
+#### Edition
 
-A published edition of the ODIP, built from a baseline with a starting wave.
+A published edition of the ODIP, acting as a "saved query" over a baseline. An edition defines two optional, combinable content selection criteria — both may be absent, in which case the edition exposes the full baseline content.
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | integer | |
 | `title` | string | |
-| `type` | enum | ALPHA \| BETA \| RELEASE |
+| `type` | enum | DRAFT | OFFICIAL\|DRAFT | OFFICIAL\|DRAFT | OFFICIAL |
 | `createdAt` | timestamp | |
 | `createdBy` | string | |
+| `startsFromWave` | Wave reference | Optional — lower bound for both OC milestone filtering and ON tentative period filtering |
+| `minONMaturity` | enum | Optional — minimum maturity level for ON inclusion (DRAFT \| ADVANCED \| MATURE) |
 
-An ODIP Edition acts as a "saved query": it references a baseline and a starting wave, exposing only OCs with milestones at or after that wave, and only the ORs referenced by those filtered OCs.
+**Content selection algorithm**
+
+An edition selects content via two independent paths whose results are unioned:
+
+**Tentative path (ON/OR-based):**
+
+1. **Candidate ONs** — if `startsFromWave` is set, keep only ONs where `effectiveEnd(tentative) > startsFromWave.implementationDate`. ONs without a `tentative` field are excluded from this path. If no `startsFromWave`, all ONs with a `tentative` field are candidates.
+2. **Maturity filter** — if `minONMaturity` is set, keep only candidate ONs where `maturity >= minONMaturity`.
+3. **Downward ON cascade** — child ONs of accepted ONs are accepted recursively, regardless of their own maturity or tentative value.
+4. **OR inclusion** — ORs implementing any accepted ON are accepted; their refining ORs are accepted recursively (downward cascade).
+
+**OC path (change-based):**
+
+5. **Candidate OCs** — if `startsFromWave` is set, keep only OCs with at least one milestone where `milestone.wave.implementationDate >= startsFromWave.implementationDate`.
+6. **OR/ON inclusion** — ORs implemented or decommissioned by accepted OCs are accepted; ONs implemented by those ORs are accepted for structural completeness.
+
+**`tentative` boundary rule:** `effectiveEnd([y])` = `effectiveEnd([x, y])` = `{y+1}-01-01T00:00`. A single-year value `[2028]` is treated as `[2028, 2028]`, with effective end `2029-01-01T00:00`.
 
 ---
 
@@ -366,8 +385,8 @@ Milestones are independent — no sequencing or dependency between them is enfor
 (Item)-[:LATEST_VERSION]->(ItemVersion)    # Points to current version
 (ItemVersion)-[:VERSION_OF]->(Item)        # Back-reference
 (Baseline)-[:HAS_ITEMS]->(ItemVersion)     # Snapshot at baseline creation time
-(ODIPEdition)-[:EXPOSES]->(Baseline)
-(ODIPEdition)-[:STARTS_FROM]->(Wave)
+(Edition)-[:EXPOSES]->(Baseline)
+(Edition)-[:STARTS_FROM]->(Wave)
 ```
 
 ---
@@ -386,7 +405,8 @@ Queries accept optional context parameters that transparently select which versi
 |---|---|
 | none | Returns the latest version |
 | `baselineId` | Returns the version captured at baseline creation time |
-| `fromWaveId` | Filters OCs to those with milestones at or after the given wave |
+| `fromWaveId` | For OCs: filters to those with milestones at or after the given wave. For ONs: filters to those whose tentative period ends after the wave. |
+| `minONMaturity` | Filters ONs to those meeting the minimum maturity level; cascades to child ONs and implementing ORs |
 
 ### 5.3 Optimistic Locking
 
@@ -433,13 +453,13 @@ The `DraftingGroup` enum identifies the competency domain or drafting group resp
 | ADVANCED | Under work but good enough for prioritisation and ODIP edition display |
 | MATURE | Considered finalised for prioritisation and ODIP edition display |
 
-### 6.4 ODIP Edition Types
+### 6.4 Edition Types
 
 | Key | Meaning |
 |---|---|
-| ALPHA | Alpha edition |
-| BETA | Beta edition |
-| RELEASE | Official release edition |
+| DRAFT | OFFICIAL| Alpha edition |
+|DRAFT | OFFICIAL| Beta edition |
+|DRAFT | OFFICIAL | Official release edition |
 
 ### 6.5 Milestone Event Types
 

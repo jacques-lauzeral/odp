@@ -93,7 +93,15 @@ export default class ODPEditionsEntity {
                 width: '140px',
                 sortable: true,
                 type: 'entity-reference',
-                noneLabel: 'No Wave'
+                noneLabel: '—'
+            },
+            {
+                key: 'minONMaturity',
+                label: 'Min ON Maturity',
+                width: '130px',
+                sortable: true,
+                type: 'text',
+                format: (value) => value || '—'
             },
             {
                 key: 'createdBy',
@@ -116,7 +124,8 @@ export default class ODPEditionsEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
-            { key: 'startsFromWave', label: 'Wave' }
+            { key: 'startsFromWave', label: 'Wave' },
+            { key: 'minONMaturity', label: 'Min ON Maturity' }
         ];
     }
 

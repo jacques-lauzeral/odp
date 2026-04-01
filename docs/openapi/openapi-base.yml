@@ -816,7 +816,7 @@ components:
         title:
           type: string
 
-    ODPEdition:
+    Edition:
       type: object
       properties:
         id:
@@ -825,7 +825,7 @@ components:
           type: string
         type:
           type: string
-          enum: [ALPHA, BETA, RELEASE]
+          enum: [DRAFT, OFFICIAL]
         createdAt:
           type: string
           format: date-time
@@ -835,17 +835,31 @@ components:
           $ref: '#/components/schemas/AnnotatedReference'
         startsFromWave:
           $ref: '#/components/schemas/AnnotatedReference'
+          nullable: true
+          description: "Optional wave lower bound for OC milestone filtering and ON tentative period filtering"
+        minONMaturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
+          nullable: true
+          description: "Optional minimum ON maturity gate for edition content selection"
 
-    ODPEditionRequest:
+    EditionRequest:
       type: object
-      required: [title, type, baselineId, startsFromWaveId]
+      required: [title, type, baselineId]
       properties:
         title:
           type: string
         type:
           type: string
-          enum: [ALPHA, BETA, RELEASE]
+          enum: [DRAFT, OFFICIAL]
         baselineId:
           type: string
         startsFromWaveId:
           type: string
+          nullable: true
+          description: "Optional wave ID — lower bound for OC milestone filtering and ON tentative period filtering"
+        minONMaturity:
+          type: string
+          enum: [DRAFT, ADVANCED, MATURE]
+          nullable: true
+          description: "Optional minimum ON maturity gate for edition content selection"

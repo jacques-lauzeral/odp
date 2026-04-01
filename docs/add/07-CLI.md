@@ -60,9 +60,8 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 | Command | Action |
 |---|---|
-| `requirement list` | List (supports `--baseline`, `--edition`, filter flags, `--projection`) |
+| `requirement list` | List (repository or `--edition` context, filter flags, `--projection`) |
 | `requirement show <itemId>` | Show latest version (supports `--projection`) |
-| `requirement show <itemId> --baseline <id>` | Show in baseline context |
 | `requirement show <itemId> --edition <id>` | Show in edition context |
 | `requirement create <title>` | Create |
 | `requirement update <itemId> <expectedVersionId> <title>` | Full update (new version) |
@@ -83,9 +82,8 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 | Command | Action |
 |---|---|
-| `change list` | List (supports `--baseline`, `--edition`, filter flags, `--projection`) |
+| `change list` | List (repository or `--edition` context, filter flags, `--projection`) |
 | `change show <itemId>` | Show latest version (supports `--projection`) |
-| `change show <itemId> --baseline <id>` | Show in baseline context |
 | `change show <itemId> --edition <id>` | Show in edition context |
 | `change create <title>` | Create |
 | `change update <itemId> <expectedVersionId> <title>` | Full update (new version) |
@@ -109,9 +107,13 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `baseline list` | List all baselines |
 | `baseline show <id>` | Show baseline with item count |
 | `baseline create` | Create (snapshot of current state) |
-| `odp-edition list` | List all editions |
-| `odp-edition show <id>` | Show edition |
-| `odp-edition create` | Create edition |
+| `edition list` | List all editions |
+| `edition show <id>` | Show edition |
+| `edition create <title>` | Create edition |
+| `edition export <id> -o <path>` | Export edition as ZIP |
+| `edition export-all -o <path>` | Export full repository as ZIP |
+
+**`edition create` options**: `--from <waveId>` (optional wave lower bound), `--type DRAFT|OFFICIAL` (default: DRAFT), `--baseline <id>` (auto-created if omitted), `--min-on-maturity DRAFT|ADVANCED|MATURE` (optional ON maturity gate).
 
 ### Import / Export
 
@@ -164,7 +166,9 @@ The following command files were removed in the Edition 4 model update:
 
 ### VersionedCommands (operational entities)
 
-`VersionedCommands` extends `BaseCommands` and adds: version history, show-version, baseline/edition context resolution, and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
+`VersionedCommands` extends `BaseCommands` and adds: version history, show-version, edition context support, and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
+
+`addListCommand` and `addShowCommand` in `VersionedCommands` both support `--edition <id>` (optional). The `--baseline` option has been removed — baseline is an internal implementation detail not exposed in the CLI. Edition ID is passed directly as `?edition=<id>` to the API; server-side resolution handles baseline and wave context internally.
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--projection`. The projection value is validated before the request is issued; an invalid value exits with a non-zero code. The projection is appended as a query parameter only when non-default. List tables always include all rich-text columns, rendering `—` when the field is absent from the response.
 

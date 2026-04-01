@@ -281,7 +281,11 @@ Images can be embedded in Delta content as base64-encoded PNG data. The import p
 
 ## 8. ODIP Edition Context
 
-The edition picker (available in Elaboration, Planning, and Review activities) resolves to `baseline` + `fromWave` API parameters before any list or get request is issued. The web client never sends `odpEdition` as a raw query parameter to the service layer — resolution happens client-side by reading the selected edition's `baselineId` and `startsFromWaveId` fields.
+The edition picker (available in Elaboration, Planning, and Review activities) passes the selected edition ID directly to the API as `?edition=<id>`. Edition context resolution — mapping the edition to a baseline and optional wave — happens server-side. The web client never resolves `baselineId` or `startsFromWaveId` client-side.
+
+`AbstractInteractionActivity.buildQueryParams()` implements this: when `config.dataSource` is a numeric edition ID, it adds `queryParams.edition = editionContext` to every list or get request. No additional API call is made to fetch the edition object for resolution purposes.
+
+The Review activity (`review.js`) passes the edition ID directly as `config.dataSource` after target selection. All edition types (`DRAFT` and `OFFICIAL`) are available for review.
 
 ---
 
@@ -814,5 +818,37 @@ shared/src/model/
 `.prioritisation-workspace` root classes). It does not extend
 `abstract-interaction-activity.css` — the Prioritisation activity uses a custom
 board layout, not the collection+details two-pane pattern.
+
+---
+
+## 14. Edition Content Selection — Publication Activity Changes
+
+### 14.1 ODPEditionForm (`publication/odp-edition-form.js`)
+
+**Type field** — options updated to `DRAFT` / `OFFICIAL`.
+
+**`startsFromWave` field** — changed from `required: true` to `required: false`; help text updated to describe the dual role (OC milestone lower bound + ON tentative period filter); options include a "No wave (all content)" entry.
+
+**`minONMaturity` field** — new optional `select` field with four options: no gate, DRAFT, ADVANCED, MATURE. Controls the minimum ON maturity level for edition content selection.
+
+**`transformDataForSave()`** — handles absent `startsFromWave` (skips `startsFromWaveId`); strips empty `minONMaturity` before posting to API; default type is `'DRAFT'`.
+
+**`onValidate()`** — wave validation now conditional (only fires when a wave is actually selected).
+
+**`getWaveOptions()` / `formatWave()`** — wave label changed from `wave.name` to `${wave.year}#${wave.sequenceNumber}` throughout; sort key uses `year * 100 + sequenceNumber`.
+
+### 14.2 ODPEditionsEntity (`publication/odp-editions.js`)
+
+**Type column** — `enumLabels` and `enumStyles` updated to `DRAFT` / `OFFICIAL`.
+
+**`minONMaturity` column** — new text column; renders `'—'` when absent.
+
+**Grouping config** — `minONMaturity` added as a grouping option.
+
+### 14.3 PublicationActivity (`publication/publication.js`)
+
+**Type filter** — options updated to `DRAFT` / `OFFICIAL`.
+
+**`buildWaveOptions()`** — wave label changed from `wave.name` to `${wave.year}#${wave.sequenceNumber}`; options sorted by `year * 100 + sequenceNumber`.
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

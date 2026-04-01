@@ -44,7 +44,7 @@ export default class ChangesEntity {
                     const waves = this.extractAllWavesFromMilestones({ milestones: value });
                     if (!waves || waves.length === 0) return '-';
 
-                    const waveLabels = waves.map(wave => wave.name || 'Unknown');
+                    const waveLabels = waves.map(wave => wave.year && wave.sequenceNumber ? `${wave.year}#${wave.sequenceNumber}` : 'Unknown');
 
                     return waveLabels.join(', ');
                 },

@@ -1,4 +1,3 @@
-import ODPEditionTemplateRenderer from './export/ODPEditionTemplateRenderer.js';
 import archiver from 'archiver';
 import {
     createTransaction,
@@ -8,11 +7,12 @@ import {
     baselineStore,
     waveStore
 } from '../store/index.js';
+import { MaturityLevel, isMaturityLevelValid } from '../../../shared/src/index.js';
 
 /**
- * ODPEditionService provides ODIP Edition management operations.
- * Handles ODIP Edition creation with automatic baseline creation and immutable access.
- * ODIP Editions are read-only once created (no update/delete operations).
+ * ODPEditionService provides Edition management operations.
+ * Handles Edition creation with automatic baseline creation and immutable access.
+ * Editions are read-only once created (no update/delete operations).
  */
 export class ODPEditionService {
 
@@ -25,9 +25,8 @@ export class ODPEditionService {
      */
     async _validateBaselineReference(baselineId, transaction) {
         if (baselineId === null || baselineId === undefined) {
-            return; // Optional field - no validation needed
+            return;
         }
-
         const baseline = await baselineStore().findById(baselineId, transaction);
         if (!baseline) {
             throw new Error(`Baseline with ID ${baselineId} does not exist`);
@@ -45,12 +44,11 @@ export class ODPEditionService {
     }
 
     /**
-     * Validate ODIP Edition creation data
+     * Validate Edition creation data
      */
-    _validateODPEditionData(data) {
-        const { title, type, baselineId, startsFromWaveId } = data;
+    _validateEditionData(data) {
+        const { title, type, baselineId, startsFromWaveId, minONMaturity } = data;
 
-        // Required fields
         if (!title || typeof title !== 'string' || title.trim() === '') {
             throw new Error('Title is required and must be a non-empty string');
         }
@@ -67,55 +65,59 @@ export class ODPEditionService {
             throw new Error('startsFromWaveId is required and must be a string or number');
         }
 
-        // Optional baseline reference validation (type check only - existence checked in service)
         if (baselineId !== null && baselineId !== undefined) {
             if (typeof baselineId !== 'string' && typeof baselineId !== 'number') {
                 throw new Error('baselineId must be a string or number if provided');
             }
         }
 
+        if (minONMaturity !== null && minONMaturity !== undefined) {
+            if (!isMaturityLevelValid(minONMaturity)) {
+                throw new Error(`minONMaturity must be one of: ${Object.keys(MaturityLevel).join(', ')}`);
+            }
+        }
+
         return {
             title: title.trim(),
-            type: type,
+            type,
             baselineId: baselineId || null,
-            startsFromWaveId: startsFromWaveId
+            startsFromWaveId,
+            minONMaturity: minONMaturity || null
         };
     }
 
     // =============================================================================
-    // ODIP EDITION OPERATIONS (Create + Read only - ODIP Editions are immutable)
+    // EDITION OPERATIONS (Create + Read only — Editions are immutable)
     // =============================================================================
 
     /**
-     * Create new ODIP Edition with automatic baseline creation if not provided
+     * Create new Edition with automatic baseline creation if none provided.
+     * The store runs the content selection algorithm and marks HAS_ITEMS.editions
+     * within the same transaction.
      */
     async createODPEdition(data, userId) {
         const tx = createTransaction(userId);
         try {
-            const validatedData = this._validateODPEditionData(data);
+            const validatedData = this._validateEditionData(data);
 
-            // Validate wave reference exists (required)
             await this._validateWaveReference(validatedData.startsFromWaveId, tx);
 
-            // Handle baseline: validate if provided, or create new one
             let resolvedBaselineId = validatedData.baselineId;
 
             if (!resolvedBaselineId) {
-                // Create baseline automatically with generated title
                 const baselineTitle = `Auto-baseline for ${validatedData.title}`;
                 const baseline = await baselineStore().create({ title: baselineTitle }, tx);
                 resolvedBaselineId = baseline.id;
             } else {
-                // Validate provided baseline exists
                 await this._validateBaselineReference(resolvedBaselineId, tx);
             }
 
-            // Create ODIP Edition with resolved baseline ID
             const editionData = {
                 title: validatedData.title,
                 type: validatedData.type,
                 baselineId: resolvedBaselineId,
-                startsFromWaveId: validatedData.startsFromWaveId
+                startsFromWaveId: validatedData.startsFromWaveId,
+                minONMaturity: validatedData.minONMaturity
             };
 
             const edition = await odpEditionStore().create(editionData, tx);
@@ -129,7 +131,7 @@ export class ODPEditionService {
     }
 
     /**
-     * Get ODIP Edition by ID
+     * Get Edition by ID
      */
     async getODPEdition(id, userId) {
         const tx = createTransaction(userId);
@@ -144,7 +146,7 @@ export class ODPEditionService {
     }
 
     /**
-     * List all ODIP Editions
+     * List all Editions
      */
     async listODPEditions(userId) {
         const tx = createTransaction(userId);
@@ -159,10 +161,10 @@ export class ODPEditionService {
     }
 
     /**
-     * Export ODIP Edition or entire repository as ZIP archive
-     * @param {string|null} editionId - Edition ID for specific edition, null for entire repository
-     * @param {string} userId - User ID for transaction
-     * @returns {Promise<Buffer>} - ZIP file buffer
+     * Export Edition or entire repository as ZIP archive
+     * @param {string|null} editionId - Edition ID, or null for entire repository
+     * @param {string} userId
+     * @returns {Promise<Buffer>} ZIP file buffer
      */
     async exportAsAsciiDoc(editionId, userId) {
         const ODPEditionAggregator = (await import('./export/ODPEditionAggregator.js')).default;
@@ -212,5 +214,4 @@ export class ODPEditionService {
     }
 }
 
-// Export instance for route handlers
 export default new ODPEditionService();

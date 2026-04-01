@@ -80,10 +80,24 @@ export default class ODPEditionForm extends CollectionEntityForm {
                         label: 'Starts From Wave',
                         type: 'select',
                         modes: ['create', 'read'],
-                        required: true,
+                        required: false,
                         options: () => this.getWaveOptions(),
-                        helpText: 'Select the first wave for which this edition will provide information',
+                        helpText: 'Optional: select the wave lower bound for OC milestone filtering and ON tentative period filtering',
                         format: (value) => this.formatWave(value)
+                    },
+                    {
+                        key: 'minONMaturity',
+                        label: 'Min ON Maturity',
+                        type: 'select',
+                        modes: ['create', 'read'],
+                        required: false,
+                        options: [
+                            { value: '', label: 'No maturity gate' },
+                            { value: 'DRAFT', label: 'DRAFT — include all ONs with tentative' },
+                            { value: 'ADVANCED', label: 'ADVANCED — exclude DRAFT ONs' },
+                            { value: 'MATURE', label: 'MATURE — only finalised ONs' }
+                        ],
+                        helpText: 'Optional: minimum ON maturity level for edition content selection'
                     }
                 ]
             },
@@ -129,23 +143,24 @@ export default class ODPEditionForm extends CollectionEntityForm {
     transformDataForSave(data, mode, item) {
         const transformed = { ...data };
 
-        // Ensure required fields are present
         if (!transformed.title) transformed.title = '';
         if (!transformed.type) transformed.type = 'DRAFT';
 
-        // Convert string IDs to numbers for API
         if (transformed.baselineId) {
             transformed.baselineId = parseInt(transformed.baselineId, 10);
         }
 
-        // Handle startsFromWave - could be object or ID depending on source
         if (transformed.startsFromWave) {
             if (typeof transformed.startsFromWave === 'object') {
                 transformed.startsFromWaveId = parseInt(transformed.startsFromWave.id, 10);
-            } else {
+            } else if (transformed.startsFromWave !== '') {
                 transformed.startsFromWaveId = parseInt(transformed.startsFromWave, 10);
             }
-            delete transformed.startsFromWave; // Remove object, keep only ID for API
+            delete transformed.startsFromWave;
+        }
+
+        if (!transformed.minONMaturity) {
+            delete transformed.minONMaturity;
         }
 
         return transformed;
@@ -180,42 +195,27 @@ export default class ODPEditionForm extends CollectionEntityForm {
     async onValidate(data, mode, item) {
         const errors = [];
 
-        // Validate baseline exists (only if provided)
         if (data.baselineId) {
             const baselineId = parseInt(data.baselineId, 10);
             const baseline = this.supportData?.baselines?.find(b => parseInt(b.id, 10) === baselineId);
             if (!baseline) {
-                errors.push({
-                    field: 'baselineId',
-                    message: 'Selected baseline not found'
-                });
+                errors.push({ field: 'baselineId', message: 'Selected baseline not found' });
             }
         }
 
-        // Validate wave exists - handle both object and ID
-        let waveId = null;
         if (data.startsFromWave) {
-            if (typeof data.startsFromWave === 'object') {
-                waveId = parseInt(data.startsFromWave.id, 10);
-            } else {
-                waveId = parseInt(data.startsFromWave, 10);
+            let waveId = typeof data.startsFromWave === 'object'
+                ? parseInt(data.startsFromWave.id, 10)
+                : parseInt(data.startsFromWave, 10);
+            if (waveId) {
+                const wave = this.supportData?.waves?.find(w => parseInt(w.id, 10) === waveId);
+                if (!wave) {
+                    errors.push({ field: 'startsFromWave', message: 'Selected wave not found' });
+                }
             }
         }
 
-        if (waveId) {
-            const wave = this.supportData?.waves?.find(w => parseInt(w.id, 10) === waveId);
-            if (!wave) {
-                errors.push({
-                    field: 'startsFromWave',
-                    message: 'Selected wave not found'
-                });
-            }
-        }
-
-        return {
-            valid: errors.length === 0,
-            errors
-        };
+        return { valid: errors.length === 0, errors };
     }
 
     onCancel() {
@@ -242,17 +242,21 @@ export default class ODPEditionForm extends CollectionEntityForm {
     }
 
     getWaveOptions() {
+        const baseOptions = [{ value: '', label: 'No wave (all content)' }];
+
         if (!this.supportData?.waves) {
-            return [{ value: '', label: 'No waves available' }];
+            return baseOptions;
         }
 
-        return this.supportData.waves
-            .map(wave => ({
-                value: parseInt(wave.id, 10),
-                label: wave.name,
-                sortKey: (wave.year * 10) + (wave.quarter || 0)
-            }))
-            .sort((a, b) => a.sortKey - b.sortKey);
+        return baseOptions.concat(
+            this.supportData.waves
+                .map(wave => ({
+                    value: parseInt(wave.id, 10),
+                    label: `${wave.year}#${wave.sequenceNumber}`,
+                    sortKey: (wave.year * 100) + (wave.sequenceNumber || 0)
+                }))
+                .sort((a, b) => a.sortKey - b.sortKey)
+        );
     }
 
     // ====================
@@ -280,18 +284,15 @@ export default class ODPEditionForm extends CollectionEntityForm {
     }
 
     formatWave(value) {
-        if (!value) return 'No wave';
+        if (!value) return '—';
 
         if (typeof value === 'object' && value !== null) {
-            return value.name;
+            return `${value.year}#${value.sequenceNumber}`;
         }
 
-        // Look up in support data
         if (this.supportData?.waves) {
-            const wave = this.supportData.waves.find(w => w.id === value);
-            if (wave) {
-                return wave.name;
-            }
+            const wave = this.supportData.waves.find(w => w.id === value || parseInt(w.id) === parseInt(value));
+            if (wave) return `${wave.year}#${wave.sequenceNumber}`;
         }
 
         return `Wave ${value}`;
