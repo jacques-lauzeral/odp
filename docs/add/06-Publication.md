@@ -9,6 +9,13 @@ The publication pipeline converts ODIP database content into a served Antora web
 
 The pipeline is entirely server-side. The web client and CLI trigger it via REST endpoints; no content rendering happens on the client. All publication logic lives in `ODPEditionService`.
 
+> **Implementation status:** HTML site generation is fully operational. PDF (`--pdf`), Word (`--word`), and Antora ZIP generation are partially implemented but not yet production-ready:
+> - **PDF** — requires Ruby/Bundler + `asciidoctor-pdf` installed in the server container (not currently present in the Node 20 base image). The `bundle exec asciidoctor-pdf` command is invoked via `@antora/assembler` but silently produces no output until Ruby is available.
+> - **Word** — requires `pandoc` installed in the server container.
+> - **Antora ZIP** — the `/publications/antora` endpoint and `edition export` CLI command need to be aligned (current export endpoints return AsciiDoc, not Antora ZIP).
+>
+> Pending work: extend the Dockerfile to install Ruby/Bundler/asciidoctor-pdf and pandoc; run `bundle install` in `works/` via `odip-admin`.
+
 ---
 
 ## 2. Architecture
@@ -207,7 +214,7 @@ odp-cli publication antora -o ~/output/odip-web-site.zip
 
 `--pdf` requires Ruby/Bundler + `asciidoctor-pdf` in the server container. `--word` requires `pandoc`. Failed formats are reported as warnings; the command exits successfully if HTML succeeded.
 
-Implementation: `workspace/cli/src/commands/odp-editions.js` (publish), `workspace/cli/src/commands/publication.js` (ZIP).
+Implementation: `workspace/cli/src/commands/odp-editions.js` (publish and ZIP).
 
 ---
 
