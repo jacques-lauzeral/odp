@@ -166,25 +166,57 @@ git clone <repository-url> && cd odip-proto
 # Set environment variables in ~/.bashrc (see section 3)
 source ~/.bashrc
 
-# First start — installs all workspace dependencies, builds web client image,
-# downloads Antora UI bundle, initialises publication workspace
-odip-admin start --install --rebuild
+# Run one-time installation (internet access required for Antora UI bundle)
+odip-admin install
+
+# On EC (no direct internet): use --proxy to prompt for corporate proxy credentials
+odip-admin install --proxy
+
+# Start the pod
+odip-admin start
 ```
 
-### Publication workspace initialisation
+`odip-admin install` performs all one-time setup steps:
+1. Creates runtime directories (`ensure_runtime_dirs`)
+2. Downloads Antora UI bundle to `$ODIP_REPO/publication/web-site/static/` (skipped if already present)
+3. Copies UI bundle to `$ODIP_HOME/publication/works/`
+4. Bootstraps static content into `works/` if `package.json` absent
+5. Runs `npm install` in `works/` (host side, proxy-aware via `~/.npmrc`)
+6. Runs `npm install` for all workspaces (server, web-client, cli)
+7. Builds web client image
 
-On every `start` and `restart`, `odip-admin ensure_runtime_dirs` handles two publication-specific steps:
+### Publication workspace
 
-1. **UI bundle download** — if `$ODIP_REPO/publication/web-site/static/ui-bundle.zip` is absent, downloads it from the Antora GitLab CDN. Requires host internet access. On failure, a warning is logged but startup continues (publication will fail until the bundle is available).
-2. **UI bundle copy** — copies the bundle to `$ODIP_HOME/publication/works/` if not already there.
+`ensure_runtime_dirs` (called on every `start`/`restart`) creates `$ODIP_HOME/publication/works/` with `chmod 777` — required so the container (running as root) can write into a directory owned by the host user.
 
-The server then completes workspace initialisation at startup via `initializePublicationWorkspace()` in `index.js`:
+The server completes workspace initialisation at startup via `initializePublicationWorkspace()` in `index.js`:
 
-1. `git init` + identity config — if `.git` absent
-2. Static content bootstrap (`cp -r $STATIC_CONTENT_PATH/. works/`) — if `package.json` absent
-3. `npm install` — if `node_modules/` absent
+1. `git init` — if `.git` absent
+2. `git config --global safe.directory` + `user.email` + `user.name` — always, on every startup (survives `.git` recreation)
+3. Static content bootstrap (`cp -r $STATIC_CONTENT_PATH/. works/`) — if `package.json` absent
+4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
 
-> **Possible future improvement:** the `npm install` in `works/` currently runs inside the container at server startup. It could instead be moved to `odip-admin` (host side, consistent with `--install` for other workspaces) if host and container Node versions are guaranteed to match. This would be particularly relevant in EC environments where container internet access may be restricted.
+> **Note:** `npm install` in `works/` runs on the host side via `odip-admin install` to avoid container internet access dependency. The container has no outbound internet access on EC.
+
+### UI bundle (EC / restricted networks)
+
+The Antora UI bundle cannot be downloaded inside the container. `odip-admin install --proxy` handles this on EC by prompting for corporate proxy credentials (password entered silently, `@` auto-encoded). The bundle is stored in `$ODIP_REPO/publication/web-site/static/ui-bundle.zip` and copied into `works/` automatically.
+
+If proxy access is unavailable, transfer manually:
+
+```bash
+# From a machine with internet access:
+curl -L -o ui-bundle.zip \
+  "https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
+
+# Transfer to target machine:
+scp ui-bundle.zip user@host:$ODIP_REPO/publication/web-site/static/
+
+# Then re-run:
+odip-admin install
+```
+
+> **Future option:** committing `ui-bundle.zip` to the repository would eliminate the download step entirely. Deferred pending EC environment validation.
 
 ### Routine operations
 
