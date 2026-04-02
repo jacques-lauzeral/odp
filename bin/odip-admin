@@ -135,6 +135,7 @@ build_web_client() {
 # --- Commands ---
 
 EC_PROXY_HOST="pac.eurocontrol.int:9512"
+ANTORA_BUNDLE_URL="https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
 
 cmd_install() {
     local use_proxy=false
@@ -179,6 +180,8 @@ EOF
             read -r -p "Proxy username: " proxy_user
             read -r -s -p "Proxy password: " proxy_pass
             echo
+            # URL-encode special characters in password
+            proxy_pass="${proxy_pass//@/%40}"
             curl_opts="$curl_opts --proxy http://${proxy_user}:${proxy_pass}@${EC_PROXY_HOST}"
             log "Using EC proxy: ${EC_PROXY_HOST}"
         fi
