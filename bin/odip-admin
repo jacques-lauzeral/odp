@@ -57,6 +57,7 @@ ensure_runtime_dirs() {
     mkdir -p "${ODIP_HOME}/backups/reset"
     mkdir -p "${ODIP_HOME}/logs"
     mkdir -p "${ODIP_HOME}/publication/works"
+    chmod 777 "${ODIP_HOME}/publication/works"
     # Copy UI bundle into works/ if present in static content
     local bundle_src="${ODIP_REPO}/publication/web-site/static/ui-bundle.zip"
     local bundle_dst="${ODIP_HOME}/publication/works/ui-bundle.zip"

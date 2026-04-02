@@ -143,11 +143,13 @@ async function initializePublicationWorkspace() {
     if (!fs.existsSync(gitDir)) {
         console.log('Publication workspace: running git init...');
         execSync('git init', { cwd: worksDir, stdio: 'inherit' });
+        execSync(`git config --global --add safe.directory ${worksDir}`, { cwd: worksDir, stdio: 'inherit' });
         execSync('git config user.email "odip@localhost"', { cwd: worksDir, stdio: 'inherit' });
         execSync('git config user.name "ODIP"', { cwd: worksDir, stdio: 'inherit' });
         console.log('Publication workspace: git init complete');
     } else {
         console.log('Publication workspace: git repo already initialized');
+        execSync(`git config --global --add safe.directory ${worksDir}`, { cwd: worksDir, stdio: 'inherit' });
     }
 
     // Copy static content into works/ if package.json not present (first-time bootstrap)
