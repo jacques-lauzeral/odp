@@ -101,6 +101,8 @@ A shared filter bar sits above the Requirements and Changes tabs and applies to 
 
 > **Note:** Filter state is not reset when navigating away from and back to the Elaboration or Review activity. If the displayed content appears incomplete or inconsistent, reset the filter bar manually.
 
+> **Note:** The textual search is currently treated as a filter within the filter bar. It will be moved to a dedicated location in a future version.
+
 ### Requirements (ONs & ORs)
 
 **Views available:**
@@ -271,6 +273,8 @@ The details panel has a **header** (title + actions) and three tabs:
 | **Publish** | Triggers the Antora site build (~5–30 s); on success, a link to the static site appears |
 
 > If a build is already in progress, you will see "Publication already in progress" — retry after a few seconds.
+
+> **Publication format:** Only HTML static site generation is currently available. The published site includes a built-in search. PDF and Word export are under development.
 
 ### Creating an Edition
 
