@@ -173,6 +173,10 @@ export class ApiClient {
         return this.get(endpoint, { id, subPath: `versions/${versionNumber}` });
     }
 
+    async publishEdition(editionId) {
+        return this.post('/odp-editions', {}, { id: editionId, subPath: 'publish' });
+    }
+
     async getMilestones(changeId, params = {}) {
         return this.get('/operational-changes', { id: changeId, subPath: 'milestones', params });
     }

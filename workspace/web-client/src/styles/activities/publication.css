@@ -31,3 +31,19 @@
     background: var(--primary-100);
     color: var(--primary-700);
 }
+
+/* --- Publish status --------------------------------------------------------- */
+
+.publish-status {
+    font-size: var(--font-size-sm);
+    min-height: 1.2em;
+    padding: 0 var(--space-1);
+}
+
+.publish-success {
+    color: var(--success-700);
+}
+
+.publish-error {
+    color: var(--danger-700);
+}

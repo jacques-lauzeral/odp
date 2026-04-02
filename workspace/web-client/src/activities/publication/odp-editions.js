@@ -1,6 +1,7 @@
 import CollectionEntity from '../../components/odp/collection-entity.js';
 import ODPEditionForm from './odp-edition-form.js';
 import { odpColumnTypes } from '../../components/odp/odp-column-types.js';
+import { apiClient } from '../../shared/api-client.js';
 
 export default class ODPEditionsEntity {
     constructor(app, entityConfig, supportData) {
@@ -143,6 +144,36 @@ export default class ODPEditionsEntity {
         }
     }
 
+    async handlePublishEdition(item) {
+        const btn = document.querySelector('#publishEditionBtn');
+        const statusEl = document.querySelector('#publishStatus');
+        if (!btn || !item) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Publishing…';
+        if (statusEl) statusEl.innerHTML = '';
+
+        try {
+            const result = await apiClient.publishEdition(item.id);
+            const absoluteUrl = `${apiClient.baseUrl}${result.siteUrl}`;
+            if (statusEl) {
+                statusEl.innerHTML = `✓ Published — <a href="${absoluteUrl}" target="_blank">Open site</a>`;
+                statusEl.className = 'publish-status publish-success';
+            }
+        } catch (error) {
+            const message = error.status === 409
+                ? 'Publication already in progress — please retry later'
+                : `Publication failed: ${error.message}`;
+            if (statusEl) {
+                statusEl.textContent = message;
+                statusEl.className = 'publish-status publish-error';
+            }
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Publish';
+        }
+    }
+
     handleItemSelect(item) {
         this.updateDetailsPanel(item);
     }
@@ -169,8 +200,10 @@ export default class ODPEditionsEntity {
                     <span class="item-id">[${item.type}] ${item.id}</span>
                 </div>
                 <div class="details-actions">
-                    <button class="btn btn-primary btn-sm" id="reviewEditionBtn">Review Edition</button>
+                    <button class="btn btn-secondary btn-sm" id="reviewEditionBtn">Review</button>
+                    <button class="btn btn-primary btn-sm" id="publishEditionBtn">Publish</button>
                 </div>
+                <div id="publishStatus" class="publish-status"></div>
             </div>
             <div class="details-scrollable-content">
                 ${detailsHtml}
@@ -185,6 +218,11 @@ export default class ODPEditionsEntity {
         const reviewBtn = detailsContainer.querySelector('#reviewEditionBtn');
         if (reviewBtn) {
             reviewBtn.addEventListener('click', () => this.handleReviewEdition(item));
+        }
+
+        const publishBtn = detailsContainer.querySelector('#publishEditionBtn');
+        if (publishBtn) {
+            publishBtn.addEventListener('click', () => this.handlePublishEdition(item));
         }
     }
 

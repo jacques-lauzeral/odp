@@ -59,6 +59,7 @@ class EditionCommands {
         this.addListCommand(editionCommand);
         this.addShowCommand(editionCommand);
         this.addCreateCommand(editionCommand);
+        this.addPublishCommand(editionCommand);
         this.addExportCommand(editionCommand);
         this.addExportAllCommand(editionCommand);
 
@@ -234,6 +235,44 @@ class EditionCommands {
                     }
                 } catch (error) {
                     console.error('Error creating ODIP edition:', error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    addPublishCommand(editionCommand) {
+        editionCommand
+            .command('publish <id>')
+            .description('Publish an ODIP edition — build Antora site and serve it')
+            .action(async (id) => {
+                try {
+                    console.log(`Publishing edition ${id}...`);
+                    console.log('(Build progress is visible in server logs)');
+
+                    const response = await fetch(`${this.baseUrl}/odp-editions/${id}/publish`, {
+                        method: 'POST',
+                        headers: this.createHeaders()
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`Edition with ID ${id} not found.`);
+                        process.exit(1);
+                    }
+                    if (response.status === 409) {
+                        const error = await response.json();
+                        console.error(`Cannot publish: ${error.error?.message}`);
+                        process.exit(1);
+                    }
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const result = await response.json();
+                    console.log(`✓ Edition ${id} published successfully`);
+                    console.log(`✓ Site available at: ${this.baseUrl}${result.siteUrl}`);
+                } catch (error) {
+                    console.error('Error publishing edition:', error.message);
                     process.exit(1);
                 }
             });

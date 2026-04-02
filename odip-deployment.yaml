@@ -41,6 +41,8 @@ spec:
           value: "password123"
         - name: STATIC_CONTENT_PATH
           value: "/app/publication/web-site/static"
+        - name: ODIP_HOME
+          value: "/odip"
         - name: LOG_PATH
           value: "/odip/logs"
       volumeMounts:

@@ -1,3 +1,7 @@
+import fs from 'fs';
+import nodePath from 'path';
+import { execSync } from 'child_process';
+import AdmZip from 'adm-zip';
 import archiver from 'archiver';
 import {
     createTransaction,
@@ -7,6 +11,7 @@ import {
     baselineStore
 } from '../store/index.js';
 import { MaturityLevel, isMaturityLevelValid } from '../../../shared/src/index.js';
+import { DetailsModuleGenerator } from './publication/generators/DetailsModuleGenerator.js';
 
 /**
  * ODPEditionService provides Edition management operations.
@@ -14,6 +19,10 @@ import { MaturityLevel, isMaturityLevelValid } from '../../../shared/src/index.j
  * Editions are read-only once created (no update/delete operations).
  */
 export class ODPEditionService {
+
+    constructor() {
+        this._publicationInProgress = false;
+    }
 
     // =============================================================================
     // VALIDATION METHODS
@@ -150,10 +159,131 @@ export class ODPEditionService {
     }
 
     /**
-     * Export Edition or entire repository as ZIP archive
-     * @param {string|null} editionId - Edition ID, or null for entire repository
+     * Publish an edition: generate Antora content, extract to works dir,
+     * commit and build. Returns the relative URL of the served site.
+     * Only one publication can run at a time — concurrent calls get a 409 error.
+     *
+     * @param {string|number} editionId
      * @param {string} userId
-     * @returns {Promise<Buffer>} ZIP file buffer
+     * @returns {Promise<string>} Relative URL of the served site
+     */
+    async publishEdition(editionId, userId) {
+        if (this._publicationInProgress) {
+            const err = new Error('Publication already in progress — please retry later');
+            err.code = 'PUBLICATION_IN_PROGRESS';
+            throw err;
+        }
+
+        this._publicationInProgress = true;
+        try {
+            // Verify edition exists
+            const tx = createTransaction(userId);
+            let edition;
+            try {
+                edition = await odpEditionStore().findById(editionId, tx);
+                await commitTransaction(tx);
+            } catch (error) {
+                await rollbackTransaction(tx);
+                throw error;
+            }
+            if (!edition) {
+                const err = new Error(`Edition ${editionId} not found`);
+                err.code = 'NOT_FOUND';
+                throw err;
+            }
+
+            const worksDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works');
+            const scope = `edition ${editionId} (${edition.title})`;
+
+            // Stage 1 — Generate content ZIP
+            console.log(`[publish] Generating Antora content for ${scope}...`);
+            const zipBuffer = await this.generateAntoraZip(editionId, userId);
+            console.log(`[publish] Content ZIP generated (${zipBuffer.length} bytes)`);
+
+            // Stage 2 — Extract ZIP into works dir
+            console.log(`[publish] Extracting content to ${worksDir}...`);
+            const zip = new AdmZip(zipBuffer);
+            zip.extractAllTo(worksDir, true /* overwrite */);
+            console.log(`[publish] Extraction complete`);
+
+            // Stage 3 — Git commit
+            console.log(`[publish] Committing to git...`);
+            execSync('git add .', { cwd: worksDir, stdio: 'inherit' });
+            execSync(`git commit -m "publish ${scope}" --allow-empty`, { cwd: worksDir, stdio: 'inherit' });
+            console.log(`[publish] Git commit complete`);
+
+            // Stage 4 — Antora build
+            console.log(`[publish] Running Antora build...`);
+            execSync('npx antora antora-playbook.yml', { cwd: worksDir, stdio: 'inherit' });
+            console.log(`[publish] Antora build complete`);
+
+            return '/publication/site/';
+
+        } finally {
+            this._publicationInProgress = false;
+        }
+    }
+
+    /**
+     * Generate Antora content ZIP (source, not built site).
+     * Replaces PublicationService.generateAntoraSite() — that service is deprecated.
+     *
+     * @param {string|number|null} editionId - Edition ID, or null for full repository
+     * @param {string} userId
+     * @returns {Promise<Buffer>} ZIP buffer containing Antora module structure
+     */
+    async generateAntoraZip(editionId, userId) {
+        const staticContentPath = process.env.STATIC_CONTENT_PATH ||
+            nodePath.join(new URL('../../publication/web-site/static', import.meta.url).pathname);
+
+        console.log(`[generateAntoraZip] editionId=${editionId ?? 'repository'}`);
+
+        const detailsGenerator = new DetailsModuleGenerator(userId, editionId ?? null);
+        const detailsFiles = await detailsGenerator.generate();
+        console.log(`[generateAntoraZip] Generated ${Object.keys(detailsFiles).length} details module files`);
+
+        return this._createAntoraZip(staticContentPath, detailsFiles);
+    }
+
+    /**
+     * Create Antora ZIP from static content + generated details files
+     * @private
+     */
+    async _createAntoraZip(staticContentPath, detailsFiles) {
+        return new Promise(async (resolve, reject) => {
+            const archive = archiver('zip', { zlib: { level: 9 } });
+            const chunks = [];
+
+            archive.on('data', (chunk) => chunks.push(chunk));
+            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            archive.on('error', (err) => reject(new Error(`ZIP creation failed: ${err.message}`)));
+
+            try {
+                archive.directory(staticContentPath, false);
+
+                // Explicitly include ui-bundle.zip if present (may be absent from archive.directory
+                // if archiver skips .zip files — ensures it survives extraction into works/)
+                const uiBundlePath = nodePath.join(staticContentPath, 'ui-bundle.zip');
+                if (fs.existsSync(uiBundlePath)) {
+                    archive.file(uiBundlePath, { name: 'ui-bundle.zip' });
+                } else {
+                    console.warn('[generateAntoraZip] ui-bundle.zip not found in static content — Antora build will fail');
+                }
+
+                for (const [filePath, content] of Object.entries(detailsFiles)) {
+                    archive.append(content, { name: `modules/${filePath}` });
+                }
+
+                await archive.finalize();
+            } catch (error) {
+                reject(new Error(`Failed to archive content: ${error.message}`));
+            }
+        });
+    }
+
+    /**
+     * Export Edition or entire repository as ZIP archive (AsciiDoc format).
+     * @deprecated Use generateAntoraZip() for Antora-based publication.
      */
     async exportAsAsciiDoc(editionId, userId) {
         const ODPEditionAggregator = (await import('./export/ODPEditionAggregator.js')).default;

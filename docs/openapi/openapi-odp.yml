@@ -87,6 +87,52 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
+  /odp-editions/{id}/publish:
+    post:
+      summary: Publish ODIP Edition as Antora website
+      tags: [ODP]
+      description: |
+        Builds the Antora website for the specified edition and serves it at
+        `/publication/site/`. Only one publication can run at a time — concurrent
+        requests are rejected with 409. The build runs synchronously; logs are
+        available in the server log stream.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Edition ID
+      responses:
+        '200':
+          description: Publication complete — site URL returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  siteUrl:
+                    type: string
+                    example: /publication/site/
+        '404':
+          description: Edition not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: Publication already in progress
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
   /odp-editions/{id}/export:
     get:
       summary: Export ODIP Edition as AsciiDoc

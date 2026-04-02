@@ -125,6 +125,28 @@ router.post('/', async (req, res) => {
     }
 });
 
+// Publish ODIP edition — build Antora site and serve it
+router.post('/:id/publish', async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        const editionId = req.params.id;
+        console.log(`ODPEditionService.publishEdition() id: ${editionId}, userId: ${userId}`);
+        const siteUrl = await ODPEditionService.publishEdition(editionId, userId);
+        res.json({ siteUrl });
+    } catch (error) {
+        console.error('Error publishing ODIP edition:', error);
+        if (error.message.includes('x-user-id')) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.code === 'NOT_FOUND') {
+            res.status(404).json({ error: { code: 'NOT_FOUND', message: error.message } });
+        } else if (error.code === 'PUBLICATION_IN_PROGRESS') {
+            res.status(409).json({ error: { code: 'PUBLICATION_IN_PROGRESS', message: error.message } });
+        } else {
+            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
+        }
+    }
+});
+
 // Update ODIP edition - NOT SUPPORTED (ODIP editions are immutable)
 router.put('/:id', async (req, res) => {
     res.status(405).json({

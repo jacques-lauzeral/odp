@@ -13,8 +13,10 @@ Three containers share a single pod and communicate over localhost:
 | Container | Image | Port | Role |
 |---|---|---|---|
 | `neo4j` | `$ODIP_DOCKER_REGISTRY/neo4j:5.15` + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
-| `odp-server` | `$ODIP_DOCKER_REGISTRY/node:20` | 8080 (host) → 80 (container) | Express API + import/export services |
+| `odp-server` | `$ODIP_DOCKER_REGISTRY/node:20` | 8080 (host) → 80 (container) | Express API + import/export + publication services |
 | `web-client` | `odp-web-client:latest` (local build) | 3000 | Static web client dev server |
+
+The server container receives `ODIP_HOME=/odip` as an env var (injected in `odip-deployment.yaml`). The `$ODIP_HOME` host path is mounted into the container at `/odip` via the `odip-runtime` volume, making the publication workspace at `$ODIP_HOME/publication/works/` accessible inside the container as `/odip/publication/works/`.
 
 The server container mounts the source code tree as a host volume and runs `nodemon` for live reload during development. The web client is built into a local container image once and rebuilt only when its source or dependencies change.
 
@@ -27,7 +29,7 @@ All environment-specific configuration is expressed through host shell variables
 | Variable | Purpose | Local example | EC example |
 |---|---|---|---|
 | `ODIP_REPO` | Repository root — source code, bin scripts, Dockerfile | `~/works/github/odp` | `/cm/local_build/odip/repo` |
-| `ODIP_HOME` | Runtime root — contains `data/`, `backups/`, `logs/` — **must be on local filesystem, not NFS** | `~/odip` | `/cm/local_build/odip` |
+| `ODIP_HOME` | Runtime root — contains `data/`, `backups/`, `logs/`, `publication/` — **must be on local filesystem, not NFS** | `~/odip` | `/cm/local_build/odip` |
 | `ODIP_DOCKER_REGISTRY` | Docker image registry | `docker.io` | `yagi.cfmu.corp.eurocontrol.int:5000` |
 | `ODIP_NPM_MODE` | npm install mode for web client image build: `podman` or `host` | `podman` | `host` |
 
@@ -37,13 +39,17 @@ The runtime directory structure under `ODIP_HOME` is created automatically by `o
 
 ```
 $ODIP_HOME/
-├── data/       Neo4j database files
-├── backups/    Manual and automated backups
-│   ├── auto/   Automated backup slots (daily, weekly, monthly)
-│   ├── adhoc/  Manual ad-hoc dumps
-│   └── reset/  Pre-reset dumps
-└── logs/       Server log files (DocxExtractor, EMF conversion)
+├── data/                  Neo4j database files
+├── backups/               Manual and automated backups
+│   ├── auto/              Automated backup slots (daily, weekly, monthly)
+│   ├── adhoc/             Manual ad-hoc dumps
+│   └── reset/             Pre-reset dumps
+├── logs/                  Server log files
+└── publication/
+    └── works/             Antora build workspace (persistent git repo)
 ```
+
+`publication/works/` is initialised by the server at startup (see §7.3). The UI bundle (`ui-bundle.zip`) is downloaded by `odip-admin` and copied there automatically.
 
 Also add `$ODIP_REPO/bin` to `PATH`:
 
@@ -160,9 +166,25 @@ git clone <repository-url> && cd odip-proto
 # Set environment variables in ~/.bashrc (see section 3)
 source ~/.bashrc
 
-# First start — installs all workspace dependencies and builds web client image
+# First start — installs all workspace dependencies, builds web client image,
+# downloads Antora UI bundle, initialises publication workspace
 odip-admin start --install --rebuild
 ```
+
+### Publication workspace initialisation
+
+On every `start` and `restart`, `odip-admin ensure_runtime_dirs` handles two publication-specific steps:
+
+1. **UI bundle download** — if `$ODIP_REPO/publication/web-site/static/ui-bundle.zip` is absent, downloads it from the Antora GitLab CDN. Requires host internet access. On failure, a warning is logged but startup continues (publication will fail until the bundle is available).
+2. **UI bundle copy** — copies the bundle to `$ODIP_HOME/publication/works/` if not already there.
+
+The server then completes workspace initialisation at startup via `initializePublicationWorkspace()` in `index.js`:
+
+1. `git init` + identity config — if `.git` absent
+2. Static content bootstrap (`cp -r $STATIC_CONTENT_PATH/. works/`) — if `package.json` absent
+3. `npm install` — if `node_modules/` absent
+
+> **Possible future improvement:** the `npm install` in `works/` currently runs inside the container at server startup. It could instead be moved to `odip-admin` (host side, consistent with `--install` for other workspaces) if host and container Node versions are guaranteed to match. This would be particularly relevant in EC environments where container internet access may be restricted.
 
 ### Routine operations
 

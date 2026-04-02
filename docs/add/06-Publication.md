@@ -2,43 +2,44 @@
 
 ## 1. Overview
 
-The publication pipeline converts ODIP database content into distributable artefacts for external stakeholders. It has two output formats:
+The publication pipeline converts ODIP database content into a served Antora website accessible directly from the browser. It supports two modes:
 
-- **Antora ZIP** — a structured AsciiDoc source tree that stakeholders build into a multi-page HTML site with full-text search and optional PDF
-- **PDF** — a single consolidated document generated directly via AsciiDoctor (not yet implemented)
+- **Edition publish** — builds and serves a scoped site for a specific ODIP Edition (baseline + content filters applied)
+- **Antora ZIP** — packages the Antora source tree for external stakeholders who build the site themselves
 
-Both formats can target a specific ODIP Edition (scoped by baseline + wave) or the entire repository.
+PDF and Word generation are not yet implemented.
 
-The pipeline is entirely server-side. The web client and CLI trigger it via REST endpoints; no content rendering happens on the client.
+The pipeline is entirely server-side. The web client and CLI trigger it via REST endpoints; no content rendering happens on the client. `PublicationService` is deprecated — all publication logic now lives in `ODPEditionService`.
 
 ---
 
 ## 2. Architecture
 
 ```
-REST API  POST /publications/antora?editionId=<id>
-REST API  POST /publications/pdf?editionId=<id>
+REST API  POST /odp-editions/{id}/publish          ← edition publish (build + serve)
+REST API  POST /publications/antora?editionId=<id>  ← ZIP download (deprecated path)
           │
           ▼
-    PublicationService
+    ODPEditionService
           │
-          └── DetailsModuleGenerator   ← queries Neo4j, generates AsciiDoc pages
-                │
-                ├── operationalRequirementService.getAll()
-                │
-                ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
-                │
-                ├── Mustache templates          ← on.mustache, or.mustache, etc.
-                │
-                └── archiver (ZIP)              ← packages static + dynamic content
+          ├── generateAntoraZip()     ← assembles Antora source ZIP
+          │       │
+          │       └── DetailsModuleGenerator   ← queries Neo4j via ORService, generates AsciiDoc pages
+          │               │
+          │               ├── operationalRequirementService.getAll()   ← standard projection, edition-scoped
+          │               ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
+          │               ├── Mustache templates          ← on.mustache, or.mustache, etc.
+          │               └── archiver (ZIP)              ← packages static + dynamic content
+          │
+          └── publishEdition()        ← extracts ZIP → git commit → npx antora → serves site
 ```
 
 **File locations** — all under `workspace/server/src/services/`:
 
 ```
 services/
+├── ODPEditionService.js          ← edition CRUD + generateAntoraZip() + publishEdition()
 └── publication/
-    ├── PublicationService.js
     └── generators/
         └── DetailsModuleGenerator.js
     └── templates/
@@ -55,8 +56,10 @@ Static Antora scaffolding lives in `publication/web-site/static/` (configurable 
 
 ```
 static/
-├── antora-playbook.yml
+├── antora-playbook.yml       ← UI bundle: local ./ui-bundle.zip (not remote URL)
 ├── antora.yml
+├── package.json              ← declares @antora/cli, @antora/site-generator, @antora/lunr-extension
+├── ui-bundle.zip             ← downloaded by odip-admin on first start (see §7)
 ├── modules/ROOT/nav.adoc
 ├── modules/ROOT/pages/index.adoc
 ├── modules/introduction/pages/index.adoc
@@ -155,28 +158,32 @@ The four Antora modules are: `ROOT` (landing page), `introduction`, `portfolio` 
 
 ## 4. REST API
 
-Defined in `openapi-publication.yml`.
+Defined in `openapi-odp.yml` (publish) and `openapi-publication.yml` (ZIP download).
 
 | Method | Endpoint | Body / Query | Response |
 |---|---|---|---|
+| `POST` | `/odp-editions/{id}/publish` | — | `{ siteUrl: '/publication/site/' }` |
 | `POST` | `/publications/antora` | `?editionId=<id>` (optional) | `application/zip` |
 | `POST` | `/publications/pdf` | `?editionId=<id>` (optional) | `application/pdf` (not yet implemented) |
 
-Both endpoints return 404 if `editionId` is provided but not found. Omitting `editionId` publishes the entire repository.
+`POST /odp-editions/{id}/publish` returns 404 if the edition is not found, 409 if a publication is already in progress. The built site is served at `/publication/site/` by Express static middleware (mount point registered at server startup).
 
 ---
 
 ## 5. CLI
 
 ```bash
-# Generate Antora ZIP for a specific edition
+# Publish a specific edition (build + serve server-side)
+odp-cli edition publish <editionId>
+
+# Generate Antora ZIP for local build (ZIP download)
 odp-cli publication antora -o ~/output/odip-web-site.zip --edition <editionId>
 
 # Generate for entire repository
 odp-cli publication antora -o ~/output/odip-web-site.zip
 ```
 
-Implementation: `workspace/cli/src/commands/publication.js`
+Implementation: `workspace/cli/src/commands/odp-editions.js` (publish), `workspace/cli/src/commands/publication.js` (ZIP).
 
 ---
 
@@ -240,15 +247,53 @@ ls -lh build/site/_/js/search-ui.js
 
 ---
 
-## 7. Dependencies
+## 7. Publication Workspace
+
+The server maintains a persistent publication workspace at `$ODIP_HOME/publication/works/`. It is a git repository with Antora installed, used as the build environment for `publishEdition()`.
+
+### Initialisation (server startup)
+
+`initializePublicationWorkspace()` runs on every server start inside `startServer()` in `index.js`. All steps are idempotent:
+
+1. `mkdir -p $ODIP_HOME/publication/works/` — belt-and-suspenders after `odip-admin ensure_runtime_dirs`
+2. `git init` + configure `user.email` / `user.name` — only if `.git` absent
+3. `cp -r $STATIC_CONTENT_PATH/. works/` — copies playbook, `package.json`, `ui-bundle.zip` etc. — only if `package.json` absent (first-time bootstrap)
+4. `npm install` — installs `@antora/cli`, `@antora/site-generator`, `@antora/lunr-extension` — only if `node_modules/` absent
+
+> **Note:** `npm install` currently runs inside the container at server startup. This works because the container has Node 20 and the `works/` volume is writable. A possible future improvement is to move this step to `odip-admin` (host side, aligned with the `--install` pattern) when the host and container Node versions are guaranteed to match.
+
+### Publish cycle (`publishEdition`)
+
+Each `publishEdition()` call:
+1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
+2. Generates Antora content ZIP via `generateAntoraZip()`
+3. Extracts ZIP into `works/` (overwrites previous content, preserving `node_modules/` and `.git/`)
+4. `git add . && git commit --allow-empty` — records each publication in git history
+5. `npx antora antora-playbook.yml` — builds HTML site into `works/build/site/`
+6. Releases mutex — returns `{ siteUrl: '/publication/site/' }`
+
+The built site is immediately served by the Express static middleware mounted at `/publication/site/`.
+
+### UI Bundle
+
+The Antora UI bundle (`ui-bundle.zip`) is required for the Antora build. It cannot be downloaded at build time because the container has no internet access. `odip-admin ensure_runtime_dirs` handles this:
+
+1. Downloads `ui-bundle.zip` from GitLab to `$ODIP_REPO/publication/web-site/static/` if not present (requires host internet access)
+2. Copies it to `$ODIP_HOME/publication/works/` if not already there
+
+The bundle is included in every generated Antora ZIP so it survives extraction into `works/`. The `antora-playbook.yml` references it as `./ui-bundle.zip` (local path, not remote URL).
+
+---
+
+## 8. Dependencies
 
 | Package | Purpose |
 |---|---|
 | `archiver` | ZIP packaging of Antora source tree |
+| `adm-zip` | ZIP extraction into publication workspace |
 | `mustache` | Logic-less template rendering for AsciiDoc pages |
-| `@antora/cli` + `@antora/site-generator` | HTML site generation (post-export, not in server) |
+| `@antora/cli` + `@antora/site-generator` | HTML site generation (installed in `works/`, not server workspace) |
 | `@antora/lunr-extension` | Full-text search in generated site |
-| `@antora/pdf-extension` + `asciidoctor-pdf` | PDF generation (post-export, not in server) |
 
 ---
 

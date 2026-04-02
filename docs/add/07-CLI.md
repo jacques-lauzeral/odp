@@ -129,9 +129,10 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 | Command | Action |
 |---|---|
-| `publication antora --output <path> [--edition <id>]` | Generate Antora ZIP |
-| `publication pdf --output <path> [--edition <id>]` | Generate PDF |
-| `publication docx --output <path> [--edition <id>]` | Generate Word document |
+| `edition publish <id>` | Build and serve Antora site for a specific edition |
+| `publication antora --output <path> [--edition <id>]` | Generate Antora ZIP for local build |
+| `publication pdf --output <path> [--edition <id>]` | Generate PDF (not yet implemented) |
+| `publication docx --output <path> [--edition <id>]` | Generate Word document (not yet implemented) |
 
 ---
 

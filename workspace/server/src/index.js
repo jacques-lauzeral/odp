@@ -1,4 +1,7 @@
 import express from 'express';
+import fs from 'fs';
+import nodePath from 'path';
+import { execSync } from 'child_process';
 import { initializeStores, closeStores } from './store/index.js';
 import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
 import domainRoutes from './routes/domain.js';
@@ -115,6 +118,61 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
+/**
+ * Initialize publication workspace on server startup.
+ * Ensures ODIP_HOME/publication/works/ is a git repo with dependencies installed.
+ * Safe to call on every restart — all steps are idempotent.
+ */
+async function initializePublicationWorkspace() {
+    const odipHome = process.env.ODIP_HOME;
+    if (!odipHome) {
+        throw new Error('ODIP_HOME environment variable is not set — cannot initialize publication workspace');
+    }
+
+    const worksDir = nodePath.join(odipHome, 'publication', 'works');
+    const staticContentPath = process.env.STATIC_CONTENT_PATH ||
+        nodePath.join(new URL('../publication/web-site/static', import.meta.url).pathname);
+
+    console.log(`Initializing publication workspace: ${worksDir}`);
+
+    // Ensure directory exists (belt-and-suspenders after odip-admin ensure_runtime_dirs)
+    fs.mkdirSync(worksDir, { recursive: true });
+
+    // Git init if not already a repo
+    const gitDir = nodePath.join(worksDir, '.git');
+    if (!fs.existsSync(gitDir)) {
+        console.log('Publication workspace: running git init...');
+        execSync('git init', { cwd: worksDir, stdio: 'inherit' });
+        execSync('git config user.email "odip@localhost"', { cwd: worksDir, stdio: 'inherit' });
+        execSync('git config user.name "ODIP"', { cwd: worksDir, stdio: 'inherit' });
+        console.log('Publication workspace: git init complete');
+    } else {
+        console.log('Publication workspace: git repo already initialized');
+    }
+
+    // Copy static content into works/ if package.json not present (first-time bootstrap)
+    const packageJsonPath = nodePath.join(worksDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+        console.log(`Publication workspace: bootstrapping static content from ${staticContentPath}...`);
+        execSync(`cp -r ${staticContentPath}/. ${worksDir}/`, { stdio: 'inherit' });
+        console.log('Publication workspace: static content copied');
+    } else {
+        console.log('Publication workspace: static content already present');
+    }
+
+    // npm install if no node_modules
+    const nodeModulesDir = nodePath.join(worksDir, 'node_modules');
+    if (!fs.existsSync(nodeModulesDir)) {
+        console.log('Publication workspace: running npm install...');
+        execSync('npm install', { cwd: worksDir, stdio: 'inherit' });
+        console.log('Publication workspace: npm install complete');
+    } else {
+        console.log('Publication workspace: node_modules already present');
+    }
+
+    console.log('Publication workspace initialized');
+}
+
 async function startServer() {
     try {
         console.log('Initializing store layer...');
@@ -123,6 +181,14 @@ async function startServer() {
 
         console.log('Registering import mappers...');
         MapperRegistry.registerImportMappers();
+
+        console.log('Initializing publication workspace...');
+        await initializePublicationWorkspace();
+
+        // Serve built publication site as static files
+        const siteDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works', 'build', 'site');
+        app.use('/publication/site', express.static(siteDir));
+        console.log(`Publication site served from: ${siteDir}`);
 
         app.listen(PORT, '0.0.0.0', () => {
             console.log(`ODIP Server running on port ${PORT}`);
@@ -147,6 +213,8 @@ async function startServer() {
             console.log(`  - POST http://localhost:${PORT}/publications/antora?editionId=<id>`);
             console.log(`  - POST http://localhost:${PORT}/publications/pdf?editionId=<id>`);
             console.log(`  - POST http://localhost:${PORT}/publications/docx?editionId=<id>`);
+            console.log(`  - POST http://localhost:${PORT}/odp-editions/{id}/publish`);
+            console.log(`  - GET  http://localhost:${PORT}/publication/site/  (built site)`);
             console.log(`Baseline-aware queries:`);
             console.log(`  - http://localhost:${PORT}/operational-requirements?baseline=<id>`);
             console.log(`  - http://localhost:${PORT}/operational-changes?baseline=<id>`);
