@@ -201,6 +201,12 @@ export class ODPEditionService {
             console.log(`[publish] Content ZIP generated (${zipBuffer.length} bytes)`);
 
             // Stage 2 — Extract ZIP into works dir
+            // Remove files that may be owned by host user to avoid chmod EPERM on extraction
+            console.log(`[publish] Preparing works directory...`);
+            const uiBundlePath = nodePath.join(worksDir, 'ui-bundle.zip');
+            if (fs.existsSync(uiBundlePath)) {
+                fs.unlinkSync(uiBundlePath);
+            }
             console.log(`[publish] Extracting content to ${worksDir}...`);
             const zip = new AdmZip(zipBuffer);
             zip.extractAllTo(worksDir, true /* overwrite */);
