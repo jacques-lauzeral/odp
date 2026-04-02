@@ -28,6 +28,7 @@ usage() {
 Usage: odip-admin <command> [options]
 
 Commands:
+  install   One-time installation: download UI bundle, npm install, build web client
   start     Start the ODIP pod
   stop      Stop the ODIP pod
   restart   Stop and restart the ODIP pod
@@ -56,16 +57,8 @@ ensure_runtime_dirs() {
     mkdir -p "${ODIP_HOME}/backups/reset"
     mkdir -p "${ODIP_HOME}/logs"
     mkdir -p "${ODIP_HOME}/publication/works"
-    # Download UI bundle if not present in static content
+    # Copy UI bundle into works/ if present in static content
     local bundle_src="${ODIP_REPO}/publication/web-site/static/ui-bundle.zip"
-    if [[ ! -f "$bundle_src" ]]; then
-        log "Downloading Antora UI bundle..."
-        curl -sSL -o "$bundle_src" \
-            "https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable" \
-            && log "Antora UI bundle downloaded" \
-            || { log "Warning: Failed to download Antora UI bundle — publication will not work until bundle is available"; }
-    fi
-    # Copy UI bundle into works/ if not already present
     local bundle_dst="${ODIP_HOME}/publication/works/ui-bundle.zip"
     if [[ -f "$bundle_src" && ! -f "$bundle_dst" ]]; then
         cp "$bundle_src" "$bundle_dst"
@@ -139,6 +132,85 @@ build_web_client() {
 }
 
 # --- Commands ---
+
+ANTORA_BUNDLE_URL="https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
+
+cmd_install() {
+    local proxy_url=""
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --proxy) proxy_url="$2"; shift 2 ;;
+            -h|--help)
+                cat << 'EOF'
+Usage: odip-admin install [options]
+
+  One-time installation setup:
+    - Download Antora UI bundle (requires internet or --proxy)
+    - Install npm dependencies for all workspaces
+    - Build web client image
+
+Options:
+      --proxy <url>   Proxy URL for Antora UI bundle download
+                      e.g. http://user:pass@pac.eurocontrol.int:9512
+  -h, --help          Show this help
+
+Notes:
+  On restricted networks (e.g. EC), direct download of the Antora UI bundle
+  will fail. Use --proxy or transfer the bundle manually:
+
+    scp ui-bundle.zip user@host:$ODIP_REPO/publication/web-site/static/
+
+  Once the bundle is present in the static directory, re-run install
+  (the download step will be skipped automatically).
+EOF
+                exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    ensure_runtime_dirs
+
+    # Download Antora UI bundle if not already present
+    local bundle_src="${ODIP_REPO}/publication/web-site/static/ui-bundle.zip"
+    if [[ ! -f "$bundle_src" ]]; then
+        log "Downloading Antora UI bundle..."
+        local curl_opts="-sSL --connect-timeout 5 --max-time 30"
+        if [[ -n "$proxy_url" ]]; then
+            curl_opts="$curl_opts --proxy $proxy_url"
+            log "Using proxy: $proxy_url"
+        fi
+        if curl $curl_opts -o "$bundle_src" "$ANTORA_BUNDLE_URL"; then
+            log "Antora UI bundle downloaded"
+        else
+            rm -f "$bundle_src"
+            echo "" >&2
+            echo "ERROR: Failed to download Antora UI bundle." >&2
+            echo "" >&2
+            echo "On restricted networks, transfer the bundle manually:" >&2
+            echo "  1. Download on a machine with internet access:" >&2
+            echo "     curl -L -o ui-bundle.zip \"$ANTORA_BUNDLE_URL\"" >&2
+            echo "  2. Transfer to this machine:" >&2
+            echo "     scp ui-bundle.zip <user>@<host>:${ODIP_REPO}/publication/web-site/static/" >&2
+            echo "  3. Re-run: odip-admin install" >&2
+            echo "" >&2
+            exit 1
+        fi
+    else
+        log "Antora UI bundle already present — skipping download"
+    fi
+
+    # Copy bundle to works/ if needed
+    local bundle_dst="${ODIP_HOME}/publication/works/ui-bundle.zip"
+    if [[ -f "$bundle_src" && ! -f "$bundle_dst" ]]; then
+        cp "$bundle_src" "$bundle_dst"
+        log "UI bundle copied to publication workspace"
+    fi
+
+    install_host_dependencies
+    build_web_client
+
+    log "Installation complete"
+}
 
 cmd_start() {
     local rebuild=false install=false
@@ -489,6 +561,7 @@ fi
 COMMAND="$1"; shift
 
 case "$COMMAND" in
+    install)   cmd_install "$@" ;;
     start)     cmd_start "$@" ;;
     stop)      cmd_stop "$@" ;;
     restart)   cmd_restart "$@" ;;
