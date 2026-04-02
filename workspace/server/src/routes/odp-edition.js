@@ -125,14 +125,16 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Publish ODIP edition — build Antora site and serve it
+// Publish ODIP edition — build Antora site; optionally also PDF (?pdf) and/or Word (?word)
 router.post('/:id/publish', async (req, res) => {
     try {
         const userId = getUserId(req);
         const editionId = req.params.id;
-        console.log(`ODPEditionService.publishEdition() id: ${editionId}, userId: ${userId}`);
-        const siteUrl = await ODPEditionService.publishEdition(editionId, userId);
-        res.json({ siteUrl });
+        const pdf = 'pdf' in req.query;
+        const word = 'word' in req.query;
+        console.log(`ODPEditionService.publishEdition() id: ${editionId}, pdf: ${pdf}, word: ${word}, userId: ${userId}`);
+        const result = await ODPEditionService.publishEdition(editionId, userId, { pdf, word });
+        res.json(result);
     } catch (error) {
         console.error('Error publishing ODIP edition:', error);
         if (error.message.includes('x-user-id')) {

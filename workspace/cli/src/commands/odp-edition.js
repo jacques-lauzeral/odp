@@ -244,12 +244,19 @@ class EditionCommands {
         editionCommand
             .command('publish <id>')
             .description('Publish an ODIP edition — build Antora site and serve it')
-            .action(async (id) => {
+            .option('--pdf', 'Also generate PDF (requires Ruby/Bundler + asciidoctor-pdf)')
+            .option('--word', 'Also generate Word document (requires pandoc)')
+            .action(async (id, options) => {
                 try {
                     console.log(`Publishing edition ${id}...`);
                     console.log('(Build progress is visible in server logs)');
 
-                    const response = await fetch(`${this.baseUrl}/odp-editions/${id}/publish`, {
+                    const params = [];
+                    if (options.pdf) params.push('pdf');
+                    if (options.word) params.push('word');
+                    const query = params.length ? `?${params.join('&')}` : '';
+
+                    const response = await fetch(`${this.baseUrl}/odp-editions/${id}/publish${query}`, {
                         method: 'POST',
                         headers: this.createHeaders()
                     });
@@ -271,6 +278,16 @@ class EditionCommands {
                     const result = await response.json();
                     console.log(`✓ Edition ${id} published successfully`);
                     console.log(`✓ Site available at: ${this.baseUrl}${result.siteUrl}`);
+                    if (options.pdf) {
+                        console.log(result.pdfUrl
+                            ? `✓ PDF available at: ${this.baseUrl}${result.pdfUrl}`
+                            : `⚠ PDF build failed — check server logs`);
+                    }
+                    if (options.word) {
+                        console.log(result.wordUrl
+                            ? `✓ Word available at: ${this.baseUrl}${result.wordUrl}`
+                            : `⚠ Word build failed — check server logs`);
+                    }
                 } catch (error) {
                     console.error('Error publishing edition:', error.message);
                     process.exit(1);

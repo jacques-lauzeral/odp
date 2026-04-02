@@ -101,7 +101,6 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-odp.yml` | ODIP editions (`Edition`, `EditionRequest` schemas) |
 | `openapi-import.yml` | Import endpoints |
 | `openapi-docx.yml` | DOCX export endpoint |
-| `openapi-publication.yml` | Publication endpoint |
 
 Refer to these files for all endpoint signatures, query parameters, request/response schemas, and status code contracts.
 

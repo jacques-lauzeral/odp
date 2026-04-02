@@ -4,20 +4,17 @@
 
 The publication pipeline converts ODIP database content into a served Antora website accessible directly from the browser. It supports two modes:
 
-- **Edition publish** — builds and serves a scoped site for a specific ODIP Edition (baseline + content filters applied)
+- **Edition publish** — builds and serves a scoped site for a specific ODIP Edition (baseline + content filters applied); optionally also generates PDF (requires Ruby/Bundler + asciidoctor-pdf) and Word document (requires pandoc) from the same Antora source
 - **Antora ZIP** — packages the Antora source tree for external stakeholders who build the site themselves
 
-PDF and Word generation are not yet implemented.
-
-The pipeline is entirely server-side. The web client and CLI trigger it via REST endpoints; no content rendering happens on the client. `PublicationService` is deprecated — all publication logic now lives in `ODPEditionService`.
+The pipeline is entirely server-side. The web client and CLI trigger it via REST endpoints; no content rendering happens on the client. All publication logic lives in `ODPEditionService`.
 
 ---
 
 ## 2. Architecture
 
 ```
-REST API  POST /odp-editions/{id}/publish          ← edition publish (build + serve)
-REST API  POST /publications/antora?editionId=<id>  ← ZIP download (deprecated path)
+REST API  POST /odp-editions/{id}/publish[?pdf&word]  ← edition publish (build + serve)
           │
           ▼
     ODPEditionService
@@ -31,7 +28,12 @@ REST API  POST /publications/antora?editionId=<id>  ← ZIP download (deprecated
           │               ├── Mustache templates          ← on.mustache, or.mustache, etc.
           │               └── archiver (ZIP)              ← packages static + dynamic content
           │
-          └── publishEdition()        ← extracts ZIP → git commit → npx antora → serves site
+          └── publishEdition(options)
+                  │
+                  ├── extract ZIP → git commit
+                  ├── npx antora antora-playbook.yml        ← HTML site (mandatory)
+                  ├── npx antora antora-playbook-pdf.yml    ← PDF (optional, non-fatal)
+                  └── npx antora antora-playbook-docx.yml  ← Word (optional, non-fatal)
 ```
 
 **File locations** — all under `workspace/server/src/services/`:
@@ -56,10 +58,16 @@ Static Antora scaffolding lives in `publication/web-site/static/` (configurable 
 
 ```
 static/
-├── antora-playbook.yml       ← UI bundle: local ./ui-bundle.zip (not remote URL)
+├── antora-playbook.yml          ← HTML site; UI bundle: local ./ui-bundle.zip
+├── antora-playbook-pdf.yml      ← PDF build (requires Ruby/Bundler + asciidoctor-pdf)
+├── antora-playbook-docx.yml     ← Word build (requires pandoc)
+├── antora-assembler.yml         ← PDF assembler config (revnumber, revdate, pdf-theme)
+├── antora-assembler-docx.yml    ← Word assembler config
+├── antora-docx-extension.js     ← Antora extension: AsciiDoc → DocBook → pandoc → docx
 ├── antora.yml
-├── package.json              ← declares @antora/cli, @antora/site-generator, @antora/lunr-extension
-├── ui-bundle.zip             ← downloaded by odip-admin on first start (see §7)
+├── pdf-theme.yml                ← Custom PDF theme (Noto fonts, EUROCONTROL blue)
+├── package.json                 ← declares @antora/cli, @antora/site-generator, @antora/lunr-extension
+├── ui-bundle.zip                ← downloaded by odip-admin on first start (see §7)
 ├── modules/ROOT/nav.adoc
 ├── modules/ROOT/pages/index.adoc
 ├── modules/introduction/pages/index.adoc
@@ -145,12 +153,10 @@ Navigation (`nav.adoc`) is generated hierarchically, mirroring the folder/entity
 
 ### Stage 6 — Antora Structure and Packaging
 
-`PublicationService` assembles the final ZIP by combining:
+`ODPEditionService.generateAntoraZip()` assembles the final ZIP by combining:
 
-1. The entire static directory tree (Antora playbook, ROOT module, introduction module, portfolio module)
+1. The entire static directory tree (all Antora playbooks, assembler configs, extension, PDF theme, ROOT module, introduction module, portfolio module)
 2. All dynamically generated details module files (`modules/details/…`)
-
-The ZIP is streamed directly as the HTTP response (`application/zip`).
 
 The four Antora modules are: `ROOT` (landing page), `introduction`, `portfolio` (high-level summaries), and `details` (full ON/OR pages by DrG).
 
@@ -158,30 +164,48 @@ The four Antora modules are: `ROOT` (landing page), `introduction`, `portfolio` 
 
 ## 4. REST API
 
-Defined in `openapi-odp.yml` (publish) and `openapi-publication.yml` (ZIP download).
+Defined in `openapi-odp.yml`.
 
-| Method | Endpoint | Body / Query | Response |
+| Method | Endpoint | Query | Response |
 |---|---|---|---|
-| `POST` | `/odp-editions/{id}/publish` | — | `{ siteUrl: '/publication/site/' }` |
-| `POST` | `/publications/antora` | `?editionId=<id>` (optional) | `application/zip` |
-| `POST` | `/publications/pdf` | `?editionId=<id>` (optional) | `application/pdf` (not yet implemented) |
+| `POST` | `/odp-editions/{id}/publish` | `pdf`, `word` (optional boolean flags) | `{ siteUrl, pdfUrl, wordUrl }` |
+| `GET` | `/odp-editions/{id}/export` | — | `application/zip` (Antora source ZIP) |
 
-`POST /odp-editions/{id}/publish` returns 404 if the edition is not found, 409 if a publication is already in progress. The built site is served at `/publication/site/` by Express static middleware (mount point registered at server startup).
+`POST /odp-editions/{id}/publish` returns 404 if the edition is not found, 409 if a publication is already in progress. PDF and Word failures are non-fatal — `pdfUrl` / `wordUrl` are `null` in the response if the format was not requested or its build failed. The built site is served at `/publication/site/` by Express static middleware (mount point registered at server startup).
+
+**Output URLs when build succeeds:**
+
+| Format | URL |
+|---|---|
+| HTML | `/publication/site/` |
+| PDF | `/publication/site/odip/_exports/index.pdf` |
+| Word | `/publication/site/odip/_exports/index.docx` |
 
 ---
 
 ## 5. CLI
 
 ```bash
-# Publish a specific edition (build + serve server-side)
+# Publish HTML site only
 odp-cli edition publish <editionId>
 
-# Generate Antora ZIP for local build (ZIP download)
+# Publish HTML + PDF
+odp-cli edition publish <editionId> --pdf
+
+# Publish HTML + Word
+odp-cli edition publish <editionId> --word
+
+# Publish all formats
+odp-cli edition publish <editionId> --pdf --word
+
+# Generate Antora ZIP for local build
 odp-cli publication antora -o ~/output/odip-web-site.zip --edition <editionId>
 
-# Generate for entire repository
+# Generate Antora ZIP for entire repository
 odp-cli publication antora -o ~/output/odip-web-site.zip
 ```
+
+`--pdf` requires Ruby/Bundler + `asciidoctor-pdf` in the server container. `--word` requires `pandoc`. Failed formats are reported as warnings; the command exits successfully if HTML succeeded.
 
 Implementation: `workspace/cli/src/commands/odp-editions.js` (publish), `workspace/cli/src/commands/publication.js` (ZIP).
 
@@ -269,8 +293,10 @@ Each `publishEdition()` call:
 2. Generates Antora content ZIP via `generateAntoraZip()`
 3. Extracts ZIP into `works/` (overwrites previous content, preserving `node_modules/` and `.git/`)
 4. `git add . && git commit --allow-empty` — records each publication in git history
-5. `npx antora antora-playbook.yml` — builds HTML site into `works/build/site/`
-6. Releases mutex — returns `{ siteUrl: '/publication/site/' }`
+5. `npx antora antora-playbook.yml` — builds HTML site into `works/build/site/` (mandatory, fatal on failure)
+6. `npx antora antora-playbook-pdf.yml` — builds PDF (only if `pdf` option set; non-fatal)
+7. `npx antora antora-playbook-docx.yml` — builds Word document (only if `word` option set; non-fatal)
+8. Releases mutex — returns `{ siteUrl, pdfUrl, wordUrl }` (`pdfUrl`/`wordUrl` are `null` if not requested or build failed)
 
 The built site is immediately served by the Express static middleware mounted at `/publication/site/`.
 
@@ -294,6 +320,8 @@ The bundle is included in every generated Antora ZIP so it survives extraction i
 | `mustache` | Logic-less template rendering for AsciiDoc pages |
 | `@antora/cli` + `@antora/site-generator` | HTML site generation (installed in `works/`, not server workspace) |
 | `@antora/lunr-extension` | Full-text search in generated site |
+| Ruby/Bundler + `asciidoctor-pdf` | PDF generation via `antora-playbook-pdf.yml` (must be present in container) |
+| `pandoc` | Word document generation via `antora-playbook-docx.yml` (must be present in container) |
 
 ---
 

@@ -1,0 +1,30 @@
+site:
+  title: ODIP
+  url: http://localhost:8081
+  start_page: odip:ROOT:index.adoc
+
+content:
+  sources:
+    - url: .
+      branches: HEAD
+
+antora:
+  extensions:
+    - '@antora/lunr-extension'
+    - require: '@antora/assembler'
+      assembler_config: ./antora-assembler.yml
+
+ui:
+  bundle:
+    url: ./ui-bundle.zip
+    snapshot: false
+  supplemental_files:
+    - path: ui.yml
+      contents: |
+        static_files:
+        - .nojekyll
+        supplemental_ui: true
+
+asciidoc:
+  attributes:
+    page-pagination: ''

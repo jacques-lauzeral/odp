@@ -93,9 +93,12 @@ paths:
       tags: [ODP]
       description: |
         Builds the Antora website for the specified edition and serves it at
-        `/publication/site/`. Only one publication can run at a time — concurrent
-        requests are rejected with 409. The build runs synchronously; logs are
-        available in the server log stream.
+        `/publication/site/`. Optionally also generates PDF (requires Ruby/Bundler +
+        asciidoctor-pdf) and/or Word document (requires pandoc) from the same Antora
+        source. Only one publication can run at a time — concurrent requests are
+        rejected with 409. The build runs synchronously; logs are available in the
+        server log stream. PDF and Word failures are non-fatal — the response returns
+        null for the corresponding URL if the build failed.
       parameters:
         - name: id
           in: path
@@ -103,9 +106,21 @@ paths:
           schema:
             type: string
           description: Edition ID
+        - name: pdf
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Also generate PDF document (requires Ruby/Bundler + asciidoctor-pdf)
+        - name: word
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Also generate Word document (requires pandoc)
       responses:
         '200':
-          description: Publication complete — site URL returned
+          description: Publication complete — URLs returned (null if format was not requested or failed)
           content:
             application/json:
               schema:
@@ -114,6 +129,14 @@ paths:
                   siteUrl:
                     type: string
                     example: /publication/site/
+                  pdfUrl:
+                    type: string
+                    nullable: true
+                    example: /publication/site/odip/_exports/index.pdf
+                  wordUrl:
+                    type: string
+                    nullable: true
+                    example: /publication/site/odip/_exports/index.docx
         '404':
           description: Edition not found
           content:

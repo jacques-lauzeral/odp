@@ -98,13 +98,6 @@ paths:
   /odp-editions/export:
     $ref: 'openapi-odp.yml#/paths/~1odp-editions~1export'
 
-  # Publication endpoints
-  /publications/antora:
-    $ref: 'openapi-publication.yml#/paths/~1publications~1antora'
-  /publications/pdf:
-    $ref: 'openapi-publication.yml#/paths/~1publications~1pdf'
-  /publications/docx:
-    $ref: 'openapi-publication.yml#/paths/~1publications~1docx'
 
 tags:
   - name: Stakeholder Categories

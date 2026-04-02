@@ -159,15 +159,32 @@ export class ODPEditionService {
     }
 
     /**
+     * Run a shell command, catching failures as warnings instead of fatal errors.
+     * @returns {boolean} true if successful, false if failed (warning emitted)
+     * @private
+     */
+    _tryExec(label, cmd, opts) {
+        try {
+            execSync(cmd, opts);
+            return true;
+        } catch (error) {
+            console.warn(`[publish] ⚠ ${label} failed (skipped): ${error.message.split('\n')[0]}`);
+            return false;
+        }
+    }
+
+    /**
      * Publish an edition: generate Antora content, extract to works dir,
-     * commit and build. Returns the relative URL of the served site.
+     * commit and build HTML site + PDF. Optionally also builds Word document.
      * Only one publication can run at a time — concurrent calls get a 409 error.
+     * Word failure is non-fatal — null is returned for wordUrl if build failed.
      *
      * @param {string|number} editionId
      * @param {string} userId
-     * @returns {Promise<string>} Relative URL of the served site
+     * @param {{ word?: boolean }} [options]
+     * @returns {Promise<{ siteUrl: string, pdfUrl: string, wordUrl: string|null }>}
      */
-    async publishEdition(editionId, userId) {
+    async publishEdition(editionId, userId, options = {}) {
         if (this._publicationInProgress) {
             const err = new Error('Publication already in progress — please retry later');
             err.code = 'PUBLICATION_IN_PROGRESS';
@@ -194,6 +211,7 @@ export class ODPEditionService {
 
             const worksDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works');
             const scope = `edition ${editionId} (${edition.title})`;
+            const execOpts = { cwd: worksDir, stdio: 'inherit' };
 
             // Stage 1 — Generate content ZIP
             console.log(`[publish] Generating Antora content for ${scope}...`);
@@ -201,7 +219,6 @@ export class ODPEditionService {
             console.log(`[publish] Content ZIP generated (${zipBuffer.length} bytes)`);
 
             // Stage 2 — Extract ZIP into works dir
-            // Remove files that may be owned by host user to avoid chmod EPERM on extraction
             console.log(`[publish] Preparing works directory...`);
             const uiBundlePath = nodePath.join(worksDir, 'ui-bundle.zip');
             if (fs.existsSync(uiBundlePath)) {
@@ -218,12 +235,58 @@ export class ODPEditionService {
             execSync(`git commit -m "publish ${scope}" --allow-empty`, { cwd: worksDir, stdio: 'inherit' });
             console.log(`[publish] Git commit complete`);
 
-            // Stage 4 — Antora build
-            console.log(`[publish] Running Antora build...`);
-            execSync('npx antora antora-playbook.yml', { cwd: worksDir, stdio: 'inherit' });
-            console.log(`[publish] Antora build complete`);
+            // Stage 4 — HTML build (mandatory)
+            console.log(`[publish] Running Antora HTML build...`);
+            execSync('npx antora antora-playbook.yml', execOpts);
+            console.log(`[publish] Antora HTML build complete`);
 
-            return '/publication/site/';
+            // Ensure _exports directory exists for PDF/Word output
+            const exportsDir = nodePath.join(worksDir, 'build', 'site', 'odip', '_exports');
+            fs.mkdirSync(exportsDir, { recursive: true });
+
+            // Stage 5 — PDF build (optional, non-fatal)
+            // Assembler outputs to build/exports/, then copied into build/site/odip/_exports/
+            let pdfUrl = null;
+            if (options.pdf) {
+                console.log(`[publish] Running PDF build...`);
+                const ok = this._tryExec('PDF build', 'npx antora antora-playbook-pdf.yml', execOpts);
+                if (ok) {
+                    const pdfSrc = nodePath.join(worksDir, 'build', 'exports', 'index.pdf');
+                    const pdfDest = nodePath.join(exportsDir, 'index.pdf');
+                    try {
+                        fs.copyFileSync(pdfSrc, pdfDest);
+                        pdfUrl = '/publication/site/odip/_exports/index.pdf';
+                        console.log(`[publish] PDF copied to exports`);
+                    } catch (e) {
+                        console.warn(`[publish] ⚠ PDF copy failed: ${e.message}`);
+                    }
+                }
+            }
+
+            // Stage 6 — Word build (optional, non-fatal)
+            // Assembler outputs to build/exports/, then copied into build/site/odip/_exports/
+            let wordUrl = null;
+            if (options.word) {
+                console.log(`[publish] Running Word build...`);
+                const ok = this._tryExec('Word build', 'npx antora antora-playbook-docx.yml', execOpts);
+                if (ok) {
+                    const wordSrc = nodePath.join(worksDir, 'build', 'exports', 'index.docx');
+                    const wordDest = nodePath.join(exportsDir, 'index.docx');
+                    try {
+                        fs.copyFileSync(wordSrc, wordDest);
+                        wordUrl = '/publication/site/odip/_exports/index.docx';
+                        console.log(`[publish] Word document copied to exports`);
+                    } catch (e) {
+                        console.warn(`[publish] ⚠ Word copy failed: ${e.message}`);
+                    }
+                }
+            }
+
+            return {
+                siteUrl: '/publication/site/',
+                pdfUrl,
+                wordUrl
+            };
 
         } finally {
             this._publicationInProgress = false;
@@ -267,13 +330,18 @@ export class ODPEditionService {
             try {
                 archive.directory(staticContentPath, false);
 
-                // Explicitly include ui-bundle.zip if present (may be absent from archive.directory
-                // if archiver skips .zip files — ensures it survives extraction into works/)
-                const uiBundlePath = nodePath.join(staticContentPath, 'ui-bundle.zip');
-                if (fs.existsSync(uiBundlePath)) {
-                    archive.file(uiBundlePath, { name: 'ui-bundle.zip' });
-                } else {
-                    console.warn('[generateAntoraZip] ui-bundle.zip not found in static content — Antora build will fail');
+                // Explicitly include files that archiver may skip (e.g. .zip, extensionless)
+                const explicitFiles = [
+                    { src: 'ui-bundle.zip', warn: 'Antora build will fail' },
+                    { src: 'Gemfile', warn: 'PDF build will fail' },
+                ];
+                for (const { src, warn } of explicitFiles) {
+                    const filePath = nodePath.join(staticContentPath, src);
+                    if (fs.existsSync(filePath)) {
+                        archive.file(filePath, { name: src });
+                    } else {
+                        console.warn(`[generateAntoraZip] ${src} not found in static content — ${warn}`);
+                    }
                 }
 
                 for (const [filePath, content] of Object.entries(detailsFiles)) {

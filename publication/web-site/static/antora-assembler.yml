@@ -12,5 +12,7 @@ asciidoc:
     revremark: 'DRAFT'                  # ← Status
     version-label: 'Edition'            # ← Changes "Version" to "Edition"
 pdf-theme: ./pdf-theme.yml
+output:
+  dir: ./build/exports
 build:
   command: bundle exec asciidoctor-pdf

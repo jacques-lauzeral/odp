@@ -14,7 +14,6 @@ import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
-import publicationRoutes from './routes/publication.js';
 import MapperRegistry from './services/import/MapperRegistry.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
 
@@ -95,9 +94,6 @@ app.use('/operational-changes', operationalChangeRoutes);
 // Management Entity API Routes
 app.use('/baselines', baselineRoutes);
 app.use('/odp-editions', odpEditionRoutes);
-
-// Publication API Routes
-app.use('/publications', publicationRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
