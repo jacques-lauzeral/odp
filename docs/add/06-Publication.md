@@ -24,7 +24,7 @@ REST API  POST /publications/pdf?editionId=<id>
           │
           └── DetailsModuleGenerator   ← queries Neo4j, generates AsciiDoc pages
                 │
-                ├── operationalRequirementStore.findAll()
+                ├── operationalRequirementService.getAll()
                 │
                 ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
                 │
@@ -69,7 +69,7 @@ static/
 
 ### Stage 1 — Data Fetch
 
-`DetailsModuleGenerator` queries `operationalRequirementStore.findAll()` in a single transaction with no baseline or wave filters (full repository). All ONs and ORs are retrieved and split by type.
+`DetailsModuleGenerator` delegates to `operationalRequirementService.getAll()` with `projection = 'standard'` and optional `editionId` (null for full-repository mode). The service handles edition context resolution — mapping `editionId` to `{baselineId, editionId}` via `odpEditionStore.resolveContext()` — before calling the store. All ONs and ORs are retrieved and split by type.
 
 ### Stage 2 — Relationship Resolution
 

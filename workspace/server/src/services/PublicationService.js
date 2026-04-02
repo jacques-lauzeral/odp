@@ -33,7 +33,7 @@ class PublicationService {
 
             // Generate dynamic content (details module with DrG pages)
             console.log('Generating details module...');
-            const detailsGenerator = new DetailsModuleGenerator(userId);
+            const detailsGenerator = new DetailsModuleGenerator(userId, editionId);
             const detailsFiles = await detailsGenerator.generate();
             console.log(`Generated ${Object.keys(detailsFiles).length} details module files`);
 

@@ -7,9 +7,9 @@ import {
     createTransaction,
     commitTransaction,
     rollbackTransaction,
-    operationalRequirementStore,
     referenceDocumentStore
 } from '../../../store/index.js';
+import operationalRequirementService from '../../OperationalRequirementService.js';
 import DeltaToAsciidocConverter from '../../export/DeltaToAsciidocConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,8 +20,9 @@ const __dirname = path.dirname(__filename);
  * Creates a nested file structure organized by DrG and path hierarchy.
  */
 export class DetailsModuleGenerator {
-    constructor(userId) {
+    constructor(userId, editionId = null) {
         this.userId = userId;
+        this.editionId = editionId;
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
         this.deltaConverter = new DeltaToAsciidocConverter();
@@ -217,27 +218,17 @@ export class DetailsModuleGenerator {
     }
 
     async _fetchONsAndORs() {
-        const tx = createTransaction(this.userId);
-        try {
-            const allRequirements = await operationalRequirementStore().findAll(
-                tx,
-                null,  // baselineId - null for latest versions
-                null,  // fromWaveId - null for no wave filtering
-                {}     // filters - empty for no content filtering
-            );
+        const allRequirements = await operationalRequirementService.getAll(
+            this.userId,
+            this.editionId,
+            {},
+            'standard'
+        );
 
-            await commitTransaction(tx);
+        const ons = allRequirements.filter(r => r.type === 'ON');
+        const ors = allRequirements.filter(r => r.type === 'OR');
 
-            // Split by type
-            const ons = allRequirements.filter(r => r.type === 'ON');
-            const ors = allRequirements.filter(r => r.type === 'OR');
-
-            return { ons, ors };
-
-        } catch (error) {
-            await rollbackTransaction(tx);
-            throw error;
-        }
+        return { ons, ors };
     }
 
     /**
