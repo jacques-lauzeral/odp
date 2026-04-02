@@ -162,12 +162,11 @@ async function initializePublicationWorkspace() {
         console.log('Publication workspace: static content already present');
     }
 
-    // npm install if no node_modules
+    // npm install is handled by odip-admin install (host side)
+    // to avoid container internet access dependency
     const nodeModulesDir = nodePath.join(worksDir, 'node_modules');
     if (!fs.existsSync(nodeModulesDir)) {
-        console.log('Publication workspace: running npm install...');
-        execSync('npm install', { cwd: worksDir, stdio: 'inherit' });
-        console.log('Publication workspace: npm install complete');
+        console.warn('Publication workspace: node_modules not present — run odip-admin install to complete setup');
     } else {
         console.log('Publication workspace: node_modules already present');
     }
