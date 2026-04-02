@@ -28,7 +28,7 @@ usage() {
 Usage: odip-admin <command> [options]
 
 Commands:
-  install   One-time installation: download UI bundle, npm install, build web client
+  install   One-time installation: download UI bundle (--proxy for EC), npm install, build web client
   start     Start the ODIP pod
   stop      Stop the ODIP pod
   restart   Stop and restart the ODIP pod
@@ -134,13 +134,13 @@ build_web_client() {
 
 # --- Commands ---
 
-ANTORA_BUNDLE_URL="https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
+EC_PROXY_HOST="pac.eurocontrol.int:9512"
 
 cmd_install() {
-    local proxy_url=""
+    local use_proxy=false
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --proxy) proxy_url="$2"; shift 2 ;;
+            --proxy) use_proxy=true; shift ;;
             -h|--help)
                 cat << 'EOF'
 Usage: odip-admin install [options]
@@ -151,8 +151,7 @@ Usage: odip-admin install [options]
     - Build web client image
 
 Options:
-      --proxy <url>   Proxy URL for Antora UI bundle download
-                      e.g. http://user:pass@pac.eurocontrol.int:9512
+      --proxy         Use EC corporate proxy (prompts for credentials)
   -h, --help          Show this help
 
 Notes:
@@ -176,9 +175,12 @@ EOF
     if [[ ! -f "$bundle_src" ]]; then
         log "Downloading Antora UI bundle..."
         local curl_opts="-sSL --connect-timeout 5 --max-time 30"
-        if [[ -n "$proxy_url" ]]; then
-            curl_opts="$curl_opts --proxy $proxy_url"
-            log "Using proxy: $proxy_url"
+        if [[ "$use_proxy" == true ]]; then
+            read -r -p "Proxy username: " proxy_user
+            read -r -s -p "Proxy password: " proxy_pass
+            echo
+            curl_opts="$curl_opts --proxy http://${proxy_user}:${proxy_pass}@${EC_PROXY_HOST}"
+            log "Using EC proxy: ${EC_PROXY_HOST}"
         fi
         if curl $curl_opts -o "$bundle_src" "$ANTORA_BUNDLE_URL"; then
             log "Antora UI bundle downloaded"
