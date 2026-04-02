@@ -199,7 +199,7 @@ Standalone management service. Editions are immutable once created.
 | `listODPEditions(userId)` | List all editions |
 | `exportAsAsciiDoc(editionId?, userId)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
 
-Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`), `startsFromWaveId`. Optional: `baselineId`, `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The wave and optional baseline are validated for existence before the edition is written.
+Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`). Optional: `baselineId`, `startDate` (yyyy-mm-dd lower bound for content filtering), `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The optional baseline is validated for existence before the edition is written.
 
 Edition context resolution (mapping an `edition` query parameter to `{baselineId, editionId}`) happens in the **service layer** (`VersionedItemService`), not in `ODIPEditionService`. `ODIPEditionService` is responsible only for edition lifecycle management.
 

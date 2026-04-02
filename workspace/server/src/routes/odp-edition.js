@@ -106,7 +106,7 @@ router.get('/:id/export', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const userId = getUserId(req);
-        console.log(`ODPEditionService.createODPEdition() userId: ${userId}, title: ${req.body.title}, type: ${req.body.type}, baselineId: ${req.body.baselineId}, startsFromWaveId: ${req.body.startsFromWaveId}`);
+        console.log(`ODPEditionService.createODPEdition() userId: ${userId}, title: ${req.body.title}, type: ${req.body.type}, baselineId: ${req.body.baselineId}, startDate: ${req.body.startDate}`);
         const edition = await ODPEditionService.createODPEdition(req.body, userId);
         res.status(201).json(edition);
     } catch (error) {

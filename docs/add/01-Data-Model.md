@@ -281,7 +281,7 @@ A published edition of the ODIP, acting as a "saved query" over a baseline. An e
 | `type` | enum | DRAFT | OFFICIAL\|DRAFT | OFFICIAL\|DRAFT | OFFICIAL |
 | `createdAt` | timestamp | |
 | `createdBy` | string | |
-| `startsFromWave` | Wave reference | Optional — lower bound for both OC milestone filtering and ON tentative period filtering |
+| `startDate` | string | Optional — lower bound date (format: `yyyy-mm-dd`) for both OC milestone filtering and ON tentative period filtering |
 | `minONMaturity` | enum | Optional — minimum maturity level for ON inclusion (DRAFT \| ADVANCED \| MATURE) |
 
 **Content selection algorithm**
@@ -290,14 +290,14 @@ An edition selects content via two independent paths whose results are unioned:
 
 **Tentative path (ON/OR-based):**
 
-1. **Candidate ONs** — if `startsFromWave` is set, keep only ONs where `effectiveEnd(tentative) > startsFromWave.implementationDate`. ONs without a `tentative` field are excluded from this path. If no `startsFromWave`, all ONs with a `tentative` field are candidates.
+1. **Candidate ONs** — if `startDate` is set, keep only ONs where `effectiveEnd(tentative) > startDate`. ONs without a `tentative` field are excluded from this path. If no `startDate`, all ONs with a `tentative` field are candidates.
 2. **Maturity filter** — if `minONMaturity` is set, keep only candidate ONs where `maturity >= minONMaturity`.
 3. **Downward ON cascade** — child ONs of accepted ONs are accepted recursively, regardless of their own maturity or tentative value.
 4. **OR inclusion** — ORs implementing any accepted ON are accepted; their refining ORs are accepted recursively (downward cascade).
 
 **OC path (change-based):**
 
-5. **Candidate OCs** — if `startsFromWave` is set, keep only OCs with at least one milestone where `milestone.wave.implementationDate >= startsFromWave.implementationDate`.
+5. **Candidate OCs** — if `startDate` is set, keep only OCs with at least one milestone where `milestone.wave.implementationDate >= startDate`.
 6. **OR/ON inclusion** — ORs implemented or decommissioned by accepted OCs are accepted; ONs implemented by those ORs are accepted for structural completeness.
 
 **`tentative` boundary rule:** `effectiveEnd([y])` = `effectiveEnd([x, y])` = `{y+1}-01-01T00:00`. A single-year value `[2028]` is treated as `[2028, 2028]`, with effective end `2029-01-01T00:00`.
@@ -386,7 +386,6 @@ Milestones are independent — no sequencing or dependency between them is enfor
 (ItemVersion)-[:VERSION_OF]->(Item)        # Back-reference
 (Baseline)-[:HAS_ITEMS]->(ItemVersion)     # Snapshot at baseline creation time
 (Edition)-[:EXPOSES]->(Baseline)
-(Edition)-[:STARTS_FROM]->(Wave)
 ```
 
 ---
@@ -405,7 +404,7 @@ Queries accept optional context parameters that transparently select which versi
 |---|---|
 | none | Returns the latest version |
 | `baselineId` | Returns the version captured at baseline creation time |
-| `fromWaveId` | For OCs: filters to those with milestones at or after the given wave. For ONs: filters to those whose tentative period ends after the wave. |
+| `startDate` | Lower bound date (yyyy-mm-dd) — for OCs: filters to those with milestones at or after the date. For ONs: filters to those whose tentative period ends after the date. |
 | `minONMaturity` | Filters ONs to those meeting the minimum maturity level; cascades to child ONs and implementing ORs |
 
 ### 5.3 Optimistic Locking

@@ -88,12 +88,12 @@ export default class ODPEditionsEntity {
                 groupPriority: { 'DRAFT': 1, 'OFFICIAL': 2 }
             },
             {
-                key: 'startsFromWave',
-                label: 'Starts From Wave',
-                width: '140px',
+                key: 'startDate',
+                label: 'Start Date',
+                width: '120px',
                 sortable: true,
-                type: 'entity-reference',
-                noneLabel: '—'
+                type: 'text',
+                format: (value) => value || '—'
             },
             {
                 key: 'minONMaturity',
@@ -124,7 +124,7 @@ export default class ODPEditionsEntity {
         return [
             { key: 'none', label: 'No grouping' },
             { key: 'type', label: 'Type' },
-            { key: 'startsFromWave', label: 'Wave' },
+            { key: 'startDate', label: 'Start Date' },
             { key: 'minONMaturity', label: 'Min ON Maturity' }
         ];
     }

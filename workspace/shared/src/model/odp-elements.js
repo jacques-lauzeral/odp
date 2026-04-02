@@ -34,7 +34,7 @@ export const Edition = {
     createdAt: '',
     createdBy: '',
     baseline: null,         // AnnotatedReference {id, title, note}
-    startsFromWave: null,   // AnnotatedReference {id, title, note}, optional
+    startDate: '',          // string (yyyy-mm-dd), optional — lower bound for OC milestone and ON tentative filtering
     minONMaturity: null     // DRAFT | ADVANCED | MATURE, optional
 };
 

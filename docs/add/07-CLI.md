@@ -113,7 +113,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `edition export <id> -o <path>` | Export edition as ZIP |
 | `edition export-all -o <path>` | Export full repository as ZIP |
 
-**`edition create` options**: `--from <waveId>` (optional wave lower bound), `--type DRAFT|OFFICIAL` (default: DRAFT), `--baseline <id>` (auto-created if omitted), `--min-on-maturity DRAFT|ADVANCED|MATURE` (optional ON maturity gate).
+**`edition create` options**: `--from <date>` (optional start date lower bound, yyyy-mm-dd), `--type DRAFT|OFFICIAL` (default: DRAFT), `--baseline <id>` (auto-created if omitted), `--min-on-maturity DRAFT|ADVANCED|MATURE` (optional ON maturity gate).
 
 ### Import / Export
 

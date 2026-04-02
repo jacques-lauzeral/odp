@@ -4,8 +4,7 @@ import {
     commitTransaction,
     rollbackTransaction,
     odpEditionStore,
-    baselineStore,
-    waveStore
+    baselineStore
 } from '../store/index.js';
 import { MaturityLevel, isMaturityLevelValid } from '../../../shared/src/index.js';
 
@@ -34,20 +33,10 @@ export class ODPEditionService {
     }
 
     /**
-     * Validate wave reference exists (required)
-     */
-    async _validateWaveReference(startsFromWaveId, transaction) {
-        const wave = await waveStore().findById(startsFromWaveId, transaction);
-        if (!wave) {
-            throw new Error(`Wave with ID ${startsFromWaveId} does not exist`);
-        }
-    }
-
-    /**
      * Validate Edition creation data
      */
     _validateEditionData(data) {
-        const { title, type, baselineId, startsFromWaveId, minONMaturity } = data;
+        const { title, type, baselineId, startDate, minONMaturity } = data;
 
         if (!title || typeof title !== 'string' || title.trim() === '') {
             throw new Error('Title is required and must be a non-empty string');
@@ -61,8 +50,10 @@ export class ODPEditionService {
             throw new Error('Type must be either "DRAFT" or "OFFICIAL"');
         }
 
-        if (!startsFromWaveId || (typeof startsFromWaveId !== 'string' && typeof startsFromWaveId !== 'number')) {
-            throw new Error('startsFromWaveId is required and must be a string or number');
+        if (startDate !== null && startDate !== undefined) {
+            if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+                throw new Error('startDate must be a date string in yyyy-mm-dd format');
+            }
         }
 
         if (baselineId !== null && baselineId !== undefined) {
@@ -81,7 +72,7 @@ export class ODPEditionService {
             title: title.trim(),
             type,
             baselineId: baselineId || null,
-            startsFromWaveId,
+            startDate: startDate || null,
             minONMaturity: minONMaturity || null
         };
     }
@@ -100,8 +91,6 @@ export class ODPEditionService {
         try {
             const validatedData = this._validateEditionData(data);
 
-            await this._validateWaveReference(validatedData.startsFromWaveId, tx);
-
             let resolvedBaselineId = validatedData.baselineId;
 
             if (!resolvedBaselineId) {
@@ -116,7 +105,7 @@ export class ODPEditionService {
                 title: validatedData.title,
                 type: validatedData.type,
                 baselineId: resolvedBaselineId,
-                startsFromWaveId: validatedData.startsFromWaveId,
+                startDate: validatedData.startDate,
                 minONMaturity: validatedData.minONMaturity
             };
 

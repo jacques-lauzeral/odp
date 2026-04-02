@@ -281,7 +281,7 @@ Images can be embedded in Delta content as base64-encoded PNG data. The import p
 
 ## 8. ODIP Edition Context
 
-The edition picker (available in Elaboration, Planning, and Review activities) passes the selected edition ID directly to the API as `?edition=<id>`. Edition context resolution — mapping the edition to a baseline and optional wave — happens server-side. The web client never resolves `baselineId` or `startsFromWaveId` client-side.
+The edition picker (available in Elaboration, Planning, and Review activities) passes the selected edition ID directly to the API as `?edition=<id>`. Edition context resolution — mapping the edition to a baseline and optional start date — happens server-side. The web client never resolves `baselineId` or `startDate` client-side.
 
 `AbstractInteractionActivity.buildQueryParams()` implements this: when `config.dataSource` is a numeric edition ID, it adds `queryParams.edition = editionContext` to every list or get request. No additional API call is made to fetch the edition object for resolution purposes.
 
@@ -393,7 +393,7 @@ The Planning activity (`activities/planning/`) supports deployment and implement
 
 ### 11.1 Navigation and Tab Structure
 
-The Planning activity appears as a top-level nav tab alongside Elaboration. It uses the same edition picker as Elaboration (baseline + fromWave resolution, current working edition). The activity shell (`PlanningActivity`) renders two tabs:
+The Planning activity appears as a top-level nav tab alongside Elaboration. It uses the same edition picker as Elaboration (baseline + startDate resolution, current working edition). The activity shell (`PlanningActivity`) renders two tabs:
 
 | Tab | Status |
 |---|---|
@@ -825,25 +825,27 @@ board layout, not the collection+details two-pane pattern.
 
 ### 14.1 ODPEditionForm (`publication/odp-edition-form.js`)
 
-**Type field** — options updated to `DRAFT` / `OFFICIAL`.
+**Type field** — options: `DRAFT` / `OFFICIAL`.
 
-**`startsFromWave` field** — changed from `required: true` to `required: false`; help text updated to describe the dual role (OC milestone lower bound + ON tentative period filter); options include a "No wave (all content)" entry.
+**`startDate` field** — replaces the former `startsFromWave` select. Plain date input (`yyyy-mm-dd`), optional, with client-side format validation. Help text describes the dual role: OC milestone lower bound + ON tentative period filter.
 
-**`minONMaturity` field** — new optional `select` field with four options: no gate, DRAFT, ADVANCED, MATURE. Controls the minimum ON maturity level for edition content selection.
+**`minONMaturity` field** — `radio` field with three options: `DRAFT` (default), `ADVANCED`, `MATURE`. `DRAFT` is always sent to the API (no "no gate" option).
 
-**`transformDataForSave()`** — handles absent `startsFromWave` (skips `startsFromWaveId`); strips empty `minONMaturity` before posting to API; default type is `'DRAFT'`.
+**`transformDataForSave()`** — passes `startDate` string directly; defaults `minONMaturity` to `'DRAFT'` when absent; default type is `'DRAFT'`.
 
-**`onValidate()`** — wave validation now conditional (only fires when a wave is actually selected).
+**`transformDataForEdit()`** — extracts `baselineId` from baseline reference object; defaults `minONMaturity` to `'DRAFT'` when absent.
 
-**`getWaveOptions()` / `formatWave()`** — wave label changed from `wave.name` to `${wave.year}#${wave.sequenceNumber}` throughout; sort key uses `year * 100 + sequenceNumber`.
+**`onValidate()`** — validates baseline reference only; wave validation removed.
 
 ### 14.2 ODPEditionsEntity (`publication/odp-editions.js`)
 
 **Type column** — `enumLabels` and `enumStyles` updated to `DRAFT` / `OFFICIAL`.
 
-**`minONMaturity` column** — new text column; renders `'—'` when absent.
+**`startDate` column** — replaces former `startsFromWave` entity-reference column; plain text, renders `'—'` when absent.
 
-**Grouping config** — `minONMaturity` added as a grouping option.
+**`minONMaturity` column** — text column; renders `'—'` when absent.
+
+**Grouping config** — `startDate` and `minONMaturity` available as grouping options.
 
 ### 14.3 PublicationActivity (`publication/publication.js`)
 

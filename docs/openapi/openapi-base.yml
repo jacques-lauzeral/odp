@@ -833,10 +833,10 @@ components:
           type: string
         baseline:
           $ref: '#/components/schemas/AnnotatedReference'
-        startsFromWave:
-          $ref: '#/components/schemas/AnnotatedReference'
+        startDate:
+          type: string
           nullable: true
-          description: "Optional wave lower bound for OC milestone filtering and ON tentative period filtering"
+          description: "Optional lower bound date (yyyy-mm-dd) for OC milestone filtering and ON tentative period filtering"
         minONMaturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
@@ -854,10 +854,10 @@ components:
           enum: [DRAFT, OFFICIAL]
         baselineId:
           type: string
-        startsFromWaveId:
+        startDate:
           type: string
           nullable: true
-          description: "Optional wave ID — lower bound for OC milestone filtering and ON tentative period filtering"
+          description: "Optional lower bound date (yyyy-mm-dd) for OC milestone filtering and ON tentative period filtering"
         minONMaturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]

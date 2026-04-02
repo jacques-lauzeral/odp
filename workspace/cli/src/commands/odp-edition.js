@@ -87,18 +87,16 @@ class EditionCommands {
                     }
 
                     const table = new Table({
-                        head: ['ID', 'Title', 'Type', 'From Wave', 'Min Maturity', 'Baseline', 'Created At'],
-                        colWidths: [8, 25, 10, 12, 14, 12, 20]
+                        head: ['ID', 'Title', 'Type', 'Start Date', 'Min Maturity', 'Baseline', 'Created At'],
+                        colWidths: [8, 25, 10, 14, 14, 12, 20]
                     });
 
                     editions.forEach(edition => {
-                        const wave = edition.startsFromWave;
-                        const waveLabel = wave ? `${wave.year}#${wave.sequenceNumber}` : '—';
                         table.push([
                             edition.id,
                             edition.title,
                             edition.type,
-                            waveLabel,
+                            edition.startDate || '—',
                             edition.minONMaturity || '—',
                             edition.baseline?.id || '—',
                             edition.createdAt ? new Date(edition.createdAt).toLocaleString() : '—'
@@ -152,13 +150,10 @@ class EditionCommands {
                         console.log('Baseline: None');
                     }
 
-                    if (edition.startsFromWave) {
-                        const wave = edition.startsFromWave;
-                        const waveLabel = `${wave.year}#${wave.sequenceNumber}`;
-                        const impl = wave.implementationDate ? ` (${wave.implementationDate})` : '';
-                        console.log(`Starts From Wave: ${waveLabel}${impl} (ID: ${wave.id})`);
+                    if (edition.startDate) {
+                        console.log(`Start Date: ${edition.startDate}`);
                     } else {
-                        console.log('Starts From Wave: —');
+                        console.log('Start Date: —');
                     }
                     if (edition.minONMaturity) {
                         console.log(`Min ON Maturity: ${edition.minONMaturity}`);
@@ -174,7 +169,7 @@ class EditionCommands {
         editionCommand
             .command('create <title>')
             .description('Create a new ODIP edition')
-            .option('--from <waveId>', 'Wave ID that this edition starts from (optional)')
+            .option('--from <date>', 'Start date lower bound for content filtering (yyyy-mm-dd, optional)')
             .option('--type <type>', 'Edition type: DRAFT | OFFICIAL (default: DRAFT)', 'DRAFT')
             .option('--baseline <baselineId>', 'Baseline ID (auto-created if not provided)')
             .option('--min-on-maturity <maturity>', 'Minimum ON maturity for content selection: DRAFT | ADVANCED | MATURE')
@@ -190,10 +185,15 @@ class EditionCommands {
                         process.exit(1);
                     }
 
+                    if (options.from && !/^\d{4}-\d{2}-\d{2}$/.test(options.from)) {
+                        console.error(`Invalid --from date: ${options.from}. Expected format: yyyy-mm-dd`);
+                        process.exit(1);
+                    }
+
                     const data = { title, type: options.type };
 
                     if (options.from) {
-                        data.startsFromWaveId = parseInt(options.from, 10);
+                        data.startDate = options.from;
                     }
                     if (options.baseline) {
                         data.baselineId = parseInt(options.baseline, 10);
@@ -220,9 +220,8 @@ class EditionCommands {
                     console.log(`✓ Created ODIP edition: ${edition.title} (ID: ${edition.id})`);
                     console.log(`✓ Type: ${edition.type}`);
 
-                    if (edition.startsFromWave) {
-                        const wave = edition.startsFromWave;
-                        console.log(`✓ Starts from wave: ${wave.year}#${wave.sequenceNumber} (ID: ${wave.id})`);
+                    if (edition.startDate) {
+                        console.log(`✓ Start date: ${edition.startDate}`);
                     }
                     if (edition.minONMaturity) {
                         console.log(`✓ Min ON maturity: ${edition.minONMaturity}`);

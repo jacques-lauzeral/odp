@@ -5,7 +5,7 @@ import { StoreError } from './transaction.js';
  * ODPEditionStore provides data access operations for ODIP Editions.
  *
  * An Edition is an immutable object combining a baseline with optional content-selection
- * parameters (startsFromWaveId, minONMaturity). At creation time, the selection algorithm
+ * parameters (startDate, minONMaturity). At creation time, the selection algorithm
  * runs once and marks the relevant HAS_ITEMS relationships by appending the edition ID to
  * their `editions` array property. Query time filtering is then a simple array membership
  * check: `$editionId IN r.editions`.
@@ -21,7 +21,7 @@ export class ODPEditionStore extends BaseStore {
      * Create new Edition with baseline and wave references, then run the content
      * selection algorithm and mark matching HAS_ITEMS relationships.
      *
-     * @param {object} data - {title, type, baselineId, startsFromWaveId, minONMaturity?}
+     * @param {object} data - {title, type, baselineId, startDate?, minONMaturity?}
      * @param {Transaction} transaction - Must have user context
      * @returns {Promise<object>} Created edition (bare node, no sub-objects)
      */
@@ -30,7 +30,7 @@ export class ODPEditionStore extends BaseStore {
         const timestamp = new Date().toISOString();
 
         try {
-            // 1. Create Edition node — minONMaturity stored as property if provided
+            // 1. Create Edition node — minONMaturity and startDate stored as properties if provided
             const editionResult = await transaction.run(`
                 CREATE (edition:ODPEdition {
                     title: $title,
@@ -38,6 +38,7 @@ export class ODPEditionStore extends BaseStore {
                     createdAt: $timestamp,
                     createdBy: $userId
                     ${data.minONMaturity ? ', minONMaturity: $minONMaturity' : ''}
+                    ${data.startDate ? ', startDate: $startDate' : ''}
                 })
                 RETURN edition
             `, {
@@ -45,7 +46,8 @@ export class ODPEditionStore extends BaseStore {
                 type: data.type,
                 timestamp,
                 userId,
-                ...(data.minONMaturity && { minONMaturity: data.minONMaturity })
+                ...(data.minONMaturity && { minONMaturity: data.minONMaturity }),
+                ...(data.startDate && { startDate: data.startDate })
             });
 
             if (editionResult.records.length === 0) {
@@ -64,20 +66,10 @@ export class ODPEditionStore extends BaseStore {
                 baselineId: this.normalizeId(data.baselineId)
             });
 
-            // 3. Create STARTS_FROM relationship to wave
-            await transaction.run(`
-                MATCH (edition:ODPEdition), (wave:Wave)
-                WHERE id(edition) = $editionId AND id(wave) = $waveId
-                CREATE (edition)-[:STARTS_FROM]->(wave)
-            `, {
-                editionId: edition.id,
-                waveId: this.normalizeId(data.startsFromWaveId)
-            });
-
-            // 4. Run selection algorithm and mark HAS_ITEMS relationships
+            // 3. Run selection algorithm and mark HAS_ITEMS relationships
             const matchingVersionIds = await this._computeEditionVersionIds(
                 this.normalizeId(data.baselineId),
-                data.startsFromWaveId ? this.normalizeId(data.startsFromWaveId) : null,
+                data.startDate || null,
                 data.minONMaturity || null,
                 transaction
             );
@@ -113,8 +105,7 @@ export class ODPEditionStore extends BaseStore {
             const result = await transaction.run(`
                 MATCH (edition:ODPEdition) WHERE id(edition) = $id
                 MATCH (edition)-[:EXPOSES]->(baseline:Baseline)
-                MATCH (edition)-[:STARTS_FROM]->(wave:Wave)
-                RETURN edition, baseline, wave
+                RETURN edition, baseline
             `, { id: this.normalizeId(id) });
 
             if (result.records.length === 0) {
@@ -124,7 +115,6 @@ export class ODPEditionStore extends BaseStore {
             const record = result.records[0];
             const edition = this.transformRecord(record, 'edition');
             const baseline = record.get('baseline');
-            const wave = record.get('wave');
 
             return {
                 ...edition,
@@ -132,12 +122,6 @@ export class ODPEditionStore extends BaseStore {
                     id: this.normalizeId(baseline.identity),
                     title: baseline.properties.title,
                     createdAt: baseline.properties.createdAt
-                },
-                startsFromWave: {
-                    id: this.normalizeId(wave.identity),
-                    year: wave.properties.year,
-                    sequenceNumber: wave.properties.sequenceNumber,
-                    implementationDate: wave.properties.implementationDate
                 }
             };
 
@@ -156,15 +140,13 @@ export class ODPEditionStore extends BaseStore {
             const result = await transaction.run(`
                 MATCH (edition:ODPEdition)
                 MATCH (edition)-[:EXPOSES]->(baseline:Baseline)
-                MATCH (edition)-[:STARTS_FROM]->(wave:Wave)
-                RETURN edition, baseline, wave
+                RETURN edition, baseline
                 ORDER BY edition.createdAt DESC
             `);
 
             return result.records.map(record => {
                 const edition = this.transformRecord(record, 'edition');
                 const baseline = record.get('baseline');
-                const wave = record.get('wave');
 
                 return {
                     ...edition,
@@ -172,12 +154,6 @@ export class ODPEditionStore extends BaseStore {
                         id: this.normalizeId(baseline.identity),
                         title: baseline.properties.title,
                         createdAt: baseline.properties.createdAt
-                    },
-                    startsFromWave: {
-                        id: this.normalizeId(wave.identity),
-                        year: wave.properties.year,
-                        sequenceNumber: wave.properties.sequenceNumber,
-                        implementationDate: wave.properties.implementationDate
                     }
                 };
             });
@@ -242,7 +218,7 @@ export class ODPEditionStore extends BaseStore {
      *
      * Tentative path (ON/OR-based):
      *   1. Lead ONs: baseline HAS_ITEMS ONs where tentative IS NOT NULL
-     *      - If fromWaveId: effectiveEnd(tentative) > fromWave.implementationDate
+     *      - If startDate: effectiveEnd(tentative) > startDate
      *      - If minONMaturity: COALESCE(maturity, 'DRAFT') >= minONMaturity
      *   2. Downward ON cascade: versions in baseline that REFINES* a lead ON
      *   3. OR inclusion: OR versions in baseline that IMPLEMENTS an accepted ON
@@ -250,19 +226,19 @@ export class ODPEditionStore extends BaseStore {
      *
      * OC path (change-based):
      *   5. Lead OCs: baseline HAS_ITEMS OCs with at least one milestone
-     *      - If fromWaveId: milestone.wave.implementationDate >= fromWave.implementationDate
+     *      - If startDate: milestone.wave.implementationDate >= startDate
      *   6. OR/ON inclusion: OR versions implemented/decommissioned by accepted OCs;
      *      ON versions implemented by those ORs — all within baseline
      *
      * Result: union of both paths → Set of Neo4j version node IDs.
      *
      * @param {number} baselineId
-     * @param {number|null} fromWaveId
+     * @param {string|null} startDate  - lower bound date string (yyyy-mm-dd) | null
      * @param {string|null} minONMaturity  - 'DRAFT' | 'ADVANCED' | 'MATURE' | null
      * @param {Transaction} transaction
      * @returns {Promise<Set<number>>}
      */
-    async _computeEditionVersionIds(baselineId, fromWaveId, minONMaturity, transaction) {
+    async _computeEditionVersionIds(baselineId, startDate, minONMaturity, transaction) {
         const acceptedVersionIds = new Set();
 
         // -----------------------------------------------------------------------
@@ -290,21 +266,20 @@ export class ODPEditionStore extends BaseStore {
                     WHEN 'MATURE' THEN 2
                     ELSE 0
                   END` : ''}
-            ${fromWaveId !== null ? `
-            MATCH (fromWave:Wave) WHERE id(fromWave) = $fromWaveId
-            WITH baseline, version, item, fromWave
+            ${startDate !== null ? `
+            WITH baseline, version, item
             WHERE CASE
                     WHEN size(version.tentative) >= 2
                       THEN toString(toInteger(version.tentative[-1]) + 1) + '-01-01'
                     WHEN size(version.tentative) = 1
                       THEN toString(toInteger(version.tentative[0]) + 1) + '-01-01'
                     ELSE null
-                  END > fromWave.implementationDate
+                  END > $startDate
             ` : ''}
             RETURN id(version) as versionId, id(item) as itemId
         `, {
             baselineId,
-            ...(fromWaveId !== null && { fromWaveId }),
+            ...(startDate !== null && { startDate }),
             ...(minONMaturity !== null && { minONMaturity })
         });
 
@@ -407,17 +382,15 @@ export class ODPEditionStore extends BaseStore {
             WHERE id(baseline) = $baselineId
               AND EXISTS {
                   MATCH (version)<-[:BELONGS_TO]-(milestone:OperationalChangeMilestone)
-                  ${fromWaveId !== null ? `
-                  MATCH (milestone)-[:TARGETS]->(targetWave:Wave),
-                        (fromWave:Wave)
-                  WHERE id(fromWave) = $fromWaveId
-                    AND targetWave.implementationDate >= fromWave.implementationDate
+                  ${startDate !== null ? `
+                  MATCH (milestone)-[:TARGETS]->(targetWave:Wave)
+                  WHERE targetWave.implementationDate >= $startDate
                   ` : ''}
               }
             RETURN id(version) as versionId, id(item) as itemId
         `, {
             baselineId,
-            ...(fromWaveId !== null && { fromWaveId })
+            ...(startDate !== null && { startDate })
         });
 
         const leadOCVersionIds = new Set();
