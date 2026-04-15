@@ -754,14 +754,24 @@ export class DetailsModuleGenerator {
         // this.deltaConverter.resetImageTracking();
 
         // Convert statement, rationale, and flows
-        const statement = on.statement ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.statement)) : null;
+        const _convert = (field, value) => {
+            try {
+                return this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(value));
+            } catch (err) {
+                throw new Error(
+                    `Failed to convert ON ${on.itemId} (${on.title || 'untitled'}) field "${field}": ${err.message}`
+                );
+            }
+        };
+
+        const statement = on.statement ? _convert('statement', on.statement) : null;
         const statementImages = [...this.deltaConverter.getExtractedImages()];
 
         // Don't reset between fields
-        const rationale = on.rationale ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.rationale)) : null;
+        const rationale = on.rationale ? _convert('rationale', on.rationale) : null;
         const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
-        const flows = on.flows ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(on.flows)) : null;
+        const flows = on.flows ? _convert('flows', on.flows) : null;
         const flowsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length)];
 
         // Collect all images
@@ -875,14 +885,24 @@ export class DetailsModuleGenerator {
         // this.deltaConverter.resetImageTracking();
 
         // Convert statement, rationale, and flows
-        const statement = or.statement ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.statement)) : null;
+        const _convert = (field, value) => {
+            try {
+                return this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(value));
+            } catch (err) {
+                throw new Error(
+                    `Failed to convert OR ${or.itemId} (${or.title || 'untitled'}) field "${field}": ${err.message}`
+                );
+            }
+        };
+
+        const statement = or.statement ? _convert('statement', or.statement) : null;
         const statementImages = [...this.deltaConverter.getExtractedImages()];
 
         // Don't reset between fields
-        const rationale = or.rationale ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.rationale)) : null;
+        const rationale = or.rationale ? _convert('rationale', or.rationale) : null;
         const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
-        const flows = or.flows ? this._fixAntoraImagePaths(this.deltaConverter.deltaToAsciidoc(or.flows)) : null;
+        const flows = or.flows ? _convert('flows', or.flows) : null;
         const flowsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length)];
 
         // Collect all images
