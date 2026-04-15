@@ -363,6 +363,7 @@ export default class ChangesEntity {
 
     /**
      * Feed filtered change data into the TemporalGrid as timeline rows.
+     * DrG rows are collapsible group rows; OC rows are children parented to their DrG.
      */
     _feedTemporalGrid(startYear, endYear) {
         if (!this.temporalGrid) return;
@@ -396,9 +397,9 @@ export default class ChangesEntity {
                         ? new Date(wave.implementationDate)
                         : new Date(wave.year, 0, 1);
                     return {
-                        label:      m.name || m.title || '',
+                        label:       m.name || m.title || '',
                         description: m.description || '',
-                        eventTypes: m.eventTypes || [],
+                        eventTypes:  m.eventTypes || [],
                         date
                     };
                 })
@@ -420,19 +421,24 @@ export default class ChangesEntity {
             return labelA.localeCompare(labelB);
         });
 
-        // Emit separator + rows per DrG
+        // Emit collapsible DrG group row + child OC rows
         sortedDrgs.forEach(drg => {
+            const drgId    = `drg:${drg}`;
             const drgLabel = getDraftingGroupDisplay(drg) || drg;
-            this.temporalGrid.addSeparatorRow(`drg:${drg}`, drgLabel);
+            const drgChanges = byDrg.get(drg);
 
-            byDrg.get(drg)
+            // Aggregate all OC milestones for the DrG group row
+            const drgMilestones = drgChanges.flatMap(({ milestones }) => milestones);
+            this.temporalGrid.addGroupRow(drgId, drgLabel, drgMilestones, null, true);
+
+            drgChanges
                 .sort((a, b) => (a.change.title || '').localeCompare(b.change.title || ''))
                 .forEach(({ change, milestones }) => {
                     const entityId = String(this.getItemId(change));
                     const label = change.code
                         ? `${change.code} – ${change.title}`
                         : (change.title || entityId);
-                    this.temporalGrid.addRow(entityId, label, milestones);
+                    this.temporalGrid.addRow(entityId, label, milestones, drgId);
                 });
         });
     }
