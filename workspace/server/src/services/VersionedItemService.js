@@ -221,4 +221,37 @@ export class VersionedItemService {
     async _computePatchedPayload(current, patchPayload) {
         throw new Error('_computePatchedPayload must be implemented by subclass');
     }
+
+    /**
+     * Override in subclasses to declare which fields contain Delta JSON strings.
+     * @returns {string[]}
+     */
+    _getDeltaFieldNames() {
+        return [];
+    }
+
+    /**
+     * Sanitize Delta JSON fields in the payload by removing raw control characters
+     * (U+0000–U+001F, excluding tab \t, newline \n, carriage return \r) that would
+     * cause JSON.parse to fail downstream.
+     *
+     * Mutates the payload in place. Logs a warning for each field that required fixing.
+     *
+     * @param {object} payload
+     * @param {string} context - Human-readable label for logging (e.g. "ON 1234 (My Title)")
+     */
+    _sanitizeDeltaFields(payload, context) {
+        const fields = this._getDeltaFieldNames();
+        for (const field of fields) {
+            const value = payload[field];
+            if (typeof value !== 'string' || value === '') continue;
+            // Remove control characters that are illegal inside JSON strings
+            // Keep \t (0x09), \n (0x0A), \r (0x0D) — JSON.stringify escapes these correctly
+            const sanitized = value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+            if (sanitized !== value) {
+                console.warn(`[VersionedItemService] Sanitized illegal control characters from ${context} field "${field}"`);
+                payload[field] = sanitized;
+            }
+        }
+    }
 }

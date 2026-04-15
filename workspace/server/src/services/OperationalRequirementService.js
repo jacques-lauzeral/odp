@@ -32,7 +32,12 @@ export class OperationalRequirementService extends VersionedItemService {
     // - getAll(userId, editionId?, filters?, projection?)
     // - delete(itemId, userId)
 
+    _getDeltaFieldNames() {
+        return ['statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'];
+    }
+
     async _validateCreatePayload(payload) {
+        this._sanitizeDeltaFields(payload, `OR (${payload.title || 'untitled'})`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateMaturity(payload.maturity);
@@ -62,6 +67,7 @@ export class OperationalRequirementService extends VersionedItemService {
                 throw error;
             }
         }
+        this._sanitizeDeltaFields(payload, `OR ${itemId} (${payload.title || 'untitled'})`);
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateMaturity(payload.maturity);

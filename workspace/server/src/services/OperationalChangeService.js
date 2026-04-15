@@ -242,8 +242,13 @@ export class OperationalChangeService extends VersionedItemService {
 
     // Implement validation methods required by VersionedItemService
 
+    _getDeltaFieldNames() {
+        return ['purpose', 'initialState', 'finalState', 'details', 'privateNotes', 'additionalDocumentation'];
+    }
+
     async _validateCreatePayload(payload) {
         if (payload.cost === '') payload.cost = null;
+        this._sanitizeDeltaFields(payload, `OC (${payload.title || 'untitled'})`);
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateMaturity(payload.maturity);
@@ -257,6 +262,7 @@ export class OperationalChangeService extends VersionedItemService {
             throw new Error('Validation failed: milestones must not be included in update/patch payloads — use the dedicated milestone endpoints');
         }
         if (payload.cost === '') payload.cost = null;
+        this._sanitizeDeltaFields(payload, `OC ${itemId} (${payload.title || 'untitled'})`);
         this._validateRequiredFields(payload);
         this._validateDRG(payload.drg);
         this._validateMaturity(payload.maturity);
