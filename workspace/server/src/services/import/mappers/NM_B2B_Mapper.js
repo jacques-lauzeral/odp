@@ -51,11 +51,14 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  *
  * Document References (Implicit Injection for Root ONs):
  * -------------------------------------------------------
- * Root ONs (ONs that do not refine a parent ON) always receive two implicit
+ * Root ONs (ONs that do not refine a parent ON) always receive four implicit
  * strategic document references, appended after any explicit references:
  *
- * 1. NSP SO 2 (refdoc:nsp/nsp_so_2) — injected unconditionally on all root ONs
- * 2. NM B2B ConOPS (refdoc:nm_b2b_conops) — injected only when no explicit
+ * 1. NSP SO 2 (refdoc:nsp_so_2) — injected unconditionally on all root ONs
+ * 2. ATMMP SDO 8 (refdoc:atmmp_sdo_8) — injected unconditionally on all root ONs
+ * 3. Commission Implementing Regulation (EU) 2021/116 (refdoc:commission_implementing_regulation_(eu)_2021_116)
+ *    with note 'AF 5' — injected unconditionally on all root ONs
+ * 4. NM B2B ConOPS (refdoc:nm_b2b_conops) — injected only when no explicit
  *    "References:" are found in the document; note field set to the organisational
  *    path of the requirement: "Section: 'Path/To/Requirement'"
  *
@@ -71,7 +74,9 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  * --------------------
  * Implicit references injected for root ONs:
  * - "NM B2B ConOPS" (refdoc:nm_b2b_conops) — conditional, see above
- * - "NSP SO 2" (refdoc:nsp/nsp_so_2) — unconditional
+ * - "NSP SO 2" (refdoc:nsp_so_2) — unconditional
+ * - "ATMMP SDO 8" (refdoc:atmmp_sdo_8) — unconditional
+ * - "Commission Implementing Regulation (EU) 2021/116" (refdoc:commission_implementing_regulation_(eu)_2021_116), note 'AF 5' — unconditional
  *
  * Validation:
  * -----------
@@ -189,7 +194,17 @@ class NM_B2B_Mapper extends Mapper {
                     name: "NSP SO 2",
                     parentExternalId: "refdoc:nsp"
                 }, 'refdoc');
-                const implicitRefs = [{ externalId: nspSo2ExternalId }];
+                const atmmpSdo8ExternalId = ExternalIdBuilder.buildExternalId({
+                    name: "ATMMP SDO 8"
+                }, 'refdoc');
+                const euIrExternalId = ExternalIdBuilder.buildExternalId({
+                    name: "Commission Implementing Regulation (EU) 2021/116"
+                }, 'refdoc');
+                const implicitRefs = [
+                    { externalId: nspSo2ExternalId },
+                    { externalId: atmmpSdo8ExternalId },
+                    { externalId: euIrExternalId, note: 'AF 5' }
+                ];
 
                 // Add ConOPS reference if no explicit strategic documents provided
                 if (!req.strategicDocuments || req.strategicDocuments.length === 0) {
@@ -479,7 +494,8 @@ class NM_B2B_Mapper extends Mapper {
      * Split a reference path string into tokens.
      * - '/' in path-parsing mode → segment separator
      * - '/' in token-parsing mode (inside single quotes) → replaced with '_'
-     * - "'" toggles between path-parsing and token-parsing mode
+     * - "'" / U+2018 / U+2019 toggles between path-parsing and token-parsing mode
+     * Quotes (straight and curly) are stripped from the resulting tokens.
      * @param {string} pathString
      * @returns {Array<string>}
      * @private
@@ -490,20 +506,20 @@ class NM_B2B_Mapper extends Mapper {
         let inToken = false;
 
         for (const ch of pathString) {
-            if (ch === "'") {
+            if (ch === "'" || ch === '\u2018' || ch === '\u2019') {
                 inToken = !inToken;
             } else if (ch === '/') {
                 if (inToken) {
                     current += '_';
                 } else {
-                    tokens.push(current.trim());
+                    tokens.push(current.trim().replace(/[''\u2018\u2019]/g, ''));
                     current = '';
                 }
             } else {
                 current += ch;
             }
         }
-        tokens.push(current.trim());
+        tokens.push(current.trim().replace(/[''\u2018\u2019]/g, ''));
         return tokens;
     }
 
