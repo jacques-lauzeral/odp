@@ -31,7 +31,8 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * Structured Fields (Resolved to Entity References):
  * - Stakeholders → impactedStakeholders (with synonym resolution)
  * - ON Reference → implementedONs (for OR type)
- * - Regulatory requirements → strategicDocuments (for ON type); privateNotes (for OR type)
+ * - Strategic Document → strategicDocuments (for ON type); ignored for OR type
+ * - Maturity → forced to ADVANCED for all ONs and ORs
  *
  * Unstructured Fields (Preserved as Raw Text in privateNotes):
  * - Data (and other Enabler) → privateNotes section "Data and Enablers"
@@ -136,22 +137,22 @@ class AirportMapper extends Mapper {
     ];
 
     /**
-     * Document synonym map for document reference normalization
-     * Maps common abbreviations and variations to canonical document names
-     * All keys are lowercase for case-insensitive matching
+     * Reference document keyword map for strategic document resolution.
+     * Keys are lowercase substrings matched against the normalized reference name.
+     * NSP SO and ATMMP SDO entries are handled via expansion methods, not this map.
+     *
+     * REFERENCE_DOC_MAP keywords → refdoc externalId:
+     * 'NSP' / 'Network Strategy'  → refdoc:nsp (root; individual SOs via _expandNspReferences)
+     * 'ATMMP SDO <n>'             → refdoc:atmmp_sdo_<n> (via _expandAtmmpReferences)
+     * 'EU IR 2021/116'            → refdoc:commission_implementing_regulation_(eu)_2021_116
+     *                               trailing token (e.g. 'AF 4') extracted as note
      */
-    static DOCUMENT_SYNONYMS = {
-        'cp1 regulation 2021/116': 'commission implementing regulation (eu) 2021/116',
-    };
-
-    /**
-     * Predefined documents for Airport domain
-     * Minimal data for mapping: name (for lookup) and externalId (for resolution)
-     */
-    static DOCUMENTS = [
+    static REFERENCE_DOC_MAP = [
+        { keywords: ['network strategy plan', 'nsp'], externalId: 'refdoc:nsp' },
         {
-            name: "Commission Implementing Regulation (EU) 2021/116",
-            externalId: "document:commission_implementing_regulation_(eu)_2021/116"
+            keywords: ['eu ir 2021/116', 'cp1 regulation 2021/116', 'regulation (eu) 2021/116'],
+            externalId: ExternalIdBuilder.buildExternalId({ name: 'Commission Implementing Regulation (EU) 2021/116' }, 'refdoc'),
+            trailingNotePattern: /^(?:EU IR|CP1 Regulation|Commission Implementing Regulation \(EU\)) 2021\/116\s+(.+)$/i
         }
     ];
 
@@ -194,7 +195,6 @@ class AirportMapper extends Mapper {
             requirements: [],
             changes: [],
             stakeholderCategoryMap: new Map(),
-            documentMap: new Map(),
             waveMap: new Map(),
             requirementNumberMap: new Map()
         };
@@ -203,12 +203,6 @@ class AirportMapper extends Mapper {
         for (const stakeholder of AirportMapper.STAKEHOLDER_CATEGORIES) {
             const key = stakeholder.name.toLowerCase();
             context.stakeholderCategoryMap.set(key, stakeholder.externalId);
-        }
-
-        // Build document map: name (lowercase) -> externalId
-        for (const document of AirportMapper.DOCUMENTS) {
-            const key = document.name.toLowerCase();
-            context.documentMap.set(key, document.externalId);
         }
 
         return context;
@@ -382,7 +376,7 @@ class AirportMapper extends Mapper {
             rationale += '\n\n**Opportunities / Risks:**\n' + opportunitiesRisks;
         }
 
-        const regulatoryReqs = data['Regulatory requirements'];
+        const regulatoryReqs = data['Strategic Documents'];
 
         // Build private notes with all supplementary information
         let privateNotes = `Requirement ID: ${requirementNumber}`;
@@ -440,9 +434,10 @@ class AirportMapper extends Mapper {
             path: path,
             drg: drg,
             refines: null,
+            maturity: 'ADVANCED',
             impactedStakeholders: impactedStakeholders,
             implementedONs: type === 'OR' ? this._extractImplementedONs(data['ON Reference'], context) : [],
-            strategicDocuments: type === 'ON' ? this._extractStrategicDocuments(regulatoryReqs, context) : []
+            strategicDocuments: type === 'ON' ? this._parseReferences(regulatoryReqs) : []
         };
 
         // Store requirement number -> external ID mapping for reference resolution
@@ -754,72 +749,130 @@ class AirportMapper extends Mapper {
     }
 
     /**
-     * Extract document references from "Regulatory requirements" field
+     * Parse the Strategic Document field into strategicDocuments array.
+     * Separators: comma ',' and period '.' between document tokens.
+     * NSP SO and ATMMP SDO tokens are expanded via helper methods before matching.
+     * Unresolved tokens are warned and appended to privateNotes.
      *
-     * Parses text like "CP1 Regulation 2021/116, Full AOP/NOP Integration (Highly Desirable Data Element)"
+     * Handles:
+     * - "NSP SO 5/2"           → refdoc:nsp_so_5_2
+     * - "ATMMP SDO 1. SDO 3"   → refdoc:atmmp_sdo_1, refdoc:atmmp_sdo_3
+     * - "EU IR 2021/116 AF4"   → refdoc:commission_implementing_regulation_(eu)_2021_116, note 'AF 4'
      *
-     * Format: [Document Reference], [Note]
-     * - Document Reference is normalized using synonym map
-     * - Note is everything after the first comma
-     *
-     * @param {string} regulatoryReqText - Raw "Regulatory requirements" field text
-     * @param {Object} context - Mapping context with documentMap
-     * @returns {Array<{externalId: string, note?: string}>} - Array of document references
+     * @param {string} referencesText - Raw "Strategic Document" field text
+     * @returns {Array<{externalId: string, note?: string}>}
+     * @private
      */
-    _extractStrategicDocuments(regulatoryReqText, context) {
-        if (!regulatoryReqText) {
+    _parseReferences(referencesText) {
+        if (!referencesText || referencesText.trim() === '') {
             return [];
         }
 
-        const result = [];
+        // Split on comma or period, then expand NSP SO and ATMMP SDO multi-tokens
+        const rawTokens = referencesText.split(/[,.]/).map(t => t.trim()).filter(Boolean);
+        const lines = this._expandAtmmpReferences(this._expandNspReferences(rawTokens));
 
-        const parts = regulatoryReqText.split(',').map(p => p.trim());
+        const notesMap = new Map(); // externalId -> string[]
 
-        if (parts.length === 0) {
-            return [];
-        }
+        for (const line of lines) {
+            // Normalize: remove "Ed." and version numbers for keyword matching
+            const normalizedName = line
+                .replace(/,?\s*Ed\.\s*[\d.]+/i, '')
+                .replace(/\s+v?[\d.]+$/i, '')
+                .trim()
+                .toLowerCase();
 
-        const docReference = parts[0];
-        const note = parts.length > 1 ? parts.slice(1).join(', ') : null;
+            // Special case: expanded NSP SO lines e.g. "NSP SO 5/2"
+            const nspSoMatch = line.match(/^NSP SO ([\d/]+)$/i);
+            // Special case: expanded ATMMP SDO lines e.g. "ATMMP SDO 1"
+            const atmmpSdoMatch = line.match(/^ATMMP SDO (\d+)$/i);
 
-        const normalizedName = this._normalizeDocumentName(docReference);
-        const externalId = this._resolveDocumentExternalId(normalizedName, context);
+            let matchedEntry = null;
+            const externalId = nspSoMatch
+                ? ExternalIdBuilder.buildExternalId({ name: `NSP SO ${nspSoMatch[1]}` }, 'refdoc')
+                : atmmpSdoMatch
+                    ? ExternalIdBuilder.buildExternalId({ name: `ATMMP SDO ${atmmpSdoMatch[1]}` }, 'refdoc')
+                    : (() => {
+                        matchedEntry = AirportMapper.REFERENCE_DOC_MAP.find(entry =>
+                            entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
+                        );
+                        return matchedEntry ? matchedEntry.externalId : null;
+                    })();
 
-        if (externalId) {
-            const docRef = { documentExternalId: externalId };
-            if (note) {
-                docRef.note = note;
+            // Extract trailing note for entries that embed the note without a separator
+            // e.g. "EU IR 2021/116 AF4" → note "AF 4"
+            let note = null;
+            if (matchedEntry && matchedEntry.trailingNotePattern) {
+                const trailingMatch = line.match(matchedEntry.trailingNotePattern);
+                if (trailingMatch) {
+                    note = trailingMatch[1].trim();
+                }
             }
-            result.push(docRef);
-        } else {
-            console.warn(`Strategic document "${docReference}" (normalized: "${normalizedName}") not found in document map`);
+
+            if (externalId) {
+                if (!notesMap.has(externalId)) {
+                    notesMap.set(externalId, []);
+                }
+                if (note) {
+                    notesMap.get(externalId).push(note);
+                }
+            } else {
+                console.warn(`WARNING: Unresolved strategic document reference: "${line}"`);
+            }
         }
 
-        return result;
+        const strategicDocuments = [];
+        for (const [externalId, notes] of notesMap.entries()) {
+            const entry = { externalId };
+            if (notes.length > 0) {
+                entry.note = notes.join(';\n');
+            }
+            strategicDocuments.push(entry);
+        }
+
+        return strategicDocuments;
     }
 
     /**
-     * Normalize document name using synonym map
-     *
-     * @param {string} name - Raw document name
-     * @returns {string} - Normalized document name
+     * Expand NSP multi-SO reference tokens into individual lines.
+     * Pattern: "NSP SO 5/2" stays as-is (sub-SO); "NSP SO 1" stays as-is.
+     * Multi-token not applicable here — each token is already split by comma/period.
+     * Non-matching tokens are returned unchanged.
+     * @param {string[]} lines
+     * @returns {string[]}
+     * @private
      */
-    _normalizeDocumentName(name) {
-        const lowerName = name.toLowerCase().trim();
-        return AirportMapper.DOCUMENT_SYNONYMS[lowerName] || name;
+    _expandNspReferences(lines) {
+        // Airport format: tokens already split by comma/period — no slash-list expansion needed.
+        // Pass through; NSP SO tokens are matched directly by nspSoMatch in _parseReferences.
+        return lines;
     }
 
     /**
-     * Resolve document name to external ID using context's documentMap
-     *
-     * @param {string} name - Normalized document name
-     * @param {Object} context - Mapping context
-     * @returns {string|null} - External ID or null if not found
+     * Expand ATMMP SDO tokens with bare SDO numbers back-referencing the ATMMP prefix.
+     * Pattern: ["ATMMP SDO 1", "SDO 3"] → ["ATMMP SDO 1", "ATMMP SDO 3"]
+     * When a token is just "SDO <n>" it inherits the ATMMP prefix from the preceding token.
+     * @param {string[]} lines
+     * @returns {string[]}
+     * @private
      */
-    _resolveDocumentExternalId(name, context) {
-        // Case-insensitive lookup
-        const lowerName = name.toLowerCase();
-        return context.documentMap.get(lowerName) || null;
+    _expandAtmmpReferences(lines) {
+        const expanded = [];
+        let lastAtmmp = false;
+        for (const line of lines) {
+            if (/^ATMMP\s+SDO\s+\d+$/i.test(line)) {
+                expanded.push(line);
+                lastAtmmp = true;
+            } else if (/^SDO\s+\d+$/i.test(line) && lastAtmmp) {
+                // Bare "SDO <n>" following an ATMMP SDO token
+                const num = line.match(/^SDO\s+(\d+)$/i)[1];
+                expanded.push(`ATMMP SDO ${num}`);
+            } else {
+                expanded.push(line);
+                lastAtmmp = false;
+            }
+        }
+        return expanded;
     }
 
     /**
