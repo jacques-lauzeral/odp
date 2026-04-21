@@ -110,7 +110,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * 'NM B2B'                    → refdoc:nm_b2b_conops
  * 'Flow'                      → refdoc:flow_conops
  * 'NSP' / 'Network Strategy'  → refdoc:nsp (root; individual SOs via expansion)
- * 'ATMMP'                     → refdoc:atmmp
+ * 'ATMMP SDO <n>'             → refdoc:atmmp_sdo_<n> (via _expandAtmmpReferences)
+ * 'EU IR 2021/116'            → refdoc:commission_implementing_regulation_(eu)_2021_116
+ *                               trailing token (e.g. 'AF 4') extracted as note
  *
  * RELATIONSHIPS:
  * ==============
@@ -168,7 +170,11 @@ const REFERENCE_DOC_MAP = [
     { keywords: ['nm b2b'], externalId: 'refdoc:nm_b2b_conops' },
     { keywords: ['flow conops', 'flow integration'], externalId: 'refdoc:flow_conops' },
     { keywords: ['network strategy plan', 'nsp'], externalId: 'refdoc:nsp' },
-    { keywords: ['atmmp', 'atm master plan'], externalId: 'refdoc:atmmp' }
+    {
+        keywords: ['eu ir 2021/116'],
+        externalId: ExternalIdBuilder.buildExternalId({ name: 'Commission Implementing Regulation (EU) 2021/116' }, 'refdoc'),
+        trailingNotePattern: /^EU IR 2021\/116\s+(.+)$/i
+    }
 ];
 
 class ReroutingMapper extends Mapper {
@@ -538,9 +544,9 @@ class ReroutingMapper extends Mapper {
             return { strategicDocuments: [], unresolvedRefs };
         }
 
-        const lines = this._expandNspReferences(
+        const lines = this._expandAtmmpReferences(this._expandNspReferences(
             referencesText.split('\n').map(l => l.trim()).filter(Boolean)
-        );
+        ));
 
         // Accumulate notes per externalId — same document referenced multiple times
         // with different notes gets a single entry with notes joined by ';\n'
@@ -561,21 +567,39 @@ class ReroutingMapper extends Mapper {
 
             // Special case: expanded NSP SO lines e.g. "NSP SO 1"
             const nspSoMatch = namePart.match(/^NSP SO (\d+)$/i);
+            // Special case: expanded ATMMP SDO lines e.g. "ATMMP SDO 2"
+            const atmmpSdoMatch = namePart.match(/^ATMMP SDO (\d+)$/i);
+            let matchedEntry = null;
             const externalId = nspSoMatch
                 ? `refdoc:nsp_so_${nspSoMatch[1]}`
-                : (() => {
-                    const match = REFERENCE_DOC_MAP.find(entry =>
-                        entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
-                    );
-                    return match ? match.externalId : null;
-                })();
+                : atmmpSdoMatch
+                    ? ExternalIdBuilder.buildExternalId({ name: `ATMMP SDO ${atmmpSdoMatch[1]}` }, 'refdoc')
+                    : (() => {
+                        matchedEntry = REFERENCE_DOC_MAP.find(entry =>
+                            entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
+                        );
+                        return matchedEntry ? matchedEntry.externalId : null;
+                    })();
+
+            // Extract trailing note from namePart for entries that embed the note
+            // without a ' / ' separator (e.g. "EU IR 2021/116 AF 4")
+            let effectiveNote = note;
+            if (matchedEntry && matchedEntry.trailingNotePattern) {
+                const trailingMatch = namePart.match(matchedEntry.trailingNotePattern);
+                if (trailingMatch) {
+                    const trailingNote = trailingMatch[1].trim();
+                    effectiveNote = effectiveNote
+                        ? `${effectiveNote};\n${trailingNote}`
+                        : trailingNote;
+                }
+            }
 
             if (externalId) {
                 if (!notesMap.has(externalId)) {
                     notesMap.set(externalId, []);
                 }
-                if (note) {
-                    notesMap.get(externalId).push(note);
+                if (effectiveNote) {
+                    notesMap.get(externalId).push(effectiveNote);
                 }
             } else {
                 console.warn(`WARNING: Unresolved reference: "${line}"`);
@@ -618,6 +642,34 @@ class ReroutingMapper extends Mapper {
                     // Normalise token: "SO1" → "NSP SO 1", "SO10" → "NSP SO 10"
                     const soNum = token.replace(/^SO/i, '').trim();
                     expanded.push(`NSP SO ${soNum}`);
+                }
+            } else {
+                expanded.push(line);
+            }
+        }
+        return expanded;
+    }
+
+    /**
+     * Expand ATMMP SDO reference lines with comma-separated SDO numbers into individual lines.
+     * Pattern: "ATMMP SDO 2, 5" → ["ATMMP SDO 2", "ATMMP SDO 5"]
+     * Each expanded line is then resolved to refdoc:atmmp/sdo<n> by the
+     * atmmpSdoMatch block in _parseReferences.
+     * Non-matching lines are returned unchanged.
+     * @param {string[]} lines
+     * @returns {string[]}
+     * @private
+     */
+    _expandAtmmpReferences(lines) {
+        const expanded = [];
+        for (const line of lines) {
+            // Detect: "ATMMP SDO <n>[, <n>, ...]"
+            // e.g. "ATMMP SDO 2, 5" → ["ATMMP SDO 2", "ATMMP SDO 5"]
+            const atmmpMatch = line.match(/^ATMMP\s+SDO\s+([\d,\s]+)$/i);
+            if (atmmpMatch) {
+                const sdoNums = atmmpMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+                for (const num of sdoNums) {
+                    expanded.push(`ATMMP SDO ${num}`);
                 }
             } else {
                 expanded.push(line);
