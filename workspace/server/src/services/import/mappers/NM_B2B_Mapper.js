@@ -89,6 +89,7 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  * - Section numbering (e.g., "6.1.2") - only titles used
  * - Any content not within recognized field markers
  * - Subsections without "Statement:" paragraph (organizational only, not requirements)
+ *
  */
 class NM_B2B_Mapper extends Mapper {
     constructor() {
