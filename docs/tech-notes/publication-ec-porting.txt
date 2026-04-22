@@ -1,0 +1,17 @@
+Handoff: EC Environment Portability for odp-server image build
+Context: ODIP deployment uses a custom Dockerfile.odp-server (extends node:20, adds Ruby + gem install asciidoctor-pdf rouge) for PDF publication. On the personal environment this builds and runs fine. Porting to EC requires proxy-aware image build.
+Situation:
+
+EC has internet access via proxy pac.eurocontrol.int:9512
+apt-get and gem install inside the Podman build context are not proxy-aware by default
+Fix: pass http_proxy/https_proxy as --build-arg to podman build
+The --proxy flag in odip-admin install is currently dead code (was for Antora UI bundle download, now obsolete since ui-bundle.zip is committed to repo pre-patched)
+
+Work to do:
+
+Update Dockerfile.odp-server to accept and use http_proxy/https_proxy build args
+Repurpose --proxy flag in odip-admin install (and build_odp_server function) to prompt for proxy credentials and pass them as --build-arg to the server image build
+Update odip-admin install --help text accordingly
+Update ch09 to document the EC image build procedure
+
+Files to update: Dockerfile.odp-server, odip-admin, 09-Deployment.md
