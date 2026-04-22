@@ -166,6 +166,29 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - Use Case sections themselves (content injected into ONs instead)
  */
 class FlowMapper extends Mapper {
+
+    /**
+     * Reference document keyword map for strategic document resolution.
+     * NSP SO and ATMMP SDO entries are handled via expansion methods.
+     *
+     * REFERENCE_DOC_MAP keywords → refdoc externalId:
+     * 'NSP SO <n>/<m>'  → refdoc:nsp_so_<n>_<m> (via nspSoMatch in _parseReferences)
+     * 'ATMMP SDO <n>'   → refdoc:atmmp_sdo_<n> (via _expandAtmmpReferences)
+     * 'EU IR 2021/116'  → refdoc:commission_implementing_regulation_(eu)_2021_116
+     *                      trailing token (e.g. 'AF 4/5') extracted as note
+     */
+    static REFERENCE_DOC_MAP = [
+        {
+            keywords: ['flow conops', 'flow integration conops'],
+            externalId: ExternalIdBuilder.buildExternalId({ name: 'Flow CONOPS' }, 'refdoc')
+        },
+        {
+            keywords: ['eu ir 2021/116', 'cp1 regulation 2021/116', 'regulation (eu) 2021/116'],
+            externalId: ExternalIdBuilder.buildExternalId({ name: 'Commission Implementing Regulation (EU) 2021/116' }, 'refdoc'),
+            trailingNotePattern: /^(?:EU IR|CP1 Regulation|Commission Implementing Regulation \(EU\)) 2021\/116\s+(.+)$/i
+        }
+    ];
+
     constructor() {
         super();
         this.converter = new AsciidocToDeltaConverter();
@@ -669,6 +692,7 @@ class FlowMapper extends Mapper {
             privateNotes: privateNotes,
             maturity: maturity,
             tentative: type === 'ON' ? tentative : null,
+            strategicDocuments: type === 'ON' ? this._mergeStrategicDocuments(tableData['strategic documents'], tableData['references']) : [],
             implementedONs: type === 'OR' ? implementedONs : [],
             impactedStakeholders: impactedStakeholders,
             dependencies: [],
@@ -759,7 +783,8 @@ class FlowMapper extends Mapper {
             'data (and other enabler)',
             'data (and other enablers)',
             'impacted services',
-            'flow of actions'
+            'flow of actions',
+            'references'
         ];
 
         // Process first table (assuming single table per section)
@@ -1147,6 +1172,173 @@ class FlowMapper extends Mapper {
             requirements: cleanArray(Array.from(context.onMap.values()).concat(Array.from(context.orMap.values()))),
             changes: cleanArray(Array.from(context.changeMap.values()))
         };
+    }
+
+    /**
+     * Parse the Strategic Documents field into strategicDocuments array.
+     * Separators: comma between document tokens.
+     * NSP SO sub-references (e.g. NSP SO 4/3) matched directly.
+     * ATMMP SDO tokens expanded via _expandAtmmpReferences.
+     * EU IR trailing note (e.g. AF 4/5) extracted via trailingNotePattern.
+     *
+     * @param {string} referencesText - Raw "Strategic Documents" field text
+     * @returns {Array<{externalId: string, note?: string}>}
+     * @private
+     */
+    /**
+     * Merge strategic document references from two fields into a single array.
+     * - strategicDocsText: comma-separated tokens (Strategic Documents field)
+     * - referencesText: document blocks with bullet-point notes (References field)
+     * Deduplicates by externalId, merging notes if same doc appears in both.
+     * @param {string} strategicDocsText
+     * @param {string} referencesText
+     * @returns {Array<{externalId: string, note?: string}>}
+     * @private
+     */
+    _mergeStrategicDocuments(strategicDocsText, referencesText) {
+        const notesMap = new Map(); // externalId -> string[]
+
+        this._parseStrategicDocsField(strategicDocsText, notesMap);
+        this._parseReferencesField(referencesText, notesMap);
+
+        const strategicDocuments = [];
+        for (const [externalId, notes] of notesMap.entries()) {
+            const entry = { externalId };
+            if (notes.length > 0) {
+                entry.note = notes.join(';\n');
+            }
+            strategicDocuments.push(entry);
+        }
+        return strategicDocuments;
+    }
+
+    /**
+     * Parse Strategic Documents field (comma-separated tokens) into notesMap.
+     * @param {string} text
+     * @param {Map} notesMap - externalId -> string[], populated in place
+     * @private
+     */
+    _parseStrategicDocsField(text, notesMap) {
+        if (!text || text.trim() === '') return;
+
+        const rawTokens = text.split(',').map(t => t.trim()).filter(Boolean);
+        const lines = this._expandAtmmpReferences(rawTokens);
+
+        for (const line of lines) {
+            const { externalId, note } = this._resolveReferenceLine(line);
+            if (externalId) {
+                if (!notesMap.has(externalId)) notesMap.set(externalId, []);
+                if (note) notesMap.get(externalId).push(note);
+            } else {
+                console.warn(`WARNING: Unresolved strategic document reference: "${line}"`);
+            }
+        }
+    }
+
+    /**
+     * Parse References field (document blocks with bullet-point notes) into notesMap.
+     * Format:
+     *   <Document Name> [version]
+     *
+     *   * note 1
+     *   * note 2
+     *
+     * @param {string} text
+     * @param {Map} notesMap - externalId -> string[], populated in place
+     * @private
+     */
+    _parseReferencesField(text, notesMap) {
+        if (!text || text.trim() === '') return;
+
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+        let currentExternalId = null;
+
+        for (const line of lines) {
+            if (line.startsWith('* ')) {
+                // Bullet note — attach to current document
+                if (currentExternalId) {
+                    const note = line.substring(2).trim();
+                    if (note) notesMap.get(currentExternalId).push(note);
+                }
+            } else {
+                // Document name line
+                const { externalId } = this._resolveReferenceLine(line);
+                if (externalId) {
+                    if (!notesMap.has(externalId)) notesMap.set(externalId, []);
+                    currentExternalId = externalId;
+                } else {
+                    console.warn(`WARNING: Unresolved reference document: "${line}"`);
+                    currentExternalId = null;
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolve a single reference line to { externalId, note }.
+     * Handles NSP SO, ATMMP SDO, and REFERENCE_DOC_MAP keyword matching.
+     * @param {string} line
+     * @returns {{ externalId: string|null, note: string|null }}
+     * @private
+     */
+    _resolveReferenceLine(line) {
+        const normalizedName = line
+            .replace(/,?\s*Ed\.\s*[\d.]+/i, '')
+            .replace(/\s+v?[\d.]+$/i, '')
+            .trim()
+            .toLowerCase();
+
+        const nspSoMatch = line.match(/^NSP SO ([\d/]+)$/i);
+        const atmmpSdoMatch = line.match(/^ATMMP SDO (\d+)$/i);
+
+        let matchedEntry = null;
+        const externalId = nspSoMatch
+            ? ExternalIdBuilder.buildExternalId({ name: `NSP SO ${nspSoMatch[1]}` }, 'refdoc')
+            : atmmpSdoMatch
+                ? ExternalIdBuilder.buildExternalId({ name: `ATMMP SDO ${atmmpSdoMatch[1]}` }, 'refdoc')
+                : (() => {
+                    matchedEntry = FlowMapper.REFERENCE_DOC_MAP.find(entry =>
+                        entry.keywords.some(kw => normalizedName.includes(kw.toLowerCase()))
+                    );
+                    return matchedEntry ? matchedEntry.externalId : null;
+                })();
+
+        let note = null;
+        if (matchedEntry && matchedEntry.trailingNotePattern) {
+            const trailingMatch = line.match(matchedEntry.trailingNotePattern);
+            if (trailingMatch) {
+                note = trailingMatch[1].trim();
+            }
+        }
+
+        return { externalId, note };
+    }
+
+    /**
+     * Expand ATMMP SDO tokens with comma-separated SDO numbers into individual lines.
+     * Pattern: "ATMMP SDO 2, 5" splits to ["ATMMP SDO 2", "ATMMP SDO 5"] before this method;
+     * bare "SDO <n>" tokens following an ATMMP SDO token inherit the ATMMP prefix.
+     * @param {string[]} lines
+     * @returns {string[]}
+     * @private
+     */
+    _expandAtmmpReferences(lines) {
+        const expanded = [];
+        let lastAtmmp = false;
+        for (const line of lines) {
+            if (/^ATMMP\s+SDO\s+\d+$/i.test(line)) {
+                expanded.push(line);
+                lastAtmmp = true;
+            } else if (/^SDO\s+\d+$/i.test(line) && lastAtmmp) {
+                const num = line.match(/^SDO\s+(\d+)$/i)[1];
+                expanded.push(`ATMMP SDO ${num}`);
+            } else {
+                expanded.push(line);
+                lastAtmmp = false;
+            }
+        }
+        return expanded;
     }
 }
 
