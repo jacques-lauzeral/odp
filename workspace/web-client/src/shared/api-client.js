@@ -174,7 +174,7 @@ export class ApiClient {
     }
 
     async publishEdition(editionId) {
-        return this.post('/odp-editions', {}, { id: editionId, subPath: 'publish' });
+        return this.post('/odp-editions', {}, { id: editionId, subPath: 'publish', timeout: 120_000 });
     }
 
     async getMilestones(changeId, params = {}) {
