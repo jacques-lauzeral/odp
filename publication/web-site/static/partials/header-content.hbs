@@ -1,0 +1,28 @@
+<header class="header">
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="{{{or siteRootUrl (relativize siteRootPath)}}}/index.html">NM Operational Development and Implementation Plan (ODIP)</a>
+            <button class="navbar-burger" aria-controls="topbar-nav" aria-expanded="false" aria-label="Toggle main menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+        <div id="topbar-nav" class="navbar-menu">
+            <div class="navbar-end">
+                <div class="navbar-item">
+                    <div class="search">
+                        <input id="search-input" type="text" placeholder="Search docs">
+                    </div>
+                </div>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Download</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/odip/_exports/index.pdf">PDF Version</a>
+                        <a class="navbar-item" href="{{{or siteRootUrl siteRootPath}}}/odip/_exports/index.docx">Word Version</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+</header>

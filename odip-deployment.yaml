@@ -24,7 +24,8 @@ spec:
 
     # ODP Server
     - name: odp-server
-      image: $ODIP_DOCKER_REGISTRY/node:20
+      image: $ODIP_DOCKER_REGISTRY/odp-server:latest
+      imagePullPolicy: Never
       workingDir: /app/workspace/server
       ports:
         - containerPort: 80

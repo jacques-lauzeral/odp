@@ -251,7 +251,7 @@ export class ODPEditionService {
                 console.log(`[publish] Running PDF build...`);
                 const ok = this._tryExec('PDF build', 'npx antora antora-playbook-pdf.yml', execOpts);
                 if (ok) {
-                    const pdfSrc = nodePath.join(worksDir, 'build', 'exports', 'index.pdf');
+                    const pdfSrc = nodePath.join(worksDir, 'build', 'assembler', 'pdf', 'odip', '_exports', 'index.pdf');
                     const pdfDest = nodePath.join(exportsDir, 'index.pdf');
                     try {
                         fs.copyFileSync(pdfSrc, pdfDest);

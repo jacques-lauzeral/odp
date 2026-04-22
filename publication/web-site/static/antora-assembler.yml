@@ -15,4 +15,4 @@ pdf-theme: ./pdf-theme.yml
 output:
   dir: ./build/exports
 build:
-  command: bundle exec asciidoctor-pdf
+  command: asciidoctor-pdf
