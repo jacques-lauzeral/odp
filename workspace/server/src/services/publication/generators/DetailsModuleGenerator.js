@@ -715,6 +715,16 @@ export class DetailsModuleGenerator {
         // Build current full path from DrG root
         const currentFullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
 
+        // Flatten ONs with nested children
+        const onItems = node.ons.flatMap(on =>
+            this._flattenWithDepth(on, 'on', currentFullPath, 1)
+        );
+
+        // Flatten ORs with nested children
+        const orItems = node.ors.flatMap(or =>
+            this._flattenWithDepth(or, 'or', currentFullPath, 1)
+        );
+
         return {
             folderName: node.name || folderName,
             subfolders: Object.keys(node.folders).length > 0 ? {
@@ -728,21 +738,42 @@ export class DetailsModuleGenerator {
                     };
                 })
             } : null,
-            ons: node.ons.length > 0 ? {
-                items: node.ons.map(on => ({
-                    title: on.title,
-                    path: currentFullPath,
-                    file: `on-${on.itemId}.adoc`
-                }))
-            } : null,
-            ors: node.ors.length > 0 ? {
-                items: node.ors.map(or => ({
-                    title: or.title,
-                    path: currentFullPath,
-                    file: `or-${or.itemId}.adoc`
-                }))
-            } : null
+            ons: onItems.length > 0 ? { items: onItems } : null,
+            ors: orItems.length > 0 ? { items: orItems } : null
         };
+    }
+
+    /**
+     * Flatten an entity and its refinement children into a depth-indented list.
+     * Each entry carries a bulletPrefix ('*', '**', '***', …) for AsciiDoc nesting.
+     * Children always share the same folder path as their root ancestor.
+     *
+     * @param {Object} entity - ON or OR entity node (with optional .children)
+     * @param {'on'|'or'} type
+     * @param {string} folderPath - Antora path for the containing folder
+     * @param {number} depth - 1-based nesting depth (root items start at 1)
+     * @returns {Array<{bulletPrefix, title, path, file}>}
+     * @private
+     */
+    _flattenWithDepth(entity, type, folderPath, depth) {
+        const prefix = '*'.repeat(depth);
+        const result = [{
+            bulletPrefix: prefix,
+            title: entity.title,
+            path: folderPath,
+            file: `${type}-${entity.itemId}.adoc`
+        }];
+
+        if (entity.children) {
+            for (const childOn of entity.children.ons) {
+                result.push(...this._flattenWithDepth(childOn, 'on', folderPath, depth + 1));
+            }
+            for (const childOr of entity.children.ors) {
+                result.push(...this._flattenWithDepth(childOr, 'or', folderPath, depth + 1));
+            }
+        }
+
+        return result;
     }
 
     /**
