@@ -38,7 +38,7 @@ export class ApiClient {
 
         let url = buildUrl(endpoint, id, subPath);
 
-        if (method === 'GET' && params) {
+        if (params) {
             url += buildQueryString(params);
         }
 
@@ -174,7 +174,7 @@ export class ApiClient {
     }
 
     async publishEdition(editionId) {
-        return this.post('/odp-editions', {}, { id: editionId, subPath: 'publish', timeout: 120_000 });
+        return this.post('/odp-editions', {}, { id: editionId, subPath: 'publish', params: { pdf: true }, timeout: 120_000 });
     }
 
     async getMilestones(changeId, params = {}) {
