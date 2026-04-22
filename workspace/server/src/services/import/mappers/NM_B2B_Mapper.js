@@ -65,6 +65,10 @@ import AsciidocToDeltaConverter from "./AsciidocToDeltaConverter.js";
  * Child ONs (refining a parent ON) receive no implicit references.
  * ORs receive no implicit references.
  *
+ * Maturity:
+ * ---------
+ * All ONs and ORs are set to maturity MATURE unconditionally.
+ *
  * External ID Format:
  * -------------------
  * - ON: on:nm_b2b/{path_normalized}/{title_normalized}
@@ -181,6 +185,7 @@ class NM_B2B_Mapper extends Mapper {
                 title: subsection.title,
                 type: type, // 'ON' or 'OR'
                 drg: 'NM_B2B',
+                maturity: 'MATURE',
                 path: parentReq? null : this._getCleanedPath(subsection.path),
                 parent: parentReq ? { externalId: parentReq.externalId } : null,
                 ...this._extractRequirementDetails(subsection, type, context)
