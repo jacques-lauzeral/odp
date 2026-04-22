@@ -13,7 +13,7 @@ Three containers share a single pod and communicate over localhost:
 | Container | Image | Port | Role |
 |---|---|---|---|
 | `neo4j` | `$ODIP_DOCKER_REGISTRY/neo4j:5.15` + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
-| `odp-server` | `$ODIP_DOCKER_REGISTRY/node:20` | 8080 (host) → 80 (container) | Express API + import/export + publication services |
+| `odp-server` | `$ODIP_DOCKER_REGISTRY/odp-server:latest` (custom image) | 8080 (host) → 80 (container) | Express API + import/export + publication services |
 | `web-client` | `odp-web-client:latest` (local build) | 3000 | Static web client dev server |
 
 The server container receives `ODIP_HOME=/odip` as an env var (injected in `odip-deployment.yaml`). The `$ODIP_HOME` host path is mounted into the container at `/odip` via the `odip-runtime` volume, making the publication workspace at `$ODIP_HOME/publication/works/` accessible inside the container as `/odip/publication/works/`.
@@ -28,7 +28,7 @@ All environment-specific configuration is expressed through host shell variables
 
 | Variable | Purpose | Local example | EC example |
 |---|---|---|---|
-| `ODIP_REPO` | Repository root — source code, bin scripts, Dockerfile | `~/works/github/odp` | `/cm/local_build/odip/repo` |
+| `ODIP_REPO` | Repository root — source code, bin scripts, Dockerfiles | `~/works/github/odp` | `/cm/local_build/odip/repo` |
 | `ODIP_HOME` | Runtime root — contains `data/`, `backups/`, `logs/`, `publication/` — **must be on local filesystem, not NFS** | `~/odip` | `/cm/local_build/odip` |
 | `ODIP_DOCKER_REGISTRY` | Docker image registry | `docker.io` | `yagi.cfmu.corp.eurocontrol.int:5000` |
 | `ODIP_NPM_MODE` | npm install mode for web client image build: `podman` or `host` | `podman` | `host` |
@@ -49,7 +49,7 @@ $ODIP_HOME/
     └── works/             Antora build workspace (persistent git repo)
 ```
 
-`publication/works/` is initialised by the server at startup (see §7.3). The UI bundle (`ui-bundle.zip`) is downloaded by `odip-admin` and copied there automatically.
+`publication/works/` is initialised by the server at startup (see §7.3).
 
 Also add `$ODIP_REPO/bin` to `PATH`:
 
@@ -110,14 +110,22 @@ odip-proto/
 │   ├── server/                 Express API server
 │   ├── shared/                 @odp/shared package
 │   └── web-client/             Web client
+├── publication/
+│   └── web-site/
+│       └── static/             Antora scaffolding (playbooks, templates, ui-bundle.zip)
+│           └── partials/
+│               └── header-content.hbs   ← Custom EUROCONTROL navbar (injected into ui-bundle.zip)
 ├── Dockerfile.web-client
+├── Dockerfile.odp-server       ← Custom server image (node:20 + Ruby + asciidoctor-pdf)
 ├── odip-deployment.yaml
 └── package.json                npm workspace root
 ```
 
 ---
 
-## 5. Web Client Dockerfile
+## 5. Container Images
+
+### 5.1 Web Client (`Dockerfile.web-client`)
 
 ```dockerfile
 FROM node:20-alpine
@@ -140,6 +148,28 @@ The `NPM_INSTALL` build arg controls whether `npm install` runs inside the conta
 - `host` mode (EC): `npm install` is run on the host first by `odip-admin` using the user's proxy-configured npm; `node_modules` is copied in via `COPY . .`; container skips install
 
 `odip-admin` passes the correct `--build-arg` automatically based on `ODIP_NPM_MODE`.
+
+### 5.2 Server (`Dockerfile.odp-server`)
+
+The server requires Ruby and `asciidoctor-pdf` for PDF publication. A custom image extends `node:20`:
+
+```dockerfile
+FROM node:20
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ruby ruby-dev build-essential libxml2-dev libxslt-dev \
+    && gem install asciidoctor-pdf rouge \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app/workspace/server
+CMD ["npm", "run", "dev"]
+```
+
+The image is built locally and tagged `$ODIP_DOCKER_REGISTRY/odp-server:latest`. It is referenced in `odip-deployment.yaml` with `imagePullPolicy: Never` — Podman uses the locally built image without pulling from the registry.
+
+**EC porting:** build the image on the EC host (or a machine with access to the EC registry), push it to `$ODIP_DOCKER_REGISTRY`, and change `imagePullPolicy` to `IfNotPresent`. Ruby gems are baked into the image — no internet access is required at runtime.
+
+> **Note:** `apt-get` during image build requires internet access (or an EC-internal Debian mirror). If the EC environment blocks outbound `apt` traffic, the image must be built on a machine with internet access and pushed to the EC registry.
 
 ---
 
@@ -166,11 +196,8 @@ git clone <repository-url> && cd odip-proto
 # Set environment variables in ~/.bashrc (see section 3)
 source ~/.bashrc
 
-# Run one-time installation (internet access required for Antora UI bundle)
+# Run one-time installation
 odip-admin install
-
-# On EC (no direct internet): use --proxy to prompt for corporate proxy credentials
-odip-admin install --proxy
 
 # Start the pod
 odip-admin start
@@ -178,12 +205,14 @@ odip-admin start
 
 `odip-admin install` performs all one-time setup steps:
 1. Creates runtime directories (`ensure_runtime_dirs`)
-2. Downloads Antora UI bundle to `$ODIP_REPO/publication/web-site/static/` (skipped if already present)
-3. Copies UI bundle to `$ODIP_HOME/publication/works/`
-4. Bootstraps static content into `works/` if `package.json` absent
-5. Runs `npm install` in `works/` (host side, proxy-aware via `~/.npmrc`)
-6. Runs `npm install` for all workspaces (server, web-client, cli)
-7. Builds web client image
+2. Copies UI bundle (`ui-bundle.zip`) to `$ODIP_HOME/publication/works/` if not already there
+3. Unconditionally syncs static content from `$ODIP_REPO/publication/web-site/static/` to `works/` — ensures no stale files
+4. Runs `npm install` in `works/` if `node_modules/` absent (host side, proxy-aware via `~/.npmrc`)
+5. Runs `npm install` for all workspaces (server, web-client, cli)
+6. Builds `odp-server` image from `Dockerfile.odp-server`
+7. Builds `web-client` image from `Dockerfile.web-client`
+
+> **Note:** `ui-bundle.zip` is committed to the repository pre-patched with the custom EUROCONTROL header — no download step is required. See ch06 §7 for details on how the bundle was prepared.
 
 ### Publication workspace
 
@@ -198,37 +227,20 @@ The server completes workspace initialisation at startup via `initializePublicat
 
 > **Note:** `npm install` in `works/` runs on the host side via `odip-admin install` to avoid container internet access dependency. The container has no outbound internet access on EC.
 
-### UI bundle (EC / restricted networks)
-
-The Antora UI bundle cannot be downloaded inside the container. `odip-admin install --proxy` handles this on EC by prompting for corporate proxy credentials (password entered silently, `@` auto-encoded). The bundle is stored in `$ODIP_REPO/publication/web-site/static/ui-bundle.zip` and copied into `works/` automatically.
-
-If proxy access is unavailable, transfer manually:
-
-```bash
-# From a machine with internet access:
-curl -L -o ui-bundle.zip \
-  "https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
-
-# Transfer to target machine:
-scp ui-bundle.zip user@host:$ODIP_REPO/publication/web-site/static/
-
-# Then re-run:
-odip-admin install
-```
-
-> **Future option:** committing `ui-bundle.zip` to the repository would eliminate the download step entirely. Deferred pending EC environment validation.
-
 ### Routine operations
 
 ```bash
-odip-admin start                             # start pod
-odip-admin start --rebuild                   # rebuild web client image then start
-odip-admin start --install                   # npm install all workspaces then start
-odip-admin start --install --rebuild         # npm install + rebuild + start
-odip-admin stop                              # stop pod
-odip-admin restart                           # stop and restart
-odip-admin restart --rebuild                 # rebuild web client image then restart
-odip-admin restart --install                 # npm install all workspaces then restart
+odip-admin start                                  # start pod
+odip-admin start --rebuild=server                 # rebuild server image then start
+odip-admin start --rebuild=web-client             # rebuild web client image then start
+odip-admin start --rebuild=all                    # rebuild both images then start
+odip-admin start --install                        # npm install all workspaces then start
+odip-admin stop                                   # stop pod
+odip-admin restart                                # stop and restart
+odip-admin restart --rebuild=server               # rebuild server image then restart
+odip-admin restart --rebuild=web-client           # rebuild web client image then restart
+odip-admin restart --rebuild=all                  # rebuild both images then restart
+odip-admin restart --install                      # npm install all workspaces then restart
 ```
 
 ### Verify
