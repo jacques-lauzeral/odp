@@ -1,0 +1,5 @@
+== Flow
+
+This is the introduction to the Flow Domain.
+
+include::partial$flow/index.adoc[]

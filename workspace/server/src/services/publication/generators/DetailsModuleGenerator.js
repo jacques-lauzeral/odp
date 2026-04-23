@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs/promises';
 import Mustache from 'mustache';
+import { getDraftingGroupDisplay } from '../../../../../shared/src/index.js';
 import {
     createTransaction,
     commitTransaction,
@@ -314,7 +315,7 @@ export class DetailsModuleGenerator {
 
         // Generate DrG index page
         const drgIndexData = this._prepareDrgIndexData(drg, tree, ons, ors);
-        files[`details/pages/${drg.toLowerCase()}/index.adoc`] =
+        files[`details/partials/${drg.toLowerCase()}/index.adoc`] =
             Mustache.render(this.templates['drg-index'], drgIndexData);
 
         // Generate files recursively for the tree
@@ -675,7 +676,7 @@ export class DetailsModuleGenerator {
         const drgSlug = this._slugify(drg);
 
         return {
-            drgName: drg,
+            drgName: getDraftingGroupDisplay(drg),
             onCount: ons.length,
             orCount: ors.length,
             rootFolders: Object.keys(tree.folders).length > 0 ? {
@@ -1022,12 +1023,12 @@ export class DetailsModuleGenerator {
      */
     _generateDetailsNav(drgs) {
         const sortedDrgs = drgs.sort();
-        let nav = '* xref:index.adoc[Operational Needs and Requirements]\n\n';
+        let nav = '';
 
         // Get the full data structures for each DrG
         for (const drg of sortedDrgs) {
             const drgSlug = this._slugify(drg);
-            nav += `** xref:${drgSlug}/index.adoc[${drg}]\n`;
+            nav += `* xref:${drgSlug}/index.adoc[${getDraftingGroupDisplay(drg)}]\n`;
 
             // Get the tree structure for this DrG
             const drgOns = this.allOns.filter(on => on.drg === drg);
@@ -1035,7 +1036,7 @@ export class DetailsModuleGenerator {
             const tree = this._buildHierarchy(drgOns, drgOrs);
 
             // Generate nav for this DrG's tree
-            nav += this._generateTreeNav(tree, drgSlug, '', 3);
+            nav += this._generateTreeNav(tree, drgSlug, '', 2);
         }
 
         return nav;

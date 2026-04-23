@@ -1,0 +1,5 @@
+== Rerouting
+
+This is the introduction to Rerouting Domain.
+
+include::partial$rrt/index.adoc[]

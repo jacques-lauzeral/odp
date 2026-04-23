@@ -1,0 +1,5 @@
+== NM B2B
+
+This is the introduction to NM B2B Domain.
+
+include::partial$nm_b2b/index.adoc[]
