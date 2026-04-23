@@ -583,6 +583,27 @@ export class DetailsModuleGenerator {
      * Generate files recursively for tree structure
      * @private
      */
+    /**
+     * A folder is "collapsed" if it has at least one direct ON.
+     * Collapsed folders absorb their sub-folders into a single page
+     * instead of generating separate pages for each sub-folder.
+     * @private
+     */
+    _isCollapsed(node) {
+        return node.ons.length > 0;
+    }
+
+    /**
+     * Generate all Antora page files for a tree node and its descendants.
+     *
+     * Collapsed nodes (those with at least one direct ON) are treated differently:
+     * their sub-folders do NOT get their own pages or nav entries — instead, the
+     * sub-folder content is absorbed into the parent page as a flat annotated list
+     * (see _prepareFolderIndexData / _flattenCollapsedFolder).
+     * ON/OR files inside collapsed sub-folders are still written at their own paths
+     * so that individual entity xrefs resolve correctly.
+     * @private
+     */
     _generateTreeFiles(drg, node, currentPath, files) {
         const basePath = `details/pages/${drg.toLowerCase()}`;
         const fullPath = currentPath ? `${basePath}/${currentPath}` : basePath;
@@ -626,10 +647,17 @@ export class DetailsModuleGenerator {
             }
         }
 
-        // Recurse into subfolders using slugified names, sorted alphabetically
-        for (const [slugKey, subNode] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
-            const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
-            this._generateTreeFiles(drg, subNode, newPath, files);
+        // Recurse into subfolders only if this node is NOT collapsed.
+        // When collapsed, sub-folder pages are not generated — their content is
+        // rendered inline in this node's page by _prepareFolderIndexData.
+        // Individual ON/OR files inside those sub-folders ARE still generated above
+        // (via _generateTreeFiles called recursively on sub-nodes elsewhere) so
+        // that xrefs from the collapsed list resolve correctly.
+        if (!this._isCollapsed(node)) {
+            for (const [slugKey, subNode] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+                const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
+                this._generateTreeFiles(drg, subNode, newPath, files);
+            }
         }
     }
 
@@ -716,19 +744,41 @@ export class DetailsModuleGenerator {
         // Build current full path from DrG root
         const currentFullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
 
-        // Flatten ONs with nested children
+        // A collapsed node has at least one direct ON. In that case, sub-folders
+        // are not rendered as separate linked pages but are absorbed inline into
+        // this page's ON/OR lists, with sub-folder names as non-clickable labels.
+        const collapsed = this._isCollapsed(node);
+
+        // Start with the direct ONs/ORs of this node (always linked xrefs)
         const onItems = node.ons.flatMap(on =>
             this._flattenWithDepth(on, 'on', currentFullPath, 1)
         );
-
-        // Flatten ORs with nested children
         const orItems = node.ors.flatMap(or =>
             this._flattenWithDepth(or, 'or', currentFullPath, 1)
         );
 
+        // In collapsed mode, recursively absorb sub-folders into the same lists.
+        // Each sub-folder contributes a non-clickable label item followed by its
+        // own ONs/ORs (and recursively its sub-sub-folders).
+        if (collapsed) {
+            const sortedFolders = Object.values(node.folders).sort((a, b) => a.name.localeCompare(b.name));
+            for (const folder of sortedFolders) {
+                this._flattenCollapsedFolder(folder, currentFullPath, 1, onItems, orItems);
+            }
+        }
+
+        // Convert raw item descriptors to pre-rendered AsciiDoc bullet lines.
+        // Items with a file → clickable xref; items without → plain text label.
+        // Pre-rendering here avoids conditional logic in the Mustache template.
+        const toLine = item => ({
+            line: item.file
+                ? `${item.bulletPrefix} xref:${item.path}/${item.file}[${item.title}]`
+                : `${item.bulletPrefix} ${item.title}`
+        });
+
         return {
             folderName: node.name || folderName,
-            subfolders: Object.keys(node.folders).length > 0 ? {
+            subfolders: (!collapsed && Object.keys(node.folders).length > 0) ? {
                 folders: Object.values(node.folders).sort((a, b) => a.name.localeCompare(b.name)).map(folder => {
                     const fullPath = currentPath
                         ? `${drgSlug}/${currentPath}/${folder.slug}`
@@ -739,9 +789,71 @@ export class DetailsModuleGenerator {
                     };
                 })
             } : null,
-            ons: onItems.length > 0 ? { items: onItems } : null,
-            ors: orItems.length > 0 ? { items: orItems } : null
+            ons: onItems.length > 0 ? { items: onItems.map(toLine) } : null,
+            ors: orItems.length > 0 ? { items: orItems.map(toLine) } : null
         };
+    }
+
+    /**
+     * Recursively flatten a collapsed sub-folder into the parent's ON/OR item arrays.
+     *
+     * Called only when the parent node is collapsed (has direct ONs). Instead of
+     * generating a separate page for this sub-folder, its content is injected inline:
+     *
+     *   * <Sub-folder name>          ← non-clickable label (no xref)
+     *   ** xref:...[ON-x: ...]       ← ONs of this sub-folder
+     *   ** xref:...[OR-x: ...]       ← ORs of this sub-folder
+     *   ** <Nested sub-folder>       ← recursive, depth increases
+     *
+     * The label is placed in the ON list if the sub-folder has ONs or deeper children,
+     * otherwise in the OR list — keeping the two sections visually coherent.
+     *
+     * IMPORTANT: xref paths must use each folder's own slug-based path, not the
+     * parent's path — entity files are written at their own sub-folder location.
+     *
+     * @param {Object} folder - tree node for the sub-folder being absorbed
+     * @param {string} parentFolderPath - Antora path of the containing (parent) folder
+     * @param {number} depth - current bullet nesting depth (1 = first level under parent)
+     * @param {Array} onItems - accumulator for ON bullet items
+     * @param {Array} orItems - accumulator for OR bullet items
+     * @private
+     */
+    _flattenCollapsedFolder(folder, parentFolderPath, depth, onItems, orItems) {
+        const prefix = '*'.repeat(depth);
+        const label = { bulletPrefix: prefix, title: folder.name }; // no file = non-clickable label
+
+        // Each folder's entities live at their own path, not the parent's.
+        // This is critical: _generateTreeFiles still writes entity files at their
+        // sub-folder path even when the parent is collapsed.
+        const thisFolderPath = `${parentFolderPath}/${folder.slug}`;
+
+        const folderHasOns = folder.ons.length > 0;
+        const folderHasOrs = folder.ors.length > 0;
+        const folderHasChildren = Object.keys(folder.folders).length > 0;
+
+        // Only insert a label if there is something to label
+        if (folderHasOns || folderHasOrs || folderHasChildren) {
+            // Place label in the ON section if this folder contributes ONs (or deeper
+            // sub-folders which may), otherwise place it in the OR section.
+            if (folderHasOns || folderHasChildren) {
+                onItems.push(label);
+            } else {
+                orItems.push(label);
+            }
+        }
+
+        for (const on of folder.ons) {
+            onItems.push(...this._flattenWithDepth(on, 'on', thisFolderPath, depth + 1));
+        }
+        for (const or of folder.ors) {
+            orItems.push(...this._flattenWithDepth(or, 'or', thisFolderPath, depth + 1));
+        }
+
+        // Recurse into sub-sub-folders, passing this folder's path as the new parent
+        const sortedFolders = Object.values(folder.folders).sort((a, b) => a.name.localeCompare(b.name));
+        for (const subFolder of sortedFolders) {
+            this._flattenCollapsedFolder(subFolder, thisFolderPath, depth + 1, onItems, orItems);
+        }
     }
 
     /**
@@ -1044,44 +1156,122 @@ export class DetailsModuleGenerator {
     }
 
     /**
-     * Generate navigation entries recursively for a tree structure
+     * Generate navigation entries recursively for a tree structure.
+     *
+     * For collapsed nodes (those with direct ONs), sub-folders are not linked pages
+     * but their entities still need nav entries so Antora can highlight and expand
+     * the correct nav node when the user navigates to an individual ON/OR page.
+     * Sub-folder names appear as non-clickable labels (plain text, no xref),
+     * mirroring the inline structure rendered on the collapsed page itself.
      * @private
      */
     _generateTreeNav(node, drgSlug, currentPath, depth) {
         let nav = '';
         const indent = '*'.repeat(depth);
 
-        // Generate entries for folders, sorted alphabetically
-        for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
-            const folderPath = currentPath ? `${currentPath}/${folderSlug}` : folderSlug;
-            const fullPath = `${drgSlug}/${folderPath}`;
-
-            nav += `${indent} xref:${fullPath}/index.adoc[${folder.name}]\n`;
-
-            // Recurse into subfolders and items
-            nav += this._generateTreeNav(folder, drgSlug, folderPath, depth + 1);
+        if (this._isCollapsed(node)) {
+            // Collapsed node: sub-folders have no pages of their own.
+            // Emit direct ONs/ORs first, then recurse into sub-folders via
+            // _generateCollapsedFolderNav to produce non-clickable labels + entity entries.
+            for (const on of node.ons) {
+                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON ${on.title}]
+`;
+                if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
+                    nav += this._generateChildrenNav(on.children, drgSlug, depth + 1);
+                }
+            }
+            for (const or of node.ors) {
+                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR ${or.title}]
+`;
+                if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
+                    nav += this._generateChildrenNav(or.children, drgSlug, depth + 1);
+                }
+            }
+            for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+                const thisFolderPath = `${drgSlug}/${currentPath ? currentPath + '/' : ''}${folderSlug}`;
+                nav += this._generateCollapsedFolderNav(folder, thisFolderPath, depth);
+            }
+        } else {
+            // Normal node: each sub-folder has its own linked page.
+            for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+                const folderPath = currentPath ? `${currentPath}/${folderSlug}` : folderSlug;
+                const fullPath = `${drgSlug}/${folderPath}`;
+                nav += `${indent} xref:${fullPath}/index.adoc[${folder.name}]
+`;
+                nav += this._generateTreeNav(folder, drgSlug, folderPath, depth + 1);
+            }
+            for (const on of node.ons) {
+                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON ${on.title}]
+`;
+                if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
+                    nav += this._generateChildrenNav(on.children, drgSlug, depth + 1);
+                }
+            }
+            for (const or of node.ors) {
+                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR ${or.title}]
+`;
+                if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
+                    nav += this._generateChildrenNav(or.children, drgSlug, depth + 1);
+                }
+            }
         }
 
-        // Generate entries for ONs at this level
-        for (const on of node.ons) {
-            const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
-            nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON ${on.title}]\n`;
+        return nav;
+    }
 
-            // Recursively add refining children
+    /**
+     * Generate nav entries for a collapsed sub-folder and its descendants.
+     *
+     * The sub-folder has no page of its own, so its name is emitted as a
+     * non-clickable plain-text label (no xref). Its ONs/ORs are emitted as
+     * normal xref entries one level deeper. Sub-sub-folders recurse the same way.
+     *
+     * This mirrors exactly what _flattenCollapsedFolder produces on the page,
+     * ensuring the nav tree and the page content are always in sync.
+     *
+     * @param {Object} folder - collapsed sub-folder tree node
+     * @param {string} thisFolderPath - full Antora path for this folder (drgSlug/…/slug)
+     * @param {number} depth - bullet depth for the label item
+     * @private
+     */
+    _generateCollapsedFolderNav(folder, thisFolderPath, depth) {
+        let nav = '';
+        const indent = '*'.repeat(depth);
+        const childIndent = '*'.repeat(depth + 1);
+
+        const folderHasOns = folder.ons.length > 0;
+        const folderHasOrs = folder.ors.length > 0;
+        const folderHasChildren = Object.keys(folder.folders).length > 0;
+
+        if (folderHasOns || folderHasOrs || folderHasChildren) {
+            // Non-clickable label — plain text, no xref
+            nav += `${indent} ${folder.name}
+`;
+        }
+
+        for (const on of folder.ons) {
+            nav += `${childIndent} xref:${thisFolderPath}/on-${on.itemId}.adoc[ON ${on.title}]
+`;
             if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
-                nav += this._generateChildrenNav(on.children, drgSlug, depth + 1);
+                nav += this._generateChildrenNav(on.children, null, depth + 2);
+            }
+        }
+        for (const or of folder.ors) {
+            nav += `${childIndent} xref:${thisFolderPath}/or-${or.itemId}.adoc[OR ${or.title}]
+`;
+            if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
+                nav += this._generateChildrenNav(or.children, null, depth + 2);
             }
         }
 
-        // Generate entries for ORs at this level
-        for (const or of node.ors) {
-            const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
-            nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR ${or.title}]\n`;
-
-            // Recursively add refining children
-            if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
-                nav += this._generateChildrenNav(or.children, drgSlug, depth + 1);
-            }
+        // Recurse into sub-sub-folders
+        for (const [subSlug, subFolder] of Object.entries(folder.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+            const subFolderPath = `${thisFolderPath}/${subSlug}`;
+            nav += this._generateCollapsedFolderNav(subFolder, subFolderPath, depth + 1);
         }
 
         return nav;
