@@ -3,17 +3,17 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
 import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 
 /**
- * CRISIS_FAAS_Mapper - Maps CRISIS & FAAS Operational Needs and Requirements Word documents
+ * FAAS_Mapper - Maps FAAS Operational Needs and Requirements Word documents
  *
  * DOCUMENT STRUCTURE INTERPRETATION:
  * ==================================
  *
  * Hierarchical Organization Pattern:
  * -----------------------------------
- * The CRISIS / FAAS documents uses a simple 3-level hierarchical structure:
+ * The FAAS documents uses a simple 3-level hierarchical structure:
  *
- * - Level 1: "Crisis / FAAS DrG" (document root - excluded from path)
- * - Level 2: Organizational folders (e.g., "FAAS ON - OR - OC", "Crisis_Information_Portal ON - OR")
+ * - Level 1: "FAAS DrG" (document root - excluded from path)
+ * - Level 2: Organizational folders (e.g., "FAAS ON - OR - OC")
  * - Level 3: Entity sections - "Operational Need (ON)" or "Operational Requirement (OR)"
  *
  * Path Construction:
@@ -25,9 +25,8 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * External ID Generation:
  * -----------------------
  * - Built from path + normalized title using ExternalIdBuilder
- * - Format: {type}:crisis_faas/{path}/{normalized_title}
- * - Example: on:crisis_faas/faas_on_or_oc/single_faas_system
- * - Example: or:crisis_faas/crisis_information_portal_on_or/manage_content_and_users
+ * - Format: {type}:faas/{path}/{normalized_title}
+ * - Example: on:faas/faas_on_or_oc/single_faas_system
  *
  * Title Extraction:
  * -----------------
@@ -78,9 +77,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * EXCLUDED:
  * - Section identifier field (from extractor) not stored
- * - Use Cases: Not present in CRISIS / FAAS documents
+ * - Use Cases: Not present in FAAS documents
  */
-class CRISIS_FAAS_Mapper extends Mapper {
+class FAAS_Mapper extends Mapper {
     constructor() {
         super();
         this.converter = new AsciidocToDeltaConverter();
@@ -183,11 +182,6 @@ class CRISIS_FAAS_Mapper extends Mapper {
             ['ansp', { externalId: 'stakeholder:network/ansp' }],
             ['fmp', { externalId: 'stakeholder:network/ansp/fmp' }],
             ['airport operator', { externalId: 'stakeholder:network/airport_operator' }],
-
-            // Crisis/Network specific
-            ['crisis management team', { externalId: 'stakeholder:network/nm/crisis_management_team' }],
-            ['cmt', { externalId: 'stakeholder:network/nm/crisis_management_team' }],
-            ['nm crisis exercise team', { externalId: 'stakeholder:network/nm/crisis_exercise_team' }],
             ['all users', { externalId: 'stakeholder:network' }],
 
             // With notes
@@ -257,7 +251,7 @@ class CRISIS_FAAS_Mapper extends Mapper {
      * @private
      */
     _processSection(section, context, ancestorPath = []) {
-        // Skip level 1 root section ("Crisis & FAAS DrG")
+        // Skip level 1 root section ("FAAS DrG")
         if (section.level === 1) {
             for (const subsection of section.subsections || []) {
                 this._processSection(subsection, context, ancestorPath);
@@ -422,7 +416,7 @@ class CRISIS_FAAS_Mapper extends Mapper {
         const requirement = {
             title: tableData.title,
             type,
-            drg: 'CRISIS_FAAS',
+            drg: 'FAAS',
             path,
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale),
@@ -571,4 +565,4 @@ class CRISIS_FAAS_Mapper extends Mapper {
     }
 }
 
-export default CRISIS_FAAS_Mapper;
+export default FAAS_Mapper;

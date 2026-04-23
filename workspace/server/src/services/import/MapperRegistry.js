@@ -8,7 +8,8 @@ import AirportMapper from "./mappers/AirportMapper.js";
 import ASM_ATFCM_Mapper from "./mappers/ASM_ATFCM_Mapper.js";
 import FourDTMapper from "./mappers/4DT_Mapper.js";
 import FlowMapper from "./mappers/FlowMapper.js";
-import CRISIS_FAAS_Mapper from "./mappers/CRISIS_FAAS_Mapper.js";
+import CRISIS_Mapper from "./mappers/CRISIS_Mapper.js";
+import FAAS_Mapper from "./mappers/FAAS_Mapper.js";
 
 /**
  * Provides registry for mapper lookup by DrG and optional folder
@@ -73,8 +74,8 @@ class MapperRegistry {
         MapperRegistry.register('ASM_ATFCM', ASM_ATFCM_Mapper);
         MapperRegistry.register('4DT', FourDTMapper);
         MapperRegistry.register('FLOW', FlowMapper);
-        MapperRegistry.register('CRISIS', CRISIS_FAAS_Mapper);
-        MapperRegistry.register('FAAS', CRISIS_FAAS_Mapper);
+        MapperRegistry.register('CRISIS', CRISIS_Mapper);
+        MapperRegistry.register('FAAS', FAAS_Mapper);
 
         // IDL section-based folders
         MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'ADP' });
