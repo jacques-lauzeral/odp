@@ -586,7 +586,9 @@ export class DetailsModuleGenerator {
     /**
      * A folder is "collapsed" if it has at least one direct ON.
      * Collapsed folders absorb their sub-folders into a single page
-     * instead of generating separate pages for each sub-folder.
+     * instead of generating separate index pages for each sub-folder.
+     * Individual ON/OR entity files inside collapsed sub-folders ARE still
+     * generated at their own paths so that xrefs resolve correctly.
      * @private
      */
     _isCollapsed(node) {
@@ -604,18 +606,19 @@ export class DetailsModuleGenerator {
      * so that individual entity xrefs resolve correctly.
      * @private
      */
-    _generateTreeFiles(drg, node, currentPath, files) {
+    _generateTreeFiles(drg, node, currentPath, files, parentCollapsed = false) {
         const basePath = `details/pages/${drg.toLowerCase()}`;
         const fullPath = currentPath ? `${basePath}/${currentPath}` : basePath;
 
         // Generate folder index if:
         // - We're in a subfolder (not DrG root), AND
-        // - Folder has content (subfolders, ONs, or ORs)
+        // - Folder has content (subfolders, ONs, or ORs), AND
+        // - Parent is NOT collapsed (collapsed parents absorb sub-folders inline)
         const hasContent = Object.keys(node.folders).length > 0 ||
             node.ons.length > 0 ||
             node.ors.length > 0;
 
-        if (currentPath && hasContent) {
+        if (currentPath && hasContent && !parentCollapsed) {
             const folderIndexData = this._prepareFolderIndexData(node, currentPath, drg);
             files[`${fullPath}/index.adoc`] =
                 Mustache.render(this.templates['folder-index'], folderIndexData);
@@ -647,17 +650,14 @@ export class DetailsModuleGenerator {
             }
         }
 
-        // Recurse into subfolders only if this node is NOT collapsed.
-        // When collapsed, sub-folder pages are not generated — their content is
-        // rendered inline in this node's page by _prepareFolderIndexData.
-        // Individual ON/OR files inside those sub-folders ARE still generated above
-        // (via _generateTreeFiles called recursively on sub-nodes elsewhere) so
-        // that xrefs from the collapsed list resolve correctly.
-        if (!this._isCollapsed(node)) {
-            for (const [slugKey, subNode] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
-                const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
-                this._generateTreeFiles(drg, subNode, newPath, files);
-            }
+        // Always recurse into sub-folders to generate individual ON/OR entity files.
+        // When collapsed, the sub-folder index.adoc is skipped (hasContent guard above
+        // won't fire for sub-folders since currentPath will be set but we pass through
+        // _generateTreeFiles which checks currentPath && hasContent for index generation).
+        // Non-collapsed nodes get both index pages and entity files as normal.
+        for (const [slugKey, subNode] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+            const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
+            this._generateTreeFiles(drg, subNode, newPath, files, this._isCollapsed(node));
         }
     }
 
