@@ -1,13 +1,9 @@
-= {{title}}
+= ON {{title}}
 
 [.metadata]
 --
-*Type:* ON +
-*ID:* {{itemId}} +
-*DRG:* {{drg}} +
-{{#path}}
-*Path:* {{path}} +
-{{/path}}
+*Code:* {{code}} +
+*Domain:* {{drg}} +
 {{#refinesParents}}
 *Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
 {{/refinesParents}}
@@ -37,11 +33,11 @@
 {{#strategicDocuments}}
 == Strategic Documents
 
-[cols="2,1,3",options="header"]
+[cols="1,1l",options="header"]
 |===
-|Document |Version |Note
+|Document |Note
 {{#items}}
-|{{#url}}link:{{{url}}}[{{title}}]{{/url}}{{^url}}{{title}}{{/url}} |{{version}} |{{note}}
+|{{#url}}link:{{{url}}}[{{title}} {{version}}]{{/url}}{{^url}}{{title}} {{version}}{{/url}} |{{note}}
 {{/items}}
 |===
 {{/strategicDocuments}}
@@ -50,7 +46,7 @@
 == Refined By
 
 {{#items}}
-* xref:{{{path}}}/{{{file}}}[{{type}}-{{id}}: {{title}}]
+* xref:{{{path}}}/{{{file}}}[{{type}} {{title}}]
 {{/items}}
 {{/refinedBy}}
 
@@ -58,6 +54,6 @@
 == Implemented By
 
 {{#items}}
-* xref:{{{path}}}/{{{file}}}[OR-{{id}}: {{title}}]
+* xref:{{{path}}}/{{{file}}}[OR {{title}}]
 {{/items}}
 {{/implementedBy}}

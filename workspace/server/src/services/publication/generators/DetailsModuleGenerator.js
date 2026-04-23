@@ -626,8 +626,8 @@ export class DetailsModuleGenerator {
             }
         }
 
-        // Recurse into subfolders using slugified names
-        for (const [slugKey, subNode] of Object.entries(node.folders)) {
+        // Recurse into subfolders using slugified names, sorted alphabetically
+        for (const [slugKey, subNode] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
             const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
             this._generateTreeFiles(drg, subNode, newPath, files);
         }
@@ -680,7 +680,7 @@ export class DetailsModuleGenerator {
             onCount: ons.length,
             orCount: ors.length,
             rootFolders: Object.keys(tree.folders).length > 0 ? {
-                items: Object.values(tree.folders).map(folder => ({
+                items: Object.values(tree.folders).sort((a, b) => a.name.localeCompare(b.name)).map(folder => ({
                     name: folder.name,
                     path: `${drgSlug}/${folder.slug}`
                 }))
@@ -729,7 +729,7 @@ export class DetailsModuleGenerator {
         return {
             folderName: node.name || folderName,
             subfolders: Object.keys(node.folders).length > 0 ? {
-                folders: Object.values(node.folders).map(folder => {
+                folders: Object.values(node.folders).sort((a, b) => a.name.localeCompare(b.name)).map(folder => {
                     const fullPath = currentPath
                         ? `${drgSlug}/${currentPath}/${folder.slug}`
                         : `${drgSlug}/${folder.slug}`;
@@ -811,8 +811,8 @@ export class DetailsModuleGenerator {
 
         return {
             title: on.title,
-            itemId: on.itemId,
-            drg: drg,
+            code: on.code,
+            drg: getDraftingGroupDisplay(drg),
             path: on.path ? on.path.join(' / ') : null,
             statement: statement,
             rationale: rationale,
@@ -942,8 +942,8 @@ export class DetailsModuleGenerator {
 
         return {
             title: or.title,
-            itemId: or.itemId,
-            drg: drg,
+            code: or.code,
+            drg: getDraftingGroupDisplay(drg),
             path: or.path ? or.path.join(' / ') : null,
             statement: statement,
             rationale: rationale,
@@ -1022,7 +1022,8 @@ export class DetailsModuleGenerator {
      * @private
      */
     _generateDetailsNav(drgs) {
-        const sortedDrgs = drgs.sort();
+        const sortedDrgs = drgs.sort((a, b) =>
+            getDraftingGroupDisplay(a).localeCompare(getDraftingGroupDisplay(b)));
         let nav = '';
 
         // Get the full data structures for each DrG
@@ -1050,8 +1051,8 @@ export class DetailsModuleGenerator {
         let nav = '';
         const indent = '*'.repeat(depth);
 
-        // Generate entries for folders
-        for (const [folderSlug, folder] of Object.entries(node.folders)) {
+        // Generate entries for folders, sorted alphabetically
+        for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
             const folderPath = currentPath ? `${currentPath}/${folderSlug}` : folderSlug;
             const fullPath = `${drgSlug}/${folderPath}`;
 
@@ -1064,7 +1065,7 @@ export class DetailsModuleGenerator {
         // Generate entries for ONs at this level
         for (const on of node.ons) {
             const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
-            nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON-${on.itemId}: ${on.title}]\n`;
+            nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON ${on.title}]\n`;
 
             // Recursively add refining children
             if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
@@ -1075,7 +1076,7 @@ export class DetailsModuleGenerator {
         // Generate entries for ORs at this level
         for (const or of node.ors) {
             const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
-            nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR-${or.itemId}: ${or.title}]\n`;
+            nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR ${or.title}]\n`;
 
             // Recursively add refining children
             if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
@@ -1099,7 +1100,7 @@ export class DetailsModuleGenerator {
         for (const childOn of children.ons) {
             const childInfo = this.onLookup.get(childOn.itemId);
             const fullPath = this._buildEntityPath(childInfo.drg, childInfo.path);
-            nav += `${indent} xref:${fullPath}/on-${childOn.itemId}.adoc[ON-${childOn.itemId}: ${childOn.title}]\n`;
+            nav += `${indent} xref:${fullPath}/on-${childOn.itemId}.adoc[ON ${childOn.title}]\n`;
 
             // Recurse for nested refinements
             if (childOn.children && (childOn.children.ons.length > 0 || childOn.children.ors.length > 0)) {
@@ -1110,7 +1111,7 @@ export class DetailsModuleGenerator {
         for (const childOr of children.ors) {
             const childInfo = this.orLookup.get(childOr.itemId);
             const fullPath = this._buildEntityPath(childInfo.drg, childInfo.path);
-            nav += `${indent} xref:${fullPath}/or-${childOr.itemId}.adoc[OR-${childOr.itemId}: ${childOr.title}]\n`;
+            nav += `${indent} xref:${fullPath}/or-${childOr.itemId}.adoc[OR ${childOr.title}]\n`;
 
             // Recurse for nested refinements
             if (childOr.children && (childOr.children.ons.length > 0 || childOr.children.ors.length > 0)) {

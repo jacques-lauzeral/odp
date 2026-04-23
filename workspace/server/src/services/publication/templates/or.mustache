@@ -1,15 +1,11 @@
-= {{title}}
+= OR {{title}}
 
 [.metadata]
 --
-*Type:* OR +
-*ID:* {{itemId}} +
-*DRG:* {{drg}} +
-{{#path}}
-*Path:* {{path}} +
-{{/path}}
+*Code:* {{code}} +
+*Domain:* {{drg}} +
 {{#implementedONs}}
-*Implements:* {{#ons}}xref:{{{path}}}/{{{file}}}[{{title}}]{{^last}}, {{/last}}{{/ons}} +
+*Implements:* {{#ons}}xref:{{{path}}}/{{{file}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}} +
 {{/implementedONs}}
 {{#refinesParents}}
 *Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
@@ -42,6 +38,6 @@
 == Refined By
 
 {{#items}}
-* xref:{{{path}}}/{{{file}}}[OR-{{id}}: {{title}}]
+* xref:{{{path}}}/{{{file}}}[OR {{title}}]
 {{/items}}
 {{/refinedBy}}
