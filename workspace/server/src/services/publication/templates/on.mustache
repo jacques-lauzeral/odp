@@ -1,11 +1,13 @@
 = ON {{title}}
 
-[horizontal]
-Code:: {{code}} +
-Domain:: {{drg}} +
+[.metadata]
+--
+*Code:* {{code}} +
+*Domain:* {{drg}} +
 {{#refinesParents}}
-Refines:: xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
+*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
 {{/refinesParents}}
+--
 
 {{#statement}}
 Statement::
