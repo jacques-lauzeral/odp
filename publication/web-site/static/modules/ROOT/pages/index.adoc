@@ -1,5 +1,165 @@
-= ODIP
+= Introduction
 
-== Home
+== Executive view
 
-Welcome to the NM Operational Development and Implementation Plan (ODIP).
+This document is the *first edition of the ODIP* — the Operational Development and Implementation Plan of the EUROCONTROL Network Manager.
+The ODIP is NM's structured, multi-year view of what will be developed and implemented on behalf of, and with, the Network.
+
+The ODIP takes effect on *1 January 2027*.
+Over the following years, it will carry NM's operational development through the horizon of the EUROCONTROL *Trajectory 2030 Strategy*, endorsed by the Member States in November 2025 and released in December 2025.
+Trajectory 2030 organises the Agency's work under three drivers — *Engage, Deliver, Modernise* — and explicitly calls on NMD to reinforce its operational role in close collaboration with operational stakeholders, and to develop a more streamlined and focused Cooperative Decision Making (CDM) process through co-creation, coordination, consultation and decision-making with all relevant stakeholders, in line with the upcoming NF-IR revision.
+*The ODIP is the instrument through which NM makes those commitments concrete, visible, and reviewable.*
+
+The ODIP also anchors NM's operational development to the strategic frameworks under which NM operates:
+
+* the *EUROCONTROL Trajectory 2030 Strategy* and its Common Strategic Objectives;
+* the *Network Strategy Plan (NSP)* and its Strategic Objectives and Sub-Objectives;
+* the *Network Performance Plan (NPP)* and its Key Performance Areas;
+* the *European ATM Master Plan (ATMMP)* and its Strategic Deployment Objectives;
+* the *SESAR Deployment Programme* and Common Projects;
+* the *SES2+ regulation* and the upcoming *NF-IR revision*;
+* the *ICAO Global Air Navigation Plan (GANP)* and ASBUs;
+* the *Network Operations Plan (NOP)* and the applicable CONOPS documents.
+
+In particular, the ODIP implements the CONOPS documents endorsed by the NMB in 2024 and 2025, which have served as the primary source for the ONs, ORs, and (even though they are not yet shown in this first edition) OCs developed within the ODIP.
+
+Every Operational Need in this edition is traceable to one or more of these strategic sources.
+Traceability is not cosmetic: it is the backbone that makes the ODIP auditable, the consultation meaningful, and the plan defensible as a statement of where NM's operational development will go from 2027 onwards.
+
+The ODIP has two purposes.
+First, it gives NM stakeholders — ANSPs, Airspace Users, Airports, Military, Regulators, and NM's own technical providers — a coherent view of what is coming, when it is coming, and why, so that each of them can align their own planning.
+Second, it gives NM itself a disciplined instrument to prioritise, sequence, and commit to its operational development, in collaboration with the operational stakeholders.
+
+Edition 1 opens a consultation phase.
+It is deliberately scoped to the foundational layer of the plan: the *Operational Needs (ONs)* that NM recognises, and the *Operational Requirements (ORs)* that articulate the operational solutions addressing those needs.
+The grouping of ORs into *Operational Changes (OCs)* and their assignment to implementation waves — the part of the ODIP that carries committed dates and milestones — will be introduced in the next edition, planned for the autumn of 2026.
+
+This edition is therefore a statement of _what_ NM will work on from 2027 onwards, and _why_.
+Each top-level ON carries a _tentative implementation time_, offered as an indicative horizon rather than a commitment.
+The prioritisation process — a continuing, iterative exercise run several times a year — will, in its first iteration, integrate the feedback received during this consultation and produce the first prioritised view of the plan, which will be published in the autumn 2026 edition.
+The consultation therefore invites stakeholders to confirm, challenge, or refine this foundation, before the sequencing and the committed dates are built upon it.
+
+== What the ODIP is, and what it is not
+
+The ODIP describes what NM needs to do to enable the Network to meet its strategic objectives — not how NM builds the systems that deliver it.
+Its content addresses operational capabilities, procedures, working arrangements, and the external interfaces through which stakeholders interact with NM.
+The internal design of NM systems, architecture choices, and implementation details are out of scope.
+
+The ODIP is a living plan.
+Even in its stable editions, it reflects a moment in a body of content that is continuously worked on.
+Each major edition presents the plan in substantive detail across its full horizon of several years; minor editions, published between major ones, carry refinements, integrate feedback, and deliver full deployment details of waves as they become available.
+The plan is maintained, refined, and kept current — it is not built up from scratch edition after edition.
+
+[NOTE]
+====
+_Figure 1. ODIP edition cadence.
+Major editions are published yearly, each with a multi-year horizon carrying close detail for the near term and progressively broader framing for the longer term.
+Minor editions between major ones carry refinements and full wave deployment details as they become available._
+====
+
+The ODIP is traceable.
+Every ON is anchored to one or more strategic documents; every OR is anchored to one or more ONs.
+This chain — strategic document → ON → OR → (later) OC → implementation wave — is the spine of the plan.
+
+== Operational Needs and Operational Requirements
+
+The ODIP is built on a small number of structured concepts.
+Edition 1 makes use of the first two.
+
+An *Operational Need (ON)* expresses a problem, limitation, or missing capability recognised by operational stakeholders and NM, and agreed through appropriate working arrangements.
+An ON is deliberately solution-independent: it describes what is needed, not how it will be met.
+ONs are grouped by domain — Flight (with 4D-Trajectory as a sub-domain), Airport, ASM/ATFCM Integration, Flow, Airspace, Crisis, FAAS, and the transversal domains NM, NMUI, and NM B2B — and traced to the strategic documents that motivate them.
+An ON remains valid over long periods, even as the solutions addressing it evolve.
+
+An *Operational Requirement (OR)* defines a specific element of the operational solution that, together with other ORs, addresses one or more ONs.
+An OR is written from the business perspective — it states what the operation shall do, not how a system shall be built.
+Each OR declares the ONs it contributes to implement, and the stakeholders and domains it impacts.
+
+A small number of ONs typically give rise to a larger number of finer-grained ORs.
+This is deliberate: fine-grained ORs preserve the flexibility needed when priorities and sequencing are later decided.
+
+Each ON and OR carries a *maturity level* — DRAFT, ADVANCED, or MATURE — reflecting the self-assessment of its author.
+Only ADVANCED and MATURE elements are included in this edition.
+
+*Operational Changes (OCs)* — which will appear in a future edition — group related OR evolutions into coherent, time-bound implementation packages.
+OCs are where the plan becomes a plan: they carry implementation waves and milestones.
+Their absence from Edition 1 is intentional — the foundational layer must first be agreed with stakeholders.
+
+== How to read this document
+
+The body of the document is organised by *domain*.
+Each domain opens with:
+
+* a short description of the domain and its operational scope;
+* a summary of how its ONs and ORs are organised (notably which top-level ONs anchor the domain, and how its ORs are grouped under them).
+
+After this opening, the domain presents its content in two parts:
+
+* ONs are listed first, each with its statement, rationale, strategic anchors, and where provided, illustrative flow descriptions and examples.
+* ORs follow, grouped by the ON(s) they implement.
+  Each OR presents its statement, rationale, and impact (stakeholder categories and domains).
+
+Alongside the operational domains, three *transversal domains* gather ONs and ORs whose scope is not confined to a single operational domain but cuts across several of them — typically because they concern a shared capability, interface, or concern relevant to the network as a whole.
+Edition 1 contains three: Transversal NM (overarching operational concepts and common needs), Transversal NMUI (the human-machine interface between NM and its users), and Transversal NM B2B (the system-to-system interface between NM and external systems).
+They are presented with the same structure as the operational domains.
+
+Each ON carries explicit references back to the strategic documents that motivate it (NSP, SESAR Deployment Programme, ATMMP, applicable CONOPS, and so on).
+Readers interested in starting from a specific strategic document rather than a domain can use the per-domain *reverse cross-reference annex* at the end of each chapter, which lists each strategic document referenced by that domain's ONs and points to the ONs that cite it.
+
+== How NM organises this work
+
+The ODIP is produced within NM's *iCDM* (Wave Content Definition Meeting) governance structure, which organises NM's operational planning and prioritisation activities across all domains.
+The iCDM looks up to ten years ahead, with close detail for the near term and progressively broader framing for the longer horizons.
+
+The work is carried out by eleven *Drafting Groups (DrGs)* — one for each operational domain, plus one for each of the three transversal domains.
+Each DrG is responsible for defining and maintaining the ONs, ORs, and OCs within its scope, and for engaging with the relevant operational stakeholders through formal working arrangements.
+The DrGs ensure that the ODIP's content reflects a shared operational view, co-produced with the stakeholders it concerns.
+
+Once OCs are introduced into the plan, their implementation is monitored by the *iCB* (Implementation Control Board), which reports on risks, known issues, and proposed resolutions for each OC, and feeds this information back into the prioritisation process.
+
+[NOTE]
+====
+_Figure 2. NM governance structure supporting the ODIP.
+Operational stakeholders and Drafting Groups co-produce the ONs, ORs, and OCs through working arrangements; the iCDM prioritises the content and feeds the *iCB*, which monitors OC implementation and reports back._
+====
+
+The scale is material: Edition 1 consolidates the output of eleven active DrGs working on a content base of several hundred ONs and an expected total approaching two thousand ORs.
+This introduction, together with the chapters that follow, is the first time this full picture is presented as a single, coherent view.
+
+== How to review this edition
+
+A dedicated consultation mechanism accompanies this edition.
+Comments are provided either directly in the Word document, using Word's native commenting and tracked-changes features, or through the structured comment sheet provided alongside it.
+NM will compile all comments received, respond to each of them, and publish the consolidated set of comments and responses to the entire consultation panel so that each reviewer can see not only their own input but the full picture of stakeholder feedback.
+
+A few operating principles for this consultation:
+
+One consolidated response per organisation::
+Reviewers are asked to coordinate internally and submit a single consolidated set of comments on behalf of their organisation, rather than individual contributions from multiple staff members.
+
+Comments are shared::
+All comments and NM responses will be circulated to the full consultation panel at closure.
+Reviewers should keep this in mind when formulating their input.
+
+Direct contact for immediate matters::
+NM provides dedicated email contact points for clarification questions, blocking issues, or any matter requiring a rapid exchange during the consultation window.
+The contact addresses are given in the consultation announcement.
+
+Dedicated SharePoint site::
+A SharePoint site has been set up to facilitate communication between NM and the consultation panel: document distribution, comment sheet upload, consolidated responses, reference material.
+// TODO: <link to ODIP SharePoint site>
+
+Consultation outcomes are integrated into the first prioritisation run and into the autumn 2026 edition.
+
+== What comes next
+
+The ODIP is planned to evolve along two parallel axes.
+Work on both is actively underway.
+
+*In content*, the next edition will introduce Operational Changes and their assignment to implementation waves, converting the foundation presented here into a dated, sequenced plan running from 1 January 2027 through the Trajectory 2030 horizon and beyond.
+Beyond that, each subsequent edition reflects the continuous work carried out between editions: refining existing ONs and ORs in light of consultation feedback and operational experience, deepening the treatment of topics that require it, and incorporating risks and issues attached to OC implementation as they are reported through NM's governance bodies.
+
+*In form*, the ODIP is being migrated to a dedicated web application currently under active development.
+Once released, it will become the primary environment for consulting and interacting with the plan — supporting navigation, search, version-to-version comparison, and structured commenting directly on individual ONs, ORs, and OCs.
+Generated document sets (Word, PDF, static website) will continue to be produced as derived artefacts, but the web application itself will be the authoritative source.
+Its first external-facing release is planned to coincide with the next major edition; the Word and PDF format of the present edition reflects the current state of the transition, not its end state.

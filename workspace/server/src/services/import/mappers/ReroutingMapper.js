@@ -104,7 +104,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * Unresolved lines are warned and appended to privateNotes.
  *
  * REFERENCE_DOC_MAP keywords → refdoc externalId:
- * 'ASM/ATFCM' / 'ASM ATFCM'  → refdoc:asm_atfcm_conops
+ * 'ASM/ATFCM' / 'ASM ATFCM'  → refdoc:asm_atfcm_integration_conops
  * 'Network 4D' / '4DT'        → refdoc:network_4d_trajectory_conops
  * 'iDL'                       → refdoc:idl__airspace__conops
  * 'NM B2B'                    → refdoc:nm_b2b_conops
@@ -164,7 +164,7 @@ const DOMAIN_SYNONYM_MAP = {
 // Keys are lowercase substrings to match against the reference name portion.
 // ---------------------------------------------------------------------------
 const REFERENCE_DOC_MAP = [
-    { keywords: ['asm/atfcm', 'asm atfcm'], externalId: 'refdoc:asm_atfcm_conops' },
+    { keywords: ['asm/atfcm', 'asm atfcm'], externalId: 'refdoc:asm_atfcm_integration_conops' },
     { keywords: ['network 4d', '4dt', '4d trajectory'], externalId: 'refdoc:network_4d_trajectory_conops' },
     { keywords: ['idl'], externalId: 'refdoc:idl__airspace__conops' },
     { keywords: ['nm b2b'], externalId: 'refdoc:nm_b2b_conops' },

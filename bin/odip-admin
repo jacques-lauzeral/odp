@@ -125,11 +125,13 @@ install_host_dependencies() {
 
 build_web_client() {
     log "Rebuilding web client image (ODIP_NPM_MODE=${ODIP_NPM_MODE:-podman})"
-    if [[ "${ODIP_NPM_MODE:-podman}" == "host" ]]; then
-        podman build -f "${ODIP_REPO}/Dockerfile.web-client" --build-arg NPM_INSTALL=false -t odp-web-client:latest "$ODIP_REPO"
-    else
-        podman build -f "${ODIP_REPO}/Dockerfile.web-client" --build-arg NPM_INSTALL=true -t odp-web-client:latest "$ODIP_REPO"
-    fi
+    local npm_arg="true"
+    [[ "${ODIP_NPM_MODE:-podman}" == "host" ]] && npm_arg="false"
+    podman build --no-cache \
+        -f "${ODIP_REPO}/Dockerfile.web-client" \
+        --build-arg NPM_INSTALL="$npm_arg" \
+        -t odp-web-client:latest \
+        "$ODIP_REPO"
 }
 
 build_odp_server() {
