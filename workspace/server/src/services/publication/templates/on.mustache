@@ -1,38 +1,42 @@
 = ON {{title}}
 
-[.metadata]
---
-*Code:* {{code}} +
-*Domain:* {{drg}} +
+[horizontal]
+Code:: {{code}} +
+Domain:: {{drg}} +
 {{#refinesParents}}
-*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
+Refines:: xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
 {{/refinesParents}}
---
 
 {{#statement}}
-== Statement
-
+Statement::
++
+--
 {{{statement}}}
+--
 
 {{/statement}}
 
 {{#rationale}}
-== Rationale
-
+Rationale::
++
+--
 {{{rationale}}}
+--
 
 {{/rationale}}
 
 {{#flows}}
-== Flow Descriptions and Examples
-
+Flow Descriptions and Examples::
++
+--
 {{{flows}}}
+--
 
 {{/flows}}
 
 {{#strategicDocuments}}
-== Strategic Documents
-
+Strategic Documents::
++
 [cols="1,1l",options="header"]
 |===
 |Document |Note
@@ -43,17 +47,21 @@
 {{/strategicDocuments}}
 
 {{#refinedBy}}
-== Refined By
-
+Refined By::
++
+--
 {{#items}}
 * xref:{{{path}}}/{{{file}}}[{{type}} {{title}}]
 {{/items}}
+--
 {{/refinedBy}}
 
 {{#implementedBy}}
-== Implemented By
-
+Implemented By::
++
+--
 {{#items}}
 * xref:{{{path}}}/{{{file}}}[OR {{title}}]
 {{/items}}
+--
 {{/implementedBy}}
