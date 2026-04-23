@@ -137,8 +137,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
           description: Drafting group identifier
         - name: folder
           in: query

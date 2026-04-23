@@ -423,19 +423,20 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 
 The `DraftingGroup` enum identifies the competency domain or drafting group responsible for a requirement, change, or bandwidth scope.
 
-| Key | Display |
-|---|---|
-| 4DT | 4D-Trajectory |
-| AIRPORT | Airport |
-| ASM_ATFCM | ASM / ATFCM Integration |
-| CRISIS_FAAS | Crisis and FAAS |
-| FLOW | Flow |
-| IDL | iDL |
-| NM_B2B | NM B2B |
-| NMUI | NMUI |
-| PERF | Performance |
-| RRT | Rerouting |
-| TCF | TCF |
+| Key | Display                            |
+|---|------------------------------------|
+| 4DT | 4D-Trajectory                      |
+| AIRPORT | Airport                            |
+| ASM_ATFCM | ASM / ATFCM Integration            |
+| CRISIS | Crisis                             |
+| FAAS | Flight Assessment and Alert System |
+| FLOW | Flow                               |
+| IDL | iDL                                |
+| NM | Network Manager                    |
+| NM_B2B | NM B2B                             |
+| NMUI | NMUI                               |
+| RRT | Rerouting                          |
+| TCF | Transponder Code Function                |
 
 ### 6.2 OR Types
 

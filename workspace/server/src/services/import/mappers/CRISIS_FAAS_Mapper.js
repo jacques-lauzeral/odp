@@ -10,9 +10,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * Hierarchical Organization Pattern:
  * -----------------------------------
- * The CRISIS_FAAS document uses a simple 3-level hierarchical structure:
+ * The CRISIS / FAAS documents uses a simple 3-level hierarchical structure:
  *
- * - Level 1: "Crisis & FAAS DrG" (document root - excluded from path)
+ * - Level 1: "Crisis / FAAS DrG" (document root - excluded from path)
  * - Level 2: Organizational folders (e.g., "FAAS ON - OR - OC", "Crisis_Information_Portal ON - OR")
  * - Level 3: Entity sections - "Operational Need (ON)" or "Operational Requirement (OR)"
  *
@@ -78,7 +78,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * EXCLUDED:
  * - Section identifier field (from extractor) not stored
- * - Use Cases: Not present in CRISIS_FAAS documents
+ * - Use Cases: Not present in CRISIS / FAAS documents
  */
 class CRISIS_FAAS_Mapper extends Mapper {
     constructor() {

@@ -73,7 +73,8 @@ class MapperRegistry {
         MapperRegistry.register('ASM_ATFCM', ASM_ATFCM_Mapper);
         MapperRegistry.register('4DT', FourDTMapper);
         MapperRegistry.register('FLOW', FlowMapper);
-        MapperRegistry.register('CRISIS_FAAS', CRISIS_FAAS_Mapper);
+        MapperRegistry.register('CRISIS', CRISIS_FAAS_Mapper);
+        MapperRegistry.register('FAAS', CRISIS_FAAS_Mapper);
 
         // IDL section-based folders
         MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'ADP' });

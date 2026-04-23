@@ -17,6 +17,10 @@ components:
             message:
               type: string
 
+    DraftingGroup:
+      type: string
+      enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS, FAAS, FLOW, IDL, NM, NM_B2B, NMUI, PERF, RRT, TCF]
+
     AnnotatedReference:
       type: object
       properties:
@@ -109,8 +113,7 @@ components:
           nullable: true
           description: "Optional wave reference — undefined means year-level scope"
         scope:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
           nullable: true
           description: "Optional DrG scope — undefined means global scope"
         planned:
@@ -129,8 +132,7 @@ components:
           nullable: true
           description: "Optional wave reference — undefined means year-level scope"
         scope:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
           nullable: true
           description: "Optional DrG scope — undefined means global scope"
         planned:
@@ -265,8 +267,7 @@ components:
           items:
             type: string
         drg:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
         refinesParents:
           type: array
           items:
@@ -373,8 +374,7 @@ components:
           items:
             type: string
         drg:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
         refinesParents:
           type: array
           items:
@@ -459,8 +459,7 @@ components:
           items:
             type: string
         drg:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
         refinesParents:
           type: array
           items:
@@ -601,8 +600,7 @@ components:
           items:
             type: string
         drg:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
         implementedORs:
           type: array
           items:
@@ -687,8 +685,7 @@ components:
           items:
             type: string
         drg:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
         implementedORs:
           type: array
           items:
@@ -767,8 +764,7 @@ components:
           items:
             type: string
         drg:
-          type: string
-          enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF]
+          $ref: '#/components/schemas/DraftingGroup'
         implementedORs:
           type: array
           items:

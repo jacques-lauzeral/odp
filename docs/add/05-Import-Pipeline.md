@@ -66,7 +66,7 @@ The `/import/map/{drg}` endpoint accepts a `?specific=` flag selecting between t
 
 ### 3.2 DrG Mapper Registry
 
-`MapperRegistry` holds one registered mapper per DrG code. All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DRG enum values: `4DT`, `AIRPORT`, `ASM_ATFCM`, `CRISIS_FAAS`, `FLOW`, `IDL`, `NM_B2B`, `NMUI`, `PERF`, `RRT`, `TCF`.
+`MapperRegistry` holds one registered mapper per DrG code. All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DRG enum values: `4DT`, `AIRPORT`, `ASM_ATFCM`, `CRISIS`, `FAAS`, `FLOW`, `IDL`, `NM`, `NM_B2B`, `NMUI`, `PERF`, `RRT`, `TCF`.
 
 Each mapper is responsible for: entity identification, field extraction, AsciiDoc → Quill Delta conversion for rich text fields, and cross-reference resolution (section hierarchy → `refinesParents`, "Implemented ONs" → `implementedONs`, impact references → IMPACTS arrays).
 

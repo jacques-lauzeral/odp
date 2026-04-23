@@ -453,8 +453,8 @@ export class ImportCommands {
                 console.log(`
 # ROUND-TRIP EDITING WORKFLOW (default - standard format)
 # Export from ODIP → Edit in Word → Re-import
-odp import extract-word --file crisis_faas-on-or-oc.docx --output raw.json
-odp import map --file raw.json --drg CRISIS_FAAS --output structured.json
+odp import extract-word --file crisis-on-or-oc.docx --output raw.json
+odp import map --file raw.json --drg CRISIS --output structured.json
 odp import structured --file structured.json
 
 # ORIGINAL SOURCE IMPORT WORKFLOW (DrG-specific format)

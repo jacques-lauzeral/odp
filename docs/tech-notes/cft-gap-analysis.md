@@ -143,7 +143,7 @@ bandwidth constraints across waves, supporting the iCDM governance loop.
 - `GET /bandwidths` — available MW per (year, wave, scope)
 - `GET /waves` — wave definitions
 - **DrG list** — hardcoded enum, not fetched from API; values:
-  `4DT, AIRPORT, ASM_ATFCM, CRISIS_FAAS, FLOW, IDL, NM_B2B, NMUI, PERF, RRT, TCF`;
+  `4DT, AIRPORT, ASM_ATFCM, CRISIS, FAAS, FLOW, IDL, NM, NM_B2B, NMUI, PERF, RRT, TCF`;
   display labels from `getDraftingGroupDisplay()` in `@odp/shared`
 - OR-level costs (`implementedORs[].cost`) — informational only,
   used to help estimate OC-level cost; not used for bandwidth aggregation
