@@ -4,10 +4,11 @@
 # odip-admin - Administration utility for ODIP (Podman/Kubernetes)
 #
 # Required environment variables:
-#   ODIP_REPO              Repository root (source code, bin, Dockerfile)
-#   ODIP_HOME              Runtime root (data/, backups/, logs/)
-#   ODIP_DOCKER_REGISTRY   Docker registry (e.g. docker.io or yagi.cfmu.corp.eurocontrol.int:5000)
-#   ODIP_NPM_MODE          npm install mode: podman (default) or host
+#   ODIP_REPO                Repository root (source code, bin, Dockerfile)
+#   ODIP_HOME                Runtime root (data/, backups/, logs/)
+#   ODIP_DOCKER_REGISTRY     Docker registry (e.g. docker.io or yagi.cfmu.corp.eurocontrol.int:5000)
+#   ODIP_NPM_MODE            npm install mode: podman (default) or host
+#   ODIP_GEM_MODE            gem install mode: podman (default, online) or host (local ~/.gemrc proxy)
 
 set -e
 
@@ -135,8 +136,17 @@ build_web_client() {
 }
 
 build_odp_server() {
-    log "Rebuilding server image"
-    podman build -f "${ODIP_REPO}/Dockerfile.odp-server" -t "${ODIP_DOCKER_REGISTRY}/odp-server:latest" "$ODIP_REPO"
+    local gem_mode="${ODIP_GEM_MODE:-podman}"
+    log "Rebuilding server image (ODIP_GEM_MODE=${gem_mode})"
+    local extra_args=""
+    if [[ "$gem_mode" == "host" ]]; then
+        [[ ! -f "$HOME/.gemrc" ]] && { echo "Error: ~/.gemrc not found — required for ODIP_GEM_MODE=host" >&2; exit 1; }
+        extra_args="--secret id=gemrc,src=$HOME/.gemrc"
+    fi
+    podman build -f "${ODIP_REPO}/Dockerfile.odp-server" \
+        $extra_args \
+        -t "${ODIP_DOCKER_REGISTRY}/odp-server:latest" \
+        "$ODIP_REPO"
 }
 
 # --- Commands ---
@@ -157,11 +167,16 @@ Usage: odip-admin install [options]
     - Download Antora UI bundle (requires internet or --proxy)
     - Install npm dependencies for all workspaces
     - Install publication workspace dependencies (works/)
+    - Build server image (gem install mode controlled by ODIP_GEM_MODE)
     - Build web client image
 
 Options:
       --proxy         Use EC corporate proxy (prompts for credentials)
   -h, --help          Show this help
+
+Gem install modes (ODIP_GEM_MODE):
+  podman   gem install from rubygems.org during image build (default — personal env)
+  host     gem install via proxy configured in ~/.gemrc (EC env)
 
 Notes:
   On restricted networks (e.g. EC), direct download of the Antora UI bundle
@@ -260,6 +275,8 @@ Options:
       --rebuild=web-client    Rebuild web client image before starting
       --rebuild=all           Rebuild both images before starting
   -h, --help                  Show this help
+
+  Server image gem install mode is controlled by ODIP_GEM_MODE (podman/host).
 EOF
                 exit 0 ;;
             *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -310,6 +327,8 @@ Options:
       --rebuild=web-client    Rebuild web client image before restarting
       --rebuild=all           Rebuild both images before restarting
   -h, --help                  Show this help
+
+  Server image gem install mode is controlled by ODIP_GEM_MODE (podman/host).
 EOF
                 exit 0 ;;
             *) echo "Unknown option: $1" >&2; exit 1 ;;

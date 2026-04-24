@@ -1,15 +1,16 @@
 FROM node:20
 
-# Install Ruby and asciidoctor-pdf for PDF publication
+# GEM_MODE controls how Ruby gems are installed:
+#   podman  (default) — gem install from rubygems.org (requires internet access)
+#   host              — gem install via proxy configured in ~/.gemrc (passed as build secret)
+ARG GEM_MODE=podman
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ruby \
-        ruby-dev \
-        build-essential \
-        libxml2-dev \
-        libxslt-dev \
-    && gem install asciidoctor-pdf rouge \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+        ruby ruby-dev build-essential libxml2-dev libxslt-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=secret,id=gemrc,target=/root/.gemrc,required=false \
+    gem install asciidoctor-pdf rouge
 
 WORKDIR /app/workspace/server
 CMD ["npm", "run", "dev"]
