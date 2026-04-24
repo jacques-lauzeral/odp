@@ -140,13 +140,23 @@ build_odp_server() {
     log "Rebuilding server image (ODIP_GEM_MODE=${gem_mode})"
     local extra_args=""
     if [[ "$gem_mode" == "host" ]]; then
-        [[ ! -f "$HOME/.gemrc" ]] && { echo "Error: ~/.gemrc not found — required for ODIP_GEM_MODE=host" >&2; exit 1; }
-        extra_args="--secret id=gemrc,src=$HOME/.gemrc"
+        # Write proxy URL to a temp file and pass it as a build secret
+        local gem_proxy_file
+        gem_proxy_file=$(mktemp)
+        # Extract http-proxy or https-proxy value from ~/.gemrc
+        local proxy_url
+        proxy_url=$(grep -E '^\s*https?-proxy:' "$HOME/.gemrc" 2>/dev/null | head -1 | sed 's/.*proxy:[[:space:]]*//')
+        [[ -z "$proxy_url" ]] && { echo "Error: no http-proxy or https-proxy found in ~/.gemrc" >&2; rm -f "$gem_proxy_file"; exit 1; }
+        echo -n "$proxy_url" > "$gem_proxy_file"
+        extra_args="--secret id=gem_proxy,src=$gem_proxy_file"
+        extra_args="$extra_args --build-arg http_proxy=$proxy_url"
+        extra_args="$extra_args --build-arg https_proxy=$proxy_url"
     fi
     podman build -f "${ODIP_REPO}/Dockerfile.odp-server" \
         $extra_args \
         -t "${ODIP_DOCKER_REGISTRY}/odp-server:latest" \
         "$ODIP_REPO"
+    [[ -n "${gem_proxy_file:-}" ]] && rm -f "$gem_proxy_file"
 }
 
 # --- Commands ---
@@ -176,7 +186,7 @@ Options:
 
 Gem install modes (ODIP_GEM_MODE):
   podman   gem install from rubygems.org during image build (default — personal env)
-  host     gem install via proxy configured in ~/.gemrc (EC env)
+  host     gem install via proxy URL extracted from ~/.gemrc http-proxy or https-proxy (EC env)
 
 Notes:
   On restricted networks (e.g. EC), direct download of the Antora UI bundle

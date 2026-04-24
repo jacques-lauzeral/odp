@@ -226,7 +226,17 @@ export class ODPEditionService {
             }
             console.log(`[publish] Extracting content to ${worksDir}...`);
             const zip = new AdmZip(zipBuffer);
-            zip.extractAllTo(worksDir, true /* overwrite */);
+            // Use manual extraction instead of extractAllTo() to avoid chmodSync calls
+            // which fail under rootless Podman on NFS-mounted host directories.
+            for (const entry of zip.getEntries()) {
+                const entryPath = nodePath.join(worksDir, entry.entryName);
+                if (entry.isDirectory) {
+                    fs.mkdirSync(entryPath, { recursive: true });
+                } else {
+                    fs.mkdirSync(nodePath.dirname(entryPath), { recursive: true });
+                    fs.writeFileSync(entryPath, entry.getData());
+                }
+            }
             console.log(`[publish] Extraction complete`);
 
             // Stage 3 — Git commit
