@@ -32,6 +32,7 @@ All environment-specific configuration is expressed through host shell variables
 | `ODIP_HOME` | Runtime root — contains `data/`, `backups/`, `logs/`, `publication/` — **must be on local filesystem, not NFS** | `~/odip` | `/cm/local_build/odip` |
 | `ODIP_DOCKER_REGISTRY` | Docker image registry | `docker.io` | `yagi.cfmu.corp.eurocontrol.int:5000` |
 | `ODIP_NPM_MODE` | npm install mode for web client image build: `podman` or `host` | `podman` | `host` |
+| `ODIP_GEM_MODE` | gem install mode for server image build: `podman` or `host` | `podman` | `host` |
 
 `ODIP_HOME` must reside on a local filesystem. NFS-mounted paths block Neo4j's internal `chown` operations under rootless Podman.
 
@@ -74,6 +75,20 @@ https-proxy=http://<user>:<password>@pac.eurocontrol.int:9512
 
 Special characters in the password must be URL-encoded (e.g. `@` → `%40`).
 
+### gem proxy (EC only)
+
+Ruby gem installation during server image build requires a corporate proxy configured in `~/.gemrc`:
+
+```yaml
+:backtrace: false
+:verbose: true
+https-proxy: http://<user>:<password>@pac.eurocontrol.int:9512
+```
+
+Special characters in the password must be URL-encoded. `odip-admin` extracts the proxy URL from `~/.gemrc` and passes it as a Podman build secret — credentials are never stored in the image or its history.
+
+> **Note:** `apt-get` during image build also requires proxy access. `odip-admin` passes `http_proxy`/`https_proxy` as build args automatically when `ODIP_GEM_MODE=host`. No additional configuration is required for `apt-get`.
+
 ### Full `.bashrc` example
 
 **Local:**
@@ -91,6 +106,7 @@ export ODIP_REPO=/cm/local_build/odip/repo
 export ODIP_HOME=/cm/local_build/odip
 export ODIP_DOCKER_REGISTRY=yagi.cfmu.corp.eurocontrol.int:5000
 export ODIP_NPM_MODE=host
+export ODIP_GEM_MODE=host
 export PATH="$ODIP_REPO/bin:$PATH"
 export PATH="/cm/cots/osm/node.24.11.1/bin:$PATH"
 ```
@@ -156,10 +172,21 @@ The server requires Ruby and `asciidoctor-pdf` for PDF publication. A custom ima
 ```dockerfile
 FROM node:20
 
+# Proxy args for apt-get (EC env — no direct internet access in container builds)
+# Passed by odip-admin when ODIP_GEM_MODE=host; absent in podman mode (direct internet).
+ARG http_proxy
+ARG https_proxy
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ruby ruby-dev build-essential libxml2-dev libxslt-dev \
-    && gem install asciidoctor-pdf rouge \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# gem_proxy secret: contains proxy URL (e.g. http://user:pass@host:port)
+# Passed by odip-admin when ODIP_GEM_MODE=host; absent in podman mode.
+# When absent, gem install proceeds without proxy (direct internet).
+RUN --mount=type=secret,id=gem_proxy \
+    proxy=$(cat /run/secrets/gem_proxy 2>/dev/null || true) && \
+    gem install asciidoctor-pdf rouge ${proxy:+--http-proxy "$proxy"}
 
 WORKDIR /app/workspace/server
 CMD ["npm", "run", "dev"]
@@ -167,9 +194,12 @@ CMD ["npm", "run", "dev"]
 
 The image is built locally and tagged `$ODIP_DOCKER_REGISTRY/odp-server:latest`. It is referenced in `odip-deployment.yaml` with `imagePullPolicy: Never` — Podman uses the locally built image without pulling from the registry.
 
-**EC porting:** build the image on the EC host (or a machine with access to the EC registry), push it to `$ODIP_DOCKER_REGISTRY`, and change `imagePullPolicy` to `IfNotPresent`. Ruby gems are baked into the image — no internet access is required at runtime.
+`odip-admin` controls gem installation mode via `ODIP_GEM_MODE`:
 
-> **Note:** `apt-get` during image build requires internet access (or an EC-internal Debian mirror). If the EC environment blocks outbound `apt` traffic, the image must be built on a machine with internet access and pushed to the EC registry.
+- `podman` (default, personal env): `gem install` runs with direct internet access — no proxy args passed
+- `host` (EC): proxy URL is extracted from `~/.gemrc` and passed as a Podman build secret (`--secret id=gem_proxy`); `http_proxy`/`https_proxy` build args are also passed for `apt-get`
+
+> **Security:** proxy credentials are passed via Podman build secret — they are never embedded in the Dockerfile, build args, or image history.
 
 ---
 

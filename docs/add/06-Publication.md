@@ -13,15 +13,15 @@ The pipeline is entirely server-side. The web client and CLI trigger it via REST
 >
 > | Format | Personal environment | EC environment |
 > |---|---|---|
-> | HTML static site (with search index) | ✅ Operational | ⏳ Not yet ported |
-> | PDF | ✅ Operational | ⏳ Not yet ported |
+> | HTML static site (with search index) | ✅ Operational | ✅ Operational |
+> | PDF | ✅ Operational | ✅ Operational |
 > | Word (docx) | ❌ Not yet restored | ❌ Not yet restored |
 >
 > **PDF** is generated via `@antora/pdf-extension` + `asciidoctor-pdf` (installed as a system gem in `Dockerfile.odp-server`). The PDF assembler writes to `build/assembler/pdf/odip/_exports/index.pdf`, which is then copied to `build/site/odip/_exports/index.pdf`.
 >
 > **Word** generation (`antora-playbook-docx.yml`) was present in an earlier iteration but has not been restored. It requires `pandoc` in the server container and a working `antora-docx-extension.js`.
 >
-> **EC environment** requires pushing the custom `odp-server` image (built from `Dockerfile.odp-server`) to `$ODIP_DOCKER_REGISTRY`. The personal environment builds and runs the image locally via Podman.
+> **EC environment** requires `ODIP_GEM_MODE=host` and `~/.gemrc` configured with the corporate proxy — `odip-admin` handles the rest automatically. See ch09 §3 and §5.2.
 
 ---
 
@@ -285,7 +285,7 @@ The server maintains a persistent publication workspace at `$ODIP_HOME/publicati
 Each `publishEdition()` call:
 1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
 2. Generates Antora content ZIP via `generateAntoraZip()`
-3. Extracts ZIP into `works/` (overwrites previous content, preserving `node_modules/` and `.git/`)
+3. Extracts ZIP into `works/` using manual entry-by-entry extraction (via `adm-zip` `getEntries()` + `getData()`) — `extractAllTo()` is not used as it calls `chmodSync` which fails under rootless Podman on NFS-mounted host directories
 4. `git add . && git commit --allow-empty` — records each publication in git history
 5. `npx antora antora-playbook.yml` — builds HTML site into `works/build/site/` (mandatory, fatal on failure)
 6. `npx antora antora-playbook-pdf.yml` — builds PDF; assembler writes to `works/build/assembler/pdf/odip/_exports/index.pdf`, which is then copied to `works/build/site/odip/_exports/index.pdf` (only if `pdf` option set; non-fatal)
@@ -331,10 +331,16 @@ PDF generation requires `asciidoctor-pdf` to be available as a system gem inside
 ```dockerfile
 FROM node:20
 
+ARG http_proxy
+ARG https_proxy
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ruby ruby-dev build-essential libxml2-dev libxslt-dev \
-    && gem install asciidoctor-pdf rouge \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=secret,id=gem_proxy \
+    proxy=$(cat /run/secrets/gem_proxy 2>/dev/null || true) && \
+    gem install asciidoctor-pdf rouge ${proxy:+--http-proxy "$proxy"}
 
 WORKDIR /app/workspace/server
 CMD ["npm", "run", "dev"]
@@ -349,7 +355,7 @@ odip-admin install          # builds both odp-server and web-client images
 odip-admin restart --rebuild=server
 ```
 
-**Porting to EC environment:** push the built image to `$ODIP_DOCKER_REGISTRY` and update `imagePullPolicy` to `IfNotPresent`. The Ruby gems are baked into the image — no internet access required at runtime.
+Gem installation is controlled by `ODIP_GEM_MODE` — see ch09 §3 and §5.2 for EC-specific proxy configuration.
 
 ---
 

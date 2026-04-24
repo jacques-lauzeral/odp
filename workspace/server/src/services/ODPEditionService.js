@@ -186,12 +186,14 @@ export class ODPEditionService {
      */
     async publishEdition(editionId, userId, options = {}) {
         if (this._publicationInProgress) {
+            console.log(`[publish] REJECTED edition ${editionId} — publication already in progress`);
             const err = new Error('Publication already in progress — please retry later');
             err.code = 'PUBLICATION_IN_PROGRESS';
             throw err;
         }
 
         this._publicationInProgress = true;
+        console.log(`[publish] START edition ${editionId} userId: ${userId}`);
         try {
             // Verify edition exists
             const tx = createTransaction(userId);
@@ -300,6 +302,7 @@ export class ODPEditionService {
 
         } finally {
             this._publicationInProgress = false;
+            console.log(`[publish] DONE edition ${editionId}`);
         }
     }
 
