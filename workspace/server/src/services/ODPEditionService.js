@@ -1,6 +1,6 @@
 import fs from 'fs';
 import nodePath from 'path';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
 import AdmZip from 'adm-zip';
 import archiver from 'archiver';
 import {
@@ -163,9 +163,31 @@ export class ODPEditionService {
      * @returns {boolean} true if successful, false if failed (warning emitted)
      * @private
      */
-    _tryExec(label, cmd, opts) {
+    /**
+     * Execute a shell command, streaming stdout/stderr to process output in real time.
+     * Returns a promise that resolves when the process exits successfully, rejects on non-zero exit.
+     * @private
+     */
+    _execStreaming(cmd, opts) {
+        return new Promise((resolve, reject) => {
+            const child = exec(cmd, opts);
+            child.stdout?.pipe(process.stdout);
+            child.stderr?.pipe(process.stderr);
+            child.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(`Command failed with exit code ${code}: ${cmd}`));
+            });
+            child.on('error', reject);
+        });
+    }
+
+    /**
+     * Like _execStreaming but non-fatal — logs a warning and returns false on failure.
+     * @private
+     */
+    async _tryExecAsync(label, cmd, opts) {
         try {
-            execSync(cmd, opts);
+            await this._execStreaming(cmd, opts);
             return true;
         } catch (error) {
             console.warn(`[publish] ⚠ ${label} failed (skipped): ${error.message.split('\n')[0]}`);
@@ -213,7 +235,7 @@ export class ODPEditionService {
 
             const worksDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works');
             const scope = `edition ${editionId} (${edition.title})`;
-            const execOpts = { cwd: worksDir, stdio: 'inherit' };
+            const execOpts = { cwd: worksDir };
 
             // Stage 1 — Generate content ZIP
             console.log(`[publish] Generating Antora content for ${scope}...`);
@@ -243,13 +265,13 @@ export class ODPEditionService {
 
             // Stage 3 — Git commit
             console.log(`[publish] Committing to git...`);
-            execSync('git add .', { cwd: worksDir, stdio: 'inherit' });
-            execSync(`git commit -m "publish ${scope}" --allow-empty`, { cwd: worksDir, stdio: 'inherit' });
+            await this._execStreaming('git add .', { cwd: worksDir });
+            await this._execStreaming(`git commit -m "publish ${scope}" --allow-empty`, { cwd: worksDir });
             console.log(`[publish] Git commit complete`);
 
             // Stage 4 — HTML build (mandatory)
             console.log(`[publish] Running Antora HTML build...`);
-            execSync('npx antora antora-playbook.yml', execOpts);
+            await this._execStreaming('npx antora antora-playbook.yml', execOpts);
             console.log(`[publish] Antora HTML build complete`);
 
             // Ensure _exports directory exists for PDF/Word output
@@ -261,7 +283,7 @@ export class ODPEditionService {
             let pdfUrl = null;
             if (options.pdf) {
                 console.log(`[publish] Running PDF build...`);
-                const ok = this._tryExec('PDF build', 'npx antora antora-playbook-pdf.yml', execOpts);
+                const ok = await this._tryExecAsync('PDF build', 'npx antora antora-playbook-pdf.yml', execOpts);
                 if (ok) {
                     const pdfSrc = nodePath.join(worksDir, 'build', 'assembler', 'pdf', 'odip', '_exports', 'index.pdf');
                     const pdfDest = nodePath.join(exportsDir, 'index.pdf');
@@ -280,7 +302,7 @@ export class ODPEditionService {
             let wordUrl = null;
             if (options.word) {
                 console.log(`[publish] Running Word build...`);
-                const ok = this._tryExec('Word build', 'npx antora antora-playbook-docx.yml', execOpts);
+                const ok = await this._tryExecAsync('Word build', 'npx antora antora-playbook-docx.yml', execOpts);
                 if (ok) {
                     const wordSrc = nodePath.join(worksDir, 'build', 'exports', 'index.docx');
                     const wordDest = nodePath.join(exportsDir, 'index.docx');
