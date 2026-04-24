@@ -292,6 +292,10 @@ Each `publishEdition()` call:
 7. `npx antora antora-playbook-docx.yml` — builds Word document (only if `word` option set; non-fatal; not yet restored)
 8. Releases mutex — returns `{ siteUrl, pdfUrl, wordUrl }` (`pdfUrl`/`wordUrl` are `null` if not requested or build failed)
 
+All shell commands (git, npx antora) are executed asynchronously via `child_process.exec` with real-time stdout/stderr streaming to the server console. This keeps the Node.js event loop free during long-running builds (HTML ~20s, PDF ~2–15min), allowing the `_publicationInProgress` guard to correctly reject concurrent publish requests with 409 while a build is in progress.
+
+> **Implementation:** `_execStreaming()` wraps `child_process.exec` with real-time pipe and promise-based exit handling. `_tryExecAsync()` wraps `_execStreaming()` for non-fatal optional builds.
+
 The built site is immediately served by the Express static middleware mounted at `/publication/site/`.
 
 ### UI Bundle Preparation
