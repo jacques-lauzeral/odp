@@ -74,7 +74,8 @@ class MapperRegistry {
         MapperRegistry.register('ASM_ATFCM', ASM_ATFCM_Mapper);
         MapperRegistry.register('4DT', FourDTMapper);
         MapperRegistry.register('FLOW', FlowMapper);
-        MapperRegistry.register('CRISIS', CRISIS_Mapper);
+        MapperRegistry.register('CRISIS', CRISIS_Mapper, { folder: 'Crisis Information Portal' });
+        MapperRegistry.register('CRISIS', CRISIS_Mapper, { folder: 'Conflict Zones' });
         MapperRegistry.register('FAAS', FAAS_Mapper);
 
         // IDL section-based folders
