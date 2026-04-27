@@ -238,6 +238,12 @@ class FourDTMapper extends Mapper {
             return null;
         }
 
+        // Drop organisational/header rows that carry no substantive content
+        const hasContent = row['Need Statement'] || row['Rationale'] || row['Maturity'] || row['Timeline'];
+        if (!hasContent) {
+            return null;
+        }
+
         const statement = row['Need Statement'] || null;
         const rationale = row['Rationale'] || null;
         const { strategicDocuments, unresolvedRefs } = this._parseSourceField(row);
