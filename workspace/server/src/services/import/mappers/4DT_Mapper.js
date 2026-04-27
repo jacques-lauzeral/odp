@@ -13,12 +13,19 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * -----------------------------------
  * - 'ON Reference' → used as key for ON→OR linking (e.g. '4DT01')
  * - 'Title' → title (used for external ID generation)
+ * - 'Maturity' → maturity (see MATURITY MAPPING below)
+ * - 'Timeline' → tentative: "YYYY" → [YYYY, YYYY]
  * - 'Date' → ignored
  * - 'Originator' → privateNotes as "Originator: {name}"
- * - 'Source' → split handling:
- *   - Text before 'CONOPS' → privateNotes as "Sources:\n\n{text}"
- *   - Text after 'CONOPS' → strategicDocuments note
- *   - If no 'CONOPS' → all text to privateNotes as "Sources:\n\n{text}"
+ * - 'Source' → comma-separated tokens; resolved via REFERENCE_DOC_MAP:
+ *   - /^4DT CONOPS\s+(.+)/i → refdoc:network_4d_trajectory_conops; note =
+ *     captured section(s), whitespace-normalised; multiple CONOPS tokens
+ *     join their notes with ', ' into a single strategicDocuments entry
+ *   - /^NSP SO (\d+)\/(\d+)$/i → refdoc:nsp_so_{n}_{m}
+ *   - /^ATMMP SDO (\d+)$/i → ExternalIdBuilder refdoc normalisation
+ *   - /^IR2021\/116\s+(.+)$/i → refdoc:commission_implementing_regulation_(eu)_2021_116,
+ *     note = trailing token (e.g. "AF 4/6")
+ *   - Unresolved tokens → _warn + privateNotes as "Sources:" section
  * - 'Need Statement' → statement
  * - 'Rationale' → rationale
  * - type: 'ON', drg: '4DT' (hardcoded)
@@ -44,6 +51,13 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - type: 'OR', drg: '4DT' (hardcoded)
  * - path: null (not exported)
  *
+ * MATURITY MAPPING:
+ * -----------------
+ * 'Defined'  → 'DRAFT'
+ * 'Advanced' → 'ADVANCED'
+ * 'Mature'   → 'MATURE'
+ * Unknown values → _warn + omitted (field not set)
+ *
  * External ID Format:
  * -------------------
  * - ON: on:4dt/{title_normalized}
@@ -51,7 +65,10 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * Strategic Documents (ONs only):
  * --------------------
- * - ON: refdoc:network_4d_trajectory_conops (if Source contains 'CONOPS')
+ * Source tokens resolved via REFERENCE_DOC_MAP (see above).
+ * Multiple CONOPS tokens → single entry, notes joined with ', '.
+ * NSP SO, ATMMP SDO, IR2021/116 → individual entries.
+ * Unresolved tokens → privateNotes "Sources:" section + _warn.
  *
  * Stakeholder Mapping:
  * --------------------
@@ -78,6 +95,22 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - Unique titles are left unchanged
  * - External IDs are rebuilt after suffixing, so they reflect the deconflicted title
  */
+
+// ---------------------------------------------------------------------------
+// Maturity mapping
+// ---------------------------------------------------------------------------
+const MATURITY_MAP = {
+    'Defined': 'DRAFT',
+    'Advanced': 'ADVANCED',
+    'Mature': 'MATURE'
+};
+
+// ---------------------------------------------------------------------------
+// Known refdoc externalIds
+// ---------------------------------------------------------------------------
+const CONOPS_EXTERNAL_ID = 'refdoc:network_4d_trajectory_conops';
+const IR_EXTERNAL_ID = 'refdoc:commission_implementing_regulation_(eu)_2021_116';
+
 class FourDTMapper extends Mapper {
     /**
      * Map of stakeholder synonyms to external IDs
@@ -207,8 +240,10 @@ class FourDTMapper extends Mapper {
 
         const statement = row['Need Statement'] || null;
         const rationale = row['Rationale'] || null;
-        const privateNotes = this._extractNeedPrivateNotes(row);
-        const strategicDocuments = this._extractNeedStrategicDocuments(row);
+        const { strategicDocuments, unresolvedRefs } = this._parseSourceField(row);
+        const privateNotes = this._extractNeedPrivateNotes(row, unresolvedRefs);
+        const maturity = this._parseMaturity(row['Maturity'], title.trim());
+        const tentative = this._parseTentative(row['Timeline'], title.trim());
 
         const need = {
             type: 'ON',
@@ -220,58 +255,105 @@ class FourDTMapper extends Mapper {
             strategicDocuments: strategicDocuments
         };
 
+        if (maturity) need.maturity = maturity;
+        if (tentative) need.tentative = tentative;
+
         need.externalId = ExternalIdBuilder.buildExternalId(need, 'on');
 
         return need;
     }
 
-    _extractNeedPrivateNotes(row) {
-        let privateNotes = '';
+    /**
+     * Parse the Source field into strategicDocuments and unresolved refs.
+     * Splits by comma, resolves each token via REFERENCE_DOC_MAP rules:
+     *   - /^4DT CONOPS\s+(.+)/i → CONOPS_EXTERNAL_ID; notes accumulated and
+     *     joined with ', ' into a single strategicDocuments entry
+     *   - /^NSP SO (\d+)\/(\d+)$/i → refdoc:nsp_so_{n}_{m}
+     *   - /^ATMMP SDO (\d+)$/i → ExternalIdBuilder normalisation
+     *   - /^IR2021\/116\s+(.+)$/i → IR_EXTERNAL_ID, note = trailing token
+     *   - Unresolved → warn + unresolvedRefs (caller appends to privateNotes)
+     * @param {Object} row
+     * @returns {{ strategicDocuments: Array, unresolvedRefs: string[] }}
+     * @private
+     */
+    _parseSourceField(row) {
+        const source = row['Source'];
+        const sourceText = source ? source.trim() : '';
+
+        if (!sourceText) {
+            return { strategicDocuments: [], unresolvedRefs: [] };
+        }
+
+        const tokens = sourceText.split(',').map(t => t.trim()).filter(t => t);
+
+        // notesMap: externalId → string[] of notes (merged at end)
+        const notesMap = new Map();
+        const unresolvedRefs = [];
+
+        const addEntry = (externalId, note) => {
+            if (!notesMap.has(externalId)) notesMap.set(externalId, []);
+            if (note) notesMap.get(externalId).push(note);
+        };
+
+        for (const token of tokens) {
+            // 4DT CONOPS — section(s) form the note as-is (whitespace normalised)
+            const conopsMatch = token.match(/^4DT CONOPS\s+(.+)/i);
+            if (conopsMatch) {
+                addEntry(CONOPS_EXTERNAL_ID, conopsMatch[1].replace(/\s+/g, ' ').trim());
+                continue;
+            }
+
+            // NSP SO N/M → refdoc:nsp_so_n_m
+            const nspMatch = token.match(/^NSP SO (\d+)\/(\d+)$/i);
+            if (nspMatch) {
+                addEntry(`refdoc:nsp_so_${nspMatch[1]}_${nspMatch[2]}`, null);
+                continue;
+            }
+
+            // ATMMP SDO N → ExternalIdBuilder normalisation
+            const atmmpMatch = token.match(/^ATMMP SDO (\d+)$/i);
+            if (atmmpMatch) {
+                addEntry(ExternalIdBuilder.buildExternalId({ name: `ATMMP SDO ${atmmpMatch[1]}` }, 'refdoc'), null);
+                continue;
+            }
+
+            // IR2021/116 <note>
+            const irMatch = token.match(/^IR2021\/116\s+(.+)$/i);
+            if (irMatch) {
+                addEntry(IR_EXTERNAL_ID, irMatch[1].trim());
+                continue;
+            }
+
+            // Unresolved
+            console.warn(`FourDTMapper: Unresolved source reference: "${token}"`);
+            unresolvedRefs.push(token);
+        }
+
+        // Build strategicDocuments — one entry per externalId; CONOPS notes joined with ', '
+        const strategicDocuments = [];
+        for (const [externalId, notes] of notesMap.entries()) {
+            const entry = { externalId };
+            if (notes.length > 0) entry.note = notes.join(', ');
+            strategicDocuments.push(entry);
+        }
+
+        return { strategicDocuments, unresolvedRefs };
+    }
+
+    _extractNeedPrivateNotes(row, unresolvedRefs) {
+        const parts = [];
 
         const originator = row['Originator'];
         const originatorText = originator ? originator.trim() : '';
         if (originatorText) {
-            privateNotes = `Originator: ${originatorText}`;
+            parts.push(`Originator: ${originatorText}`);
         }
 
-        const source = row['Source'];
-        const sourceText = source ? source.trim() : '';
-        if (sourceText) {
-            let sourcesText = sourceText;
-
-            if (sourceText.includes('CONOPS')) {
-                const conopsIndex = sourceText.indexOf('CONOPS');
-                const beforeConops = sourceText.substring(0, conopsIndex).trim();
-                sourcesText = beforeConops;
-            }
-
-            if (sourcesText) {
-                if (privateNotes) privateNotes += '\n\n---\n\n';
-                privateNotes += `Sources:\n\n${sourcesText}`;
-            }
+        if (unresolvedRefs.length > 0) {
+            parts.push(`Sources:\n\n${unresolvedRefs.join(', ')}`);
         }
 
-        return privateNotes || null;
-    }
-
-    _extractNeedStrategicDocuments(row) {
-        const strategicDocuments = [];
-
-        const source = row['Source'];
-        const sourceText = source ? source.trim() : '';
-        if (sourceText && sourceText.includes('CONOPS')) {
-            const conopsIndex = sourceText.indexOf('CONOPS');
-            const afterConops = sourceText.substring(conopsIndex + 6).trim();
-
-            if (afterConops) {
-                strategicDocuments.push({
-                    externalId: ExternalIdBuilder.buildExternalId({ name: 'Network 4D Trajectory CONOPS' }, 'refdoc'),
-                    note: afterConops
-                });
-            }
-        }
-
-        return strategicDocuments.length > 0 ? strategicDocuments : [];
+        return parts.length > 0 ? parts.join('\n\n---\n\n') : null;
     }
 
     _extractRequirement(row, onReferenceMap) {
@@ -431,6 +513,44 @@ class FourDTMapper extends Mapper {
         }
 
         return stakeholderRefs;
+    }
+
+    /**
+     * Map Excel maturity value to ODIP maturity level.
+     * @param {string} value
+     * @param {string} title - ON title for warning context
+     * @returns {string|null}
+     * @private
+     */
+    _parseMaturity(value, title) {
+        if (!value || value.trim() === '') return null;
+        const text = value.trim();
+        const mapped = MATURITY_MAP[text];
+        if (!mapped) {
+            console.warn(`WARNING: Unknown maturity value "${text}" on ON: "${title}" — field omitted`);
+            return null;
+        }
+        return mapped;
+    }
+
+    /**
+     * Parse tentative year from Timeline column.
+     * Accepts: "YYYY" → [YYYY, YYYY]
+     * @param {string} value
+     * @param {string} title - ON title for warning context
+     * @returns {Array|null}
+     * @private
+     */
+    _parseTentative(value, title) {
+        if (!value || value.trim() === '') return null;
+        const text = value.trim();
+        const match = text.match(/^(20\d{2})$/);
+        if (match) {
+            const year = parseInt(match[1], 10);
+            return [year, year];
+        }
+        console.warn(`WARNING: Cannot parse Timeline value "${text}" on ON: "${title}" — tentative omitted`);
+        return null;
     }
 
     _emptyOutput() {
