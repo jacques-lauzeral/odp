@@ -1,85 +1,116 @@
 import Mapper from '../Mapper.js';
-import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
+import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder.js';
 
 /**
- * FAAS_Mapper - Maps FAAS Operational Needs and Requirements Word documents
+ * Mapper for FAAS Word documents (Edition 4 format)
  *
  * DOCUMENT STRUCTURE INTERPRETATION:
- * ==================================
+ * ====================================
  *
- * Hierarchical Organization Pattern:
- * -----------------------------------
- * The FAAS documents uses a simple 3-level hierarchical structure:
- *
- * - Level 1: "FAAS DrG" (document root - excluded from path)
- * - Level 2: Organizational folders (e.g., "FAAS ON - OR - OC")
- * - Level 3: Entity sections - "Operational Need (ON)" or "Operational Requirement (OR)"
- *
- * Path Construction:
+ * Section Detection:
  * ------------------
- * - Path = Level 2 organizational folder only
- * - Example: ["FAAS ON - OR - OC"]
- * - Level 1 root excluded, Level 3 entity marker excluded
+ * All entities are flat L2 subsections directly under the document root.
+ * Entity type is detected from the subsection title:
+ * - Starts with "Operational Need (ON)"   → ON
+ * - Starts with "Operational Requirement (OR)" → OR
+ * - Starts with "Operational Change (OC)" → OC
  *
- * External ID Generation:
- * -----------------------
- * - Built from path + normalized title using ExternalIdBuilder
- * - Format: {type}:faas/{path}/{normalized_title}
- * - Example: on:faas/faas_on_or_oc/single_faas_system
+ * Table Format:
+ * -------------
+ * Each entity is one 2-column table in section.content.tables[0].
+ * Rows are plain 2-element arrays: [fieldLabel, value].
+ * Field labels include a suffix like " (Mandatory)" or " (Optional)" — stripped for matching.
  *
- * Title Extraction:
- * -----------------
- * - Title extracted from table field "Title:" (not from section title)
- * - Section title is just the generic marker ("Operational Need (ON)", etc.)
+ * Field Mapping:
+ * --------------
+ * | Source Field    | Target               | Scope    | Notes                         |
+ * |-----------------|----------------------|----------|-------------------------------|
+ * | Title           | title                | ALL      |                               |
+ * | Statement       | statement            | ON + OR  | Rich text                     |
+ * | Rationale       | rationale            | ON + OR  | Rich text                     |
+ * | NFRs            | nfrs                 | OR only  | Rich text                     |
+ * | Maturity Level  | maturity             | ALL      | Uppercased                    |
+ * | Refines         | refinesParents       | ON + OR  | Title-resolved within batch   |
+ * | Implements      | implementedONs       | OR only  | Title-resolved against ONs    |
+ * | Implements      | implementedORs       | OC only  | Title-resolved against ORs    |
+ * | Dependencies    | dependencies         | OR only  | Title-resolved against ORs    |
+ * | Description     | purpose              | OC only  | Rich text                     |
+ * | Domain          | (dropped)            | ALL      | Implicit from DrG             |
+ * | Refined By      | (dropped)            | ON only  | Inverse direction — ignored   |
+ * | Target Deploy.  | (dropped)            | OC only  |                               |
+ * | Milestones      | (dropped)            | OC only  |                               |
  *
- * Legacy IDs:
- * -----------
- * - ON ID / OR ID fields from tables stored in privateNotes
- * - Also maintained in legacyIdMap for ON Reference resolution
- * - Format in privateNotes: "ON ID: ON_FAAS_001" or "OR ID: OR_FAAS_001_G"
+ * ExternalId Construction:
+ * -------------------------
+ * Empty path (no folder) — drg = 'FAAS':
+ * - ONs: on:faas/{title_normalized}
+ * - ORs: or:faas/{title_normalized}
+ * - OCs: oc:faas/{title_normalized}
  *
- * Table Field Mapping:
- * --------------------
- * Placeholder Detection:
- * - "Click or tap here to enter text." (case-insensitive) → treated as null
- * - "TBD", "N/A", empty strings → treated as null
- *
- * Validation Rules:
- * - Statement field is REQUIRED for both ONs and ORs
- * - ONs/ORs without statement are SKIPPED and logged as ERROR
- * - Missing rationale logged as WARNING (but entity still created)
- *
- * ONs:
- * - "Title:" → title
- * - "Need Statement:" → statement
- * - "Rationale:" → rationale
- * - "ON ID:" → privateNotes (also stored in legacyIdMap)
- * - "Originator:" → privateNotes
- * - "Date:" → ignored
- *
- * ORs:
- * - "Title:" → title
- * - "Detailed Requirement:" → statement (base)
- * - "Fit Criteria:" → appended to statement with "Fit Criteria:" header
- * - "Rationale:" → rationale (base)
- * - "Opportunities/Risks:" → appended to rationale with "Opportunities / Risks:" header
- * - "ON Reference:" → implementedONs (resolve via legacyIdMap)
- * - "OR ID:" → privateNotes (also stored in legacyIdMap)
- * - "Originator:" → privateNotes
- * - "Date:" → ignored
- *
- * OR fields stored in privateNotes:
- * - "Data (and other Enabler):" → privateNotes (if not empty/TBD/N/A)
- * - "Impacted Services:" → privateNotes (if not empty/TBD/N/A)
- * - "Dependencies:" → privateNotes (if not empty/TBD/N/A)
- * - "Stakeholders:" → TODO: will be mapped to impactsStakeholderCategories (currently skipped)
- *
- * EXCLUDED:
- * - Section identifier field (from extractor) not stored
- * - Use Cases: Not present in FAAS documents
+ * Title-Based Reference Resolution:
+ * -----------------------------------
+ * Refines, Implements, Dependencies reference other entities by title (not code).
+ * Two-pass: collect all entities first, build titleToExternalId maps, then resolve.
+ * On unresolved reference: emit warning and drop.
  */
+
+/**
+ * Normalize a section title for entity type detection (lowercase, trimmed)
+ * @param {string} title
+ * @returns {string}
+ */
+function normalizeTitle(title) {
+    return (title || '').trim().toLowerCase();
+}
+
+/**
+ * Detect entity type from L2 subsection title
+ * @param {string} title
+ * @returns {'ON'|'OR'|'OC'|null}
+ */
+function detectEntityType(title) {
+    const t = normalizeTitle(title);
+    if (t.startsWith('operational need (on)')) return 'ON';
+    if (t.startsWith('operational requirement (or)')) return 'OR';
+    if (t.startsWith('operational change (oc)')) return 'OC';
+    return null;
+}
+
+/**
+ * Extract field map from a 2-column vertical table.
+ * Strips label suffixes like " (Mandatory)" and " (Optional)".
+ * @param {Object} table - table with rows as 2-element arrays
+ * @returns {Object} plain object keyed by stripped label
+ */
+function extractTableFields(table) {
+    const fields = {};
+    for (const row of table.rows || []) {
+        if (!Array.isArray(row) || row.length < 2) continue;
+        const rawKey = (row[0] || '').trim();
+        const value  = (row[1] || '').trim();
+        // Strip " (Mandatory)" / " (Optional)" suffixes
+        const key = rawKey.replace(/\s*\((Mandatory|Optional)\)\s*$/i, '').trim();
+        if (key && value) {
+            fields[key] = value;
+        }
+    }
+    return fields;
+}
+
+/**
+ * Check if a field value is empty or a known placeholder
+ * @param {string|undefined} value
+ * @returns {boolean}
+ */
+function isEmptyValue(value) {
+    if (!value) return true;
+    const t = value.trim().toLowerCase();
+    return t === '' || t === 'n/a' || t === 'none' || t === 'tbd';
+}
+
 class FAAS_Mapper extends Mapper {
+
     constructor() {
         super();
         this.converter = new AsciidocToDeltaConverter();
@@ -88,479 +119,338 @@ class FAAS_Mapper extends Mapper {
     /**
      * Map raw extracted Word document data to structured import format
      * @param {Object} rawData - RawExtractedData from DocxExtractor
-     * @returns {Object} StructuredImportData with all entity collections
+     * @returns {Object} StructuredImportData
      */
     map(rawData) {
+        console.log('FAAS_Mapper mapping raw data');
+
         const context = this._initContext();
 
-        // Process all sections to extract ONs and ORs
-        for (const section of rawData.sections || []) {
-            this._processSection(section, context);
+        // All entities are flat L2 subsections under the single root section
+        const rootSection = (rawData.sections || [])[0];
+        const subsections = rootSection?.subsections || [];
+
+        // Pass 1: collect all ONs, ORs, OCs
+        for (const sub of subsections) {
+            const type = detectEntityType(sub.title);
+            if (!type || type === 'OC') continue;
+
+            const table = sub.content?.tables?.[0];
+            if (!table) {
+                this._warn(`Section "${sub.title}" has no table — skipped`);
+                continue;
+            }
+
+            const entity = this._parseEntityTable(table, type, context);
+            if (!entity) continue;
+
+            if (type === 'ON') {
+                context.onMap.set(entity.externalId, entity);
+                context.onTitleMap.set(entity.title.toLowerCase(), entity.externalId);
+            } else if (type === 'OR') {
+                context.orMap.set(entity.externalId, entity);
+                context.orTitleMap.set(entity.title.toLowerCase(), entity.externalId);
+            } else {
+                context.orMap.set(entity.externalId, entity);
+                context.orTitleMap.set(entity.title.toLowerCase(), entity.externalId);
+            }
         }
 
-        // Log validation summary
-        if (context.validationErrors.length > 0) {
-            console.error(`\n${'='.repeat(70)}`);
-            console.error(`VALIDATION ERRORS: ${context.validationErrors.length} requirements skipped`);
-            console.error('='.repeat(70));
-            for (const error of context.validationErrors) {
-                console.error(`${error.type} "${error.title}" - ${error.error}`);
-                console.error(`  Path: ${JSON.stringify(error.path)}`);
-            }
-            console.error('='.repeat(70));
-        }
+        console.log(
+            `Parsed: ${context.onMap.size} ONs, ${context.orMap.size} ORs`
+        );
+
+        // Pass 2: resolve title-based references
+        this._resolveReferences(context);
 
         return this._buildOutput(context);
     }
 
-    /**
-     * Initialize mapping context with entity maps
-     * @private
-     */
+    // -------------------------------------------------------------------------
+    // Context
+    // -------------------------------------------------------------------------
+
     _initContext() {
         return {
-            onMap: new Map(), // externalId -> ON entity
-            orMap: new Map(), // externalId -> OR entity
-            legacyIdMap: new Map(), // ON ID / OR ID -> externalId (for ON Reference resolution)
-            validationErrors: [], // Array of validation errors
-            documentMap: new Map(),
-            stakeholderCategoryMap: new Map(),
-            dataCategoryMap: new Map(),
-            serviceMap: new Map(),
-            waveMap: new Map(),
-            changeMap: new Map()
+            onMap:      new Map(),  // externalId → ON entity
+            orMap:      new Map(),  // externalId → OR entity
+            onTitleMap: new Map(),  // normalized title → externalId
+            orTitleMap: new Map(),  // normalized title → externalId
+            warnings:   []
         };
     }
 
-    /**
-     * Check if text is a placeholder or empty value
-     * @private
-     */
-    _isPlaceholderOrEmpty(text) {
-        if (!text || typeof text !== 'string') return true;
-
-        const trimmed = text.trim();
-        if (!trimmed) return true;
-
-        // Check for placeholder text (case-insensitive)
-        const placeholders = [
-            'click or tap here to enter text.',
-            'click or tap here to enter text',
-            'tbd',
-            'n/a'
-        ];
-
-        return placeholders.includes(trimmed.toLowerCase());
-    }
+    // -------------------------------------------------------------------------
+    // Table parsing
+    // -------------------------------------------------------------------------
 
     /**
-     * Normalize and resolve stakeholder references
-     * @private
-     * @returns {Object} { resolvedStakeholders: [], unresolvedStakeholders: [] }
-     */
-    _normalizeStakeholders(stakeholdersText) {
-        if (!stakeholdersText) {
-            return { resolvedStakeholders: [], unresolvedStakeholders: [] };
-        }
-
-        const trimmed = stakeholdersText.trim();
-
-        // Ignore placeholder/empty values
-        if (this._isPlaceholderOrEmpty(trimmed)) {
-            return { resolvedStakeholders: [], unresolvedStakeholders: [] };
-        }
-
-        // Stakeholder mapping: name → { externalId, note? }
-        const stakeholderMap = new Map([
-            // Direct mappings
-            ['nm', { externalId: 'stakeholder:network/nm' }],
-            ['nmoc', { externalId: 'stakeholder:network/nm/nmoc' }],
-            ['eaccc', { externalId: 'stakeholder:network/eaccc' }],
-            ['easa', { externalId: 'stakeholder:network/easa' }],
-            ['airspace users', { externalId: 'stakeholder:network/airspace_user' }],
-            ['airspace user', { externalId: 'stakeholder:network/airspace_user' }],
-            ['ansp', { externalId: 'stakeholder:network/ansp' }],
-            ['fmp', { externalId: 'stakeholder:network/ansp/fmp' }],
-            ['airport operator', { externalId: 'stakeholder:network/airport_operator' }],
-            ['all users', { externalId: 'stakeholder:network' }],
-
-            // With notes
-            ['nm om, ops supervisors and management', {
-                externalId: 'stakeholder:network/nm/nmoc',
-                note: 'NOM, OPS supervisors and management'
-            }],
-            ['risk management', {
-                externalId: 'stakeholder:network/nm',
-                note: 'Risk Management'
-            }],
-            ['eaccc secretary', {
-                externalId: 'stakeholder:network/eaccc',
-                note: 'Secretary'
-            }]
-        ]);
-
-        const resolvedStakeholders = [];
-        const unresolvedStakeholders = [];
-
-        // Split by newlines, semicolons, commas, "and", "&", "+"
-        const parts = trimmed.split(/[\n;,]|\s+and\s+|\s+\+\s+|\s*&\s*/i)
-            .map(p => p.trim())
-            .filter(p => p);
-
-        for (let part of parts) {
-            // Strip qualifiers in parentheses: "NMOC (end user)" → "NMOC"
-            part = part.replace(/\s*\([^)]*\)\s*/g, '').trim();
-
-            if (!part) continue;
-
-            // Normalize for lookup
-            const normalized = part.toLowerCase().trim();
-
-            // Try to find in stakeholder map
-            const mapping = stakeholderMap.get(normalized);
-
-            if (mapping) {
-                // Create reference object and avoid duplicates
-                const refObj = { externalId: mapping.externalId };
-                if (mapping.note) {
-                    refObj.note = mapping.note;
-                }
-
-                // Check for duplicates (same externalId + note)
-                const isDuplicate = resolvedStakeholders.find(s =>
-                    s.externalId === refObj.externalId &&
-                    s.note === refObj.note
-                );
-
-                if (!isDuplicate) {
-                    resolvedStakeholders.push(refObj);
-                }
-            } else {
-                // Unresolved - add to list
-                if (!unresolvedStakeholders.includes(part)) {
-                    unresolvedStakeholders.push(part);
-                }
-            }
-        }
-
-        return { resolvedStakeholders, unresolvedStakeholders };
-    }
-
-    /**
-     * Recursively process section hierarchy
+     * Parse a single 2-column vertical table as an ON, OR, or OC entity
+     * @param {Object} table
+     * @param {'ON'|'OR'|'OC'} type
+     * @param {Object} context
+     * @returns {Object|null}
      * @private
      */
-    _processSection(section, context, ancestorPath = []) {
-        // Skip level 1 root section ("FAAS DrG")
-        if (section.level === 1) {
-            for (const subsection of section.subsections || []) {
-                this._processSection(subsection, context, ancestorPath);
-            }
-            return;
+    _parseEntityTable(table, type, context) {
+        const fields = extractTableFields(table);
+        const title  = (fields['Title'] || '').trim();
+
+        if (!title) {
+            return null;
         }
 
-        // Check if this section is an entity marker (ON/OR) at level 3
-        const entityType = this._getEntityType(section.title);
+        // All FAAS entities share an empty path — externalId format: {type}:faas/{title_normalized}
+        const externalId = ExternalIdBuilder.buildExternalId(
+            { drg: 'FAAS', title, path: [] },
+            type.toLowerCase()
+        );
 
-        if (entityType) {
-            // This is an ON/OR - extract it with current ancestor path (level 2 only)
-            this._extractRequirement(section, entityType, ancestorPath, context);
-            // Don't recurse into entity sections
-            return;
-        }
+        this._currentEntity = { type, title, externalId };
 
-        // Not an entity marker - this is organizational structure (level 2)
-        // Build path by including this level
-        const currentPath = [...ancestorPath, section.title];
-
-        // Recurse into subsections
-        for (const subsection of section.subsections || []) {
-            this._processSection(subsection, context, currentPath);
-        }
-    }
-
-    /**
-     * Determine entity type from section title
-     * @private
-     * @returns {'ON'|'OR'|null}
-     */
-    _getEntityType(title) {
-        const normalized = title?.trim().toLowerCase();
-        if (normalized === 'operational need (on)') return 'ON';
-        if (normalized === 'operational requirement (or)') return 'OR';
-        return null;
-    }
-
-    /**
-     * Extract ON or OR from section with table data
-     * @private
-     */
-    _extractRequirement(section, type, path, context) {
-        // Skip sections without tables
-        if (!section.content?.tables?.[0]) {
-            console.warn(`Skipping ${type} without table at path: ${JSON.stringify(path)}`);
-            return;
-        }
-
-        const tableData = this._extractTableData(section);
-
-        if (!tableData.title) {
-            console.warn(`Skipping ${type} without title in section at path: ${JSON.stringify(path)}`);
-            return;
-        }
-
-        // Build statement based on entity type
-        let statement = null;
+        const maturity = (fields['Maturity Level'] || 'DRAFT').trim().toUpperCase();
 
         if (type === 'ON') {
-            // ON: Use "Need Statement" field
-            const needStatement = tableData['need statement'];
-            statement = this._isPlaceholderOrEmpty(needStatement) ? null : needStatement;
+            return this._parseON(fields, title, externalId, maturity);
         } else {
-            // OR: Use "Detailed Requirement" field
-            const detailedReq = tableData['detailed requirement'];
-            statement = this._isPlaceholderOrEmpty(detailedReq) ? null : detailedReq;
+            return this._parseOR(fields, title, externalId, maturity);
+        }
+    }
 
-            // Append "Fit Criteria" if present
-            const fitCriteria = tableData['fit criteria'];
-            if (!this._isPlaceholderOrEmpty(fitCriteria)) {
-                statement = statement
-                    ? `${statement}\n\n**Fit Criteria:**\n${fitCriteria}`
-                    : `Fit Criteria:\n${fitCriteria}`;
-            }
+    /**
+     * @private
+     */
+    _parseON(fields, title, externalId, maturity) {
+        const statement = this._toRichText(fields['Statement']);
+        const rationale = this._toRichText(fields['Rationale']);
+
+        if (!fields['Statement']) {
+            this._warn(`ON "${title}" has no Statement — skipped`);
+            return null;
         }
 
-        // VALIDATION: Statement is required
-        if (!statement) {
-            console.error(`ERROR: ${type} "${tableData.title}" at path ${JSON.stringify(path)} has no statement - SKIPPED`);
-            context.validationErrors.push({
-                type: type,
-                title: tableData.title,
-                path: path,
-                error: 'Missing required statement field'
-            });
-            return; // Skip this requirement
-        }
+        const rawRefines = isEmptyValue(fields['Refines']) ? null : fields['Refines'];
 
-        // Build rationale: "Rationale:" + optional "Opportunities/Risks:"
-        const rationaleText = tableData['rationale'];
-        let rationale = this._isPlaceholderOrEmpty(rationaleText) ? null : rationaleText;
-
-        if (type === 'OR') {
-            const opportunitiesRisks = tableData['opportunities/risks'];
-            if (!this._isPlaceholderOrEmpty(opportunitiesRisks)) {
-                rationale = rationale
-                    ? `${rationale}\n\n**Opportunities / Risks:**\n${opportunitiesRisks}`
-                    : `**Opportunities / Risks:**\n${opportunitiesRisks}`;
-            }
-        }
-
-        // VALIDATION: Rationale warning
-        if (!rationale) {
-            console.warn(`WARNING: ${type} "${tableData.title}" at path ${JSON.stringify(path)} has no rationale`);
-        }
-
-        // Build privateNotes
-        const privateNotesEntries = [];
-
-        // Add legacy ID (ON ID or OR ID)
-        const legacyIdField = type === 'ON' ? 'on id' : 'or id';
-        const legacyId = tableData[legacyIdField];
-        if (!this._isPlaceholderOrEmpty(legacyId)) {
-            privateNotesEntries.push(`${type} ID: ${legacyId}`);
-            // Note: Will store in legacyIdMap after externalId generation
-        }
-
-        // Add originator if present
-        const originator = tableData['originator'];
-        if (!this._isPlaceholderOrEmpty(originator)) {
-            privateNotesEntries.push(`**Originator:** ${originator}`);
-        }
-
-        // For OR: Add additional fields
-        let resolvedStakeholders = [];
-        if (type === 'OR') {
-            // Process Stakeholders
-            const stakeholdersField = tableData['stakeholders'];
-            if (!this._isPlaceholderOrEmpty(stakeholdersField)) {
-                const { resolvedStakeholders: resolved, unresolvedStakeholders } = this._normalizeStakeholders(stakeholdersField);
-                resolvedStakeholders = resolved;
-
-                // Add unresolved to privateNotes
-                if (unresolvedStakeholders.length > 0) {
-                    privateNotesEntries.push(`**Stakeholders (unresolved):**\n${unresolvedStakeholders.join('\n')}`);
-                }
-            }
-
-            const dataEnablers = tableData['data (and other enabler)'];
-            if (!this._isPlaceholderOrEmpty(dataEnablers)) {
-                privateNotesEntries.push(`**Data (and other Enabler):** ${dataEnablers}`);
-            }
-
-            const impactedServices = tableData['impacted services'];
-            if (!this._isPlaceholderOrEmpty(impactedServices)) {
-                privateNotesEntries.push(`**Impacted Services:** ${impactedServices}`);
-            }
-
-            const dependencies = tableData['dependencies'];
-            if (!this._isPlaceholderOrEmpty(dependencies)) {
-                privateNotesEntries.push(`**Dependencies:** ${dependencies}`);
-            }
-        }
-
-        const privateNotes = privateNotesEntries.length > 0
-            ? privateNotesEntries.join('\n\n')
-            : null;
-
-        // Build requirement entity
-        const requirement = {
-            title: tableData.title,
-            type,
+        return {
+            externalId,
+            title,
+            type: 'ON',
             drg: 'FAAS',
-            path,
-            statement: this.converter.asciidocToDelta(statement),
-            rationale: this.converter.asciidocToDelta(rationale),
-            flows: null,
-            privateNotes: this.converter.asciidocToDelta(privateNotes),
-            parentExternalId: null,
-            implementedONs: [],
-            impactsStakeholderCategories: resolvedStakeholders,
-            impactsServices: [],
-            impactsDataCategories: [],
-            referencesDocuments: [],
-            dependsOnRequirements: []
+            path: [],
+            statement,
+            rationale,
+            maturity,
+            refinesParents:    [],  // resolved in pass 2
+            implementedONs:    [],
+            dependencies:      [],
+            strategicDocuments: [],
+            _rawRefines:       rawRefines
         };
-
-        // Generate external ID from requirement object
-        requirement.externalId = ExternalIdBuilder.buildExternalId(requirement, type.toLowerCase());
-
-        // Store legacy ID in map for ON Reference resolution (reuse legacyId from earlier)
-        if (!this._isPlaceholderOrEmpty(legacyId)) {
-            context.legacyIdMap.set(legacyId, requirement.externalId);
-        }
-
-        // For OR: Resolve ON Reference to implementedONs
-        if (type === 'OR') {
-            const onReference = tableData['on reference'];
-            if (!this._isPlaceholderOrEmpty(onReference)) {
-                const referencedOnId = context.legacyIdMap.get(onReference);
-                if (referencedOnId) {
-                    requirement.implementedONs.push(referencedOnId);
-                } else {
-                    console.warn(`WARNING: OR "${tableData.title}" references unknown ON: "${onReference}"`);
-                }
-            }
-        }
-
-        // Store in context
-        if (type === 'ON') {
-            context.onMap.set(requirement.externalId, requirement);
-        } else {
-            context.orMap.set(requirement.externalId, requirement);
-        }
     }
 
     /**
-     * Extract table data from section
-     * Finds the first 2-column table and extracts field-value pairs
-     * @private
-     * @returns {Object} Map of field names to values
-     */
-    _extractTableData(section) {
-        const data = {};
-
-        // Find first table in section
-        const table = section.content?.tables?.[0];
-        if (!table || !table.rows) {
-            return data;
-        }
-
-        // Fields that should preserve AsciiDoc formatting (will be converted to Delta)
-        const richTextFields = [
-            'statement',
-            'need statement',
-            'rationale',
-            'fit criteria',
-            'opportunities/risks',
-            'dependencies',
-            'data (and other enabler)',
-            'impacted services'
-        ];
-
-        // Extract field-value pairs from 2-column table
-        for (const row of table.rows) {
-            if (row.length < 2) continue;
-
-            const [fieldCell, valueCell] = row;
-
-            // Extract field name (strip formatting, remove colon, lowercase)
-            const fieldName = this._extractText(fieldCell)
-                .replace(/:/g, '')
-                .trim()
-                .toLowerCase();
-
-            // For rich text fields, preserve AsciiDoc; for others, strip formatting
-            let value;
-            if (richTextFields.includes(fieldName)) {
-                value = valueCell.trim(); // Keep AsciiDoc formatting
-            } else {
-                value = this._extractText(valueCell).trim(); // Strip formatting
-            }
-
-            if (fieldName && value) {
-                data[fieldName] = value;
-            }
-        }
-
-        return data;
-    }
-
-    /**
-     * Extract text from cell content (strips AsciiDoc formatting markers)
      * @private
      */
-    _extractText(text) {
-        if (!text) return '';
+    _parseOR(fields, title, externalId, maturity) {
+        if (!fields['Statement']) {
+            this._warn(`OR "${title}" has no Statement — skipped`);
+            return null;
+        }
 
-        let result = text;
+        const statement = this._toRichText(fields['Statement']);
+        const rationale = this._toRichText(fields['Rationale']);
+        const nfrs      = this._toRichTextOrNull(fields['NFRs']);
 
-        // Strip AsciiDoc formatting markers
-        result = result.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → text
-        result = result.replace(/\*([^*]+)\*/g, '$1');       // *italic* → text
-        result = result.replace(/__([^_]+)__/g, '$1');       // __underline__ → text
+        const rawRefines      = isEmptyValue(fields['Refines'])      ? null : fields['Refines'];
+        const rawImplements   = isEmptyValue(fields['Implements'])   ? null : fields['Implements'];
+        const rawDependencies = isEmptyValue(fields['Dependencies']) ? null : fields['Dependencies'];
 
-        // Strip AsciiDoc list markers
-        result = result.replace(/^\. /gm, '');  // Ordered list
-        result = result.replace(/^\* /gm, '');  // Bullet list
-
-        // Handle multiple newlines
-        result = result.replace(/\n+/g, '\n').trim();
-
-        return result;
+        return {
+            externalId,
+            title,
+            type: 'OR',
+            drg: 'FAAS',
+            path: [],
+            statement,
+            rationale,
+            nfrs,
+            maturity,
+            refinesParents: [],  // resolved in pass 2
+            implementedONs: [],  // resolved in pass 2
+            dependencies:   [],  // resolved in pass 2
+            _rawRefines:    rawRefines,
+            _rawImplements: rawImplements,
+            _rawDependencies: rawDependencies
+        };
     }
 
     /**
-     * Build final output with all entity collections
+     * @private
+     */
+    // -------------------------------------------------------------------------
+    // Pass 2: reference resolution
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolve all title-based cross-references and remove internal fields
+     * @param {Object} context
+     * @private
+     */
+    _resolveReferences(context) {
+        for (const [, on] of context.onMap) {
+            on.refinesParents = this._resolveTitleRefs(
+                on._rawRefines, context.onTitleMap, on.externalId, 'Refines', context
+            );
+            this._cleanInternalFields(on);
+
+            if (on.refinesParents.length === 0 && on.strategicDocuments.length === 0) {
+                on.maturity = 'DRAFT';
+                context.warnings.push(
+                    `${on.externalId}: root ON detected — maturity forced to DRAFT`
+                );
+            }
+        }
+
+        for (const [, or] of context.orMap) {
+            // Refines may target ONs or ORs
+            const refinesONs = this._resolveTitleRefs(
+                or._rawRefines, context.onTitleMap, or.externalId, 'Refines (ON)', context
+            );
+            const refinesORs = this._resolveTitleRefs(
+                or._rawRefines, context.orTitleMap, or.externalId, 'Refines (OR)', context, true
+            );
+            or.refinesParents = [...new Set([...refinesONs, ...refinesORs])];
+
+            or.implementedONs = this._resolveTitleRefs(
+                or._rawImplements, context.onTitleMap, or.externalId, 'Implements', context
+            );
+
+            or.dependencies = this._resolveTitleRefs(
+                or._rawDependencies, context.orTitleMap, or.externalId, 'Dependencies', context
+            );
+
+            this._cleanInternalFields(or);
+        }
+
+        if (context.warnings.length > 0) {
+            console.log('Mapping warnings:');
+            for (const w of context.warnings) {
+                console.log(`  - ${w}`);
+            }
+        }
+    }
+
+    /**
+     * Resolve a raw reference value (single title or newline/comma-separated list)
+     * against a title map.
+     * @param {string|null} rawValue
+     * @param {Map} titleMap - normalized title → externalId
+     * @param {string} entityId - for warning messages
+     * @param {string} fieldName - for warning messages
+     * @param {Object} context
+     * @param {boolean} [silentMiss=false] - suppress warnings on miss (dual-map Refines lookup)
+     * @returns {string[]} resolved externalIds
+     * @private
+     */
+    _resolveTitleRefs(rawValue, titleMap, entityId, fieldName, context, silentMiss = false) {
+        if (!rawValue || isEmptyValue(rawValue)) return [];
+
+        const resolved = [];
+        const parts = rawValue.split(/[\n;,*•]+/).map(s => s.trim()).filter(Boolean);
+
+        for (const part of parts) {
+            if (isEmptyValue(part)) continue;
+            // Guard against cell content bleeding into a following sentence
+            const titleCandidate = part.split(/\.\s+/)[0].trim();
+            const externalId = titleMap.get(titleCandidate.toLowerCase());
+            if (externalId) {
+                resolved.push(externalId);
+            } else if (!silentMiss) {
+                context.warnings.push(
+                    `${entityId}: ${fieldName} reference unresolved — title not found in batch: "${part}" (dropped)`
+                );
+            }
+        }
+
+        return resolved;
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Convert text to Quill Delta rich text string (empty string for missing values)
+     * @param {string|undefined} text
+     * @returns {string}
+     * @private
+     */
+    _toRichText(text) {
+        return this.converter.asciidocToDelta(isEmptyValue(text) ? '' : text);
+    }
+
+    /**
+     * Convert text to Quill Delta rich text string, or null if empty
+     * @param {string|undefined} text
+     * @returns {string|null}
+     * @private
+     */
+    _toRichTextOrNull(text) {
+        if (isEmptyValue(text)) return null;
+        return this.converter.asciidocToDelta(text);
+    }
+
+    /**
+     * Remove internal _raw* fields from a processed entity
+     * @param {Object} entity
+     * @private
+     */
+    _cleanInternalFields(entity) {
+        delete entity._rawRefines;
+        delete entity._rawImplements;
+        delete entity._rawDependencies;
+    }
+
+    /**
+     * Emit a warning with current entity context
+     * @param {string} msg
+     * @private
+     */
+    _warn(msg) {
+        const prefix = this._currentEntity
+            ? `[${this._currentEntity.type} "${this._currentEntity.title}"]`
+            : '[FAAS_Mapper]';
+        console.warn(`${prefix} ${msg}`);
+    }
+
+    // -------------------------------------------------------------------------
+    // Output
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build final StructuredImportData output
+     * @param {Object} context
+     * @returns {Object}
      * @private
      */
     _buildOutput(context) {
         const requirements = [
-            ...Array.from(context.onMap.values()),
-            ...Array.from(context.orMap.values())
+            ...context.onMap.values(),
+            ...context.orMap.values()
         ];
 
-        console.log(`\nMapping Summary:`);
-        console.log(`  ONs: ${context.onMap.size}`);
-        console.log(`  ORs: ${context.orMap.size}`);
-        console.log(`  Total: ${requirements.length}`);
+        console.log(
+            `Output: ${requirements.length} requirements ` +
+            `(${context.onMap.size} ONs, ${context.orMap.size} ORs)`
+        );
 
         return {
-            documents: [],
+            requirements,
+            changes:               [],
             stakeholderCategories: [],
-            dataCategories: [],
-            services: [],
-            waves: [],
-            requirements
+            domains:               [],
+            referenceDocuments:    [],
+            waves:                 []
         };
     }
 }
