@@ -217,9 +217,10 @@ export class ODPEditionStore extends BaseStore {
      * to this edition, by running the two-path selection algorithm.
      *
      * Tentative path (ON/OR-based):
-     *   1. Lead ONs: baseline HAS_ITEMS ONs where tentative IS NOT NULL
-     *      - If startDate: effectiveEnd(tentative) > startDate
-     *      - If minONMaturity: COALESCE(maturity, 'DRAFT') >= minONMaturity
+     *   1. Lead ONs: all baseline HAS_ITEMS ONs, subject to:
+     *      - If minONMaturity: maturity >= minONMaturity
+     *      - If startDate: ONs with tentative must satisfy effectiveEnd(tentative) > startDate;
+     *        ONs without tentative pass the startDate check unconditionally
      *   2. Downward ON cascade: versions in baseline that REFINES* a lead ON
      *   3. OR inclusion: OR versions in baseline that IMPLEMENTS an accepted ON
      *   4. Downward OR cascade: versions in baseline that REFINES* an accepted OR
@@ -249,10 +250,12 @@ export class ODPEditionStore extends BaseStore {
         const leadONVersionIds = new Set();
         const leadONItemIds = new Set();
 
-        const leadONsFullResult = await transaction.run(`
+        // Step 1 — All ON candidates, subject to maturity filter.
+        // startDate applies only to ONs with a tentative period (effectiveEnd > startDate);
+        // ONs without tentative pass the startDate check unconditionally.
+        const leadONsResult = await transaction.run(`
             MATCH (baseline:Baseline)-[:HAS_ITEMS]->(version:OperationalRequirementVersion)-[:VERSION_OF]->(item:OperationalRequirement)
             WHERE id(baseline) = $baselineId
-              AND version.tentative IS NOT NULL
               AND version.type = 'ON'
               ${minONMaturity !== null ? `
               AND CASE COALESCE(version.maturity, 'DRAFT')
@@ -275,6 +278,7 @@ export class ODPEditionStore extends BaseStore {
                       THEN toString(toInteger(version.tentative[0]) + 1) + '-01-01'
                     ELSE null
                   END > $startDate
+              OR version.tentative IS NULL
             ` : ''}
             RETURN id(version) as versionId, id(item) as itemId
         `, {
@@ -283,14 +287,14 @@ export class ODPEditionStore extends BaseStore {
             ...(minONMaturity !== null && { minONMaturity })
         });
 
-        for (const record of leadONsFullResult.records) {
+        for (const record of leadONsResult.records) {
             const versionId = this.normalizeId(record.get('versionId'));
             const itemId = this.normalizeId(record.get('itemId'));
             leadONVersionIds.add(versionId);
             leadONItemIds.add(itemId);
             acceptedVersionIds.add(versionId);
         }
-        console.log(`[EditionSelection] Step 1 — lead ONs: ${leadONItemIds.size} item(s), versionIds: [${Array.from(leadONVersionIds).join(', ')}]`);
+        console.log(`[EditionSelection] Step 1 — lead ONs: ${leadONItemIds.size} item(s)`);
 
         // -----------------------------------------------------------------------
         // Step 2: Downward ON cascade — baseline versions that REFINES* a lead ON item

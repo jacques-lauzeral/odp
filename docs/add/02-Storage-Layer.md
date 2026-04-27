@@ -326,7 +326,7 @@ Inherits `BaseStore`. `update()` and `delete()` are overridden to throw `StoreEr
 **`_computeEditionVersionIds(baselineId, startDate, minONMaturity, tx)`** *(private)* — runs the two-path selection algorithm and returns a `Set` of version node IDs already present in baseline `HAS_ITEMS` relationships.
 
 **Tentative path (ON/OR-based):**
-1. **Lead ONs** — baseline `HAS_ITEMS` ON versions where `tentative IS NOT NULL`. If `startDate` set: `effectiveEnd(tentative) > startDate` where `effectiveEnd([x,y]) = {y+1}-01-01`. If `minONMaturity` set: maturity numeric rank >= minONMaturity rank (`DRAFT=0`, `ADVANCED=1`, `MATURE=2`); absent maturity treated as `DRAFT`.
+1. **Lead ONs** — all baseline `HAS_ITEMS` ON versions. If `minONMaturity` set: maturity numeric rank >= minONMaturity rank (`DRAFT=0`, `ADVANCED=1`, `MATURE=2`); absent maturity treated as `DRAFT`. If `startDate` set: ONs with a `tentative` field must satisfy `effectiveEnd(tentative) > startDate` where `effectiveEnd([x,y]) = {y+1}-01-01`; ONs without a `tentative` field pass the `startDate` check unconditionally.
 2. **Downward ON cascade** — baseline ON versions that `REFINES*1..` any accepted ON item.
 3. **OR inclusion** — baseline OR versions that `IMPLEMENTS` any accepted ON item.
 4. **Downward OR cascade** — baseline OR versions that `REFINES*1..` any accepted OR item.
