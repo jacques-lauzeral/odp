@@ -1,3 +1,6 @@
+= Rerouting
+:notitle:
+
 == Introduction
 
 The Rerouting Drafting Group (DrG) is the iCDM drafting group responsible for defining and consolidating the Operational Needs (ONs) and Operational Requirements (ORs) that drive the evolution of Network Manager rerouting (NM RR) capabilities.

@@ -1,4 +1,7 @@
-== NM B2B
+= NM B2B
+:notitle:
+
+== Introduction
 
 This is the introduction to NM B2B Domain.
 

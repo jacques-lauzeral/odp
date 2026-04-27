@@ -75,7 +75,7 @@ static/
 ├── antora-playbook.yml          ← HTML site; UI bundle: local ./ui-bundle.zip
 ├── antora-playbook-pdf.yml      ← PDF build (@antora/pdf-extension + asciidoctor-pdf)
 ├── antora-playbook-docx.yml     ← Word build (not yet restored)
-├── antora-assembler.yml         ← PDF assembler config (revnumber, revdate, pdf-theme)
+├── antora-assembler.yml         ← PDF/shared assembler config (revnumber, revdate, pdf-theme, section_merge_strategy)
 ├── antora-assembler-docx.yml    ← Word assembler config (not yet restored)
 ├── antora-docx-extension.js     ← Antora extension: AsciiDoc → DocBook → pandoc → docx (not yet restored)
 ├── antora.yml
@@ -84,10 +84,11 @@ static/
 ├── partials/
 │   └── header-content.hbs      ← Custom EUROCONTROL navbar (injected into ui-bundle.zip at preparation time)
 ├── ui-bundle.zip                ← Antora default UI bundle, pre-patched with custom header (see §7)
-├── modules/ROOT/nav.adoc
-├── modules/ROOT/pages/index.adoc
-├── modules/introduction/pages/index.adoc
-└── modules/portfolio/pages/index.adoc
+├── modules/ROOT/nav.adoc        ← lists Introduction only (details DrG entries are in modules/details/nav.adoc)
+├── modules/ROOT/pages/index.adoc  ← ODIP introduction page (manually authored)
+└── modules/details/pages/
+    ├── {drg}/index.adoc         ← one per DrG (manually authored domain introduction page)
+    └── ...
 ```
 
 ---
@@ -142,30 +143,83 @@ One AsciiDoc page is generated per ON and per OR using Mustache templates. Pages
 - Implemented By section (ON pages: links to implementing ORs)
 - Implements section (OR pages: links to implemented ONs)
 
-Folder index pages (`index.adoc`) are generated for each subfolder listing its ONs, ORs, and subfolders.
+**Folder index pages** (`index.adoc`) are generated for each subfolder as `modules/details/partials/{drg}/{folder}/index.adoc` (not as pages). This allows manually authored DrG domain introduction pages (see §Static DrG Introduction Pages below) to `include::partial$` them.
+
+**Collapsed folders:** a folder is _collapsed_ if it has at least one direct ON. Collapsed folders do not generate a separate page for their sub-folders. Instead, sub-folder content is absorbed inline into the collapsed folder's own page, with sub-folder names rendered as non-clickable bullet labels. Individual ON/OR entity files inside collapsed sub-folders are still written at their own paths so that xrefs resolve correctly. The nav mirrors this: collapsed sub-folders appear as plain-text labels (no xref) in `nav.adoc`, followed by their entities — ensuring Antora can highlight and expand the correct nav node when navigating to an individual entity page.
+
+**Export suppression:** folder index content (ON/OR trees, sub-domain lists) is wrapped in `ifndef::env-export[]` in the Mustache templates. The `env-export` attribute is set in `antora-assembler.yml` (PDF) and `antora-assembler-docx.yml` (Word), so these navigation-only sections are silently omitted from PDF and Word exports.
 
 Output structure per DrG:
 
 ```
 modules/details/
 ├── pages/
-│   ├── index.adoc
 │   ├── {drg}/
-│   │   ├── index.adoc
+│   │   ├── index.adoc              ← manually authored (static); includes partial below
 │   │   ├── {folder}/
-│   │   │   ├── index.adoc
+│   │   │   ├── index.adoc          ← generated (non-collapsed folders only)
 │   │   │   ├── on-{itemId}.adoc
 │   │   │   └── or-{itemId}.adoc
 │   │   ├── on-{itemId}.adoc
 │   │   └── or-{itemId}.adoc
 │   └── ...
+├── partials/
+│   └── {drg}/
+│       └── index.adoc              ← generated DrG sitemap fragment (included by static page)
 ├── assets/images/
 │   ├── image-001.png
 │   └── ...
-└── nav.adoc
+└── nav.adoc                        ← DrG entries at depth *, sub-folders at depth **+
 ```
 
-Navigation (`nav.adoc`) is generated hierarchically, mirroring the folder/entity tree, using Antora `xref` syntax ordered by `itemId`.
+Navigation (`nav.adoc`) is generated hierarchically mirroring the folder/entity tree, using Antora `xref` syntax. DrGs are sorted alphabetically by display name. Folders within each DrG are sorted alphabetically by folder name.
+
+### Static DrG Introduction Pages
+
+Each DrG has a manually authored introduction page at `modules/details/pages/{drg}/index.adoc` in the static directory. These pages are **not** generated — they are maintained by the ODIP team and committed to the static content directory.
+
+**Template pattern** (mandatory for all DrG pages):
+
+```asciidoc
+= {DrG display name}
+:notitle:
+
+== Introduction
+
+{Human-authored introduction text describing the DrG scope, CONOPS baseline, etc.}
+
+== Operational Needs baseline
+
+{Optional: manually authored summary of top-level ONs with links to their folder pages.}
+
+include::partial${drg}/index.adoc[]
+```
+
+Key points:
+
+- `= {DrG display name}` — level-0 title, drives the browser tab title (`{title} : ODIP`) and PDF TOC entry. Must match the DrG display name used in nav.adoc.
+- `:notitle:` — suppresses the level-0 title from rendering in HTML (the nav label already provides the heading). Without this, the title appears as an unnumbered heading before the first `==` section.
+- `== Introduction` and subsequent `==` sections — numbered in PDF via `section_merge_strategy: fuse` in `antora-assembler.yml`; rendered as normal sections in HTML.
+- `include::partial${drg}/index.adoc[]` — injects the generated sitemap fragment (ON/OR tree). Wrapped in `ifndef::env-export[]` inside the template, so it is suppressed in PDF/Word exports automatically.
+- The `include::` must be placed **after** the human-authored content, not before, so the intro text precedes the generated listing.
+
+**Example** (`modules/details/pages/rrt/index.adoc`):
+
+```asciidoc
+= Rerouting
+:notitle:
+
+== Introduction
+
+The Rerouting Drafting Group (DrG) is the iCDM drafting group...
+
+== Operational Needs baseline
+
+* xref:rrt/identification_of_operationally_acceptable_trajectories/index.adoc[...]
+...
+
+include::partial$rrt/index.adoc[]
+```
 
 ### Stage 6 — Antora Structure and Packaging
 
@@ -174,7 +228,7 @@ Navigation (`nav.adoc`) is generated hierarchically, mirroring the folder/entity
 1. The entire static directory tree (all Antora playbooks, assembler configs, PDF theme, ROOT module, introduction module, portfolio module) — including the pre-patched `ui-bundle.zip`
 2. All dynamically generated details module files (`modules/details/…`)
 
-The four Antora modules are: `ROOT` (landing page), `introduction`, `portfolio` (high-level summaries), and `details` (full ON/OR pages by DrG).
+The two active Antora modules are: `ROOT` (landing page + ODIP introduction) and `details` (full ON/OR pages by DrG, plus manually authored DrG introduction pages). The `introduction` and `portfolio` modules are present in the static directory but not currently used.
 
 ---
 
