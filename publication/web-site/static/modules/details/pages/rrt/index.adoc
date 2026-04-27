@@ -1,5 +1,48 @@
-== Rerouting
+== Introduction
 
-This is the introduction to Rerouting Domain.
+The Rerouting Drafting Group (DrG) is the iCDM drafting group responsible for defining and consolidating the Operational Needs (ONs) and Operational Requirements (ORs) that drive the evolution of Network Manager rerouting (NM RR) capabilities.
+Its scope is transversal by nature: rerouting is not described in a single standalone CONOPS, but is addressed across several operational frameworks, notably the Network 4D Trajectory CONOPS, the Flow CONOPS, and the ASM/ATFCM Integration CONOPS.
+These references collectively provide the operational baseline for trajectory identification, rerouting coordination, impact assessment, ATFCM scenario handling, and post-departure trajectory revision.
+
+The primary focus of the DrG is the improvement of NM rerouting capabilities, covering the identification of operationally acceptable trajectory alternatives, the exchange of rerouting proposals, the assessment of ATFCM (routing) scenarios and impacts, the scalable handling of rerouting situations, and the extension of rerouting to airborne flights where operationally justified.
+In this respect, the DrG addresses rerouting as a cross-cutting operational function spanning pre-departure, tactical, and post-operations contexts, in line with the broader trajectory-management and flow-management evolution described in the CONOPS baseline.
+
+The Rerouting DrG consolidates inputs from iNM concepts, operational domains, and related initiatives and projects, including Flight and Flow, FEI, AFUA, CTM, and FPFDE.
+Its role is not to redefine those domains, but to identify the rerouting-related needs and requirements that emerge across them and to translate them into a coherent operational baseline for NM systems evolution.
+The DrG therefore contributes to requirement consistency, traceability, and deployment readiness across the rerouting domain, while ensuring alignment with iCDM principles for ON/OR structuring and wording.
+
+Within the broader NM systems evolution framework, the Rerouting DrG provides the business and operational foundation for future rerouting services and their interaction with adjacent domains.
+In particular, the group interfaces with other Drafting Groups where rerouting depends on, or influences, trajectory management, ATFCM/ASM processes, ATFCM scenario management, network impact assessment, rerouting indicator handling, post-operations analysis, and collaborative decision-making.
+The DrG therefore plays a coordinating role in ensuring that rerouting-related ONs and ORs remain operationally coherent across NM developments, while keeping the main emphasis on the evolution of NM RR capabilities and their contribution to safer, more efficient, more scalable, and more predictable network operations.
+
+=== Operational Needs baseline
+
+The current ON baseline for rerouting is structured around five complementary operational needs.
+
+* xref:rrt/identification_of_operationally_acceptable_trajectories/index.adoc[Identification of operationally acceptable trajectories] +
+Operational users need to identify, in a timely manner, flight trajectories that are operationally acceptable and aligned with Airspace Users' objectives and preferences, while taking into account dynamic network conditions, airspace and route availability, operational constraints, capacity limitations, traffic demand, environmental considerations, weather conditions and operational priorities, either manually or through automated processes.
+Operational users include the Network Manager, Airspace Users and Air Navigation Service Providers.
+_Maturity level: MATURE_
+
+* xref:rrt/rerouting_initiation_and_coordination/index.adoc[Rerouting initiation and coordination] +
+Operational users need to initiate, receive and respond to rerouting proposals related to trajectory alternatives while exchanging operational information in support of collaborative decision-making on trajectory adjustments.
+Operational users include the Network Manager, Airspace Users and Air Navigation Service Providers.
+_Maturity level: ADVANCED_
+
+* xref:rrt/assessment_and_comparison_of_rerouting_options/index.adoc[Assessment and comparison of rerouting options] +
+Operational users need to assess and compare alternative rerouting options in real time, taking into account operational constraints, conditions and Airspace Users' preferences, in order to understand their potential operational and network-level impacts before they are considered for implementation, and to evaluate the outcomes through post-operations analysis.
+Operational users include the Network Manager, Airspace Users and Air Navigation Service Providers.
+_Maturity level: ADVANCED_
+
+* xref:rrt/consistent_and_scalable_application_of_reroutings_across_the_network/index.adoc[Consistent and scalable application of reroutings across the network] +
+Operational users need rerouting support that can be applied consistently and efficiently across the network, in a simple manner for routine situations, allowing trajectory adjustments to be considered for individual flights as well as for multiple flights and traffic flows under different operational contexts.
+Operational users include the Network Manager, Airspace Users and Air Navigation Service Providers.
+_Maturity level: ADVANCED_
+
+* xref:rrt/management_of_rerouting_proposals_for_airborne_flights/index.adoc[Management of rerouting proposals for airborne flights] +
+Operational users need to initiate, receive and respond to trajectory adjustment proposals for airborne flights when operational conditions change during the tactical phase of operations, while taking into account evolving network conditions, airspace availability and operational constraints.
+_Maturity level: DEFINED_
+
+Together, these ONs provide the operational baseline for the derivation, traceability, and prioritisation of rerouting ORs.
 
 include::partial$rrt/index.adoc[]

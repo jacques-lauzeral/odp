@@ -1,6 +1,4 @@
-== Introduction
-
-=== Executive view
+== Executive view
 
 This document is the *first edition of the ODIP* — the Operational Development and Implementation Plan of the EUROCONTROL Network Manager.
 The ODIP is NM's structured, multi-year view of what will be developed and implemented on behalf of, and with, the Network.
@@ -39,7 +37,7 @@ Each top-level ON carries a _tentative implementation time_, offered as an indic
 The prioritisation process — a continuing, iterative exercise run several times a year — will, in its first iteration, integrate the feedback received during this consultation and produce the first prioritised view of the plan, which will be published in the autumn 2026 edition.
 The consultation therefore invites stakeholders to confirm, challenge, or refine this foundation, before the sequencing and the committed dates are built upon it.
 
-=== What the ODIP is, and what it is not
+== What the ODIP is, and what it is not
 
 The ODIP describes what NM needs to do to enable the Network to meet its strategic objectives — not how NM builds the systems that deliver it.
 Its content addresses operational capabilities, procedures, working arrangements, and the external interfaces through which stakeholders interact with NM.
@@ -61,7 +59,7 @@ The ODIP is traceable.
 Every ON is anchored to one or more strategic documents; every OR is anchored to one or more ONs.
 This chain — strategic document → ON → OR → (later) OC → implementation wave — is the spine of the plan.
 
-=== Operational Needs and Operational Requirements
+== Operational Needs and Operational Requirements
 
 The ODIP is built on a small number of structured concepts.
 Edition 1 makes use of the first two.
@@ -85,7 +83,7 @@ Only ADVANCED and MATURE elements are included in this edition.
 OCs are where the plan becomes a plan: they carry implementation waves and milestones.
 Their absence from Edition 1 is intentional — the foundational layer must first be agreed with stakeholders.
 
-=== How to read this document
+== How to read this document
 
 The body of the document is organised by *domain*.
 Each domain opens with:
@@ -106,7 +104,7 @@ They are presented with the same structure as the operational domains.
 Each ON carries explicit references back to the strategic documents that motivate it (NSP, SESAR Deployment Programme, ATMMP, applicable CONOPS, and so on).
 Readers interested in starting from a specific strategic document rather than a domain can use the per-domain *reverse cross-reference annex* at the end of each chapter, which lists each strategic document referenced by that domain's ONs and points to the ONs that cite it.
 
-=== How NM organises this work
+== How NM organises this work
 
 The ODIP is produced within NM's *iCDM* (Wave Content Definition Meeting) governance structure, which organises NM's operational planning and prioritisation activities across all domains.
 The iCDM looks up to ten years ahead, with close detail for the near term and progressively broader framing for the longer horizons.
@@ -126,7 +124,7 @@ Operational stakeholders and Drafting Groups co-produce the ONs, ORs, and OCs th
 The scale is material: Edition 1 consolidates the output of eleven active DrGs working on a content base of several hundred ONs and an expected total approaching two thousand ORs.
 This introduction, together with the chapters that follow, is the first time this full picture is presented as a single, coherent view.
 
-=== How to review this edition
+== How to review this edition
 
 A dedicated consultation mechanism accompanies this edition.
 Comments are provided either directly in the Word document, using Word's native commenting and tracked-changes features, or through the structured comment sheet provided alongside it.
@@ -151,7 +149,7 @@ A SharePoint site has been set up to facilitate communication between NM and the
 
 Consultation outcomes are integrated into the first prioritisation run and into the autumn 2026 edition.
 
-=== What comes next
+== What comes next
 
 The ODIP is planned to evolve along two parallel axes.
 Work on both is actively underway.
