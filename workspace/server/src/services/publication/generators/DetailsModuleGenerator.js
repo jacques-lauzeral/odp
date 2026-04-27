@@ -1015,7 +1015,7 @@ export class DetailsModuleGenerator {
                         url: doc.url || null,
                         note: ref.note || null
                     };
-                })
+                }).sort((a, b) => (a.title || '').localeCompare(b.title || ''))
             } : null
         };
     }
