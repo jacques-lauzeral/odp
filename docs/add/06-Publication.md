@@ -245,6 +245,18 @@ Defined in `openapi-odp.yml`.
 
 The web client always requests PDF generation (`?pdf=true`) — PDF generation is the default behaviour. Word generation remains disabled until restored.
 
+### Web Client
+
+The Publication activity exposes a **Publish** button on the edition details panel. Clicking it:
+
+1. Disables the button (labelled "Publishing…") for the duration of the request
+2. Calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish?pdf=true`
+3. On success: displays "✓ Published — Open site" with an absolute link to the served site (`apiClient.baseUrl + siteUrl`)
+4. On 409: displays "Publication already in progress — please retry later"
+5. On other error: displays the error message in the status area
+
+The web client applies a **300-second fetch timeout** to this request (`api-client.js`, `publishEdition()`) — overriding the global default timeout — to accommodate long PDF builds (typical range: ~2–5 min; up to ~15 min for large documents).
+
 **Output URLs when build succeeds:**
 
 | Format | URL |
