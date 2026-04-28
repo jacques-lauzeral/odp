@@ -1046,11 +1046,14 @@ export class DetailsModuleGenerator {
         const rationale = or.rationale ? _convert('rationale', or.rationale) : null;
         const rationaleImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length)];
 
+        const nfrs = or.nfrs ? _convert('nfrs', or.nfrs) : null;
+        const nfrsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length)];
+
         const flows = or.flows ? _convert('flows', or.flows) : null;
-        const flowsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length)];
+        const flowsImages = [...this.deltaConverter.getExtractedImages().slice(statementImages.length + rationaleImages.length + nfrsImages.length)];
 
         // Collect all images
-        this.allImages.push(...statementImages, ...rationaleImages, ...flowsImages);
+        this.allImages.push(...statementImages, ...rationaleImages, ...nfrsImages, ...flowsImages);
 
         return {
             title: or.title,
@@ -1059,6 +1062,7 @@ export class DetailsModuleGenerator {
             path: or.path ? or.path.join(' / ') : null,
             statement: statement,
             rationale: rationale,
+            nfrs: nfrs,
             flows: flows,
             implementedONs: or.implementedONs && or.implementedONs.length > 0 ? {
                 ons: or.implementedONs.map(on => {
