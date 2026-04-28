@@ -69,6 +69,8 @@ const STAKEHOLDER_SYNONYMS = {
     'nm': 'stakeholder:network/nm',
     'network manager': 'stakeholder:network/nm',
     'network manager (nm)': 'stakeholder:network/nm',
+    'nm operational analysis units': 'stakeholder:network/nm',
+    'nm performance and reporting units': 'stakeholder:network/nm',
     'nmoc': 'stakeholder:network/nm/nmoc',
     'network manager operation centre': 'stakeholder:network/nm/nmoc',
     'network manager operation centre (nmoc)': 'stakeholder:network/nm/nmoc',
@@ -130,6 +132,7 @@ const STAKEHOLDER_SYNONYMS = {
     'airport operators': 'stakeholder:network/airport_operator',
     'airspace user': 'stakeholder:network/airspace_user',
     'airspace users': 'stakeholder:network/airspace_user',
+    'airspace users (aus)': 'stakeholder:network/airspace_user',
     'ao': 'stakeholder:network/airspace_user/ao',
     'aircraft operator': 'stakeholder:network/airspace_user/ao',
     'cfsp': 'stakeholder:network/airspace_user/cfsp',
@@ -488,9 +491,9 @@ class iDL_Mapper_new_format extends Mapper {
     _resolveReferences(context) {
         for (const [, on] of context.onMap) {
             // Refines
-            on.refinesParents = this._resolveTitleRefs(
+            ({ resolved: on.refinesParents } = this._resolveTitleRefs(
                 on._rawRefines, context.onTitleMap, on.externalId, 'Refines', context
-            );
+            ));
 
             // Strategic Documents
             on.strategicDocuments = this._resolveStrategicDocuments(
@@ -502,23 +505,29 @@ class iDL_Mapper_new_format extends Mapper {
 
         for (const [, or] of context.orMap) {
             // Refines (can refine ONs or ORs)
-            const refinesFromONs = this._resolveTitleRefs(
+            const { resolved: refinesFromONs } = this._resolveTitleRefs(
                 or._rawRefines, context.onTitleMap, or.externalId, 'Refines (ON)', context
             );
-            const refinesFromORs = this._resolveTitleRefs(
+            const { resolved: refinesFromORs } = this._resolveTitleRefs(
                 or._rawRefines, context.orTitleMap, or.externalId, 'Refines (OR)', context, true
             );
             or.refinesParents = [...new Set([...refinesFromONs, ...refinesFromORs])];
 
             // Implements
-            or.implementedONs = this._resolveTitleRefs(
+            ({ resolved: or.implementedONs } = this._resolveTitleRefs(
                 or._rawImplements, context.onTitleMap, or.externalId, 'Implements', context
-            );
+            ));
 
             // Dependencies
-            or.dependencies = this._resolveTitleRefs(
+            const { resolved: resolvedDeps, unresolvedParts: unresolvedDeps } = this._resolveTitleRefs(
                 or._rawDependencies, context.orTitleMap, or.externalId, 'Dependencies', context
             );
+            or.dependencies = resolvedDeps;
+            if (unresolvedDeps.length > 0) {
+                or.privateNotes = this._appendToRichText(
+                    or.privateNotes, `Dependencies (unresolved):\n${unresolvedDeps.join('\n')}`
+                );
+            }
 
             // Stakeholders
             if (or._rawImpact) {
@@ -557,9 +566,10 @@ class iDL_Mapper_new_format extends Mapper {
      * @private
      */
     _resolveTitleRefs(rawValue, titleMap, entityId, fieldName, context, silentMiss = false) {
-        if (!rawValue || isEmptyValue(rawValue)) return [];
+        if (!rawValue || isEmptyValue(rawValue)) return { resolved: [], unresolvedParts: [] };
 
         const resolved = [];
+        const unresolvedParts = [];
         const parts = rawValue.split(/[\n;,*•]+/).map(s => s.trim()).filter(Boolean);
 
         for (const part of parts) {
@@ -572,12 +582,13 @@ class iDL_Mapper_new_format extends Mapper {
                 resolved.push(externalId);
             } else if (!silentMiss) {
                 context.warnings.push(
-                    `${entityId}: ${fieldName} reference unresolved — title not found in batch: "${part}" (dropped)`
+                    `${entityId}: ${fieldName} reference unresolved — "${part}" appended to privateNotes`
                 );
+                unresolvedParts.push(part);
             }
         }
 
-        return resolved;
+        return { resolved, unresolvedParts };
     }
 
     /**
