@@ -53,7 +53,7 @@ import {textStartsWith} from "./utils.js";
  * - "Implemented ONs:" / "Implemented Operational Needs:" → implementedONs array (OR-type only)
  *   - Format: "- ./Title" (relative) or "- /Full/Path/Title" (absolute)
  *   - Relative references resolved using current entity's organizational path
- * - "Private notes:" / "NM private notes:" → nmPrivateNotes
+ * - "Private notes:" / "NM private notes:" / "Additional documents:" → nmPrivateNotes
  * - "Dependencies:" → dependencies array (OR-type only)
  *   - Same reference format as implementedONs, resolves to OR external IDs
  * - "ConOPS Reference:" / "ConOPS References:" → strategicDocuments array (ONs) / privateNotes (ORs)
@@ -153,11 +153,11 @@ class iDL_Mapper_sections extends Mapper {
         console.log(`iDL_Mapper_sections mapping raw data to folder: ${folder}`);
         const context = this._initContext(folder);
 
-        // Process sections 4 (ONs) and 5 (ORs)
+        // Process ONs and ORs sections by title (section numbers vary across iDL documents)
         for (const section of rawData.sections || []) {
-            if (section.sectionNumber?.startsWith('4')) {
+            if (section.title === 'Operational Needs') {
                 this._processRequirementsSection(section, 'ON', context, null);
-            } else if (section.sectionNumber?.startsWith('5')) {
+            } else if (section.title === 'Operational Requirements') {
                 this._processRequirementsSection(section, 'OR', context, null);
             }
         }
@@ -314,7 +314,8 @@ class iDL_Mapper_sections extends Mapper {
             'Domain:',
             'Strategic Documents:',
             'NFRs:',
-            'Additional documentation:'
+            'Additional documentation:',
+            'Additional documents:'
         ];
 
         for (const p of paragraphs) {
@@ -347,7 +348,7 @@ class iDL_Mapper_sections extends Mapper {
                 currentSection = 'implementedONs';
             } else if (textStartsWith(text, 'Dependencies:')) {
                 currentSection = 'dependencies';
-            } else if (textStartsWith(text, 'Private notes:', 'NM private notes:')) {
+            } else if (textStartsWith(text, 'Private notes:', 'NM private notes:', 'Additional documents:')) {
                 currentSection = 'privateNotes';
             } else if (textStartsWith(text, 'ConOPS Reference:', 'ConOPS References:')) {
                 currentSection = 'conopsReferences';
