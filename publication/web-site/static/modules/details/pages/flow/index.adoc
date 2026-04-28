@@ -3,6 +3,17 @@
 
 == Introduction
 
-This is the introduction to the Flow Domain. It will be completed very soon.
+The Flow Drafting Group (Flow DrG) is the iCDM drafting group responsible for identifying, structuring, and consolidating the Operational Needs (ONs) and Operational Requirements (ORs) supporting the evolution of Flow Management within the Network Manager (NM) system.
+Its scope is anchored in the iNM Concept of Operations (CONOPS), in particular the Flow CONOPS and the ASM/ATFCM Integration CONOPS, which provide the main operational references for flow processes, coordination, and network-level decision-making.
+
+The Flow DrG captures the operational needs driving the enhancement of flow management across all phases of operations, including demand-capacity balancing, ATFCM measures, ASM integration, and collaborative network management.
+Flow management is therefore addressed as a core, cross-cutting function linked to trajectory management, airspace availability, and overall network performance.
+
+Its scope is structured around eight key functional areas: Determine Capacity, Determine Traffic Demand, Analyse and Monitor Capacity and Demand, Assess Solutions, Coordinate, Implement Solutions, Disseminate Information, and Post-Operations Analysis and R&D.
+
+In addition to CONOPS-derived requirements, the Flow DrG also captures urgent operational needs and requirements from previous NM releases that were not implemented or were descoped, ensuring continuity and completeness of the baseline.
+
+The Flow DrG consolidates inputs from operational domains and iNM initiatives, translating them into a coherent and traceable set of ONs and ORs in line with iCDM principles.
+Within the NM evolution framework, it provides the operational foundation for the development and integration of flow functionalities, ensuring alignment with operational needs and contributing to safer, more efficient, and more predictable network operations.
 
 include::partial$flow/index.adoc[]

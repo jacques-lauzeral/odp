@@ -1,0 +1,20 @@
+= 4D Trajectory
+:notitle:
+
+== Introduction
+
+The 4D Trajectory (4DT) constitutes a cornerstone of the future network operations concept and is a key enabler for enhanced predictability, efficiency, and collaborative decision-making across the ATM network.
+Within this context, the 4DT Drafting Group is responsible for addressing all topics related to trajectory management, with a particular focus on trajectory-related operational aspects embedded in the wider iCDM framework.
+
+The work of the group is focused on the implementation of the link:https://www.eurocontrol.int/publication/network-4d-trajectory-conops[Network 4D Trajectory Concept of Operations], from which the relevant operational needs have been identified.
+This foundation is complemented by any other arising concepts, ensuring consistency and alignment with ongoing developments at network level.
+Once implemented and operational in the NM system, the Network 4D Trajectory Concept of Operations will place the NM in the key role to serve as 4D trajectory planner and coordinator, responsible for the validation, negotiation and timely sharing of consolidated flight data with stakeholders, complementary to ATC processes.
+
+The operational scope covered under the 4DT Drafting Group includes the development and evolution of advanced inputs to enrich the NM trajectory — from pre-agreed transfer conditions between ATS units in their Letters of Agreement to further tactical updates from ATC units as flights transit over Europe.
+In return, the operational scope also covers the output of this enriched trajectory with a 4D Network trajectory service that will offer to all interested operational parties this high-quality trajectory, becoming the European benchmark, able to support local flow management and strategic ATC.
+Several other enabling needs to improve the NM trajectory are also included in the work of the group, such as the management of preferred trajectories throughout the flight lifecycle, VFR and OAT operations, high-altitude and new entrants.
+
+The Drafting Group provides the primary forum for discussing operational needs and requirements within NM, to be shared with stakeholders under the relevant working arrangements and the ODIP.
+Close coordination with other drafting groups, such as Flow, Rerouting, and Integrated Data Layer Drafting Groups, is key to ensure transparency and cross-domain understanding.
+
+include::partial$4dt/index.adoc[]

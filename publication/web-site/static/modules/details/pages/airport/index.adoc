@@ -1,8 +1,8 @@
-= NM B2B
+= Airport
 :notitle:
 
 == Introduction
 
 <TO BE COMPLETED>
 
-include::partial$nm_b2b/index.adoc[]
+include::partial$airport/index.adoc[]
