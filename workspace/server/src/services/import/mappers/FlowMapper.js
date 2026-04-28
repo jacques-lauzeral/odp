@@ -112,22 +112,32 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * Reference Resolution Strategy:
  * ------------------------------
  * 1. During extraction, build two lookup maps:
- *    - identifierMap: section identifier (without version) → externalId
- *    - titleMap: normalized ON title (lowercase, with synonyms) → externalId
+ *    - identifierMap: normalized identifier (version stripped, underscores→hyphens) → externalId
+ *    - folderTitleMap: pathKey → Map<normalizedTitle, externalId> (per-folder ON title index)
  * 2. For OR's "ON Reference:" field (implementedONs):
- *    Pass 1: Try multiple lookups in order:
- *      a) identifierMap with original reference
- *      b) identifierMap with normalized reference (synonyms applied)
- *      c) titleMap with normalized reference (catches "PFDCI" → full title)
- *    Pass 2: If not found, try fallback resolution:
- *      - Find all ONs in the same parent section as the OR
- *      - If exactly 1 ON found → use it (unambiguous)
- *      - If 0 or multiple ONs → cannot resolve, log warning
- *    Synonym handling: "PFDCI" → "Proactive Flight Delay Criticality Indicator (P-FDCI)"
+ *    Pass 1: identifierMap with normalized reference (_normalizeIdentifier applied)
+ *    Pass 2: folderTitleMap walk — start at OR's folder, walk up to root, stop at first match
+ *    Pass 3: Silent fallback — if exactly 1 ON in the OR's folder, use it unambiguously
+ *    Unresolved references → privateNotes as "ON Reference (unresolved):\n{ref}" + WARNING
  * 3. For Use Case's "ON Reference:" field:
- *    - Same resolution process with identifierMap and titleMap lookup
+ *    - Same resolution process with identifierMap and folderTitleMap walk
  *    - Inject content into target ON's flows field
  * 4. All references are within the same document (no cross-DrG references)
+ *
+ * Text Normalization (_normalizeTextForMatching):
+ * ------------------------------------------------
+ * Applied to both stored ON titles and lookup references before comparison:
+ * - Smart quotes → plain quotes (' ' → ', " " → ")
+ * - All double quotes stripped (avoids mismatches when quotes are omitted in references)
+ * - Zero-width characters stripped (U+200B, U+200C, U+200D, U+FEFF)
+ * - PFDCI synonym expansion
+ * - Leading/trailing whitespace trimmed
+ *
+ * Identifier Normalization (_normalizeIdentifier):
+ * -------------------------------------------------
+ * Applied to identifierMap keys and lookups:
+ * - Version suffix stripped (_v{*} removed)
+ * - Underscores replaced with hyphens (tolerates filename variants like ON-FLOW_NIA-01)
  *
  * External ID Format:
  * -------------------
@@ -154,9 +164,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * All warnings are emitted via _warn(msg), which prefixes the message with entity context
  * when available: WARNING: {type} "{title}" at path {path} - {msg}
  * _currentEntity is set at the start of each entity-scoped operation (_extractRequirement,
- * _resolveDependencies loop, _resolveImplementedONs loop) and cleared on exit.
- * Warnings emitted outside any entity scope (Use Case processing) fall back to:
- * WARNING: {msg}
+ * _extractUseCase, _resolveDependencies loop, _resolveImplementedONs loop) and cleared on exit.
  *
  * IGNORED CONTENT:
  * ----------------
@@ -253,7 +261,7 @@ class FlowMapper extends Mapper {
             onMap: new Map(), // externalId -> ON entity
             orMap: new Map(), // externalId -> OR entity
             identifierMap: new Map(), // identifier (without version) -> externalId
-            titleMap: new Map(), // normalized ON title -> externalId
+            folderTitleMap: new Map(), // pathKey -> Map<normalizedTitle, externalId>
             useCases: [], // Array of { onReference, content }
             validationErrors: [], // Array of validation errors
             stakeholderCategoryMap: new Map(),
@@ -309,12 +317,19 @@ class FlowMapper extends Mapper {
     _normalizeTextForMatching(text) {
         if (!text) return text;
 
-        // Handle PFDCI synonym
-        // Replace "PFDCI" with full form for matching
-        let normalized = text.replace(/\bPFDCI\b/gi, 'Proactive Flight Delay Criticality Indicator (P-FDCI)');
+        // Normalise smart quotes to plain quotes, then strip all quotes
+        let normalized = text
+            .replace(/[\u2018\u2019\u02BC]/g, "'")   // ' ' ʼ → '
+            .replace(/[\u201C\u201D]/g, '"')          // " " → "
+            .replace(/"/g, '');                        // strip all double quotes
 
-        // Trim and return
-        return normalized.trim();
+        // Handle PFDCI synonym
+        normalized = normalized.replace(/\bPFDCI\b/gi, 'Proactive Flight Delay Criticality Indicator (P-FDCI)');
+
+        // Strip zero-width and non-printable characters, trim whitespace
+        normalized = normalized.replace(/[\u200B\u200C\u200D\uFEFF]/g, '').trim();
+
+        return normalized;
     }
 
     /**
@@ -459,9 +474,8 @@ class FlowMapper extends Mapper {
                 }
             }
 
-            // If not found as OR title, warn and treat as free text
+            // If not found as OR title, treat as free text (stored in privateNotes)
             if (!found && line.length > 0) {
-                this._warn(`Could not resolve dependency: "${line}"`);
                 unmatchedText.push(line);
             }
         }
@@ -495,7 +509,7 @@ class FlowMapper extends Mapper {
             if (entityType === 'ON' || entityType === 'OR') {
                 this._extractRequirement(section, entityType, ancestorPath, context);
             } else if (entityType === 'USE_CASE') {
-                this._extractUseCase(section, context);
+                this._extractUseCase(section, context, ancestorPath);
             }
             // Don't recurse into entity sections - they shouldn't have subsections
             return;
@@ -710,16 +724,20 @@ class FlowMapper extends Mapper {
 
         // Index by section identifier (without version) for reference resolution
         if (section.identifier) {
-            const identifierKey = this._stripVersion(section.identifier);
+            const identifierKey = this._normalizeIdentifier(section.identifier);
             if (identifierKey) {
                 context.identifierMap.set(identifierKey, requirement.externalId);
             }
         }
 
-        // For ONs, also index by normalized title for synonym-based lookup
+        // For ONs, index by normalized title scoped to their folder path
         if (type === 'ON' && requirement.title) {
             const normalizedTitle = this._normalizeTextForMatching(requirement.title).toLowerCase().trim();
-            context.titleMap.set(normalizedTitle, requirement.externalId);
+            const pathKey = JSON.stringify(requirement._parentPath || []);
+            if (!context.folderTitleMap.has(pathKey)) {
+                context.folderTitleMap.set(pathKey, new Map());
+            }
+            context.folderTitleMap.get(pathKey).set(normalizedTitle, requirement.externalId);
         }
 
         this._currentEntity = null;
@@ -729,8 +747,12 @@ class FlowMapper extends Mapper {
      * Extract Use Case and store for later injection
      * @private
      */
-    _extractUseCase(section, context) {
+    _extractUseCase(section, context, path = []) {
         const tableData = this._extractTableData(section, true); // excludeDateOriginator = true
+        const normalizedPath = this._normalizePathSegments(path);
+
+        // Set entity context for warnings (title may not be known yet)
+        this._currentEntity = { type: 'UC', title: tableData['title'] || section.title || '(unknown)', path: normalizedPath };
 
         const onReference = tableData['on reference'];
         if (!onReference) {
@@ -752,8 +774,11 @@ class FlowMapper extends Mapper {
 
         context.useCases.push({
             onReference: this._stripVersion(onReference),
-            content: content
+            content: content,
+            _parentPath: this._normalizePathSegments(path)
         });
+
+        this._currentEntity = null;
     }
 
     /**
@@ -896,6 +921,17 @@ class FlowMapper extends Mapper {
     }
 
     /**
+     * Normalise an identifier key for consistent lookup.
+     * Strips version suffix and replaces underscores with hyphens so that
+     * filenames like "ON-FLOW_NIA-01" match references like "ON-FLOW-NIA-01".
+     * @private
+     */
+    _normalizeIdentifier(identifier) {
+        if (!identifier) return null;
+        return this._stripVersion(identifier).replace(/_/g, '-');
+    }
+
+    /**
      * Capitalize field name for display
      * @private
      */
@@ -980,12 +1016,20 @@ class FlowMapper extends Mapper {
             const normalizedRefLower = normalizedRef.toLowerCase().trim();
 
             // Pass 1: Try direct identifier match (try both original and normalized)
-            let targetExternalId = context.identifierMap.get(useCase.onReference) ||
-                context.identifierMap.get(normalizedRef);
+            let targetExternalId = context.identifierMap.get(this._normalizeIdentifier(useCase.onReference)) ||
+                context.identifierMap.get(this._normalizeIdentifier(normalizedRef));
 
-            // If not found by identifier, try title lookup
+            // If not found by identifier, try folder-scoped title walk
             if (!targetExternalId) {
-                targetExternalId = context.titleMap.get(normalizedRefLower);
+                const ucPath = useCase._parentPath || [];
+                for (let depth = ucPath.length; depth >= 0; depth--) {
+                    const pathKey = JSON.stringify(ucPath.slice(0, depth));
+                    const folderMap = context.folderTitleMap.get(pathKey);
+                    if (folderMap) {
+                        targetExternalId = folderMap.get(normalizedRefLower);
+                        if (targetExternalId) break;
+                    }
+                }
             }
 
             let targetON = null;
@@ -1038,23 +1082,22 @@ class FlowMapper extends Mapper {
     /**
      * Resolve implementedONs references to external IDs (two-pass strategy)
      * Pass 1: Direct identifier match (with synonym normalization)
-     * Pass 2: Fallback to unique ON in same parent section
+     * Pass 2: Folder-scoped title match — walks from OR's folder up to root, stops at first match
      * Unresolved references are stored in privateNotes
      * @private
      */
     _resolveImplementedONs(context) {
         let totalRefs = 0;
         let resolvedDirect = 0;
-        let resolvedFallback = 0;
+        let resolvedFolderTitle = 0;
+        let resolvedUniqueFallback = 0;
         let unresolved = 0;
 
-        // Build map of ONs by parent path for fallback resolution
+        // Build map of ONs by exact parent path for unique-ON fallback
         const onsByParentPath = new Map();
         for (const [externalId, on] of context.onMap.entries()) {
             const pathKey = JSON.stringify(on._parentPath || []);
-            if (!onsByParentPath.has(pathKey)) {
-                onsByParentPath.set(pathKey, []);
-            }
+            if (!onsByParentPath.has(pathKey)) onsByParentPath.set(pathKey, []);
             onsByParentPath.get(pathKey).push(externalId);
         }
 
@@ -1075,34 +1118,38 @@ class FlowMapper extends Mapper {
                 const normalizedRefLower = normalizedRef.toLowerCase().trim();
 
                 // Pass 1: Try direct identifier match (try original and normalized)
-                let targetExternalId = context.identifierMap.get(onRef) ||
-                    context.identifierMap.get(normalizedRef);
+                let targetExternalId = context.identifierMap.get(this._normalizeIdentifier(onRef)) ||
+                    context.identifierMap.get(this._normalizeIdentifier(normalizedRef));
 
-                // If not found by identifier, try title lookup
+                // Pass 2: Folder-scoped title walk — start at OR's folder, walk up to root
                 if (!targetExternalId) {
-                    targetExternalId = context.titleMap.get(normalizedRefLower);
+                    const orPath = or._parentPath || [];
+                    for (let depth = orPath.length; depth >= 0; depth--) {
+                        const pathKey = JSON.stringify(orPath.slice(0, depth));
+                        const folderMap = context.folderTitleMap.get(pathKey);
+                        if (folderMap) {
+                            targetExternalId = folderMap.get(normalizedRefLower);
+                            if (targetExternalId) break;
+                        }
+                    }
                 }
 
                 if (targetExternalId && context.onMap.has(targetExternalId)) {
-                    // Direct match successful
                     resolvedRefs.push(targetExternalId);
-                    resolvedDirect++;
-                } else {
-                    // Pass 2: Try fallback to unique ON in parent section
-                    const parentPathKey = JSON.stringify(or._parentPath || []);
-                    const onsInParent = onsByParentPath.get(parentPathKey) || [];
-
-                    if (onsInParent.length === 1) {
-                        // Unique ON in parent section - use it
-                        resolvedRefs.push(onsInParent[0]);
-                        resolvedFallback++;
-                        console.log(`Resolved ON Reference "${onRef}" via parent section fallback for OR "${or.externalId}"`);
-                    } else if (onsInParent.length === 0) {
-                        this._warn(`references unknown ON identifier "${onRef}" (no ONs in parent section)`);
-                        unresolvedRefs.push(onRef);
-                        unresolved++;
+                    if (context.identifierMap.get(onRef) || context.identifierMap.get(normalizedRef)) {
+                        resolvedDirect++;
                     } else {
-                        this._warn(`references unknown ON identifier "${onRef}" (${onsInParent.length} ONs in parent section - ambiguous)`);
+                        resolvedFolderTitle++;
+                    }
+                } else {
+                    // Silent fallback: if exactly 1 ON in same folder, use it unambiguously
+                    const parentPathKey = JSON.stringify(or._parentPath || []);
+                    const onsInFolder = onsByParentPath.get(parentPathKey) || [];
+                    if (onsInFolder.length === 1) {
+                        resolvedRefs.push(onsInFolder[0]);
+                        resolvedUniqueFallback++;
+                    } else {
+                        this._warn(`references unknown ON identifier "${onRef}" (unresolved)`);
                         unresolvedRefs.push(onRef);
                         unresolved++;
                     }
@@ -1123,7 +1170,7 @@ class FlowMapper extends Mapper {
             this._currentEntity = null;
         }
 
-        console.log(`Implemented ONs resolution: ${totalRefs} references, ${resolvedDirect} direct matches, ${resolvedFallback} fallback resolutions, ${unresolved} unresolved (stored in privateNotes)`);
+        console.log(`Implemented ONs resolution: ${totalRefs} references, ${resolvedDirect} direct matches, ${resolvedFolderTitle} folder-title matches, ${resolvedUniqueFallback} unique-folder fallbacks, ${unresolved} unresolved (stored in privateNotes)`);
 
         // Clean up temporary parent path fields
         for (const on of context.onMap.values()) {
@@ -1230,7 +1277,7 @@ class FlowMapper extends Mapper {
                 if (!notesMap.has(externalId)) notesMap.set(externalId, []);
                 if (note) notesMap.get(externalId).push(note);
             } else {
-                console.warn(`WARNING: Unresolved strategic document reference: "${line}"`);
+                this._warn(`Unresolved strategic document reference: "${line}"`);
             }
         }
     }
