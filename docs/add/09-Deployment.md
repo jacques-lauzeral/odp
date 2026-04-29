@@ -47,10 +47,12 @@ $ODIP_HOME/
 │   └── reset/             Pre-reset dumps
 ├── logs/                  Server log files
 └── publication/
-    └── works/             Antora build workspace (persistent git repo)
+    ├── works/             HTML + flat document builds (persistent git repo)
+    ├── works-intro/       Intro document set build (persistent git repo)
+    └── works-{drg}/       Per-domain document set builds × 13 (persistent git repos)
 ```
 
-`publication/works/` is initialised by the server at startup (see §7.3).
+All `publication/works*/` directories are initialised by the server at startup (see §7.3).
 
 Also add `$ODIP_REPO/bin` to `PATH`:
 
@@ -234,13 +236,14 @@ odip-admin start
 ```
 
 `odip-admin install` performs all one-time setup steps:
-1. Creates runtime directories (`ensure_runtime_dirs`)
-2. Copies UI bundle (`ui-bundle.zip`) to `$ODIP_HOME/publication/works/` if not already there
-3. Unconditionally syncs static content from `$ODIP_REPO/publication/web-site/static/` to `works/` — ensures no stale files
-4. Runs `npm install` in `works/` if `node_modules/` absent (host side, proxy-aware via `~/.npmrc`)
-5. Runs `npm install` for all workspaces (server, web-client, cli)
-6. Builds `odp-server` image from `Dockerfile.odp-server`
-7. Builds `web-client` image from `Dockerfile.web-client`
+1. Creates runtime directories (`ensure_runtime_dirs`) — creates all 15 `works*/` dirs with `chmod 777`
+2. Bootstraps each works dir from the corresponding config source dirs under `$ODIP_REPO/publication/`
+3. Runs `npm install` in each works dir if `node_modules/` absent (host side, proxy-aware via `~/.npmrc`)
+4. Runs `npm install` for all workspaces (server, web-client, cli)
+5. Builds `odp-server` image from `Dockerfile.odp-server`
+6. Builds `web-client` image from `Dockerfile.web-client`
+
+The domain list for per-DrG works dirs is derived from `$ODIP_REPO/publication/shared/content/` subdirectories — adding a new DrG static content directory automatically creates a new works dir on next `odip-admin install`.
 
 > **Note:** `ui-bundle.zip` is committed to the repository pre-patched with the custom EUROCONTROL header — no download step is required. See ch06 §7 for details on how the bundle was prepared.
 
@@ -252,7 +255,7 @@ The server completes workspace initialisation at startup via `initializePublicat
 
 1. `git init` — if `.git` absent
 2. `git config --global safe.directory` + `user.email` + `user.name` — always, on every startup (survives `.git` recreation)
-3. Static content bootstrap (`cp -r $STATIC_CONTENT_PATH/. works/`) — if `package.json` absent
+3. Static content bootstrap (`cp -r $PUBLICATION_PATH/. works/`) — if `package.json` absent
 4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
 
 > **Note:** `npm install` in `works/` runs on the host side via `odip-admin install` to avoid container internet access dependency. The container has no outbound internet access on EC.

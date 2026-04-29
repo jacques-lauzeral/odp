@@ -198,10 +198,30 @@ Standalone management service. Editions are immutable once created.
 | `getODPEdition(id, userId)` | Fetch single edition |
 | `listODPEditions(userId)` | List all editions |
 | `exportAsAsciiDoc(editionId?, userId)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
+| `publishEdition(editionId, userId, options?)` | Full publication orchestration — see Chapter 06 |
+| `generateAntoraZip(editionId, userId, drgFilter?, introOnly?)` | Generate scoped Antora source ZIP |
 
 Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`). Optional: `baselineId`, `startDate` (yyyy-mm-dd lower bound for content filtering), `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The optional baseline is validated for existence before the edition is written.
 
 Edition context resolution (mapping an `edition` query parameter to `{baselineId, editionId}`) happens in the **service layer** (`VersionedItemService`), not in `ODIPEditionService`. `ODIPEditionService` is responsible only for edition lifecycle management.
+
+**Publication options (`PublishOptions`):**
+
+```
+{
+  html: boolean,              // Build HTML site (default: true from API, false from CLI)
+  pdf: {
+    flat: boolean,            // Flat PDF — single file covering all domains
+    set: {
+      intro: boolean,         // Include intro document in set
+      domains: string[]       // DrG ids; empty = all domains from shared/content/
+    }
+  },
+  word: { flat, set }         // Same structure as pdf (not yet restored)
+}
+```
+
+Private helpers: `_buildFlat()`, `_buildSet()`, `_extractZipToWorks()`, `_createAntoraZip()`, `_resolveSetDomains()`, `_listStaticFiles()`, `_drgSlug()`, `_execStreaming()`, `_tryExecAsync()`.
 
 ---
 

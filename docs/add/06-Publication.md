@@ -11,15 +11,17 @@ The pipeline is entirely server-side. The web client and CLI trigger it via REST
 
 > **Implementation status:**
 >
-> | Format | Personal environment | EC environment |
-> |---|---|---|
-> | HTML static site (with search index) | ✅ Operational | ✅ Operational |
-> | PDF | ✅ Operational | ✅ Operational |
-> | Word (docx) | ❌ Not yet restored | ❌ Not yet restored |
+> | Format | Mode | Personal environment | EC environment |
+> |---|---|---|---|
+> | HTML static site (with search index) | website | ✅ Operational | ✅ Operational |
+> | PDF flat | website | ✅ Operational | ✅ Operational |
+> | PDF document set (per-domain + intro) | document | ✅ Operational | ✅ Operational |
+> | Word flat | website | ❌ Not yet restored | ❌ Not yet restored |
+> | Word document set | document | ❌ Not yet restored | ❌ Not yet restored |
 >
-> **PDF** is generated via `@antora/pdf-extension` + `asciidoctor-pdf` (installed as a system gem in `Dockerfile.odp-server`). The PDF assembler writes to `build/assembler/pdf/odip/_exports/index.pdf`, which is then copied to `build/site/odip/_exports/index.pdf`.
+> **PDF** is generated via `@antora/pdf-extension` + `asciidoctor-pdf` (installed as a system gem in `Dockerfile.odp-server`).
 >
-> **Word** generation (`antora-playbook-docx.yml`) was present in an earlier iteration but has not been restored. It requires `pandoc` in the server container and a working `antora-docx-extension.js`.
+> **Word** generation requires `pandoc` in the server container and a working `antora-docx-extension.js` — not yet restored.
 >
 > **EC environment** requires `ODIP_GEM_MODE=host` and `~/.gemrc` configured with the corporate proxy — `odip-admin` handles the rest automatically. See ch09 §3 and §5.2.
 
@@ -28,26 +30,32 @@ The pipeline is entirely server-side. The web client and CLI trigger it via REST
 ## 2. Architecture
 
 ```
-REST API  POST /odp-editions/{id}/publish[?pdf&word]  ← edition publish (build + serve)
+REST API  POST /odp-editions/{id}/publish  ← edition publish (JSON body: PublishOptions)
           │
           ▼
-    ODPEditionService
+    ODPEditionService.publishEdition(options)
           │
-          ├── generateAntoraZip()     ← assembles Antora source ZIP
+          ├── generateAntoraZip(editionId, userId, drgFilter?, introOnly?)
           │       │
-          │       └── DetailsModuleGenerator   ← queries Neo4j via ORService, generates AsciiDoc pages
-          │               │
-          │               ├── operationalRequirementService.getAll()   ← standard projection, edition-scoped
-          │               ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
-          │               ├── Mustache templates          ← on.mustache, or.mustache, etc.
-          │               └── archiver (ZIP)              ← packages static + dynamic content
+          │       ├── DetailsModuleGenerator      ← queries Neo4j, generates AsciiDoc pages
+          │       │       ├── operationalRequirementService.getAll()   ← standard projection, edition-scoped
+          │       │       ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
+          │       │       └── Mustache templates         ← on.mustache, or.mustache, etc.
+          │       │
+          │       └── _createAntoraZip(configPaths, contentMappings, detailsFiles)
+          │               ├── config files   → works dir root (flat copy)
+          │               ├── content files  → Antora module paths (remapped per build mode)
+          │               └── generated files → modules/details/ or modules/ROOT/ (domain mode)
           │
-          └── publishEdition(options)
-                  │
-                  ├── extract ZIP → git commit
-                  ├── npx antora antora-playbook.yml        ← HTML site (mandatory)
-                  ├── npx antora antora-playbook-pdf.yml    ← PDF (optional, non-fatal)
-                  └── npx antora antora-playbook-docx.yml  ← Word (optional, non-fatal, not yet restored)
+          ├── HTML build (optional, default true)
+          │       └── works/: extract ZIP → git commit → npx antora antora-playbook.yml
+          │
+          ├── _buildFlat(format)   ← flat PDF or Word
+          │       └── works/: npx antora antora-playbook-pdf.yml → copy to _exports/
+          │
+          └── _buildSet(format, setOptions)   ← per-domain document set
+                  ├── intro: works-intro/ → extract intro ZIP → git commit → antora build → ZIP entry
+                  └── per DrG: works-{drg}/ → extract domain ZIP → git commit → antora build → ZIP entry
 ```
 
 **File locations** — all under `workspace/server/src/services/`:
@@ -68,27 +76,41 @@ services/export/
 └── DeltaToAsciidocConverter.js   (shared with docx export)
 ```
 
-Static Antora scaffolding lives in `publication/web-site/static/` (configurable via `STATIC_CONTENT_PATH` env var):
+Static publication scaffolding lives under `publication/` in the repository (configurable via `PUBLICATION_PATH` env var, default `/app/publication`):
 
 ```
-static/
-├── antora-playbook.yml          ← HTML site; UI bundle: local ./ui-bundle.zip
-├── antora-playbook-pdf.yml      ← PDF build (@antora/pdf-extension + asciidoctor-pdf)
-├── antora-playbook-docx.yml     ← Word build (not yet restored)
-├── antora-assembler.yml         ← PDF/shared assembler config (revnumber, revdate, pdf-theme, section_merge_strategy)
-├── antora-assembler-docx.yml    ← Word assembler config (not yet restored)
-├── antora-docx-extension.js     ← Antora extension: AsciiDoc → DocBook → pandoc → docx (not yet restored)
-├── antora.yml
-├── pdf-theme.yml                ← Custom PDF theme (Noto fonts, EUROCONTROL blue)
-├── package.json                 ← declares @antora/cli, @antora/site-generator, @antora/lunr-extension, @antora/pdf-extension
-├── partials/
-│   └── header-content.hbs      ← Custom EUROCONTROL navbar (injected into ui-bundle.zip at preparation time)
-├── ui-bundle.zip                ← Antora default UI bundle, pre-patched with custom header (see §7)
-├── modules/ROOT/nav.adoc        ← lists Introduction only (details DrG entries are in modules/details/nav.adoc)
-├── modules/ROOT/pages/index.adoc  ← ODIP introduction page (manually authored)
-└── modules/details/pages/
-    ├── {drg}/index.adoc         ← one per DrG (manually authored domain introduction page)
-    └── ...
+publication/
+├── website/
+│   └── config/                  ← website/flat build files
+│       ├── antora.yml           ← component descriptor (ROOT + details nav)
+│       ├── antora-playbook.yml  ← HTML site build
+│       ├── antora-playbook-pdf.yml  ← PDF flat build
+│       ├── antora-playbook-docx.yml ← Word flat build (not yet restored)
+│       ├── antora-assembler.yml     ← PDF flat assembler
+│       ├── antora-assembler-docx.yml ← Word assembler (not yet restored)
+│       ├── antora-docx-extension.js  ← AsciiDoc → DocBook → pandoc → docx (not yet restored)
+│       └── partials/
+│           └── header-content.hbs   ← Custom EUROCONTROL navbar
+│
+├── document/
+│   └── config/                  ← document set build files (intro + per-domain)
+│       ├── antora.yml           ← component descriptor (ROOT only, no details nav)
+│       ├── antora-playbook-pdf.yml  ← PDF document build (shared by intro and domain)
+│       ├── antora-assembler-pdf.yml ← PDF document assembler
+│       └── (docx equivalents — future)
+│
+└── shared/
+    ├── config/                  ← shared by website and document builds
+    │   ├── package.json         ← @antora/cli, @antora/site-generator, @antora/pdf-extension, etc.
+    │   ├── ui-bundle.zip        ← Pre-patched Antora UI bundle (see §7)
+    │   ├── pdf-theme.yml        ← Custom PDF theme (Noto fonts, EUROCONTROL blue)
+    │   ├── Gemfile              ← asciidoctor-pdf Ruby gem declaration
+    │   └── reference.docx       ← Word template (future)
+    └── content/                 ← manually authored static content
+        ├── intro/
+        │   └── index.adoc       ← ODIP Edition introduction page
+        └── {drg}/               ← one per DrG
+            └── index.adoc       ← DrG domain introduction page
 ```
 
 ---
@@ -289,7 +311,7 @@ odp-cli publication antora -o ~/output/odip-web-site.zip --edition <editionId>
 odp-cli publication antora -o ~/output/odip-web-site.zip
 ```
 
-`--pdf` requires `asciidoctor-pdf` installed as a system gem in the server container (`Dockerfile.odp-server`). `--word` requires `pandoc` and is not yet restored. Failed formats are reported as warnings; the command exits successfully if HTML succeeded.
+`--pdf` requires `asciidoctor-pdf` installed as a system gem in the server container (`Dockerfile.odp-server`). `--word` requires `pandoc` and is not yet restored. Failed formats are reported as warnings; the command exits successfully if at least one build succeeded. See ch07 §Publication for the full flag reference.
 
 Implementation: `workspace/cli/src/commands/odp-editions.js` (publish and ZIP).
 
@@ -335,34 +357,82 @@ npx antora antora-playbook.yml && npx antora antora-playbook-pdf.yml
 
 ## 7. Publication Workspace
 
-The server maintains a persistent publication workspace at `$ODIP_HOME/publication/works/`. It is a git repository with Antora installed, used as the build environment for `publishEdition()`.
+The server maintains **15 persistent publication workspaces** under `$ODIP_HOME/publication/` — one per build type:
+
+| Directory | Purpose |
+|---|---|
+| `works/` | HTML site + flat PDF/Word builds |
+| `works-intro/` | Intro document set build |
+| `works-{drg}/` × 13 | Per-domain document set builds |
+
+Each is an independent git repository with Antora installed, bootstrapped from the corresponding config subtree under `publication/`.
 
 ### Initialisation (server startup)
 
-`initializePublicationWorkspace()` runs on every server start inside `startServer()` in `index.js`. All steps are idempotent:
+`initializePublicationWorkspace()` runs on every server start. It calls `initializeWorksDir(worksDir, sourcePaths, label)` for each of the 15 works dirs. All steps are idempotent:
 
-1. `mkdir -p $ODIP_HOME/publication/works/` — belt-and-suspenders after `odip-admin ensure_runtime_dirs`
+1. `mkdir -p {worksDir}` — belt-and-suspenders
 2. `git init` + configure `user.email` / `user.name` — only if `.git` absent
-3. `cp -r $STATIC_CONTENT_PATH/. works/` — copies playbook, `package.json`, `ui-bundle.zip` etc. — only if `package.json` absent (first-time bootstrap)
-4. `npm install` — installs `@antora/cli`, `@antora/site-generator`, `@antora/lunr-extension`, `@antora/pdf-extension` — only if `node_modules/` absent
+3. Bootstrap from `sourcePaths[]` — copies config files in order (later overrides earlier) — only if `package.json` absent
+4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
+
+Source paths per works dir type:
+- `works/`: `shared/config` + `website/config`
+- `works-intro/`: `shared/config` + `document/config`
+- `works-{drg}/`: `shared/config` + `document/config`
+
+Content files (modules/) are **not** bootstrapped statically — they are injected at publish time via `generateAntoraZip()` / `_createAntoraZip()`.
+
+The domain list for per-DrG works dirs is derived from `shared/content/` subdirectories (excluding `intro/`) — no hardcoded DrG list.
+
+### ZIP generation (`generateAntoraZip`)
+
+`generateAntoraZip(editionId, userId, drgFilter?, introOnly?)` produces a scoped Antora source ZIP:
+
+| Mode | `drgFilter` | `introOnly` | Content |
+|---|---|---|---|
+| Website/flat | null | false | All domains, full details module |
+| Intro document | null | true | ROOT module only (no details) |
+| Domain document | set | false | Single DrG, remapped to ROOT module |
+
+`_createAntoraZip(configPaths, contentMappings, detailsFiles)` assembles the ZIP in three stages:
+1. **Config files** — from `configPaths[]`, land at works dir root (flat copy)
+2. **Content files** — from `contentMappings[]`, each with a `mapFn` that remaps to Antora module paths
+3. **Generated details files** — from `DetailsModuleGenerator`; in domain mode remapped from `modules/details/{drg}/` → `modules/ROOT/`
+
+Content path mappings per build mode:
+
+| Mode | Source | Target in ZIP |
+|---|---|---|
+| Website/flat | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| Website/flat | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
+| Website/flat | `website/content/nav.adoc` | `modules/ROOT/nav.adoc` |
+| Intro | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| Intro | `document/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
+| Domain | `shared/content/{drg}/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| Domain (generated) | `details/{drg}/pages/...` | `modules/ROOT/pages/...` |
+| Domain (generated) | `details/nav.adoc` | `modules/ROOT/nav.adoc` |
 
 ### Publish cycle (`publishEdition`)
 
 Each `publishEdition()` call:
 1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
-2. Generates Antora content ZIP via `generateAntoraZip()`
-3. Extracts ZIP into `works/` using manual entry-by-entry extraction (via `adm-zip` `getEntries()` + `getData()`) — `extractAllTo()` is not used as it calls `chmodSync` which fails under rootless Podman on NFS-mounted host directories
-4. `git add . && git commit --allow-empty` — records each publication in git history
-5. `npx antora antora-playbook.yml` — builds HTML site into `works/build/site/` (mandatory, fatal on failure)
-6. `npx antora antora-playbook-pdf.yml` — builds PDF; assembler writes to `works/build/assembler/pdf/odip/_exports/index.pdf`, which is then copied to `works/build/site/odip/_exports/index.pdf` (only if `pdf` option set; non-fatal)
-7. `npx antora antora-playbook-docx.yml` — builds Word document (only if `word` option set; non-fatal; not yet restored)
-8. Releases mutex — returns `{ siteUrl, pdfUrl, wordUrl }` (`pdfUrl`/`wordUrl` are `null` if not requested or build failed)
+2. Normalises `PublishOptions` — absent body defaults to `{ html: true, pdf: { flat: true } }`
+3. Generates full-content ZIP and extracts into `works/` — `_extractZipToWorks()` uses manual entry-by-entry extraction (avoids `chmodSync` failures under rootless Podman on NFS)
+4. `git add . && git commit --allow-empty` in `works/`
+5. HTML build (if `html: true`): `npx antora antora-playbook.yml` in `works/` — fatal on failure
+6. Flat PDF (if `pdf.flat`): `_buildFlat('pdf')` in `works/` — non-fatal
+7. Flat Word (if `word.flat`): `_buildFlat('word')` in `works/` — non-fatal; not yet restored
+8. PDF set (if `pdf.set`): `_buildSet('pdf', setOptions)` — non-fatal:
+   - Intro: generate intro ZIP → extract into `works-intro/` → git commit → antora build → ZIP entry
+   - Per DrG: generate domain ZIP → extract into `works-{drg}/` → git commit → antora build → ZIP entry
+   - Assemble all entries into `set-pdf.zip` in `_exports/`
+9. Word set (if `word.set`): same pattern — not yet restored
+10. Releases mutex — returns `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }`
 
-All shell commands (git, npx antora) are executed asynchronously via `child_process.exec` with real-time stdout/stderr streaming to the server console. This keeps the Node.js event loop free during long-running builds (HTML ~20s, PDF ~2–15min), allowing the `_publicationInProgress` guard to correctly reject concurrent publish requests with 409 while a build is in progress.
+All shell commands are executed via `_execStreaming()` (async `child_process.exec` with real-time streaming). Non-fatal builds use `_tryExecAsync()`.
 
-> **Implementation:** `_execStreaming()` wraps `child_process.exec` with real-time pipe and promise-based exit handling. `_tryExecAsync()` wraps `_execStreaming()` for non-fatal optional builds.
-
-The built site is immediately served by the Express static middleware mounted at `/publication/site/`.
+The built site is served by Express static middleware at `/publication/site/`.
 
 ### UI Bundle Preparation
 
@@ -372,16 +442,16 @@ The Antora UI bundle (`ui-bundle.zip`) is the stock Antora default UI, **pre-pat
 
 1. Download the stock Antora UI bundle:
    ```bash
-   curl -L -o publication/web-site/static/ui-bundle.zip \
+   curl -L -o publication/shared/config/ui-bundle.zip \
      "https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
    ```
    On restricted networks (EC), transfer manually from a machine with internet access.
 
-2. Create the custom header partial at `publication/web-site/static/partials/header-content.hbs` with the EUROCONTROL navbar (title, search field, Download dropdown with PDF and Word links).
+2. Create the custom header partial at `publication/website/config/partials/header-content.hbs` with the EUROCONTROL navbar (title, search field, Download dropdown with PDF and Word links).
 
 3. Inject the custom partial into the bundle, preserving the `partials/` path:
    ```bash
-   cd publication/web-site/static
+   cd publication/shared/config
    zip ui-bundle.zip partials/header-content.hbs
    ```
    > **Critical:** use `zip` without `-j` to preserve the `partials/` directory path inside the archive. Using `-j` strips the path and creates a root-level entry that Antora ignores.
