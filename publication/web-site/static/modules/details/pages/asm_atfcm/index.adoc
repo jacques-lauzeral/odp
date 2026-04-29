@@ -1,0 +1,27 @@
+= ASM/ATFCM Integration
+:notitle:
+
+== Introduction
+
+The ASM/ATFCM Integration Drafting Group is the iCDM drafting group responsible for identifying, structuring, and consolidating the Operational Needs (ONs) and Operational Requirements (ORs) supporting the evolution of integrated Airspace Management and Air Traffic Flow and Capacity Management within the Network Manager (NM) system.
+Its scope is anchored in the link:https://www.eurocontrol.int/publication/asmatfcm-integration[ASM/ATFCM Integration Concept of Operations (CONOPS) Edition 1.0], published in April 2024 following approval by NMB/39.
+
+The ASM/ATFCM Integration CONOPS provides a high-level description of current and future processes and system evolution to support advanced integrated ASM/ATFCM management across all flight phases.
+Integrated ASM/ATFCM operations are key to providing ATM capabilities that can cope with forecasted increased traffic demand — both civil and military — through dynamic airspace configurations, fully integrated in a dynamic demand-capacity balance process able to accommodate civil and military airspace users' requirements according to predefined priorities.
+The CONOPS addresses major evolutions of the NM system towards 2029, leveraging digitalised advanced technologies based on AI and ML to enhance the CDM process among operational stakeholders, supported by Network Impact Assessment, what-if and what-else simulation capabilities, and interconnection with local tools.
+
+The analysis of the CONOPS was performed by the ASM/ATFCM Integration Drafting Group, with the support of a focus group composed of ASMSG and ODSG experts.
+The definition of ONs and ORs has been elaborated in coordination with other Drafting Groups, primarily the Flow DrG for complementary functionalities related to the exchange of ASM and ATFCM data and combined CDM processes, and the iDL DrG for data definition and management supporting the integrated process.
+Links with the NM B2B and NMUI DrGs address B2B and B2C interface requirements, while coordination with the Rerouting DrG covers trajectory improvement outcomes from the ASM/ATFCM process shared with Airspace Users.
+
+== Operational Needs baseline
+
+The ON baseline for ASM/ATFCM Integration is structured across three implementation horizons.
+
+*Short term (2027) — Mature ONs* address the completion of technical improvements partially implemented in previous NM releases, and specific improvements with high priority for external stakeholders: Ad-hoc airspace structure evolution, Dynamic RAD evolution, Dynamic scenario evolution, iOAT FPL evolution, Notification process evolution, Enhanced monitoring function with ASM data, and CBA/CBO evolution.
+
+*Medium term (2028) — Advanced ONs* address further developments to promote rolling process evolution and enhanced CDM, NIA and simulation capabilities: Enhanced airspace structure evolution, Rolling process evolution, NIA/SIM evolution, and CDM evolution.
+
+*Long term (2029) — Defined ONs* address advanced improvements in areas previously enhanced, with the introduction of AI and ML solutions and coverage of previously unaddressed areas such as post-operations analysis: Dynamic ATM features evolution, Further NIA/SIM evolution, Further Rolling process evolution, POST-OPS evolution, Further CDM evolution, and Enhanced Monitoring evolution.
+
+include::partial$asm_atfcm/index.adoc[]
