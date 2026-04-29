@@ -156,8 +156,13 @@ export default class ODPEditionsEntity {
         try {
             const result = await apiClient.publishEdition(item.id);
             const absoluteUrl = `${apiClient.baseUrl}${result.siteUrl}`;
+            const pdfUrl = result.pdf?.flatUrl ? `${apiClient.baseUrl}${result.pdf.flatUrl}` : null;
+            const wordUrl = result.word?.flatUrl ? `${apiClient.baseUrl}${result.word.flatUrl}` : null;
             if (statusEl) {
-                statusEl.innerHTML = `✓ Published — <a href="${absoluteUrl}" target="_blank">Open site</a>`;
+                const links = [`<a href="${absoluteUrl}" target="_blank">Open site</a>`];
+                if (pdfUrl) links.push(`<a href="${pdfUrl}" target="_blank">PDF</a>`);
+                if (wordUrl) links.push(`<a href="${wordUrl}" target="_blank">Word</a>`);
+                statusEl.innerHTML = `✓ Published — ${links.join(' · ')}`;
                 statusEl.className = 'publish-status publish-success';
             }
         } catch (error) {

@@ -197,14 +197,15 @@ export class ODPEditionService {
 
     /**
      * Publish an edition: generate Antora content, extract to works dir,
-     * commit and build HTML site + PDF. Optionally also builds Word document.
+     * commit and build HTML site. Optionally also generates PDF and/or Word
+     * as flat files and/or per-domain document sets (ZIP).
      * Only one publication can run at a time — concurrent calls get a 409 error.
-     * Word failure is non-fatal — null is returned for wordUrl if build failed.
+     * PDF and Word failures are non-fatal — null is returned for the corresponding URLs.
      *
      * @param {string|number} editionId
      * @param {string} userId
-     * @param {{ word?: boolean }} [options]
-     * @returns {Promise<{ siteUrl: string, pdfUrl: string, wordUrl: string|null }>}
+     * @param {import('../routes/odp-edition.js').PublishOptions} [options]
+     * @returns {Promise<{ siteUrl: string, pdf: { flatUrl: string|null, setUrl: string|null }, word: { flatUrl: string|null, setUrl: string|null } }>}
      */
     async publishEdition(editionId, userId, options = {}) {
         if (this._publicationInProgress) {
@@ -318,8 +319,8 @@ export class ODPEditionService {
 
             return {
                 siteUrl: '/publication/site/',
-                pdfUrl,
-                wordUrl
+                pdf: { flatUrl: pdfUrl, setUrl: null },
+                word: { flatUrl: wordUrl, setUrl: null }
             };
 
         } finally {

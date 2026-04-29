@@ -53,7 +53,7 @@ DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, mile
 
 ### 2.3 Management Entity Routers
 
-`baseline.js` and `odp-edition.js` are hand-written. They expose create and read operations only. Any `PUT` or `DELETE` returns `405 METHOD_NOT_ALLOWED`. `odp-edition.js` additionally handles the AsciiDoc ZIP export endpoint.
+`baseline.js` and `odp-edition.js` are hand-written. They expose create and read operations only. Any `PUT` or `DELETE` returns `405 METHOD_NOT_ALLOWED`. `odp-edition.js` additionally handles the AsciiDoc ZIP export endpoint and the `POST /:id/publish` endpoint, which accepts an optional JSON request body (`PublishOptions`) — absent or empty body defaults to `{ pdf: { flat: true } }`.
 
 ---
 
@@ -101,6 +101,7 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-odp.yml` | ODIP editions (`Edition`, `EditionRequest` schemas) |
 | `openapi-import.yml` | Import endpoints |
 | `openapi-docx.yml` | DOCX export endpoint |
+| `openapi-publication.yml` | Publication endpoint |
 
 Refer to these files for all endpoint signatures, query parameters, request/response schemas, and status code contracts.
 

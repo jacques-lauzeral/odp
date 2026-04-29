@@ -110,10 +110,31 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `edition list` | List all editions |
 | `edition show <id>` | Show edition |
 | `edition create <title>` | Create edition |
+| `edition publish <id>` | Build and serve Antora site; optionally generate PDF and/or Word |
 | `edition export <id> -o <path>` | Export edition as ZIP |
 | `edition export-all -o <path>` | Export full repository as ZIP |
 
 **`edition create` options**: `--from <date>` (optional start date lower bound, yyyy-mm-dd), `--type DRAFT|OFFICIAL` (default: DRAFT), `--baseline <id>` (auto-created if omitted), `--min-on-maturity DRAFT|ADVANCED|MATURE` (optional ON maturity gate).
+
+**`edition publish` options**:
+
+| Flag | Description |
+|---|---|
+| `--pdf` | Include PDF in output |
+| `--word` | Include Word in output (requires pandoc) |
+| `--flat` | Generate flat file(s) — one file covering all domains |
+| `--set` | Generate document set(s) — one file per domain + intro |
+| `--set-domains <list>` | Comma-separated DrG ids to include in set (implies `--set`); default: all |
+| `--set-intro <bool>` | Include intro document in set: `true`\|`false` (default: `true`; implies `--set`) |
+
+At least one of `--pdf` / `--word` and one of `--flat` / `--set` (or their implicants) must be specified. `--flat` and `--set` are orthogonal and may be combined. Examples:
+
+```bash
+odp-cli edition publish 42 --pdf --flat
+odp-cli edition publish 42 --pdf --word --set
+odp-cli edition publish 42 --pdf --set --set-domains RRT,IDL --set-intro false
+odp-cli edition publish 42 --pdf --word --flat --set
+```
 
 ### Import / Export
 
@@ -129,10 +150,10 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 | Command | Action |
 |---|---|
-| `edition publish <id>` | Build and serve Antora site for a specific edition |
+| `edition publish <id> --pdf --flat` | Build HTML site + flat PDF |
+| `edition publish <id> --pdf --set` | Build HTML site + per-domain PDF set (ZIP) |
+| `edition publish <id> --pdf --word --flat --set` | All formats, flat and set |
 | `publication antora --output <path> [--edition <id>]` | Generate Antora ZIP for local build |
-| `publication pdf --output <path> [--edition <id>]` | Generate PDF (not yet implemented) |
-| `publication docx --output <path> [--edition <id>]` | Generate Word document (not yet implemented) |
 
 ---
 

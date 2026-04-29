@@ -244,21 +244,60 @@ class EditionCommands {
         editionCommand
             .command('publish <id>')
             .description('Publish an ODIP edition — build Antora site and serve it')
-            .option('--pdf', 'Also generate PDF (requires Ruby/Bundler + asciidoctor-pdf)')
-            .option('--word', 'Also generate Word document (requires pandoc)')
+            .option('--pdf', 'Include PDF output')
+            .option('--word', 'Include Word output (requires pandoc)')
+            .option('--flat', 'Generate flat file(s) — one file covering all domains')
+            .option('--set', 'Generate document set(s) — one file per domain + optional intro')
+            .option('--set-domains <list>', 'Comma-separated DrG ids to include in set (implies --set); default: all')
+            .option('--set-intro <bool>', 'Include intro document in set: true|false (default: true; implies --set)', 'true')
             .action(async (id, options) => {
                 try {
+                    const opts = options;
+
+                    // --set-domains or --set-intro imply --set
+                    const setActive = opts.set || opts.setDomains !== undefined || opts.setIntro !== 'true' || opts.setIntro === 'false';
+                    const flatActive = opts.flat;
+
+                    if (!flatActive && !setActive) {
+                        console.error('Error: at least one of --flat or --set (or --set-domains / --set-intro) must be specified.');
+                        process.exit(1);
+                    }
+
+                    if (!opts.pdf && !opts.word) {
+                        console.error('Error: at least one of --pdf or --word must be specified.');
+                        process.exit(1);
+                    }
+
+                    // Build set options
+                    const buildSetOptions = () => {
+                        if (!setActive) return undefined;
+                        const setOpts = { intro: opts.setIntro !== 'false' };
+                        if (opts.setDomains) {
+                            setOpts.domains = opts.setDomains.split(',').map(d => d.trim()).filter(Boolean);
+                        }
+                        return setOpts;
+                    };
+
+                    // Build per-format options
+                    const buildFormatOptions = () => {
+                        const fmt = {};
+                        if (flatActive) fmt.flat = true;
+                        const set = buildSetOptions();
+                        if (set) fmt.set = set;
+                        return fmt;
+                    };
+
+                    const body = {};
+                    if (opts.pdf) body.pdf = buildFormatOptions();
+                    if (opts.word) body.word = buildFormatOptions();
+
                     console.log(`Publishing edition ${id}...`);
                     console.log('(Build progress is visible in server logs)');
 
-                    const params = [];
-                    if (options.pdf) params.push('pdf');
-                    if (options.word) params.push('word');
-                    const query = params.length ? `?${params.join('&')}` : '';
-
-                    const response = await fetch(`${this.baseUrl}/odp-editions/${id}/publish${query}`, {
+                    const response = await fetch(`${this.baseUrl}/odp-editions/${id}/publish`, {
                         method: 'POST',
-                        headers: this.createHeaders()
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(body)
                     });
 
                     if (response.status === 404) {
@@ -278,15 +317,20 @@ class EditionCommands {
                     const result = await response.json();
                     console.log(`✓ Edition ${id} published successfully`);
                     console.log(`✓ Site available at: ${this.baseUrl}${result.siteUrl}`);
-                    if (options.pdf) {
-                        console.log(result.pdfUrl
-                            ? `✓ PDF available at: ${this.baseUrl}${result.pdfUrl}`
-                            : `⚠ PDF build failed — check server logs`);
-                    }
-                    if (options.word) {
-                        console.log(result.wordUrl
-                            ? `✓ Word available at: ${this.baseUrl}${result.wordUrl}`
-                            : `⚠ Word build failed — check server logs`);
+
+                    for (const [fmt, label] of [['pdf', 'PDF'], ['word', 'Word']]) {
+                        const fmtResult = result[fmt];
+                        if (!fmtResult) continue;
+                        if (fmtResult.flatUrl) {
+                            console.log(`✓ ${label} flat file: ${this.baseUrl}${fmtResult.flatUrl}`);
+                        } else if (flatActive && opts[fmt]) {
+                            console.log(`⚠ ${label} flat build failed — check server logs`);
+                        }
+                        if (fmtResult.setUrl) {
+                            console.log(`✓ ${label} document set: ${this.baseUrl}${fmtResult.setUrl}`);
+                        } else if (setActive && opts[fmt]) {
+                            console.log(`⚠ ${label} set build failed — check server logs`);
+                        }
                     }
                 } catch (error) {
                     console.error('Error publishing edition:', error.message);

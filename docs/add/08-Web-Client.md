@@ -858,14 +858,14 @@ board layout, not the collection+details two-pane pattern.
 The edition details panel exposes two action buttons: **Review** (navigates to the Review activity) and **Publish** (triggers server-side Antora build).
 
 **Publish flow:**
-1. Button click calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish`
+1. Button click calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish` with body `{ pdf: { flat: true } }` (default)
 2. Button is disabled and labelled "Publishing…" while the request is in flight (~5–30s)
-3. On success: status area below the action row shows "✓ Published — Open site" with an absolute link to the served site
+3. On success: status area shows "✓ Published — Open site · PDF · Word" with absolute links for whichever URLs are present in the response
 4. On 409: "Publication already in progress — please retry later"
 5. On other error: error message displayed in status area
 
-**`apiClient.publishEdition(id)`** is a dedicated method on `ApiClient` (`shared/api-client.js`) — `post('/odp-editions', {}, { id, subPath: 'publish' })` — consistent with the existing `createMilestone`/`updateMilestone` pattern.
+**`apiClient.publishEdition(id, options)`** is a dedicated method on `ApiClient` (`shared/api-client.js`) — `post('/odp-editions', options, { id, subPath: 'publish' })` — accepting an optional `PublishOptions` body (default: `{ pdf: { flat: true } }`). Response shape: `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }` — all format URLs are nullable.
 
-The site URL returned by the server (`/publication/site/`) is made absolute using `apiClient.baseUrl` before display.
+The site URL and any format URLs returned by the server are made absolute using `apiClient.baseUrl` before display.
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

@@ -173,8 +173,8 @@ export class ApiClient {
         return this.get(endpoint, { id, subPath: `versions/${versionNumber}` });
     }
 
-    async publishEdition(editionId) {
-        return this.post('/odp-editions', {}, { id: editionId, subPath: 'publish', params: { pdf: true }, timeout: 300_000 });
+    async publishEdition(editionId, options = { pdf: { flat: true } }) {
+        return this.post('/odp-editions', options, { id: editionId, subPath: 'publish', timeout: 300_000 });
     }
 
     async getMilestones(changeId, params = {}) {

@@ -95,10 +95,16 @@ paths:
         Builds the Antora website for the specified edition and serves it at
         `/publication/site/`. Optionally also generates PDF (requires Ruby/Bundler +
         asciidoctor-pdf) and/or Word document (requires pandoc) from the same Antora
-        source. Only one publication can run at a time — concurrent requests are
-        rejected with 409. The build runs synchronously; logs are available in the
-        server log stream. PDF and Word failures are non-fatal — the response returns
-        null for the corresponding URL if the build failed.
+        source — either as a single flat file, a per-domain document set (ZIP), or both.
+
+        Only one publication can run at a time — concurrent requests are rejected with 409.
+        The build runs synchronously; logs are available in the server log stream.
+
+        PDF and Word failures are non-fatal — the response returns null for the
+        corresponding URL if the format was not requested or its build failed.
+
+        **Default behaviour** (absent or empty request body): generates HTML site + flat PDF only,
+        equivalent to `{ pdf: { flat: true } }`.
       parameters:
         - name: id
           in: path
@@ -106,37 +112,51 @@ paths:
           schema:
             type: string
           description: Edition ID
-        - name: pdf
-          in: query
-          required: false
-          schema:
-            type: boolean
-          description: Also generate PDF document (requires Ruby/Bundler + asciidoctor-pdf)
-        - name: word
-          in: query
-          required: false
-          schema:
-            type: boolean
-          description: Also generate Word document (requires pandoc)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishOptions'
+            examples:
+              default:
+                summary: Default — HTML + flat PDF only
+                value: {}
+              pdfAndWord:
+                summary: Flat PDF + flat Word
+                value:
+                  pdf:
+                    flat: true
+                  word:
+                    flat: true
+              fullSet:
+                summary: Flat + per-domain set for both formats
+                value:
+                  pdf:
+                    flat: true
+                    set:
+                      intro: true
+                      domains: [RRT, IDL, NM]
+                  word:
+                    flat: true
+                    set:
+                      intro: true
+                      domains: [RRT, IDL, NM]
+              setOnly:
+                summary: Per-domain set only, no flat file
+                value:
+                  pdf:
+                    set:
+                      intro: true
+                      domains: [RRT, IDL]
       responses:
         '200':
-          description: Publication complete — URLs returned (null if format was not requested or failed)
+          description: |
+            Publication complete. URLs are null if the format was not requested or its build failed.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  siteUrl:
-                    type: string
-                    example: /publication/site/
-                  pdfUrl:
-                    type: string
-                    nullable: true
-                    example: /publication/site/odip/_exports/index.pdf
-                  wordUrl:
-                    type: string
-                    nullable: true
-                    example: /publication/site/odip/_exports/index.docx
+                $ref: '#/components/schemas/PublishResult'
         '404':
           description: Edition not found
           content:
@@ -215,3 +235,68 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+
+components:
+  schemas:
+
+    PublishFormatOptions:
+      type: object
+      description: Publication options for a single output format (PDF or Word).
+      properties:
+        flat:
+          type: boolean
+          default: false
+          description: Generate a single flat file covering all domains.
+        set:
+          type: object
+          description: Generate a per-domain document set delivered as a ZIP archive.
+          properties:
+            intro:
+              type: boolean
+              default: false
+              description: Include the introduction document in the set.
+            domains:
+              type: array
+              description: DrG identifiers for which to generate a domain document. Empty array produces a ZIP with intro only (if requested).
+              items:
+                $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
+              minItems: 0
+
+    PublishOptions:
+      type: object
+      description: |
+        Publication options. Absent or empty object defaults to `{ pdf: { flat: true } }`.
+        At least one format option must resolve to a non-empty build set; otherwise the
+        request is treated as default.
+      properties:
+        pdf:
+          $ref: '#/components/schemas/PublishFormatOptions'
+        word:
+          $ref: '#/components/schemas/PublishFormatOptions'
+
+    PublishFormatResult:
+      type: object
+      description: URLs produced for a single output format. Null fields indicate the output was not requested or its build failed.
+      properties:
+        flatUrl:
+          type: string
+          nullable: true
+          description: URL of the flat file.
+          example: /publication/site/odip/_exports/index.pdf
+        setUrl:
+          type: string
+          nullable: true
+          description: URL of the ZIP archive containing the per-domain document set.
+          example: /publication/site/odip/_exports/set-pdf.zip
+
+    PublishResult:
+      type: object
+      properties:
+        siteUrl:
+          type: string
+          description: URL of the served HTML site (always present on success).
+          example: /publication/site/
+        pdf:
+          $ref: '#/components/schemas/PublishFormatResult'
+        word:
+          $ref: '#/components/schemas/PublishFormatResult'
