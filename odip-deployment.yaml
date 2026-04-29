@@ -40,8 +40,8 @@ spec:
           value: "neo4j"
         - name: NEO4J_PASSWORD
           value: "password123"
-        - name: STATIC_CONTENT_PATH
-          value: "/app/publication/web-site/static"
+        - name: PUBLICATION_PATH
+          value: "/app/publication"
         - name: ODIP_HOME
           value: "/odip"
         - name: LOG_PATH

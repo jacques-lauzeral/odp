@@ -115,9 +115,54 @@ process.on('SIGINT', async () => {
 });
 
 /**
- * Initialize publication workspace on server startup.
- * Ensures ODIP_HOME/publication/works/ is a git repo with dependencies installed.
+ * Initialize a single publication workspace directory.
  * Safe to call on every restart — all steps are idempotent.
+ *
+ * @param {string} worksDir - Absolute path to the works directory
+ * @param {string} staticContentPath - Absolute path to the static content to bootstrap from
+ * @param {string} label - Human-readable label for log messages
+ */
+async function initializeWorksDir(worksDir, sourcePaths, label) {
+    console.log(`Initializing publication workspace [${label}]: ${worksDir}`);
+
+    fs.mkdirSync(worksDir, { recursive: true });
+
+    const gitDir = nodePath.join(worksDir, '.git');
+    if (!fs.existsSync(gitDir)) {
+        console.log(`[${label}] running git init...`);
+        execSync('git init', { cwd: worksDir, stdio: 'inherit' });
+    }
+
+    execSync(`git config --global --add safe.directory ${worksDir}`, { cwd: worksDir, stdio: 'inherit' });
+    execSync('git config user.email "odip@localhost"', { cwd: worksDir, stdio: 'inherit' });
+    execSync('git config user.name "ODIP"', { cwd: worksDir, stdio: 'inherit' });
+
+    const packageJsonPath = nodePath.join(worksDir, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) {
+        // Bootstrap: copy from each source path in order (later paths override earlier)
+        for (const srcPath of sourcePaths) {
+            if (fs.existsSync(srcPath)) {
+                console.log(`[${label}] bootstrapping from ${srcPath}...`);
+                execSync(`cp -r ${srcPath}/. ${worksDir}/`, { stdio: 'inherit' });
+            } else {
+                console.warn(`[${label}] source path not found: ${srcPath}`);
+            }
+        }
+    }
+
+    const nodeModulesDir = nodePath.join(worksDir, 'node_modules');
+    if (!fs.existsSync(nodeModulesDir)) {
+        console.warn(`[${label}] node_modules not present — run odip-admin install to complete setup`);
+    }
+
+    console.log(`Publication workspace [${label}] initialized`);
+}
+
+/**
+ * Initialize all publication workspaces on server startup:
+ * - works/          HTML site + flat document builds
+ * - works-intro/    Document set intro build
+ * - works-{drg}/    Document set per-domain builds (one per DrG)
  */
 async function initializePublicationWorkspace() {
     const odipHome = process.env.ODIP_HOME;
@@ -125,50 +170,47 @@ async function initializePublicationWorkspace() {
         throw new Error('ODIP_HOME environment variable is not set — cannot initialize publication workspace');
     }
 
-    const worksDir = nodePath.join(odipHome, 'publication', 'works');
-    const staticContentPath = process.env.STATIC_CONTENT_PATH ||
-        nodePath.join(new URL('../publication/web-site/static', import.meta.url).pathname);
+    const publicationPath = process.env.PUBLICATION_PATH ||
+        nodePath.join(new URL('../../../publication', import.meta.url).pathname);
 
-    console.log(`Initializing publication workspace: ${worksDir}`);
+    const websiteConfigPath   = nodePath.join(publicationPath, 'website', 'config');
+    const websiteContentPath  = nodePath.join(publicationPath, 'website', 'content');
+    const documentConfigPath  = nodePath.join(publicationPath, 'document', 'config');
+    const documentContentPath = nodePath.join(publicationPath, 'document', 'content');
+    const sharedConfigPath    = nodePath.join(publicationPath, 'shared', 'config');
+    const sharedContentPath   = nodePath.join(publicationPath, 'shared', 'content');
 
-    // Ensure directory exists (belt-and-suspenders after odip-admin ensure_runtime_dirs)
-    fs.mkdirSync(worksDir, { recursive: true });
+    const publicationDir = nodePath.join(odipHome, 'publication');
 
-    // Git init if not already a repo
-    const gitDir = nodePath.join(worksDir, '.git');
-    if (!fs.existsSync(gitDir)) {
-        console.log('Publication workspace: running git init...');
-        execSync('git init', { cwd: worksDir, stdio: 'inherit' });
-        console.log('Publication workspace: git init complete');
-    } else {
-        console.log('Publication workspace: git repo already initialized');
+    // Main works dir — website config + shared config + shared content (all domains) + website content
+    await initializeWorksDir(
+        nodePath.join(publicationDir, 'works'),
+        [websiteConfigPath, sharedConfigPath, sharedContentPath, websiteContentPath],
+        'main'
+    );
+
+    // Intro works dir — document config + shared config + shared/content/intro + document/content/intro
+    await initializeWorksDir(
+        nodePath.join(publicationDir, 'works-intro'),
+        [documentConfigPath, sharedConfigPath,
+            nodePath.join(sharedContentPath, 'intro'),
+            nodePath.join(documentContentPath, 'intro')],
+        'intro'
+    );
+
+    // Per-DrG works dirs — document config + shared config + shared/content/{drg}
+    const drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
+        .filter(e => e.isDirectory() && e.name !== 'intro')
+        .map(e => e.name);
+
+    for (const drgSlug of drgDirs) {
+        await initializeWorksDir(
+            nodePath.join(publicationDir, `works-${drgSlug}`),
+            [documentConfigPath, sharedConfigPath,
+                nodePath.join(sharedContentPath, drgSlug)],
+            drgSlug
+        );
     }
-
-    // Always configure safe.directory and identity (idempotent, survives .git recreation)
-    execSync(`git config --global --add safe.directory ${worksDir}`, { cwd: worksDir, stdio: 'inherit' });
-    execSync('git config user.email "odip@localhost"', { cwd: worksDir, stdio: 'inherit' });
-    execSync('git config user.name "ODIP"', { cwd: worksDir, stdio: 'inherit' });
-
-    // Copy static content into works/ if package.json not present (first-time bootstrap)
-    const packageJsonPath = nodePath.join(worksDir, 'package.json');
-    if (!fs.existsSync(packageJsonPath)) {
-        console.log(`Publication workspace: bootstrapping static content from ${staticContentPath}...`);
-        execSync(`cp -r ${staticContentPath}/. ${worksDir}/`, { stdio: 'inherit' });
-        console.log('Publication workspace: static content copied');
-    } else {
-        console.log('Publication workspace: static content already present');
-    }
-
-    // npm install is handled by odip-admin install (host side)
-    // to avoid container internet access dependency
-    const nodeModulesDir = nodePath.join(worksDir, 'node_modules');
-    if (!fs.existsSync(nodeModulesDir)) {
-        console.warn('Publication workspace: node_modules not present — run odip-admin install to complete setup');
-    } else {
-        console.log('Publication workspace: node_modules already present');
-    }
-
-    console.log('Publication workspace initialized');
 }
 
 async function startServer() {

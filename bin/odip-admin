@@ -51,21 +51,32 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
+# List all publication works directories
+list_works_dirs() {
+    echo "${ODIP_HOME}/publication/works"
+    echo "${ODIP_HOME}/publication/works-intro"
+    local shared_content="${ODIP_REPO}/publication/shared/content"
+    if [[ -d "$shared_content" ]]; then
+        for d in "$shared_content"/*/; do
+            local drg_slug
+            drg_slug=$(basename "$d")
+            [[ "$drg_slug" == "intro" ]] && continue
+            echo "${ODIP_HOME}/publication/works-${drg_slug}"
+        done
+    fi
+}
+
 ensure_runtime_dirs() {
     mkdir -p "${ODIP_HOME}/data"
     mkdir -p "${ODIP_HOME}/backups/auto"
     mkdir -p "${ODIP_HOME}/backups/adhoc"
     mkdir -p "${ODIP_HOME}/backups/reset"
     mkdir -p "${ODIP_HOME}/logs"
-    mkdir -p "${ODIP_HOME}/publication/works"
-    chmod 777 "${ODIP_HOME}/publication/works"
-    # Copy UI bundle into works/ if present in static content
-    local bundle_src="${ODIP_REPO}/publication/web-site/static/ui-bundle.zip"
-    local bundle_dst="${ODIP_HOME}/publication/works/ui-bundle.zip"
-    if [[ -f "$bundle_src" && ! -f "$bundle_dst" ]]; then
-        cp "$bundle_src" "$bundle_dst"
-        log "UI bundle copied to publication workspace"
-    fi
+    # Create all publication works dirs with open permissions (rootless Podman + NFS)
+    while IFS= read -r works_dir; do
+        mkdir -p "$works_dir"
+        chmod 777 "$works_dir"
+    done < <(list_works_dirs)
 }
 
 extract_data_dir() {
@@ -176,7 +187,7 @@ Usage: odip-admin install [options]
   One-time installation setup:
     - Download Antora UI bundle (requires internet or --proxy)
     - Install npm dependencies for all workspaces
-    - Install publication workspace dependencies (works/)
+    - Bootstrap and install npm dependencies for all publication works dirs (works/, works-intro/, works-{drg}/)
     - Build server image (gem install mode controlled by ODIP_GEM_MODE)
     - Build web client image
 
@@ -192,7 +203,7 @@ Notes:
   On restricted networks (e.g. EC), direct download of the Antora UI bundle
   will fail. Use --proxy or transfer the bundle manually:
 
-    scp ui-bundle.zip user@host:$ODIP_REPO/publication/web-site/static/
+    scp ui-bundle.zip user@host:$ODIP_REPO/publication/shared/config/
 
   Once the bundle is present in the static directory, re-run install
   (the download step will be skipped automatically).
@@ -205,7 +216,7 @@ EOF
     ensure_runtime_dirs
 
     # Download Antora UI bundle if not already present
-    local bundle_src="${ODIP_REPO}/publication/web-site/static/ui-bundle.zip"
+    local bundle_src="${ODIP_REPO}/publication/shared/config/ui-bundle.zip"
     if [[ ! -f "$bundle_src" ]]; then
         log "Downloading Antora UI bundle..."
         local curl_opts="-sSL --connect-timeout 5 --max-time 30"
@@ -238,26 +249,53 @@ EOF
         log "Antora UI bundle already present — skipping download"
     fi
 
-    # Copy bundle to works/ if needed
-    local bundle_dst="${ODIP_HOME}/publication/works/ui-bundle.zip"
-    if [[ -f "$bundle_src" && ! -f "$bundle_dst" ]]; then
-        cp "$bundle_src" "$bundle_dst"
-        log "UI bundle copied to publication workspace"
-    fi
+    # Bootstrap and install dependencies for all publication works dirs
+    local pub_repo="${ODIP_REPO}/publication"
+    local website_config="${pub_repo}/website/config"
+    local website_content="${pub_repo}/website/content"
+    local document_config="${pub_repo}/document/config"
+    local shared_config="${pub_repo}/shared/config"
+    local shared_content="${pub_repo}/shared/content"
 
-    # Always sync static content to works/ (unconditional — ensures no stale files)
-    log "Syncing publication workspace static content..."
-    cp -r "${ODIP_REPO}/publication/web-site/static/." "${ODIP_HOME}/publication/works/"
-    log "Static content synced to publication workspace"
+    # Helper: bootstrap a works dir from config source dirs only (content mapping handled at publish time)
+    bootstrap_works_dir() {
+        local works_dir="$1"; shift
+        log "Bootstrapping: $works_dir"
+        for src in "$@"; do
+            [[ -d "$src" ]] && cp -r "${src}/." "$works_dir/"
+        done
+    }
 
-    # npm install in works/ (host side, proxy-aware via ~/.npmrc)
-    local works_modules="${ODIP_HOME}/publication/works/node_modules"
-    if [[ ! -d "$works_modules" ]]; then
-        log "Installing publication workspace dependencies..."
-        (cd "${ODIP_HOME}/publication/works" && npm install)
-        log "Publication workspace dependencies installed"
-    else
-        log "Publication workspace dependencies already installed"
+    # Helper: npm install in a works dir (idempotent)
+    install_works_deps() {
+        local works_dir="$1"
+        local label="$2"
+        if [[ ! -d "${works_dir}/node_modules" ]]; then
+            log "npm install: $label"
+            (cd "$works_dir" && npm install)
+        else
+            log "npm install: $label — already installed"
+        fi
+    }
+
+    # Main works dir: shared config + website config (website config overrides shared)
+    bootstrap_works_dir "${ODIP_HOME}/publication/works"         "$shared_config" "$website_config"
+    install_works_deps "${ODIP_HOME}/publication/works" "works (main)"
+
+    # Intro works dir: shared config + document config
+    bootstrap_works_dir "${ODIP_HOME}/publication/works-intro"         "$shared_config" "$document_config"
+    install_works_deps "${ODIP_HOME}/publication/works-intro" "works-intro"
+
+    # Per-DrG works dirs: shared config + document config
+    if [[ -d "$shared_content" ]]; then
+        for d in "$shared_content"/*/; do
+            local drg_slug
+            drg_slug=$(basename "$d")
+            [[ "$drg_slug" == "intro" ]] && continue
+            local domain_works="${ODIP_HOME}/publication/works-${drg_slug}"
+            bootstrap_works_dir "$domain_works"                 "$shared_config" "$document_config"
+            install_works_deps "$domain_works" "works-${drg_slug}"
+        done
     fi
 
     install_host_dependencies

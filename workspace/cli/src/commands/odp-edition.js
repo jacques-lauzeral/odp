@@ -244,6 +244,7 @@ class EditionCommands {
         editionCommand
             .command('publish <id>')
             .description('Publish an ODIP edition — build Antora site and serve it')
+            .option('--html', 'Build and serve the HTML site')
             .option('--pdf', 'Include PDF output')
             .option('--word', 'Include Word output (requires pandoc)')
             .option('--flat', 'Generate flat file(s) — one file covering all domains')
@@ -287,7 +288,7 @@ class EditionCommands {
                         return fmt;
                     };
 
-                    const body = {};
+                    const body = { html: opts.html === true };
                     if (opts.pdf) body.pdf = buildFormatOptions();
                     if (opts.word) body.word = buildFormatOptions();
 

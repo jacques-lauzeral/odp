@@ -1,0 +1,37 @@
+site:
+  title: ODIP
+  url: http://localhost:8081
+  start_page: odip:ROOT:index.adoc
+
+content:
+  sources:
+    - url: .
+      branches: HEAD
+
+antora:
+  extensions:
+    - require: '@antora/pdf-extension'
+      assembler_config: ./antora-assembler-pdf-intro.yml
+
+ui:
+  bundle:
+    url: ./ui-bundle.zip
+    snapshot: false
+  supplemental_files:
+    - path: ui.yml
+      contents: |
+        static_files:
+        - .nojekyll
+        supplemental_ui: true
+    # Override antora.yml nav to ROOT module only — excludes details module
+    - path: antora.yml
+      contents: |
+        name: odip
+        version: ~
+        title: ODIP
+        nav:
+          - modules/ROOT/nav.adoc
+
+asciidoc:
+  attributes:
+    page-pagination: ''

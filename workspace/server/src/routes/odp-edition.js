@@ -131,10 +131,10 @@ router.post('/:id/publish', async (req, res) => {
         const userId = getUserId(req);
         const editionId = req.params.id;
 
-        // Default: flat PDF only (backward compat — absent body behaves as ?pdf=true did)
+        // Default: html + flat PDF (backward compat — absent body preserves prior behaviour)
         const options = (req.body && Object.keys(req.body).length > 0)
             ? req.body
-            : { pdf: { flat: true } };
+            : { html: true, pdf: { flat: true } };
 
         console.log(`ODPEditionService.publishEdition() id: ${editionId}, options: ${JSON.stringify(options)}, userId: ${userId}`);
         const result = await ODPEditionService.publishEdition(editionId, userId, options);

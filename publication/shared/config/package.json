@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "ODIP documentation website",
   "scripts": {
-    "build": "antora antora-playbook.yml",
-    "build-docx": "antora antora-playbook-docx.yml",
+    "build": "antora ../build/antora-playbook.yml",
+    "build-docx": "antora ../build/antora-playbook-docx.yml",
     "build-all": "npm run build && npm run build-docx"
   },
   "devDependencies": {

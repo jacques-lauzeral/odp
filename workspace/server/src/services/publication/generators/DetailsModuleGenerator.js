@@ -21,9 +21,11 @@ const __dirname = path.dirname(__filename);
  * Creates a nested file structure organized by DrG and path hierarchy.
  */
 export class DetailsModuleGenerator {
-    constructor(userId, editionId = null) {
+    constructor(userId, editionId = null, drgFilter = null, introOnly = false) {
         this.userId = userId;
         this.editionId = editionId;
+        this.drgFilter = drgFilter ? drgFilter.toUpperCase() : null;
+        this.introOnly = introOnly;
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
         this.deltaConverter = new DeltaToAsciidocConverter();
@@ -46,6 +48,11 @@ export class DetailsModuleGenerator {
      */
     async generate() {
         try {
+            // Intro-only mode: no details module files — ROOT module only
+            if (this.introOnly) {
+                return {};
+            }
+
             // Load templates
             await this._loadTemplates();
 
@@ -187,7 +194,6 @@ export class DetailsModuleGenerator {
             try {
                 // Force fresh read with explicit encoding
                 this.templates[name] = await fs.readFile(templatePath, { encoding: 'utf-8', flag: 'r' });
-                console.log(`Loaded template ${name}: ${this.templates[name].substring(0, 100)}...`);
             } catch (error) {
                 throw new Error(`Failed to load template ${name}: ${error.message}`);
             }
@@ -226,8 +232,13 @@ export class DetailsModuleGenerator {
             'standard'
         );
 
-        const ons = allRequirements.filter(r => r.type === 'ON');
-        const ors = allRequirements.filter(r => r.type === 'OR');
+        let ons = allRequirements.filter(r => r.type === 'ON');
+        let ors = allRequirements.filter(r => r.type === 'OR');
+
+        if (this.drgFilter) {
+            ons = ons.filter(r => r.drg === this.drgFilter);
+            ors = ors.filter(r => r.drg === this.drgFilter);
+        }
 
         return { ons, ors };
     }

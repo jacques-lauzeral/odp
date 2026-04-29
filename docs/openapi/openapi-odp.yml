@@ -265,10 +265,15 @@ components:
     PublishOptions:
       type: object
       description: |
-        Publication options. Absent or empty object defaults to `{ pdf: { flat: true } }`.
+        Publication options. Absent or empty object defaults to `{ html: true, pdf: { flat: true } }`.
         At least one format option must resolve to a non-empty build set; otherwise the
         request is treated as default.
+        Note: `html` defaults to true from the API (backward compat); CLI callers must pass it explicitly.
       properties:
+        html:
+          type: boolean
+          default: true
+          description: Build and serve the HTML site. Defaults to true when called from the API.
         pdf:
           $ref: '#/components/schemas/PublishFormatOptions'
         word:

@@ -1,0 +1,15 @@
+component_versions: '**'
+assembly:
+  section_merge_strategy: fuse
+asciidoc:
+  attributes:
+    allow-uri-read: ''
+    source-highlighter: rouge
+    toc: ''
+    toclevels: 3
+    sectnums: ''
+    sectnumlevels: 7
+    version-label: 'Edition'
+pdf-theme: ./pdf-theme.yml
+build:
+  command: asciidoctor-pdf
