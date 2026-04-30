@@ -580,11 +580,12 @@ export class ODPEditionService {
                 const explicitFiles = [
                     { src: 'ui-bundle.zip', warn: 'Antora build will fail' },
                     { src: 'Gemfile', warn: 'PDF build will fail' },
+                    { src: 'word-template.docx', dest: 'template.docx', warn: 'Word build will use no reference template' },
                 ];
-                for (const { src, warn } of explicitFiles) {
+                for (const { src, dest, warn } of explicitFiles) {
                     const found = configPaths.map(p => nodePath.join(p, src)).find(p => fs.existsSync(p));
                     if (found) {
-                        archive.file(found, { name: src });
+                        archive.file(found, { name: dest || src });
                     } else {
                         console.warn(`[generateAntoraZip] ${src} not found in any config path — ${warn}`);
                     }

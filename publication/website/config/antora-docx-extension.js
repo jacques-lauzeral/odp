@@ -86,7 +86,6 @@ async function convert(doc, convertAttributes, buildConfig) {
         '-f', 'docbook',
         '-t', 'docx',
         '--wrap=none',
-        '--number-sections',
         '--toc',
         '--toc-depth=3',
         '--resource-path=.:' + ospath.join(cwd, 'modules', 'details', 'assets', 'images'),  // ← ADD THIS

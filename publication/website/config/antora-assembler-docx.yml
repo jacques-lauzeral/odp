@@ -11,5 +11,6 @@ asciidoc:
     revdate: '2026-02-13'
     revremark: 'DRAFT'
     version-label: 'Edition'
+    env-export: ''
 build:
-  command: bundle exec asciidoctor -b docbook
+  command: asciidoctor -b docbook -b docbook
