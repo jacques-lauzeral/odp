@@ -15,5 +15,3 @@ In addition to CONOPS-derived requirements, the Flow DrG also captures urgent op
 
 The Flow DrG consolidates inputs from operational domains and iNM initiatives, translating them into a coherent and traceable set of ONs and ORs in line with iCDM principles.
 Within the NM evolution framework, it provides the operational foundation for the development and integration of flow functionalities, ensuring alignment with operational needs and contributing to safer, more efficient, and more predictable network operations.
-
-include::partial$flow/index.adoc[]

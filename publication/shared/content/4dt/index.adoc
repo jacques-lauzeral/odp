@@ -16,5 +16,3 @@ Several other enabling needs to improve the NM trajectory are also included in t
 
 The Drafting Group provides the primary forum for discussing operational needs and requirements within NM, to be shared with stakeholders under the relevant working arrangements and the ODIP.
 Close coordination with other drafting groups, such as Flow, Rerouting, and Integrated Data Layer Drafting Groups, is key to ensure transparency and cross-domain understanding.
-
-include::partial$4dt/index.adoc[]

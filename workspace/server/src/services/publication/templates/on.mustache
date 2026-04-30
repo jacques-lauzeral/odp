@@ -5,7 +5,7 @@
 *Code:* {{code}} +
 *Domain:* {{drg}} +
 {{#refinesParents}}
-*Refines:* xref:{{{parentPath}}}/{{{parentFile}}}[{{parentTitle}}]
+*Refines:* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
 
@@ -53,7 +53,7 @@ Refined By::
 +
 --
 {{#items}}
-* xref:{{{path}}}/{{{file}}}[{{type}} {{title}}]
+* xref:{{{xref}}}[{{type}} {{title}}]
 {{/items}}
 --
 {{/refinedBy}}
@@ -63,7 +63,7 @@ Implemented By::
 +
 --
 {{#items}}
-* xref:{{{path}}}/{{{file}}}[OR {{title}}]
+* xref:{{{xref}}}[OR {{title}}]
 {{/items}}
 --
 {{/implementedBy}}

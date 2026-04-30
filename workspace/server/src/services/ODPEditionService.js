@@ -536,7 +536,9 @@ export class ODPEditionService {
                     .filter(e => e.isDirectory() && e.name !== 'intro')
                     .map(e => ({
                         srcPath: nodePath.join(sharedContentPath, e.name),
-                        mapFn: rel => `modules/details/pages/${e.name}/${rel}`
+                        mapFn: rel => `modules/details/pages/${e.name}/${rel}`,
+                        drgSlug: e.name,
+                        websiteMode: true
                     })),
                 { srcPath: websiteContentPath,
                     mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
@@ -589,12 +591,23 @@ export class ODPEditionService {
                 }
 
                 // Stage 2 — Content files: remapped to Antora module paths via contentMappings
-                for (const { srcPath, mapFn } of contentMappings) {
+                for (const { srcPath, mapFn, drgSlug: mappingDrgSlug, websiteMode } of contentMappings) {
                     if (!fs.existsSync(srcPath)) continue;
                     for (const entry of await this._listStaticFiles(srcPath)) {
                         const rel = nodePath.relative(srcPath, entry).replace(/\\/g, '/');
                         const targetPath = mapFn(rel);
-                        archive.file(entry, { name: targetPath });
+                        // Website mode: append partial include to {drg}/index.adoc
+                        if (websiteMode && rel === 'index.adoc' && mappingDrgSlug) {
+                            const fileContent = fs.readFileSync(entry, 'utf-8');
+                            const appended = fileContent.trimEnd() +
+                                `
+
+include::partial$${mappingDrgSlug}/index.adoc[]
+`;
+                            archive.append(appended, { name: targetPath });
+                        } else {
+                            archive.file(entry, { name: targetPath });
+                        }
                     }
                 }
 
@@ -607,6 +620,8 @@ export class ODPEditionService {
                         targetPath = `modules/ROOT/assets/${filePath.slice(drgAssetsPrefix.length)}`;
                     } else if (domainMode && filePath === 'details/nav.adoc') {
                         targetPath = 'modules/ROOT/nav.adoc';
+                    } else if (domainMode && filePath.startsWith('details/partials/')) {
+                        targetPath = `modules/ROOT/partials/${filePath.slice('details/partials/'.length)}`;
                     } else if (domainMode) {
                         continue;
                     }

@@ -4,5 +4,3 @@
 == Introduction
 
 <TO BE COMPLETED>
-
-include::partial$crisis/index.adoc[]

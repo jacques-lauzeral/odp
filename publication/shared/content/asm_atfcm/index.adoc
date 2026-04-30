@@ -23,5 +23,3 @@ The ON baseline for ASM/ATFCM Integration is structured across three implementat
 *Medium term (2028) — Advanced ONs* address further developments to promote rolling process evolution and enhanced CDM, NIA and simulation capabilities: Enhanced airspace structure evolution, Rolling process evolution, NIA/SIM evolution, and CDM evolution.
 
 *Long term (2029) — Defined ONs* address advanced improvements in areas previously enhanced, with the introduction of AI and ML solutions and coverage of previously unaddressed areas such as post-operations analysis: Dynamic ATM features evolution, Further NIA/SIM evolution, Further Rolling process evolution, POST-OPS evolution, Further CDM evolution, and Enhanced Monitoring evolution.
-
-include::partial$asm_atfcm/index.adoc[]

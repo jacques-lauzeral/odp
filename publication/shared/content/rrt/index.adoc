@@ -47,5 +47,3 @@ Operational users need to initiate, receive and respond to trajectory adjustment
 _Maturity level: DEFINED_
 
 Together, these ONs provide the operational baseline for the derivation, traceability, and prioritisation of rerouting ORs.
-
-include::partial$rrt/index.adoc[]

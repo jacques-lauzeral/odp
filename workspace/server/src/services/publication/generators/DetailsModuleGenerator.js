@@ -752,8 +752,10 @@ export class DetailsModuleGenerator {
         // Slugify DrG name for consistent paths
         const drgSlug = this._slugify(drg);
 
-        // Build current full path from DrG root
-        const currentFullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+        // Build current full path from DrG root (domain mode: no drgSlug prefix)
+        const currentFullPath = this.drgFilter
+            ? (currentPath || '')
+            : (currentPath ? `${drgSlug}/${currentPath}` : drgSlug);
 
         // A collapsed node has at least one direct ON. In that case, sub-folders
         // are not rendered as separate linked pages but are absorbed inline into
@@ -783,7 +785,7 @@ export class DetailsModuleGenerator {
         // Pre-rendering here avoids conditional logic in the Mustache template.
         const toLine = item => ({
             line: item.file
-                ? `${item.bulletPrefix} xref:${item.path}/${item.file}[${item.title}]`
+                ? `${item.bulletPrefix} xref:${this._buildXrefPath(item.path, item.file)}[${item.title}]`
                 : `${item.bulletPrefix} ${item.title}`
         });
 
@@ -791,9 +793,9 @@ export class DetailsModuleGenerator {
             folderName: node.name || folderName,
             subfolders: (!collapsed && Object.keys(node.folders).length > 0) ? {
                 folders: Object.values(node.folders).sort((a, b) => a.name.localeCompare(b.name)).map(folder => {
-                    const fullPath = currentPath
-                        ? `${drgSlug}/${currentPath}/${folder.slug}`
-                        : `${drgSlug}/${folder.slug}`;
+                    const fullPath = this.drgFilter
+                        ? (currentPath ? `${currentPath}/${folder.slug}` : folder.slug)
+                        : (currentPath ? `${drgSlug}/${currentPath}/${folder.slug}` : `${drgSlug}/${folder.slug}`);
                     return {
                         name: folder.name,
                         path: fullPath
@@ -947,9 +949,9 @@ export class DetailsModuleGenerator {
                     console.warn(`ON ${on.itemId} references parent ON ${parent.id} which was not found in lookup`);
                     return null;
                 }
+                const parentEntityPath = this._buildEntityPath(parentInfo.drg, parentInfo.path);
                 return {
-                    parentPath: this._buildEntityPath(parentInfo.drg, parentInfo.path),
-                    parentFile: `on-${parent.id}.adoc`,
+                    parentXref: this._buildXrefPath(parentEntityPath, `on-${parent.id}.adoc`),
                     parentTitle: parent.title
                 };
             })() : null,
@@ -961,12 +963,12 @@ export class DetailsModuleGenerator {
                         console.warn(`ON ${on.itemId} is refined by ${child.type} ${child.id} which was not found in lookup`);
                         return null;
                     }
+                    const childEntityPath = this._buildEntityPath(childInfo.drg, childInfo.path);
                     return {
                         id: child.id,
                         title: child.title,
                         type: child.type,
-                        path: this._buildEntityPath(childInfo.drg, childInfo.path),
-                        file: `${child.type.toLowerCase()}-${child.id}.adoc`
+                        xref: this._buildXrefPath(childEntityPath, `${child.type.toLowerCase()}-${child.id}.adoc`)
                     };
                 }).filter(Boolean)
             } : null,
@@ -977,11 +979,11 @@ export class DetailsModuleGenerator {
                         console.warn(`ON ${on.itemId} is implemented by OR ${or.id} which was not found in lookup`);
                         return null;
                     }
+                    const orEntityPath = this._buildEntityPath(orInfo.drg, orInfo.path);
                     return {
                         id: or.id,
                         title: or.title,
-                        path: this._buildEntityPath(orInfo.drg, orInfo.path),
-                        file: `or-${or.id}.adoc`
+                        xref: this._buildXrefPath(orEntityPath, `or-${or.id}.adoc`)
                     };
                 }).filter(Boolean)
             } : null,
@@ -992,10 +994,10 @@ export class DetailsModuleGenerator {
                         console.warn(`ON ${on.itemId} references OR ${or.id} which was not found in lookup`);
                         return null;
                     }
+                    const orEntityPath2 = this._buildEntityPath(orInfo.drg, orInfo.path);
                     return {
                         title: or.title,
-                        path: this._buildEntityPath(orInfo.drg, orInfo.path),
-                        file: `or-${or.id}.adoc`
+                        xref: this._buildXrefPath(orEntityPath2, `or-${or.id}.adoc`)
                     };
                 }).filter(Boolean)
             } : null,
@@ -1006,10 +1008,10 @@ export class DetailsModuleGenerator {
                         console.warn(`ON ${on.itemId} references sub-ON ${subOn.id} which was not found in lookup`);
                         return null;
                     }
+                    const subOnEntityPath = this._buildEntityPath(subOnInfo.drg, subOnInfo.path);
                     return {
                         title: subOn.title,
-                        path: this._buildEntityPath(subOnInfo.drg, subOnInfo.path),
-                        file: `on-${subOn.id}.adoc`
+                        xref: this._buildXrefPath(subOnEntityPath, `on-${subOn.id}.adoc`)
                     };
                 }).filter(Boolean)
             } : null,
@@ -1082,10 +1084,10 @@ export class DetailsModuleGenerator {
                         console.warn(`OR ${or.itemId} references ON ${on.id} which was not found in lookup`);
                         return null;
                     }
+                    const onEntityPath = this._buildEntityPath(onInfo.drg, onInfo.path);
                     return {
                         title: on.title,
-                        path: this._buildEntityPath(onInfo.drg, onInfo.path),
-                        file: `on-${on.id}.adoc`
+                        xref: this._buildXrefPath(onEntityPath, `on-${on.id}.adoc`)
                     };
                 }).filter(Boolean)
             } : null,
@@ -1096,9 +1098,9 @@ export class DetailsModuleGenerator {
                     console.warn(`OR ${or.itemId} references parent OR ${parent.id} which was not found in lookup`);
                     return null;
                 }
+                const parentEntityPath = this._buildEntityPath(parentInfo.drg, parentInfo.path);
                 return {
-                    parentPath: this._buildEntityPath(parentInfo.drg, parentInfo.path),
-                    parentFile: `or-${parent.id}.adoc`,
+                    parentXref: this._buildXrefPath(parentEntityPath, `or-${parent.id}.adoc`),
                     parentTitle: parent.title
                 };
             })() : null,
@@ -1109,11 +1111,11 @@ export class DetailsModuleGenerator {
                         console.warn(`OR ${or.itemId} is refined by OR ${childOr.id} which was not found in lookup`);
                         return null;
                     }
+                    const childEntityPath = this._buildEntityPath(childInfo.drg, childInfo.path);
                     return {
                         id: childOr.id,
                         title: childOr.title,
-                        path: this._buildEntityPath(childInfo.drg, childInfo.path),
-                        file: `or-${childOr.id}.adoc`
+                        xref: this._buildXrefPath(childEntityPath, `or-${childOr.id}.adoc`)
                     };
                 }).filter(Boolean)
             } : null
@@ -1137,11 +1139,27 @@ export class DetailsModuleGenerator {
      */
     _buildEntityPath(drg, pathArray) {
         const drgSlug = this._slugify(drg);
+        // In domain mode all pages are at ROOT level — no DrG prefix in xrefs
+        if (this.drgFilter) {
+            if (!pathArray || pathArray.length === 0) {
+                return '';
+            }
+            return pathArray.map(segment => this._slugify(segment)).join('/');
+        }
         if (!pathArray || pathArray.length === 0) {
             return drgSlug;
         }
         const sluggedPath = pathArray.map(segment => this._slugify(segment)).join('/');
         return `${drgSlug}/${sluggedPath}`;
+    }
+
+    /**
+     * Build a full xref path combining entity path and filename.
+     * Handles empty path (domain mode root-level entities) correctly.
+     * @private
+     */
+    _buildXrefPath(entityPath, filename) {
+        return entityPath ? `${entityPath}/${filename}` : filename;
     }
 
     /**
@@ -1156,7 +1174,11 @@ export class DetailsModuleGenerator {
         // Get the full data structures for each DrG
         for (const drg of sortedDrgs) {
             const drgSlug = this._slugify(drg);
-            nav += `* xref:${drgSlug}/index.adoc[${getDraftingGroupDisplay(drg)}]\n`;
+            // In domain mode: ROOT-relative nav (no drgSlug prefix, link to index.adoc directly)
+            const navPrefix = this.drgFilter ? '' : drgSlug;
+            nav += navPrefix
+                ? `* xref:${navPrefix}/index.adoc[${getDraftingGroupDisplay(drg)}]\n`
+                : `* xref:index.adoc[${getDraftingGroupDisplay(drg)}]\n`;
 
             // Get the tree structure for this DrG
             const drgOns = this.allOns.filter(on => on.drg === drg);
@@ -1164,7 +1186,7 @@ export class DetailsModuleGenerator {
             const tree = this._buildHierarchy(drgOns, drgOrs);
 
             // Generate nav for this DrG's tree
-            nav += this._generateTreeNav(tree, drgSlug, '', 2);
+            nav += this._generateTreeNav(tree, navPrefix, '', 2);
         }
 
         return nav;
@@ -1189,7 +1211,7 @@ export class DetailsModuleGenerator {
             // Emit direct ONs/ORs first, then recurse into sub-folders via
             // _generateCollapsedFolderNav to produce non-clickable labels + entity entries.
             for (const on of node.ons) {
-                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                const fullPath = drgSlug ? (currentPath ? `${drgSlug}/${currentPath}` : drgSlug) : (currentPath || '');
                 nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON ${on.title}]
 `;
                 if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
@@ -1197,7 +1219,7 @@ export class DetailsModuleGenerator {
                 }
             }
             for (const or of node.ors) {
-                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                const fullPath = drgSlug ? (currentPath ? `${drgSlug}/${currentPath}` : drgSlug) : (currentPath || '');
                 nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR ${or.title}]
 `;
                 if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
@@ -1205,20 +1227,20 @@ export class DetailsModuleGenerator {
                 }
             }
             for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
-                const thisFolderPath = `${drgSlug}/${currentPath ? currentPath + '/' : ''}${folderSlug}`;
+                const thisFolderPath = drgSlug ? `${drgSlug}/${currentPath ? currentPath + '/' : ''}${folderSlug}` : `${currentPath ? currentPath + '/' : ''}${folderSlug}`;
                 nav += this._generateCollapsedFolderNav(folder, thisFolderPath, depth);
             }
         } else {
             // Normal node: each sub-folder has its own linked page.
             for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
                 const folderPath = currentPath ? `${currentPath}/${folderSlug}` : folderSlug;
-                const fullPath = `${drgSlug}/${folderPath}`;
+                const fullPath = drgSlug ? `${drgSlug}/${folderPath}` : folderPath;
                 nav += `${indent} xref:${fullPath}/index.adoc[${folder.name}]
 `;
                 nav += this._generateTreeNav(folder, drgSlug, folderPath, depth + 1);
             }
             for (const on of node.ons) {
-                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                const fullPath = drgSlug ? (currentPath ? `${drgSlug}/${currentPath}` : drgSlug) : (currentPath || '');
                 nav += `${indent} xref:${fullPath}/on-${on.itemId}.adoc[ON ${on.title}]
 `;
                 if (on.children && (on.children.ons.length > 0 || on.children.ors.length > 0)) {
@@ -1226,7 +1248,7 @@ export class DetailsModuleGenerator {
                 }
             }
             for (const or of node.ors) {
-                const fullPath = currentPath ? `${drgSlug}/${currentPath}` : drgSlug;
+                const fullPath = drgSlug ? (currentPath ? `${drgSlug}/${currentPath}` : drgSlug) : (currentPath || '');
                 nav += `${indent} xref:${fullPath}/or-${or.itemId}.adoc[OR ${or.title}]
 `;
                 if (or.children && (or.children.ons.length > 0 || or.children.ors.length > 0)) {
