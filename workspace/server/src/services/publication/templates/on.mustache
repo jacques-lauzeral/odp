@@ -2,55 +2,39 @@
 
 [.metadata]
 --
-*Code:* {{code}} +
-*Domain:* {{drg}} +
+*_Code:_* {{code}} +
+*_Domain:_* {{drg}} +
 {{#refinesParents}}
-*Refines:* xref:{{{parentXref}}}[{{parentTitle}}]
+*_Refines:_* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
 
 {{#statement}}
-Statement::
-+
---
+*_Statement:_* +
 {{{statement}}}
---
-
 {{/statement}}
 
 {{#rationale}}
-Rationale::
-+
---
+*_Rationale:_* +
 {{{rationale}}}
---
-
 {{/rationale}}
 
 {{#flows}}
-Flow Descriptions and Examples::
-+
---
+*_Flow Descriptions and Examples:_* +
 {{{flows}}}
---
-
 {{/flows}}
 
 {{#strategicDocuments}}
-Strategic Documents::
-+
-[cols="1,1l",options="header"]
-|===
-|Document |Note
+*_Strategic Documents:_* +
+--
 {{#items}}
-|{{#url}}link:{{{url}}}[{{title}} {{version}}]{{/url}}{{^url}}{{title}} {{version}}{{/url}} |{{{note}}}
+* {{#url}}link:{{{url}}}[{{title}} {{version}}]{{/url}}{{^url}}{{title}} {{version}}{{/url}} {{#note}}({{{note}}}){{/note}}
 {{/items}}
-|===
+--
 {{/strategicDocuments}}
 
 {{#refinedBy}}
-Refined By::
-+
+*_Refined By_* +
 --
 {{#items}}
 * xref:{{{xref}}}[{{type}} {{title}}]
@@ -59,8 +43,7 @@ Refined By::
 {{/refinedBy}}
 
 {{#implementedBy}}
-Implemented By::
-+
+*_Implemented By:_* +
 --
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]

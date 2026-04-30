@@ -2,53 +2,38 @@
 
 [.metadata]
 --
-*Code:* {{code}} +
-*Domain:* {{drg}} +
+*_Code:_* {{code}} +
+*_Domain:_* {{drg}} +
 {{#implementedONs}}
-*Implements:* {{#ons}}xref:{{{xref}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}} +
+*_Implements:_* {{#ons}}xref:{{{xref}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}} +
 {{/implementedONs}}
 {{#refinesParents}}
-*Refines:* xref:{{{parentXref}}}[{{parentTitle}}]
+*_Refines:_* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
 
 {{#statement}}
-Statement::
-+
---
+*_Statement:_* +
 {{{statement}}}
---
 {{/statement}}
 
 {{#rationale}}
-Rationale::
-+
---
+*_Rationale:_* +
 {{{rationale}}}
---
-
 {{/rationale}}
 
 {{#nfrs}}
-Non-Functional Requirements::
-+
---
+*_Non-Functional Requirements:_* +
 {{{nfrs}}}
---
 {{/nfrs}}
 
 {{#flows}}
-Flow Descriptions and Examples::
-+
---
+*_Flow Descriptions and Examples:_* +
 {{{flows}}}
---
 {{/flows}}
 
 {{#refinedBy}}
-
-Refined By::
-+
+*_Refined By:_* +
 --
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]
