@@ -1,42 +1,92 @@
 = OR {{title}}
 
-[.metadata]
 --
-*_Code:_* {{code}} +
-*_Domain:_* {{drg}} +
+*_Code:_* {{code}}
+
+*_Domain:_* {{drg}}
+
 {{#implementedONs}}
-*_Implements:_* {{#ons}}xref:{{{xref}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}} +
+*_Implements:_* {{#ons}}xref:{{{xref}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}}
 {{/implementedONs}}
+
 {{#refinesParents}}
 *_Refines:_* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
 
 {{#statement}}
+--
 *_Statement:_* +
 {{{statement}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
 {{/statement}}
 
 {{#rationale}}
+--
 *_Rationale:_* +
 {{{rationale}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
 {{/rationale}}
 
 {{#nfrs}}
+--
 *_Non-Functional Requirements:_* +
 {{{nfrs}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/nfrs}}
 
 {{#flows}}
+--
 *_Flow Descriptions and Examples:_* +
 {{{flows}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/flows}}
 
 {{#refinedBy}}
-*_Refined By:_* +
 --
+*_Refined By:_*
+
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]
 {{/items}}
 --
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/refinedBy}}

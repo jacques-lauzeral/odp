@@ -1,52 +1,109 @@
 = ON {{title}}
 
-[.metadata]
 --
-*_Code:_* {{code}} +
-*_Domain:_* {{drg}} +
+*_Code:_* {{code}}
+
+*_Domain:_* {{drg}}
+
 {{#refinesParents}}
 *_Refines:_* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
 
 {{#statement}}
+--
 *_Statement:_* +
 {{{statement}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
 {{/statement}}
 
 {{#rationale}}
+--
 *_Rationale:_* +
 {{{rationale}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/rationale}}
 
 {{#flows}}
+--
 *_Flow Descriptions and Examples:_* +
 {{{flows}}}
+--
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/flows}}
 
 {{#strategicDocuments}}
-*_Strategic Documents:_* +
 --
+*_Strategic Documents:_*
+
 {{#items}}
 * {{#url}}link:{{{url}}}[{{title}} {{version}}]{{/url}}{{^url}}{{title}} {{version}}{{/url}} {{#note}}({{{note}}}){{/note}}
 {{/items}}
 --
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/strategicDocuments}}
 
 {{#refinedBy}}
-*_Refined By_* +
 --
+*_Refined By_*
+
 {{#items}}
 * xref:{{{xref}}}[{{type}} {{title}}]
 {{/items}}
 --
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/refinedBy}}
 
 {{#implementedBy}}
-*_Implemented By:_* +
 --
+*_Implemented By:_*
+
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]
 {{/items}}
 --
+ifndef::env-export[]
+'''
+endif::env-export[]
+ifdef::env-export[]
+{nbsp}
+endif::env-export[]
+
 {{/implementedBy}}
