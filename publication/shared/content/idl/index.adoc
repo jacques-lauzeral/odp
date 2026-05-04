@@ -1,6 +1,117 @@
-= iDL
+= Airspace (iDL)
 :notitle:
 
 == Introduction
 
-<TO BE COMPLETED>
+The iDL is the ATM/AIM data component of the integrated Network Management (iNM) Programme — the digital transformation by which NM and its stakeholders will work together from 2029.
+It collects, consolidates and provides the aeronautical, airspace, airport, meteorological and other data required for Network operations across all flight phases.
+It replaces the current fragmentation between the European AIS Database (EAD) and the Central Airspace and Capacity Database (CACD), which today maintain overlapping but inconsistent data through largely independent processes.
+The iDL ensures a single, consistent representation of each operational reality, maintained collaboratively through cooperative decision-making with the Network stakeholders responsible for that data.
+
+The Airspace (iDL) chapter is the foundation of all other operational chapters in the ODIP.
+The data it describes — airports, airspaces, routes, sectors, navaids, restrictions, traffic flows, and the rules and processes that govern them — underpins Flight, Flow, ASM/ATFCM Integration, Airport, Crisis, and FAAS.
+Every flight planning decision, every ATFCM measure, every airspace allocation, every coordination act between centres ultimately rests on the quality, currency, and consistency of this data.
+
+The chapter is anchored in the link:https://www.eurocontrol.int/publication/network-idl-conops[Network iDL CONOPS] (Edition 2.1, 16/02/2024), which establishes the integrated Data Layer as a foundational component of iNM.
+Strategic alignment derives from the Network Strategy Plan, the European ATM Master Plan, the Network Functions Implementing Regulation (EU 2019/123), and Commission Implementing Regulation (EU) 2017/373 on ATM/AIM data provision.
+
+The iDL is conceptually denser than the operational domains downstream of it: it spans rules, model, process and domain-specific applications.
+The chapter is therefore organised as one anchor introduction followed by six sub-domain chapters, each a self-contained document focused on one distinct concern.
+
+== A layered architecture: ADMM, ADM, AD
+
+Three layers organise the iDL world.
+
+The *integrated Data Layer ATM/AIM Data (iDL-AD)* is the actual operational data: airports, airspaces, routes, navaids, sectors, traffic flows and related entities that NM systems and stakeholders work with day to day.
+
+The *iDL-AD Data Model (iDL-ADM)* is the formal model that defines the iDL-AD: it specifies the types of data that may exist, the attributes and relations of each type, and the validation rules that ensure correctness.
+
+The *iDL-AD Data Metamodel (iDL-ADMM)* is the model of the model: it specifies how the iDL-ADM itself must be structured, what kinds of elements it may contain, and how those elements may evolve over time.
+
+These three layers nest cleanly: the iDL-ADMM governs the iDL-ADM; the iDL-ADM defines the iDL-AD.
+
+image::idl/idl-layers.png[The three iDL layers,role=text-center]
+_Figure 9.1 — The three iDL layers: the iDL-ADMM (meta-model) governs the iDL-ADM (model), which in turn describes the iDL-AD (operational data)._
+
+== What the iDL-ADM is made of
+
+The iDL-ADM is constructed from four kinds of elements, each playing a distinct role.
+*Basic Types* name atomic values — codes, measures, date or position pairs — together with their format and validation constraints.
+*Structure Types* name structured fragments — an airspace volume, a route segment's availability, a runway threshold — that have no independent identity and exist as components of entities.
+*Entity Types* name the operational concepts — Airports, Routes, Airspaces, Navaids — and carry identity, attributes, relations and lifecycle.
+*Network Validation Rules* express constraints spanning more than one entity.
+
+image::idl/idl-element-set.png[The iDL-ADM element set,role=text-center]
+_Figure 9.2 — The iDL-ADM element set: Basic Types, Structure Types, Entity Types, and Network Validation Rules._
+
+== Dynamicity and updatability
+
+Two related but distinct concepts govern how iDL-AD evolves over time.
+*Dynamicity* is an operational validation rule constraining how frequently a value may legitimately change (frozen, static at AIRAC switch, dynamic ad-hoc, dynamic on schedule).
+*Updatability* is a transaction rule constraining when a data transaction may be submitted to the operational iDL-AD (non-updatable, AIRAC-only, data-amendment).
+The iDL-ADM treats them as separate orthogonal properties.
+
+image::idl/idl-dynamicity.png[Dynamicity vs Updatability,role=text-center]
+_Figure 9.3 — Dynamicity (operational validation rule: how frequently a value may change) and Updatability (transaction rule: when a transaction may be submitted) are distinct, orthogonal concepts._
+
+== Regulated and Effective Geometry
+
+Many iDL-AD entity types have geographic geometry.
+The iDL-ADM separates two views.
+*Regulated Geometry* is defined by the relevant authority and may use non-computable constructs suitable for AIS publication.
+*Effective Geometry* is optimised for automated processing by Network flight and flow systems and may be auto-derived from regulated geometry — though the data provider retains override authority.
+A compatibility check ensures the two remain operationally consistent.
+
+image::idl/idl-geometry.png[Regulated Geometry vs Effective Geometry,role=text-center]
+_Figure 9.4 — Dual geometry: Regulated Geometry (defined by the relevant authority, used for AIS publication) and Effective Geometry (optimised for automated processing by Network flight and flow systems)._
+
+== Editable and published forms
+
+The iDL-ADM is maintained in two coordinated forms.
+The *iDL-ADM/E* (Editable form) is used during model elaboration and references external sources such as the AIXM Conceptual Model rather than duplicating their content.
+The *iDL-ADM/P* (Published form), derived from the editable form by resolution and merge, is self-contained and is the authoritative form exposed to stakeholders.
+Web documentation, filtered views, and exchange models are all derived from the published form.
+
+image::idl/idl-adm-forms.png[iDL-ADM/E and iDL-ADM/P forms,role=text-center]
+_Figure 9.5 — The two coordinated forms of the iDL-ADM: iDL-ADM/E (Editable form, references AIXM Conceptual Model) and iDL-ADM/P (Published form, self-contained), with derivation by resolution and merge._
+
+== A digital, collaborative process: the iDL-ADP
+
+Alongside the layered model, the iDL introduces a single, unified *iDL-AD Process (iDL-ADP)*: the digital, collaborative process through which iDL data is elaborated, integrated, published and released to operations.
+The iDL-ADP replaces the current fragmented processes with a single process organised around the *iDL Project* — within which all data changes are scoped, coordinated, assessed and released — supported by explicit roles, in-process communication mechanisms, and a transparent lifecycle.
+
+== Sequencing: ADP first to deploy
+
+The iDL is delivered stepwise over several years.
+The first iDL evolution that operational stakeholders will experience is the *iDL-ADP*: the new process for elaborating data is introduced before the underlying iDL-ADM transitions are complete.
+Subsequent iDL-ADM transitions then proceed slice by slice, each a planned operational change with its own scope, target wave and stakeholder consultation.
+
+== Sub-domain chapters
+
+The Airspace (iDL) chapter is delivered as seven sub-domain chapters, presented in didactic order — rules, then model, then process, then interfaces, then specific applications.
+
+*§9.1 — Data Metamodel (ADMM)*: the rules governing how the iDL data model itself must be structured and how it may evolve.
+
+*§9.2 — Data Model (ADM)*: ADM v1.0 consolidates content from multiple existing source models — including the AIXM Conceptual Model, AIXM extensions, AIXM–EAD business rules, and the current NM CACD and RAD models — into a single, unified, authoritative reference.
+
+*§9.3 — Data Process (ADP)*: the digital, collaborative process for elaborating, integrating, publishing and releasing iDL data. The ADP is the first iDL evolution stakeholders will experience operationally.
+
+*§9.4 — iDL Interfaces*: the surfaces through which stakeholders reach iDL-AD content — the NMUI for human users and the NM B2B interface for system-to-system integration.
+
+*§9.5 — Airspace Utilisation Rules and Availability (AURA)*: the airspace utilisation rules and route availability that govern how Network airspace may be used by traffic, including the Route Availability Document (RAD) and associated additional rules.
+
+*§9.6 — Letters of Agreement (LoA)*: coordination agreements between adjacent control centres covering exchange, transfer and procedural arrangements relevant to Network operations.
+
+*§9.7 — Transponder Code Function (TCF)*: scarce-resource management for SSR transponder codes, including the Code Allocation List, Mode S eligibility, and the Centralised Code Assignment and Management System (CCAMS).
+
+A Weather sub-domain may follow in a future edition.
+
+== Reference documents
+
+*Network iDL CONOPS* (Edition 2.1, 16/02/2024) — the authoritative concept of operations for the iDL, defining its objectives, scope, stakeholders, and the operational concepts that organise the sub-domains.
+
+*AIXM Conceptual Model* — the ICAO standard Aeronautical Information Exchange Model (AIXM 5.1.1) and its extensions, used as the basis for the iDL-ADM where applicable.
+
+*ERNIP* (European Route Network Improvement Plan), Parts 1 to 4 — for airspace design methodology, route definitions, airspace management procedures, and the Route Availability Document.
+
+include::partial$idl/index.adoc[]
