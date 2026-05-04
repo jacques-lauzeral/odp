@@ -21,7 +21,8 @@
  * Inline formatting:
  * - "**text**" → bold
  * - "*text*" → italic
- * - "__text__" → underline
+ * - "__text__" → underline (legacy; use [.underline]#text# for semantic correctness)
+ * - "[.underline]#text#" → underline
  * - "`text`" → code (monospace)
  * - Nested formatting: "***text***" → bold + italic
  *
@@ -236,7 +237,33 @@ class AsciidocToDeltaConverter {
 
         while (i < text.length) {
             // Check for formatting markers
-            if (this._matchesAt(text, i, '**')) {
+            if (this._matchesAt(text, i, '[.underline]#')) {
+                // Save current run if any
+                if (currentText) {
+                    runs.push({
+                        text: currentText,
+                        attributes: { ...currentAttributes }
+                    });
+                    currentText = '';
+                }
+
+                // Find closing #
+                const closeIndex = text.indexOf('#', i + 13);
+                if (closeIndex !== -1) {
+                    const underlineText = text.substring(i + 13, closeIndex);
+
+                    const nestedRuns = this._parseInlineFormatting(underlineText);
+                    for (const run of nestedRuns) {
+                        runs.push({
+                            text: run.text,
+                            attributes: { ...run.attributes, underline: true }
+                        });
+                    }
+
+                    i = closeIndex + 1;
+                    continue;
+                }
+            } else if (this._matchesAt(text, i, '**')) {
                 // Save current run if any
                 if (currentText) {
                     runs.push({

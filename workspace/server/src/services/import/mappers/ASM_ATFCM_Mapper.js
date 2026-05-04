@@ -570,6 +570,7 @@ class AsmAtfcmMapper extends Mapper {
             path,
             statement,
             rationale,
+            maturity: 'ADVANCED',
             tentative: [year, year],
             refinesParents: [],
             privateNotes: null
@@ -622,7 +623,7 @@ class AsmAtfcmMapper extends Mapper {
         if (baseStatement) {
             statement = baseStatement;
             if (this._isValidContent(fitCriteria)) {
-                statement += '\n\n**Fit Criteria:**\n\n' + fitCriteria;
+                statement += '\n\n[.underline]#Fit Criteria#\n\n' + fitCriteria;
             }
         }
 
@@ -633,7 +634,7 @@ class AsmAtfcmMapper extends Mapper {
         if (baseRationale) {
             rationale = baseRationale;
             if (this._isValidContent(opRisks)) {
-                rationale += '\n\n**Opportunities and Risks:**\n\n' + opRisks;
+                rationale += '\n\n[.underline]#Opportunities and Risks#\n\n' + opRisks;
             }
         }
 
@@ -656,6 +657,7 @@ class AsmAtfcmMapper extends Mapper {
             path,
             statement,
             rationale,
+            maturity: 'ADVANCED',
             privateNotes,
             implementedONs: [onExternalId],
             impactedStakeholders: stakeholderResult.refs,

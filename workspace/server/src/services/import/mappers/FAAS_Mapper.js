@@ -208,7 +208,8 @@ class FAAS_Mapper extends Mapper {
 
         this._currentEntity = { type, title, externalId };
 
-        const maturity = (fields['Maturity Level'] || 'DRAFT').trim().toUpperCase();
+        const rawMaturity = (fields['Maturity Level'] || 'ADVANCED').trim().toUpperCase();
+        const maturity = rawMaturity === 'DRAFT' ? 'ADVANCED' : rawMaturity;
 
         if (type === 'ON') {
             return this._parseON(fields, title, externalId, maturity);
@@ -304,9 +305,8 @@ class FAAS_Mapper extends Mapper {
             this._cleanInternalFields(on);
 
             if (on.refinesParents.length === 0 && on.strategicDocuments.length === 0) {
-                on.maturity = 'DRAFT';
                 context.warnings.push(
-                    `${on.externalId}: root ON detected — maturity forced to DRAFT`
+                    `${on.externalId}: root ON detected — no strategic documents`
                 );
             }
         }

@@ -498,6 +498,7 @@ class iDL_Mapper_tables extends Mapper {
             type: type === 'UC' ? 'UC' : type, // UC handled separately
             drg: 'IDL',
             path: [context.folder],
+            maturity: 'ADVANCED',
             statement: null,
             rationale: null,
             flows: null,
@@ -510,19 +511,19 @@ class iDL_Mapper_tables extends Mapper {
         // Build statement with Fit Criteria appended
         let statementText = fields.statement || '';
         if (fields.fitCriteria) {
-            statementText += '\n\n**Fit Criteria:**\n' + fields.fitCriteria;
+            statementText += '\n\n[.underline]#Fit Criteria#\n\n' + fields.fitCriteria;
         }
 
         // Build rationale with Opportunities/Risks appended
         let rationaleText = fields.rationale || '';
         if (fields.opportunitiesRisks) {
-            rationaleText += '\n\n**Opportunities/Risks:**\n' + fields.opportunitiesRisks;
+            rationaleText += '\n\n[.underline]#Opportunities/Risks#\n\n' + fields.opportunitiesRisks;
         }
         if (fields.opportunities) {
-            rationaleText += '\n\n**Opportunities:**\n' + fields.opportunities;
+            rationaleText += '\n\n[.underline]#Opportunities#\n\n' + fields.opportunities;
         }
         if (fields.risks) {
-            rationaleText += '\n\n**Risks:**\n' + fields.risks;
+            rationaleText += '\n\n[.underline]#Risks#\n\n' + fields.risks;
         }
 
         // Convert rich text fields

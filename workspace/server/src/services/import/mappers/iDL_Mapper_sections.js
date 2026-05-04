@@ -368,7 +368,7 @@ class iDL_Mapper_sections extends Mapper {
                 currentSection = 'maturityLevel';
                 const value = text.substring(text.toLowerCase().indexOf('maturity level:') + 'maturity level:'.length).trim();
                 if (value) {
-                    maturity = value.toUpperCase();
+                    maturity = value.toUpperCase() === 'DRAFT' ? 'ADVANCED' : value.toUpperCase();
                 }
             } else if (textStartsWith(text, 'Strategic Documents:')) {
                 // Flush any previous strategic document block
@@ -479,7 +479,7 @@ class iDL_Mapper_sections extends Mapper {
             rationale: this.converter.asciidocToDelta(rationale),
             flows: this.converter.asciidocToDelta(flows),
             privateNotes: this.converter.asciidocToDelta(privateNotes),
-            maturity: maturity,
+            maturity: maturity ?? 'ADVANCED',
             implementedONs: type === 'OR' ? implementedONs : [],
             dependencies: type === 'OR' ? dependencies : []
         };

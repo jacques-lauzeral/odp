@@ -417,7 +417,8 @@ class iDL_Mapper_new_format extends Mapper {
         const nfrs         = type === 'OR' ? this._toRichTextOrNull(fields['NFRs']) : null;
 
         // Plain / structured fields
-        const maturity     = (fields['Maturity Level'] || 'DRAFT').trim().toUpperCase();
+        const rawMaturity  = (fields['Maturity Level'] || 'ADVANCED').trim().toUpperCase();
+        const maturity     = rawMaturity === 'DRAFT' ? 'ADVANCED' : rawMaturity;
         const tentative    = type === 'ON' ? parseTentativeRange(fields['Tentative Implementation Time']) : null;
 
         // privateNotes — start with Private Notes field

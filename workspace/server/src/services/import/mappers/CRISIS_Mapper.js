@@ -61,7 +61,7 @@ import ExternalIdBuilder from '../../../../../shared/src/model/ExternalIdBuilder
  * Root ON Detection:
  * ------------------
  * ONs with no refinesParents and no strategicDocuments are treated as root ONs
- * and have their maturity forced to DRAFT.
+ * (no maturity override applied).
  */
 
 /**
@@ -334,7 +334,8 @@ class CRISIS_Mapper extends Mapper {
 
         this._currentEntity = { type, title, externalId };
 
-        const maturity = (fields['Maturity Level'] || 'DRAFT').trim().toUpperCase();
+        const rawMaturity = (fields['Maturity Level'] || 'ADVANCED').trim().toUpperCase();
+        const maturity = rawMaturity === 'DRAFT' ? 'ADVANCED' : rawMaturity;
 
         if (type === 'ON') {
             return this._parseON(fields, title, externalId, maturity, context);
@@ -469,9 +470,8 @@ class CRISIS_Mapper extends Mapper {
             this._cleanInternalFields(on);
 
             if (on.refinesParents.length === 0 && on.strategicDocuments.length === 0) {
-                on.maturity = 'DRAFT';
                 context.warnings.push(
-                    `${on.externalId}: root ON detected — maturity forced to DRAFT`
+                    `${on.externalId}: root ON detected — no strategic documents`
                 );
             }
         }

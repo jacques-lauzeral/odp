@@ -62,10 +62,10 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * - "Title:" → title
  * - "Need Statement:" → statement
  * - "Definitions (draft):" → appended to statement after Need Statement, before Fit Criteria
- * - "Fit Criteria:" → appended to statement with "Fit Criteria:" header (if present)
+ * - "Fit Criteria:" → appended to statement with underlined "Fit Criteria" label (if present)
  * - "Rationale:" → rationale
- * - "Maturity:" → maturity (case-insensitive: Defined→DRAFT, Advanced→ADVANCED, Mature→MATURE;
- *   unrecognized value logs WARNING and defaults to DRAFT)
+ * - "Maturity:" → maturity (case-insensitive: Defined→ADVANCED, Advanced→ADVANCED, Mature→MATURE;
+ *   unrecognized value logs WARNING and defaults to ADVANCED)
  * - "Tentative:" → tentative year range ([year, year] or [start, end]); YYYY or YYYY-YYYY
  * - "Date:" → ignored
  * - "Originator:" → privateNotes entry (separated by \n\n from identifier)
@@ -73,9 +73,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * ORs:
  * - "Title:" → title
  * - "Detailed Requirement:" → statement
- * - "Fit Criteria:" → appended to statement with "Fit Criteria:" header
+ * - "Fit Criteria:" → appended to statement with underlined "Fit Criteria" label
  * - "Rationale:" → rationale
- * - "Opportunities/Risks:" → appended to rationale with "Opportunities / Risks:" header
+ * - "Opportunities/Risks:" → appended to rationale with underlined "Opportunities / Risks" label
  * - "ON Reference:" → implementedONs (resolve via identifier map)
  * - "Date:" → ignored
  * - "Originator:" → privateNotes entry (separated by \n\n from identifier)
@@ -578,8 +578,8 @@ class FlowMapper extends Mapper {
             const fitCriteria = tableData['fit criteria'];
             if (!this._isPlaceholderOrEmpty(fitCriteria)) {
                 statement = statement
-                    ? `${statement}\n\n**Fit Criteria:**\n${fitCriteria}`
-                    : `**Fit Criteria:**\n${fitCriteria}`;
+                    ? `${statement}\n\n[.underline]#Fit Criteria#\n\n${fitCriteria}`
+                    : `[.underline]#Fit Criteria#\n\n${fitCriteria}`;
             }
         } else {
             // OR: Use "Detailed Requirement" field
@@ -590,8 +590,8 @@ class FlowMapper extends Mapper {
             const fitCriteria = tableData['fit criteria'];
             if (!this._isPlaceholderOrEmpty(fitCriteria)) {
                 statement = statement
-                    ? `${statement}\n\n**Fit Criteria:**\n${fitCriteria}`
-                    : `**Fit Criteria:**\n${fitCriteria}`;
+                    ? `${statement}\n\n[.underline]#Fit Criteria#\n\n${fitCriteria}`
+                    : `[.underline]#Fit Criteria#\n\n${fitCriteria}`;
             }
         }
 
@@ -615,8 +615,8 @@ class FlowMapper extends Mapper {
         const opportunitiesRisks = tableData['opportunities/risks'];
         if (!this._isPlaceholderOrEmpty(opportunitiesRisks)) {
             rationale = rationale
-                ? `${rationale}\n\n**Opportunities / Risks:**\n${opportunitiesRisks}`
-                : `**Opportunities / Risks:**\n${opportunitiesRisks}`;
+                ? `${rationale}\n\n[.underline]#Opportunities / Risks#\n\n${opportunitiesRisks}`
+                : `[.underline]#Opportunities / Risks#\n\n${opportunitiesRisks}`;
         }
 
         // VALIDATION: Rationale warning
@@ -679,15 +679,15 @@ class FlowMapper extends Mapper {
         const privateNotes = privateNotesParts.length > 0 ? privateNotesParts.join('\n\n') : null;
 
         // Extract maturity and tentative for ONs
-        let maturity = null;
+        let maturity = type === 'OR' ? 'ADVANCED' : null;
         let tentative = null;
         if (type === 'ON') {
             const maturityRaw = tableData['maturity'];
             if (!this._isPlaceholderOrEmpty(maturityRaw)) {
                 maturity = this._parseMaturity(maturityRaw);
                 if (maturity === null) {
-                    this._warn(`Unrecognized maturity value "${maturityRaw}" - defaulting to DRAFT`);
-                    maturity = 'DRAFT';
+                    this._warn(`Unrecognized maturity value "${maturityRaw}" - defaulting to ADVANCED`);
+                    maturity = 'ADVANCED';
                 }
             }
             const tentativeRaw = tableData['tentative'];
@@ -874,7 +874,7 @@ class FlowMapper extends Mapper {
 
     /**
      * Parse maturity field value (case-insensitive) to MaturityLevel enum
-     * Defined → DRAFT, Advanced → ADVANCED, Mature → MATURE
+     * Defined → ADVANCED (coerced from DRAFT), Advanced → ADVANCED, Mature → MATURE
      * Unrecognized values return null (caller logs warning with entity context)
      * @param {string} text
      * @returns {string|null} MaturityLevel value, or null if unrecognized
@@ -883,7 +883,7 @@ class FlowMapper extends Mapper {
     _parseMaturity(text) {
         if (!text) return null;
         switch (text.trim().toLowerCase()) {
-            case 'defined':  return 'DRAFT';
+            case 'defined':  return 'ADVANCED';
             case 'advanced': return 'ADVANCED';
             case 'mature':   return 'MATURE';
             default:         return null;

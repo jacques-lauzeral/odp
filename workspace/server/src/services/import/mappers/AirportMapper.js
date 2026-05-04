@@ -366,14 +366,14 @@ class AirportMapper extends Mapper {
         let statement = data['Detailed Requirement'] || data['Need statement'] || '';
         const fitCriteria = data['Fit Criteria'];
         if (fitCriteria) {
-            statement += '\n\n**Fit Criteria:**\n' + fitCriteria;
+            statement += '\n\n[.underline]#Fit Criteria#\n\n' + fitCriteria;
         }
 
         // Build rationale with Opportunities/Risks appended
         let rationale = data['Rationale'] || '';
         const opportunitiesRisks = data['Opportunities / Risks'];
         if (opportunitiesRisks) {
-            rationale += '\n\n**Opportunities / Risks:**\n' + opportunitiesRisks;
+            rationale += '\n\n[.underline]#Opportunities / Risks#\n\n' + opportunitiesRisks;
         }
 
         const regulatoryReqs = data['Strategic Documents'];

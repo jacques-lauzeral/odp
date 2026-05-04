@@ -53,7 +53,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *
  * MATURITY MAPPING:
  * -----------------
- * 'Defined'  → 'DRAFT'
+ * 'Defined'  → 'ADVANCED' (coerced from DRAFT)
  * 'Advanced' → 'ADVANCED'
  * 'Mature'   → 'MATURE'
  * Unknown values → _warn + omitted (field not set)
@@ -379,6 +379,7 @@ class FourDTMapper extends Mapper {
             type: 'OR',
             drg: '4DT',
             title: title.trim(),
+            maturity: 'ADVANCED',
             statement: this.converter.asciidocToDelta(statement),
             rationale: this.converter.asciidocToDelta(rationale),
             privateNotes: this.converter.asciidocToDelta(privateNotes),
@@ -409,11 +410,7 @@ class FourDTMapper extends Mapper {
         }
 
         if (fitCriteriaText) {
-            if (statement) {
-                statement += '\n\n**Fit Criteria:**\n\n' + fitCriteria.trim();
-            } else {
-                statement = '**Fit Criteria:**\n\n' + fitCriteria.trim();
-            }
+            statement += '\n\n[.underline]#Fit Criteria#\n\n' + fitCriteriaText;
         }
 
         return statement || null;
@@ -437,11 +434,7 @@ class FourDTMapper extends Mapper {
         }
 
         if (oppRisksText) {
-            if (result) {
-                result += '\n\n**Opportunities / Risks:**\n\n' + opportunitiesRisks.trim();
-            } else {
-                result = '**Opportunities / Risks:**\n\n' + opportunitiesRisks.trim();
-            }
+            result += '\n\n[.underline]#Opportunities / Risks#\n\n' + oppRisksText;
         }
 
         return result || null;
@@ -536,7 +529,7 @@ class FourDTMapper extends Mapper {
             console.warn(`WARNING: Unknown maturity value "${text}" on ON: "${title}" — field omitted`);
             return null;
         }
-        return mapped;
+        return mapped === 'DRAFT' ? 'ADVANCED' : mapped;
     }
 
     /**

@@ -69,7 +69,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * =================
  * 'Mature'   → 'MATURE'
  * 'Advanced' → 'ADVANCED'
- * 'Defined'  → 'DRAFT'
+ * 'Defined'  → 'ADVANCED' (coerced from DRAFT)
  *
  * STAKEHOLDER SYNONYM MAP:
  * ========================
@@ -127,7 +127,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
 const MATURITY_MAP = {
     'Mature': 'MATURE',
     'Advanced': 'ADVANCED',
-    'Defined': 'DRAFT'
+    'Defined': 'ADVANCED'
 };
 
 // ---------------------------------------------------------------------------
@@ -431,9 +431,10 @@ class ReroutingMapper extends Mapper {
      * @private
      */
     _mapMaturity(value) {
-        if (!value) return null;
+        if (!value) return 'ADVANCED';
         const trimmed = value.trim();
-        return MATURITY_MAP[trimmed] ?? null;
+        const mapped = MATURITY_MAP[trimmed] ?? 'ADVANCED';
+        return mapped === 'DRAFT' ? 'ADVANCED' : mapped;
     }
 
     /**
