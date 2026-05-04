@@ -163,37 +163,90 @@ export class ImportCommands {
         // Extract Word document command
         importCommand
             .command('extract-word')
-            .description('Extract raw data from Word document (.docx)')
-            .requiredOption('-f, --file <path>', 'Path to Word document')
-            .option('-o, --output <path>', 'Output JSON file (default: stdout)')
+            .description('Extract raw data from Word document(s) (.docx)')
+            .requiredOption('-f, --file <pattern>', 'Path or glob pattern for Word document(s) (e.g. "bootstrap/*.docx")')
+            .option('-o, --output <path>', 'Output JSON file or directory (default: stdout). When multiple files are matched, must be a directory.')
+            .option('--continue-on-error', 'Continue processing remaining files when a file fails (default: stop on first error)')
             .action(async (options) => {
                 try {
-                    console.log(`Reading file: ${options.file}`);
-                    if (!fs.existsSync(options.file)) {
-                        throw new Error(`File not found: ${options.file}`);
+                    const files = globSync(options.file).sort();
+
+                    if (files.length === 0) {
+                        console.warn(`No files matched pattern: ${options.file}`);
+                        process.exit(0);
                     }
 
-                    const fileBuffer = fs.readFileSync(options.file);
-                    const fileName = path.basename(options.file);
-                    const formData = new FormData();
-                    formData.append('file', fileBuffer, fileName);
+                    // Determine if output is a directory
+                    const outputIsDir = options.output && (
+                        options.output.endsWith('/') ||
+                        options.output.endsWith(path.sep) ||
+                        (fs.existsSync(options.output) && fs.statSync(options.output).isDirectory())
+                    );
 
-                    const response = await fetch(`${this.baseUrl}/import/extract/word`, {
-                        method: 'POST',
-                        headers: {
-                            'x-user-id': this.getUserId(),
-                            ...formData.getHeaders()
-                        },
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    if (files.length > 1 && options.output && !outputIsDir) {
+                        console.error('Error: -o must be a directory when multiple files are matched (end path with "/" to create it)');
+                        process.exit(1);
                     }
 
-                    const rawData = await response.json();
-                    this.writeOutput(rawData, options.output);
+                    // Create output directory if needed
+                    if (outputIsDir && !fs.existsSync(options.output)) {
+                        fs.mkdirSync(options.output, { recursive: true });
+                        console.log(`Created output directory: ${options.output}`);
+                    }
+
+                    let filesFailed = 0;
+
+                    for (const filePath of files) {
+                        try {
+                            console.log(`Reading file: ${filePath}`);
+
+                            const fileBuffer = fs.readFileSync(filePath);
+                            const fileName = path.basename(filePath);
+                            const formData = new FormData();
+                            formData.append('file', fileBuffer, fileName);
+
+                            const response = await fetch(`${this.baseUrl}/import/extract/word`, {
+                                method: 'POST',
+                                headers: {
+                                    'x-user-id': this.getUserId(),
+                                    ...formData.getHeaders()
+                                },
+                                body: formData
+                            });
+
+                            if (!response.ok) {
+                                const error = await response.json();
+                                throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                            }
+
+                            const rawData = await response.json();
+
+                            // Determine output path
+                            let outputPath = null;
+                            if (outputIsDir) {
+                                const baseName = path.basename(filePath, path.extname(filePath));
+                                outputPath = path.join(options.output, `${baseName}.json`);
+                            } else if (options.output) {
+                                outputPath = options.output;
+                            }
+
+                            this.writeOutput(rawData, outputPath);
+
+                        } catch (error) {
+                            filesFailed++;
+                            const msg = `Error extracting ${filePath}: ${error.message}`;
+                            if (options.continueOnError) {
+                                console.error(msg);
+                            } else {
+                                console.error(msg);
+                                process.exit(1);
+                            }
+                        }
+                    }
+
+                    if (filesFailed > 0) {
+                        process.exit(1);
+                    }
 
                 } catch (error) {
                     console.error('Error extracting Word document:', error.message);
@@ -298,7 +351,7 @@ export class ImportCommands {
             .requiredOption('-f, --file <path>', 'Path to raw extracted JSON')
             .requiredOption('-d, --drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
             .option('-o, --output <path>', 'Output JSON file (default: stdout)')
-            .option('-s, --specific', 'Use DrG-specific mapper (default: standard format for round-trip editing)')
+            .option('-m, --mapper <mode>', 'Mapping strategy: standard | registry | bootstrap (default: standard)', 'standard')
             .option('--folder <name>', 'Target folder within DrG (required for some DrGs like IDL)')
             .action(async (options) => {
                 try {
@@ -314,14 +367,14 @@ export class ImportCommands {
                     if (options.folder) {
                         console.log(`Target folder: ${options.folder}`);
                     }
-                    console.log(`Mapper mode: ${options.specific ? 'DrG-specific' : 'standard (round-trip)'}`);
+                    console.log(`Mapper mode: ${options.mapper}`);
 
                     const rawData = JSON.parse(this.readFile(options.file));
 
                     // Build URL with query parameters
                     const url = new URL(`${this.baseUrl}/import/map/${options.drg}`);
-                    if (options.specific) {
-                        url.searchParams.set('specific', 'true');
+                    if (options.mapper && options.mapper !== 'standard') {
+                        url.searchParams.set('mapper', options.mapper);
                     }
                     if (options.folder) {
                         url.searchParams.set('folder', options.folder);
@@ -457,30 +510,41 @@ odp import extract-word --file crisis-on-or-oc.docx --output raw.json
 odp import map --file raw.json --drg CRISIS --output structured.json
 odp import structured --file structured.json
 
-# ORIGINAL SOURCE IMPORT WORKFLOW (DrG-specific format)
+# ORIGINAL SOURCE IMPORT WORKFLOW (DrG-specific registry mapper)
 # Import original DrG materials with specialized mappers
 odp import extract-word --file NM_B2B_Requirements.docx --output raw.json
-odp import map --file raw.json --drg NM_B2B --specific --output structured.json
+odp import map --file raw.json --drg NM_B2B --mapper registry --output structured.json
 odp import structured --file structured.json --specific
+
+# BOOTSTRAP IMPORT WORKFLOW (iCDM Word bootstrap format)
+# Import DrG Word documents in the standard bootstrap format
+odp import extract-word --file crisis.docx --output raw.json
+odp import map --file raw.json --drg CRISIS --mapper bootstrap --output structured.json
+odp import structured --file structured.json --specific
+
+# BOOTSTRAP BULK IMPORT (glob patterns)
+odp import extract-word --file bootstrap/*.docx --output raw/
+odp import map --file raw/crisis.json --drg CRISIS --mapper bootstrap --output structured/crisis.json
+odp import structured --file structured/*.json --specific
 
 # IDL IMPORT WITH FOLDER (section-based format)
 odp import extract-word --file iDL_ADP_Requirements.docx --output raw.json
-odp import map --file raw.json --drg IDL --folder iDLADP --specific --output structured.json
+odp import map --file raw.json --drg IDL --folder iDLADP --mapper registry --output structured.json
 odp import structured --file structured.json --specific
 
 # IDL IMPORT WITH FOLDER (table-based format)
 odp import extract-word --file iDL_ADM_Requirements.docx --output raw.json
-odp import map --file raw.json --drg IDL --folder iDLADM --specific --output structured.json
+odp import map --file raw.json --drg IDL --folder iDLADM --mapper registry --output structured.json
 odp import structured --file structured.json --specific
 
 # Three-step workflow for hierarchical Word documents (ZIP)
 odp import extract-word-hierarchy --file FLOW_Requirements.zip --output raw.json
-odp import map --file raw.json --drg FLOW --specific --output structured.json
+odp import map --file raw.json --drg FLOW --mapper registry --output structured.json
 odp import structured --file structured.json --specific
 
 # Three-step workflow for Excel documents
 odp import extract-excel --file 4dt-requirements.xlsx --output raw.json
-odp import map --file raw.json --drg 4DT --specific --output structured.json
+odp import map --file raw.json --drg 4DT --mapper registry --output structured.json
 odp import structured --file structured.json --specific
 
 # Available DRG values: ${DraftingGroupKeys.join(', ')}
@@ -490,12 +554,14 @@ odp import structured --file structured.json --specific
 # Table-based: iDLADM, AURA, TCF, NET, LoA, IAM, MAP, NFR, HMI, TCT
 
 # MAPPER MODES:
-# --specific flag OFF (default): Standard format mapper for round-trip editing
+# standard (default): StandardMapper for round-trip editing
 #   - Processes exported .docx with table-based entities
 #   - Code field preserves entity identity
-# --specific flag ON: DrG-specific mapper for original source documents
+# registry: DrG-specific mapper from MapperRegistry for original source documents
 #   - Uses specialized parser for each DrG's unique format
 #   - NM_B2B_Mapper, AirportMapper, iDL_Mapper_sections, iDL_Mapper_tables, etc.
+# bootstrap: BootstrapMapper for iCDM DrG Word documents in standard bootstrap format
+#   - Single shared mapper for all DrGs in this format
 `);
             });
 

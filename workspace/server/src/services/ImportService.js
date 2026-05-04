@@ -5,6 +5,7 @@ import JSONImporter from './import/JSONImporter.js';
 import StandardImporter from './import/StandardImporter.js';
 import MapperRegistry from './import/MapperRegistry.js';
 import StandardMapper from './import/mappers/StandardMapper.js';
+import BootstrapMapper from './import/mappers/BootstrapMapper.js';
 
 class ImportService {
     /**
@@ -38,22 +39,22 @@ class ImportService {
     }
 
     /**
-     * Map raw extracted data to structured import format using DrG-specific mapper
+     * Map raw extracted data to structured import format
      * @param {Object} rawData - RawExtractedData from extraction
      * @param {string} drg - Drafting group identifier
-     * @param {boolean} specific - Specifies whether the drg specific mapper has to be used instead of standard one
+     * @param {string} [mapper='standard'] - Mapping strategy: 'standard' | 'registry' | 'bootstrap'
      * @param {string} [folder] - Target folder within DrG (required for some DrGs like IDL)
      * @returns {Promise<Object>} StructuredImportData
      */
-    async mapToStructuredData(rawData, drg, specific = false, folder = null) {
-        if (specific) {
-            // Use DrG-specific mapper from registry
-            const mapper = MapperRegistry.getMapper(drg, folder);
-            return mapper.map(rawData, { folder });
-        } else {
-            // Use standard format mapper (default for round-trip)
-            const mapper = new StandardMapper(drg);
-            return mapper.map(rawData);
+    async mapToStructuredData(rawData, drg, mapper = 'standard', folder = null) {
+        switch (mapper) {
+            case 'bootstrap':
+                return new BootstrapMapper(drg).map(rawData, { folder });
+            case 'registry':
+                return MapperRegistry.getMapper(drg, folder).map(rawData, { folder });
+            case 'standard':
+            default:
+                return new StandardMapper(drg).map(rawData);
         }
     }
 

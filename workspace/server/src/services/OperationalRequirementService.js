@@ -202,30 +202,12 @@ export class OperationalRequirementService extends VersionedItemService {
                 throw new Error('Validation failed: rationale is required for maturity ADVANCED or MATURE');
             }
 
-            if (type === 'ON') {
-                // ON ADVANCED: refinesParents non-empty OR strategicDocuments non-empty
-                const hasRefines = payload.refinesParents && payload.refinesParents.length > 0;
-                const hasStrategicDocs = payload.strategicDocuments && payload.strategicDocuments.length > 0;
-                if (!hasRefines && !hasStrategicDocs) {
-                    throw new Error('Validation failed: ON requirements with maturity ADVANCED or MATURE must have either refinesParents or strategicDocuments');
-                }
-            }
-
-            if (type === 'OR') {
-                // OR ADVANCED: refinesParents non-empty OR implementedONs non-empty
-                const hasRefines = payload.refinesParents && payload.refinesParents.length > 0;
-                const hasImplementedONs = payload.implementedONs && payload.implementedONs.length > 0;
-                if (!hasRefines && !hasImplementedONs) {
-                    throw new Error('Validation failed: OR requirements with maturity ADVANCED or MATURE must have either refinesParents or implementedONs');
-                }
-            }
+            // Traceability (refinesParents, strategicDocuments, implementedONs) is
+            // validated as warnings at display time, not enforced here.
         }
 
         if (level >= 2) {
-            // MATURE ON: tentative required
-            if (type === 'ON' && (payload.tentative === undefined || payload.tentative === null)) {
-                throw new Error('Validation failed: tentative is required for ON requirements with maturity MATURE');
-            }
+            // MATURE ON: tentative is recommended but not enforced
             // OR MATURE: no additional fields
         }
     }

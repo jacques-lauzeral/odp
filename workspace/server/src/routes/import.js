@@ -117,10 +117,10 @@ router.post('/map/:drg', async (req, res) => {
     try {
         const userId = getUserId(req);
         const drg = req.params.drg;
-        const specific = req.query.specific === 'true';
+        const mapper = req.query.mapper || 'standard';
         const folder = req.query.folder || null;
 
-        console.log(`ImportService.mapToStructuredData() userId: ${userId}, drg: ${drg}, folder: ${folder || '(none)'}`);
+        console.log(`ImportService.mapToStructuredData() userId: ${userId}, drg: ${drg}, mapper: ${mapper}, folder: ${folder || '(none)'}`);
 
         // Validate content type
         if (req.get('Content-Type') !== 'application/json') {
@@ -144,7 +144,7 @@ router.post('/map/:drg', async (req, res) => {
             });
         }
 
-        const structuredData = await importService.mapToStructuredData(rawData, drg, specific, folder);
+        const structuredData = await importService.mapToStructuredData(rawData, drg, mapper, folder);
 
         res.json(structuredData);
 
