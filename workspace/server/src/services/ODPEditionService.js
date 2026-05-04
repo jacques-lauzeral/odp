@@ -516,7 +516,7 @@ export class ODPEditionService {
             configPaths = [sharedConfigPath, documentConfigPath];
             contentMappings = [
                 { srcPath: nodePath.join(sharedContentPath, 'intro'),
-                    mapFn: rel => `modules/ROOT/pages/${rel}` },
+                    mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
                 { srcPath: nodePath.join(publicationPath, 'document', 'content', 'intro'),
                     mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
             ];
@@ -525,18 +525,18 @@ export class ODPEditionService {
             configPaths = [sharedConfigPath, documentConfigPath];
             contentMappings = [
                 { srcPath: nodePath.join(sharedContentPath, drgSlug),
-                    mapFn: rel => `modules/ROOT/pages/${rel}` }
+                    mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` }
             ];
         } else {
             configPaths = [sharedConfigPath, websiteConfigPath];
             contentMappings = [
                 { srcPath: nodePath.join(sharedContentPath, 'intro'),
-                    mapFn: rel => `modules/ROOT/pages/${rel}` },
+                    mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
                 ...fs.readdirSync(sharedContentPath, { withFileTypes: true })
                     .filter(e => e.isDirectory() && e.name !== 'intro')
                     .map(e => ({
                         srcPath: nodePath.join(sharedContentPath, e.name),
-                        mapFn: rel => `modules/details/pages/${e.name}/${rel}`,
+                        mapFn: rel => rel.startsWith('assets/') ? `modules/details/${rel}` : `modules/details/pages/${e.name}/${rel}`,
                         drgSlug: e.name,
                         websiteMode: true
                     })),

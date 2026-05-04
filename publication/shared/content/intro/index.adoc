@@ -51,12 +51,8 @@ Even in its stable editions, it reflects a moment in a body of content that is c
 Each major edition presents the plan in substantive detail across its full horizon of several years; minor editions, published between major ones, carry refinements, integrate feedback, and deliver full deployment details of waves as they become available.
 The plan is maintained, refined, and kept current — it is not built up from scratch edition after edition.
 
-[NOTE]
-====
-_Figure 1. ODIP edition cadence.
-Major editions are published yearly, each with a multi-year horizon carrying close detail for the near term and progressively broader framing for the longer term.
-Minor editions between major ones carry refinements and full wave deployment details as they become available._
-====
+.ODIP Edition Cadence - Major editions are published yearly, each with a multi-year horizon carrying close detail for the near term and progressively broader framing for the longer term. Minor editions between major ones carry refinements and full wave deployment details as they become available.
+image::odip-edition-cadence.png[width=640]
 
 The ODIP is traceable.
 Every ON is anchored to one or more strategic documents; every OR is anchored to one or more ONs.
@@ -118,11 +114,8 @@ The DrGs ensure that the ODIP's content reflects a shared operational view, co-p
 
 Once OCs are introduced into the plan, their implementation is monitored by the *iCB* (Implementation Control Board), which reports on risks, known issues, and proposed resolutions for each OC, and feeds this information back into the prioritisation process.
 
-[NOTE]
-====
-_Figure 2. NM governance structure supporting the ODIP.
-Operational stakeholders and Drafting Groups co-produce the ONs, ORs, and OCs through working arrangements; the iCDM prioritises the content and feeds the *iCB*, which monitors OC implementation and reports back._
-====
+.NM governance structure supporting the ODIP - Operational stakeholders and Drafting Groups co-produce the ONs, ORs, and OCs through working arrangements; the iCDM prioritises the content and feeds the *iCB*, which monitors OC implementation and reports back.
+image::odip-governance.png[width=640]
 
 The scale is material: Edition 1 consolidates the output of eleven active DrGs working on a content base of several hundred ONs and an expected total approaching two thousand ORs.
 This introduction, together with the chapters that follow, is the first time this full picture is presented as a single, coherent view.
