@@ -50,31 +50,61 @@ Parses document binary into a generic intermediate JSON representation. No busin
 
 ## 3. Stage 2 — Mapping
 
-**Classes**: `Mapper` (abstract), `MapperRegistry`, DrG-specific mappers, `StandardMapper`  
+**Classes**: `Mapper` (abstract), `MapperRegistry`, DrG-specific mappers, `StandardMapper`, `BootstrapMapper`  
 **Location**: `services/import/mappers/`
 
 Takes `RawExtractedData` and produces `StructuredImportData` — a JSON payload shaped to match the ODIP import schema (correct field names, Quill Delta rich text, resolved cross-references).
 
-### 3.1 Two Mapping Modes
+### 3.1 Three Mapping Modes
 
-The `/import/map/{drg}` endpoint accepts a `?specific=` flag selecting between two modes:
+The `/import/map/{drg}` endpoint accepts a `?mapper=` parameter selecting between three modes:
 
-| Mode | `?specific=` | Mapper used | Identity field | Use case |
+| Mode | `?mapper=` | Mapper used | Identity field | Use case |
 |---|---|---|---|---|
-| Standard | `false` (default) | `StandardMapper` | `code` | Round-trip: re-importing exported `.docx` |
-| DrG-specific | `true` | DrG mapper from `MapperRegistry` | `externalId` | Initial import of original DrG source documents |
+| Standard | `standard` (default) | `StandardMapper` | `code` | Round-trip: re-importing exported `.docx` |
+| Registry | `registry` | DrG mapper from `MapperRegistry` | `externalId` | Original DrG source documents (legacy format) |
+| Bootstrap | `bootstrap` | `BootstrapMapper` | `externalId` | iCDM DrG Word documents in bootstrap format |
 
 ### 3.2 DrG Mapper Registry
 
-`MapperRegistry` holds one registered mapper per DrG code. All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DRG enum values: `4DT`, `AIRPORT`, `ASM_ATFCM`, `CRISIS`, `FAAS`, `FLOW`, `IDL`, `NM`, `NM_B2B`, `NMUI`, `PERF`, `RRT`, `TCF`.
+`MapperRegistry` holds one registered mapper per DrG code (and optional folder). All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DRG enum values: `4DT`, `AIRPORT`, `ASM_ATFCM`, `CRISIS`, `FAAS`, `FLOW`, `IDL`, `NM`, `NM_B2B`, `NMUI`, `PERF`, `RRT`, `TCF`.
 
-Each mapper is responsible for: entity identification, field extraction, AsciiDoc → Quill Delta conversion for rich text fields, and cross-reference resolution (section hierarchy → `refinesParents`, "Implemented ONs" → `implementedONs`, impact references → IMPACTS arrays).
+Each mapper is responsible for: entity identification, field extraction, AsciiDoc → Quill Delta conversion for rich text fields, and cross-reference resolution.
 
 **Output normalisation (all DrG mappers)**: The `cleanEntity` helper in `_buildOutput` strips null/empty fields and translates the internal `parent: { externalId }` field to `refinesParents: [externalId]` (array format expected by `JSONImporter`). The `parent` field is never emitted in the structured output.
 
-**NM_B2B_Mapper — implicit ConOPS reference**: Root ONs (no `parent`) that carry no explicit `strategicDocuments` automatically receive a reference to the NM B2B ConOPS document (`refdoc:nm_b2b_conops`) with a `note` field set to the organisational path of the requirement (e.g. `Section: 'Technical Aspects / Environments'`). Child ONs (`parent` set) are excluded from this injection — their `strategicDocuments` list remains empty.
+### 3.3 BootstrapMapper
 
-### 3.3 StandardMapper
+`BootstrapMapper` is a single shared mapper for all DrGs whose Word documents follow the iCDM bootstrap format. Unlike registry mappers (one per DrG), `BootstrapMapper` is DrG-agnostic and registered independently. It receives the `drg` as a constructor argument (passed from the route) and the optional `folder` via `map(rawData, { folder })`.
+
+**Document structure**: each entity occupies a level-4 section whose title begins with `ON ` or `OR `. Fields are encoded as bold-prefixed paragraphs:
+
+| Marker | Field |
+|---|---|
+| `**External ID: **` | `externalId` |
+| `**Maturity: **` | `maturity` (input value used as-is; defaults to `DRAFT`) |
+| `**Tentative implementation: **` | `tentative` ([start, end] year array) |
+| `**Statement**` | `statement` (rich text accumulation) |
+| `**Rationale**` | `rationale` (rich text accumulation) |
+| `**Flow Descriptions and Examples**` | `flows` (rich text accumulation; also recognised without bold) |
+| `**Implements: **` | `implementedONs` (OR → ON, single ref) |
+| `**Implemented By**` | inverses — not emitted |
+| `**Refines: **` | `refinesParents` (single ref) |
+| `**Refined By**` | inverses — not emitted |
+| `**Strategic Documents**` | `strategicDocuments` (ONs only) |
+| `**[Team: ...]**` | `privateNotes` if before first field marker; otherwise appended to current field body |
+
+`Fit Criteria` and `Opportunities / Risks` paragraphs are absorbed as prose into the preceding rich-text field.
+
+**Cross-reference resolution**: short IDs (e.g. `OR-RRT-0001 (OR label)`) are resolved to `externalId` via a post-pass that matches parenthetical labels against extracted entity titles. All cross-references are within-file only.
+
+**Strategic document names**: plain text names (e.g. `NSP SO 4/3`) are converted to `externalId` via `ExternalIdBuilder`. Pre-formed `refdoc:` IDs are passed through as-is. A normalization step handles systemic naming variants (e.g. `NSP SO 5.2` → `NSP SO 5/2`). Named aliases cover one-off mismatches (e.g. `Network 4DT CONOPS` → `Network 4D Trajectory CONOPS`).
+
+**Path derivation**: built from the section `path` array by stripping section numbers and dropping `Operational Needs` / `Operational Requirements` segments. If a `folder` option is provided, it is prepended as the first path segment (used for IDL sub-domain files). Path is set to `null` when `refinesParents` resolves non-empty (XOR rule).
+
+**Abstract ONs**: sections annotated with `*[Abstract — not directly implemented]*` emit `abstract: true`.
+
+### 3.4 StandardMapper
 
 Used for the round-trip (docx-loop) workflow. Processes exported ODIP `.docx` files which use a standardised table-based format with a `Code` field. Entities are identified by their ODIP code rather than an `externalId`, enabling CREATE / UPDATE / SKIP comparison logic in the import stage.
 
@@ -100,7 +130,7 @@ changes[]                 — {externalId|code, title, drg,
 
 Note: setup entities use `name` (not `title`); requirements and changes use `title`.
 
-**API endpoint**: `POST /import/map/{drg}?specific=false|true`
+**API endpoint**: `POST /import/map/{drg}?mapper=standard|registry|bootstrap`
 
 ---
 
@@ -189,7 +219,8 @@ services/import/
 ├── MapperRegistry.js            DrG → mapper lookup
 ├── StandardImporter.js          Round-trip importer (code-based)
 ├── JSONImporter.js              DrG-specific importer (externalId-based)
-└── mappers/                     One file per DrG
+└── mappers/                     One file per DrG + shared bootstrap mapper
+    ├── BootstrapMapper.js       Shared mapper for iCDM bootstrap-format Word docs
     ├── NM_B2B_Mapper.js
     ├── IDL_Mapper.js
     └── ...

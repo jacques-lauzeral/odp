@@ -140,11 +140,20 @@ odp-cli edition publish 42 --pdf --word --flat --set
 
 | Command | Action |
 |---|---|
-| `import extract-word --file <path>` | Extract raw JSON from `.docx` |
+| `import extract-word --file <path\|glob...> [-o <dir>]` | Extract raw JSON from `.docx` file(s); output dir created if needed |
 | `import extract-excel --file <path>` | Extract raw JSON from `.xlsx` |
-| `import map --file <path> --drg <DRG> [--specific]` | Map raw JSON to structured JSON |
-| `import structured --file <path> [--specific]` | Import structured JSON into database |
+| `import map --file <path> --drg <DRG> [--mapper standard\|registry\|bootstrap] [--folder <name>]` | Map raw JSON to structured JSON |
+| `import structured --file <path\|glob...> [--specific]` | Import structured JSON into database |
 | `docx export --drg <DRG> --output <path>` | Export entities to `.docx` by DRG |
+
+**`import extract-word`** accepts glob patterns (quote to prevent shell expansion): `--file "bootstrap/*.docx" -o raw/`. Multiple patterns are supported. Output filenames are derived from input basenames (`crisis.docx` → `crisis.json`). Use `--continue-on-error` to process remaining files after a failure.
+
+**`import map --mapper`** selects the mapping strategy:
+- `standard` (default): `StandardMapper` for round-trip re-import of exported `.docx` files
+- `registry`: DrG-specific mapper from `MapperRegistry` for original DrG source documents
+- `bootstrap`: `BootstrapMapper` for iCDM DrG Word documents in the standard bootstrap format
+
+The `--folder` option is passed to the mapper as a path prefix (used for IDL sub-domain files, e.g. `--folder "Letters of Agreement"`).
 
 ### Publication
 
