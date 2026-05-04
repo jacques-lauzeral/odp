@@ -208,9 +208,11 @@ class BootstrapMapper extends Mapper {
             return;
         }
 
+        const title = this._extractTitle(section.title, type);
         const entity = {
             externalId: fields.externalId,
-            title: this._extractTitle(section.title, type),
+            title,
+            _fullTitle: section.title.replace(/^[\d.]+\s+/, '').trim(), // with ON/OR prefix
             type,
             drg: this.drg,
             path: this._buildPath(section.path),
@@ -444,9 +446,14 @@ class BootstrapMapper extends Mapper {
         }
 
         // Build title → externalId index (lowercase for matching)
+        // Index both the clean title and the full title with ON/OR prefix,
+        // since relationship field labels use the full title form.
         const titleIndex = new Map();
         for (const entity of allEntities.values()) {
             titleIndex.set(entity.title.toLowerCase(), entity.externalId);
+            if (entity._fullTitle) {
+                titleIndex.set(entity._fullTitle.toLowerCase(), entity.externalId);
+            }
         }
 
         // Collect all raw reference strings from all entities
@@ -687,12 +694,17 @@ class BootstrapMapper extends Mapper {
 
     /**
      * Input:  "11.1.1.1 ON Crisis information management"
-     * Output: "ON Crisis information management"
+     * Input:  "11.1.1.1 ON Crisis information management"
+     * Output: "Crisis information management"
+     * The full title including type prefix is preserved as entity._fullTitle
+     * for use in cross-reference label matching.
      * @private
      */
     _extractTitle(sectionTitle, type) {
-        // Remove leading section number (digits and dots)
-        return sectionTitle.replace(/^[\d.]+\s+/, '').trim();
+        // Remove leading section number
+        const withoutNumber = sectionTitle.replace(/^[\d.]+\s+/, '').trim();
+        // Strip the ON/OR type prefix
+        return withoutNumber.replace(/^(ON|OR)\s+/, '').trim();
     }
 
     /**
