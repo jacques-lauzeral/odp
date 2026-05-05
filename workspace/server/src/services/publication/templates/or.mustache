@@ -1,6 +1,5 @@
 = OR {{title}}
 
---
 *Code:* {{code}}
 
 *Domain:* {{drg}}
@@ -14,81 +13,43 @@
 {{#refinesParents}}
 *Refines:* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
---
-ifndef::env-export[]
+
 '''
-endif::env-export[]
-ifdef::env-export[]
-{nbsp}
-endif::env-export[]
 
 {{#statement}}
---
 *Statement* +
 {{{statement}}}
---
-ifndef::env-export[]
+
 '''
-endif::env-export[]
-ifdef::env-export[]
-{nbsp}
-endif::env-export[]
 {{/statement}}
 
 {{#rationale}}
---
 *Rationale* +
 {{{rationale}}}
---
-ifndef::env-export[]
+
 '''
-endif::env-export[]
-ifdef::env-export[]
-{nbsp}
-endif::env-export[]
 {{/rationale}}
 
 {{#nfrs}}
---
 *Non-Functional Requirements* +
 {{{nfrs}}}
---
-ifndef::env-export[]
-'''
-endif::env-export[]
-ifdef::env-export[]
-{nbsp}
-endif::env-export[]
 
+'''
 {{/nfrs}}
 
 {{#flows}}
---
 *Flow Descriptions and Examples* +
 {{{flows}}}
---
-ifndef::env-export[]
-'''
-endif::env-export[]
-ifdef::env-export[]
-{nbsp}
-endif::env-export[]
 
+'''
 {{/flows}}
 
 {{#refinedBy}}
---
 *Refined By*
 
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]
 {{/items}}
---
-ifndef::env-export[]
-'''
-endif::env-export[]
-ifdef::env-export[]
-{nbsp}
-endif::env-export[]
 
+'''
 {{/refinedBy}}
