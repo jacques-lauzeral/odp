@@ -35,6 +35,11 @@
  * - Newline without list attribute → paragraph separator (double newline)
  * - Multiple text runs combined into single line
  *
+ * Input normalization:
+ * - Quill may compact multiple lines into a single insert string with embedded \n characters
+ *   (e.g. after a re-save). The converter normalizes such ops by splitting on \n before
+ *   processing, ensuring block attributes (list, code-block) are correctly applied to each line.
+ *
  * Input format (Quill Delta):
  * {
  *   ops: [
@@ -101,6 +106,36 @@ class DeltaToAsciidocConverter {
             return '';
         }
 
+        // Normalize ops: split any insert string containing embedded \n into separate ops.
+        // In Quill Delta semantics, block attributes (list, code-block) on a \n apply to
+        // the line preceding it. When the editor compacts multiple lines into a single insert
+        // string, every \n in that string must carry the op's block attributes.
+        const normalizedOps = [];
+        for (const op of delta.ops) {
+            if (typeof op.insert === 'string' && op.insert.includes('\n')) {
+                const parts = op.insert.split('\n');
+                parts.forEach((part, idx) => {
+                    if (part.length > 0) {
+                        // Text segment: carry only inline attributes (not block ones)
+                        const inlineAttrs = op.attributes
+                            ? Object.fromEntries(
+                                Object.entries(op.attributes).filter(
+                                    ([k]) => !['list', 'code-block', 'blockquote', 'indent', 'align', 'direction'].includes(k)
+                                )
+                            )
+                            : undefined;
+                        normalizedOps.push({ insert: part, ...(inlineAttrs && Object.keys(inlineAttrs).length ? { attributes: inlineAttrs } : {}) });
+                    }
+                    if (idx < parts.length - 1) {
+                        // \n between parts: carry full attributes
+                        normalizedOps.push({ insert: '\n', ...(op.attributes ? { attributes: op.attributes } : {}) });
+                    }
+                });
+            } else {
+                normalizedOps.push(op);
+            }
+        }
+
         const lines = [];
         let currentLine = '';
         let inCodeBlock = false;
@@ -115,8 +150,8 @@ class DeltaToAsciidocConverter {
             }
         };
 
-        for (let i = 0; i < delta.ops.length; i++) {
-            const op = delta.ops[i];
+        for (let i = 0; i < normalizedOps.length; i++) {
+            const op = normalizedOps[i];
 
             // Handle image insert
             if (op.insert && typeof op.insert === 'object' && op.insert.image) {

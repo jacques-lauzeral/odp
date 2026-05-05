@@ -1,6 +1,15 @@
 = Flight Assessment and Alert System
 :notitle:
 
-== Introduction
+This chapter covers the Flight Assessment and Alerting Service (FAAS) — the Network capability for identifying flights
+that meet predefined safety, security or operational monitoring criteria, and for applying the appropriate operational
+responses.
 
-<TO BE COMPLETED>
+FAAS unifies activities currently implemented through several independent mechanisms within the Network Manager and
+across operational stakeholders. The unified capability supports three kinds of operational response — stakeholder
+alerting, operational warnings and highlighting, and operational control actions on flight plan messages — alongside
+the supporting traceability and reporting that any monitoring service requires.
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._
+

@@ -113,5 +113,3 @@ A Weather sub-domain may follow in a future edition.
 *AIXM Conceptual Model* — the ICAO standard Aeronautical Information Exchange Model (AIXM 5.1.1) and its extensions, used as the basis for the iDL-ADM where applicable.
 
 *ERNIP* (European Route Network Improvement Plan), Parts 1 to 4 — for airspace design methodology, route definitions, airspace management procedures, and the Route Availability Document.
-
-include::partial$idl/index.adoc[]

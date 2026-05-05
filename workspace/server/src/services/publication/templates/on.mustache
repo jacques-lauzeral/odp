@@ -1,12 +1,18 @@
 = ON {{title}}
 
 --
-*_Code:_* {{code}}
+*Code:* {{code}}
 
-*_Domain:_* {{drg}}
+*Domain:* {{drg}}
+
+*Maturity:* {{maturity}}
+
+{{#tentative}}
+*Tentative implementation:* {{tentative}}
+{{/tentative}}
 
 {{#refinesParents}}
-*_Refines:_* xref:{{{parentXref}}}[{{parentTitle}}]
+*Refines:* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
 ifndef::env-export[]
@@ -18,7 +24,7 @@ endif::env-export[]
 
 {{#statement}}
 --
-*_Statement:_* +
+*Statement* +
 {{{statement}}}
 --
 ifndef::env-export[]
@@ -31,7 +37,7 @@ endif::env-export[]
 
 {{#rationale}}
 --
-*_Rationale:_* +
+*Rationale* +
 {{{rationale}}}
 --
 ifndef::env-export[]
@@ -45,7 +51,7 @@ endif::env-export[]
 
 {{#flows}}
 --
-*_Flow Descriptions and Examples:_* +
+*Flow Descriptions and Examples* +
 {{{flows}}}
 --
 ifndef::env-export[]
@@ -59,7 +65,7 @@ endif::env-export[]
 
 {{#strategicDocuments}}
 --
-*_Strategic Documents:_*
+*Strategic Documents*
 
 {{#items}}
 * {{#url}}link:{{{url}}}[{{title}} {{version}}]{{/url}}{{^url}}{{title}} {{version}}{{/url}} {{#note}}({{{note}}}){{/note}}
@@ -76,7 +82,7 @@ endif::env-export[]
 
 {{#refinedBy}}
 --
-*_Refined By_*
+*Refined By*
 
 {{#items}}
 * xref:{{{xref}}}[{{type}} {{title}}]
@@ -93,7 +99,7 @@ endif::env-export[]
 
 {{#implementedBy}}
 --
-*_Implemented By:_*
+*Implemented By*
 
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]

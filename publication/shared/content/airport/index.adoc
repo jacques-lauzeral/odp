@@ -1,6 +1,35 @@
 = Airport
 :notitle:
 
-== Introduction
+This chapter sets out the Operational Needs and Operational Requirements relating to the Airport domain — covering
+airport integration into the Network, airport information and monitoring, diversion handling, environmental performance,
+and the supporting Tower user interface.
 
-<TO BE COMPLETED>
+The chapter content is grounded in the iNM Flow CONOPS, iDL CONOPS, 4DT CONOPS and ASM/ATFCM CONOPS, which collectively
+cover airport-related operational evolutions; the airport area does not maintain its own CONOPS document. The Airport
+Drafting Group actively interacts with the Flow, iDL, 4DT, ASM/ATFCM and Performance Drafting Groups to coordinate
+interfaces and resolve cross-domain dependencies.
+
+Extending the integration of Airport Operations Plans with the Network Operations Plan, in line with
+Common Project One (AF4), to improve Network resilience, operational efficiency and traffic predictability through
+stronger AOP-NOP data exchange — including curfew information and alerting, ELDT source provision, and ATFCM regulation
+impact prediction.
+
+Integrating airports of all sizes into the Network through A-CDM, AAT and RNI concepts and through direct data exchange,
+with the supporting operational services.
+
+Displaying and reporting airport information that may have an impact on airport or Network operations.
+
+Supporting airport operators' cooperation with NM through the Airport Function position, with access to demand-capacity
+imbalances, regulations, weather, airport events and slots.
+
+Accessing the diversion capabilities of airports in the NM area to support planning of alternate destinations and
+tactical diversion decisions.
+
+Accessing estimated fuel burn and emissions to assess the environmental impact of airport operations.
+
+A graphical user interface for Tower users that brings together, in a single application, the data and operational tools
+needed for collaborative decision-making between Tower, NM and the other ATFCM stakeholders.
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._

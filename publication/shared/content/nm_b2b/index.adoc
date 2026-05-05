@@ -1,6 +1,37 @@
 = NM B2B
 :notitle:
 
-== Introduction
+The NM B2B is the system-to-system interface through which external systems — those operated by ANSPs, Airspace Users,
+Airports, the military, national authorities and the wider Network — exchange data and invoke services with NM. This
+chapter expresses the Operational Needs and Operational Requirements that apply transversally across the NM B2B: the
+technical foundation, the operational arrangements, and the lifecycle through which the interface evolves.
 
-<TO BE COMPLETED>
+The NM B2B services contribute to an open ATM digital collaborative environment, supporting the implementation of
+SWIM-based information exchange across the European aviation Network. They are subject to continuous evolution in order
+to address regulatory drivers, technological developments, and operational stakeholder needs.
+
+This chapter addresses the interface itself: its technical foundation, the standards it relies on, the lifecycle through
+which it evolves, and the operational arrangements that surround it. It does not define the business functionality
+delivered through that interface. Functional evolutions - the operational behaviour of NM services exposed via NM B2B -
+are defined in the corresponding operational domain chapters (4DT, Rerouting, Flow, ASM/ATFCM Integration, Airspace,
+Airport, Crisis, FAAS). The NM B2B chapter and the domain chapters are complementary: a domain chapter specifies what an
+NM service does; the NM B2B chapter specifies how it is exposed and operated as a service.
+
+The NM B2B is conceived as a single, consistent interface. Stakeholders integrating with NM encounter the same
+standards-based protocols, the same API design conventions, the same versioning rules and the same operational framework
+regardless of which NM service capability they consume. This chapter defines that shared framework. Domain chapters
+refine and extend it where operational specificity demands; they do not duplicate or contradict it.
+
+Many of the ONs gathered here are the NM B2B-side refinement of transversal concerns expressed at the NM level
+(chapter 2): Service availability and monitoring, Performance and responsiveness, Compliance with regulations and
+standards, Personal data and account management, Service versioning and backwards compatibility, and Audit and legal
+recording all have NM counterparts that the NM B2B inherits and adapts to the system-to-system context. Cross-references
+make this lineage explicit.
+
+The chapter content builds on two reference documents:
+
+* NM B2B Concept of Operations (CONOPS) — defines the objectives, scope, and evolution principles of NM B2B services.
+
+* NM B2B API Design Conventions — provides harmonised technical rules and conventions for NM B2B service design and implementation.
+The chapter is organised along two axes. Technical Aspects covers the foundational technical concerns of the interface (API design, exchange protocols, security, environments, lifecycle). Operational Aspects covers the operational arrangements that surround it (documentation, onboarding, user management, monitoring, incident management). The 28 themes that follow each correspond to one leaf concern under this two-axis structure.
+

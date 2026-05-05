@@ -948,6 +948,8 @@ export class DetailsModuleGenerator {
         return {
             title: on.title,
             code: on.code,
+            maturity: on.maturity,
+            tentative: on.tentative ? (on.tentative[0] === on.tentative[1] ? String(on.tentative[0]) : `${on.tentative[0]}–${on.tentative[1]}`) : null,
             drg: getDraftingGroupDisplay(drg),
             path: on.path ? on.path.join(' / ') : null,
             statement: statement,
@@ -1082,6 +1084,7 @@ export class DetailsModuleGenerator {
         return {
             title: or.title,
             code: or.code,
+            maturity: or.maturity,
             drg: getDraftingGroupDisplay(drg),
             path: or.path ? or.path.join(' / ') : null,
             statement: statement,

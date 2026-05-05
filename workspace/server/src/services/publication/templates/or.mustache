@@ -1,16 +1,18 @@
 = OR {{title}}
 
 --
-*_Code:_* {{code}}
+*Code:* {{code}}
 
-*_Domain:_* {{drg}}
+*Domain:* {{drg}}
+
+*Maturity:* {{maturity}}
 
 {{#implementedONs}}
-*_Implements:_* {{#ons}}xref:{{{xref}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}}
+*Implements:* {{#ons}}xref:{{{xref}}}[ON {{title}}]{{^last}}, {{/last}}{{/ons}}
 {{/implementedONs}}
 
 {{#refinesParents}}
-*_Refines:_* xref:{{{parentXref}}}[{{parentTitle}}]
+*Refines:* xref:{{{parentXref}}}[{{parentTitle}}]
 {{/refinesParents}}
 --
 ifndef::env-export[]
@@ -22,7 +24,7 @@ endif::env-export[]
 
 {{#statement}}
 --
-*_Statement:_* +
+*Statement* +
 {{{statement}}}
 --
 ifndef::env-export[]
@@ -35,7 +37,7 @@ endif::env-export[]
 
 {{#rationale}}
 --
-*_Rationale:_* +
+*Rationale* +
 {{{rationale}}}
 --
 ifndef::env-export[]
@@ -48,7 +50,7 @@ endif::env-export[]
 
 {{#nfrs}}
 --
-*_Non-Functional Requirements:_* +
+*Non-Functional Requirements* +
 {{{nfrs}}}
 --
 ifndef::env-export[]
@@ -62,7 +64,7 @@ endif::env-export[]
 
 {{#flows}}
 --
-*_Flow Descriptions and Examples:_* +
+*Flow Descriptions and Examples* +
 {{{flows}}}
 --
 ifndef::env-export[]
@@ -76,7 +78,7 @@ endif::env-export[]
 
 {{#refinedBy}}
 --
-*_Refined By:_*
+*Refined By*
 
 {{#items}}
 * xref:{{{xref}}}[OR {{title}}]

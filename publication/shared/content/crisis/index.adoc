@@ -1,6 +1,18 @@
 = Crisis
 :notitle:
 
-== Introduction
+This chapter covers the Crisis domain — the Network capabilities supporting operational stakeholders during crisis
+situations and during regular crisis exercises. It is organised around two areas of operational concern: the
+xref:crisis/crisis_information_portal/index.adoc[Crisis Information Portal], through which crisis-related operational
+information is shared and managed; and xref:crisis/conflict_zones/index.adoc[Conflict Zones], through which
+authoritative information on airspace closures, restrictions and safety advisories is consolidated and made available
+across the Network.
 
-<TO BE COMPLETED>
+Operational management of the Crisis Information Portal — the primary channel through which NM, ANSPs, Airspace Users
+and other operational stakeholders share crisis-related operational information, including dedicated support for crisis
+exercises.
+
+Consolidation and structured visualisation of conflict-zone information from authoritative sources (NOTAMs, EASA SIBs, CZIBs, SFARs, AICs and AIPs), supporting situational awareness and operational decision-making across the Network.
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._
