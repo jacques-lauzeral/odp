@@ -21,11 +21,12 @@ const __dirname = path.dirname(__filename);
  * Creates a nested file structure organized by DrG and path hierarchy.
  */
 export class DetailsModuleGenerator {
-    constructor(userId, editionId = null, drgFilter = null, introOnly = false) {
+    constructor(userId, editionId = null, drgFilter = null, introOnly = false, staticContentPath = null) {
         this.userId = userId;
         this.editionId = editionId;
         this.drgFilter = drgFilter ? drgFilter.toUpperCase() : null;
         this.introOnly = introOnly;
+        this.staticContentPath = staticContentPath;
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
         this.deltaConverter = new DeltaToAsciidocConverter();
@@ -88,8 +89,20 @@ export class DetailsModuleGenerator {
             const onsByDrg = this._groupByDrg(ons);
             const orsByDrg = this._groupByDrg(ors);
 
+            // Load edition and chapter plans
+            this.editionPlan = await this._loadEditionPlan();
+            this.chapterPlans = new Map(); // drg -> ChapterPlan | null
+
             // Get list of all DrGs that have content
-            const drgs = new Set([...Object.keys(onsByDrg), ...Object.keys(orsByDrg)]);
+            const drgsRaw = new Set([...Object.keys(onsByDrg), ...Object.keys(orsByDrg)]);
+
+            // Order DrGs according to edition plan (warn + exclude unmatched if plan present)
+            const drgs = this._orderDrgs(Array.from(drgsRaw));
+
+            // Preload chapter plans for ordered DrGs
+            for (const drg of drgs) {
+                this.chapterPlans.set(drg, await this._loadChapterPlan(drg));
+            }
 
             // Build trees and update lookup paths for refining children
             for (const drg of drgs) {
@@ -118,7 +131,7 @@ export class DetailsModuleGenerator {
             }
 
             // Generate details module navigation
-            files['details/nav.adoc'] = this._generateDetailsNav(Array.from(drgs));
+            files['details/nav.adoc'] = this._generateDetailsNav(drgs);
 
             console.log(`Extracted ${this.allImages.length} images from statements/rationales`);
 
@@ -399,8 +412,8 @@ export class DetailsModuleGenerator {
         }
 
         // Sort root entities by itemId
-        tree.ons.sort((a, b) => a.itemId - b.itemId);
-        tree.ors.sort((a, b) => a.itemId - b.itemId);
+        tree.ons.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        tree.ors.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
         // Fourth pass: handle refinement relationships
         // Build item nodes with children arrays
@@ -440,13 +453,13 @@ export class DetailsModuleGenerator {
                     if (type === 'on') {
                         parentNode.children.ons.push(entity);
                         // Sort children by itemId
-                        parentNode.children.ons.sort((a, b) => a.itemId - b.itemId);
+                        parentNode.children.ons.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
                         // Initialize children for this entity too
                         entity.children = { ons: [], ors: [] };
                     } else {
                         parentNode.children.ors.push(entity);
                         // Sort children by itemId
-                        parentNode.children.ors.sort((a, b) => a.itemId - b.itemId);
+                        parentNode.children.ors.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
                         // Initialize children for this entity too
                         entity.children = { ons: [], ors: [] };
                     }
@@ -470,8 +483,8 @@ export class DetailsModuleGenerator {
                     }
                 }
                 // Sort after adding orphans
-                tree.ons.sort((a, b) => a.itemId - b.itemId);
-                tree.ors.sort((a, b) => a.itemId - b.itemId);
+                tree.ons.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+                tree.ors.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
                 break;
             }
 
@@ -583,10 +596,10 @@ export class DetailsModuleGenerator {
         // Add entity to final folder and sort by itemId
         if (type === 'on') {
             current.ons.push(entity);
-            current.ons.sort((a, b) => a.itemId - b.itemId);
+            current.ons.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
         } else {
             current.ors.push(entity);
-            current.ors.sort((a, b) => a.itemId - b.itemId);
+            current.ors.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
         }
     }
 
@@ -666,7 +679,7 @@ export class DetailsModuleGenerator {
         // won't fire for sub-folders since currentPath will be set but we pass through
         // _generateTreeFiles which checks currentPath && hasContent for index generation).
         // Non-collapsed nodes get both index pages and entity files as normal.
-        for (const [slugKey, subNode] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+        for (const [slugKey, subNode] of this._orderFolders(node.folders, drg, currentPath)) {
             const newPath = currentPath ? `${currentPath}/${slugKey}` : slugKey;
             this._generateTreeFiles(drg, subNode, newPath, files, this._isCollapsed(node));
         }
@@ -719,7 +732,7 @@ export class DetailsModuleGenerator {
             onCount: ons.length,
             orCount: ors.length,
             rootFolders: Object.keys(tree.folders).length > 0 ? {
-                items: Object.values(tree.folders).sort((a, b) => a.name.localeCompare(b.name)).map(folder => ({
+                items: this._orderFolders(tree.folders, drg, '').map(([, folder]) => ({
                     name: folder.name,
                     path: `${drgSlug}/${folder.slug}`
                 }))
@@ -774,8 +787,7 @@ export class DetailsModuleGenerator {
         // Each sub-folder contributes a non-clickable label item followed by its
         // own ONs/ORs (and recursively its sub-sub-folders).
         if (collapsed) {
-            const sortedFolders = Object.values(node.folders).sort((a, b) => a.name.localeCompare(b.name));
-            for (const folder of sortedFolders) {
+            for (const [, folder] of this._orderFolders(node.folders, null, currentPath)) {
                 this._flattenCollapsedFolder(folder, currentFullPath, 1, onItems, orItems);
             }
         }
@@ -792,7 +804,7 @@ export class DetailsModuleGenerator {
         return {
             folderName: node.name || folderName,
             subfolders: (!collapsed && Object.keys(node.folders).length > 0) ? {
-                folders: Object.values(node.folders).sort((a, b) => a.name.localeCompare(b.name)).map(folder => {
+                folders: this._orderFolders(node.folders, null, currentPath).map(([, folder]) => {
                     const fullPath = this.drgFilter
                         ? (currentPath ? `${currentPath}/${folder.slug}` : folder.slug)
                         : (currentPath ? `${drgSlug}/${currentPath}/${folder.slug}` : `${drgSlug}/${folder.slug}`);
@@ -863,8 +875,7 @@ export class DetailsModuleGenerator {
         }
 
         // Recurse into sub-sub-folders, passing this folder's path as the new parent
-        const sortedFolders = Object.values(folder.folders).sort((a, b) => a.name.localeCompare(b.name));
-        for (const subFolder of sortedFolders) {
+        for (const [, subFolder] of this._orderFolders(folder.folders, null, null)) {
             this._flattenCollapsedFolder(subFolder, thisFolderPath, depth + 1, onItems, orItems);
         }
     }
@@ -1123,6 +1134,171 @@ export class DetailsModuleGenerator {
     }
 
     /**
+     * Load edition-plan.json from static content path.
+     * Returns parsed plan or null if file is absent.
+     * @private
+     */
+    async _loadEditionPlan() {
+        if (!this.staticContentPath) return null;
+        const planPath = path.join(this.staticContentPath, 'edition-plan.json');
+        try {
+            const raw = await fs.readFile(planPath, 'utf-8');
+            return JSON.parse(raw);
+        } catch (err) {
+            if (err.code === 'ENOENT') return null;
+            throw new Error(`Failed to load edition-plan.json: ${err.message}`);
+        }
+    }
+
+    /**
+     * Load {drg}/chapter-plan.json from static content path.
+     * Returns parsed plan or null if file is absent.
+     * @private
+     */
+    async _loadChapterPlan(drg) {
+        if (!this.staticContentPath) return null;
+        const drgSlug = this._slugify(drg);
+        const planPath = path.join(this.staticContentPath, drgSlug, 'chapter-plan.json');
+        try {
+            const raw = await fs.readFile(planPath, 'utf-8');
+            return JSON.parse(raw);
+        } catch (err) {
+            if (err.code === 'ENOENT') return null;
+            throw new Error(`Failed to load chapter-plan.json for ${drg}: ${err.message}`);
+        }
+    }
+
+    /**
+     * Order DrGs according to edition-plan.json.
+     * If no plan: returns all DrGs sorted alphabetically by display name.
+     * If plan present: returns only matched DrGs in plan order; unmatched are warned and excluded.
+     * Matching is by drg path field (lowercased) vs slugified DrG key.
+     * @private
+     */
+    _orderDrgs(drgs) {
+        if (!this.editionPlan || !this.editionPlan.chapters) {
+            return drgs.slice().sort((a, b) =>
+                getDraftingGroupDisplay(a).localeCompare(getDraftingGroupDisplay(b)));
+        }
+
+        const drgBySlug = new Map(drgs.map(drg => [this._slugify(drg), drg]));
+        const ordered = [];
+
+        for (const chapter of this.editionPlan.chapters) {
+            const slug = (chapter.path || '').toLowerCase();
+            if (drgBySlug.has(slug)) {
+                ordered.push(drgBySlug.get(slug));
+                drgBySlug.delete(slug);
+            }
+            // DrGs in edition-plan but not in data: silently skip (no content)
+        }
+
+        // Warn about DrGs present in data but absent from edition-plan
+        for (const [slug, drg] of drgBySlug) {
+            console.warn(`[edition-plan] DrG '${drg}' (slug: ${slug}) not found in edition-plan.json — excluded`);
+        }
+
+        return ordered;
+    }
+
+    /**
+     * Order folders according to the chapter-plan for the given DrG.
+     * Returns an array of [slug, folderNode] pairs in plan order.
+     *
+     * If no chapter plan for this DrG: returns all folders sorted alphabetically.
+     * If plan present: matched folders in plan order; unmatched warned and excluded.
+     *
+     * planPath is the dot-joined path of section names leading to the current node
+     * (used for warning messages only).
+     *
+     * @param {Object} folders - map of slug -> folderNode
+     * @param {string|null} drg - DrG identifier (used to look up chapter plan)
+     * @param {string|null} currentPath - current slug path (for warning messages)
+     * @returns {Array<[string, Object]>}
+     * @private
+     */
+    _orderFolders(folders, drg, currentPath) {
+        const entries = Object.entries(folders);
+        if (entries.length === 0) return [];
+
+        // Resolve which chapter plan applies
+        const plan = drg ? this.chapterPlans?.get(drg) : null;
+
+        // Navigate plan to the section matching currentPath
+        const planSections = this._resolvePlanSections(plan, currentPath);
+
+        if (!planSections) {
+            // No plan or path not found in plan: alphabetical
+            return entries.slice().sort(([, a], [, b]) => a.name.localeCompare(b.name));
+        }
+
+        // Match folder nodes to plan sections by name or alias
+        // folderByName maps each folder's data name to its [slug, node] entry
+        const folderByName = new Map(entries.map(([slug, node]) => [node.name, [slug, node]]));
+        const ordered = [];
+
+        for (const section of planSections) {
+            // Build candidate names: section name + all aliases
+            const candidates = [section.name, ...(section.aliases || [])];
+            let matched = null;
+            for (const candidate of candidates) {
+                if (folderByName.has(candidate)) {
+                    matched = folderByName.get(candidate);
+                    folderByName.delete(candidate);
+                    break;
+                }
+            }
+            if (matched) {
+                // Override display name with canonical section.name from plan
+                const [slug, node] = matched;
+                const displayNode = node.name !== section.name
+                    ? { ...node, name: section.name }
+                    : node;
+                ordered.push([slug, displayNode]);
+            }
+            // section in plan but no matching folder: silently skip
+        }
+
+        // Warn about folders present in data but absent from chapter-plan
+        for (const [name, entry] of folderByName) {
+            const location = currentPath ? `${currentPath}/${name}` : name;
+            console.warn(`[chapter-plan(${drg || '?'})] folder '${location}' not in chapter-plan — excluded`);
+        }
+
+        return ordered;
+    }
+
+    /**
+     * Resolve the sections array from a ChapterPlan that corresponds to the given path.
+     * currentPath is a slash-separated slug path; matching is done against section names
+     * (slugified for comparison).
+     *
+     * Returns the sections array at that depth, or null if the plan is absent or
+     * no matching node was found.
+     * @private
+     */
+    _resolvePlanSections(plan, currentPath) {
+        if (!plan || !plan.sections) return null;
+
+        // No currentPath means we are at the DrG root level
+        if (!currentPath) return plan.sections;
+
+        // Navigate plan tree by matching slug segments
+        const segments = currentPath.split('/').filter(Boolean);
+        let sections = plan.sections;
+
+        for (const seg of segments) {
+            if (!sections) return null;
+            // Find the plan section whose name slugifies to this segment
+            const match = sections.find(s => this._slugify(s.name) === seg);
+            if (!match) return null;
+            sections = match.sections || null;
+        }
+
+        return sections;
+    }
+
+    /**
      * Convert folder name to URL-safe slug using underscores
      * @private
      */
@@ -1167,26 +1343,37 @@ export class DetailsModuleGenerator {
      * @private
      */
     _generateDetailsNav(drgs) {
-        const sortedDrgs = drgs.sort((a, b) =>
-            getDraftingGroupDisplay(a).localeCompare(getDraftingGroupDisplay(b)));
+        // drgs is already ordered by _orderDrgs — do not re-sort
         let nav = '';
 
+        // Build a slug->name map from edition-plan for DrG display name override
+        const planNameBySlug = new Map();
+        if (this.editionPlan && this.editionPlan.chapters) {
+            for (const chapter of this.editionPlan.chapters) {
+                if (chapter.path && chapter.name) {
+                    planNameBySlug.set(chapter.path.toLowerCase(), chapter.name);
+                }
+            }
+        }
+
         // Get the full data structures for each DrG
-        for (const drg of sortedDrgs) {
+        for (const drg of drgs) {
             const drgSlug = this._slugify(drg);
+            // Use edition-plan name if available, fall back to shared enum display name
+            const drgDisplayName = planNameBySlug.get(drgSlug) || getDraftingGroupDisplay(drg);
             // In domain mode: ROOT-relative nav (no drgSlug prefix, link to index.adoc directly)
             const navPrefix = this.drgFilter ? '' : drgSlug;
             nav += navPrefix
-                ? `* xref:${navPrefix}/index.adoc[${getDraftingGroupDisplay(drg)}]\n`
-                : `* xref:index.adoc[${getDraftingGroupDisplay(drg)}]\n`;
+                ? `* xref:${navPrefix}/index.adoc[${drgDisplayName}]\n`
+                : `* xref:index.adoc[${drgDisplayName}]\n`;
 
             // Get the tree structure for this DrG
             const drgOns = this.allOns.filter(on => on.drg === drg);
             const drgOrs = this.allOrs.filter(or => or.drg === drg);
             const tree = this._buildHierarchy(drgOns, drgOrs);
 
-            // Generate nav for this DrG's tree
-            nav += this._generateTreeNav(tree, navPrefix, '', 2);
+            // Generate nav for this DrG's tree, passing drg so _orderFolders can apply chapter plan
+            nav += this._generateTreeNav(tree, navPrefix, '', 2, drg);
         }
 
         return nav;
@@ -1202,7 +1389,7 @@ export class DetailsModuleGenerator {
      * mirroring the inline structure rendered on the collapsed page itself.
      * @private
      */
-    _generateTreeNav(node, drgSlug, currentPath, depth) {
+    _generateTreeNav(node, drgSlug, currentPath, depth, drg = null) {
         let nav = '';
         const indent = '*'.repeat(depth);
 
@@ -1226,18 +1413,18 @@ export class DetailsModuleGenerator {
                     nav += this._generateChildrenNav(or.children, drgSlug, depth + 1);
                 }
             }
-            for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+            for (const [folderSlug, folder] of this._orderFolders(node.folders, drg, currentPath)) {
                 const thisFolderPath = drgSlug ? `${drgSlug}/${currentPath ? currentPath + '/' : ''}${folderSlug}` : `${currentPath ? currentPath + '/' : ''}${folderSlug}`;
                 nav += this._generateCollapsedFolderNav(folder, thisFolderPath, depth);
             }
         } else {
             // Normal node: each sub-folder has its own linked page.
-            for (const [folderSlug, folder] of Object.entries(node.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+            for (const [folderSlug, folder] of this._orderFolders(node.folders, drg, currentPath)) {
                 const folderPath = currentPath ? `${currentPath}/${folderSlug}` : folderSlug;
                 const fullPath = drgSlug ? `${drgSlug}/${folderPath}` : folderPath;
                 nav += `${indent} xref:${fullPath}/index.adoc[${folder.name}]
 `;
-                nav += this._generateTreeNav(folder, drgSlug, folderPath, depth + 1);
+                nav += this._generateTreeNav(folder, drgSlug, folderPath, depth + 1, drg);
             }
             for (const on of node.ons) {
                 const fullPath = drgSlug ? (currentPath ? `${drgSlug}/${currentPath}` : drgSlug) : (currentPath || '');
@@ -1306,7 +1493,7 @@ export class DetailsModuleGenerator {
         }
 
         // Recurse into sub-sub-folders
-        for (const [subSlug, subFolder] of Object.entries(folder.folders).sort(([, a], [, b]) => a.name.localeCompare(b.name))) {
+        for (const [subSlug, subFolder] of this._orderFolders(folder.folders, null, null)) {
             const subFolderPath = `${thisFolderPath}/${subSlug}`;
             nav += this._generateCollapsedFolderNav(subFolder, subFolderPath, depth + 1);
         }

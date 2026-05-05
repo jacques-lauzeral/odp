@@ -1,0 +1,32 @@
+{
+  "sections": [
+    {
+      "name": "Airspace Data Meta-Model (iDL-ADMM)",
+      "aliases": ["ADMM", "Airspace Data Meta-Model"]
+    },
+    {
+      "name": "Airspace Data Model (iDL-ADM)",
+      "aliases": ["ADM", "Airspace Data Model"]
+    },
+    {
+      "name": "Airspace Data Process (iDL-ADP)",
+      "aliases": ["ADP", "Airspace Data Process"]
+    },
+    {
+      "name": "iDL Interfaces",
+      "aliases": ["Interfaces"]
+    },
+    {
+      "name": "Airspace Utilisation Rules and Availability (AURA)",
+      "aliases": ["AURA", "Airspace Utilisation Rules and Availability"]
+    },
+    {
+      "name": "Letters of Agreement",
+      "aliases": ["LoA"]
+    },
+    {
+      "name": "Transponder Code Function",
+      "aliases": ["TCF"]
+    }
+  ]
+}

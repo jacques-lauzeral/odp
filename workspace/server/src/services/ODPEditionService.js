@@ -494,7 +494,7 @@ export class ODPEditionService {
 
         console.log(`[generateAntoraZip] editionId=${editionId ?? 'repository'} drgFilter=${drgFilter ?? 'all'} introOnly=${introOnly}`);
 
-        const detailsGenerator = new DetailsModuleGenerator(userId, editionId ?? null, drgFilter, introOnly);
+        const detailsGenerator = new DetailsModuleGenerator(userId, editionId ?? null, drgFilter, introOnly, sharedContentPath);
         const detailsFiles = await detailsGenerator.generate();
         console.log(`[generateAntoraZip] Generated ${Object.keys(detailsFiles).length} details module files`);
 
@@ -529,17 +529,35 @@ export class ODPEditionService {
             ];
         } else {
             configPaths = [sharedConfigPath, websiteConfigPath];
+            // Determine DrG directory order from edition-plan.json if present
+            const editionPlanPath = nodePath.join(sharedContentPath, 'edition-plan.json');
+            let drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
+                .filter(e => e.isDirectory() && e.name !== 'intro')
+                .map(e => e.name);
+            if (fs.existsSync(editionPlanPath)) {
+                const editionPlan = JSON.parse(fs.readFileSync(editionPlanPath, 'utf-8'));
+                const planPaths = (editionPlan.chapters || []).map(c => (c.path || '').toLowerCase());
+                const planSet = new Set(planPaths);
+                // Keep only dirs present in plan, in plan order
+                drgDirs = planPaths.filter(p => drgDirs.includes(p));
+                // Warn about dirs present on disk but absent from plan
+                for (const dir of fs.readdirSync(sharedContentPath, { withFileTypes: true })
+                    .filter(e => e.isDirectory() && e.name !== 'intro')
+                    .map(e => e.name)) {
+                    if (!planSet.has(dir)) {
+                        console.warn(`[edition-plan] DrG directory '${dir}' not in edition-plan.json — excluded from website build`);
+                    }
+                }
+            }
             contentMappings = [
                 { srcPath: nodePath.join(sharedContentPath, 'intro'),
                     mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
-                ...fs.readdirSync(sharedContentPath, { withFileTypes: true })
-                    .filter(e => e.isDirectory() && e.name !== 'intro')
-                    .map(e => ({
-                        srcPath: nodePath.join(sharedContentPath, e.name),
-                        mapFn: rel => rel.startsWith('assets/') ? `modules/details/${rel}` : `modules/details/pages/${e.name}/${rel}`,
-                        drgSlug: e.name,
-                        websiteMode: true
-                    })),
+                ...drgDirs.map(name => ({
+                    srcPath: nodePath.join(sharedContentPath, name),
+                    mapFn: rel => rel.startsWith('assets/') ? `modules/details/${rel}` : `modules/details/pages/${name}/${rel}`,
+                    drgSlug: name,
+                    websiteMode: true
+                })),
                 { srcPath: websiteContentPath,
                     mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
             ];

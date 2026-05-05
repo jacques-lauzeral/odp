@@ -1,17 +1,16 @@
 export const DraftingGroup = {
     '4DT': '4D-Trajectory',
     'AIRPORT': 'Airport',
-    'ASM_ATFCM': 'ASM / ATFCM Integration',
+    'ASM_ATFCM': 'ASM/ATFCM Integration',
     'CRISIS': 'Crisis',
-    'FAAS': 'Flight Assessment and Alert System',
+    'FAAS': 'FAAS',
     'FLOW': 'Flow',
-    'IDL': 'iDL',
+    'IDL': 'Airspace (iDL)',
     'NM': 'Network Manager',
     'NM_B2B': 'NM B2B',
     'NMUI': 'NMUI',
-    'PERF': 'Performance',
     'RRT': 'Rerouting',
-    'TCF': 'TCF'
+    'TCF': 'Transponder Code Function'
 };
 
 export const DraftingGroupKeys = Object.keys(DraftingGroup);
