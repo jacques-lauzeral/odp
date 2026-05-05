@@ -2,15 +2,31 @@
   "sections": [
     {
       "name": "Airspace Data Meta-Model (iDL-ADMM)",
-      "aliases": ["ADMM", "Airspace Data Meta-Model"]
+      "aliases": ["ADMM", "Airspace Data Meta-Model"],
+      "sections": [
+        { "name":  "Foundation"},
+        { "name":  "Design"},
+        { "name":  "Maintenance, publication and review"}
+      ]
     },
     {
       "name": "Airspace Data Model (iDL-ADM)",
-      "aliases": ["ADM", "Airspace Data Model"]
+      "aliases": ["ADM", "Airspace Data Model"],
+      "sections": [
+        { "name":  "Model itself"},
+        { "name":  "Transversal"}
+      ]
     },
     {
       "name": "Airspace Data Process (iDL-ADP)",
-      "aliases": ["ADP", "Airspace Data Process"]
+      "aliases": ["ADP", "Airspace Data Process"],
+      "sections": [
+        { "name":  "Process Overview"},
+        { "name":  "Data Elaboration"},
+        { "name":  "Release to Operations and Publication"},
+        { "name":  "Data Issue Management"},
+        { "name":  "AIS Data and Publication Integration"}
+      ]
     },
     {
       "name": "iDL Interfaces",

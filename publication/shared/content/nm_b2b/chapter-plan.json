@@ -28,7 +28,7 @@
         { "name": "Maintenance" },
         { "name": "Disaster Recovery and Contingency" },
         { "name": "Incident Management" },
-        { "name": "Problem Investigation" }
+        { "name": "Problem Detection and  Investigation" }
       ]
     }
   ]

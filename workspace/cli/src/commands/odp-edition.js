@@ -259,13 +259,13 @@ class EditionCommands {
                     const setActive = opts.set || opts.setDomains !== undefined || opts.setIntro !== 'true' || opts.setIntro === 'false';
                     const flatActive = opts.flat;
 
-                    if (!flatActive && !setActive) {
+                    if ((opts.pdf || opts.word) && !flatActive && !setActive) {
                         console.error('Error: at least one of --flat or --set (or --set-domains / --set-intro) must be specified.');
                         process.exit(1);
                     }
 
-                    if (!opts.pdf && !opts.word) {
-                        console.error('Error: at least one of --pdf or --word must be specified.');
+                    if (!opts.html && !opts.pdf && !opts.word) {
+                        console.error('Error: at least one of --html, --pdf or --word must be specified.');
                         process.exit(1);
                     }
 
@@ -290,7 +290,9 @@ class EditionCommands {
 
                     const body = { html: opts.html === true };
                     if (opts.pdf) body.pdf = buildFormatOptions();
+                    else body.pdf = false;
                     if (opts.word) body.word = buildFormatOptions();
+                    else body.word = false;
 
                     console.log(`Publishing edition ${id}...`);
                     console.log('(Build progress is visible in server logs)');

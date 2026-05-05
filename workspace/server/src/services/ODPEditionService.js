@@ -234,11 +234,11 @@ export class ODPEditionService {
                 throw err;
             }
 
-            // Normalise options — default: html + flat PDF only
+            // Normalise options — default: html + flat PDF only (unless explicitly suppressed via false)
             const html = options.html !== false;
-            const pdf = options.pdf || {};
-            const word = options.word || {};
-            if (!pdf.flat && !pdf.set && !word.flat && !word.set) {
+            const pdf = options.pdf === false ? {} : (options.pdf || {});
+            const word = options.word === false ? {} : (options.word || {});
+            if (options.pdf !== false && options.word !== false && !pdf.flat && !pdf.set && !word.flat && !word.set) {
                 pdf.flat = true;
             }
 
