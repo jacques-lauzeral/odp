@@ -1,8 +1,6 @@
 = Flow
 :notitle:
 
-== Introduction
-
 Flow Management is a core, cross-cutting function of the European Network: it balances traffic demand against available
 capacity, applies ATFCM measures where pressure is concentrated, and coordinates the resulting actions across NMOC,
 FMPs, ANSPs, Airspace Users and Airports. It is linked to trajectory management, airspace availability and overall
@@ -31,3 +29,7 @@ The chapter content builds on two reference documents:
 * link:https://www.eurocontrol.int/publication/flow-conops[*Flow CONOPS*] — describes flow management processes, coordination mechanisms and the operational concept underpinning the evolution of Flow Management.
 
 * link:https://www.eurocontrol.int/publication/asmatfcm-integration[*ASM/ATFCM Integration CONOPS*] — describes the integration of Airspace Management with Air Traffic Flow and Capacity Management as a single coordinated process.
+
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._

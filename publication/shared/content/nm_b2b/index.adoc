@@ -35,3 +35,5 @@ The chapter content builds on two reference documents:
 * NM B2B API Design Conventions — provides harmonised technical rules and conventions for NM B2B service design and implementation.
 The chapter is organised along two axes. Technical Aspects covers the foundational technical concerns of the interface (API design, exchange protocols, security, environments, lifecycle). Operational Aspects covers the operational arrangements that surround it (documentation, onboarding, user management, monitoring, incident management). The 28 themes that follow each correspond to one leaf concern under this two-axis structure.
 
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._

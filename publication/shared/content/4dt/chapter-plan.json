@@ -1,0 +1,28 @@
+{
+  "sections": [
+    {
+      "name": "Flight planning services (FF-ICE)"
+    },
+    {
+      "name": "Trajectory inputs from operational stakeholders"
+    },
+    {
+      "name": "Construction of the Network 4D Trajectory"
+    },
+    {
+      "name": "CDM strategic revision platform"
+    },
+    {
+      "name": "Tactical updates from airborne and ground sources"
+    },
+    {
+      "name": "Impact assessment and rerouting support"
+    },
+    {
+      "name": "VFR Flight Plan handling"
+    },
+    {
+      "name": "Other flight categories"
+    }
+  ]
+}

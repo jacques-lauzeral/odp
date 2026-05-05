@@ -1,8 +1,6 @@
 = Airspace (iDL)
 :notitle:
 
-== Introduction
-
 The iDL is the ATM/AIM data component of the integrated Network Management (iNM) Programme — the digital transformation by which NM and its stakeholders will work together from 2029.
 It collects, consolidates and provides the aeronautical, airspace, airport, meteorological and other data required for Network operations across all flight phases.
 It replaces the current fragmentation between the European AIS Database (EAD) and the Central Airspace and Capacity Database (CACD), which today maintain overlapping but inconsistent data through largely independent processes.
@@ -113,3 +111,7 @@ A Weather sub-domain may follow in a future edition.
 *AIXM Conceptual Model* — the ICAO standard Aeronautical Information Exchange Model (AIXM 5.1.1) and its extensions, used as the basis for the iDL-ADM where applicable.
 
 *ERNIP* (European Route Network Improvement Plan), Parts 1 to 4 — for airspace design methodology, route definitions, airspace management procedures, and the Route Availability Document.
+
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._

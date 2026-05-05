@@ -1,0 +1,20 @@
+= Transversal NM
+:notitle:
+
+NM operates as a critical service across the European aviation Network. Its services need to be delivered with
+consistency, reliability and trust, regardless of which channel a stakeholder uses to access them. This chapter defines
+the Operational Needs and Operational Requirements that apply transversally across all NM service delivery channels -
+NMUI, NM B2B, and any future channel through which NM services are delivered.
+
+Without a transversal layer, every channel-specific or domain-specific chapter would have to reinvent fundamental
+concerns: how services evolve, how they remain available, how they are secured, who uses them and how, what they say.
+This chapter expresses those concerns once, authoritatively, so that channel-specific and domain-specific chapters can
+focus on what is genuinely specific to them. The principles defined here govern by default; channel-specific chapters
+refine them for their channel where useful, and take precedence within their channel provided they do not contradict
+the transversal principle.
+
+The chapter is organised around five themes: Service definition and evolution, Operational behaviour, Compliance and
+traceability, Users and collaboration, and Presentation and semantics.
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._

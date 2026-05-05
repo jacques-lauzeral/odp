@@ -1,8 +1,6 @@
 = Rerouting
 :notitle:
 
-== Introduction
-
 The Rerouting Drafting Group (DrG) is the iCDM drafting group responsible for defining and consolidating the Operational Needs (ONs) and Operational Requirements (ORs) that drive the evolution of Network Manager rerouting (NM RR) capabilities.
 Its scope is transversal by nature: rerouting is not described in a single standalone CONOPS, but is addressed across several operational frameworks, notably the Network 4D Trajectory CONOPS, the Flow CONOPS, and the ASM/ATFCM Integration CONOPS.
 These references collectively provide the operational baseline for trajectory identification, rerouting coordination, impact assessment, ATFCM scenario handling, and post-departure trajectory revision.
@@ -18,7 +16,7 @@ Within the broader NM systems evolution framework, the Rerouting DrG provides th
 In particular, the group interfaces with other Drafting Groups where rerouting depends on, or influences, trajectory management, ATFCM/ASM processes, ATFCM scenario management, network impact assessment, rerouting indicator handling, post-operations analysis, and collaborative decision-making.
 The DrG therefore plays a coordinating role in ensuring that rerouting-related ONs and ORs remain operationally coherent across NM developments, while keeping the main emphasis on the evolution of NM RR capabilities and their contribution to safer, more efficient, more scalable, and more predictable network operations.
 
-=== Operational Needs baseline
+*Operational Needs Baseline*
 
 The current ON baseline for rerouting is structured around five complementary operational needs.
 
@@ -47,3 +45,7 @@ Operational users need to initiate, receive and respond to trajectory adjustment
 _Maturity level: DEFINED_
 
 Together, these ONs provide the operational baseline for the derivation, traceability, and prioritisation of rerouting ORs.
+
+
+_Within each section, Operational Needs are presented first, followed by the Operational Requirements that implement
+them._
