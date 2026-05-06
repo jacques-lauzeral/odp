@@ -10,11 +10,11 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * The Edition 4 workbook organises content across multiple sheets per wave:
  *
  *   Wave 2027:  ONOR2027 (main, ignored), ONOR2027-ad hoc RSA,
- *               ONOR2027-AIrspace scenario, ONOR2027-iOAT FPL,
- *               ONOR2027-Dynamic RAD, ONOR2027-Notification,
- *               ONOR2027-monitoring, ONOR2027-CBA-CBO
+ *               ONOR2027-iOAT FPL, ONOR2027-Notification,
+ *               ONOR2027-monitoring, ONOR2027-CBA-CBO, ONOR2027-CIAM
  *   Wave 2028:  ONOR 2028 (main, ignored), ONOR 2028 AS structures,
- *               ONOR 2028 Rolling, ONOR 2028 NIASIM, ONOR 2028 CDM
+ *               ONOR 2028  Rolling, ONOR 2028  NIASIM, ONOR 2028  CDM,
+ *               ONOR2028-Dynamic RAD, ONOR2028-AIrspace scenario
  *   Wave 2029:  ONOR2029 (main, ignored), ONOR2029 Dynamic ATM,
  *               ONOR2029 NIASIM, ONOR2029 Rolling Process,
  *               ONOR2029 POST-OPS, ONOR2029 CDM evolution,
@@ -25,6 +25,9 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * ====================
  * Each sub-sheet maps to exactly one root ON (see SHEET_TO_ON constant).
  * Main year sheets (ONOR2027, ONOR 2028, ONOR2029) and OC sheets are ignored.
+ * Each entry carries a folder label used as path: [folder] on both the ON and its ORs.
+ * Folders may be shared across waves (e.g. NIA/SIM, Rolling Process, CDM, Monitoring,
+ * iOAT FPL). CBO/CBA evolution is explicitly placed in the iOAT FPL folder.
  *
  * OR FILTERING:
  * =============
@@ -60,10 +63,11 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  * =======================
  * ON extraction:
  *   wave, onCodeNum, onTitle   → from SHEET_TO_ON static definition
+ *   folder                     → from SHEET_TO_ON; set as path: [folder] on ON
  *   'ON Statement'             → statement (from first matching row)
  *   'ON Rationale'             → rationale (from first matching row)
- *   'Strategic Documents' | 'NSP SOs reference' → strategicDocuments
- *                                (aggregated across all matching OR rows, set on ON)
+ *   strategicDocuments         → hardcoded from ON_STRATEGIC_DOCUMENTS by ON title
+ *                                (resolved via STRATEGIC_DOC_SYNONYM_MAP)
  *   type: 'ON', drg: 'ASM_ATFCM'  (hardcoded)
  *   tentative: [year, year]        (derived from wave)
  *
@@ -83,6 +87,7 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  *   'Remark'                                      → privateNotes
  *   'OR Code'                                     → privateNotes
  *   '#'                                           → privateNotes (row number)
+ *   path: [folder]                                 → same folder as parent ON
  *   type: 'OR', drg: 'ASM_ATFCM'                  (hardcoded)
  *   maturity: 'ADVANCED' if rationale present, 'DRAFT' otherwise
  *
@@ -145,25 +150,27 @@ import AsciidocToDeltaConverter from './AsciidocToDeltaConverter.js';
  */
 const SHEET_TO_ON = {
     // Wave 2027
-    'ONOR2027-ad hoc RSA':           { wave: '2027', onCodeNum: 1, onTitle: 'Ad-hoc airspace structure evolution' },
-    'ONOR2027-AIrspace scenario':    { wave: '2027', onCodeNum: 3, onTitle: 'Dynamic scenarios evolution' },
-    'ONOR2027-iOAT FPL':             { wave: '2027', onCodeNum: 4, onTitle: 'iOAT FPL evolution' },
-    'ONOR2027-Dynamic RAD':          { wave: '2027', onCodeNum: 2, onTitle: 'Dynamic RAD evolution' },
-    'ONOR2027-Notification':         { wave: '2027', onCodeNum: 5, onTitle: 'Notification process evolution' },
-    'ONOR2027-monitoring':           { wave: '2027', onCodeNum: 6, onTitle: 'Enhance Monitoring function with ASM data' },
-    'ONOR2027-CBA-CBO':              { wave: '2027', onCodeNum: 7, onTitle: 'CBO/CBA evolution' },
+    'ONOR2027-ad hoc RSA':           { wave: '2027', onCodeNum: 1, onTitle: 'Ad-hoc airspace structure evolution',   folder: 'Ad Hoc RSA' },
+    'ONOR2027-iOAT FPL':             { wave: '2027', onCodeNum: 4, onTitle: 'iOAT FPL evolution',                   folder: 'iOAT FPL' },
+    'ONOR2027-Notification':         { wave: '2027', onCodeNum: 5, onTitle: 'Notification process evolution',        folder: 'Notification' },
+    'ONOR2027-monitoring':           { wave: '2027', onCodeNum: 6, onTitle: 'Enhance Monitoring function with ASM data', folder: 'Monitoring' },
+    'ONOR2027-CBA-CBO':              { wave: '2027', onCodeNum: 7, onTitle: 'CBO/CBA evolution',                    folder: 'iOAT FPL' },
+    'ONOR2027-CIAM':                 { wave: '2027', onCodeNum: 8, onTitle: 'CIAM replacement',                     folder: 'CIAM' },
     // Wave 2028
-    'ONOR 2028 AS structures':       { wave: '2028', onCodeNum: 1, onTitle: 'Enhanced ASM structures evolution' },
-    'ONOR 2028 Rolling':             { wave: '2028', onCodeNum: 2, onTitle: 'Rolling process evolution' },
-    'ONOR 2028 NIASIM':              { wave: '2028', onCodeNum: 3, onTitle: 'NIA/SIM further evolution' },
-    'ONOR 2028 CDM':                 { wave: '2028', onCodeNum: 4, onTitle: 'Enhanced CDM evolution' },
+    'ONOR 2028 AS structures':       { wave: '2028', onCodeNum: 1, onTitle: 'Enhanced ASM structures evolution',    folder: 'AS Structures' },
+    'ONOR 2028  Rolling':            { wave: '2028', onCodeNum: 2, onTitle: 'Rolling process evolution',            folder: 'Rolling Process' },
+    'ONOR 2028  NIASIM':             { wave: '2028', onCodeNum: 3, onTitle: 'NIA/SIM further evolution',            folder: 'NIA/SIM' },
+    'ONOR 2028  CDM':                { wave: '2028', onCodeNum: 4, onTitle: 'Enhanced CDM evolution',               folder: 'CDM' },
+    'ONOR2028-Dynamic RAD':          { wave: '2028', onCodeNum: 5, onTitle: 'Dynamic RAD evolution',                folder: 'Dynamic RAD' },
+    'ONOR2028-AIrspace scenario':    { wave: '2028', onCodeNum: 6, onTitle: 'Dynamic scenarios evolution',          folder: 'Dynamic Scenarios' },
+    'ONOR2028-iOAT FPL':             { wave: '2028', onCodeNum: 7, onTitle: 'iOAT FPL evolution',                   folder: 'iOAT FPL' },
     // Wave 2029
-    'ONOR2029 Dynamic ATM':          { wave: '2029', onCodeNum: 1, onTitle: 'Dynamic ATM features evolution' },
-    'ONOR2029 NIASIM':               { wave: '2029', onCodeNum: 2, onTitle: 'NIA/SIM further evolution' },
-    'ONOR2029 Rolling Process':      { wave: '2029', onCodeNum: 3, onTitle: 'Rolling Process evolution' },
-    'ONOR2029 POST-OPS':             { wave: '2029', onCodeNum: 4, onTitle: 'POST-OPS evolution' },
-    'ONOR2029 CDM evolution':        { wave: '2029', onCodeNum: 5, onTitle: 'Further CDM process evolution' },
-    'ONOR2029 Monitoring evolution': { wave: '2029', onCodeNum: 6, onTitle: 'Enhanced Monitoring evolution' },
+    'ONOR2029 Dynamic ATM':          { wave: '2029', onCodeNum: 1, onTitle: 'Dynamic ATM features evolution',       folder: 'Dynamic ATM' },
+    'ONOR2029 NIASIM':               { wave: '2029', onCodeNum: 2, onTitle: 'NIA/SIM further evolution',            folder: 'NIA/SIM' },
+    'ONOR2029 Rolling Process':      { wave: '2029', onCodeNum: 3, onTitle: 'Rolling Process evolution',            folder: 'Rolling Process' },
+    'ONOR2029 POST-OPS':             { wave: '2029', onCodeNum: 4, onTitle: 'POST-OPS evolution',                   folder: 'POST-OPS' },
+    'ONOR2029 CDM evolution':        { wave: '2029', onCodeNum: 5, onTitle: 'Further CDM process evolution',        folder: 'CDM' },
+    'ONOR2029 Monitoring evolution': { wave: '2029', onCodeNum: 6, onTitle: 'Enhanced Monitoring evolution',        folder: 'Monitoring' },
 };
 
 /**
@@ -241,6 +248,36 @@ const OR_STATEMENT_COLUMN_CANDIDATES = [
     'Detailed requirement:\r\nOR Statement',
     'Detailed requirement:\r\nStatement',
 ];
+
+// ─── Hardcoded ON strategic documents ────────────────────────────────────────
+
+/**
+ * Hardcoded strategic document references per ON title (post Part 1/Part 2 renaming).
+ * Extracted from Edition 3 source data and supplemented manually for new ONs.
+ * Keys: ON title (as it appears after deduplication renaming).
+ * Values: array of { externalId, note? } resolved via STRATEGIC_DOC_SYNONYM_MAP.
+ */
+const ON_STRATEGIC_DOCUMENTS = {
+    'Ad-hoc airspace structure evolution':      ['NSP SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'Dynamic RAD evolution':                    ['SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'SO4/4', 'SO4/3', 'SO3/2'],
+    'Dynamic scenarios evolution':              ['SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'SO4/4', 'SO4/3', 'SO3/2'],
+    'iOAT FPL evolution - Part 1':              ['SO3/4', 'NSP SO4/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'SO4/3', 'ATMMP SDO5', 'EU IR 2021/116 AF 4'],
+    'iOAT FPL evolution - Part 2':              ['SO3/4', 'NSP SO4/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'SO4/3', 'ATMMP SDO5', 'EU IR 2021/116 AF 4'],
+    'Notification process evolution':           ['NSP SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'Enhance Monitoring function with ASM data': ['NSP SO4/3', 'ATMMP SDO5', 'EU IR 2021/116 AF 4'],
+    'CBO/CBA evolution':                        ['NSP SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'CIAM replacement':                         ['NSP SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'Enhanced ASM structures evolution':        ['NSP SO 3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'Rolling process evolution - Part 1':       ['NSP SO 3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'NSP SO 4/3'],
+    'Rolling Process evolution - Part 2':       ['NSP SO3/4', 'SO4/3', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'SO4/6'],
+    'NIA/SIM further evolution - Part 1':       ['NSP SO 4/6', 'ATMMP SDO 5', 'EU IR 2021/116 AF 4', 'NSP SO 3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'NIA/SIM further evolution - Part 2':       ['NSP SO3/4', 'SO4/3', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'SO1/3'],
+    'Enhanced CDM evolution':                   ['NSP SO3/4', 'SO4/3', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'ATMMP SDO 5', 'EU IR 2021/116 AF 3/4'],
+    'Dynamic ATM features evolution':           ['NSP SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3', 'NSOP SO 4/3'],
+    'POST-OPS evolution':                       ['NSP SO1/3', 'SO3/4', 'SO4/3', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'Further CDM process evolution':            ['SO4/2', 'SO3/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 3'],
+    'Enhanced Monitoring evolution':            ['NSP SO4/4', 'ATMMP SDO 3', 'EU IR 2021/116 AF 4', 'NSP SO4/2', 'ATMMP SDO 5', 'NSP SO4/3', 'EU IR 2021/116 AF 3'],
+};
 
 // ─── Mapper ───────────────────────────────────────────────────────────────────
 
@@ -382,9 +419,11 @@ class AsmAtfcmMapper extends Mapper {
                 console.log(`AsmAtfcmMapper: Duplicate ON renamed "${on.title}" → "${newTitle}"`);
                 if (!onIdRemap.has(on.externalId)) onIdRemap.set(on.externalId, []);
                 onIdRemap.get(on.externalId).push(newExternalId);
-                needs.push({ ...on, title: newTitle, externalId: newExternalId });
+                needs.push({ ...on, title: newTitle, externalId: newExternalId,
+                    strategicDocuments: this._resolveOnStrategicDocuments(newTitle) });
             } else {
-                needs.push(on);
+                needs.push({ ...on,
+                    strategicDocuments: this._resolveOnStrategicDocuments(on.title) });
             }
         }
 
@@ -461,24 +500,10 @@ class AsmAtfcmMapper extends Mapper {
             ors.push({ _row: row, _orTitle: orTitle }); // defer OR building until ON externalId known
         }
 
-        // Aggregate strategic documents across all matching rows
-        const seenDocKeys = new Set();
-        const strategicDocuments = [];
-        for (const { _row } of ors) {
-            const raw = (_row['Strategic Documents'] || _row['NSP SOs reference'] || '').trim();
-            for (const doc of this._parseStrategicDocuments(raw)) {
-                const key = doc.externalId + (doc.note || '');
-                if (!seenDocKeys.has(key)) {
-                    seenDocKeys.add(key);
-                    strategicDocuments.push(doc);
-                }
-            }
-        }
-
-        const on = this._buildOn(onDef, firstOnRow, strategicDocuments);
+        const on = this._buildOn(onDef, firstOnRow);
         const builtOrs = [];
         for (const { _row, _orTitle } of ors) {
-            const or = this._buildOr(onDef.wave, on.externalId, _orTitle, _row, orStatementKey);
+            const or = this._buildOr(onDef.wave, on.externalId, _orTitle, _row, orStatementKey, onDef.folder);
             if (!or) continue;
             if (seenOrIds.has(or.externalId)) continue;
             seenOrIds.add(or.externalId);
@@ -499,8 +524,8 @@ class AsmAtfcmMapper extends Mapper {
      * @returns {Object}
      * @private
      */
-    _buildOn(onDef, firstRow, strategicDocuments = []) {
-        const { wave, onTitle } = onDef;
+    _buildOn(onDef, firstRow) {
+        const { wave, onTitle, folder } = onDef;
         const year = parseInt(wave, 10);
 
         const externalId = ExternalIdBuilder.buildExternalId(
@@ -516,12 +541,12 @@ class AsmAtfcmMapper extends Mapper {
             type: 'ON',
             drg: 'ASM_ATFCM',
             title: onTitle,
+            path: [folder],
             statement,
             rationale,
             maturity: 'ADVANCED',
             tentative: [year, year],
             privateNotes: null,
-            strategicDocuments: strategicDocuments.length > 0 ? strategicDocuments : undefined,
         };
     }
 
@@ -537,7 +562,7 @@ class AsmAtfcmMapper extends Mapper {
      * @returns {Object|null}
      * @private
      */
-    _buildOr(wave, onExternalId, orTitle, row, orStatementKey) {
+    _buildOr(wave, onExternalId, orTitle, row, orStatementKey, folder) {
         const externalId = ExternalIdBuilder.buildExternalId(
             { drg: 'ASM_ATFCM', title: orTitle },
             'or'
@@ -585,6 +610,7 @@ class AsmAtfcmMapper extends Mapper {
             type: 'OR',
             drg: 'ASM_ATFCM',
             title: orTitle,
+            path: folder ? [folder] : undefined,
             statement,
             rationale,
             maturity,
@@ -641,6 +667,61 @@ class AsmAtfcmMapper extends Mapper {
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     /**
+     * Merge strategic document entries with the same externalId by concatenating notes.
+     * e.g. [{externalId: 'refdoc:x', note: 'AF 3'}, {externalId: 'refdoc:x', note: 'AF 4'}]
+     *   → [{externalId: 'refdoc:x', note: 'AF 3, AF 4'}]
+     * @param {Array<{ externalId: string, note?: string }>} docs
+     * @returns {Array<{ externalId: string, note?: string }>}
+     * @private
+     */
+    _mergeStrategicDocuments(docs) {
+        const map = new Map();
+        for (const doc of docs) {
+            if (!map.has(doc.externalId)) {
+                map.set(doc.externalId, { ...doc });
+            } else {
+                const existing = map.get(doc.externalId);
+                if (doc.note) {
+                    existing.note = existing.note
+                        ? existing.note + ', ' + doc.note
+                        : doc.note;
+                }
+            }
+        }
+        return [...map.values()];
+    }
+
+    /**
+     * Resolve hardcoded strategic documents for an ON by title.
+     * Looks up ON_STRATEGIC_DOCUMENTS and resolves each token via STRATEGIC_DOC_SYNONYM_MAP.
+     * @param {string} onTitle - ON title (post Part 1/Part 2 renaming)
+     * @returns {Array<{ externalId: string, note?: string }>|undefined}
+     * @private
+     */
+    _resolveOnStrategicDocuments(onTitle) {
+        const tokens = ON_STRATEGIC_DOCUMENTS[onTitle];
+        if (!tokens || tokens.length === 0) return undefined;
+        const results = [];
+        const seen = new Set();
+        for (const token of tokens) {
+            const mapping = STRATEGIC_DOC_SYNONYM_MAP[token];
+            if (!mapping) {
+                console.warn(`AsmAtfcmMapper: Unmapped strategic document token "${token}" for ON "${onTitle}"`);
+                continue;
+            }
+            const key = mapping.externalId + (mapping.note || '');
+            if (seen.has(key)) continue;
+            seen.add(key);
+            results.push(mapping.note
+                ? { externalId: mapping.externalId, note: mapping.note }
+                : { externalId: mapping.externalId }
+            );
+        }
+        const merged = this._mergeStrategicDocuments(results);
+        return merged.length > 0 ? merged : undefined;
+    }
+
+    /**
      * Parse the unified Strategic Documents / NSP SOs reference column.
      * Splits on commas and newlines, looks up each token in STRATEGIC_DOC_SYNONYM_MAP.
      * Unmapped tokens are warned and discarded (not added to privateNotes).
@@ -678,7 +759,7 @@ class AsmAtfcmMapper extends Mapper {
             );
         }
 
-        return results;
+        return this._mergeStrategicDocuments(results);
     }
 
     /**
