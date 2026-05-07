@@ -56,17 +56,19 @@ REST API  POST /odp-editions/{id}/publish  ← PublishOptions body
           │               ├── content files  → Antora module paths (remapped per build mode)
           │               └── generated files → modules/details/ or modules/ROOT/ (domain mode)
           │
-          ├── _buildFlat(format, selection, ...)
-          │       └── works/: npx antora antora-playbook-{pdf|docx}.yml → copy to _artifacts/
+          ├── _buildFlat(format)
+          │       └── works/flat/antora-playbook-{pdf|docx}.yml → _artifacts/index.{pdf|docx}
+          │           (antora binary: works/node_modules/.bin/antora, cwd: works/flat/)
           │
-          ├── _buildWordMultipart(selection, ...)
-          │       ├── intro: works-intro/ → extract intro ZIP → git commit → antora build → ZIP entry
-          │       └── per DrG: works-{drg}/ → extract domain ZIP → git commit → antora build → ZIP entry
-          │       └── assemble word-multipart.zip → copy to _artifacts/
+          ├── _buildWordMultipart(selection)
+          │       ├── intro: works-intro/multipart/antora-playbook-docx.yml → ZIP entry
+          │       └── per DrG: works-{drg}/multipart/antora-playbook-docx.yml → ZIP entry
+          │       └── assemble → _artifacts/word-multipart.zip
+          │           (NODE_PATH=works/node_modules for all multipart builds)
           │
           └── website build (if requested)
-                  └── works/: npx antora antora-playbook.yml
-                      → _copyArtifactsToSite(_artifacts/ → site/_exports/)
+                  └── works/website/antora-playbook.yml (output.dir: ../build/site)
+                      → _copyArtifactsToSite(_artifacts/ → works/build/site/odip/_exports/)
 ```
 
 **File locations** — all under `workspace/server/src/services/`:
@@ -133,12 +135,17 @@ publication/
 │
 ├── website/
 │   └── content/
-│       └── nav.adoc                 ← ROOT module nav (website mode)
+│       └── nav.adoc                 ← ROOT module nav (all DrGs, website mode)
+│
+├── flat/
+│   └── content/
+│       └── intro/
+│           └── nav.adoc             ← ROOT module nav (intro, flat builds)
 │
 └── multipart/
     └── content/
         └── intro/
-            └── nav.adoc             ← ROOT module nav (intro multipart mode)
+            └── nav.adoc             ← ROOT module nav (intro, multipart builds)
 ```
 
 ---
@@ -257,9 +264,13 @@ Key points:
 
 `ODPEditionService.generateAntoraZip()` assembles the final ZIP by combining:
 
-1. Config files from `configPaths[]` — land at works dir root; later paths override earlier
-2. Content files from `contentMappings[]` — remapped to Antora module paths per build mode
-3. Generated details files from `DetailsModuleGenerator` — remapped to `modules/ROOT/` in domain mode
+1. **Shared config** (`shared/config/`) — lands at works dir root (package.json, ui-bundle, theme, extension)
+2. **Mode-specific config** (`website/`, `flat/`, or `multipart/config/`) — lands in a build-type subdir:
+   - `antora.yml` → works dir **root** (Antora reads component descriptor from the git root)
+   - All other files (playbooks, assemblers) → `website/`, `flat/`, or `multipart/` subdir
+3. **Shared assets** (ui-bundle.zip, pdf-theme.yml, template.docx, antora-docx-extension.js) → also copied into the mode subdir so playbooks can reference them via `./`
+4. **Content files** — remapped to Antora module paths per build mode
+5. **Generated details files** — from `DetailsModuleGenerator`; in domain mode remapped to `modules/ROOT/`
 
 ---
 
@@ -384,16 +395,26 @@ npx antora antora-playbook.yml && npx antora antora-playbook-pdf.yml
 
 The server maintains persistent publication workspaces under `$ODIP_HOME/publication/`:
 
-| Directory | Purpose | Config source |
+| Directory | Purpose | Antora binary |
 |---|---|---|
-| `works/` | Website + flat PDF/Word builds | `shared/config` + `website/config` (website) or `flat/config` (flat) |
-| `works-intro/` | Word multipart intro build | `shared/config` + `multipart/config` |
-| `works-{drg}/` × N | Word multipart per-domain builds | `shared/config` + `multipart/config` |
+| `works/` | Website + flat PDF/Word builds | `works/node_modules/.bin/antora` |
+| `works-intro/` | Word multipart intro build | same (absolute path) |
+| `works-{drg}/` × N | Word multipart per-domain builds | same (absolute path) |
 | `_artifacts/` | Persistent artifact staging area | — |
 
-`works/` is shared between website and flat builds because only one publication runs at a time. The flat build extracts a selection-scoped ZIP into `works/` before running the assembler; the website build always regenerates from the full-content ZIP.
+**All works dirs share the same `node_modules`** — only `works/` has `node_modules/` installed. Multipart builds reference the antora binary via absolute path and set `NODE_PATH=works/node_modules` so Node resolves shared packages (e.g. `@antora/run-command-helper`) regardless of `cwd`.
 
-N (the number of per-DrG works dirs) is derived from `shared/content/` subdirectories (excluding `intro/`) — no hardcoded DrG list.
+`works/` is shared between website and flat builds because only one publication runs at a time. The flat build extracts a `flat`-mode ZIP into `works/` before running; the website build extracts a `website`-mode ZIP.
+
+N is derived from `shared/content/` subdirectories (excluding `intro/`) — no hardcoded DrG list.
+
+### Works dir internal layout
+
+Each works dir contains at publish time:
+- `antora.yml` at root — Antora component descriptor, injected per build
+- `modules/` at root — content, injected per build
+- Shared assets at root: `ui-bundle.zip`, `pdf-theme.yml`, `template.docx`, `antora-docx-extension.js`, `package.json`, `Gemfile`
+- Build-type subdir (`website/`, `flat/`, or `multipart/`) containing playbooks, assemblers, and copies of shared assets (so `./` relative paths in playbooks resolve correctly)
 
 ### Initialisation (server startup)
 
@@ -404,10 +425,7 @@ N (the number of per-DrG works dirs) is derived from `shared/content/` subdirect
 3. Bootstrap from `sourcePaths[]` — copies config files in order (later overrides earlier) — only if `package.json` absent
 4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
 
-Source paths per works dir type:
-- `works/`: `shared/config` + `website/config` (website playbook is what matters at bootstrap time)
-- `works-intro/`: `shared/config` + `multipart/config`
-- `works-{drg}/`: `shared/config` + `multipart/config`
+Bootstrap source: **`shared/config` only** for all works dirs. Playbooks, assemblers, and `antora.yml` are **not** bootstrapped statically — they are injected via ZIP at publish time into the appropriate build-type subdir.
 
 ### ZIP generation (`generateAntoraZip`)
 
@@ -424,9 +442,12 @@ Content path mappings per build mode:
 
 | Mode | Source | Target in ZIP |
 |---|---|---|
-| `website`/`flat` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| `website`/`flat` | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
-| `website`/`flat` | `website/content/nav.adoc` | `modules/ROOT/nav.adoc` |
+| `website` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `website` | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
+| `website` | `website/content/nav.adoc` | `modules/ROOT/nav.adoc` |
+| `flat` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `flat` | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
+| `flat` | `flat/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
 | `intro` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
 | `intro` | `multipart/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
 | `domain` | `shared/content/{drg}/index.adoc` | `modules/ROOT/pages/index.adoc` |
@@ -438,11 +459,11 @@ Content path mappings per build mode:
 Each `publishEdition()` call:
 1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
 2. Normalises `PublishOptions` — absent body defaults to `{ website: true }`
-3. If website or flat builds requested: generates full-content ZIP → extracts into `works/` → git commit
-4. Flat PDF (if `pdfFlat`): `_buildFlat('pdf')` in `works/` — non-fatal; output written to `_artifacts/`
-5. Flat Word (if `wordFlat`): `_buildFlat('word')` in `works/` — non-fatal; output written to `_artifacts/`
-6. Word multipart (if `wordMultipart`): `_buildWordMultipart()` — non-fatal; output written to `_artifacts/`
-7. Website (if `website`): `npx antora antora-playbook.yml` in `works/` — fatal on failure; then `_copyArtifactsToSite()` copies all available artifacts from `_artifacts/` into site exports
+3. If flat builds requested: generate `flat`-mode ZIP → extract into `works/` → git commit
+4. Flat PDF (if `pdfFlat`): `_buildFlat('pdf')` — runs from `works/flat/`, non-fatal; output written to `_artifacts/` and site exports
+5. Flat Word (if `wordFlat`): `_buildFlat('word')` — runs from `works/flat/`, non-fatal; output written to `_artifacts/` and site exports
+6. Word multipart (if `wordMultipart`): `_buildWordMultipart()` — non-fatal; output written to `_artifacts/` and site exports
+7. Website (if `website`): generate `website`-mode ZIP → extract into `works/` → git commit → run `works/website/antora-playbook.yml` — fatal on failure; then `_copyArtifactsToSite()` copies all available artifacts from `_artifacts/` into site exports
 8. Releases mutex — returns `{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }`
 
 All shell commands are executed via `_execStreaming()` (async `child_process.exec` with real-time streaming). Non-fatal builds use `_tryExecAsync()`.

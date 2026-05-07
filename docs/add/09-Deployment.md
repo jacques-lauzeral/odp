@@ -47,12 +47,14 @@ $ODIP_HOME/
 │   └── reset/             Pre-reset dumps
 ├── logs/                  Server log files
 └── publication/
-    ├── works/             HTML + flat document builds (persistent git repo)
-    ├── works-intro/       Intro document set build (persistent git repo)
-    └── works-{drg}/       Per-domain document set builds × 13 (persistent git repos)
+    ├── _artifacts/        Persistent artifact staging area (pdf flat, word flat, word multipart)
+    ├── works/             Website + flat PDF/Word builds (persistent git repo, npm install target)
+    ├── works-intro/       Word multipart intro build (persistent git repo)
+    └── works-{drg}/       Word multipart per-domain builds × N (persistent git repos)
 ```
 
 All `publication/works*/` directories are initialised by the server at startup (see §7.3).
+N (the number of per-DrG works dirs) is derived from `$ODIP_REPO/publication/shared/content/` subdirectories — adding a new DrG directory automatically creates a new works dir on next `odip-admin install`.
 
 Also add `$ODIP_REPO/bin` to `PATH`:
 
@@ -129,10 +131,11 @@ odip-proto/
 │   ├── shared/                 @odp/shared package
 │   └── web-client/             Web client
 ├── publication/
-│   └── web-site/
-│       └── static/             Antora scaffolding (playbooks, templates, ui-bundle.zip)
-│           └── partials/
-│               └── header-content.hbs   ← Custom EUROCONTROL navbar (injected into ui-bundle.zip)
+│   ├── shared/config/          Shared Antora assets (package.json, ui-bundle.zip, pdf-theme, docx extension)
+│   ├── website/config/         Website playbook + antora.yml
+│   ├── flat/config/            Flat PDF/Word playbooks + assemblers
+│   ├── multipart/config/       Word multipart playbooks + assemblers
+│   └── shared/content/         Manually authored static content (intro + per-DrG index pages)
 ├── Dockerfile.web-client
 ├── Dockerfile.odp-server       ← Custom server image (node:20 + Ruby + asciidoctor-pdf)
 ├── odip-deployment.yaml
@@ -236,14 +239,12 @@ odip-admin start
 ```
 
 `odip-admin install` performs all one-time setup steps:
-1. Creates runtime directories (`ensure_runtime_dirs`) — creates all 15 `works*/` dirs with `chmod 777`
-2. Bootstraps each works dir from the corresponding config source dirs under `$ODIP_REPO/publication/`
-3. Runs `npm install` in each works dir if `node_modules/` absent (host side, proxy-aware via `~/.npmrc`)
+1. Creates runtime directories (`ensure_runtime_dirs`) — creates all `works*/` dirs and `_artifacts/` with `chmod 777`
+2. Bootstraps each works dir from `$ODIP_REPO/publication/shared/config/` — copies `package.json` and shared assets (playbooks and assemblers are **not** bootstrapped; they are injected via ZIP at publish time)
+3. Runs `npm install` in `works/` only — per-DrG works dirs share `works/node_modules/` via absolute binary path and `NODE_PATH`
 4. Runs `npm install` for all workspaces (server, web-client, cli)
 5. Builds `odp-server` image from `Dockerfile.odp-server`
 6. Builds `web-client` image from `Dockerfile.web-client`
-
-The domain list for per-DrG works dirs is derived from `$ODIP_REPO/publication/shared/content/` subdirectories — adding a new DrG static content directory automatically creates a new works dir on next `odip-admin install`.
 
 > **Note:** `ui-bundle.zip` is committed to the repository pre-patched with the custom EUROCONTROL header — no download step is required. See ch06 §7 for details on how the bundle was prepared.
 
@@ -253,10 +254,12 @@ The domain list for per-DrG works dirs is derived from `$ODIP_REPO/publication/s
 
 The server completes workspace initialisation at startup via `initializePublicationWorkspace()` in `index.js`:
 
-1. `git init` — if `.git` absent
-2. `git config --global safe.directory` + `user.email` + `user.name` — always, on every startup (survives `.git` recreation)
-3. Static content bootstrap (`cp -r $PUBLICATION_PATH/. works/`) — if `package.json` absent
+1. `mkdir -p {worksDir}` for each works dir
+2. `git init` + configure `user.email` / `user.name` — only if `.git` absent
+3. Bootstrap from `shared/config/` — copies `package.json` and shared assets to works dir root — only if `package.json` absent
 4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
+
+Playbooks, assemblers, and `antora.yml` are **not** bootstrapped at startup — they are injected into the works dir via ZIP extraction on each publish cycle, landing in the appropriate subdir (`website/`, `flat/`, or `multipart/`).
 
 > **Note:** `npm install` in `works/` runs on the host side via `odip-admin install` to avoid container internet access dependency. The container has no outbound internet access on EC.
 
