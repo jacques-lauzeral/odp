@@ -5,12 +5,11 @@ site:
 
 content:
   sources:
-    - url: .
+    - url: ..
       branches: HEAD
 
 antora:
   extensions:
-    - '@antora/lunr-extension'
     - require: './antora-docx-extension.js'
       assembler_config: ./antora-assembler-docx.yml
 

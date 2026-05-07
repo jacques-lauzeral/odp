@@ -120,20 +120,31 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 | Flag | Description |
 |---|---|
-| `--pdf` | Include PDF in output |
-| `--word` | Include Word in output (requires pandoc) |
-| `--flat` | Generate flat file(s) — one file covering all domains |
-| `--set` | Generate document set(s) — one file per domain + intro |
-| `--set-domains <list>` | Comma-separated DrG ids to include in set (implies `--set`); default: all |
-| `--set-intro <bool>` | Include intro document in set: `true`\|`false` (default: `true`; implies `--set`) |
+| `--word-flat` | Generate a single flat Word document |
+| `--word-multipart` | Generate a multipart Word ZIP (one .docx per domain + intro) |
+| `--pdf-flat` | Generate a single flat PDF document |
+| `--website` | Build and serve the HTML site; copy available artifacts into exports |
+| `--intro` | Include intro section (applies to `--word-flat`, `--word-multipart`, `--pdf-flat`) |
+| `--domains <list>` | Comma-separated DrG ids to include (default: all) |
 
-At least one of `--pdf` / `--word` and one of `--flat` / `--set` (or their implicants) must be specified. `--flat` and `--set` are orthogonal and may be combined. Examples:
+At least one format flag must be specified. Content selection flags (`--intro`, `--domains`) are shared across all document format flags. `--website` is independent and may be combined with document formats. Examples:
 
 ```bash
-odp-cli edition publish 42 --pdf --flat
-odp-cli edition publish 42 --pdf --word --set
-odp-cli edition publish 42 --pdf --set --set-domains RRT,IDL --set-intro false
-odp-cli edition publish 42 --pdf --word --flat --set
+# Generate flat PDF (all content)
+odp-cli edition publish 42 --pdf-flat
+
+# Generate flat Word (selected content)
+odp-cli edition publish 42 --word-flat --intro --domains RRT,IDL
+
+# Generate multipart Word (all domains + intro)
+odp-cli edition publish 42 --word-multipart --intro
+
+# Generate all document formats, then build website separately
+odp-cli edition publish 42 --pdf-flat --word-flat --word-multipart
+odp-cli edition publish 42 --website
+
+# Website only
+odp-cli edition publish 42 --website
 ```
 
 ### Import / Export
@@ -159,9 +170,11 @@ The `--folder` option is passed to the mapper as a path prefix (used for IDL sub
 
 | Command | Action |
 |---|---|
-| `edition publish <id> --pdf --flat` | Build HTML site + flat PDF |
-| `edition publish <id> --pdf --set` | Build HTML site + per-domain PDF set (ZIP) |
-| `edition publish <id> --pdf --word --flat --set` | All formats, flat and set |
+| `edition publish <id> --website` | Build and serve HTML site |
+| `edition publish <id> --pdf-flat` | Generate flat PDF |
+| `edition publish <id> --word-flat` | Generate flat Word |
+| `edition publish <id> --word-multipart` | Generate multipart Word ZIP |
+| `edition publish <id> --pdf-flat --word-flat --word-multipart` | Generate all document formats |
 | `publication antora --output <path> [--edition <id>]` | Generate Antora ZIP for local build |
 
 ---

@@ -2,26 +2,35 @@
 
 ## 1. Overview
 
-The publication pipeline converts ODIP database content into a served Antora website accessible directly from the browser. It supports two modes:
+The publication pipeline converts ODIP database content into one or more output formats. Each format is generated independently and on demand via CLI or REST API.
 
-- **Edition publish** — builds and serves a scoped site for a specific ODIP Edition (baseline + content filters applied); optionally also generates PDF from the same Antora source
-- **Antora ZIP** — packages the Antora source tree for external stakeholders who build the site themselves
+**Supported output formats:**
 
-The pipeline is entirely server-side. The web client and CLI trigger it via REST endpoints; no content rendering happens on the client. All publication logic lives in `ODPEditionService`.
+| Format | Description |
+|---|---|
+| **Website** | Antora HTML site with search and download links; served at `/publication/site/` |
+| **PDF flat** | Single PDF document covering selected content |
+| **Word flat** | Single Word document covering selected content |
+| **Word multipart** | One Word document per domain + optional intro, delivered as a ZIP |
+
+**Content selection** (`intro`, `domains`) is available for PDF flat, Word flat, and Word multipart. Omitting both includes all content.
+
+**Decoupled workflow:** document formats (PDF flat, Word flat, Word multipart) are generated independently of the website. The website build copies any available pre-generated artifacts from `publication/_artifacts/` into the site exports directory — it does not trigger their generation.
+
+Only one publication can run at a time (mutex). All publication logic lives in `ODPEditionService`.
 
 > **Implementation status:**
 >
-> | Format | Mode | Personal environment | EC environment |
-> |---|---|---|---|
-> | HTML static site (with search index) | website | ✅ Operational | ✅ Operational |
-> | PDF flat | website | ✅ Operational | ✅ Operational |
-> | PDF document set (per-domain + intro) | document | ✅ Operational | ✅ Operational |
-> | Word flat | website | ❌ Not yet restored | ❌ Not yet restored |
-> | Word document set | document | ❌ Not yet restored | ❌ Not yet restored |
+> | Format | Personal environment | EC environment |
+> |---|---|---|
+> | HTML static site (with search index) | ✅ Operational | ✅ Operational |
+> | PDF flat | ✅ Operational | ✅ Operational |
+> | Word flat | ✅ Operational | ✅ Operational |
+> | Word multipart | ✅ Operational | ✅ Operational |
 >
 > **PDF** is generated via `@antora/pdf-extension` + `asciidoctor-pdf` (installed as a system gem in `Dockerfile.odp-server`).
 >
-> **Word** generation requires `pandoc` in the server container and a working `antora-docx-extension.js` — not yet restored.
+> **Word** generation requires `pandoc` in the server container and `antora-docx-extension.js` in `shared/config/`.
 >
 > **EC environment** requires `ODIP_GEM_MODE=host` and `~/.gemrc` configured with the corporate proxy — `odip-admin` handles the rest automatically. See ch09 §3 and §5.2.
 
@@ -30,12 +39,12 @@ The pipeline is entirely server-side. The web client and CLI trigger it via REST
 ## 2. Architecture
 
 ```
-REST API  POST /odp-editions/{id}/publish  ← edition publish (JSON body: PublishOptions)
+REST API  POST /odp-editions/{id}/publish  ← PublishOptions body
           │
           ▼
     ODPEditionService.publishEdition(options)
           │
-          ├── generateAntoraZip(editionId, userId, drgFilter?, introOnly?)
+          ├── generateAntoraZip(editionId, userId, { mode, drgFilter?, selection? })
           │       │
           │       ├── DetailsModuleGenerator      ← queries Neo4j, generates AsciiDoc pages
           │       │       ├── operationalRequirementService.getAll()   ← standard projection, edition-scoped
@@ -47,15 +56,17 @@ REST API  POST /odp-editions/{id}/publish  ← edition publish (JSON body: Publi
           │               ├── content files  → Antora module paths (remapped per build mode)
           │               └── generated files → modules/details/ or modules/ROOT/ (domain mode)
           │
-          ├── HTML build (optional, default true)
-          │       └── works/: extract ZIP → git commit → npx antora antora-playbook.yml
+          ├── _buildFlat(format, selection, ...)
+          │       └── works/: npx antora antora-playbook-{pdf|docx}.yml → copy to _artifacts/
           │
-          ├── _buildFlat(format)   ← flat PDF or Word
-          │       └── works/: npx antora antora-playbook-pdf.yml → copy to _exports/
+          ├── _buildWordMultipart(selection, ...)
+          │       ├── intro: works-intro/ → extract intro ZIP → git commit → antora build → ZIP entry
+          │       └── per DrG: works-{drg}/ → extract domain ZIP → git commit → antora build → ZIP entry
+          │       └── assemble word-multipart.zip → copy to _artifacts/
           │
-          └── _buildSet(format, setOptions)   ← per-domain document set
-                  ├── intro: works-intro/ → extract intro ZIP → git commit → antora build → ZIP entry
-                  └── per DrG: works-{drg}/ → extract domain ZIP → git commit → antora build → ZIP entry
+          └── website build (if requested)
+                  └── works/: npx antora antora-playbook.yml
+                      → _copyArtifactsToSite(_artifacts/ → site/_exports/)
 ```
 
 **File locations** — all under `workspace/server/src/services/`:
@@ -80,37 +91,54 @@ Static publication scaffolding lives under `publication/` in the repository (con
 
 ```
 publication/
+├── shared/
+│   └── config/                      ← bootstrapped into all works dirs
+│       ├── package.json             ← @antora/cli, @antora/site-generator, @antora/pdf-extension, etc.
+│       ├── ui-bundle.zip            ← Pre-patched Antora UI bundle (see §7)
+│       ├── pdf-theme.yml            ← Custom PDF theme (Noto fonts, EUROCONTROL blue)
+│       ├── word-template.docx       ← Word reference template (copied as template.docx)
+│       └── antora-docx-extension.js ← AsciiDoc → DocBook → pandoc → docx
+│
 ├── website/
-│   └── config/                  ← website/flat build files
-│       ├── antora.yml           ← component descriptor (ROOT + details nav)
-│       ├── antora-playbook.yml  ← HTML site build
-│       ├── antora-playbook-pdf.yml  ← PDF flat build
-│       ├── antora-playbook-docx.yml ← Word flat build (not yet restored)
-│       ├── antora-assembler.yml     ← PDF flat assembler
-│       ├── antora-assembler-docx.yml ← Word assembler (not yet restored)
-│       ├── antora-docx-extension.js  ← AsciiDoc → DocBook → pandoc → docx (not yet restored)
-│       └── partials/
-│           └── header-content.hbs   ← Custom EUROCONTROL navbar
+│   └── config/
+│       ├── antora.yml               ← component descriptor (ROOT + details nav)
+│       └── antora-playbook.yml      ← HTML site build
 │
-├── document/
-│   └── config/                  ← document set build files (intro + per-domain)
-│       ├── antora.yml           ← component descriptor (ROOT only, no details nav)
-│       ├── antora-playbook-pdf.yml  ← PDF document build (shared by intro and domain)
-│       ├── antora-assembler-pdf.yml ← PDF document assembler
-│       └── (docx equivalents — future)
+├── flat/
+│   └── config/
+│       ├── antora.yml               ← component descriptor (ROOT + details nav)
+│       ├── antora-playbook-pdf.yml  ← flat PDF build
+│       ├── antora-assembler-pdf.yml ← flat PDF assembler
+│       ├── antora-playbook-docx.yml ← flat Word build
+│       └── antora-assembler-docx.yml← flat Word assembler
 │
-└── shared/
-    ├── config/                  ← shared by website and document builds
-    │   ├── package.json         ← @antora/cli, @antora/site-generator, @antora/pdf-extension, etc.
-    │   ├── ui-bundle.zip        ← Pre-patched Antora UI bundle (see §7)
-    │   ├── pdf-theme.yml        ← Custom PDF theme (Noto fonts, EUROCONTROL blue)
-    │   ├── Gemfile              ← asciidoctor-pdf Ruby gem declaration
-    │   └── reference.docx       ← Word template (future)
-    └── content/                 ← manually authored static content
-        ├── intro/
-        │   └── index.adoc       ← ODIP Edition introduction page
-        └── {drg}/               ← one per DrG
-            └── index.adoc       ← DrG domain introduction page
+└── multipart/
+    └── config/                      ← Word multipart only (intro + per-domain)
+        ├── antora.yml               ← component descriptor (ROOT only, no details nav)
+        ├── antora-playbook-docx.yml ← multipart Word build
+        └── antora-assembler-docx.yml← multipart Word assembler
+```
+
+Content trees (not config):
+
+```
+publication/
+├── shared/
+│   └── content/
+│       ├── edition-plan.json        ← DrG ordering for website/flat builds
+│       ├── intro/
+│       │   └── index.adoc           ← ODIP Edition introduction page
+│       └── {drg}/                   ← one per DrG
+│           └── index.adoc           ← DrG domain introduction page
+│
+├── website/
+│   └── content/
+│       └── nav.adoc                 ← ROOT module nav (website mode)
+│
+└── multipart/
+    └── content/
+        └── intro/
+            └── nav.adoc             ← ROOT module nav (intro multipart mode)
 ```
 
 ---
@@ -169,7 +197,7 @@ One AsciiDoc page is generated per ON and per OR using Mustache templates. Pages
 
 **Collapsed folders:** a folder is _collapsed_ if it has at least one direct ON. Collapsed folders do not generate a separate page for their sub-folders. Instead, sub-folder content is absorbed inline into the collapsed folder's own page, with sub-folder names rendered as non-clickable bullet labels. Individual ON/OR entity files inside collapsed sub-folders are still written at their own paths so that xrefs resolve correctly. The nav mirrors this: collapsed sub-folders appear as plain-text labels (no xref) in `nav.adoc`, followed by their entities — ensuring Antora can highlight and expand the correct nav node when navigating to an individual entity page.
 
-**Export suppression:** folder index content (ON/OR trees, sub-domain lists) is wrapped in `ifndef::env-export[]` in the Mustache templates. The `env-export` attribute is set in `antora-assembler.yml` (PDF) and `antora-assembler-docx.yml` (Word), so these navigation-only sections are silently omitted from PDF and Word exports.
+**Export suppression:** folder index content (ON/OR trees, sub-domain lists) is wrapped in `ifndef::env-export[]` in the Mustache templates. The `env-export` attribute is set in the assembler configs (PDF and Word), so these navigation-only sections are silently omitted from PDF and Word exports.
 
 Output structure per DrG:
 
@@ -221,36 +249,17 @@ Key points:
 
 - `= {DrG display name}` — level-0 title, drives the browser tab title (`{title} : ODIP`) and PDF TOC entry. Must match the DrG display name used in nav.adoc.
 - `:notitle:` — suppresses the level-0 title from rendering in HTML (the nav label already provides the heading). Without this, the title appears as an unnumbered heading before the first `==` section.
-- `== Introduction` and subsequent `==` sections — numbered in PDF via `section_merge_strategy: fuse` in `antora-assembler.yml`; rendered as normal sections in HTML.
+- `== Introduction` and subsequent `==` sections — numbered in PDF via `section_merge_strategy: fuse` in the assembler config; rendered as normal sections in HTML.
 - `include::partial${drg}/index.adoc[]` — injects the generated sitemap fragment (ON/OR tree). Wrapped in `ifndef::env-export[]` inside the template, so it is suppressed in PDF/Word exports automatically.
 - The `include::` must be placed **after** the human-authored content, not before, so the intro text precedes the generated listing.
-
-**Example** (`modules/details/pages/rrt/index.adoc`):
-
-```asciidoc
-= Rerouting
-:notitle:
-
-== Introduction
-
-The Rerouting Drafting Group (DrG) is the iCDM drafting group...
-
-== Operational Needs baseline
-
-* xref:rrt/identification_of_operationally_acceptable_trajectories/index.adoc[...]
-...
-
-include::partial$rrt/index.adoc[]
-```
 
 ### Stage 6 — Antora Structure and Packaging
 
 `ODPEditionService.generateAntoraZip()` assembles the final ZIP by combining:
 
-1. The entire static directory tree (all Antora playbooks, assembler configs, PDF theme, ROOT module, introduction module, portfolio module) — including the pre-patched `ui-bundle.zip`
-2. All dynamically generated details module files (`modules/details/…`)
-
-The two active Antora modules are: `ROOT` (landing page + ODIP introduction) and `details` (full ON/OR pages by DrG, plus manually authored DrG introduction pages). The `introduction` and `portfolio` modules are present in the static directory but not currently used.
+1. Config files from `configPaths[]` — land at works dir root; later paths override earlier
+2. Content files from `contentMappings[]` — remapped to Antora module paths per build mode
+3. Generated details files from `DetailsModuleGenerator` — remapped to `modules/ROOT/` in domain mode
 
 ---
 
@@ -258,62 +267,78 @@ The two active Antora modules are: `ROOT` (landing page + ODIP introduction) and
 
 Defined in `openapi-odp.yml`.
 
-| Method | Endpoint | Query | Response |
+| Method | Endpoint | Body | Response |
 |---|---|---|---|
-| `POST` | `/odp-editions/{id}/publish` | `pdf`, `word` (optional boolean flags) | `{ siteUrl, pdfUrl, wordUrl }` |
+| `POST` | `/odp-editions/{id}/publish` | `PublishOptions` | `PublishResult` |
 | `GET` | `/odp-editions/{id}/export` | — | `application/zip` (Antora source ZIP) |
 
-`POST /odp-editions/{id}/publish` returns 404 if the edition is not found, 409 if a publication is already in progress. PDF and Word failures are non-fatal — `pdfUrl` / `wordUrl` are `null` in the response if the format was not requested or its build failed. The built site is served at `/publication/site/` by Express static middleware (mount point registered at server startup).
+`POST /odp-editions/{id}/publish` returns 404 if the edition is not found, 409 if a publication is already in progress. Non-website format failures are non-fatal — the corresponding URL is null in the response. The built site is served at `/publication/site/` by Express static middleware.
 
-The web client always requests PDF generation (`?pdf=true`) — PDF generation is the default behaviour. Word generation remains disabled until restored.
+**`PublishOptions`** (absent or empty body defaults to `{ website: true }`):
+
+| Property | Type | Description |
+|---|---|---|
+| `wordFlat` | `ContentSelection` | Generate a single flat Word document |
+| `wordMultipart` | `ContentSelection` | Generate a multipart Word ZIP (one .docx per domain + intro) |
+| `pdfFlat` | `ContentSelection` | Generate a single flat PDF document |
+| `website` | `boolean` | Build and serve the HTML site; copy available artifacts into exports |
+
+**`ContentSelection`**: `{ intro?: boolean, domains?: string[] }`. Omitting both includes all content.
+
+**`PublishResult`**: `{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }` — null for formats not requested or whose build failed.
 
 ### Web Client
 
 The Publication activity exposes a **Publish** button on the edition details panel. Clicking it:
 
 1. Disables the button (labelled "Publishing…") for the duration of the request
-2. Calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish?pdf=true`
-3. On success: displays "✓ Published — Open site" with an absolute link to the served site (`apiClient.baseUrl + siteUrl`)
+2. Calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish` with `{ website: true }`
+3. On success: displays "✓ Published — Open site" with an absolute link to the served site
 4. On 409: displays "Publication already in progress — please retry later"
 5. On other error: displays the error message in the status area
 
-The web client applies a **300-second fetch timeout** to this request (`api-client.js`, `publishEdition()`) — overriding the global default timeout — to accommodate long PDF builds (typical range: ~2–5 min; up to ~15 min for large documents).
+The web client applies a **300-second fetch timeout** to this request (`api-client.js`, `publishEdition()`) — overriding the global default timeout — to accommodate long builds.
 
 **Output URLs when build succeeds:**
 
 | Format | URL |
 |---|---|
 | HTML | `/publication/site/` |
-| PDF | `/publication/site/odip/_exports/index.pdf` |
-| Word | `/publication/site/odip/_exports/index.docx` |
+| PDF flat | `/publication/site/odip/_exports/index.pdf` |
+| Word flat | `/publication/site/odip/_exports/index.docx` |
+| Word multipart | `/publication/site/odip/_exports/word-multipart.zip` |
 
 ---
 
 ## 5. CLI
 
 ```bash
-# Publish HTML site only
-odp-cli edition publish <editionId>
+# Website only (default)
+odp-cli edition publish <editionId> --website
 
-# Publish HTML + PDF
-odp-cli edition publish <editionId> --pdf
+# Flat PDF, all content
+odp-cli edition publish <editionId> --pdf-flat
 
-# Publish HTML + Word
-odp-cli edition publish <editionId> --word
+# Flat Word, selected content
+odp-cli edition publish <editionId> --word-flat --intro --domains RRT,IDL
 
-# Publish all formats
-odp-cli edition publish <editionId> --pdf --word
+# Word multipart, all domains + intro
+odp-cli edition publish <editionId> --word-multipart --intro
+
+# Word multipart, selected domains
+odp-cli edition publish <editionId> --word-multipart --domains RRT,IDL
+
+# Generate artifacts then publish website (two separate calls)
+odp-cli edition publish <editionId> --pdf-flat --word-flat --word-multipart
+odp-cli edition publish <editionId> --website
 
 # Generate Antora ZIP for local build
 odp-cli publication antora -o ~/output/odip-web-site.zip --edition <editionId>
-
-# Generate Antora ZIP for entire repository
-odp-cli publication antora -o ~/output/odip-web-site.zip
 ```
 
-`--pdf` requires `asciidoctor-pdf` installed as a system gem in the server container (`Dockerfile.odp-server`). `--word` requires `pandoc` and is not yet restored. Failed formats are reported as warnings; the command exits successfully if at least one build succeeded. See ch07 §Publication for the full flag reference.
+`--pdf-flat` requires `asciidoctor-pdf` installed as a system gem in the server container (`Dockerfile.odp-server`). `--word-flat` and `--word-multipart` require `pandoc`. Failed formats are reported as warnings. See ch07 §Publication for the full flag reference.
 
-Implementation: `workspace/cli/src/commands/odp-editions.js` (publish and ZIP).
+Implementation: `workspace/cli/src/commands/odp-editions.js`.
 
 ---
 
@@ -357,82 +382,70 @@ npx antora antora-playbook.yml && npx antora antora-playbook-pdf.yml
 
 ## 7. Publication Workspace
 
-The server maintains **15 persistent publication workspaces** under `$ODIP_HOME/publication/` — one per build type:
+The server maintains persistent publication workspaces under `$ODIP_HOME/publication/`:
 
-| Directory | Purpose |
-|---|---|
-| `works/` | HTML site + flat PDF/Word builds |
-| `works-intro/` | Intro document set build |
-| `works-{drg}/` × 13 | Per-domain document set builds |
+| Directory | Purpose | Config source |
+|---|---|---|
+| `works/` | Website + flat PDF/Word builds | `shared/config` + `website/config` (website) or `flat/config` (flat) |
+| `works-intro/` | Word multipart intro build | `shared/config` + `multipart/config` |
+| `works-{drg}/` × N | Word multipart per-domain builds | `shared/config` + `multipart/config` |
+| `_artifacts/` | Persistent artifact staging area | — |
 
-Each is an independent git repository with Antora installed, bootstrapped from the corresponding config subtree under `publication/`.
+`works/` is shared between website and flat builds because only one publication runs at a time. The flat build extracts a selection-scoped ZIP into `works/` before running the assembler; the website build always regenerates from the full-content ZIP.
+
+N (the number of per-DrG works dirs) is derived from `shared/content/` subdirectories (excluding `intro/`) — no hardcoded DrG list.
 
 ### Initialisation (server startup)
 
-`initializePublicationWorkspace()` runs on every server start. It calls `initializeWorksDir(worksDir, sourcePaths, label)` for each of the 15 works dirs. All steps are idempotent:
+`initializePublicationWorkspace()` runs on every server start. It calls `initializeWorksDir(worksDir, sourcePaths, label)` for each works dir. All steps are idempotent:
 
-1. `mkdir -p {worksDir}` — belt-and-suspenders
+1. `mkdir -p {worksDir}`
 2. `git init` + configure `user.email` / `user.name` — only if `.git` absent
 3. Bootstrap from `sourcePaths[]` — copies config files in order (later overrides earlier) — only if `package.json` absent
 4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
 
 Source paths per works dir type:
-- `works/`: `shared/config` + `website/config`
-- `works-intro/`: `shared/config` + `document/config`
-- `works-{drg}/`: `shared/config` + `document/config`
-
-Content files (modules/) are **not** bootstrapped statically — they are injected at publish time via `generateAntoraZip()` / `_createAntoraZip()`.
-
-The domain list for per-DrG works dirs is derived from `shared/content/` subdirectories (excluding `intro/`) — no hardcoded DrG list.
+- `works/`: `shared/config` + `website/config` (website playbook is what matters at bootstrap time)
+- `works-intro/`: `shared/config` + `multipart/config`
+- `works-{drg}/`: `shared/config` + `multipart/config`
 
 ### ZIP generation (`generateAntoraZip`)
 
-`generateAntoraZip(editionId, userId, drgFilter?, introOnly?)` produces a scoped Antora source ZIP:
+`generateAntoraZip(editionId, userId, { mode, drgFilter?, selection? })` produces a scoped Antora source ZIP:
 
-| Mode | `drgFilter` | `introOnly` | Content |
-|---|---|---|---|
-| Website/flat | null | false | All domains, full details module |
-| Intro document | null | true | ROOT module only (no details) |
-| Domain document | set | false | Single DrG, remapped to ROOT module |
-
-`_createAntoraZip(configPaths, contentMappings, detailsFiles)` assembles the ZIP in three stages:
-1. **Config files** — from `configPaths[]`, land at works dir root (flat copy)
-2. **Content files** — from `contentMappings[]`, each with a `mapFn` that remaps to Antora module paths
-3. **Generated details files** — from `DetailsModuleGenerator`; in domain mode remapped from `modules/details/{drg}/` → `modules/ROOT/`
+| Mode | Config paths | Content |
+|---|---|---|
+| `website` | `shared` + `website` | All domains (or selection), full details module |
+| `flat` | `shared` + `flat` | All domains (or selection), full details module |
+| `intro` | `shared` + `multipart` | ROOT module only (intro content) |
+| `domain` | `shared` + `multipart` | Single DrG, remapped to ROOT module |
 
 Content path mappings per build mode:
 
 | Mode | Source | Target in ZIP |
 |---|---|---|
-| Website/flat | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| Website/flat | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
-| Website/flat | `website/content/nav.adoc` | `modules/ROOT/nav.adoc` |
-| Intro | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| Intro | `document/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
-| Domain | `shared/content/{drg}/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| Domain (generated) | `details/{drg}/pages/...` | `modules/ROOT/pages/...` |
-| Domain (generated) | `details/nav.adoc` | `modules/ROOT/nav.adoc` |
+| `website`/`flat` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `website`/`flat` | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
+| `website`/`flat` | `website/content/nav.adoc` | `modules/ROOT/nav.adoc` |
+| `intro` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `intro` | `multipart/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
+| `domain` | `shared/content/{drg}/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `domain` (generated) | `details/{drg}/pages/...` | `modules/ROOT/pages/...` |
+| `domain` (generated) | `details/nav.adoc` | `modules/ROOT/nav.adoc` |
 
 ### Publish cycle (`publishEdition`)
 
 Each `publishEdition()` call:
 1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
-2. Normalises `PublishOptions` — absent body defaults to `{ html: true, pdf: { flat: true } }`
-3. Generates full-content ZIP and extracts into `works/` — `_extractZipToWorks()` uses manual entry-by-entry extraction (avoids `chmodSync` failures under rootless Podman on NFS)
-4. `git add . && git commit --allow-empty` in `works/`
-5. HTML build (if `html: true`): `npx antora antora-playbook.yml` in `works/` — fatal on failure
-6. Flat PDF (if `pdf.flat`): `_buildFlat('pdf')` in `works/` — non-fatal
-7. Flat Word (if `word.flat`): `_buildFlat('word')` in `works/` — non-fatal; not yet restored
-8. PDF set (if `pdf.set`): `_buildSet('pdf', setOptions)` — non-fatal:
-   - Intro: generate intro ZIP → extract into `works-intro/` → git commit → antora build → ZIP entry
-   - Per DrG: generate domain ZIP → extract into `works-{drg}/` → git commit → antora build → ZIP entry
-   - Assemble all entries into `set-pdf.zip` in `_exports/`
-9. Word set (if `word.set`): same pattern — not yet restored
-10. Releases mutex — returns `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }`
+2. Normalises `PublishOptions` — absent body defaults to `{ website: true }`
+3. If website or flat builds requested: generates full-content ZIP → extracts into `works/` → git commit
+4. Flat PDF (if `pdfFlat`): `_buildFlat('pdf')` in `works/` — non-fatal; output written to `_artifacts/`
+5. Flat Word (if `wordFlat`): `_buildFlat('word')` in `works/` — non-fatal; output written to `_artifacts/`
+6. Word multipart (if `wordMultipart`): `_buildWordMultipart()` — non-fatal; output written to `_artifacts/`
+7. Website (if `website`): `npx antora antora-playbook.yml` in `works/` — fatal on failure; then `_copyArtifactsToSite()` copies all available artifacts from `_artifacts/` into site exports
+8. Releases mutex — returns `{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }`
 
 All shell commands are executed via `_execStreaming()` (async `child_process.exec` with real-time streaming). Non-fatal builds use `_tryExecAsync()`.
-
-The built site is served by Express static middleware at `/publication/site/`.
 
 ### UI Bundle Preparation
 
@@ -458,15 +471,13 @@ The Antora UI bundle (`ui-bundle.zip`) is the stock Antora default UI, **pre-pat
 
 4. Commit the patched `ui-bundle.zip` to the repository.
 
-The bundle is included in every publish ZIP and extracted into `works/` on each publish cycle, ensuring the custom header is always active. No runtime patching is performed.
-
-**If the UI bundle needs to be updated** (e.g. new Antora UI release), repeat steps 1–4. The patch is a simple file replacement inside the ZIP — no build tooling required.
+The bundle is included in every publish ZIP and extracted into `works/` on each publish cycle. No runtime patching is performed.
 
 ---
 
 ## 8. Server Container (`Dockerfile.odp-server`)
 
-PDF generation requires `asciidoctor-pdf` to be available as a system gem inside the `odp-server` container. A custom `Dockerfile.odp-server` extends the `node:20` base image:
+PDF generation requires `asciidoctor-pdf` to be available as a system gem inside the `odp-server` container. Word generation requires `pandoc`. A custom `Dockerfile.odp-server` extends the `node:20` base image:
 
 ```dockerfile
 FROM node:20
@@ -475,7 +486,7 @@ ARG http_proxy
 ARG https_proxy
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ruby ruby-dev build-essential libxml2-dev libxslt-dev \
+        ruby ruby-dev build-essential libxml2-dev libxslt-dev pandoc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=secret,id=gem_proxy \
@@ -485,8 +496,6 @@ RUN --mount=type=secret,id=gem_proxy \
 WORKDIR /app/workspace/server
 CMD ["npm", "run", "dev"]
 ```
-
-The image is built once and referenced in `odip-deployment.yaml` as `$ODIP_DOCKER_REGISTRY/odp-server:latest` with `imagePullPolicy: Never` (local build, not pulled from registry).
 
 **Build command:**
 ```bash
@@ -506,11 +515,12 @@ Gem installation is controlled by `ODIP_GEM_MODE` — see ch09 §3 and §5.2 for
 | `archiver` | ZIP packaging of Antora source tree |
 | `adm-zip` | ZIP extraction into publication workspace |
 | `mustache` | Logic-less template rendering for AsciiDoc pages |
-| `@antora/cli` + `@antora/site-generator` | HTML site generation (installed in `works/`, not server workspace) |
+| `@antora/cli` + `@antora/site-generator` | HTML site generation (installed in works dirs, not server workspace) |
 | `@antora/lunr-extension` | Full-text search in generated site |
-| `@antora/pdf-extension` | PDF generation via `antora-playbook-pdf.yml` |
-| `asciidoctor-pdf` + `rouge` | Ruby gems for PDF rendering (installed as system gems in `Dockerfile.odp-server`) |
-| `pandoc` | Word document generation (not yet restored) |
+| `@antora/pdf-extension` | PDF generation |
+| `asciidoctor-pdf` + `rouge` | Ruby gems for PDF rendering (system gems in `Dockerfile.odp-server`) |
+| `pandoc` | Word document generation (system package in `Dockerfile.odp-server`) |
+| `@antora/run-command-helper` | Used by `antora-docx-extension.js` to invoke asciidoctor and pandoc |
 
 ---
 

@@ -89,22 +89,26 @@ paths:
 
   /odp-editions/{id}/publish:
     post:
-      summary: Publish ODIP Edition as Antora website
+      summary: Publish ODIP Edition
       tags: [ODP]
       description: |
-        Builds the Antora website for the specified edition and serves it at
-        `/publication/site/`. Optionally also generates PDF (requires Ruby/Bundler +
-        asciidoctor-pdf) and/or Word document (requires pandoc) from the same Antora
-        source — either as a single flat file, a per-domain document set (ZIP), or both.
+        Builds one or more publication outputs for the specified edition.
+
+        **Output formats:**
+        - `wordFlat` — single Word document covering all selected content
+        - `wordMultipart` — one Word document per domain + intro, delivered as a ZIP
+        - `pdfFlat` — single PDF document covering all selected content
+        - `website` — builds and serves the HTML site; copies any pre-generated
+          Word/PDF artifacts into the site exports directory if available
+
+        **Content selection** (`intro`, `domains`) applies to `wordFlat`, `wordMultipart`,
+        and `pdfFlat`. Omitting both includes all content (intro + all domains).
 
         Only one publication can run at a time — concurrent requests are rejected with 409.
         The build runs synchronously; logs are available in the server log stream.
+        Non-website format failures are non-fatal — the corresponding URL is null in the response.
 
-        PDF and Word failures are non-fatal — the response returns null for the
-        corresponding URL if the format was not requested or its build failed.
-
-        **Default behaviour** (absent or empty request body): generates HTML site + flat PDF only,
-        equivalent to `{ pdf: { flat: true } }`.
+        **Default behaviour** (absent or empty request body): `{ website: true }`.
       parameters:
         - name: id
           in: path
@@ -120,35 +124,45 @@ paths:
               $ref: '#/components/schemas/PublishOptions'
             examples:
               default:
-                summary: Default — HTML + flat PDF only
+                summary: Default — website only
                 value: {}
-              pdfAndWord:
-                summary: Flat PDF + flat Word
+              wordFlat:
+                summary: Flat Word document, all content
                 value:
-                  pdf:
-                    flat: true
-                  word:
-                    flat: true
-              fullSet:
-                summary: Flat + per-domain set for both formats
+                  wordFlat: {}
+              wordFlatSelection:
+                summary: Flat Word document, intro + selected domains
                 value:
-                  pdf:
-                    flat: true
-                    set:
-                      intro: true
-                      domains: [RRT, IDL, NM]
-                  word:
-                    flat: true
-                    set:
-                      intro: true
-                      domains: [RRT, IDL, NM]
-              setOnly:
-                summary: Per-domain set only, no flat file
+                  wordFlat:
+                    intro: true
+                    domains: [RRT, IDL, NM]
+              wordMultipart:
+                summary: Multipart Word ZIP, intro + selected domains
                 value:
-                  pdf:
-                    set:
-                      intro: true
-                      domains: [RRT, IDL]
+                  wordMultipart:
+                    intro: true
+                    domains: [RRT, IDL, NM]
+              pdfFlat:
+                summary: Flat PDF document, all content
+                value:
+                  pdfFlat: {}
+              websiteOnly:
+                summary: Website only (picks up pre-generated artifacts)
+                value:
+                  website: true
+              all:
+                summary: All formats + website
+                value:
+                  wordFlat:
+                    intro: true
+                    domains: [RRT, IDL, NM]
+                  wordMultipart:
+                    intro: true
+                    domains: [RRT, IDL, NM]
+                  pdfFlat:
+                    intro: true
+                    domains: [RRT, IDL, NM]
+                  website: true
       responses:
         '200':
           description: |
@@ -239,69 +253,67 @@ paths:
 components:
   schemas:
 
-    PublishFormatOptions:
+    ContentSelection:
       type: object
-      description: Publication options for a single output format (PDF or Word).
+      description: |
+        Content selection for a document build. Omitting both `intro` and `domains`
+        includes all content (intro + all domains).
       properties:
-        flat:
+        intro:
           type: boolean
           default: false
-          description: Generate a single flat file covering all domains.
-        set:
-          type: object
-          description: Generate a per-domain document set delivered as a ZIP archive.
-          properties:
-            intro:
-              type: boolean
-              default: false
-              description: Include the introduction document in the set.
-            domains:
-              type: array
-              description: DrG identifiers for which to generate a domain document. Empty array produces a ZIP with intro only (if requested).
-              items:
-                $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
-              minItems: 0
+          description: Include the introduction section.
+        domains:
+          type: array
+          description: |
+            DrG identifiers to include. Omit or pass empty array to include all domains.
+          items:
+            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
+          minItems: 0
 
     PublishOptions:
       type: object
       description: |
-        Publication options. Absent or empty object defaults to `{ html: true, pdf: { flat: true } }`.
-        At least one format option must resolve to a non-empty build set; otherwise the
-        request is treated as default.
-        Note: `html` defaults to true from the API (backward compat); CLI callers must pass it explicitly.
+        Publication options. Absent or empty object defaults to `{ website: true }`.
       properties:
-        html:
+        wordFlat:
+          $ref: '#/components/schemas/ContentSelection'
+          description: Generate a single flat Word document.
+        wordMultipart:
+          $ref: '#/components/schemas/ContentSelection'
+          description: Generate a multipart Word ZIP (one .docx per domain + intro).
+        pdfFlat:
+          $ref: '#/components/schemas/ContentSelection'
+          description: Generate a single flat PDF document.
+        website:
           type: boolean
-          default: true
-          description: Build and serve the HTML site. Defaults to true when called from the API.
-        pdf:
-          $ref: '#/components/schemas/PublishFormatOptions'
-        word:
-          $ref: '#/components/schemas/PublishFormatOptions'
-
-    PublishFormatResult:
-      type: object
-      description: URLs produced for a single output format. Null fields indicate the output was not requested or its build failed.
-      properties:
-        flatUrl:
-          type: string
-          nullable: true
-          description: URL of the flat file.
-          example: /publication/site/odip/_exports/index.pdf
-        setUrl:
-          type: string
-          nullable: true
-          description: URL of the ZIP archive containing the per-domain document set.
-          example: /publication/site/odip/_exports/set-pdf.zip
+          default: false
+          description: |
+            Build and serve the HTML site. Copies any pre-generated Word/PDF artifacts
+            into the site exports directory if available.
 
     PublishResult:
       type: object
+      description: |
+        Publication result. URLs are null if the format was not requested or its build failed.
       properties:
         siteUrl:
           type: string
-          description: URL of the served HTML site (always present on success).
+          nullable: true
+          description: URL of the served HTML site. Null if website was not requested.
           example: /publication/site/
-        pdf:
-          $ref: '#/components/schemas/PublishFormatResult'
-        word:
-          $ref: '#/components/schemas/PublishFormatResult'
+        wordFlatUrl:
+          type: string
+          nullable: true
+          description: URL of the flat Word document.
+          example: /publication/exports/index.docx
+        wordMultipartUrl:
+          type: string
+          nullable: true
+          description: URL of the multipart Word ZIP.
+          example: /publication/exports/word-multipart.zip
+        pdfFlatUrl:
+          type: string
+          nullable: true
+          description: URL of the flat PDF document.
+          example: /publication/exports/index.pdf

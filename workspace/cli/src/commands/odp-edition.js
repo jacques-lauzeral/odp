@@ -243,56 +243,36 @@ class EditionCommands {
     addPublishCommand(editionCommand) {
         editionCommand
             .command('publish <id>')
-            .description('Publish an ODIP edition — build Antora site and serve it')
-            .option('--html', 'Build and serve the HTML site')
-            .option('--pdf', 'Include PDF output')
-            .option('--word', 'Include Word output (requires pandoc)')
-            .option('--flat', 'Generate flat file(s) — one file covering all domains')
-            .option('--set', 'Generate document set(s) — one file per domain + optional intro')
-            .option('--set-domains <list>', 'Comma-separated DrG ids to include in set (implies --set); default: all')
-            .option('--set-intro <bool>', 'Include intro document in set: true|false (default: true; implies --set)', 'true')
+            .description('Publish an ODIP edition')
+            .option('--word-flat',        'Generate a single flat Word document')
+            .option('--word-multipart',   'Generate a multipart Word ZIP (one .docx per domain + intro)')
+            .option('--pdf-flat',         'Generate a single flat PDF document')
+            .option('--website',          'Build and serve the HTML site (copies available artifacts)')
+            .option('--intro',            'Include intro section (applies to word-flat, word-multipart, pdf-flat)')
+            .option('--domains <list>',   'Comma-separated DrG ids to include (default: all)')
             .action(async (id, options) => {
                 try {
-                    const opts = options;
-
-                    // --set-domains or --set-intro imply --set
-                    const setActive = opts.set || opts.setDomains !== undefined || opts.setIntro !== 'true' || opts.setIntro === 'false';
-                    const flatActive = opts.flat;
-
-                    if ((opts.pdf || opts.word) && !flatActive && !setActive) {
-                        console.error('Error: at least one of --flat or --set (or --set-domains / --set-intro) must be specified.');
+                    const hasFormat = options.wordFlat || options.wordMultipart || options.pdfFlat || options.website;
+                    if (!hasFormat) {
+                        console.error('Error: at least one of --word-flat, --word-multipart, --pdf-flat, --website must be specified.');
                         process.exit(1);
                     }
 
-                    if (!opts.html && !opts.pdf && !opts.word) {
-                        console.error('Error: at least one of --html, --pdf or --word must be specified.');
-                        process.exit(1);
-                    }
-
-                    // Build set options
-                    const buildSetOptions = () => {
-                        if (!setActive) return undefined;
-                        const setOpts = { intro: opts.setIntro !== 'false' };
-                        if (opts.setDomains) {
-                            setOpts.domains = opts.setDomains.split(',').map(d => d.trim()).filter(Boolean);
+                    // Build ContentSelection from --intro / --domains flags
+                    const buildSelection = () => {
+                        const sel = {};
+                        if (options.intro) sel.intro = true;
+                        if (options.domains) {
+                            sel.domains = options.domains.split(',').map(d => d.trim()).filter(Boolean);
                         }
-                        return setOpts;
+                        return Object.keys(sel).length > 0 ? sel : {};
                     };
 
-                    // Build per-format options
-                    const buildFormatOptions = () => {
-                        const fmt = {};
-                        if (flatActive) fmt.flat = true;
-                        const set = buildSetOptions();
-                        if (set) fmt.set = set;
-                        return fmt;
-                    };
-
-                    const body = { html: opts.html === true };
-                    if (opts.pdf) body.pdf = buildFormatOptions();
-                    else body.pdf = false;
-                    if (opts.word) body.word = buildFormatOptions();
-                    else body.word = false;
+                    const body = {};
+                    if (options.wordFlat)      body.wordFlat      = buildSelection();
+                    if (options.wordMultipart) body.wordMultipart = buildSelection();
+                    if (options.pdfFlat)       body.pdfFlat       = buildSelection();
+                    if (options.website)       body.website       = true;
 
                     console.log(`Publishing edition ${id}...`);
                     console.log('(Build progress is visible in server logs)');
@@ -319,21 +299,26 @@ class EditionCommands {
 
                     const result = await response.json();
                     console.log(`✓ Edition ${id} published successfully`);
-                    console.log(`✓ Site available at: ${this.baseUrl}${result.siteUrl}`);
 
-                    for (const [fmt, label] of [['pdf', 'PDF'], ['word', 'Word']]) {
-                        const fmtResult = result[fmt];
-                        if (!fmtResult) continue;
-                        if (fmtResult.flatUrl) {
-                            console.log(`✓ ${label} flat file: ${this.baseUrl}${fmtResult.flatUrl}`);
-                        } else if (flatActive && opts[fmt]) {
-                            console.log(`⚠ ${label} flat build failed — check server logs`);
-                        }
-                        if (fmtResult.setUrl) {
-                            console.log(`✓ ${label} document set: ${this.baseUrl}${fmtResult.setUrl}`);
-                        } else if (setActive && opts[fmt]) {
-                            console.log(`⚠ ${label} set build failed — check server logs`);
-                        }
+                    if (result.siteUrl) {
+                        console.log(`✓ Site available at: ${this.baseUrl}${result.siteUrl}`);
+                    } else if (options.website) {
+                        console.log(`⚠ Website build failed — check server logs`);
+                    }
+                    if (result.pdfFlatUrl) {
+                        console.log(`✓ PDF flat: ${this.baseUrl}${result.pdfFlatUrl}`);
+                    } else if (options.pdfFlat) {
+                        console.log(`⚠ PDF flat build failed — check server logs`);
+                    }
+                    if (result.wordFlatUrl) {
+                        console.log(`✓ Word flat: ${this.baseUrl}${result.wordFlatUrl}`);
+                    } else if (options.wordFlat) {
+                        console.log(`⚠ Word flat build failed — check server logs`);
+                    }
+                    if (result.wordMultipartUrl) {
+                        console.log(`✓ Word multipart: ${this.baseUrl}${result.wordMultipartUrl}`);
+                    } else if (options.wordMultipart) {
+                        console.log(`⚠ Word multipart build failed — check server logs`);
                     }
                 } catch (error) {
                     console.error('Error publishing edition:', error.message);

@@ -1,6 +1,4 @@
 component_versions: '**'
-assembly:
-  section_merge_strategy: fuse
 asciidoc:
   attributes:
     allow-uri-read: ''
@@ -10,6 +8,6 @@ asciidoc:
     sectnums: ''
     sectnumlevels: 7
     version-label: 'Edition'
-pdf-theme: ./pdf-theme.yml
+    env-export: ''
 build:
-  command: asciidoctor-pdf
+  command: asciidoctor -b docbook

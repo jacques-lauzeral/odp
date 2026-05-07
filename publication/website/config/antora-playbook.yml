@@ -5,7 +5,7 @@ site:
 
 content:
   sources:
-    - url: .
+    - url: ..
       branches: HEAD
 
 antora:
@@ -62,6 +62,9 @@ ui:
             </div>
           </nav>
         </header>
+
+output:
+  dir: ../build/site
 
 asciidoc:
   attributes:

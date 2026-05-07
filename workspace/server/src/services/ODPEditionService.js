@@ -28,49 +28,36 @@ export class ODPEditionService {
     // VALIDATION METHODS
     // =============================================================================
 
-    /**
-     * Validate baseline reference exists if provided
-     */
     async _validateBaselineReference(baselineId, transaction) {
-        if (baselineId === null || baselineId === undefined) {
-            return;
-        }
+        if (baselineId === null || baselineId === undefined) return;
         const baseline = await baselineStore().findById(baselineId, transaction);
         if (!baseline) {
             throw new Error(`Baseline with ID ${baselineId} does not exist`);
         }
     }
 
-    /**
-     * Validate Edition creation data
-     */
     _validateEditionData(data) {
         const { title, type, baselineId, startDate, minONMaturity } = data;
 
         if (!title || typeof title !== 'string' || title.trim() === '') {
             throw new Error('Title is required and must be a non-empty string');
         }
-
         if (!type || typeof type !== 'string') {
             throw new Error('Type is required and must be a string');
         }
-
         if (!['DRAFT', 'OFFICIAL'].includes(type)) {
             throw new Error('Type must be either "DRAFT" or "OFFICIAL"');
         }
-
         if (startDate !== null && startDate !== undefined) {
             if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
                 throw new Error('startDate must be a date string in yyyy-mm-dd format');
             }
         }
-
         if (baselineId !== null && baselineId !== undefined) {
             if (typeof baselineId !== 'string' && typeof baselineId !== 'number') {
                 throw new Error('baselineId must be a string or number if provided');
             }
         }
-
         if (minONMaturity !== null && minONMaturity !== undefined) {
             if (!isMaturityLevelValid(minONMaturity)) {
                 throw new Error(`minONMaturity must be one of: ${Object.keys(MaturityLevel).join(', ')}`);
@@ -90,18 +77,11 @@ export class ODPEditionService {
     // EDITION OPERATIONS (Create + Read only — Editions are immutable)
     // =============================================================================
 
-    /**
-     * Create new Edition with automatic baseline creation if none provided.
-     * The store runs the content selection algorithm and marks HAS_ITEMS.editions
-     * within the same transaction.
-     */
     async createODPEdition(data, userId) {
         const tx = createTransaction(userId);
         try {
             const validatedData = this._validateEditionData(data);
-
             let resolvedBaselineId = validatedData.baselineId;
-
             if (!resolvedBaselineId) {
                 const baselineTitle = `Auto-baseline for ${validatedData.title}`;
                 const baseline = await baselineStore().create({ title: baselineTitle }, tx);
@@ -109,17 +89,13 @@ export class ODPEditionService {
             } else {
                 await this._validateBaselineReference(resolvedBaselineId, tx);
             }
-
-            const editionData = {
+            const edition = await odpEditionStore().create({
                 title: validatedData.title,
                 type: validatedData.type,
                 baselineId: resolvedBaselineId,
                 startDate: validatedData.startDate,
                 minONMaturity: validatedData.minONMaturity
-            };
-
-            const edition = await odpEditionStore().create(editionData, tx);
-
+            }, tx);
             await commitTransaction(tx);
             return edition;
         } catch (error) {
@@ -128,9 +104,6 @@ export class ODPEditionService {
         }
     }
 
-    /**
-     * Get Edition by ID
-     */
     async getODPEdition(id, userId) {
         const tx = createTransaction(userId);
         try {
@@ -143,9 +116,6 @@ export class ODPEditionService {
         }
     }
 
-    /**
-     * List all Editions
-     */
     async listODPEditions(userId) {
         const tx = createTransaction(userId);
         try {
@@ -158,16 +128,10 @@ export class ODPEditionService {
         }
     }
 
-    /**
-     * Run a shell command, catching failures as warnings instead of fatal errors.
-     * @returns {boolean} true if successful, false if failed (warning emitted)
-     * @private
-     */
-    /**
-     * Execute a shell command, streaming stdout/stderr to process output in real time.
-     * Returns a promise that resolves when the process exits successfully, rejects on non-zero exit.
-     * @private
-     */
+    // =============================================================================
+    // SHELL EXECUTION HELPERS
+    // =============================================================================
+
     _execStreaming(cmd, opts) {
         return new Promise((resolve, reject) => {
             const child = exec(cmd, opts);
@@ -181,10 +145,6 @@ export class ODPEditionService {
         });
     }
 
-    /**
-     * Like _execStreaming but non-fatal — logs a warning and returns false on failure.
-     * @private
-     */
     async _tryExecAsync(label, cmd, opts) {
         try {
             await this._execStreaming(cmd, opts);
@@ -195,17 +155,21 @@ export class ODPEditionService {
         }
     }
 
+    // =============================================================================
+    // PUBLISH
+    // =============================================================================
+
     /**
-     * Publish an edition: generate Antora content, extract to works dir,
-     * commit and build HTML site. Optionally also generates PDF and/or Word
-     * as flat files and/or per-domain document sets (ZIP).
-     * Only one publication can run at a time — concurrent calls get a 409 error.
-     * PDF and Word failures are non-fatal — null is returned for the corresponding URLs.
+     * Publish an edition in one or more output formats.
      *
      * @param {string|number} editionId
      * @param {string} userId
-     * @param {import('../routes/odp-edition.js').PublishOptions} [options]
-     * @returns {Promise<{ siteUrl: string, pdf: { flatUrl: string|null, setUrl: string|null }, word: { flatUrl: string|null, setUrl: string|null } }>}
+     * @param {object} options - PublishOptions
+     * @param {object} [options.wordFlat]       - ContentSelection — generate flat Word document
+     * @param {object} [options.wordMultipart]  - ContentSelection — generate multipart Word ZIP
+     * @param {object} [options.pdfFlat]        - ContentSelection — generate flat PDF document
+     * @param {boolean} [options.website]       - Build and serve HTML site; copy available artifacts
+     * @returns {Promise<{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }>}
      */
     async publishEdition(editionId, userId, options = {}) {
         if (this._publicationInProgress) {
@@ -218,7 +182,6 @@ export class ODPEditionService {
         this._publicationInProgress = true;
         console.log(`[publish] START edition ${editionId} userId: ${userId}`);
         try {
-            // Verify edition exists
             const tx = createTransaction(userId);
             let edition;
             try {
@@ -234,67 +197,66 @@ export class ODPEditionService {
                 throw err;
             }
 
-            // Normalise options — default: html + flat PDF only (unless explicitly suppressed via false)
-            const html = options.html !== false;
-            const pdf = options.pdf === false ? {} : (options.pdf || {});
-            const word = options.word === false ? {} : (options.word || {});
-            if (options.pdf !== false && options.word !== false && !pdf.flat && !pdf.set && !word.flat && !word.set) {
-                pdf.flat = true;
+            // Normalise options — default: website only
+            const doWebsite     = options.website === true || (!options.wordFlat && !options.wordMultipart && !options.pdfFlat && !options.website);
+            const wordFlatSel   = options.wordFlat      || null;
+            const wordMultiSel  = options.wordMultipart || null;
+            const pdfFlatSel    = options.pdfFlat       || null;
+
+            const odipHome       = process.env.ODIP_HOME || '.';
+            const publicationDir = nodePath.join(odipHome, 'publication');
+            const worksDir       = nodePath.join(publicationDir, 'works');
+            const artifactsDir   = nodePath.join(publicationDir, '_artifacts');
+            const scope          = `edition ${editionId} (${edition.title})`;
+
+            // Stage 1 — Generate ZIP(s) and extract to works dir
+            // Website and flat builds both use works/ but need different config subdirs.
+            // Generate the most specific ZIP needed; website always regenerates with website mode.
+            if (wordFlatSel !== null || pdfFlatSel !== null) {
+                const selection = wordFlatSel || pdfFlatSel || {};
+                console.log(`[publish] Generating flat content ZIP for ${scope}...`);
+                const zipBuffer = await this.generateAntoraZip(editionId, userId, { mode: 'flat', selection });
+                console.log(`[publish] Flat content ZIP generated (${zipBuffer.length} bytes)`);
+                await this._extractZipToWorks(zipBuffer, worksDir);
+                await this._execStreaming('git add .', { cwd: worksDir });
+                await this._execStreaming(`git commit -m "flat build ${scope}" --allow-empty`, { cwd: worksDir });
+                console.log(`[publish] Flat ZIP extracted and committed`);
             }
 
-            const worksDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works');
-            const scope = `edition ${editionId} (${edition.title})`;
-            const execOpts = { cwd: worksDir };
+            // Stage 2 — Flat builds (non-fatal) — output written to _artifacts/
+            const pdfFlatUrl = pdfFlatSel !== null
+                ? await this._buildFlat('pdf', worksDir, artifactsDir)
+                : null;
 
-            // Stage 1 — Generate full content ZIP and extract to works dir
-            console.log(`[publish] Generating Antora content for ${scope}...`);
-            const zipBuffer = await this.generateAntoraZip(editionId, userId);
-            console.log(`[publish] Content ZIP generated (${zipBuffer.length} bytes)`);
+            const wordFlatUrl = wordFlatSel !== null
+                ? await this._buildFlat('word', worksDir, artifactsDir)
+                : null;
 
-            console.log(`[publish] Preparing works directory...`);
-            await this._extractZipToWorks(zipBuffer, worksDir);
-            console.log(`[publish] Extraction complete`);
+            // Stage 3 — Word multipart (non-fatal) — output written to _artifacts/
+            const wordMultipartUrl = wordMultiSel !== null
+                ? await this._buildWordMultipart(wordMultiSel, editionId, userId, publicationDir, artifactsDir)
+                : null;
 
-            // Stage 2 — Git commit
-            console.log(`[publish] Committing to git...`);
-            await this._execStreaming('git add .', { cwd: worksDir });
-            await this._execStreaming(`git commit -m "publish ${scope}" --allow-empty`, { cwd: worksDir });
-            console.log(`[publish] Git commit complete`);
-
-            // Stage 3 — HTML build (optional, default true)
-            if (html) {
+            // Stage 4 — Website: regenerate ZIP with website mode, build HTML, copy artifacts
+            let siteUrl = null;
+            if (doWebsite) {
+                console.log(`[publish] Generating website content ZIP for ${scope}...`);
+                const zipBuffer = await this.generateAntoraZip(editionId, userId, { mode: 'website' });
+                console.log(`[publish] Website content ZIP generated (${zipBuffer.length} bytes)`);
+                await this._extractZipToWorks(zipBuffer, worksDir);
+                await this._execStreaming('git add .', { cwd: worksDir });
+                await this._execStreaming(`git commit -m "website ${scope}" --allow-empty`, { cwd: worksDir });
+                const antoraBin  = nodePath.join(worksDir, 'node_modules', '.bin', 'antora');
                 console.log(`[publish] Running Antora HTML build...`);
-                await this._execStreaming('npx antora antora-playbook.yml', execOpts);
+                await this._execStreaming(`${antoraBin} antora-playbook.yml`, { cwd: nodePath.join(worksDir, 'website') });
                 console.log(`[publish] Antora HTML build complete`);
-            } else {
-                console.log(`[publish] Skipping HTML build (html=false)`);
+                const exportsDir = nodePath.join(worksDir, 'build', 'site', 'odip', '_exports');
+                fs.mkdirSync(exportsDir, { recursive: true });
+                this._copyArtifactsToSite(artifactsDir, exportsDir);
+                siteUrl = '/publication/site/';
             }
 
-            // Ensure _exports directory exists
-            const exportsDir = nodePath.join(worksDir, 'build', 'site', 'odip', '_exports');
-            fs.mkdirSync(exportsDir, { recursive: true });
-
-            // Stage 4 — Flat builds (optional, non-fatal)
-            const pdfFlatUrl = pdf.flat
-                ? await this._buildFlat('pdf', worksDir, execOpts, exportsDir)
-                : null;
-            const wordFlatUrl = word.flat
-                ? await this._buildFlat('word', worksDir, execOpts, exportsDir)
-                : null;
-
-            // Stage 5 — Document set builds (optional, non-fatal)
-            const pdfSetUrl = pdf.set
-                ? await this._buildSet('pdf', pdf.set, editionId, userId, worksDir, execOpts, exportsDir)
-                : null;
-            const wordSetUrl = word.set
-                ? await this._buildSet('word', word.set, editionId, userId, worksDir, execOpts, exportsDir)
-                : null;
-
-            return {
-                siteUrl: html ? '/publication/site/' : null,
-                pdf: { flatUrl: pdfFlatUrl, setUrl: pdfSetUrl },
-                word: { flatUrl: wordFlatUrl, setUrl: wordSetUrl }
-            };
+            return { siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl };
 
         } finally {
             this._publicationInProgress = false;
@@ -303,15 +265,306 @@ export class ODPEditionService {
     }
 
     /**
-     * Extract a ZIP buffer into the works directory.
-     * Uses manual extraction to avoid chmodSync failures under rootless Podman on NFS.
+     * Copy all available artifacts from _artifacts/ into the site exports directory.
      * @private
      */
+    _copyArtifactsToSite(artifactsDir, exportsDir) {
+        const files = ['index.pdf', 'index.docx', 'word-multipart.zip'];
+        for (const name of files) {
+            const src = nodePath.join(artifactsDir, name);
+            if (!fs.existsSync(src)) continue;
+            try {
+                fs.copyFileSync(src, nodePath.join(exportsDir, name));
+                console.log(`[publish] Copied artifact: ${name}`);
+            } catch (e) {
+                console.warn(`[publish] ⚠ Failed to copy artifact ${name}: ${e.message}`);
+            }
+        }
+    }
+
+    // =============================================================================
+    // FLAT BUILD
+    // =============================================================================
+
+    /**
+     * Build a flat file (PDF or Word) from the works dir.
+     * Content selection is already baked into the ZIP at generateAntoraZip time.
+     * Non-fatal — returns URL on success, null on failure.
+     * @private
+     */
+    async _buildFlat(format, worksDir, artifactsDir) {
+        const isPdf    = format === 'pdf';
+        const label    = isPdf ? 'PDF flat' : 'Word flat';
+        const playbook = isPdf ? 'antora-playbook-pdf.yml' : 'antora-playbook-docx.yml';
+        const ext      = isPdf ? 'pdf' : 'docx';
+        const buildDir = nodePath.join(worksDir, 'flat');
+        const srcPath  = isPdf
+            ? nodePath.join(buildDir, 'build', 'assembler', 'pdf',  'odip', '_exports', 'index.pdf')
+            : nodePath.join(buildDir, 'build', 'assembler', 'docx', 'odip', '_exports', 'index.docx');
+        const destPath = nodePath.join(artifactsDir, `index.${ext}`);
+        const urlPath  = `/publication/site/odip/_exports/index.${ext}`;
+
+        console.log(`[publish] Running ${label} build...`);
+        const antoraBin = nodePath.join(worksDir, 'node_modules', '.bin', 'antora');
+        const ok = await this._tryExecAsync(`${label} build`, `${antoraBin} ${playbook}`, { cwd: buildDir });
+        if (!ok) return null;
+
+        try {
+            fs.mkdirSync(artifactsDir, { recursive: true });
+            fs.copyFileSync(srcPath, destPath);
+            console.log(`[publish] ${label} file copied to _artifacts/`);
+            const siteExportsPath = nodePath.join(worksDir, 'build', 'site', 'odip', '_exports', `index.${ext}`);
+            fs.mkdirSync(nodePath.dirname(siteExportsPath), { recursive: true });
+            fs.copyFileSync(destPath, siteExportsPath);
+            return urlPath;
+        } catch (e) {
+            console.warn(`[publish] ⚠ ${label} copy failed: ${e.message}`);
+            return null;
+        }
+    }
+
+    // =============================================================================
+    // WORD MULTIPART BUILD
+    // =============================================================================
+
+    /**
+     * Build a multipart Word ZIP: one .docx per domain + optional intro.
+     * Non-fatal — returns ZIP URL on success, null on failure.
+     * @private
+     */
+    async _buildWordMultipart(selection, editionId, userId, publicationDir, artifactsDir) {
+        console.log(`[publish] Building Word multipart...`);
+
+        const setChunks  = [];
+        const setArchive = archiver('zip', { zlib: { level: 9 } });
+        setArchive.on('data', chunk => setChunks.push(chunk));
+        const setReady = new Promise((resolve, reject) => {
+            setArchive.on('end', resolve);
+            setArchive.on('error', reject);
+        });
+
+        const antoraBin  = nodePath.join(publicationDir, 'works', 'node_modules', '.bin', 'antora');
+        const nodeModules = nodePath.join(publicationDir, 'works', 'node_modules');
+        const execEnv    = { ...process.env, NODE_PATH: nodeModules };
+
+        let fileCount = 0;
+
+        // Intro document
+        if (selection.intro !== false) {
+            console.log(`[publish] Building Word multipart — intro...`);
+            const introWorksDir = nodePath.join(publicationDir, 'works-intro');
+            const introOut      = nodePath.join(introWorksDir, 'multipart', 'build', 'assembler', 'docx', 'odip', '_exports', 'index.docx');
+            const introZip      = await this.generateAntoraZip(editionId, userId, { mode: 'intro' });
+            await this._extractZipToWorks(introZip, introWorksDir);
+            await this._execStreaming('git add .', { cwd: introWorksDir });
+            await this._execStreaming(`git commit -m "word multipart intro" --allow-empty`, { cwd: introWorksDir });
+            const ok = await this._tryExecAsync('Word multipart intro', `${antoraBin} antora-playbook-docx.yml`, { cwd: nodePath.join(introWorksDir, 'multipart'), env: execEnv });
+            if (ok) {
+                if (fs.existsSync(introOut)) {
+                    setArchive.file(introOut, { name: 'intro.docx' });
+                    fileCount++;
+                } else {
+                    console.warn(`[publish] ⚠ Word multipart intro output not found at ${introOut}`);
+                }
+            }
+        }
+
+        // Per-domain documents
+        const domains = await this._resolveSelectionDomains(selection, editionId, userId);
+        for (const drg of domains) {
+            const drgSlug      = this._drgSlug(drg);
+            console.log(`[publish] Building Word multipart — domain: ${drg}...`);
+            const domainWorksDir = nodePath.join(publicationDir, `works-${drgSlug}`);
+            const domainOut      = nodePath.join(domainWorksDir, 'multipart', 'build', 'assembler', 'docx', 'odip', '_exports', 'index.docx');
+            const domainZip      = await this.generateAntoraZip(editionId, userId, { mode: 'domain', drgFilter: drg });
+            await this._extractZipToWorks(domainZip, domainWorksDir);
+            await this._execStreaming('git add .', { cwd: domainWorksDir });
+            await this._execStreaming(`git commit -m "word multipart domain (${drg})" --allow-empty`, { cwd: domainWorksDir });
+            const ok = await this._tryExecAsync(
+                `Word multipart domain (${drg})`,
+                `${antoraBin} antora-playbook-docx.yml`,
+                { cwd: nodePath.join(domainWorksDir, 'multipart'), env: execEnv }
+            );
+            if (ok) {
+                if (fs.existsSync(domainOut)) {
+                    setArchive.file(domainOut, { name: `${drgSlug}.docx` });
+                    fileCount++;
+                } else {
+                    console.warn(`[publish] ⚠ Word multipart domain output not found for ${drg}`);
+                }
+            }
+        }
+
+        if (fileCount === 0) {
+            console.warn(`[publish] ⚠ Word multipart produced no files — skipping ZIP`);
+            return null;
+        }
+
+        await setArchive.finalize();
+        await setReady;
+        const zipDest = nodePath.join(artifactsDir, 'word-multipart.zip');
+        fs.mkdirSync(artifactsDir, { recursive: true });
+        fs.writeFileSync(zipDest, Buffer.concat(setChunks));
+        console.log(`[publish] Word multipart ZIP written to _artifacts/`);
+        const siteExportsPath = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works', 'build', 'site', 'odip', '_exports', 'word-multipart.zip');
+        fs.mkdirSync(nodePath.dirname(siteExportsPath), { recursive: true });
+        fs.copyFileSync(zipDest, siteExportsPath);
+        return '/publication/site/odip/_exports/word-multipart.zip';
+    }
+
+    // =============================================================================
+    // CONTENT SELECTION HELPERS
+    // =============================================================================
+
+    /**
+     * Resolve the list of DrG identifiers from a ContentSelection.
+     * Falls back to all DrGs derived from shared/content/ if domains not specified.
+     * @private
+     */
+    async _resolveSelectionDomains(selection, editionId, userId) {
+        if (selection && selection.domains && selection.domains.length > 0) {
+            return selection.domains;
+        }
+        const publicationPath   = this._publicationPath();
+        const sharedContentPath = nodePath.join(publicationPath, 'shared', 'content');
+        return fs.readdirSync(sharedContentPath, { withFileTypes: true })
+            .filter(e => e.isDirectory() && e.name !== 'intro')
+            .map(e => e.name.toUpperCase())
+            .sort();
+    }
+
+    _publicationPath() {
+        return process.env.PUBLICATION_PATH ||
+            nodePath.join(new URL('../../../../../publication', import.meta.url).pathname);
+    }
+
+    _drgSlug(drg) {
+        return drg.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    }
+
+    // =============================================================================
+    // ANTORA ZIP GENERATION
+    // =============================================================================
+
+    /**
+     * Generate an Antora source ZIP for a given build mode.
+     *
+     * @param {string|number|null} editionId
+     * @param {string} userId
+     * @param {object} [params]
+     * @param {string} params.mode        - 'website' | 'flat' | 'domain' | 'intro'
+     * @param {string} [params.drgFilter] - DrG identifier (domain mode only)
+     * @param {object} [params.selection] - { intro?, domains? } (website/flat modes)
+     * @returns {Promise<Buffer>}
+     */
+    async generateAntoraZip(editionId, userId, { mode = 'website', drgFilter = null, selection = {} } = {}) {
+        const publicationPath    = this._publicationPath();
+        const websiteConfigPath   = nodePath.join(publicationPath, 'website',   'config');
+        const websiteContentPath  = nodePath.join(publicationPath, 'website',   'content');
+        const flatConfigPath      = nodePath.join(publicationPath, 'flat',      'config');
+        const multipartConfigPath = nodePath.join(publicationPath, 'multipart', 'config');
+        const sharedConfigPath    = nodePath.join(publicationPath, 'shared',    'config');
+        const sharedContentPath   = nodePath.join(publicationPath, 'shared',    'content');
+
+        console.log(`[generateAntoraZip] editionId=${editionId ?? 'repository'} mode=${mode} drgFilter=${drgFilter ?? 'all'}`);
+
+        const introOnly  = mode === 'intro';
+        const domainMode = mode === 'domain';
+        const detailsGenerator = new DetailsModuleGenerator(userId, editionId ?? null, drgFilter, introOnly, sharedContentPath);
+        const detailsFiles     = await detailsGenerator.generate();
+        console.log(`[generateAntoraZip] Generated ${Object.keys(detailsFiles).length} details module files`);
+
+        const drgPrefix       = domainMode ? `details/pages/${drgFilter.toLowerCase()}/` : null;
+        const drgAssetsPrefix = domainMode ? `details/assets/` : null;
+
+        let configPaths;
+        let contentMappings;
+
+        switch (mode) {
+            case 'intro': {
+                configPaths = [sharedConfigPath, multipartConfigPath];
+                contentMappings = [
+                    { srcPath: nodePath.join(sharedContentPath, 'intro'),
+                        mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
+                    { srcPath: nodePath.join(publicationPath, 'multipart', 'content', 'intro'),
+                        mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
+                ];
+                break;
+            }
+
+            case 'domain': {
+                const drgSlug = this._drgSlug(drgFilter);
+                configPaths = [sharedConfigPath, multipartConfigPath];
+                contentMappings = [
+                    { srcPath: nodePath.join(sharedContentPath, drgSlug),
+                        mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` }
+                ];
+                break;
+            }
+
+            case 'flat':
+            case 'website': {
+                configPaths = [sharedConfigPath, mode === 'flat' ? flatConfigPath : websiteConfigPath];
+
+                // Determine DrG directory order from edition-plan.json if present
+                const editionPlanPath = nodePath.join(sharedContentPath, 'edition-plan.json');
+                let drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
+                    .filter(e => e.isDirectory() && e.name !== 'intro')
+                    .map(e => e.name);
+
+                if (fs.existsSync(editionPlanPath)) {
+                    const editionPlan = JSON.parse(fs.readFileSync(editionPlanPath, 'utf-8'));
+                    const planPaths   = (editionPlan.chapters || []).map(c => (c.path || '').toLowerCase());
+                    const planSet     = new Set(planPaths);
+                    drgDirs = planPaths.filter(p => drgDirs.includes(p));
+                    for (const dir of fs.readdirSync(sharedContentPath, { withFileTypes: true })
+                        .filter(e => e.isDirectory() && e.name !== 'intro')
+                        .map(e => e.name)) {
+                        if (!planSet.has(dir)) {
+                            console.warn(`[edition-plan] DrG directory '${dir}' not in edition-plan.json — excluded from build`);
+                        }
+                    }
+                }
+
+                // Apply domain selection filter if specified
+                if (selection.domains && selection.domains.length > 0) {
+                    const selectedSlugs = new Set(selection.domains.map(d => this._drgSlug(d)));
+                    drgDirs = drgDirs.filter(d => selectedSlugs.has(d));
+                }
+
+                const includeIntro = selection.intro !== false; // default: include
+
+                contentMappings = [
+                    ...(includeIntro ? [{
+                        srcPath: nodePath.join(sharedContentPath, 'intro'),
+                        mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}`
+                    }] : []),
+                    ...drgDirs.map(name => ({
+                        srcPath: nodePath.join(sharedContentPath, name),
+                        mapFn: rel => rel.startsWith('assets/') ? `modules/details/${rel}` : `modules/details/pages/${name}/${rel}`,
+                        drgSlug: name,
+                        websiteMode: mode === 'website'
+                    })),
+                    { srcPath: websiteContentPath,
+                        mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
+                ];
+                break;
+            }
+
+            default:
+                throw new Error(`Unknown generateAntoraZip mode: ${mode}`);
+        }
+
+        return this._createAntoraZip(configPaths, contentMappings, detailsFiles, domainMode, drgPrefix, drgAssetsPrefix, drgFilter);
+    }
+
+    // =============================================================================
+    // ZIP HELPERS
+    // =============================================================================
+
     async _extractZipToWorks(zipBuffer, worksDir) {
         const uiBundlePath = nodePath.join(worksDir, 'ui-bundle.zip');
-        if (fs.existsSync(uiBundlePath)) {
-            fs.unlinkSync(uiBundlePath);
-        }
+        if (fs.existsSync(uiBundlePath)) fs.unlinkSync(uiBundlePath);
         const zip = new AdmZip(zipBuffer);
         for (const entry of zip.getEntries()) {
             const entryPath = nodePath.join(worksDir, entry.entryName);
@@ -324,305 +577,87 @@ export class ODPEditionService {
         }
     }
 
-    /**
-     * Build a flat file (PDF or Word) from the full Antora source in worksDir.
-     * Non-fatal — returns URL on success, null on failure.
-     * @private
-     */
-    async _buildFlat(format, worksDir, execOpts, exportsDir) {
-        const isPdf = format === 'pdf';
-        const label = isPdf ? 'PDF' : 'Word';
-        const playbook = isPdf ? 'antora-playbook-pdf.yml' : 'antora-playbook-docx.yml';
-        const ext = isPdf ? 'pdf' : 'docx';
-        const srcPath = isPdf
-            ? nodePath.join(worksDir, 'build', 'assembler', 'pdf', 'odip', '_exports', 'index.pdf')
-            : nodePath.join(worksDir, 'build', 'assembler', 'docx', 'odip', '_exports', 'index.docx');
-        const destPath = nodePath.join(exportsDir, `index.${ext}`);
-        const urlPath = `/publication/site/odip/_exports/index.${ext}`;
-
-        console.log(`[publish] Running ${label} flat build...`);
-        const ok = await this._tryExecAsync(`${label} flat build`, `npx antora ${playbook}`, execOpts);
-        if (!ok) return null;
-
-        try {
-            fs.copyFileSync(srcPath, destPath);
-            console.log(`[publish] ${label} flat file copied to exports`);
-            return urlPath;
-        } catch (e) {
-            console.warn(`[publish] ⚠ ${label} flat copy failed: ${e.message}`);
-            return null;
-        }
-    }
-
-    /**
-     * Build a per-domain document set (PDF or Word).
-     * Generates one file per domain (+ optional intro), assembles into a ZIP.
-     * Non-fatal — returns ZIP URL on success, null on failure.
-     * @private
-     */
-    async _buildSet(format, setOptions, editionId, userId, _worksDir, _execOpts, exportsDir) {
-        const isPdf = format === 'pdf';
-        const label = isPdf ? 'PDF' : 'Word';
-        const ext = isPdf ? 'pdf' : 'docx';
-        const introPlaybook = isPdf ? 'antora-playbook-pdf.yml' : 'antora-playbook-docx.yml';
-        const domainPlaybook = isPdf ? 'antora-playbook-pdf.yml' : 'antora-playbook-docx.yml';
-        const odipHome = process.env.ODIP_HOME || '.';
-        const publicationDir = nodePath.join(odipHome, 'publication');
-
-        console.log(`[publish] Building ${label} document set...`);
-
-        const setChunks = [];
-        const setArchive = archiver('zip', { zlib: { level: 9 } });
-        setArchive.on('data', chunk => setChunks.push(chunk));
-        const setReady = new Promise((resolve, reject) => {
-            setArchive.on('end', resolve);
-            setArchive.on('error', reject);
-        });
-
-        let fileCount = 0;
-
-        // Intro document
-        if (setOptions.intro !== false) {
-            console.log(`[publish] Building ${label} intro...`);
-            const introWorksDir = nodePath.join(publicationDir, 'works-intro');
-            const introExecOpts = { cwd: introWorksDir };
-            const introAssemblerOut = nodePath.join(introWorksDir, 'build', 'assembler', format, 'odip', '_exports', `index.${ext}`);
-            const introZip = await this.generateAntoraZip(editionId, userId, null, true);
-            await this._extractZipToWorks(introZip, introWorksDir);
-            await this._execStreaming('git add .', { cwd: introWorksDir });
-            await this._execStreaming(`git commit -m "intro set build" --allow-empty`, { cwd: introWorksDir });
-            const ok = await this._tryExecAsync(`${label} intro build`, `npx antora ${introPlaybook}`, introExecOpts);
-            if (ok) {
-                if (fs.existsSync(introAssemblerOut)) {
-                    setArchive.file(introAssemblerOut, { name: `intro.${ext}` });
-                    fileCount++;
-                } else {
-                    console.warn(`[publish] ⚠ ${label} intro output not found at ${introAssemblerOut}`);
-                }
-            }
-        }
-
-        // Per-domain documents
-        const domains = await this._resolveSetDomains(setOptions, editionId, userId);
-        for (const drg of domains) {
-            const drgSlug = this._drgSlug(drg);
-            console.log(`[publish] Building ${label} domain: ${drg}...`);
-            const domainWorksDir = nodePath.join(publicationDir, `works-${drgSlug}`);
-            const domainExecOpts = { cwd: domainWorksDir };
-            const domainAssemblerOut = nodePath.join(domainWorksDir, 'build', 'assembler', format, 'odip', '_exports', `index.${ext}`);
-
-            const domainZip = await this.generateAntoraZip(editionId, userId, drg);
-            await this._extractZipToWorks(domainZip, domainWorksDir);
-            await this._execStreaming('git add .', { cwd: domainWorksDir });
-            await this._execStreaming(`git commit -m "domain set build (${drg})" --allow-empty`, { cwd: domainWorksDir });
-            const ok = await this._tryExecAsync(
-                `${label} domain build (${drg})`,
-                `npx antora ${domainPlaybook}`,
-                domainExecOpts
-            );
-            if (ok) {
-                if (fs.existsSync(domainAssemblerOut)) {
-                    setArchive.file(domainAssemblerOut, { name: `${drgSlug}.${ext}` });
-                    fileCount++;
-                } else {
-                    console.warn(`[publish] ⚠ ${label} domain output not found for ${drg}`);
-                }
-            }
-        }
-
-        if (fileCount === 0) {
-            console.warn(`[publish] ⚠ ${label} set produced no files — skipping ZIP`);
-            return null;
-        }
-
-        await setArchive.finalize();
-        await setReady;
-        const setBuffer = Buffer.concat(setChunks);
-
-        const zipName = `set-${format}.zip`;
-        const zipDest = nodePath.join(exportsDir, zipName);
-        fs.writeFileSync(zipDest, setBuffer);
-        console.log(`[publish] ${label} document set ZIP written (${setBuffer.length} bytes)`);
-        return `/publication/site/odip/_exports/${zipName}`;
-    }
-
-    /**
-     * Resolve the list of DrG identifiers for a document set build.
-     * Uses setOptions.domains if provided; otherwise derives from edition content.
-     * @private
-     */
-    async _resolveSetDomains(setOptions, editionId, userId) {
-        if (setOptions.domains && setOptions.domains.length > 0) {
-            return setOptions.domains;
-        }
-        // Derive from shared/content/ directory — only DrGs with static content are included
-        const publicationPath = process.env.PUBLICATION_PATH ||
-            nodePath.join(new URL('../../../../../publication', import.meta.url).pathname);
-        const sharedContentPath = nodePath.join(publicationPath, 'shared', 'content');
-        const drgSlugs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
-            .filter(e => e.isDirectory() && e.name !== 'intro')
-            .map(e => e.name.toUpperCase());
-        return drgSlugs.sort();
-    }
-
-
-    /**
-     * Generate Antora content ZIP (source, not built site).
-     * Replaces PublicationService.generateAntoraSite() — that service is deprecated.
-     *
-     * @param {string|number|null} editionId - Edition ID, or null for full repository
-     * @param {string} userId
-     * @returns {Promise<Buffer>} ZIP buffer containing Antora module structure
-     */
-
-    /**
-     * Slugify a DrG identifier for use in directory/file names.
-     * @private
-     */
-    _drgSlug(drg) {
-        return drg.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-    }
-
-    async generateAntoraZip(editionId, userId, drgFilter = null, introOnly = false) {
-        const publicationPath = process.env.PUBLICATION_PATH ||
-            nodePath.join(new URL('../../../../../publication', import.meta.url).pathname);
-        const websiteConfigPath   = nodePath.join(publicationPath, 'website', 'config');
-        const websiteContentPath  = nodePath.join(publicationPath, 'website', 'content');
-        const documentConfigPath  = nodePath.join(publicationPath, 'document', 'config');
-        const sharedConfigPath    = nodePath.join(publicationPath, 'shared', 'config');
-        const sharedContentPath   = nodePath.join(publicationPath, 'shared', 'content');
-
-        console.log(`[generateAntoraZip] editionId=${editionId ?? 'repository'} drgFilter=${drgFilter ?? 'all'} introOnly=${introOnly}`);
-
-        const detailsGenerator = new DetailsModuleGenerator(userId, editionId ?? null, drgFilter, introOnly, sharedContentPath);
-        const detailsFiles = await detailsGenerator.generate();
-        console.log(`[generateAntoraZip] Generated ${Object.keys(detailsFiles).length} details module files`);
-
-        // Determine build mode and source paths
-        const domainMode = !!drgFilter && !introOnly;
-        const drgPrefix = domainMode ? `details/pages/${drgFilter.toLowerCase()}/` : null;
-        const drgAssetsPrefix = domainMode ? `details/assets/` : null;
-
-        // Source paths depend on build mode:
-        // - website/flat: website config + shared config + shared content (all) + website content
-        // - intro: document config + shared config + shared/content/intro
-        // - domain: document config + shared config + shared/content/{drg}
-        // Config paths (land at works dir root, no remapping)
-        // Content mappings: [{ srcPath, mapFn }] — files remapped to Antora module paths
-        let configPaths;
-        let contentMappings;
-
-        if (introOnly) {
-            configPaths = [sharedConfigPath, documentConfigPath];
-            contentMappings = [
-                { srcPath: nodePath.join(sharedContentPath, 'intro'),
-                    mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
-                { srcPath: nodePath.join(publicationPath, 'document', 'content', 'intro'),
-                    mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
-            ];
-        } else if (domainMode) {
-            const drgSlug = this._drgSlug(drgFilter);
-            configPaths = [sharedConfigPath, documentConfigPath];
-            contentMappings = [
-                { srcPath: nodePath.join(sharedContentPath, drgSlug),
-                    mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` }
-            ];
-        } else {
-            configPaths = [sharedConfigPath, websiteConfigPath];
-            // Determine DrG directory order from edition-plan.json if present
-            const editionPlanPath = nodePath.join(sharedContentPath, 'edition-plan.json');
-            let drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
-                .filter(e => e.isDirectory() && e.name !== 'intro')
-                .map(e => e.name);
-            if (fs.existsSync(editionPlanPath)) {
-                const editionPlan = JSON.parse(fs.readFileSync(editionPlanPath, 'utf-8'));
-                const planPaths = (editionPlan.chapters || []).map(c => (c.path || '').toLowerCase());
-                const planSet = new Set(planPaths);
-                // Keep only dirs present in plan, in plan order
-                drgDirs = planPaths.filter(p => drgDirs.includes(p));
-                // Warn about dirs present on disk but absent from plan
-                for (const dir of fs.readdirSync(sharedContentPath, { withFileTypes: true })
-                    .filter(e => e.isDirectory() && e.name !== 'intro')
-                    .map(e => e.name)) {
-                    if (!planSet.has(dir)) {
-                        console.warn(`[edition-plan] DrG directory '${dir}' not in edition-plan.json — excluded from website build`);
-                    }
-                }
-            }
-            contentMappings = [
-                { srcPath: nodePath.join(sharedContentPath, 'intro'),
-                    mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
-                ...drgDirs.map(name => ({
-                    srcPath: nodePath.join(sharedContentPath, name),
-                    mapFn: rel => rel.startsWith('assets/') ? `modules/details/${rel}` : `modules/details/pages/${name}/${rel}`,
-                    drgSlug: name,
-                    websiteMode: true
-                })),
-                { srcPath: websiteContentPath,
-                    mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
-            ];
-        }
-
-        return this._createAntoraZip(configPaths, contentMappings, detailsFiles, domainMode, drgPrefix, drgAssetsPrefix, drgFilter);
-    }
-
-    /**
-     * Create Antora ZIP from static content + generated details files
-     * @private
-     */
     async _createAntoraZip(configPaths, contentMappings, detailsFiles, domainMode = false, drgPrefix = null, drgAssetsPrefix = null, drgFilter = null) {
+        // configPaths[0] = sharedConfigPath (lands at root)
+        // configPaths[1] = mode-specific config path (lands in subdir: website/, flat/, or multipart/)
+        const modeConfigSubdirs = { website: 'website', flat: 'flat', intro: 'multipart', domain: 'multipart' };
+        // Derive subdir from second config path name
+        const modeSubdir = configPaths.length > 1
+            ? nodePath.basename(nodePath.dirname(configPaths[1])) // e.g. 'flat' from '.../flat/config'
+            : null;
+
         return new Promise(async (resolve, reject) => {
             const archive = archiver('zip', { zlib: { level: 9 } });
-            const chunks = [];
+            const chunks  = [];
 
-            archive.on('data', (chunk) => chunks.push(chunk));
-            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            archive.on('data',  (chunk) => chunks.push(chunk));
+            archive.on('end',   () => resolve(Buffer.concat(chunks)));
             archive.on('error', (err) => reject(new Error(`ZIP creation failed: ${err.message}`)));
 
             try {
-                // Stage 1 — Config files: land at works dir root, no path remapping
-                // Later paths override earlier (reverse iteration + seen set)
-                const seen = new Set();
-                for (const srcPath of [...configPaths].reverse()) {
-                    if (!fs.existsSync(srcPath)) continue;
-                    for (const entry of await this._listStaticFiles(srcPath)) {
-                        const rel = nodePath.relative(srcPath, entry).replace(/\\/g, '/');
-                        if (!seen.has(rel)) {
-                            seen.add(rel);
-                            archive.file(entry, { name: rel });
-                        }
+                // Stage 1a — Shared config files: land at works dir root
+                const sharedConfigPath = configPaths[0];
+                if (fs.existsSync(sharedConfigPath)) {
+                    for (const entry of await this._listStaticFiles(sharedConfigPath)) {
+                        const rel = nodePath.relative(sharedConfigPath, entry).replace(/\\/g, '/');
+                        archive.file(entry, { name: rel });
                     }
                 }
 
-                // Explicitly include files that archiver may skip (e.g. .zip, extensionless)
+                // Stage 1b — Mode-specific config files:
+                // - antora.yml → works dir root (content source descriptor, read from git root)
+                // - all other files → subdir (website/, flat/, multipart/)
+                if (configPaths.length > 1 && modeSubdir) {
+                    const modeConfigPath = configPaths[1];
+                    console.log(`[generateAntoraZip] mode-specific config: ${modeConfigPath} → subdir: ${modeSubdir}/`);
+                    if (fs.existsSync(modeConfigPath)) {
+                        for (const entry of await this._listStaticFiles(modeConfigPath)) {
+                            const rel = nodePath.relative(modeConfigPath, entry).replace(/\\/g, '/');
+                            if (rel === 'antora.yml') {
+                                // Component descriptor must be at git root, not in playbook subdir
+                                archive.file(entry, { name: 'antora.yml' });
+                                console.log(`[generateAntoraZip]   → antora.yml (root)`);
+                            } else {
+                                archive.file(entry, { name: `${modeSubdir}/${rel}` });
+                                console.log(`[generateAntoraZip]   → ${modeSubdir}/${rel}`);
+                            }
+                        }
+                    } else {
+                        console.warn(`[generateAntoraZip] mode-specific config path not found: ${modeConfigPath}`);
+                    }
+                }
+
+                // Explicit files that archiver may skip (shared assets).
+                // Placed at root AND in the mode subdir — playbooks reference them via relative paths
+                // and run from works/, but Antora resolves relative to the playbook file location.
                 const explicitFiles = [
-                    { src: 'ui-bundle.zip', warn: 'Antora build will fail' },
-                    { src: 'Gemfile', warn: 'PDF build will fail' },
-                    { src: 'word-template.docx', dest: 'template.docx', warn: 'Word build will use no reference template' },
+                    { src: 'ui-bundle.zip',             warn: 'Antora build will fail' },
+                    { src: 'pdf-theme.yml',              warn: 'PDF build will use default theme' },
+                    { src: 'Gemfile',                    warn: 'PDF build will fail' },
+                    { src: 'word-template.docx',         dest: 'template.docx', warn: 'Word build will use no reference template' },
+                    { src: 'antora-docx-extension.js',   warn: 'Word build will fail' },
                 ];
                 for (const { src, dest, warn } of explicitFiles) {
                     const found = configPaths.map(p => nodePath.join(p, src)).find(p => fs.existsSync(p));
                     if (found) {
                         archive.file(found, { name: dest || src });
+                        if (modeSubdir) {
+                            archive.file(found, { name: `${modeSubdir}/${dest || src}` });
+                        }
                     } else {
                         console.warn(`[generateAntoraZip] ${src} not found in any config path — ${warn}`);
                     }
                 }
 
-                // Stage 2 — Content files: remapped to Antora module paths via contentMappings
+                // Stage 2 — Content files
                 for (const { srcPath, mapFn, drgSlug: mappingDrgSlug, websiteMode } of contentMappings) {
                     if (!fs.existsSync(srcPath)) continue;
                     for (const entry of await this._listStaticFiles(srcPath)) {
-                        const rel = nodePath.relative(srcPath, entry).replace(/\\/g, '/');
+                        const rel        = nodePath.relative(srcPath, entry).replace(/\\/g, '/');
                         const targetPath = mapFn(rel);
-                        // Website mode: append partial include to {drg}/index.adoc
                         if (websiteMode && rel === 'index.adoc' && mappingDrgSlug) {
                             const fileContent = fs.readFileSync(entry, 'utf-8');
-                            const appended = fileContent.trimEnd() +
-                                `
-
-include::partial$${mappingDrgSlug}/index.adoc[]
-`;
+                            const appended    = fileContent.trimEnd() + `\n\ninclude::partial$${mappingDrgSlug}/index.adoc[]\n`;
                             archive.append(appended, { name: targetPath });
                         } else {
                             archive.file(entry, { name: targetPath });
@@ -654,17 +689,13 @@ include::partial$${mappingDrgSlug}/index.adoc[]
         });
     }
 
-    /**
-     * List all files recursively under a directory.
-     * @private
-     */
-    async _listStaticFiles(dir, base = dir) {
+    async _listStaticFiles(dir) {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
-        const files = [];
+        const files   = [];
         for (const entry of entries) {
             const full = nodePath.join(dir, entry.name);
             if (entry.isDirectory()) {
-                files.push(...await this._listStaticFiles(full, base));
+                files.push(...await this._listStaticFiles(full));
             } else {
                 files.push(full);
             }
@@ -672,13 +703,16 @@ include::partial$${mappingDrgSlug}/index.adoc[]
         return files;
     }
 
+    // =============================================================================
+    // ASCIIDOC EXPORT (legacy)
+    // =============================================================================
+
     /**
-     * Export Edition or entire repository as ZIP archive (AsciiDoc format).
      * @deprecated Use generateAntoraZip() for Antora-based publication.
      */
     async exportAsAsciiDoc(editionId, userId) {
         const ODPEditionAggregator = (await import('./export/ODPEditionAggregator.js')).default;
-        const aggregator = new ODPEditionAggregator();
+        const aggregator           = new ODPEditionAggregator();
         const { default: ODPEditionTemplateRenderer } = await import('./export/ODPEditionTemplateRenderer.js');
         const renderer = new ODPEditionTemplateRenderer();
 
@@ -686,39 +720,28 @@ include::partial$${mappingDrgSlug}/index.adoc[]
             ? await aggregator.buildEditionExportData(editionId, userId)
             : await aggregator.buildRepositoryExportData(userId);
 
-        const images = aggregator.getExtractedImages();
+        const images   = aggregator.getExtractedImages();
         const filename = editionId ? 'edition.adoc' : 'repository.adoc';
-        const asciidocContent = renderer.render(data);
-
-        return this._createZipArchive(asciidocContent, images, filename);
+        return this._createZipArchive(renderer.render(data), images, filename);
     }
 
-    /**
-     * Create ZIP archive with AsciiDoc content and images
-     * @private
-     */
     async _createZipArchive(asciidocContent, images, filename) {
         return new Promise((resolve, reject) => {
             const archive = archiver('zip', { zlib: { level: 9 } });
-            const chunks = [];
-
-            archive.on('data', (chunk) => chunks.push(chunk));
-            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            const chunks  = [];
+            archive.on('data',  (chunk) => chunks.push(chunk));
+            archive.on('end',   () => resolve(Buffer.concat(chunks)));
             archive.on('error', (err) => reject(new Error(`ZIP creation failed: ${err.message}`)));
-
             archive.append(asciidocContent, { name: filename });
-
             if (images && images.length > 0) {
                 for (const image of images) {
                     try {
-                        const imageBuffer = Buffer.from(image.data, 'base64');
-                        archive.append(imageBuffer, { name: `images/${image.filename}` });
+                        archive.append(Buffer.from(image.data, 'base64'), { name: `images/${image.filename}` });
                     } catch (error) {
                         console.warn(`Failed to add image ${image.filename} to ZIP: ${error.message}`);
                     }
                 }
             }
-
             archive.finalize();
         });
     }

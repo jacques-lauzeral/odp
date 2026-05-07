@@ -9,10 +9,10 @@ asciidoc:
     toclevels: 3
     sectnums: ''
     sectnumlevels: 7
-    version-label: 'Edition'            # ← Changes "Version" to "Edition"
+    version-label: 'Edition'
     env-export: ''
-pdf-theme: ./pdf-theme.yml
+pdf-theme: ../pdf-theme.yml
 output:
-  dir: ./build/exports
+  dir: ./build/assembler/pdf
 build:
   command: asciidoctor-pdf

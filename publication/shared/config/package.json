@@ -1,12 +1,7 @@
 {
-  "name": "odip-web-site",
+  "name": "odip-publication",
   "version": "1.0.0",
-  "description": "ODIP documentation website",
-  "scripts": {
-    "build": "antora ../build/antora-playbook.yml",
-    "build-docx": "antora ../build/antora-playbook-docx.yml",
-    "build-all": "npm run build && npm run build-docx"
-  },
+  "description": "ODIP publication workspace dependencies",
   "devDependencies": {
     "@antora/cli": "^3.1.0",
     "@antora/site-generator": "^3.1.0",

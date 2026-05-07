@@ -7,11 +7,7 @@ asciidoc:
     toclevels: 3
     sectnums: ''
     sectnumlevels: 7
-    revnumber: '1.0'
-    revdate: ''
-    subtitle: 'Edition 1.0'
-    revremark: 'DRAFT'
     version-label: 'Edition'
     env-export: ''
 build:
-  command: asciidoctor -b docbook -b docbook
+  command: asciidoctor -b docbook

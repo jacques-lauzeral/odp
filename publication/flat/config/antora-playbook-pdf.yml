@@ -5,13 +5,14 @@ site:
 
 content:
   sources:
-    - url: .
+    - url: ..
       branches: HEAD
 
 antora:
   extensions:
+    - '@antora/lunr-extension'
     - require: '@antora/pdf-extension'
-      assembler_config: ./antora-assembler-pdf-intro.yml
+      assembler_config: ./antora-assembler-pdf.yml
 
 ui:
   bundle:
@@ -23,14 +24,6 @@ ui:
         static_files:
         - .nojekyll
         supplemental_ui: true
-    # Override antora.yml nav to ROOT module only — excludes details module
-    - path: antora.yml
-      contents: |
-        name: odip
-        version: ~
-        title: ODIP
-        nav:
-          - modules/ROOT/nav.adoc
 
 asciidoc:
   attributes:

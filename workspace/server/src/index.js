@@ -161,8 +161,12 @@ async function initializeWorksDir(worksDir, sourcePaths, label) {
 /**
  * Initialize all publication workspaces on server startup:
  * - works/          HTML site + flat document builds
- * - works-intro/    Document set intro build
- * - works-{drg}/    Document set per-domain builds (one per DrG)
+ * - works-intro/    Word multipart intro build
+ * - works-{drg}/    Word multipart per-domain builds (one per DrG)
+ *
+ * Each works dir is bootstrapped from shared/config only (package.json + shared assets).
+ * Playbooks and antora.yml are NOT bootstrapped — they are injected via ZIP at publish time,
+ * landing in works/{website|flat|multipart}/ subdirectories to avoid name clashes.
  */
 async function initializePublicationWorkspace() {
     const odipHome = process.env.ODIP_HOME;
@@ -173,32 +177,26 @@ async function initializePublicationWorkspace() {
     const publicationPath = process.env.PUBLICATION_PATH ||
         nodePath.join(new URL('../../../publication', import.meta.url).pathname);
 
-    const websiteConfigPath   = nodePath.join(publicationPath, 'website', 'config');
-    const websiteContentPath  = nodePath.join(publicationPath, 'website', 'content');
-    const documentConfigPath  = nodePath.join(publicationPath, 'document', 'config');
-    const documentContentPath = nodePath.join(publicationPath, 'document', 'content');
-    const sharedConfigPath    = nodePath.join(publicationPath, 'shared', 'config');
-    const sharedContentPath   = nodePath.join(publicationPath, 'shared', 'content');
+    const sharedConfigPath  = nodePath.join(publicationPath, 'shared',  'config');
+    const sharedContentPath = nodePath.join(publicationPath, 'shared',  'content');
 
     const publicationDir = nodePath.join(odipHome, 'publication');
 
-    // Main works dir — website config + shared config + shared content (all domains) + website content
+    // Main works dir — shared/config only (npm install target for all build types)
     await initializeWorksDir(
         nodePath.join(publicationDir, 'works'),
-        [websiteConfigPath, sharedConfigPath, sharedContentPath, websiteContentPath],
+        [sharedConfigPath],
         'main'
     );
 
-    // Intro works dir — document config + shared config + shared/content/intro + document/content/intro
+    // Intro works dir — shared/config only
     await initializeWorksDir(
         nodePath.join(publicationDir, 'works-intro'),
-        [documentConfigPath, sharedConfigPath,
-            nodePath.join(sharedContentPath, 'intro'),
-            nodePath.join(documentContentPath, 'intro')],
+        [sharedConfigPath],
         'intro'
     );
 
-    // Per-DrG works dirs — document config + shared config + shared/content/{drg}
+    // Per-DrG works dirs — shared/config only
     const drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
         .filter(e => e.isDirectory() && e.name !== 'intro')
         .map(e => e.name);
@@ -206,8 +204,7 @@ async function initializePublicationWorkspace() {
     for (const drgSlug of drgDirs) {
         await initializeWorksDir(
             nodePath.join(publicationDir, `works-${drgSlug}`),
-            [documentConfigPath, sharedConfigPath,
-                nodePath.join(sharedContentPath, drgSlug)],
+            [sharedConfigPath],
             drgSlug
         );
     }
