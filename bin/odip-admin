@@ -249,24 +249,21 @@ EOF
         log "Antora UI bundle already present — skipping download"
     fi
 
-    # Bootstrap and install dependencies for all publication works dirs
+    # Bootstrap and install dependencies for all publication works dirs.
+    # Only works/ needs npm install — per-DrG dirs share works/node_modules via absolute path + NODE_PATH.
+    # Playbooks/assemblers/antora.yml are NOT bootstrapped here — they are injected via ZIP at publish time.
     local pub_repo="${ODIP_REPO}/publication"
-    local website_config="${pub_repo}/website/config"
-    local website_content="${pub_repo}/website/content"
-    local document_config="${pub_repo}/document/config"
     local shared_config="${pub_repo}/shared/config"
     local shared_content="${pub_repo}/shared/content"
 
-    # Helper: bootstrap a works dir from config source dirs only (content mapping handled at publish time)
+    # Helper: bootstrap a works dir from shared/config only
     bootstrap_works_dir() {
-        local works_dir="$1"; shift
+        local works_dir="$1"
         log "Bootstrapping: $works_dir"
-        for src in "$@"; do
-            [[ -d "$src" ]] && cp -r "${src}/." "$works_dir/"
-        done
+        [[ -d "$shared_config" ]] && cp -r "${shared_config}/." "$works_dir/"
     }
 
-    # Helper: npm install in a works dir (idempotent)
+    # Helper: npm install in works/ only (idempotent)
     install_works_deps() {
         local works_dir="$1"
         local label="$2"
@@ -278,23 +275,20 @@ EOF
         fi
     }
 
-    # Main works dir: shared config + website config (website config overrides shared)
-    bootstrap_works_dir "${ODIP_HOME}/publication/works"         "$shared_config" "$website_config"
+    # Main works dir: shared config + npm install (only works/ has node_modules)
+    bootstrap_works_dir "${ODIP_HOME}/publication/works"
     install_works_deps "${ODIP_HOME}/publication/works" "works (main)"
 
-    # Intro works dir: shared config + document config
-    bootstrap_works_dir "${ODIP_HOME}/publication/works-intro"         "$shared_config" "$document_config"
-    install_works_deps "${ODIP_HOME}/publication/works-intro" "works-intro"
+    # Intro works dir: shared config only (no npm install — uses works/node_modules)
+    bootstrap_works_dir "${ODIP_HOME}/publication/works-intro"
 
-    # Per-DrG works dirs: shared config + document config
+    # Per-DrG works dirs: shared config only (no npm install — uses works/node_modules)
     if [[ -d "$shared_content" ]]; then
         for d in "$shared_content"/*/; do
             local drg_slug
             drg_slug=$(basename "$d")
             [[ "$drg_slug" == "intro" ]] && continue
-            local domain_works="${ODIP_HOME}/publication/works-${drg_slug}"
-            bootstrap_works_dir "$domain_works"                 "$shared_config" "$document_config"
-            install_works_deps "$domain_works" "works-${drg_slug}"
+            bootstrap_works_dir "${ODIP_HOME}/publication/works-${drg_slug}"
         done
     fi
 
