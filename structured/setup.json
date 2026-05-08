@@ -792,7 +792,68 @@
     {
       "name": "Commission Implementing Regulation (EU) 2021/116",
       "url": "https://eur-lex.europa.eu/legal-content/en/TXT/?uri=CELEX%3A32021R0116",
-      "externalId": "refdoc:commission_implementing_regulation_(eu)_2021_116"
+      "externalId": "refdoc:commission_implementing_regulation_(eu)_2021_116",
+      "description": "SES Common Project One (CP1) - Initial measures of common projects"
+    },
+    {
+      "name": "Commission Implementing Regulation (EU) 2019/123",
+      "description": "Detailed rules for the implementation of air traffic management (ATM) network functions (Network Functions Implementing Rule)",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32019R0123",
+      "externalId": "refdoc:commission_implementing_regulation_(eu)_2019_123"
+    },
+    {
+      "name": "Commission Implementing Regulation (EU) 2013/409",
+      "description": "Implementing rules for the recovery actions referred to in Article 14 of Regulation (EC) No 549/2004",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32013R0409",
+      "externalId": "refdoc:commission_implementing_regulation_(eu)_2013_409"
+    },
+    {
+      "name": "Commission Implementing Regulation (EU) 2019/317",
+      "description": "Performance and Charging Scheme in the Single European Sky",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32019R0317",
+      "externalId": "refdoc:commission_implementing_regulation_(eu)_2019_317"
+    },
+    {
+      "name": "Commission Implementing Regulation (EU) 2018/1048",
+      "description": "Airspace usage requirements and operating procedures concerning Performance-Based Navigation",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32018R1048",
+      "externalId": "refdoc:commission_implementing_regulation_(eu)_2018_1048"
+    },
+    {
+      "name": "Regulation (EU) 2024/2803 of the European Parliament and of the Council",
+      "description": "Implementation of the Single European Sky (recast)",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R2803",
+      "externalId": "refdoc:regulation_(eu)_2024_2803"
+    },
+    {
+      "name": "Directive (EU) 2019/882 — European Accessibility Act",
+      "description": "Accessibility requirements for products and services, including websites and mobile applications used by the public.",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32019L0882",
+      "externalId": "refdoc:directive_(eu)_2019_882"
+    },
+    {
+      "name": "Directive (EU) 2016/2102 — Web Accessibility Directive",
+      "description": "Accessibility of the websites and mobile applications of public sector bodies.",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016L2102",
+      "externalId": "refdoc:directive_(eu)_2016_2102"
+    },
+    {
+      "name": "Regulation (EU) 2016/679 — General Data Protection Regulation (GDPR)",
+      "description": "Protection of natural persons with regard to the processing of personal data and on the free movement of such data.",
+      "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679",
+      "externalId": "refdoc:regulation_(eu)_2016_679"
+    },
+    {
+      "name": "ICAO Annex 15 — Aeronautical Information Services",
+      "description": "Standards and recommended practices for the provision and dissemination of aeronautical information necessary for the safety, regularity and efficiency of international air navigation.",
+      "url": "https://www.icao.int/safety/airnavigation/IMP/Pages/Annex-15.aspx",
+      "externalId": "refdoc:icao_annex_15"
+    },
+    {
+      "name": "AIXM and FIXM — Aviation and Flight Information Exchange Models",
+      "description": "Joint reference to the Aeronautical Information Exchange Model (AIXM, EUROCONTROL/FAA) and the Flight Information Exchange Model (FIXM, ICAO/FAA), the standard data models for aeronautical information and Flight Plan data exchange.",
+      "url": "https://www.aixm.aero/",
+      "externalId": "refdoc:aixm_fixm"
     }
   ],
   "stakeholderCategories": [
