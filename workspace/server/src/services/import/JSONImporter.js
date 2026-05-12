@@ -610,10 +610,12 @@ class JSONImporter {
         const current = await OperationalRequirementService.getById(requirementId, userId);
 
         // Resolve refinesParents from array of externalIds
-        const refinesParents = this._resolveExternalIds(
-            reqData.refinesParents || [],
-            context
-        );
+        // Backward-compatible: accept legacy field names 'refinesON' (scalar) and 'refinesORs' (array)
+        const rawRefinesParents = reqData.refinesParents
+            ?? (reqData.refinesON ? [reqData.refinesON] : null)
+            ?? reqData.refinesORs
+            ?? [];
+        const refinesParents = this._resolveExternalIds(rawRefinesParents, context);
 
         const impactedStakeholders = this._resolveImpactElementReferences(
             reqData.impactedStakeholders || [],

@@ -137,7 +137,7 @@ Represents yearly development effort (in MW) scoped to a Drafting Group, for NM 
 | `year` | integer | The effort year |
 | `planned` | integer | Planned bandwidth in MW; optional |
 | `waveId` | reference | Wave reference; optional — omitted means yearly total |
-| `scope` | DraftingGroup key | DrG scope (e.g. `IDL`, `NM_B2B`); optional — omitted means global scope |
+| `scope` | DraftingGroup key | DrG scope (e.g. `AIRSPACE`, `TRANSVERSAL`); optional — omitted means global scope |
 
 The `(year, waveId, scope)` tuple is unique: no two Bandwidth records may share the same combination.
 
@@ -427,16 +427,14 @@ The `DraftingGroup` enum identifies the competency domain or drafting group resp
 |---|------------------------------------|
 | 4DT | 4D-Trajectory                      |
 | AIRPORT | Airport                            |
+| AIRSPACE | Airspace (iDL)                     |
 | ASM_ATFCM | ASM / ATFCM Integration            |
 | CRISIS | Crisis                             |
 | FAAS | Flight Assessment and Alert System |
 | FLOW | Flow                               |
-| IDL | iDL                                |
-| NM | Network Manager                    |
-| NM_B2B | NM B2B                             |
-| NMUI | NMUI                               |
 | RRT | Rerouting                          |
-| TCF | Transponder Code Function                |
+| TCF | Transponder Code Function          |
+| TRANSVERSAL | Transversal                        |
 
 ### 6.2 OR Types
 

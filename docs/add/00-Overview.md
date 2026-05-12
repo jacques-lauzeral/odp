@@ -23,7 +23,7 @@ NOTE: ODIP was formerly named ODP (for Operational Deployment Plan). Consequentl
 | **ON** | Operational Need — high-level objective |
 | **OR** | Operational Requirement — traceable requirement derived from an ON |
 | **OC** | Operational Change — deployment unit implementing one or more ORs |
-| **DrG** | Drafting Group — working group responsible for a domain (e.g. IDL, 4DT, ASM_ATFCM) |
+| **DrG** | Drafting Group — working group responsible for a domain (e.g. AIRSPACE, 4DT, ASM_ATFCM) |
 | **Wave** | NM deployment cycle — milestone-aligned deployment window |
 | **Baseline** | Immutable snapshot of the repository at a point in time |
 | **ODIP Edition** | Published edition of the Operational Development and Implementation Plan |

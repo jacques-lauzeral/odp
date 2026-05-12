@@ -67,7 +67,7 @@ The `/import/map/{drg}` endpoint accepts a `?mapper=` parameter selecting betwee
 
 ### 3.2 DrG Mapper Registry
 
-`MapperRegistry` holds one registered mapper per DrG code (and optional folder). All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DRG enum values: `4DT`, `AIRPORT`, `ASM_ATFCM`, `CRISIS`, `FAAS`, `FLOW`, `IDL`, `NM`, `NM_B2B`, `NMUI`, `PERF`, `RRT`, `TCF`.
+`MapperRegistry` holds one registered mapper per DrG code (and optional folder). All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DrG enum values: `4DT`, `AIRPORT`, `AIRSPACE`, `ASM_ATFCM`, `CRISIS`, `FAAS`, `FLOW`, `RRT`, `TCF`, `TRANSVERSAL`.
 
 Each mapper is responsible for: entity identification, field extraction, AsciiDoc → Quill Delta conversion for rich text fields, and cross-reference resolution.
 
@@ -100,7 +100,7 @@ Each mapper is responsible for: entity identification, field extraction, AsciiDo
 
 **Strategic document names**: plain text names (e.g. `NSP SO 4/3`) are converted to `externalId` via `ExternalIdBuilder`. Pre-formed `refdoc:` IDs are passed through as-is. A normalization step handles systemic naming variants (e.g. `NSP SO 5.2` → `NSP SO 5/2`). Named aliases cover one-off mismatches (e.g. `Network 4DT CONOPS` → `Network 4D Trajectory CONOPS`).
 
-**Path derivation**: built from the section `path` array by stripping section numbers and dropping `Operational Needs` / `Operational Requirements` segments. If a `folder` option is provided, it is prepended as the first path segment (used for IDL sub-domain files). Path is set to `null` when `refinesParents` resolves non-empty (XOR rule).
+**Path derivation**: built from the section `path` array by stripping section numbers and dropping `Operational Needs` / `Operational Requirements` segments. If a `folder` option is provided, it is prepended as the first path segment (used for AIRSPACE sub-domain files). Path is set to `null` when `refinesParents` resolves non-empty (XOR rule).
 
 **Abstract ONs**: sections annotated with `*[Abstract — not directly implemented]*` emit `abstract: true`.
 
@@ -122,6 +122,9 @@ requirements[]            — {externalId|code, title, type, statement (Quill De
                              impactedDomains, dependencies, maturity, nfrs,
                              tentative, strategicDocuments (ONs only),
                              additionalDocumentation}
+                             — legacy aliases accepted by JSONImporter:
+                               refinesON (scalar) → refinesParents: [value]
+                               refinesORs (array) → refinesParents
 changes[]                 — {externalId|code, title, drg,
                              implementedORs, decommissionedORs,
                              milestones[{name, wave, eventTypes[]}],
@@ -221,8 +224,10 @@ services/import/
 ├── JSONImporter.js              DrG-specific importer (externalId-based)
 └── mappers/                     One file per DrG + shared bootstrap mapper
     ├── BootstrapMapper.js       Shared mapper for iCDM bootstrap-format Word docs
-    ├── NM_B2B_Mapper.js
-    ├── IDL_Mapper.js
+    ├── NM_B2B_Mapper.js         TRANSVERSAL/NM-B2B folder mapper
+    ├── iDL_Mapper_sections.js   AIRSPACE section-based folders (ADP, ADMM)
+    ├── iDL_Mapper_tables.js     AIRSPACE table-based folders
+    ├── iDL_Mapper_new_format.js AIRSPACE new-format folders (TCF, LoA)
     └── ...
 
 services/export/

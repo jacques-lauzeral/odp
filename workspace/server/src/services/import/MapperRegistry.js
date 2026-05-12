@@ -32,7 +32,7 @@ class MapperRegistry {
 
     /**
      * Register a mapper for a specific DrG and optional folder
-     * @param {string} drg - Drafting Group identifier (e.g., 'NM_B2B')
+     * @param {string} drg - Drafting Group identifier (e.g., 'AIRSPACE')
      * @param {typeof Mapper} mapperClass - Mapper class constructor
      * @param {Object} [options] - Optional configuration
      * @param {string} [options.folder] - Target folder within DrG
@@ -68,31 +68,33 @@ class MapperRegistry {
 
     static registerImportMappers() {
         // Standard DrG mappers (no folder)
-        MapperRegistry.register('NM_B2B', NM_B2B_Mapper);
-        MapperRegistry.register('RRT', ReroutingMapper);
+        MapperRegistry.register('4DT', FourDTMapper);
         MapperRegistry.register('AIRPORT', AirportMapper);
         MapperRegistry.register('ASM_ATFCM', ASM_ATFCM_Mapper);
-        MapperRegistry.register('4DT', FourDTMapper);
-        MapperRegistry.register('FLOW', FlowMapper);
         MapperRegistry.register('CRISIS', CRISIS_Mapper, { folder: 'Crisis Information Portal' });
         MapperRegistry.register('CRISIS', CRISIS_Mapper, { folder: 'Conflict Zones' });
         MapperRegistry.register('FAAS', FAAS_Mapper);
+        MapperRegistry.register('FLOW', FlowMapper);
+        MapperRegistry.register('RRT', ReroutingMapper);
 
-        // IDL section-based folders
-        MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'ADP' });
-        MapperRegistry.register('IDL', iDL_Mapper_sections, { folder: 'ADMM' });
+        // TRANSVERSAL folder-based mappers
+        MapperRegistry.register('TRANSVERSAL', NM_B2B_Mapper, { folder: 'NM-B2B' });
 
-        // IDL table-based folders
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'ADM' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'AURA' });
-        MapperRegistry.register('IDL', iDL_Mapper_new_format, { folder: 'TCF' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'NET' });
-        MapperRegistry.register('IDL', iDL_Mapper_new_format, { folder: 'LoA' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'IAM' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'MAP' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'NFR' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'HMI' });
-        MapperRegistry.register('IDL', iDL_Mapper_tables, { folder: 'TCT' });
+        // AIRSPACE section-based folders
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_sections, { folder: 'ADP' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_sections, { folder: 'ADMM' });
+
+        // AIRSPACE table-based folders
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'ADM' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'AURA' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_new_format, { folder: 'TCF' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'NET' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_new_format, { folder: 'LoA' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'IAM' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'MAP' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'NFR' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'HMI' });
+        MapperRegistry.register('AIRSPACE', iDL_Mapper_tables, { folder: 'TCT' });
     }
 }
 

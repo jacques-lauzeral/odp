@@ -19,7 +19,7 @@ components:
 
     DraftingGroup:
       type: string
-      enum: [4DT, AIRPORT, ASM_ATFCM, CRISIS, FAAS, FLOW, IDL, NM, NM_B2B, NMUI, PERF, RRT, TCF]
+      enum: [4DT, AIRPORT, AIRSPACE, ASM_ATFCM, CRISIS, FAAS, FLOW, RRT, TCF, TRANSVERSAL]
 
     AnnotatedReference:
       type: object
