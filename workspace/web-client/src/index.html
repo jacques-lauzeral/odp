@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ODIP Web Client</title>
+    <title>ODIP Space</title>
     <!-- Quill Rich Text Editor -->
     <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.7/quill.js"></script>
@@ -20,24 +20,32 @@
     <link rel="stylesheet" href="styles/components/table-components.css">
     <link rel="stylesheet" href="styles/components/tree-table-components.css">
     <link rel="stylesheet" href="styles/components/temporal-components.css">
-    <!-- Landing -->
-    <link rel="stylesheet" href="styles/landing.css">
-    <!-- Activities -->
+    <!-- Activities — base layers first -->
     <link rel="stylesheet" href="styles/activities/activity.css">
     <link rel="stylesheet" href="styles/activities/abstract-interaction-activity.css">
-    <link rel="stylesheet" href="styles/activities/elaboration.css">
-    <link rel="stylesheet" href="styles/activities/review.css">
-    <link rel="stylesheet" href="styles/activities/planning.css">
-    <link rel="stylesheet" href="styles/activities/prioritisation.css">
-    <link rel="stylesheet" href="styles/activities/setup.css">
-    <link rel="stylesheet" href="styles/activities/publication.css">
+    <!-- Activities — Home -->
+    <link rel="stylesheet" href="styles/activities/home/home.css">
+    <!-- Activities — Workspace shared sub-activities -->
+    <link rel="stylesheet" href="styles/activities/workspace/shared/os/os.css">
+    <link rel="stylesheet" href="styles/activities/workspace/shared/plan/plan.css">
+    <link rel="stylesheet" href="styles/activities/workspace/shared/quality/quality.css">
+    <link rel="stylesheet" href="styles/activities/workspace/shared/notes/notes.css">
+    <!-- Activities — Setup (shared by Elaborate and Explore) -->
+    <link rel="stylesheet" href="styles/activities/workspace/setup/setup.css">
+    <!-- Activities — Elaborate shell -->
+    <link rel="stylesheet" href="styles/activities/workspace/elaborate/elaborate.css">
+    <!-- Activities — Explore shell -->
+    <link rel="stylesheet" href="styles/activities/workspace/explore/explore.css">
+    <!-- Activities — Manage -->
+    <link rel="stylesheet" href="styles/activities/manage/manage.css">
+    <link rel="stylesheet" href="styles/activities/manage/editions/editions.css">
 </head>
 <body>
 <div id="app">
     <div id="header-container"></div>
     <div id="activity-container">
         <div class="loading">
-            <p>Loading ODIP Web Client...</p>
+            <p>Loading ODIP Space...</p>
         </div>
     </div>
 </div>

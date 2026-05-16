@@ -1,62 +1,200 @@
-// Core application class with routing and activity management
+/**
+ * @file app.js
+ * @description Core application class. Owns connection monitoring, activity lifecycle,
+ * and user state. Navigation is delegated to Router.
+ */
 import { errorHandler } from './shared/error-handler.js';
 import { apiClient } from './shared/api-client.js';
 import { endpoints } from './config/api.js';
+import { Router } from './shared/router.js';
 import Header from './components/common/header.js';
 
 const CONNECTION_CHECK_INTERVAL = 60000;
 
+/**
+ * Activity loader map — maps activityKey to the module path used by dynamic import.
+ * Nested paths (workspace shells, manage) are explicit here; no path convention assumed.
+ *
+ * @type {Map<string, string>}
+ */
+const ACTIVITY_PATHS = new Map([
+    ['home',      './activities/home/home.js'],
+    ['elaborate', './activities/workspace/elaborate/elaborate.js'],
+    ['explore',   './activities/workspace/explore/explore.js'],
+    ['manage',    './activities/manage/manage.js'],
+]);
+
 export class App {
+    /**
+     * @param {HTMLElement} container - The main activity mount point (#activity-container)
+     */
     constructor(container) {
         this.container = container;
         this.currentActivity = null;
         this.activities = new Map();
         this.user = null;
+        this.datasetContext = null;
         this.header = null;
+        this.router = null;
         this.connectionCheckInterval = null;
         this.connectionStatus = 'checking';
     }
 
     async initialize() {
-        console.log('Initializing ODIP Web Client...');
+        console.log('Initializing ODIP Space...');
 
-        // Connect API client to app for user header
         apiClient.setApp(this);
 
-        // Create header
         this.header = new Header(this);
         const headerContainer = document.getElementById('header-container');
         if (headerContainer) {
             this.header.render(headerContainer);
         }
 
-        // Set up routing
-        this.setupRouting();
+        this.router = new Router({
+            onNavigate:    (activityKey, subPath) => this._loadActivity(activityKey, subPath),
+            getUser:       () => this.user,
+            onRouteChange: () => { if (this.header) this.header.onRouteChange(); },
+        });
 
-        // Start connection monitoring
         this.startConnectionMonitoring();
 
-        // Load current route
-        await this.handleRoute();
+        await this.router.start();
 
-        console.log('ODIP Web Client initialized successfully');
+        console.log('ODIP Space initialized successfully');
     }
 
-    startConnectionMonitoring() {
-        this.checkConnection();
-        this.connectionCheckInterval = setInterval(() => this.checkConnection(), CONNECTION_CHECK_INTERVAL);
+    // -------------------------------------------------------------------------
+    // Navigation (public — used by activities and Header)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Navigate to a path.
+     * @param {string} path
+     */
+    navigate(path) {
+        return this.router.navigate(path);
     }
 
-    async checkConnection() {
+    /**
+     * The first path segment of the active route. Empty string on Home.
+     * Forwarded from Router — Header calls this to derive the active tab.
+     * @returns {string}
+     */
+    activeSegment() {
+        return this.router ? this.router.activeSegment() : '';
+    }
+
+    // -------------------------------------------------------------------------
+    // Activity lifecycle (private)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Load and mount an activity by key. Skips reload if the same activity is already active.
+     * @param {string}   activityKey
+     * @param {string[]} subPath
+     */
+    async _loadActivity(activityKey, subPath = []) {
+        if (this.currentActivity?.name === activityKey) {
+            if (this.currentActivity.handleSubPath) {
+                await this.currentActivity.handleSubPath(subPath);
+            }
+            return;
+        }
+
         try {
-            await apiClient.get(endpoints.health);
-            this.dispatchConnectionEvent('connected');
-        } catch {
-            this.dispatchConnectionEvent('disconnected');
+            let activity = this.activities.get(activityKey);
+
+            if (!activity) {
+                const modulePath = ACTIVITY_PATHS.get(activityKey);
+                if (!modulePath) {
+                    throw new Error(`No module path registered for activity key: ${activityKey}`);
+                }
+                const module = await import(modulePath);
+                const ActivityClass = module.default ?? module[this._capitalize(activityKey)];
+                activity = new ActivityClass(this);
+                this.activities.set(activityKey, activity);
+            }
+
+            if (this.currentActivity?.cleanup) {
+                await this.currentActivity.cleanup();
+            }
+
+            this.currentActivity = activity;
+            this.currentActivity.name = activityKey;
+
+            await activity.render(this.container, subPath);
+
+        } catch (error) {
+            console.error(`Failed to load activity: ${activityKey}`, error);
+            errorHandler.handle(error, `activity-${activityKey}`);
+
+            if (activityKey !== 'home') {
+                this.router.navigate('/');
+            }
         }
     }
 
-    dispatchConnectionEvent(status) {
+    // -------------------------------------------------------------------------
+    // User management (public)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Set the active user. Triggers header refresh.
+     * @param {{ name: string, role: string }|null} userData
+     */
+    setUser(userData) {
+        this.user = userData;
+        console.log('User set:', userData?.name ?? null);
+        if (this.header) {
+            this.header.onUserChange();
+        }
+    }
+
+    /** @returns {{ name: string, role: string }|null} */
+    getUser() {
+        return this.user;
+    }
+
+    // -------------------------------------------------------------------------
+    // Dataset context (public)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Set the active dataset context. Called by HomeActivity on selection.
+     * @param {{ type: 'live' }|{ type: 'edition', editionId: number }} context
+     */
+    setDatasetContext(context) {
+        this.datasetContext = context;
+    }
+
+    /**
+     * Returns the active dataset context, or null if none selected yet.
+     * @returns {{ type: 'live' }|{ type: 'edition', editionId: number }|null}
+     */
+    getDatasetContext() {
+        return this.datasetContext;
+    }
+
+    // -------------------------------------------------------------------------
+    // Connection monitoring (private)
+    // -------------------------------------------------------------------------
+
+    startConnectionMonitoring() {
+        this._checkConnection();
+        this.connectionCheckInterval = setInterval(() => this._checkConnection(), CONNECTION_CHECK_INTERVAL);
+    }
+
+    async _checkConnection() {
+        try {
+            await apiClient.get(endpoints.health);
+            this._dispatchConnectionEvent('connected');
+        } catch {
+            this._dispatchConnectionEvent('disconnected');
+        }
+    }
+
+    _dispatchConnectionEvent(status) {
         this.connectionStatus = status;
         window.dispatchEvent(new CustomEvent('connection:change', { detail: { status } }));
     }
@@ -65,112 +203,9 @@ export class App {
         return this.connectionStatus;
     }
 
-    setupRouting() {
-        // Listen for URL changes
-        window.addEventListener('popstate', () => this.handleRoute());
-
-        // Override link clicks for internal navigation
-        document.addEventListener('click', (event) => {
-            const link = event.target.closest('a');
-            if (link && link.getAttribute('href')?.startsWith('/')) {
-                event.preventDefault();
-                this.navigateTo(link.getAttribute('href'));
-            }
-        });
-    }
-
-    async handleRoute() {
-        const path = window.location.pathname;
-        const segments = path.split('/').filter(segment => segment.length > 0);
-
-        try {
-            if (segments.length === 0) {
-                await this.loadActivity('landing');
-            } else if (segments[0] === 'setup') {
-                await this.loadActivity('setup', segments.slice(1));
-            } else if (segments[0] === 'elaboration') {
-                await this.loadActivity('elaboration', segments.slice(1));
-            } else if (segments[0] === 'planning') {
-                await this.loadActivity('planning', segments.slice(1));
-            } else if (segments[0] === 'publication') {
-                await this.loadActivity('publication', segments.slice(1));
-            } else if (segments[0] === 'review') {
-                await this.loadActivity('review', segments.slice(1));
-            } else if (segments[0] === 'prioritisation') {
-                await this.loadActivity('prioritisation', segments.slice(1));
-            } else {
-                this.navigateTo('/');
-                return;
-            }
-
-            if (this.header) {
-                this.header.onRouteChange();
-            }
-        } catch (error) {
-            errorHandler.handle(error, 'routing');
-            this.navigateTo('/');
-        }
-    }
-
-    async loadActivity(activityName, subPath = []) {
-        if (this.currentActivity?.name === activityName) {
-            if (this.currentActivity.handleSubPath) {
-                await this.currentActivity.handleSubPath(subPath);
-            }
-            return;
-        }
-
-        try {
-            let activity = this.activities.get(activityName);
-
-            if (!activity) {
-                const module = await import(`./activities/${activityName}/${activityName}.js`);
-                const ActivityClass = module.default || module[this.capitalize(activityName)];
-                activity = new ActivityClass(this);
-                this.activities.set(activityName, activity);
-            }
-
-            if (this.currentActivity?.cleanup) {
-                await this.currentActivity.cleanup();
-            }
-
-            this.currentActivity = activity;
-            this.currentActivity.name = activityName;
-
-            await activity.render(this.container, subPath);
-
-        } catch (error) {
-            console.error(`Failed to load activity: ${activityName}`, error);
-            errorHandler.handle(error, `activity-${activityName}`);
-
-            if (activityName !== 'landing') {
-                this.navigateTo('/');
-            }
-        }
-    }
-
-    navigateTo(path) {
-        if (window.location.pathname !== path) {
-            window.history.pushState({}, '', path);
-        }
-        this.handleRoute();
-    }
-
-    navigate(path) {
-        this.navigateTo(path);
-    }
-
-    setUser(userData) {
-        this.user = userData;
-        console.log('User set:', userData.name);
-        if (this.header) {
-            this.header.onUserChange();
-        }
-    }
-
-    getUser() {
-        return this.user;
-    }
+    // -------------------------------------------------------------------------
+    // Cleanup
+    // -------------------------------------------------------------------------
 
     cleanup() {
         if (this.connectionCheckInterval) {
@@ -179,7 +214,12 @@ export class App {
         }
     }
 
-    capitalize(str) {
+    // -------------------------------------------------------------------------
+    // Utilities
+    // -------------------------------------------------------------------------
+
+    /** @param {string} str @returns {string} */
+    _capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
     }
 }

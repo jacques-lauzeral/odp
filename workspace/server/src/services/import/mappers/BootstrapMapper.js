@@ -204,15 +204,15 @@ class BootstrapMapper extends Mapper {
         const fields = this._extractFields(paragraphs, type);
 
         if (!fields.externalId) {
-            this._warn(`Missing External ID in section "${section.title}" — skipping`);
-            return;
+            const title = this._extractTitle(section.title, type);
+            fields.externalId = ExternalIdBuilder.buildExternalId({ title: title, drg: this.drg }, type.toLowerCase());
         }
 
         const title = this._extractTitle(section.title, type);
         const entity = {
             externalId: fields.externalId,
             title,
-            _fullTitle: section.title.replace(/^[\d.]+\s+/, '').trim(), // with ON/OR prefix
+            _fullTitle: section.title.replace(/^[\d.]+\s+/, '').trim().replace(/&amp;/g, '&'), // with ON/OR prefix
             type,
             drg: this.drg,
             path: this._buildPath(section.path),
@@ -485,6 +485,15 @@ class BootstrapMapper extends Mapper {
             }
         }
 
+        // Also index by title directly — supports plain-title references
+        // e.g. "Implements: ON Continuous improvement and adaptation of existing FF-ICE implementation"
+        // where no short ID is present (bootstrap sources without External ID markers)
+        for (const [title, externalId] of titleIndex) {
+            if (!lookup.has(title)) {
+                lookup.set(title, externalId);
+            }
+        }
+
         return lookup;
     }
 
@@ -590,7 +599,19 @@ class BootstrapMapper extends Mapper {
         const resolved = [];
         for (const ref of refs) {
             const shortId = this._extractShortId(ref);
-            const externalId = shortId ? refLookup.get(shortId) : refLookup.get(ref);
+            let externalId;
+            if (shortId) {
+                externalId = refLookup.get(shortId);
+            } else {
+                externalId = refLookup.get(ref) ?? refLookup.get(ref.toLowerCase());
+                if (!externalId) {
+                    const typePrefix = ref.match(/^(ON|OR)\s/)?.[1]?.toLowerCase();
+                    const title = ref.replace(/^(ON|OR)\s+/, '').trim();
+                    if (typePrefix && title) {
+                        externalId = ExternalIdBuilder.buildExternalId({ title, drg: this.drg }, typePrefix);
+                    }
+                }
+            }
             if (externalId) {
                 resolved.push(externalId);
             } else {
@@ -632,6 +653,13 @@ class BootstrapMapper extends Mapper {
      */
     _parseStrategicDocRef(text) {
         text = text.trim();
+
+        // Strip trailing § section reference → note
+        // e.g. "Network 4D Trajectory CONOPS § 5.1" → { name: "...", note: "5.1" }
+        const sectionMatch = text.match(/^(.+?)\s+§\s+(.+)$/);
+        if (sectionMatch) {
+            return { name: sectionMatch[1].trim(), note: sectionMatch[2].trim() };
+        }
 
         // Must end with ')' to have a note
         if (!text.endsWith(')')) {
@@ -683,7 +711,7 @@ class BootstrapMapper extends Mapper {
      * @private
      */
     _buildPath(sectionPath) {
-        const IGNORED = /^operational (needs|requirements)$/i;
+        const IGNORED = /^(operational (needs|requirements)|table of contents|table of figures|table of tables)$/i;
         const segments = sectionPath
             .slice(0, -1)
             .map(s => s.replace(/^[\d.]+\s+/, '').trim())
@@ -704,7 +732,7 @@ class BootstrapMapper extends Mapper {
         // Remove leading section number
         const withoutNumber = sectionTitle.replace(/^[\d.]+\s+/, '').trim();
         // Strip the ON/OR type prefix
-        return withoutNumber.replace(/^(ON|OR)\s+/, '').trim();
+        return withoutNumber.replace(/^(ON|OR)\s+/, '').trim().replace(/&amp;/g, '&');
     }
 
     /**
