@@ -200,11 +200,11 @@ web-client/src/styles/
 
 ---
 
-## 4. Open questions
+## 4. Design decisions
 
-| Topic | Notes |
+| Topic | Decision |
 |---|---|
-| **Explore access** | Anonymous users can access Explore — confirm whether edition list on Home is visible without login |
-| **Role persistence** | User name + role stored in sessionStorage or localStorage? |
-| **Router prefix matching** | `/elaborate` must match `/elaborate/os`, `/elaborate/os/requirements/{id}` etc. — confirm approach |
-| **CSS load order** | `index.html` lists all CSS explicitly — confirm whether sub-folder CSS files are also listed explicitly or discovered another way |
+| **Explore access** | Edition list on Home is visible without login. Anonymous users can navigate to Explore. `/elaborate` and `/manage` require a logged-in user — router redirects to Home if no user set. |
+| **Role persistence** | User name and role stored client-side (localStorage) for now. No server-side authentication in Phase A. |
+| **Router prefix matching** | Confirmed — router uses prefix matching. `/elaborate` matches `/elaborate/os`, `/elaborate/os/requirements/{id}` etc. The active top-level tab is determined by the first path segment. |
+| **CSS load order** | Keep it simple — all CSS files listed explicitly in `index.html`, same pattern as current. Sub-folder files added to the list as new activities are introduced. |
