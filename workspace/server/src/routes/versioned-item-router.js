@@ -14,7 +14,7 @@ export class VersionedItemRouter {
     }
 
     /**
-     * Extract userId from request headers
+     * Extract userId from request headers — throws if absent.
      */
     getUserId(req) {
         const userId = req.headers['x-user-id'];
@@ -22,6 +22,14 @@ export class VersionedItemRouter {
             throw new Error('Missing required header: x-user-id');
         }
         return userId;
+    }
+
+    /**
+     * Extract userId from request headers — returns null if absent.
+     * Used on read-only routes that allow anonymous access.
+     */
+    getUserIdOptional(req) {
+        return req.headers['x-user-id'] || null;
     }
 
     /**
@@ -59,7 +67,7 @@ export class VersionedItemRouter {
         // List all entities (repository or edition context, content filtered)
         this.router.get('/', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const userId = this.getUserIdOptional(req);
                 const editionId = this.getEditionId(req);
                 const filters = this.getContentFilters(req);
                 const projection = this.getProjection(req, ['summary', 'standard']);
@@ -84,7 +92,7 @@ export class VersionedItemRouter {
         // Get entity by ID (repository or edition context)
         this.router.get('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const userId = this.getUserIdOptional(req);
                 const editionId = this.getEditionId(req);
                 const projection = this.getProjection(req, ['standard', 'extended']);
                 console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, editionId: ${editionId}, projection: ${projection}`);
@@ -113,7 +121,7 @@ export class VersionedItemRouter {
         // Get specific version of entity (no multi-context support - version is explicit)
         this.router.get('/:id/versions/:versionNumber', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const userId = this.getUserIdOptional(req);
                 const versionNumber = parseInt(req.params.versionNumber);
                 console.log(`${this.service.constructor.name}.getByIdAndVersion() itemId: ${req.params.id}, version: ${versionNumber}, userId: ${userId}`);
                 const entity = await this.service.getByIdAndVersion(req.params.id, versionNumber, userId);
@@ -136,7 +144,7 @@ export class VersionedItemRouter {
         // Get version history (no multi-context support - shows all versions)
         this.router.get('/:id/versions', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const userId = this.getUserIdOptional(req);
                 console.log(`${this.service.constructor.name}.getVersionHistory() itemId: ${req.params.id}, userId: ${userId}`);
                 const history = await this.service.getVersionHistory(req.params.id, userId);
                 res.json(history);

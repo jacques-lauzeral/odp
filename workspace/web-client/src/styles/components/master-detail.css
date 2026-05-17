@@ -1,0 +1,63 @@
+/* master-detail.css
+   Two-column resizable layout used by O*s, Plan, Setup, Editions, etc.
+   ------------------------------------------------------------------ */
+
+.master-detail {
+    display: grid;
+    grid-template-columns: 0.67fr 4px 0.33fr;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Left column — list / content */
+.master-detail__list {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* Divider */
+.master-detail__divider {
+    background: var(--color-border, #e2e8f0);
+    cursor: col-resize;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.master-detail__divider:hover,
+.master-detail__divider:active {
+    background: var(--color-primary, #3b82f6);
+}
+
+/* Right column — detail panel */
+.master-detail__detail {
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
+    background: var(--color-surface, #ffffff);
+    border-left: 1px solid var(--color-border, #e2e8f0);
+}
+
+/* Placeholder shown when no item is selected */
+.master-detail__placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 2rem;
+    color: var(--color-text-muted, #94a3b8);
+    text-align: center;
+}
+
+.master-detail__placeholder-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+}
+
+.master-detail__placeholder-text {
+    font-size: 0.9rem;
+    margin: 0;
+}

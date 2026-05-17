@@ -14,10 +14,18 @@ function getUserId(req) {
     return userId;
 }
 
+/**
+ * Extract userId from request headers — returns null if absent.
+ * Used on read-only routes that allow anonymous access.
+ */
+function getUserIdOptional(req) {
+    return req.headers['x-user-id'] || null;
+}
+
 // List all baselines
 router.get('/', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         console.log(`BaselineService.listBaselines() userId: ${userId}`);
         const baselines = await BaselineService.listBaselines(userId);
         res.json(baselines);
@@ -34,7 +42,7 @@ router.get('/', async (req, res) => {
 // Get baseline by ID
 router.get('/:id', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         console.log(`BaselineService.getBaseline() id: ${req.params.id}, userId: ${userId}`);
         const baseline = await BaselineService.getBaseline(req.params.id, userId);
         if (!baseline) {
@@ -56,7 +64,7 @@ router.get('/:id', async (req, res) => {
 // Create new baseline (atomic snapshot creation)
 router.post('/', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         console.log(`BaselineService.createBaseline() userId: ${userId}, startsFromWaveId: ${req.body.startsFromWaveId}`);
         const baseline = await BaselineService.createBaseline(req.body, userId);
         res.status(201).json(baseline);

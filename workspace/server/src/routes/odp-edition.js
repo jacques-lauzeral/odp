@@ -14,10 +14,18 @@ function getUserId(req) {
     return userId;
 }
 
+/**
+ * Extract userId from request headers — returns null if absent.
+ * Used on read-only routes that allow anonymous access.
+ */
+function getUserIdOptional(req) {
+    return req.headers['x-user-id'] || null;
+}
+
 // List all ODIP editions
 router.get('/', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         console.log(`ODPEditionService.listODPEditions() userId: ${userId}`);
         const editions = await ODPEditionService.listODPEditions(userId);
         res.json(editions);
@@ -34,7 +42,7 @@ router.get('/', async (req, res) => {
 // Export entire repository as AsciiDoc
 router.get('/export', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         console.log(`ODPEditionService.exportAsAsciiDoc() repository export, userId: ${userId}`);
         const asciiDoc = await ODPEditionService.exportAsAsciiDoc(null, userId);
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -53,7 +61,7 @@ router.get('/export', async (req, res) => {
 // Get ODIP edition by ID
 router.get('/:id', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         console.log(`ODPEditionService.getODPEdition() id: ${req.params.id}, userId: ${userId}`);
         const edition = await ODPEditionService.getODPEdition(req.params.id, userId);
         if (!edition) {
@@ -75,7 +83,7 @@ router.get('/:id', async (req, res) => {
 // Export specific ODIP edition as AsciiDoc
 router.get('/:id/export', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const userId = getUserIdOptional(req);
         const editionId = req.params.id;
         console.log(`ODPEditionService.exportAsAsciiDoc() edition export, id: ${editionId}, userId: ${userId}`);
         const asciiDoc = await ODPEditionService.exportAsAsciiDoc(editionId, userId);

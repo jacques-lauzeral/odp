@@ -15,7 +15,7 @@ export class SimpleItemRouter {
     }
 
     /**
-     * Extract userId from request headers
+     * Extract userId from request headers — throws if absent.
      */
     getUserId(req) {
         const userId = req.headers['x-user-id'];
@@ -25,11 +25,19 @@ export class SimpleItemRouter {
         return userId;
     }
 
+    /**
+     * Extract userId from request headers — returns null if absent.
+     * Used on read-only routes that allow anonymous access.
+     */
+    getUserIdOptional(req) {
+        return req.headers['x-user-id'] || null;
+    }
+
     setupRoutes() {
         // List all items
         this.router.get('/', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const userId = this.getUserIdOptional(req);
                 console.log(`${this.service.constructor.name}.listItems() userId: ${userId}`);
                 const items = await this.service.listItems(userId);
                 res.json(items);
@@ -46,7 +54,7 @@ export class SimpleItemRouter {
         // Get item by ID
         this.router.get('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const userId = this.getUserIdOptional(req);
                 console.log(`${this.service.constructor.name}.getItem() id: ${req.params.id}, userId: ${userId}`);
                 const item = await this.service.getItem(req.params.id, userId);
                 if (!item) {

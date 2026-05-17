@@ -34,6 +34,8 @@ export class App {
         this.activities = new Map();
         this.user = null;
         this.datasetContext = null;
+        this._setupData = null;        // lazy-loaded shared cache
+        this._setupDataPromise = null; // in-flight guard
         this.header = null;
         this.router = null;
         this.connectionCheckInterval = null;
@@ -174,6 +176,54 @@ export class App {
      */
     getDatasetContext() {
         return this.datasetContext;
+    }
+
+    // -------------------------------------------------------------------------
+    // Setup data (public — lazy-loaded, shared cache)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns setup data, fetching from the server on first call.
+     * Subsequent calls return the cached result. Parallel calls share one fetch.
+     *
+     * Shape: { stakeholderCategories, domains, referenceDocuments, waves }
+     *
+     * @returns {Promise<object>}
+     */
+    async getSetupData() {
+        if (this._setupData) return this._setupData;
+
+        if (this._setupDataPromise) return this._setupDataPromise;
+
+        this._setupDataPromise = Promise.all([
+            apiClient.get('/stakeholder-categories'),
+            apiClient.get('/domains'),
+            apiClient.get('/reference-documents'),
+            apiClient.get('/waves'),
+        ]).then(([stakeholderCategories, domains, referenceDocuments, waves]) => {
+            this._setupData = {
+                stakeholderCategories: stakeholderCategories ?? [],
+                domains:               domains               ?? [],
+                referenceDocuments:    referenceDocuments    ?? [],
+                waves:                 waves                 ?? [],
+            };
+            this._setupDataPromise = null;
+            return this._setupData;
+        }).catch(error => {
+            this._setupDataPromise = null;
+            throw error;
+        });
+
+        return this._setupDataPromise;
+    }
+
+    /**
+     * Invalidate the setup data cache. Call after any setup entity CRUD operation
+     * so the next consumer gets fresh data.
+     */
+    invalidateSetupData() {
+        this._setupData = null;
+        this._setupDataPromise = null;
     }
 
     // -------------------------------------------------------------------------
