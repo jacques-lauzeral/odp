@@ -170,3 +170,22 @@
         padding: var(--space-4);
     }
 }
+/* ── Workspace shell (Elaborate / Explore / Manage) ── */
+.workspace-shell {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.workspace-shell__tabs {
+    flex-shrink: 0;
+}
+
+.workspace-shell__content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}

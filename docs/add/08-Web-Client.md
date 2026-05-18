@@ -22,9 +22,9 @@ web-client/src/
 │   │
 │   ├── workspace/
 │   │   ├── elaborate/
-│   │   │   └── elaborate.js                Thin shell — live dataset + R/W
+│   │   │   └── elaborate.js                Workspace shell — live dataset + R/W — owns level-2 tab strip
 │   │   ├── explore/
-│   │   │   └── explore.js                  Thin shell — edition context + R/O
+│   │   │   └── explore.js                  Workspace shell — edition context + R/O — owns level-2 tab strip
 │   │   ├── setup/
 │   │   │   ├── setup.js
 │   │   │   ├── stakeholder-categories.js
@@ -43,8 +43,7 @@ web-client/src/
 │   │       │   ├── requirement-form-fields.js
 │   │       │   ├── change-form.js          OC create/edit form
 │   │       │   ├── change-form-fields.js
-│   │       │   ├── change-form-milestone.js
-│   │       │   └── breadcrumb.js           Breadcrumb trail utility
+│   │       │   └── change-form-milestone.js
 │   │       ├── plan/
 │   │       │   ├── plan.js                 Plan workspace shell
 │   │       │   ├── planning.js             ON planning view
@@ -56,29 +55,29 @@ web-client/src/
 │   │       └── notes/
 │   │           └── notes.js                Placeholder
 │   │
+│   ├── converse/
+│   │   └── converse.js                     Converse activity — placeholder
+│   │
 │   └── manage/
-│       ├── manage.js                       Manage shell (integrators only)
-│       ├── editions/
-│       │   ├── editions.js
-│       │   └── odp-edition-form.js
-│       └── admin/
-│           └── admin.js                    Placeholder
+│       ├── manage.js                       Manage shell — owns level-2 tab strip
+│       └── editions/
+│           ├── editions.js
+│           └── odp-edition-form.js
 │
 ├── components/
-│   ├── common/
-│   │   └── header.js                       Global header, connect form, nav tabs
+│   ├── header.js                           Global header — two-row layout, breadcrumb trail, connect popup
+│   ├── breadcrumb.js                       Breadcrumb trail utility (moved from activities/workspace/shared/os/)
 │   ├── master-detail.js                    Reusable two-column resizable layout
-│   └── odp/
-│       ├── collection-entity.js
-│       ├── collection-entity-form.js       Base form class with tab rendering
-│       ├── tree-table-entity.js
-│       ├── temporal-grid.js
-│       ├── filter-bar.js
-│       ├── reference-list-manager.js
-│       ├── reference-manager.js
-│       ├── annotated-multiselect-manager.js
-│       ├── diff-popup.js
-│       └── odp-column-types.js
+│   ├── collection-entity.js
+│   ├── collection-entity-form.js           Base form class with tab rendering
+│   ├── tree-table-entity.js
+│   ├── temporal-grid.js
+│   ├── filter-bar.js
+│   ├── reference-list-manager.js
+│   ├── reference-manager.js
+│   ├── annotated-multiselect-manager.js
+│   ├── diff-popup.js
+│   └── odp-column-types.js
 │
 └── shared/
     ├── router.js
@@ -94,12 +93,13 @@ web-client/src/
 
 ### 3.1 Top-Level Activities
 
-| Title | Path | Purpose |
-|---|---|---|
-| Home | `/` | Dataset context selection: live dataset or a specific edition |
-| Elaborate | `/elaborate` | Authoring workspace — live dataset, R/W |
-| Explore | `/explore` | Consultation workspace — selected edition, R/O |
-| Manage | `/manage` | Edition lifecycle and administration — integrators only |
+| Title | Path | Protected | Purpose |
+|---|---|---|---|
+| Home | `/` | No | Dataset context selection: live dataset or a specific edition |
+| Elaborate | `/elaborate` | Yes | Authoring workspace — live dataset, R/W |
+| Explore | `/explore` | No | Consultation workspace — selected edition, R/O |
+| Converse | `/converse` | No | Collaborative threading — placeholder |
+| Manage | `/manage` | Yes | Edition lifecycle and administration — integrators only |
 
 ### 3.2 Router
 
@@ -111,24 +111,33 @@ Route table:
 { prefix: '/elaborate', activityKey: 'elaborate', protected: true  }
 { prefix: '/explore',   activityKey: 'explore',   protected: false }
 { prefix: '/manage',    activityKey: 'manage',    protected: true  }
-{ prefix: '/',          activityKey: 'home',       protected: false }
+{ prefix: '/converse',  activityKey: 'converse',  protected: false }
+{ prefix: '/',          activityKey: 'home',      protected: false }
 ```
 
 `Router.activeSegment()` returns the bare first path segment (e.g. `'elaborate'`). Header calls `app.activeSegment()` to derive the active nav tab without coupling to the route table.
 
 ### 3.3 Workspace Shell Routing
 
-`ElaborateActivity` and `ExploreActivity` are thin shells that delegate sub-path routing to shared sub-activities:
+`ElaborateActivity`, `ExploreActivity`, and `ManageActivity` are workspace shells that own a persistent level-2 tab strip and delegate sub-path routing to shared sub-activities. The tab strip renders once on mount and persists across sub-activity transitions; only the sub-container content is swapped.
 
-| Sub-path segment | Sub-activity |
-|---|---|
-| `os` (default) | `OsActivity` |
-| `plan` | `PlanActivity` |
-| `setup` | `SetupActivity` |
-| `quality` | `QualityActivity` (placeholder) |
-| `notes` | `NotesActivity` (placeholder) |
+**Elaborate and Explore tab strip** (identical):
 
-Both shells are structurally identical. The context difference (live vs edition, R/W vs R/O) flows transparently through `app.getDatasetContext()`.
+| Tab | Sub-path segment | Sub-activity |
+|---|---|---|
+| O*s | `os` (default) | `OsActivity` |
+| Plan | `plan` | `PlanActivity` |
+| Quality | `quality` | `QualityActivity` (placeholder) |
+| Notes | `notes` | `NotesActivity` (placeholder) |
+| Setup | `setup` | `SetupActivity` |
+
+**Manage tab strip:**
+
+| Tab | Sub-path segment | Sub-activity |
+|---|---|---|
+| Editions | `editions` (default) | `EditionsActivity` |
+
+Context difference (live vs edition, R/W vs R/O) flows transparently through `app.getDatasetContext()` — sub-activities do not need to know which shell they are mounted in.
 
 ### 3.4 O* Sub-Path Routing
 
@@ -179,14 +188,44 @@ Every meaningful state transition pushes a URL history entry via `window.history
 
 ## 5. Header and User Identification
 
-`Header` (`components/common/header.js`) owns:
+`Header` (`components/header.js`) owns a two-row layout:
 
-- Nav tab rendering with role-gated visibility (Manage visible to integrators only)
-- Connect form: name input + role selector (`contributor` / `reviewer` / `integrator`), persisted to localStorage
-- Active tab highlighting via `app.activeSegment()`
-- Connection status indicator
+- **Row 1** — logo (spans both rows) · brand · nav tabs · right cluster (Connect/username button · server status dot)
+- **Row 2** — breadcrumb trail
 
-User identification happens entirely in the Header. Anonymous users can navigate to Home and Explore. `/elaborate` and `/manage` require an identified user — the router redirects to `/` if no user is set.
+**Nav tabs** (row 1):
+
+| Tab | Visibility |
+|---|---|
+| Home | Always |
+| Elaborate | Only when dataset context is `live` |
+| Explore | Only when dataset context is `edition` |
+| Converse | Always |
+| Manage | Always (access enforced by router — protected route) |
+
+**Breadcrumb trail** (row 2):
+
+Activities set the breadcrumb via `app.header.setBreadcrumb(crumbs)` where crumbs start at sub-level — Home and the workspace root are omitted since the active nav tab already conveys that context. Empty array clears the trail (used on Home).
+
+```js
+// Crumb shape
+{ label: string, path?: string }  // no path = current page, non-clickable
+```
+
+`Header.setBreadcrumb()` is the public API called by activities. `buildBreadcrumb()` and `attachBreadcrumbListeners()` from `components/breadcrumb.js` handle the rendering.
+
+**User identification:**
+
+Anonymous → "Connect" button → popup dialog (name + role selector, persisted to localStorage).
+Identified → username display → same popup (update / disconnect).
+
+`Header.restoreUser()` is called once by `App.initialize()` after initial render — not inside `render()` — to avoid a re-render loop triggered by `app.setUser()` calling `header.onUserChange()`.
+
+**Server status:**
+
+Small dot (green / amber / red), extreme right of row 1, always visible. Driven by `connection:change` custom event dispatched by `App` connection monitoring.
+
+User identification is entirely client-side. Anonymous users can access Home, Explore, and Converse. `/elaborate` and `/manage` require an identified user — the router redirects to `/` if no user is set.
 
 ---
 
@@ -476,18 +515,12 @@ Entity type is derived from `field.formatArgs[0]` mapped to URL segment (`'requi
 
 ### 10.5 Breadcrumb
 
-`breadcrumb.js` provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`.
+`breadcrumb.js` (`components/breadcrumb.js`) provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`. Moved from `activities/workspace/shared/os/` to `components/` to serve as a shared utility for all activities.
 
-Breadcrumb trail in list view (owned by `OsActivity`):
-
-```
-Home > Elaborate|Explore > Requirements|Changes > {item title}
-```
-
-Breadcrumb trail in page mode (owned by detail view):
+The breadcrumb trail is rendered in header row 2 and updated by each activity via `app.header.setBreadcrumb(crumbs)`. Crumbs start at sub-level — Home and the workspace root are omitted since the active nav tab already conveys that context:
 
 ```
-Home > Elaborate|Explore > Requirements|Changes > {item title}
+Requirements > OR-AIRSPACE-0033 — AIS reference baseline management
 ```
 
 ---
@@ -569,10 +602,10 @@ All GET routes on the server accept requests without `x-user-id` header (returni
 
 ```
 styles/
-├── main.css                          Design tokens, CSS reset, typography, layout utilities
+├── main.css                          Design tokens, CSS reset, typography, layout utilities — includes EC palette tokens (--ec-navy, --ec-blue, --ec-sky, --ec-light)
 ├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
 ├── feedback-components.css           Toasts, error notifications, loading/skeleton states
-├── layout-components.css             Top header, cards, modals
+├── layout-components.css             Top header (two-row: nav tabs + breadcrumb), connect popup, cards, modals
 ├── components/
 │   ├── filter-bar.css                FilterBar chip component
 │   ├── form-components.css           Form tabs, tag selector, multi-select, Quill integration
@@ -652,11 +685,11 @@ ONs with a `tentative` period get two milestones: `period-start` (▶) and `peri
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-  mode: 'icon',
-  eventTypes: {
-    'period-start': { icon: '▶', colour: '#2563eb' },
-    'period-end':   { icon: '◀', colour: '#2563eb' }
-  }
+    mode: 'icon',
+    eventTypes: {
+        'period-start': { icon: '▶', colour: '#2563eb' },
+        'period-end':   { icon: '◀', colour: '#2563eb' }
+    }
 })
 ```
 
@@ -712,9 +745,9 @@ Pure aggregation logic in `shared/src/model/bandwidth-aggregation.js` — no DOM
 
 ```javascript
 {
-  cells:      Map<waveId, Map<drg, CellData>>,
-  waveGlobal: Map<waveId, CellData>,
-  unplanned:  OC[]
+    cells:      Map<waveId, Map<drg, CellData>>,
+        waveGlobal: Map<waveId, CellData>,
+        unplanned:  OC[]
 }
 // CellData
 { consumed: number, available: number | null, ocs: OC[] }

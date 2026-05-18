@@ -2,26 +2,32 @@
  * @file manage.js
  * @description Manage activity shell. Restricted to integrators.
  *
+ * Renders a persistent level-2 tab strip and a sub-activity mount point.
+ *
  * Sub-path routing:
- *   []                    → editions (default)
- *   ['editions', ...]     → EditionsActivity
- *   ['admin', ...]        → AdminActivity (dummy)
+ *   []                  → editions (default)
+ *   ['editions', ...]   → EditionsActivity
  */
 import { errorHandler } from '../../shared/error-handler.js';
+import { dom } from '../../shared/utils.js';
 
 const SUB_ACTIVITIES = {
     editions: () => import('./editions/editions.js'),
 };
 
+const TABS = [
+    { key: 'editions', label: 'Editions' },
+];
+
 const DEFAULT_SUB = 'editions';
+const BASE_PATH   = '/manage';
 
 export default class ManageActivity {
-    /**
-     * @param {import('../../app.js').App} app
-     */
+    /** @param {import('../../app.js').App} app */
     constructor(app) {
         this.app = app;
-        this.container = null;
+        this.container    = null;
+        this.subContainer = null;
         this._subActivities  = {};
         this._currentSubName = null;
     }
@@ -32,6 +38,7 @@ export default class ManageActivity {
 
     async render(container, subPath = []) {
         this.container = container;
+        this._renderShell();
         return this._route(subPath);
     }
 
@@ -46,6 +53,44 @@ export default class ManageActivity {
         this._subActivities  = {};
         this._currentSubName = null;
         this.container       = null;
+        this.subContainer    = null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Shell
+    // -------------------------------------------------------------------------
+
+    _renderShell() {
+        this.container.innerHTML = `
+            <div class="workspace-shell">
+                <nav class="interaction-tabs workspace-shell__tabs" id="workspace-tabs">
+                    ${TABS.map(t => `
+                        <button
+                            class="interaction-tab"
+                            data-sub="${t.key}"
+                            data-path="${BASE_PATH}/${t.key}"
+                        ><span class="interaction-tab__name">${t.label}</span></button>
+                    `).join('')}
+                </nav>
+                <div class="workspace-shell__content" id="workspace-content"></div>
+            </div>
+        `;
+        this.subContainer = dom.find('#workspace-content', this.container);
+        this._attachTabListeners();
+    }
+
+    _attachTabListeners() {
+        dom.findAll('.interaction-tab', this.container).forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.app.navigate(btn.dataset.path);
+            });
+        });
+    }
+
+    _updateActiveTab(subName) {
+        dom.findAll('.interaction-tab', this.container).forEach(btn => {
+            btn.classList.toggle('interaction-tab--active', btn.dataset.sub === subName);
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -56,9 +101,11 @@ export default class ManageActivity {
         const subName    = (subPath[0] && SUB_ACTIVITIES[subPath[0]]) ? subPath[0] : DEFAULT_SUB;
         const subSubPath = subPath[0] === subName ? subPath.slice(1) : subPath;
 
+        this._updateActiveTab(subName);
+
         try {
             const sub = await this._getSub(subName);
-            await sub.render(this.container, subSubPath);
+            await sub.render(this.subContainer, subSubPath);
             this._currentSubName = subName;
         } catch (error) {
             errorHandler.handle(error, `manage-${subName}`);
