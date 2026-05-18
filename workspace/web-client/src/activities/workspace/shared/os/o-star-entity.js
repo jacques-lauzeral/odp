@@ -153,7 +153,7 @@ export default class OStarEntity {
     _getTreeColumns() {
         const c = OStarEntity._cols();
         return [
-            c.code, c.title, c.maturity,
+            c.title, c.code, c.maturity,
             c.implements,
             c.strategicDocuments, c.impactedStakeholders, c.impactedDomains,
         ];
@@ -173,14 +173,27 @@ export default class OStarEntity {
     // -------------------------------------------------------------------------
 
     _buildTreePath(entity, entityMap) {
+        const id       = entity.itemId ?? entity.id;
+        const nodeType = entity.type === 'OC' ? 'oc-node'
+            : entity.type === 'OR' ? 'or-node'
+                : 'on-node';
+        const leaf = {
+            type:     nodeType,
+            value:    entity.title ?? entity.code ?? String(id ?? '?'),
+            id:       id,
+            entityId: id,
+            entity:   entity,
+        };
+
         // OCs — flat under their DrG group
-        if (entity.type === 'OC' || (!entity.type && entity.code?.startsWith('OC-'))) {
+        if (entity.type === 'OC') {
             return [
-                { type: 'drg', value: getDraftingGroupDisplay(entity.drg) ?? entity.drg ?? '—', id: `drg:${entity.drg}` },
+                { type: 'drg', value: getDraftingGroupDisplay(entity.drg) ?? entity.drg ?? '—', id: `drg:${entity.drg ?? 'no-drg'}` },
+                leaf,
             ];
         }
 
-        // ONs and ORs — DrG → path folders → ON → refined ORs
+        // ONs and ORs — DrG → path folders → (parent ON leaf) → entity leaf
         const path = [];
 
         if (entity.drg) {
@@ -188,16 +201,18 @@ export default class OStarEntity {
         }
 
         if (entity.refinesParents?.length) {
-            // Nested under parent — path derived from REFINES relationship
-            const parentId = entity.refinesParents[0]?.id ?? entity.refinesParents[0];
-            const parent   = entityMap?.get(String(parentId));
+            const parentRef = entity.refinesParents[0];
+            const parentId  = parentRef?.itemId ?? parentRef?.id ?? parentRef;
+            const parent    = entityMap?.get(parentId);
             if (parent) {
                 const parentPath = this._buildTreePath(parent, entityMap);
-                return [...parentPath, { type: 'on-node', value: parent.code ?? String(parentId), id: `item:${parentId}` }];
+                if (parentPath.length > 1) {
+                    const parentLeaf = parentPath[parentPath.length - 1];
+                    if (parentLeaf && !parentLeaf.entityId) parentLeaf.entityId = parent.itemId ?? parent.id;
+                    path.push(...parentPath.slice(1));
+                }
             }
-        }
-
-        if (entity.path?.length) {
+        } else if (entity.path?.length) {
             entity.path.forEach((segment, idx) => {
                 path.push({
                     type:  'org-folder',
@@ -207,16 +222,35 @@ export default class OStarEntity {
             });
         }
 
+        path.push(leaf);
         return path;
     }
 
     _getTreeTypeRenderers() {
         return {
-            drg:        (node) => `<span class="tree-group-label">${node.value}</span>`,
-            'org-folder': (node) => `<span class="tree-folder-label">📁 ${node.value}</span>`,
-            'on-node':  (node) => `<span class="tree-item-label tree-item-label--on">${node.value}</span>`,
-            'or-node':  (node) => `<span class="tree-item-label tree-item-label--or">${node.value}</span>`,
-            'oc-node':  (node) => `<span class="tree-item-label tree-item-label--oc">${node.value}</span>`,
+            drg: {
+                icon: '📁', iconColor: '#1F3864', expandable: true,
+                label: (p) => p.value,
+            },
+            'org-folder': {
+                icon: '📂', iconColor: '#6b7280', expandable: true,
+                label: (p) => p.value,
+            },
+            'on-node': {
+                icon: '<span class="item-badge ostar-type-on">ON</span>', iconColor: '',
+                expandable: (n) => n.children && Object.keys(n.children).length > 0,
+                label: (p) => p.value,
+            },
+            'or-node': {
+                icon: '<span class="item-badge ostar-type-or">OR</span>', iconColor: '',
+                expandable: (n) => n.children && Object.keys(n.children).length > 0,
+                label: (p) => p.value,
+            },
+            'oc-node': {
+                icon: '<span class="item-badge ostar-type-oc">OC</span>', iconColor: '',
+                expandable: (n) => n.children && Object.keys(n.children).length > 0,
+                label: (p) => p.value,
+            },
         };
     }
 
@@ -233,6 +267,14 @@ export default class OStarEntity {
         });
         this.data = [...data];
         if (this.isActive) this.renderFromCache();
+    }
+
+    _autoExpandFirstLevel() {
+        if (!this.tree.treeData) return;
+        Object.values(this.tree.treeData.children).forEach(node => {
+            node.expanded = true;
+            this.tree.expandedNodes.add(node.id);
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -255,6 +297,8 @@ export default class OStarEntity {
         if (!this.container) return;
         this.collection.setData(this.data);
         this.tree.setData(this.data);
+        // Auto-expand first level (DrG folders) after tree is built
+        this._autoExpandFirstLevel();
         if (this.currentPerspective === 'tree') {
             this.tree.render(this.container);
         } else {
@@ -295,7 +339,7 @@ export default class OStarEntity {
             </div>
         `;
 
-        el.querySelectorAll('.perspective-option').forEach(btn => {
+        el.querySelectorAll('.ostar-perspective-btn').forEach(btn => {
             btn.addEventListener('click', () => this._switchPerspective(btn.dataset.perspective));
         });
 
