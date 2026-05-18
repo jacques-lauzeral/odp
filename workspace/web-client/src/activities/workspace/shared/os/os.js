@@ -5,9 +5,12 @@
  * Replaces AbstractInteractionActivity — no inheritance, no back-references.
  *
  * SubPath routing:
- *   []                        → list view (Requirements + Changes tabs)
- *   ['requirement', '{id}']   → RequirementDetails full page
- *   ['change', '{id}']        → ChangeDetails full page
+ *   []                           → list view, Requirements tab
+ *   ['requirements']             → list view, Requirements tab
+ *   ['changes']                  → list view, Changes tab
+ *   ['requirement', '{id}']      → RequirementDetails in panel + breadcrumb
+ *   ['change', '{id}']           → ChangeDetails in panel + breadcrumb
+ *   page-mode detail (inter-O*): → full page via app.navigate from detail links
  *
  * Context/mode from app.getDatasetContext():
  *   { type: 'live' }               → isReadOnly: false
@@ -15,13 +18,15 @@
  *
  * Layout (list view):
  *   ┌──────────────────────────────────────────────────────┐
+ *   │ Breadcrumb (full width)                              │
  *   │ Filter bar (full width)                              │
  *   │ Tab bar: Requirements | Changes                      │
  *   │ View controls (perspective, grouping, create)        │
- *   │ MasterDetail: list column | navigate hint            │
+ *   │ MasterDetail: list column | detail panel             │
  *   └──────────────────────────────────────────────────────┘
  */
 import { apiClient } from '../../../../shared/api-client.js';
+import { buildBreadcrumb, attachBreadcrumbListeners } from './breadcrumb.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
 import MasterDetail from '../../../../components/master-detail.js';
 import FilterBar from '../../../../components/odp/filter-bar.js';
@@ -77,13 +82,14 @@ export default class OsActivity {
         this.container = container;
 
         try {
-            const { entityType, id } = this._parseSubPath(subPath);
+            const { entityType, id, tabSelect } = this._parseSubPath(subPath);
 
             if (entityType === 'requirement' && id !== null) {
                 await this._renderRequirementDetail(id);
             } else if (entityType === 'change' && id !== null) {
                 await this._renderChangeDetail(id);
             } else {
+                if (tabSelect) this.currentTab = tabSelect;
                 await this._renderList(subPath);
             }
         } catch (error) {
@@ -134,11 +140,13 @@ export default class OsActivity {
         await this._prepareEntityComponents();
         await this._loadData(this.sharedState.filtersObject);
         await this._activateTab(this.currentTab);
+        this._renderBreadcrumb(this.currentTab);
     }
 
     _buildListShell() {
         this.container.innerHTML = `
             <div class="os-activity">
+                <div class="os-breadcrumb" id="osBreadcrumb"></div>
                 <div class="os-filters" id="osFilters"></div>
                 <div class="os-tabs" id="osTabs">
                     ${ENTITY_KEYS.map(key => `
@@ -171,7 +179,7 @@ export default class OsActivity {
             placeholderHtml: `
                 <div class="master-detail__placeholder">
                     <div class="master-detail__placeholder-icon">🔍</div>
-                    <p class="master-detail__placeholder-text">Select an item to open its detail page</p>
+                    <p class="master-detail__placeholder-text">Select an item to view details</p>
                 </div>
             `,
         });
@@ -221,6 +229,8 @@ export default class OsActivity {
     async _switchTab(tabKey) {
         this._entityComponents[this.currentTab]?.onDeactivated?.();
         await this._activateTab(tabKey);
+        this.masterDetail?.clearDetail();
+        this._renderBreadcrumb(tabKey);
         window.history.replaceState({}, '', `${this._basePath()}/${tabKey}`);
     }
 
@@ -297,17 +307,46 @@ export default class OsActivity {
     }
 
     // -------------------------------------------------------------------------
-    // Item selection → navigate to detail page
+    // Item selection → render detail in panel
     // -------------------------------------------------------------------------
 
-    _handleItemSelect(item, tabKey) {
+    async _handleItemSelect(item, tabKey) {
         const entityType = tabKey === 'requirements' ? 'requirement' : 'change';
         const id         = item.itemId ?? item.id;
-        this.app.navigate(`${this._basePath()}/${entityType}/${id}`);
+
+        // Update breadcrumb to show selected item
+        this._updateBreadcrumb(tabKey, item);
+
+        // Render detail in MasterDetail right panel
+        if (entityType === 'requirement') {
+            await this._renderRequirementDetailInPanel(id);
+        } else {
+            await this._renderChangeDetailInPanel(id);
+        }
     }
 
     // -------------------------------------------------------------------------
-    // Detail pages
+    // Detail — panel mode (item selected in list)
+    // -------------------------------------------------------------------------
+
+    async _renderRequirementDetailInPanel(id) {
+        if (!this._requirementDetails) {
+            const { default: RequirementDetails } = await import('./requirement-details.js');
+            this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
+        }
+        await this._requirementDetails.render(this.masterDetail.detailContainer, id, 'panel');
+    }
+
+    async _renderChangeDetailInPanel(id) {
+        if (!this._changeDetails) {
+            const { default: ChangeDetails } = await import('./change-details.js');
+            this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
+        }
+        await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel');
+    }
+
+    // -------------------------------------------------------------------------
+    // Detail — page mode (inter-O* navigation, direct URL)
     // -------------------------------------------------------------------------
 
     async _renderRequirementDetail(id) {
@@ -315,7 +354,7 @@ export default class OsActivity {
             const { default: RequirementDetails } = await import('./requirement-details.js');
             this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
         }
-        await this._requirementDetails.render(this.container, id);
+        await this._requirementDetails.render(this.container, id, 'page');
     }
 
     async _renderChangeDetail(id) {
@@ -323,7 +362,7 @@ export default class OsActivity {
             const { default: ChangeDetails } = await import('./change-details.js');
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
-        await this._changeDetails.render(this.container, id);
+        await this._changeDetails.render(this.container, id, 'page');
     }
 
     // -------------------------------------------------------------------------
@@ -436,10 +475,47 @@ export default class OsActivity {
             const entityType = subPath[0];
             const id         = parseInt(subPath[1], 10);
             if ((entityType === 'requirement' || entityType === 'change') && !isNaN(id)) {
-                return { entityType, id };
+                return { entityType, id, tabSelect: null };
             }
         }
-        return { entityType: null, id: null };
+        // Bare tab name: ['requirements'] or ['changes']
+        if (subPath.length === 1 && ENTITY_KEYS.includes(subPath[0])) {
+            return { entityType: null, id: null, tabSelect: subPath[0] };
+        }
+        return { entityType: null, id: null, tabSelect: null };
+    }
+
+    // -------------------------------------------------------------------------
+    // Breadcrumb
+    // -------------------------------------------------------------------------
+
+    _renderBreadcrumb(tabKey, selectedItem = null) {
+        const el = this.container?.querySelector('#osBreadcrumb');
+        if (!el) return;
+
+        const workspace = this._basePath().startsWith('/explore') ? 'Explore' : 'Elaborate';
+        const workspacePath = this._basePath().startsWith('/explore') ? '/explore' : '/elaborate';
+        const tabLabel = tabKey === 'requirements' ? 'Requirements' : 'Changes';
+        const tabPath  = `${this._basePath()}/${tabKey}`;
+
+        const crumbs = [
+            { label: 'Home',      path: '/' },
+            { label: workspace,   path: workspacePath },
+            { label: tabLabel,    path: tabPath },
+        ];
+
+        if (selectedItem) {
+            const code  = selectedItem.code ?? '';
+            const title = selectedItem.title ?? String(selectedItem.itemId ?? selectedItem.id ?? '');
+            crumbs.push({ label: code ? `${code} — ${title}` : title });
+        }
+
+        el.innerHTML = buildBreadcrumb(crumbs);
+        attachBreadcrumbListeners(el, this.app);
+    }
+
+    _updateBreadcrumb(tabKey, selectedItem = null) {
+        this._renderBreadcrumb(tabKey, selectedItem);
     }
 
     _buildLoadingHtml() {

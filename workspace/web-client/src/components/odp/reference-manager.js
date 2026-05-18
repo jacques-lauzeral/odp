@@ -30,7 +30,8 @@ export default class ReferenceManager {
             placeholder: config.placeholder || 'Type to search...',
             noneLabel:   config.noneLabel   || 'None',
             readOnly:    config.readOnly    || false,
-            onChange:    config.onChange    || (() => {})
+            onChange:    config.onChange    || (() => {}),
+            onItemClick: config.onItemClick || null  // (id, option) => void — enables navigable link in read mode
         };
 
         this.selectedId    = this._normalizeValue(config.initialValue);
@@ -96,6 +97,14 @@ export default class ReferenceManager {
         const label  = option ? option.label : `ID ${this.selectedId}`;
 
         if (this.config.readOnly) {
+            if (this.config.onItemClick) {
+                return `<span class="selected-chip selected-chip--link"
+                              data-item-id="${this._escapeHtml(String(this.selectedId))}"
+                              role="link"
+                              tabindex="0"
+                              title="Open ${this._escapeHtml(label)}"
+                        >${this._escapeHtml(label)}</span>`;
+            }
             return `<span class="selected-chip">${this._escapeHtml(label)}</span>`;
         }
 
@@ -139,7 +148,13 @@ export default class ReferenceManager {
     // ─── Events ──────────────────────────────────────────────────────────────
 
     _bindEvents() {
-        if (this.config.readOnly) return;
+        if (this.config.readOnly) {
+            if (this.config.onItemClick) {
+                this.boundHandlers.click = e => this._handleReadOnlyClick(e);
+                this.container.addEventListener('click', this.boundHandlers.click);
+            }
+            return;
+        }
 
         this.boundHandlers.click   = e => this._handleClick(e);
         this.boundHandlers.input   = e => this._handleInput(e);
@@ -148,6 +163,17 @@ export default class ReferenceManager {
         this.container.addEventListener('click',   this.boundHandlers.click);
         this.container.addEventListener('input',   this.boundHandlers.input);
         this.container.addEventListener('keydown', this.boundHandlers.keydown);
+    }
+
+    _handleReadOnlyClick(e) {
+        e.stopPropagation();
+        const chip = e.target.closest('[data-item-id]');
+        if (!chip) return;
+        const id     = this._normalizeValue(chip.dataset.itemId);
+        const option = this.config.options.find(o => idsEqual(o.value, id));
+        if (option) {
+            this.config.onItemClick(id, option);
+        }
     }
 
     _handleClick(e) {

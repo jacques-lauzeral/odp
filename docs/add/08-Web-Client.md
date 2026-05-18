@@ -2,7 +2,9 @@
 
 ## 1. Overview
 
-The ODIP web client is a Vanilla JavaScript single-page application (no framework). It communicates exclusively with the REST API and shares data models with the server via the `@odp/shared` workspace package. The deliberate absence of a framework keeps the prototype flexible and avoids build complexity while still enforcing consistent component patterns through class-based inheritance and delegation.
+The ODIP web client is a Vanilla JavaScript single-page application (no framework, no build step). It communicates exclusively with the REST API and shares data models with the server via the `@odp/shared` workspace package. The deliberate absence of a framework keeps the application flexible and avoids build complexity while still enforcing consistent component patterns through class-based composition and delegation.
+
+The client has been rewritten as **ODIP Space** — a structured multi-workspace SPA replacing the flat seven-activity layout of the former ODIP Tool. The migration is incremental; this chapter describes the target architecture as implemented from Phase A onward.
 
 ---
 
@@ -10,37 +12,191 @@ The ODIP web client is a Vanilla JavaScript single-page application (no framewor
 
 ```
 web-client/src/
+├── index.html
+├── index.js
+├── app.js
+│
 ├── activities/
-│   ├── landing/          User identification, activity tiles, connection status
-│   ├── setup/            Setup entity management + TreeEntity, ListEntity base classes
-│   ├── elaboration/      OR/OC authoring and browsing
-│   ├── planning/         ON/OC deployment and implementation planning
-│   ├── prioritisation/   OC bandwidth balancing and wave assignment (§13)
-│   ├── publication/      ODIP Edition management and export
-│   └── review/           Edition review interface (read-only)
+│   ├── home/
+│   │   └── home.js                         Dataset context selection gateway
+│   │
+│   ├── workspace/
+│   │   ├── elaborate/
+│   │   │   └── elaborate.js                Thin shell — live dataset + R/W
+│   │   ├── explore/
+│   │   │   └── explore.js                  Thin shell — edition context + R/O
+│   │   ├── setup/
+│   │   │   ├── setup.js
+│   │   │   ├── stakeholder-categories.js
+│   │   │   ├── reference-documents.js
+│   │   │   ├── domains.js
+│   │   │   ├── waves.js
+│   │   │   └── bandwidth.js
+│   │   └── shared/
+│   │       ├── os/
+│   │       │   ├── os.js                   O* workspace orchestrator
+│   │       │   ├── requirements.js         RequirementsEntity (list + tree)
+│   │       │   ├── changes.js              ChangesEntity (list + temporal)
+│   │       │   ├── requirement-details.js  ON/OR read-only detail view
+│   │       │   ├── change-details.js       OC read-only detail view
+│   │       │   ├── requirement-form.js     ON/OR create/edit form
+│   │       │   ├── requirement-form-fields.js
+│   │       │   ├── change-form.js          OC create/edit form
+│   │       │   ├── change-form-fields.js
+│   │       │   ├── change-form-milestone.js
+│   │       │   └── breadcrumb.js           Breadcrumb trail utility
+│   │       ├── plan/
+│   │       │   ├── plan.js                 Plan workspace shell
+│   │       │   ├── planning.js             ON planning view
+│   │       │   ├── on-planning.js          ON plan + Gantt
+│   │       │   ├── prioritisation.js       OC wave assignment
+│   │       │   └── prioritisation-grid.js
+│   │       ├── quality/
+│   │       │   └── quality.js              Placeholder
+│   │       └── notes/
+│   │           └── notes.js                Placeholder
+│   │
+│   └── manage/
+│       ├── manage.js                       Manage shell (integrators only)
+│       ├── editions/
+│       │   ├── editions.js
+│       │   └── odp-edition-form.js
+│       └── admin/
+│           └── admin.js                    Placeholder
+│
 ├── components/
-│   ├── common/         Global navigation, error handling
-│   └── odp/            CollectionEntity, TreeTableEntity, TemporalGrid, form base classes
-└── shared/             API client, utilities, error handling
+│   ├── common/
+│   │   └── header.js                       Global header, connect form, nav tabs
+│   ├── master-detail.js                    Reusable two-column resizable layout
+│   └── odp/
+│       ├── collection-entity.js
+│       ├── collection-entity-form.js       Base form class with tab rendering
+│       ├── tree-table-entity.js
+│       ├── temporal-grid.js
+│       ├── filter-bar.js
+│       ├── reference-list-manager.js
+│       ├── reference-manager.js
+│       ├── annotated-multiselect-manager.js
+│       ├── diff-popup.js
+│       └── odp-column-types.js
+│
+└── shared/
+    ├── router.js
+    ├── api-client.js
+    ├── error-handler.js
+    ├── utils.js
+    └── src/                                @odp/shared copy (build artefact)
 ```
-
-### Three-Layer Navigation Hierarchy
-
-Every activity follows the same structural pattern:
-
-- **Layer 1** — Global chrome: persistent top navigation (`Landing | Setup | Elaboration | Planning | Prioritisation | Publication | Review`), user context, connection status
-- **Layer 2** — Activity workspace: activity-specific tabs, context selectors (edition picker), toolbars
-- **Layer 3** — Entity interactions: CRUD operations, detail panels, forms, relationship management
 
 ---
 
-## 3. Component Patterns
+## 3. Navigation Model
+
+### 3.1 Top-Level Activities
+
+| Title | Path | Purpose |
+|---|---|---|
+| Home | `/` | Dataset context selection: live dataset or a specific edition |
+| Elaborate | `/elaborate` | Authoring workspace — live dataset, R/W |
+| Explore | `/explore` | Consultation workspace — selected edition, R/O |
+| Manage | `/manage` | Edition lifecycle and administration — integrators only |
+
+### 3.2 Router
+
+`shared/router.js` owns the route table, prefix matching, `navigate()`, and `popstate` handling. It calls back into `App` via `onNavigate(activityKey, subPath[])` on each route resolution. Protected routes (`/elaborate`, `/manage`) redirect to `/` when no user is set.
+
+Route table:
+
+```js
+{ prefix: '/elaborate', activityKey: 'elaborate', protected: true  }
+{ prefix: '/explore',   activityKey: 'explore',   protected: false }
+{ prefix: '/manage',    activityKey: 'manage',    protected: true  }
+{ prefix: '/',          activityKey: 'home',       protected: false }
+```
+
+`Router.activeSegment()` returns the bare first path segment (e.g. `'elaborate'`). Header calls `app.activeSegment()` to derive the active nav tab without coupling to the route table.
+
+### 3.3 Workspace Shell Routing
+
+`ElaborateActivity` and `ExploreActivity` are thin shells that delegate sub-path routing to shared sub-activities:
+
+| Sub-path segment | Sub-activity |
+|---|---|
+| `os` (default) | `OsActivity` |
+| `plan` | `PlanActivity` |
+| `setup` | `SetupActivity` |
+| `quality` | `QualityActivity` (placeholder) |
+| `notes` | `NotesActivity` (placeholder) |
+
+Both shells are structurally identical. The context difference (live vs edition, R/W vs R/O) flows transparently through `app.getDatasetContext()`.
+
+### 3.4 O* Sub-Path Routing
+
+`OsActivity` handles:
+
+| SubPath | Rendering |
+|---|---|
+| `[]` or `['requirements']` | List view, Requirements tab active |
+| `['changes']` | List view, Changes tab active |
+| `['requirement', '{id}']` | `RequirementDetails` in MasterDetail panel |
+| `['change', '{id}']` | `ChangeDetails` in MasterDetail panel |
+
+Full-page detail (page mode) is reached only via inter-O\* reference navigation from the detail panel.
+
+### 3.5 Browser History
+
+Every meaningful state transition pushes a URL history entry via `window.history.pushState`. Tab switches within the O\* workspace use `replaceState`. All canonical URLs are deep-linkable and reconstructable from the URL alone.
+
+---
+
+## 4. App and Dataset Context
+
+`App` (`app.js`) is the singleton application class. It owns:
+
+- Activity lifecycle (`_loadActivity`, lazy instantiation, cleanup)
+- Router instantiation and delegation
+- User state (`setUser` / `getUser`) — persisted to localStorage by Header
+- Dataset context (`setDatasetContext` / `getDatasetContext`) — set by Home on selection
+- Setup data cache (`getSetupData` / `invalidateSetupData`) — lazy-loaded, shared across all activities
+- Connection monitoring (polls `GET /ping` every 60 seconds; dispatches `connection:change` on `window`)
+
+**Dataset context shape:**
+
+```js
+{ type: 'live' }                        // Elaborate context
+{ type: 'edition', editionId: number }  // Explore context
+```
+
+**Setup data shape** (loaded once, cached):
+
+```js
+{ stakeholderCategories, domains, referenceDocuments, waves }
+```
+
+`invalidateSetupData()` must be called after any setup entity CRUD operation.
+
+---
+
+## 5. Header and User Identification
+
+`Header` (`components/common/header.js`) owns:
+
+- Nav tab rendering with role-gated visibility (Manage visible to integrators only)
+- Connect form: name input + role selector (`contributor` / `reviewer` / `integrator`), persisted to localStorage
+- Active tab highlighting via `app.activeSegment()`
+- Connection status indicator
+
+User identification happens entirely in the Header. Anonymous users can navigate to Home and Explore. `/elaborate` and `/manage` require an identified user — the router redirects to `/` if no user is set.
+
+---
+
+## 6. Component Patterns
 
 Four base component classes cover all entity management needs.
 
-### 3.1 TreeEntity
+### 6.1 TreeEntity
 
-Used for hierarchical setup entities (`StakeholderCategory`, `Domain`, `ReferenceDocument`). Located in `activities/setup/tree-entity.js`. Manages real parent–child relationships stored in the database as `REFINES` edges — `parentId` is never stored as a node property. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child, Delete restricted to leaves).
+Used for hierarchical setup entities (`StakeholderCategory`, `Domain`, `ReferenceDocument`). Located in `activities/workspace/setup/tree-entity.js`. Manages real parent–child relationships stored in the database as `REFINES` edges — `parentId` is never stored as a node property. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child, Delete restricted to leaves).
 
 Concrete subclasses declare only three things — no methods required:
 
@@ -56,86 +212,96 @@ The parent field uses `ReferenceManager` (inline single-select typeahead, `compo
 
 `ReferenceDocument` additionally overrides `getDisplayName()` to append the version. Its `parentScope` is `'all'`, supporting up to three levels (root / child / grandchild).
 
-### 3.2 ListEntity
+### 6.2 ListEntity
 
-Used for flat setup entities (`Wave`, `Bandwidth`). Located in `activities/setup/list-entity.js`. Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
+Used for flat setup entities (`Wave`, `Bandwidth`). Located in `activities/workspace/setup/list-entity.js`. Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
 
-### 3.3 CollectionEntity
+### 6.3 CollectionEntity
 
-Used for operational entities (ORs, OCs) in table/list perspective. Provides filtering, grouping, column configuration, row selection, and a details panel. Complex entities (requirements, changes) use **delegation** — the entity class owns a `CollectionEntity` instance and passes callbacks for filter config, column config, grouping config, and event handlers. This keeps entity-specific logic out of the base component.
+Used for operational entities in table/list perspective. Provides filtering, grouping, column configuration, row selection, and a details panel. Complex entities (requirements, changes) use **delegation** — the entity class owns a `CollectionEntity` instance and passes callbacks for filter config, column config, grouping config, and event handlers. This keeps entity-specific logic out of the base component.
 
-### 3.4 TreeTableEntity
+### 6.4 TreeTableEntity
 
-Used for tree-table perspectives on ORs/OCs and for the ON tree in the Planning activity. Builds tree structure from a flat entity list using a configurable `pathBuilder` function. The path builder returns a typed path array that drives both tree structure and per-node rendering via `typeRenderers`.
+Used for tree-table perspectives on ORs/OCs and for the ON tree in the Plan activity. Builds tree structure from a flat entity list using a configurable `pathBuilder` function. The path builder returns a typed path array that drives both tree structure and per-node rendering via `typeRenderers`.
 
-The `pathBuilder` may produce **virtual hierarchy** (e.g. `drg-folder → on-node` derived from entity attributes) or **graph-based hierarchy** (e.g. `parent-on-node → child-on-node` derived from real `refines` relationships). Both modes are supported without component modification — the distinction lives entirely in the `pathBuilder` implementation provided by the parent entity.
+The `pathBuilder` may produce **virtual hierarchy** (e.g. `drg-folder → on-node` derived from entity attributes) or **graph-based hierarchy** (e.g. `parent-on-node → child-on-node` derived from real `refines` relationships). Both modes are supported without component modification.
 
 **Build algorithm invariants:**
 
-- Each path item carries an `id` used as the node key. Intermediate nodes (folders, parent entities) must carry `entityId` so the build algorithm can attach the entity to the node for cell rendering.
-- When a node already exists as a leaf but is later traversed as an intermediate node (parent processed before child in entity load order), it is demoted: `isLeaf = false`, `expandable = true`. This ensures correct rendering regardless of entity ordering.
-- Column renderers receive `context` in the `item` argument position (3rd arg) due to a call-site convention in both `CollectionEntity` and `TreeTableEntity`. Affected renderers normalise with `context = context ?? item` at the top of their render function.
+- Each path item carries an `id` used as the node key. Intermediate nodes must carry `entityId` so the build algorithm can attach the entity to the node for cell rendering.
+- When a node already exists as a leaf but is later traversed as an intermediate node, it is demoted: `isLeaf = false`, `expandable = true`.
+- Column renderers receive `context` in the `item` argument position (3rd arg). Affected renderers normalise with `context = context ?? item` at the top.
 
-Filter matchers are injected as `options.filterMatchers` (same predicate map used by `CollectionEntity`), enabling consistent filter behaviour across all perspectives that share a `TreeTableEntity`.
+Filter matchers are injected as `options.filterMatchers`, enabling consistent filter behaviour across all perspectives sharing a `TreeTableEntity`.
 
-### 3.5 CollectionEntityForm
+### 6.5 CollectionEntityForm
 
-Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement virtual methods: `getFieldDefinitions()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
+Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement: `getFieldDefinitions()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
 
-**Field visibility (`visibleWhen`)** is evaluated in all modes including read. Fields whose `visibleWhen(item)` returns false are excluded from rendering. Section-level visibility is determined solely by whether any field in that section is included by `modes` — `visibleWhen` is not evaluated at section level. This means a section tab always appears if it has fields applicable to the current mode, even if all those fields are hidden by `visibleWhen` for the current item (producing a blank tab — intentional, preserves tab index stability across item switches).
+**Field visibility (`visibleWhen`)** is evaluated in all modes including read. Section-level visibility is determined solely by whether any field in that section is included by `modes` — `visibleWhen` is not evaluated at section level.
 
-**Computed reference fields** (`type: 'reference-list'` with `computeKey`) derive their value at initialisation time by calling a named method on the form instance rather than reading from `currentItem`. The `computeKey` string is wired in `hydrateField()` to produce a `compute(item)` function on the field definition. `initializeReferenceListManagers` calls `field.compute(this.currentItem)` when present, falling back to `getFieldValue(this.currentItem, field)` for non-computed fields.
+**Computed reference fields** (`type: 'reference-list'` with `computeKey`) derive their value at initialisation time by calling a named method on the form instance. `initializeReferenceListManagers` calls `field.compute(this.currentItem)` when present.
 
-**Context resolvers** — forms receive two mandatory resolver functions in their `context`:
+**Context resolvers** — forms receive resolver functions in their `context`:
 
 | Resolver | Returns | Used by |
 |---|---|---|
-| `getSetupData()` | Setup data object (`stakeholderCategories`, `domains`, etc.) | `getSetupDataOptions`, `getReferenceDocumentOptions` |
-| `getRequirements()` | Full live requirements array (ONs + ORs) | `_computeImplementedByIds`, `_computeRefinedByIds`, `getAllRequirementOptions` |
+| `getSetupData()` | Setup data object | `getSetupDataOptions`, `getReferenceDocumentOptions` |
+| `getRequirements()` | Full live requirements array | `_computeImplementedByIds`, `_computeRefinedByIds`, `getAllRequirementOptions` |
+| `onNavigate(ref)` | — | Enables navigable reference chips in read mode |
 
-This decouples the form from the data source — Planning passes `() => this.requirements`, Elaboration passes `() => this.data`.
+**`onNavigate` option** — when provided at construction, `CollectionEntityForm` passes `onItemClick` to `ReferenceListManager` and `ReferenceManager` in read mode, enabling reference chips to navigate on click. Entity type is derived from `field.formatArgs[0]` and mapped to URL segment (`'requirement'` or `'change'`).
+
+Key methods used by detail views:
+
+| Method | Purpose |
+|---|---|
+| `generateReadOnlyView(item)` | Returns tabbed HTML for read-only display |
+| `initializeReadOnlyInPanel(container, item)` | Initialises Quill editors and reference managers after HTML injection |
+| `showEditModal(item)` | Opens edit popup |
+| `showCreateModal()` | Opens create popup |
 
 ---
 
-## 4. Multi-Perspective Pattern
+## 7. Multi-Perspective Pattern
 
 Requirements and changes support multiple simultaneous perspectives (collection table, tree-table, temporal timeline) that share a single data load and common state. Key principles:
 
-- **Single data load**: entities fetched once, distributed to all active perspectives
-- **Shared state**: filters, selection, and grouping coordinated across perspectives
-- **Shared handlers**: `onItemSelect` and `onCreate` wired identically to all perspectives
-- **Perspective switching**: tab-driven, preserves selection and filter state
+- **Single data load**: entities fetched once, distributed to all active perspectives via `onDataUpdated(data)` callback
+- **Shared state**: filters, selection, and grouping coordinated across perspectives in `sharedState`
+- **Perspective switching**: tab-driven by entity component, preserves selection and filter state
+- **Injected callbacks**: `onItemSelect`, `getViewControlsEl`, `isReadOnly` — no back-references to parent activity
 
 ---
 
-## 5. TemporalGrid Component
+## 8. TemporalGrid Component
 
 `TemporalGrid` (`components/odp/temporal-grid.js`) is a single generic component for all temporal visualisations. It renders a horizontal grid with a continuous **calendar-based time axis** and a structured row hierarchy. All domain knowledge lives in the caller.
 
-### 5.1 Data Model
+### 8.1 Data Model
 
 ```javascript
 // TimelineMilestone
 {
-  label: string,        // short display label
-          description: string,  // tooltip / detail text
-        eventTypes: string[], // one or more event type keys
-        date: Date            // calendar position
+  label:       string,        // short display label
+  description: string,        // tooltip / detail text
+  eventTypes:  string[],      // one or more event type keys
+  date:        Date           // calendar position
 }
 ```
 
-### 5.2 Row Taxonomy
+### 8.2 Row Taxonomy
 
 Four row kinds are supported, rendered in insertion order:
 
 | Kind | Description |
 |---|---|
 | `separator` | Full-width label spanning both label and axis columns. No timeline track, no selection. Used as a visual section header (e.g. DrG name). |
-| `group` | Label column + timeline track + expand/collapse toggle (`▶/▼`). Collapsing hides all child rows of this group. Expand state is preserved across re-renders. |
+| `group` | Label column + timeline track + expand/collapse toggle (`▶/▼`). Collapsing hides all child rows. Expand state preserved across re-renders. |
 | `child` | Indented label column + timeline track. Visibility controlled by parent group's expanded state. |
 | `timeline` | Flat label column + timeline track. No hierarchy — used by `ChangesEntity`. |
 
-### 5.3 Public API
+### 8.3 Public API
 
 #### Time axis
 
@@ -165,10 +331,10 @@ One call per instance before adding rows. Two modes:
 ```javascript
 {
   mode: 'pixmap', rows: 1, cols: 3,
-          eventTypes: {
-    'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
-    'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
-    'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
+  eventTypes: {
+    'API_PUBLICATION':    { row: 0, col: 0, colour: '#3b82f6' },
+    'UI_TEST_DEPLOYMENT': { row: 0, col: 1, colour: '#8b5cf6' },
+    'OPS_DEPLOYMENT':     { row: 0, col: 2, colour: '#10b981' }
   }
 }
 ```
@@ -176,10 +342,9 @@ One call per instance before adding rows. Two modes:
 #### Row management
 
 ```javascript
-addSeparatorRow(id, label)
-addGroupRow(id, label, milestones)
+addGroupRow(id, label, milestones)          // header/separator rows: addGroupRow(id, label, [])
 addChildRow(id, parentId, label, milestones)
-addRow(id, label, milestones)           // flat row — used by ChangesEntity
+addRow(id, label, milestones)               // flat row — used by ChangesEntity
 updateRow(id, milestones)
 removeRow(id)
 clearRows()
@@ -202,45 +367,31 @@ render(container)
 cleanup()
 ```
 
-### 5.4 Connector Lines
+### 8.4 Connector Lines
 
-When a row has two or more milestones visible within the current time interval, the component draws horizontal connector lines between adjacent milestones (sorted by date). Milestones outside the visible interval are not connected.
+When a row has two or more milestones visible within the current time interval, the component draws horizontal connector lines between adjacent milestones (sorted by date).
 
-### 5.5 Zoom Control
+### 8.5 Zoom Control
 
-`TemporalGrid` renders a zoom control bar above the grid — a single text input accepting `YYYY` or `YYYY-ZZZZ` format:
-
-- Delegates parsing to `parseYearPeriod()` from `shared/year-period.js`.
-- On valid input calls `setTimeInterval(startYear, endYear)`, which fires `timeIntervalListeners`.
-- Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`).
+`TemporalGrid` renders a zoom control bar above the grid accepting `YYYY` or `YYYY-ZZZZ` format. Delegates parsing to `parseYearPeriod()` from `shared/year-period.js`. Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`).
 
 ---
 
-## 6. Temporal Perspective (Changes)
+## 9. Temporal Perspective (Changes)
 
-The `ChangesEntity` is the only entity in the Elaboration activity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TemporalGrid` using flat `timeline` rows.
+`ChangesEntity` is the only entity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TemporalGrid` using flat `timeline` rows.
 
-### 6.1 Layout
+### 9.1 Time Interval and Ticks
 
-The temporal view renders a horizontal grid with a label column (change code/title) and a timeline track per row. Wave-based tick marks serve as the time axis.
+`ChangesEntity.calculateOptimalTimeWindow()` computes the default interval from `setupData.waves` (earliest to latest future wave). It calls `temporalGrid.setTimeInterval(startYear, endYear)` and `temporalGrid.setTicks(waveTicks)` where `waveTicks` is derived from `setupData.waves` using `implementationDate` as the wave date.
 
-### 6.2 Time Interval and Ticks
+Changes with no milestones within the current time interval are excluded before `addRow` calls. `_feedTemporalGrid()` performs this pre-filter and calls `clearRows()` then re-adds all visible changes.
 
-`ChangesEntity.calculateOptimalTimeWindow()` computes the default interval from `setupData.waves` (earliest to latest future wave) on first activation. It calls `temporalGrid.setTimeInterval(startYear, endYear)` and `temporalGrid.setTicks(waveTicks)` where `waveTicks` is the array of `{ label, date }` descriptors derived from `setupData.waves` using `implementationDate` as the wave date.
-
-Changes with no milestones within the current time interval are excluded before `addRow` calls. `_feedTemporalGrid()` in `ChangesEntity` performs this pre-filter and calls `clearRows()` then re-adds all visible changes.
-
-The zoom control (§5.5) is the primary user-facing mechanism for adjusting the interval.
-
-### 6.3 Milestone Rendering
-
-`ChangesEntity` configures `TemporalGrid` with pixmap-mode milestone rendering on construction:
+### 9.2 Milestone Rendering
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-  mode: 'pixmap',
-  rows: 1,
-  cols: 3,
+  mode: 'pixmap', rows: 1, cols: 3,
   eventTypes: {
     'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
     'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
@@ -251,27 +402,114 @@ temporalGrid.setMilestoneRendering({
 })
 ```
 
-### 6.4 Connector Lines
+### 9.3 Selection and State Sharing
 
-When a change has two or more visible milestones, `TemporalGrid` draws horizontal connector lines between adjacent milestones (sorted by date).
-
-### 6.5 Selection and State Sharing
-
-`ChangesEntity` registers a selection listener on construction:
-
-```javascript
-temporalGrid.addSelectionListener((id) => this.handleTimelineItemSelect(id))
-```
-
-Selection state is stored in `sharedState.selectedItem` and restored when switching back to the temporal perspective via `temporalGrid.setTimeLineSelected(itemId, true)`.
-
-### 6.6 Perspective Toggle UI
-
-The perspective toggle buttons (`📋 Collection` / `📅 Temporal`) are rendered by `ChangesEntity.renderViewControls()` into the `#viewControls` container owned by `AbstractInteractionActivity`.
+`ChangesEntity` registers a selection listener on construction. Selection state is stored in `sharedState.selectedItem` and restored when switching back to the temporal perspective via `temporalGrid.setTimeLineSelected(itemId, true)`.
 
 ---
 
-## 7. Rich Text
+## 10. O* Workspace
+
+### 10.1 Architecture
+
+`OsActivity` is the orchestrator for all O\* interaction. It replaces the former `AbstractInteractionActivity` and eliminates all back-references to parent activities.
+
+Responsibilities of `OsActivity`:
+
+| Concern | Owner |
+|---|---|
+| SubPath routing (list vs detail) | `OsActivity` |
+| Tab switching (Requirements / Changes) | `OsActivity` |
+| Entity component lifecycle | `OsActivity` |
+| Filter bar instantiation and wiring | `OsActivity` |
+| Filter state management | `OsActivity` |
+| Data fetching (requirements / changes) | `OsActivity` |
+| Query param building (edition context + filters) | `OsActivity` |
+| Entity counts / tab badge labels | `OsActivity` |
+| Two-column layout + resizable divider | `MasterDetail` component |
+| Setup data loading | `App.getSetupData()` |
+| List rendering, view controls, perspective toggle | `RequirementsEntity` / `ChangesEntity` |
+| Detail panel content | `RequirementDetails` / `ChangeDetails` |
+| Breadcrumb trail (list view) | `OsActivity` |
+| Breadcrumb trail (page mode) | `RequirementDetails` / `ChangeDetails` |
+
+### 10.2 Entity Components
+
+`RequirementsEntity` and `ChangesEntity` receive three injected callbacks at construction:
+
+```js
+{
+    onItemSelect(item),       // called on row click; OsActivity renders detail in panel
+    getViewControlsEl(),      // returns HTMLElement for view controls mount
+    isReadOnly,               // boolean; true in Explore/edition context
+}
+```
+
+Lifecycle hooks called by `OsActivity`:
+- `onActivated()` — mounts view controls, renders from cache
+- `onDeactivated()` — clears view controls
+- `onDataUpdated(data)` — receives fresh data, re-renders if active
+
+### 10.3 Detail Views
+
+`RequirementDetails` and `ChangeDetails` own the detail shell (breadcrumb, toolbar, edit button) and delegate body rendering to the form class via `generateReadOnlyView(item)` + `initializeReadOnlyInPanel(container, item)`. Single source of truth for field layout, tabs, and rich text rendering.
+
+Two rendering modes:
+
+| Mode | Context | Breadcrumb | Back button |
+|---|---|---|---|
+| `'panel'` | MasterDetail right column | Suppressed (os.js owns outer breadcrumb) | None |
+| `'page'` | Full page (inter-O\* navigation) | Full trail rendered internally | None (breadcrumb provides navigation) |
+
+Toolbar in both modes: code identifier + Edit button (Elaborate only).
+
+### 10.4 Navigable References
+
+Inter-O\* references in read-only detail views are rendered as navigable chips:
+
+1. `RequirementDetails` / `ChangeDetails` pass `onNavigate(ref)` to the form at construction
+2. `CollectionEntityForm` stores `onNavigate` and passes `onItemClick` to `ReferenceListManager` / `ReferenceManager` in read mode
+3. Managers render `selected-chip--link` spans; `stopPropagation` prevents panel deselection
+4. `onItemClick` fires; `_navigateToRef` builds the path from `ref.entityType` and navigates
+
+Entity type is derived from `field.formatArgs[0]` mapped to URL segment (`'requirement'` or `'change'`).
+
+### 10.5 Breadcrumb
+
+`breadcrumb.js` provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`.
+
+Breadcrumb trail in list view (owned by `OsActivity`):
+
+```
+Home > Elaborate|Explore > Requirements|Changes > {item title}
+```
+
+Breadcrumb trail in page mode (owned by detail view):
+
+```
+Home > Elaborate|Explore > Requirements|Changes > {item title}
+```
+
+---
+
+## 11. MasterDetail Component
+
+`MasterDetail` (`components/master-detail.js`) is a reusable two-column resizable layout used by `OsActivity`. Will be reused by Plan, Setup, and Manage sub-activities.
+
+Public API:
+
+```js
+md.render()                  // Mount into container
+md.listContainer             // HTMLElement — mount list content here
+md.detailContainer           // HTMLElement — mount detail content here
+md.setDetail(html)           // Replace right column content
+md.clearDetail()             // Restore placeholder
+md.cleanup()                 // Unbind resize listeners
+```
+
+---
+
+## 12. Rich Text
 
 Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **Quill** editor. Content is stored and transmitted as Quill Delta JSON serialised to a string. The web client renders Delta content in read mode using Quill's read-only renderer and edits it with the full Quill toolbar in write mode.
 
@@ -279,99 +517,35 @@ Images can be embedded in Delta content as base64-encoded PNG data. The import p
 
 ---
 
-## 8. ODIP Edition Context
+## 13. Edition Context
 
-The edition picker (available in Elaboration, Planning, and Review activities) passes the selected edition ID directly to the API as `?edition=<id>`. Edition context resolution — mapping the edition to a baseline and optional start date — happens server-side. The web client never resolves `baselineId` or `startDate` client-side.
+Dataset context is set on `App` by Home when the user selects a dataset. Sub-activities read `app.getDatasetContext()` on mount to determine:
 
-`AbstractInteractionActivity.buildQueryParams()` implements this: when `config.dataSource` is a numeric edition ID, it adds `queryParams.edition = editionContext` to every list or get request. No additional API call is made to fetch the edition object for resolution purposes.
+- Whether to pass `?edition={editionId}` to API calls
+- Whether edit actions are available (`type: 'live'`) or suppressed (`type: 'edition'`)
 
-The Review activity (`review.js`) passes the edition ID directly as `config.dataSource` after target selection. All edition types (`DRAFT` and `OFFICIAL`) are available for review.
-
----
-
-## 9. CSS Architecture
-
-### 9.1 File Tree
-
-```
-styles/
-├── main.css                          Design tokens, CSS reset, typography, layout utilities
-├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
-├── feedback-components.css           Toasts, error notifications, loading/skeleton states
-├── layout-components.css             Top header, cards, modals
-├── landing.css                       Landing page layout and activity tiles
-├── components/
-│   ├── filter-bar.css                FilterBar chip component (add filter, chips, suggestions)
-│   ├── form-components.css           Form tabs, tag selector, multi-select, Quill integration
-│   ├── history-tab.css               History version list, diff popup
-│   ├── reference-list-manager.css    Inline chip list with search popup
-│   ├── table-components.css          Collection table, row selection, grouping, empty states
-│   ├── tree-table-components.css     Tree table with indentation levels
-│   └── temporal-components.css       TemporalGrid base styles
-└── activities/
-    ├── activity.css                  Base layout for all activities (root, workspace, filters bar, tabs)
-    ├── abstract-interaction-activity.css  Two-pane collection+details layout (elaboration, review)
-    ├── elaboration.css               Elaboration-specific overrides
-    ├── review.css                    Review-specific overrides and target selection screen
-    ├── planning.css                  Planning two-pane layout, ON plan panes, TemporalGrid context
-    ├── setup.css                     Setup entity tabs, three-pane layout, tree/list panes
-    ├── publication.css               Publication-specific rules (edition count, action buttons)
-    └── prioritisation.css            Prioritisation board layout, cards, load bars, backlog sub-rows
-```
-
-### 9.2 Layer Hierarchy
-
-Files are loaded in strict dependency order: global → components → landing → activities.
-
-**Global** (`styles/`) — no dependencies between files at this level. `primitives.css` is the lowest-level layer; all other files may reference the tokens defined in `main.css`.
-
-**Components** (`styles/components/`) — depend only on global tokens. No component file references another component file or any activity file.
-
-**Activities** (`styles/activities/`) — depend on global and component layers. Within the activities layer, the load order is:
-
-1. `activity.css` — base for all activities
-2. `abstract-interaction-activity.css` — extends `activity.css` for the collection+details pattern
-3. Concrete activity files — extend either `activity.css` (planning, setup, publication) or `abstract-interaction-activity.css` (elaboration, review)
-
-### 9.3 Activity CSS Responsibilities
-
-| File | Extends | Owns |
-|---|---|---|
-| `activity.css` | — | Activity root layout, workspace flex chain, `.activity-filters`, `.interaction-tabs`, `.context-label`, `.no-selection-message` |
-| `abstract-interaction-activity.css` | `activity.css` | Two-pane grid, `.collection-container`, `.collection-left-column`, `.collection-details`, perspective toggle, view controls, details panel internals |
-| `elaboration.css` | `abstract-interaction-activity.css` | No current overrides |
-| `review.css` | `abstract-interaction-activity.css` | Read-only indicators, target selection screen |
-| `planning.css` | `activity.css` | ON plan two-pane layout, TemporalGrid context overrides, group/child row styles |
-| `setup.css` | `activity.css` | Entity tabs, three-pane layout, tree/list pane styles |
-| `publication.css` | `activity.css` | Edition count badge, publication action buttons, edition type badges |
-| `prioritisation.css` | `activity.css` | Board layout, wave rows, DrG cells, OC cards, load bars, backlog sub-rows, collapse states |
-
-### 9.4 Activity Headers
-
-Activity-level headers (title + description blocks) have been removed from all activity pages. The global site header (`.odp-header`) is the sole persistent header. Context information (repository vs ODIP edition) is surfaced through the `.activity-filters` bar or the site header directly.
+Edition context resolution — mapping the edition to a baseline and optional start date — happens server-side. The web client passes the edition ID directly to the API as `?edition=<id>` and never resolves `baselineId` or `startDate` client-side.
 
 ---
 
-## 10. API Integration
+## 14. API Integration
 
-The shared API client in `shared/` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
+The shared API client in `shared/api-client.js` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
 
-### 10.1 Connection Monitoring
+### 14.1 Connection Monitoring
 
-Connection monitoring is owned by `App` (`app.js`), not by any UI component. On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator accordingly. No other component needs to handle the event unless it requires connection-awareness.
+Connection monitoring is owned by `App` (`app.js`). On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator. The 60-second interval is intentional — the application is a low-concurrency internal tool.
 
-The 60-second interval is intentional — the application is a low-concurrency internal tool and does not require sub-minute liveness detection.
+### 14.2 DiffPopup
 
-### 10.2 DiffPopup
-
-`DiffPopup` (`components/odp/diff-popup.js`) renders a modal comparison between two versions of an entity. It is opened from the history tab and is the sole consumer of `Comparator` on the client side.
+`DiffPopup` (`components/odp/diff-popup.js`) renders a modal comparison between two versions of an entity. Opened from the history tab.
 
 **Responsibilities:**
 - Fetch both versions in parallel via `GET /{entityType}/{id}/versions/{versionNumber}`
-- Delegate change detection to `Comparator` — passes `ignoreMilestones: false` for OC diffs so milestone changes are included
-- Apply a second-pass false-positive filter on scalar/rich-text fields (suppresses cases where Quill JSON differs structurally but renders identically in plain text)
+- Delegate change detection to `Comparator` — passes `ignoreMilestones: false` for OC diffs
+- Apply a second-pass false-positive filter on scalar/rich-text fields
 - Render field-level diffs: word-level Myers diff with character-level fallback for scalar/rich-text; added/removed chip columns for reference arrays; structured added/removed/modified blocks for milestones
-- Provide an in-popup version selector to change the comparison target without reopening
+- Provide an in-popup version selector
 
 **Change entry shapes produced by `Comparator`:**
 
@@ -381,60 +555,100 @@ The 60-second interval is intentional — the application is a low-concurrency i
 | Reference array | `{ field, oldValue: ref[], newValue: ref[] }` |
 | Milestones | `{ field: 'milestones', added: milestone[], removed: milestone[], modified: [{name, changes: fieldChange[]}] }` |
 
-**Known design debt:** `DiffPopup` currently uses `_isReferenceArrayField(fieldName)` (a hardcoded list of field names) and an explicit `change.field === 'milestones'` guard to drive rendering dispatch. The planned refactor will replace this with a `type` property on each change entry set by `Comparator`, making `DiffPopup` fully business-agnostic.
+**Known design debt:** `DiffPopup` currently uses `_isReferenceArrayField(fieldName)` (hardcoded list) and an explicit `change.field === 'milestones'` guard. Planned refactor: `type` property on each change entry set by `Comparator`.
 
-**False-positive filter caveat:** the second-pass filter operates on `oldValue`/`newValue` and must explicitly exempt any change entry that does not carry those properties (currently `milestones`). This exemption will be unnecessary once the type-based dispatch refactor is complete.
+### 14.3 Anonymous Access
+
+All GET routes on the server accept requests without `x-user-id` header (returning `null` userId). This enables anonymous access to Home (edition list) and Explore. Write operations still require `x-user-id`. Affected route files: `simple-item-router.js`, `versioned-item-router.js`, `odp-edition.js`, `baseline.js`.
 
 ---
 
-## 11. Planning Activity
+## 15. CSS Architecture
 
-The Planning activity (`activities/planning/`) supports deployment and implementation planning across two phases. Phase 1 (ON-based) is fully implemented. Phase 2 (OC-based) is reserved as a placeholder tab.
+### 15.1 File Tree
 
-### 11.1 Navigation and Tab Structure
+```
+styles/
+├── main.css                          Design tokens, CSS reset, typography, layout utilities
+├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
+├── feedback-components.css           Toasts, error notifications, loading/skeleton states
+├── layout-components.css             Top header, cards, modals
+├── components/
+│   ├── filter-bar.css                FilterBar chip component
+│   ├── form-components.css           Form tabs, tag selector, multi-select, Quill integration
+│   ├── history-tab.css               History version list, diff popup
+│   ├── master-detail.css             Two-column resizable layout
+│   ├── reference-list-manager.css    Inline chip list with search popup
+│   ├── table-components.css          Collection table, row selection, grouping, empty states
+│   ├── tree-table-components.css     Tree table with indentation levels
+│   └── temporal-components.css       TemporalGrid base styles
+└── activities/
+    ├── activity.css                  Base layout for all activities
+    ├── home/
+    │   └── home.css
+    ├── workspace/
+    │   ├── elaborate/elaborate.css
+    │   ├── explore/explore.css
+    │   ├── setup/setup.css           Setup entity tabs, three-pane layout
+    │   └── shared/
+    │       ├── os/os.css
+    │       ├── plan/plan.css         ON plan two-pane layout, TemporalGrid context
+    │       ├── quality/quality.css
+    │       └── notes/notes.css
+    └── manage/
+        ├── manage.css
+        └── editions/editions.css     Edition count badge, publication action buttons
+```
 
-The Planning activity appears as a top-level nav tab alongside Elaboration. It uses the same edition picker as Elaboration (baseline + startDate resolution, current working edition). The activity shell (`PlanningActivity`) renders two tabs:
+Note: `abstract-interaction-activity.css`, `elaboration.css`, `review.css`, `planning.css`, `publication.css`, `prioritisation.css` have been removed. Their responsibilities are covered by the new activity structure or by `activity.css` directly.
+
+### 15.2 Layer Hierarchy
+
+Files are loaded in strict dependency order: global → components → activities (base first, then concrete).
+
+**Global** (`styles/`) — no dependencies between files at this level. `primitives.css` is the lowest-level layer.
+
+**Components** (`styles/components/`) — depend only on global tokens. No component file references another component file or any activity file.
+
+**Activities** (`styles/activities/`) — depend on global and component layers. `activity.css` is the base for all activities.
+
+---
+
+## 16. Planning Activity
+
+The Plan activity (`activities/workspace/shared/plan/`) supports deployment and implementation planning across two phases. Phase 1 (ON-based) is fully implemented. Phase 2 (OC-based) is reserved as a placeholder tab.
+
+### 16.1 Tab Structure
 
 | Tab | Status |
 |---|---|
 | `ON Plan` | Active — full implementation |
-| `OC Plan` | Placeholder — disabled, renders "Coming soon" message |
+| `OC Plan` | Placeholder — disabled |
 
-### 11.2 Data Loading
+### 16.2 Data Loading
 
-`PlanningActivity.loadSetupData()` loads setup entities and requirements in a single `Promise.all`:
+`PlanningActivity.loadSetupData()` loads setup entities and requirements in a single `Promise.all`. Requirements are **not** part of `setupData` — passed to `ONPlanning` as a dedicated constructor argument and exposed to `RequirementForm` via `getRequirements()`.
 
-- Setup entities (`stakeholderCategories`, `domains`, `referenceDocuments`, `waves`) → stored in `this.setupData`
-- Requirements (`GET /operational-requirements`, all types) → stored separately in `this.requirements`
+Since Phase A, setup data loading is delegated to `app.getSetupData()` rather than loaded independently.
 
-Requirements are **not** part of `setupData`. They are passed to `ONPlanning` as a dedicated constructor argument and exposed to `RequirementForm` via the `getRequirements()` context resolver (see §3.5).
+### 16.3 ON Plan Layout
 
-### 11.3 ON Plan Layout
-
-The ON Plan tab uses a **two-pane horizontal layout** with a resizable column divider:
+Two-pane horizontal layout with resizable column divider:
 
 - **Left pane** — `TemporalGrid` with structured ON hierarchy rows
-- **Right pane** — Selected ON details: sticky header (title + code + Edit button) + full `RequirementForm` read-only view
+- **Right pane** — Selected ON details: toolbar (title + code + Edit button) + full `RequirementForm.generateReadOnlyView()`
 
-The split ratio is user-adjustable by dragging the divider and is preserved in `ONPlanning.splitRatio`.
+### 16.4 TemporalGrid Row Structure (Left Pane)
 
-### 11.4 TemporalGrid Row Structure (Left Pane)
+| Row kind | Content |
+|---|---|
+| `group` (separator) | DrG display name |
+| `group` | Root ON (no `refinesParents`); expand/collapse |
+| `child` | Refined ON (has `refinesParents`); indented |
 
-`ONPlanning` configures `TemporalGrid` with three row kinds that together represent the ON hierarchy:
+ONs with a `tentative` period get two milestones: `period-start` (▶) and `period-end` (◀).
 
-| Row kind | Content | Source |
-|---|---|---|
-| `separator` | DrG display name (e.g. "NM B2B") | `on.drg` grouped |
-| `group` | Root ON — no `refinesParents`; expand/collapse toggle | `addGroupRow` |
-| `child` | Refined ON — has `refinesParents`; indented label | `addChildRow(id, parentId, ...)` |
-
-Collapsing a group row hides all its child rows. The expanded state is preserved across re-renders.
-
-ONs with a `tentative` period get two milestones — `period-start` (▶) and `period-end` (◀) — rendered as icon markers on the timeline track. ONs without `tentative` get an empty row (row reserved, no markers).
-
-Ticks are one per integer year across the computed interval. The default interval is derived from the union of all ON `tentative` periods.
-
-### 11.5 Milestone Rendering
+### 16.5 Milestone Rendering
 
 ```javascript
 temporalGrid.setMilestoneRendering({
@@ -446,91 +660,154 @@ temporalGrid.setMilestoneRendering({
 })
 ```
 
-### 11.6 ON Details (Right Pane)
+### 16.6 ON Details (Right Pane)
 
-Clicking any `group` or `child` row fires the selection listener. `ONPlanning.handleGridSelect(id)` looks up the ON entity and renders the right pane with:
+Clicking any row fires the selection listener. `ONPlanning.handleGridSelect(id)` renders the right pane with `RequirementForm.generateReadOnlyView()`. The Edit button calls `requirementForm.showEditModal(on)`. After a successful save, the `entitySaved` DOM event triggers a reload and refresh.
 
-- **Sticky header** — ON title, code, and an Edit button
-- **Full read-only form** — `RequirementForm.generateReadOnlyView()` with all tabs (General, Details, Traceability, Impact, Planning, Documentation, History)
-
-The Edit button calls `requirementForm.showEditModal(on)`. After a successful save, the `entitySaved` DOM event is caught by `ONPlanning`'s listener, which reloads requirements from the API, refreshes the TemporalGrid, and re-renders the details pane for the currently selected ON.
-
-`RequirementForm` is constructed with `entityConfig.name = 'Operational Requirements'` so that the `entitySaved` event filter matches correctly.
-
-### 11.7 File Structure
+### 16.7 File Structure
 
 ```
-activities/planning/
-├── planning.js         PlanningActivity shell, setup + requirements data load, tab management
-├── on-planning.js      ONPlanning: requirements filtering, TemporalGrid config, selection,
-│                       details pane with edit support, entitySaved reload
-└── planning.css        Two-pane layout, separator/group/child row styles
+activities/workspace/shared/plan/
+├── plan.js             PlanActivity shell, tab management
+├── planning.js         PlanningActivity: setup + requirements load
+├── on-planning.js      ONPlanning: TemporalGrid config, selection, details pane
+├── prioritisation.js   PrioritisationActivity shell
+└── prioritisation-grid.js  PrioritisationGrid: board render, collapse, drag-and-drop
 
-components/odp/
-└── temporal-grid.js    TemporalGrid: generic calendar timeline component (§5)
+shared/src/model/
+└── bandwidth-aggregation.js  Pure aggregation (no DOM, no API)
 
 shared/
-└── year-period.js      parseYearPeriod() / formatYearPeriod() shared utilities (§5.5)
+└── year-period.js      parseYearPeriod() / formatYearPeriod()
 ```
 
 ---
 
-## 12. iCDM DrGs Edition 4 Model Changes
+## 17. Prioritisation Activity
 
-The following web client changes align the client with the Edition 4 data model update.
+The Prioritisation activity (`activities/workspace/shared/plan/prioritisation.js`) matches OC implementation effort against domain bandwidth constraints across waves. Wave assignments are persisted via OPS_DEPLOYMENT milestones.
 
-### 12.1 Setup Layer
+### 17.1 Data Inputs
+
+| Source | Usage |
+|---|---|
+| `GET /operational-changes` | OCs with `cost`, `drg`, `maturity`, `dependencies`, `milestones` |
+| `GET /waves` | Wave definitions |
+| `GET /bandwidths` | Available MW per (waveId, scope) pair |
+| `DraftingGroup` enum | Hardcoded column order |
+
+### 17.2 Bandwidth Aggregation Module
+
+Pure aggregation logic in `shared/src/model/bandwidth-aggregation.js` — no DOM, no API calls.
+
+| Function | Description |
+|---|---|
+| `buildMatrix(ocs, waves, bandwidths, drgs)` | Returns `{ cells, waveGlobal, unplanned }` |
+| `resolveDeploymentWaveId(oc)` | Returns wave ID of OPS_DEPLOYMENT milestone, or null |
+| `classifyLoad(consumed, available)` | Returns `'green'`/`'orange'`/`'red'`/`'empty'` |
+| `cardHeight(cost)` | Returns card height in rem (logarithmic scale) |
+| `checkDependencyViolations(oc, targetWaveId, allOcs, waves)` | Returns `{ violated, offenders }` |
+
+**`AggregationMatrix` shape:**
+
+```javascript
+{
+  cells:      Map<waveId, Map<drg, CellData>>,
+  waveGlobal: Map<waveId, CellData>,
+  unplanned:  OC[]
+}
+// CellData
+{ consumed: number, available: number | null, ocs: OC[] }
+```
+
+**`available` sentinel values:**
+- `null` — no bandwidth record → grey, no load classification
+- `0` — explicit zero MW → red if any OCs assigned
+- `> 0` — normal; load classified by consumed/available ratio
+
+**Load colour thresholds:** green < 80%, orange 80–120%, red ≥ 120%.
+
+### 17.3 Grid Layout
+
+```
+┌─────────┬──────────┬──────────┬─────────┐
+│  Label  │   DrG 1  │   DrG N  │ Global  │
+├─────────┼──────────┼──────────┼─────────┤  ← furthest wave (top)
+│ 2029#1  │  cards   │  cards   │ tinted  │
+├─────────┼──────────┼──────────┼─────────┤
+│ 2027#2  │  ...     │  ...     │  ...    │  ← nearest wave (bottom)
+├─────────┼──────────┼──────────┼─────────┤
+│ Mature  │  cards   │  cards   │  count  │  ← backlog sub-rows
+│ Advanced│  cards   │  cards   │  + MW   │
+│ Draft   │  cards   │  cards   │  count  │
+└─────────┴──────────┴──────────┴─────────┘
+```
+
+Wave rows ordered furthest-top to nearest-bottom (`flex-direction: column-reverse`).
+
+### 17.4 OC Cards
+
+- Height: `h = 2 + 2·log10(max(1, cost))` rem, clamped 2–12 rem
+- Left colour strip: grey (Draft), amber (Advanced), green (Mature)
+- Shows: title (truncated), cost in MW, dependency icon (⛓) if any
+- Hover: open button (↗) navigates to `/elaborate/os/change/{itemId}`
+- Draft cards: `cursor: not-allowed`, reduced opacity, lock icon (🔒), not draggable
+
+### 17.5 Wave Row Collapse
+
+- **Collapsed state** (32px): OC cards hidden; DrG cells show `consumed / available MW`; 4px load strip
+- **Expand on drop**: dropping onto a collapsed wave row automatically expands it
+
+### 17.6 Backlog Section
+
+| Sub-row | Maturity | Draggable | Accepts drops |
+|---|---|---|---|
+| Mature | `MATURE` | Yes | Yes |
+| Advanced | `ADVANCED` | Yes | Yes |
+| Draft | `DRAFT` | No | No |
+
+Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
+
+### 17.7 Drag-and-Drop
+
+- **Constraint**: only within the same DrG column
+- **Wave assignment** (backlog → wave): `apiClient.createMilestone()`
+- **Wave reassignment** (wave → wave): `apiClient.updateMilestone()`
+- **Wave removal** (wave → backlog): `apiClient.deleteMilestone()`
+- **Dependency check**: `checkDependencyViolations()` on drop; violations surface confirmation dialog but do not block
+
+---
+
+## 18. iCDM DrGs Edition 4 Model Changes
+
+### 18.1 Setup Layer
 
 | Change | Detail |
 |---|---|
-| `DataCategory` removed | `data-categories.js` deleted; `TreeEntity` now covers `StakeholderCategory` and `Domain` only |
+| `DataCategory` removed | `data-categories.js` deleted |
 | `Service` removed | `services.js` deleted |
-| `Document` → `ReferenceDocument` | `documents.js` replaced by `reference-documents.js`; `description` field added (optional, textarea, inherited from `baseFields`); `version` optional; `parentId` optional; hierarchy up to three levels; now a `TreeEntity` (was `ListEntity`); endpoint `/reference-documents` |
+| `Document` → `ReferenceDocument` | `reference-documents.js`; `description` field added; hierarchy up to three levels; now a `TreeEntity`; endpoint `/reference-documents` |
 | `Domain` added | New `TreeEntity` (`domains.js`); has `contact` textarea field |
-| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scope)` tuple; `scope` is a `DraftingGroup` enum key (DrG selector, not a Domain reference); `waveId` resolved from loaded waves; `planned` optional integer field added |
-| `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed; uniqueness check on `(year, sequenceNumber)` |
+| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scope)`; `scope` is a `DraftingGroup` enum key |
+| `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed |
 
-`abstract-interaction-activity.js` `loadSetupData()` updated: `dataCategories`/`services`/`documents` replaced by `domains`/`referenceDocuments` loaded from `/domains` and `/reference-documents`.
-
-### 12.1b Field Type Vocabulary
-
-Form fields in `collection-entity-form.js` use the following type identifiers:
+### 18.1b Field Type Vocabulary
 
 | Type | Component | Cardinality | Notes |
 |---|---|---|---|
-| `select` | Native `<select>` | 1 | Enum choices (e.g. maturity, drg) |
-| `reference` | `ReferenceManager` | 0..1 | Inline typeahead; value wrapped in `[id]` array on save; renders `'None'` when empty in read mode |
+| `select` | Native `<select>` | 1 | Enum choices |
+| `reference` | `ReferenceManager` | 0..1 | Inline typeahead; value wrapped in `[id]` array on save |
 | `reference-list` | `ReferenceListManager` | 0..n | Chip list + search popup |
-| `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Table with per-item note; see §12.1c |
+| `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Table with per-item note |
 | `richtext` | Quill editor | — | Delta stored as stringified JSON |
 
-### 12.1c Annotated Reference List — Rendering & Metadata
+### 18.1c Annotated Reference List
 
-**Edit / create mode (`AnnotatedMultiselectManager`)**
+**Edit / create mode** — each selected item in an editable table row; note field is `<textarea>`; line breaks stored as `\n`, rendered with `white-space: pre-line`.
 
-Each selected item is displayed in an editable table row. The note field is a `<textarea>` (multi-line), allowing line breaks to be entered and preserved. Line breaks are stored as `\n` in the note string and rendered with `white-space: pre-line` in view rows.
+**Read-only mode** — items rendered as structured block list sorted alphabetically. Each item: `• Title (link if url available) / note text`.
 
-**Read-only mode (`renderAnnotatedMultiselectReadOnly`)**
-
-Items are rendered as a structured block list, sorted alphabetically by title. Each item renders as:
-
-```
-• Title (or link if url available)
-  note text (if present, muted, smaller font, pre-line)
-```
-
-`visibleWhen` is **not evaluated** in read mode — all `annotated-reference-list` fields are always rendered regardless of item type.
-
-**Metadata resolution (`_resolveAnnotatedRefMeta`)**
-
-Fields declare a `setupEntity` property referencing a `setupData` collection key (e.g. `'referenceDocuments'`). At render time, `_resolveAnnotatedRefMeta(field, refId)` looks up the full object by id and returns `{ description, url }`.
-
-- `description` — rendered as a native `title` tooltip on the item title (both form and column)
-- `url` — when present on `strategicDocuments` items, the title renders as `<a href target="_blank">` instead of a plain `<span>`
-
-**Column rendering (`annotatedReferenceListColumn`)**
-
-Items sorted alphabetically; title only displayed (note excluded). If `column.setupEntity` is set, `description` is resolved from `context.setupData` and added as a `title` tooltip.
+**Metadata resolution (`_resolveAnnotatedRefMeta`)** — fields declare `setupEntity` referencing a `setupData` collection key. Returns `{ description, url }`: description as native `title` tooltip; url renders title as `<a>` for strategic documents.
 
 **`setupEntity` mapping:**
 
@@ -540,96 +817,76 @@ Items sorted alphabetically; title only displayed (note excluded). If `column.se
 | `impactedStakeholders` | `stakeholderCategories` |
 | `impactedDomains` | `domains` |
 
-### 12.2 Operational Requirement Fields
+### 18.2 Operational Requirement Fields
 
 **Added to both ON and OR:**
 
 | Field | Type | Notes |
 |---|---|---|
 | `maturity` | `select` | Required; options from `MaturityLevel` enum |
-| `additionalDocumentation` | `static-label` | Renders "Not available yet" in all modes; not submitted |
+| `additionalDocumentation` | `static-label` | Renders "Not available yet"; not submitted |
 
-**Added to ON only (`visibleWhen: type === 'ON'`):**
-
-| Field | Type | Notes |
-|---|---|---|
-| `strategicDocuments` | `annotated-reference-list` | Rename of `documentReferences`; options from `referenceDocuments` setupData; `setupEntity: 'referenceDocuments'`; titles link to `url` if present |
-| `tentative` | `tentative` | Single text input; user enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array; displayed as `"2026"` or `"2026-2028"` |
-
-**Added to OR only (`visibleWhen: type === 'OR'`):**
+**Added to ON only:**
 
 | Field | Type | Notes |
 |---|---|---|
-| `nfrs` | `richtext` | Optional; operational non-functional requirements |
-| `impactedStakeholders` | `annotated-reference-list` | Options from `stakeholderCategories` setupData; `setupEntity: 'stakeholderCategories'`; note stored per stakeholder |
-| `impactedDomains` | `annotated-reference-list` | Options from `domains` setupData; `setupEntity: 'domains'`; note stored per domain |
-| `refinesParents` | `reference` | Single-select typeahead via `ReferenceManager`; wraps selected id in `[id]` array on save; visible for both ON and OR. Rendered above `implementedONs` / `implementedBy` in the Traceability tab. |
-| `refinedBy` | `reference-list` | **Computed, read-only.** Derived client-side: all requirements whose `refinesParents` references this item's id. Visible for both ON and OR. Uses `computeKey: '_computeRefinedByIds'`. |
-| `implementedBy` | `reference-list` | **Computed, read-only, ON only.** Derived client-side: all ORs whose `implementedONs` references this ON's id. Uses `computeKey: '_computeImplementedByIds'`. |
+| `strategicDocuments` | `annotated-reference-list` | Options from `referenceDocuments`; titles link to `url` if present |
+| `tentative` | `tentative` | User enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array |
 
-`visibleWhen` conditions are enforced in **all modes including read** via `getVisibleFields`. Fields with `visibleWhen` that returns false are excluded from rendering regardless of mode.
+**Added to OR only:**
 
-**Renamed:**
+| Field | Type | Notes |
+|---|---|---|
+| `nfrs` | `richtext` | Optional operational NFRs |
+| `impactedStakeholders` | `annotated-reference-list` | Options from `stakeholderCategories` |
+| `impactedDomains` | `annotated-reference-list` | Options from `domains` |
+| `refinesParents` | `reference` | Single-select typeahead; wraps id in `[id]` array on save |
+| `refinedBy` | `reference-list` | Computed, read-only. Uses `computeKey: '_computeRefinedByIds'` |
+| `implementedBy` | `reference-list` | Computed, read-only, ON only. Uses `computeKey: '_computeImplementedByIds'` |
 
-| Old key | New key |
-|---|---|
-| `impactsStakeholderCategories` | `impactedStakeholders` |
-| `dependsOnRequirements` | `dependencies` |
-| `documentReferences` | `strategicDocuments` (ON only) |
+**Renamed:** `impactsStakeholderCategories` → `impactedStakeholders`, `dependsOnRequirements` → `dependencies`, `documentReferences` → `strategicDocuments` (ON only).
 
 **Removed:** `impactsData`, `impactsServices`, `documentReferences` (from OR).
 
-**`dependencies` and `impactedDomains`** are now OR-only (previously `dependsOnRequirements` appeared for all types).
-
 **Traceability tab field order:** Strategic Documents → Refines (Parent) → Refined By → Implements (ONs) → Implemented By (ORs).
 
-**Impact tab visibility:** The Impact tab always renders (stable tab index). Fields inside (`impactedStakeholders`, `impactedDomains`) are hidden for ONs via `visibleWhen`, producing a blank tab for ON items — this is intentional to avoid tab index shifts when switching between ON and OR items.
+**Impact tab visibility:** Always renders (stable tab index). Fields hidden for ONs via `visibleWhen` — produces a blank tab for ON items intentionally to avoid tab index shifts.
 
-### 12.3 Operational Change Fields
+### 18.3 Operational Change Fields
 
 **Added:**
 
 | Field | Type | Notes |
 |---|---|---|
-| `maturity` | `select` | Required; options from `MaturityLevel` enum |
-| `cost` | `number` | Optional integer; placeholder "Integer value in MW" |
-| `dependencies` | `reference-list` | OCs that must precede this OC; options from OC list |
-| `additionalDocumentation` | `static-label` | Renders "Not available yet" in all modes; not submitted |
+| `maturity` | `select` | Required |
+| `cost` | `number` | Optional integer; MW |
+| `dependencies` | `reference-list` | OCs that must precede this OC |
+| `additionalDocumentation` | `static-label` | Renders "Not available yet" |
 
-**Renamed:**
-
-| Old key | New key |
-|---|---|
-| `satisfiesRequirements` | `implementedORs` |
-| `supersedsRequirements` | `decommissionedORs` |
+**Renamed:** `satisfiesRequirements` → `implementedORs`, `supersedsRequirements` → `decommissionedORs`.
 
 **Removed:** `documentReferences` section, `visibility` field.
 
-### 12.4 Milestone Name Field
+### 18.4 Milestone Name Field
 
-Milestone `title` field renamed to `name` throughout `change-form-milestone.js`: form input id/name, `collectFormData`, `validateMilestone`, `prepareData`, `renderRow`, and the delete confirmation message.
+Milestone `title` field renamed to `name` throughout `change-form-milestone.js`. Wave label rendered as `{year}#{sequenceNumber}`.
 
-Wave label in milestone form and table now rendered as `{year}#{sequenceNumber}` (the `name` field was removed from `Wave` in Edition 4).
-
-### 12.5 New Field Types in CollectionEntityForm
-
-Two new `type` values added to `renderInput` / `renderReadOnlyField`:
+### 18.5 New Field Types in CollectionEntityForm
 
 | Type | Edit rendering | Read rendering | Notes |
 |---|---|---|---|
-| `static-label` | `<div>` with `staticText` content, no `name` attribute | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
-| `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` array as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed in `RequirementForm.transformDataForSave` via `parseTentative()` which delegates to `parseYearPeriod()` in `shared/year-period.js` |
+| `static-label` | `<div>` with `staticText`, no `name` | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
+| `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed via `parseTentative()` → `parseYearPeriod()` |
 
-### 12.6 Filter Bar
+### 18.6 Filter Bar
 
-`getFilterConfig()` in `abstract-interaction-activity.js` updated:
+`getFilterConfig()` in `OsActivity` (formerly `abstract-interaction-activity.js`):
 
-- Removed: `service`, `dataCategory`, `document` filters
-- Added: `domain` filter (suggest, options from `domains` setupData)
-- Added: `strategicDocument` filter (suggest, options from `referenceDocuments` setupData; ON type only)
+- Removed: `service`, `dataCategory`, `document`
+- Added: `domain` (suggest), `strategicDocument` (suggest)
 - Renamed: `satisfies` → `implements`
 
-All three relationship filters (`domain`, `stakeholderCategory`, `strategicDocument`) are scalar — a single ID is passed to the API and matched with `WHERE id(x) = $x` in the store.
+All relationship filters are scalar — single ID passed to API.
 
 **`RequirementsEntity` column config:**
 
@@ -641,231 +898,51 @@ All three relationship filters (`domain`, `stakeholderCategory`, `strategicDocum
 | `impactedStakeholders` | `['or-node']` | OR only |
 | `impactedDomains` | `['or-node']` | OR only |
 
-Tree column list: `title`, `code`, `maturity`, `strategicDocuments`, `implementedONs`, `dependencies`, `impactedStakeholders`, `impactedDomains`.
-
-**`RequirementsEntity` path builder (`buildRequirementTreePath`) priority:**
-
-1. `refinesParents` — if present, nest under the parent ON/OR node (graph-based hierarchy); `path` is ignored
-2. `path` — if no refines relation, build virtual folder nodes from the path array
-
-The data model guarantees that if `refinesParents` is set, the parent will always be present in the entity map. No fallback is needed. Note: the JSON importer is responsible for clearing `path` when `refinesParents` is set on import.
+**`RequirementsEntity` path builder priority:**
+1. `refinesParents` — if present, nest under parent node (graph-based); `path` ignored
+2. `path` — if no refines relation, build virtual folder nodes
 
 **Grouping config** includes `strategicDocuments` as a grouping option.
 
 ---
 
-## 13. Prioritisation Activity
+## 19. Edition Content Selection — Manage Activity Changes
 
-The Prioritisation activity (`activities/prioritisation/`) is a dedicated
-workspace for matching OC implementation effort against domain bandwidth
-constraints across waves. It is a fully independent top-level activity
-(`/prioritisation` route) — distinct from the Planning activity.
-
-### 13.1 Purpose and Scope
-
-The activity supports the iterative iCDM governance loop: assigning OCs to
-delivery waves, monitoring bandwidth consumption per DrG and globally, and
-identifying overloaded waves. Wave assignments are persisted via OPS_DEPLOYMENT
-milestones on OCs.
-
-### 13.2 Data Inputs
-
-All data is loaded from existing endpoints on activity mount:
-
-| Source | Usage |
-|--------|-------|
-| `GET /operational-changes` | OCs with `cost`, `drg`, `maturity`, `dependencies`, `milestones` |
-| `GET /waves` | Wave definitions (year, sequenceNumber, implementationDate) |
-| `GET /bandwidths` | Available MW per (waveId, scope) pair — `scope` is a DraftingGroup key |
-| `DraftingGroup` enum | Hardcoded column order; keys from `Object.keys(DraftingGroup)` |
-
-OR-level costs (`implementedORs[].cost`) are informational only and not used
-for bandwidth aggregation.
-
-### 13.3 Bandwidth Aggregation Module
-
-Pure aggregation logic lives in `shared/src/model/bandwidth-aggregation.js` —
-no DOM, no API calls, framework-agnostic. Reusable server-side without modification.
-
-**Key exported functions:**
-
-| Function | Description |
-|----------|-------------|
-| `buildMatrix(ocs, waves, bandwidths, drgs)` | Returns `{ cells, waveGlobal, unplanned }` |
-| `resolveDeploymentWaveId(oc)` | Returns wave ID of OPS_DEPLOYMENT milestone, or null |
-| `classifyLoad(consumed, available)` | Returns `'green'`/`'orange'`/`'red'`/`'empty'` |
-| `cardHeight(cost)` | Returns card height in rem (logarithmic scale) |
-| `checkDependencyViolations(oc, targetWaveId, allOcs, waves)` | Returns `{ violated, offenders }` |
-
-**`AggregationMatrix` shape:**
-
-```javascript
-{
-  cells:      Map<waveId, Map<drg, CellData>>,  // per (wave, DrG)
-          waveGlobal: Map<waveId, CellData>,             // per wave, all DrGs summed
-          unplanned:  OC[]                               // no OPS_DEPLOYMENT milestone
-}
-
-// CellData
-{ consumed: number, available: number | null, ocs: OC[] }
-```
-
-**`available` sentinel values:**
-- `null` — no bandwidth record defined for this (wave, DrG) pair → grey, no load classification
-- `0` — explicit zero MW record exists → red if any OCs assigned
-- `> 0` — normal case; load classified by consumed/available ratio
-
-**Load colour thresholds:** green < 80%, orange 80–120%, red ≥ 120%.
-
-### 13.4 Grid Layout
-
-```
-┌─────────┬──────────┬──────────┬─────────┐
-│  Label  │   DrG 1  │   DrG N  │ Global  │
-├─────────┼──────────┼──────────┼─────────┤  ← furthest wave (top)
-│ 2029#1  │  cards   │  cards   │ tinted  │
-│         │  loadbar │  loadbar │ loadbar │
-├─────────┼──────────┼──────────┼─────────┤
-│ 2027#2  │  ...     │  ...     │  ...    │  ← nearest wave (bottom)
-├─────────┼──────────┼──────────┼─────────┤
-│ Mature  │  cards   │  cards   │  count  │  ← backlog sub-rows
-│ Advanced│  cards   │  cards   │  + MW   │
-│ Draft   │  cards   │  cards   │  count  │
-└─────────┴──────────┴──────────┴─────────┘
-```
-
-- **Columns**: one per DrG (hardcoded enum order) + rightmost Global column
-- **Wave rows**: ordered furthest-top to nearest-bottom (CSS `flex-direction: column-reverse` on the wave rows container)
-- **Wave label format**: `{year}#{sequenceNumber}` (e.g. `2027#1`)
-- **Global column**: tinted background (light green/orange/red) per load level, distinct from OC maturity strips
-
-### 13.5 OC Cards
-
-- Height proportional to cost: `h = 2 + 2·log10(max(1, cost))` rem, clamped 2–12 rem
-- Left colour strip indicates maturity: grey (Draft), amber (Advanced), green (Mature)
-- Shows: title (truncated), cost in MW, dependency icon (⛓) if any
-- Hover: open button (↗) navigates to `/elaboration/changes/{itemId}`
-- Draft cards: `cursor: not-allowed`, reduced opacity, lock icon (🔒), not draggable
-
-### 13.6 Wave Row Collapse
-
-Each wave row is individually collapsible:
-
-- Toggle button is anchored at top-left of the label cell (`align-items: flex-start`)
-  so it does not shift vertically on expand/collapse
-- **Collapsed state** (32px height):
-  - OC cards hidden
-  - Each DrG cell shows effort summary: `consumed / available MW` (if bandwidth
-    defined) or `consumed MW` (if not)
-  - Global cell shows the same summary
-  - Load bar rendered as a 4px strip at the bottom of each cell
-- **Expand on drop**: dropping an OC onto a collapsed wave row automatically expands it
-
-### 13.7 Backlog Section
-
-The backlog section is pinned below all wave rows and split into three
-independently collapsible sub-rows:
-
-| Sub-row  | Maturity   | Draggable | Accepts drops | Notes |
-|----------|------------|-----------|---------------|-------|
-| Mature   | `MATURE`   | Yes       | Yes           | — |
-| Advanced | `ADVANCED` | Yes       | Yes           | — |
-| Draft    | `DRAFT`    | No        | No            | Informational only |
-
-- A wave→backlog drop is only accepted by the sub-row matching the OC's maturity
-  (enforced at `dragover` — mismatched sub-rows reject the drop)
-- Backlog global cell shows OC count + total MW sum (MW omitted if no OC in
-  the sub-row has a cost set — applies especially to Draft)
-
-### 13.8 Drag-and-Drop
-
-- **Constraint**: only within the same DrG column; cross-DrG drops are rejected
-- **Wave assignment** (backlog → wave): creates OPS_DEPLOYMENT milestone via
-  `apiClient.createMilestone()`
-- **Wave reassignment** (wave → wave): updates OPS_DEPLOYMENT milestone via
-  `apiClient.updateMilestone()`
-- **Wave removal** (wave → backlog): deletes OPS_DEPLOYMENT milestone via
-  `apiClient.deleteMilestone()`
-- All three operations use the dedicated `apiClient` milestone methods, not raw
-  `delete/put/post`, to ensure `expectedVersionId` is placed in the request body
-  per the OpenAPI contract
-- **Dependency check**: on wave drop, `checkDependencyViolations()` is called;
-  violations surface a confirmation dialog but do not block the operation
-- After any successful API call, the activity reloads all data and redraws the grid
-
-### 13.9 File Structure
-
-```
-activities/prioritisation/
-├── prioritisation.js        Activity shell: data load, matrix compute, grid mount, API calls
-├── prioritisation-grid.js   PrioritisationGrid: board render, collapse, drag-and-drop
-└── prioritisation.css       Grid styles (extends activity.css)
-
-shared/src/model/
-└── bandwidth-aggregation.js Pure aggregation: buildMatrix, classifyLoad, cardHeight,
-                             checkDependencyViolations, resolveDeploymentWaveId
-```
-
-**Modified files:**
-- `app.js` — new `/prioritisation` route
-- `header.js` — new "Prioritisation" nav item
-- `activity.css` — `.prioritisation-activity`, `.prioritisation-workspace`
-- `landing.html` — Prioritisation activity tile
-
-### 13.10 CSS Conventions
-
-`prioritisation.css` extends `activity.css` (`.prioritisation-activity` /
-`.prioritisation-workspace` root classes). It does not extend
-`abstract-interaction-activity.css` — the Prioritisation activity uses a custom
-board layout, not the collection+details two-pane pattern.
-
----
-
-## 14. Edition Content Selection — Publication Activity Changes
-
-### 14.1 ODPEditionForm (`publication/odp-edition-form.js`)
+### 19.1 ODPEditionForm (`manage/editions/odp-edition-form.js`)
 
 **Type field** — options: `DRAFT` / `OFFICIAL`.
 
-**`startDate` field** — replaces the former `startsFromWave` select. Plain date input (`yyyy-mm-dd`), optional, with client-side format validation. Help text describes the dual role: OC milestone lower bound + ON tentative period filter.
+**`startDate` field** — replaces former `startsFromWave` select. Plain date input (`yyyy-mm-dd`), optional. Dual role: OC milestone lower bound + ON tentative period filter.
 
-**`minONMaturity` field** — `radio` field with three options: `DRAFT` (default), `ADVANCED`, `MATURE`. `DRAFT` is always sent to the API (no "no gate" option).
+**`minONMaturity` field** — `radio` with options `DRAFT` (default), `ADVANCED`, `MATURE`.
 
-**`transformDataForSave()`** — passes `startDate` string directly; defaults `minONMaturity` to `'DRAFT'` when absent; default type is `'DRAFT'`.
+**`transformDataForSave()`** — passes `startDate` directly; defaults `minONMaturity` to `'DRAFT'`; default type is `'DRAFT'`.
 
-**`transformDataForEdit()`** — extracts `baselineId` from baseline reference object; defaults `minONMaturity` to `'DRAFT'` when absent.
+**`transformDataForEdit()`** — extracts `baselineId` from baseline reference object; defaults `minONMaturity` to `'DRAFT'`.
 
 **`onValidate()`** — validates baseline reference only; wave validation removed.
 
-### 14.2 ODPEditionsEntity (`publication/odp-editions.js`)
+### 19.2 ODPEditionsEntity (`manage/editions/editions.js`)
 
 **Type column** — `enumLabels` and `enumStyles` updated to `DRAFT` / `OFFICIAL`.
 
-**`startDate` column** — replaces former `startsFromWave` entity-reference column; plain text, renders `'—'` when absent.
+**`startDate` column** — replaces former `startsFromWave`; plain text, renders `'—'` when absent.
 
 **`minONMaturity` column** — text column; renders `'—'` when absent.
 
 **Grouping config** — `startDate` and `minONMaturity` available as grouping options.
 
-### 14.3 PublicationActivity (`publication/publication.js`)
+### 19.3 Publish Action
 
-**Type filter** — options updated to `DRAFT` / `OFFICIAL`.
-
-**`buildWaveOptions()`** — wave label changed from `wave.name` to `${wave.year}#${wave.sequenceNumber}`; options sorted by `year * 100 + sequenceNumber`.
-
-### 14.4 ODPEditionsEntity (`publication/odp-editions.js`) — Publish Action
-
-The edition details panel exposes two action buttons: **Review** (navigates to the Review activity) and **Publish** (triggers server-side Antora build).
+The edition details panel exposes a **Publish** button (triggers server-side Antora build).
 
 **Publish flow:**
 1. Button click calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish` with body `{ pdf: { flat: true } }` (default)
-2. Button is disabled and labelled "Publishing…" while the request is in flight (~5–30s)
-3. On success: status area shows "✓ Published — Open site · PDF · Word" with absolute links for whichever URLs are present in the response
+2. Button disabled and labelled "Publishing…" while in flight (~5–30s)
+3. On success: "✓ Published — Open site · PDF · Word" with absolute links
 4. On 409: "Publication already in progress — please retry later"
-5. On other error: error message displayed in status area
+5. On other error: error message displayed
 
-**`apiClient.publishEdition(id, options)`** is a dedicated method on `ApiClient` (`shared/api-client.js`) — `post('/odp-editions', options, { id, subPath: 'publish' })` — accepting an optional `PublishOptions` body (default: `{ pdf: { flat: true } }`). Response shape: `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }` — all format URLs are nullable.
-
-The site URL and any format URLs returned by the server are made absolute using `apiClient.baseUrl` before display.
+**`apiClient.publishEdition(id, options)`** — `post('/odp-editions', options, { id, subPath: 'publish' })`. Response: `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }` — all nullable. URLs made absolute using `apiClient.baseUrl`.
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

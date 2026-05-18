@@ -22,7 +22,8 @@ export default class ReferenceListManager {
             placeholder: config.placeholder || 'Search items...',
             emptyMessage: config.emptyMessage || 'No items selected',
             onChange: config.onChange || (() => {}),
-            readOnly: config.readOnly || false
+            readOnly: config.readOnly || false,
+            onItemClick: config.onItemClick || null  // (id, option) => void — enables navigable links in read mode
         };
 
         this.selectedIds = this.normalizeInitialValue(config.initialValue);
@@ -93,6 +94,14 @@ export default class ReferenceListManager {
         }
 
         if (this.config.readOnly) {
+            if (this.config.onItemClick) {
+                return `<span class="selected-chip selected-chip--link"
+                              data-item-id="${id}"
+                              role="link"
+                              tabindex="0"
+                              title="Open ${this.escapeHtml(option.label)}"
+                        >${this.escapeHtml(option.label)}</span>`;
+            }
             return `<span class="selected-chip">${this.escapeHtml(option.label)}</span>`;
         }
 
@@ -190,12 +199,30 @@ export default class ReferenceListManager {
     }
 
     bindEvents() {
-        if (this.config.readOnly) return;
-
         const inlineContainer = this.container.querySelector(`#${this.config.fieldId}-inline`);
-        if (inlineContainer) {
-            this.boundHandlers.inlineClick = (e) => this.handleInlineClick(e);
-            inlineContainer.addEventListener('click', this.boundHandlers.inlineClick);
+        if (!inlineContainer) return;
+
+        if (this.config.readOnly) {
+            // In read mode, only bind click if navigation callback is provided
+            if (this.config.onItemClick) {
+                this.boundHandlers.inlineClick = (e) => this.handleReadOnlyClick(e);
+                inlineContainer.addEventListener('click', this.boundHandlers.inlineClick);
+            }
+            return;
+        }
+
+        this.boundHandlers.inlineClick = (e) => this.handleInlineClick(e);
+        inlineContainer.addEventListener('click', this.boundHandlers.inlineClick);
+    }
+
+    handleReadOnlyClick(e) {
+        e.stopPropagation();
+        const chip = e.target.closest('[data-item-id]');
+        if (!chip) return;
+        const id = normalizeId(chip.dataset.itemId);
+        const option = this.config.options.find(opt => idsEqual(opt.value, id));
+        if (option) {
+            this.config.onItemClick(id, option);
         }
     }
 

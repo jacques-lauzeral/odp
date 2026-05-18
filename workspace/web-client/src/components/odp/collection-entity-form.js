@@ -41,6 +41,11 @@ export class CollectionEntityForm {
         // Modified indicator flag — set when form data is changed or restored
         this._isDirty = false;
 
+        // Optional navigation callback for read mode — enables navigable reference links.
+        // Signature: onNavigate(ref: { id, code, title, type }) => void
+        // Provided by RequirementDetails / ChangeDetails; absent in edit popup context.
+        this.onNavigate = context.onNavigate || null;
+
         // Initialize tab delegation once
         this.initTabDelegation();
     }
@@ -668,13 +673,25 @@ export class CollectionEntityForm {
             // Get options (resolve async if needed)
             this.getFieldOptions(field).then(options => {
                 // Create manager
+                const isReadMode = this.currentMode === 'read';
+                const onNavigate = this.onNavigate;
                 const manager = new ReferenceListManager({
                     fieldId: fieldId,
                     options: options,
                     initialValue: value || [],
                     placeholder: field.placeholder || 'Search items...',
-                    emptyMessage: this.currentMode === 'read' ? 'None' : (field.emptyMessage || 'No items selected'),
-                    readOnly: this.currentMode === 'read',
+                    emptyMessage: isReadMode ? 'None' : (field.emptyMessage || 'No items selected'),
+                    readOnly: isReadMode,
+                    onItemClick: (isReadMode && onNavigate)
+                        ? (id, option) => {
+                            // entityType derived from field.formatArgs[0] ('requirement'|'change')
+                            // Falls back to 'requirement' if not specified.
+                            const rawType = (field.formatArgs && field.formatArgs[0]) || 'requirement';
+                            // Map O* type labels to URL segments
+                            const entityType = (rawType === 'change' || rawType === 'OC') ? 'change' : 'requirement';
+                            onNavigate({ id: option.value, label: option.label, entityType });
+                        }
+                        : null,
                     onChange: (newValue) => {
                         console.log(`${fieldKey} changed:`, newValue);
                         if (this.currentMode === 'edit' || this.currentMode === 'create') {
@@ -740,13 +757,22 @@ export class CollectionEntityForm {
                 ? rawValue[0]?.id ?? rawValue[0]
                 : null;
 
+            const isReadMode  = this.currentMode === 'read';
+            const onNavigate  = this.onNavigate;
             this.getFieldOptions(field).then(options => {
                 const manager = new ReferenceManager({
                     fieldId,
                     options,
                     initialValue: initialId,
                     placeholder: field.placeholder || 'Type to search...',
-                    readOnly: this.currentMode === 'read',
+                    readOnly: isReadMode,
+                    onItemClick: (isReadMode && onNavigate)
+                        ? (id, option) => {
+                            const rawType = (field.formatArgs && field.formatArgs[0]) || 'requirement';
+                            const entityType = (rawType === 'change' || rawType === 'OC') ? 'change' : 'requirement';
+                            onNavigate({ id: option.value, label: option.label, entityType });
+                        }
+                        : null,
                     onChange: () => {
                         if (this.currentMode === 'edit' || this.currentMode === 'create') {
                             this.markDirty();
