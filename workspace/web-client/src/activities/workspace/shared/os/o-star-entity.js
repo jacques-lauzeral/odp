@@ -267,25 +267,27 @@ export default class OStarEntity {
         const el = this._getViewControlsEl();
         if (!el) return;
 
+        const isCollection = this.currentPerspective === 'collection';
+
         el.innerHTML = `
-            <div class="perspective-controls">
-                <div class="perspective-toggle">
-                    <button class="perspective-option ${this.currentPerspective === 'collection' ? 'perspective-option--active' : ''}"
-                            data-perspective="collection">📋 Collection</button>
-                    <button class="perspective-option ${this.currentPerspective === 'tree' ? 'perspective-option--active' : ''}"
-                            data-perspective="tree">🌳 Tree</button>
+            <div class="ostar-controls">
+                <div class="ostar-controls__perspective">
+                    <button class="ostar-perspective-btn${isCollection ? ' ostar-perspective-btn--active' : ''}"
+                            data-perspective="collection">Collection</button>
+                    <button class="ostar-perspective-btn${!isCollection ? ' ostar-perspective-btn--active' : ''}"
+                            data-perspective="tree">Tree</button>
                 </div>
-                ${this.currentPerspective === 'collection' ? `
-                <div class="grouping-section">
-                    <label for="ostarGroupBy">Group by:</label>
-                    <select id="ostarGroupBy" class="form-control group-select">
+                ${isCollection ? `
+                <div class="ostar-controls__grouping">
+                    <label class="ostar-controls__label" for="ostarGroupBy">Group by</label>
+                    <select id="ostarGroupBy" class="ostar-controls__select">
                         ${this._getGroupingConfig().map(o =>
             `<option value="${o.key}" ${o.key === this.sharedState.grouping ? 'selected' : ''}>${o.label}</option>`
         ).join('')}
                     </select>
                 </div>` : ''}
                 ${!this._isReadOnly ? `
-                <div class="actions-section">
+                <div class="ostar-controls__actions">
                     <button class="btn btn-primary btn-sm" id="createON">+ ON</button>
                     <button class="btn btn-primary btn-sm" id="createOR">+ OR</button>
                     <button class="btn btn-primary btn-sm" id="createOC">+ OC</button>
