@@ -1,5 +1,5 @@
-import { CollectionEntityForm } from '../../../../components/odp/collection-entity-form.js';
-import { HistoryTab } from '../../../../components/odp/history-tab.js';
+import { CollectionEntityForm } from '../../../../components/collection-entity-form.js';
+import { HistoryTab } from '../../../../components/history-tab.js';
 import { apiClient } from '../../../../shared/api-client.js';
 import {
     DraftingGroup,

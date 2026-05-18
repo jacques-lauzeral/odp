@@ -6,30 +6,12 @@
 /* --- Activity root ---------------------------------------------------------- */
 /* All concrete activity classes must be listed here.                           */
 
-.elaboration-activity,
-.review-activity,
-.publication-activity,
-.planning-activity,
-.prioritisation-activity,
-.setup-activity {
+
+.elaborate,
+.explore,
+.manage {
     padding: 0;
     height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-/* --- Workspace -------------------------------------------------------------- */
-/* Each activity defines its own workspace class.                               */
-
-.elaboration-workspace,
-.review-workspace,
-.publication-workspace,
-.planning-workspace,
-.prioritisation-workspace,
-.setup-workspace {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
 }

@@ -17,7 +17,6 @@
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
-import { buildBreadcrumb, attachBreadcrumbListeners } from './breadcrumb.js';
 
 export default class ChangeDetails {
     /**
@@ -60,6 +59,9 @@ export default class ChangeDetails {
             // Render shell
             this.container.innerHTML = this._buildShellHtml(item);
 
+            // Set header breadcrumb
+            this.app.header.setBreadcrumb(this._buildCrumbs(item));
+
             // Inject tabbed body from form
             const bodyEl   = this.container.querySelector('#osDetailBody');
             const bodyHtml = await this._form.generateReadOnlyView(item);
@@ -69,8 +71,6 @@ export default class ChangeDetails {
             this._form.initializeReadOnlyInPanel(bodyEl, item);
 
             this._attachEventListeners();
-            attachBreadcrumbListeners(this.container, this.app);
-
         } catch (error) {
             errorHandler.handle(error, 'change-details');
             this.container.innerHTML = this._buildErrorHtml(error);
@@ -146,8 +146,7 @@ export default class ChangeDetails {
 
         return `
             <div class="os-detail">
-                ${this._buildBreadcrumbHtml(item)}
-                <div class="os-detail__toolbar">
+<div class="os-detail__toolbar">
                     ${this._mode === 'page'
             ? '<button class="btn btn-secondary os-detail__back">← Back</button>'
             : ''}
@@ -165,24 +164,15 @@ export default class ChangeDetails {
         `;
     }
 
-    _buildBreadcrumbHtml(item) {
-        const base      = this._basePath();
-        const workspace = base.startsWith('/explore') ? 'Explore' : 'Elaborate';
-        const wPath     = base.startsWith('/explore') ? '/explore' : '/elaborate';
-        const code      = item.code ?? '';
-        const title     = item.title ?? String(item.itemId ?? item.id ?? '');
-        const label     = code ? `${code} — ${title}` : title;
-
-        if (this._mode === 'panel') {
-            return '';
-        }
-
-        return buildBreadcrumb([
-            { label: 'Home',    path: '/' },
-            { label: workspace, path: wPath },
+    _buildCrumbs(item) {
+        const base  = this._basePath();
+        const code  = item.code ?? '';
+        const title = item.title ?? String(item.itemId ?? item.id ?? '');
+        const label = code ? `${code} — ${title}` : title;
+        return [
             { label: 'Changes', path: `${base}/changes` },
             { label },
-        ]);
+        ];
     }
 
     _buildLoadingHtml() {

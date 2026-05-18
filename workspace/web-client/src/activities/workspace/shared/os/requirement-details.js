@@ -17,7 +17,6 @@
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
-import { buildBreadcrumb, attachBreadcrumbListeners } from './breadcrumb.js';
 
 export default class RequirementDetails {
     /**
@@ -60,6 +59,9 @@ export default class RequirementDetails {
             // Render shell
             this.container.innerHTML = this._buildShellHtml(item);
 
+            // Set header breadcrumb
+            this.app.header.setBreadcrumb(this._buildCrumbs(item));
+
             // Inject tabbed body from form
             const bodyEl   = this.container.querySelector('#osDetailBody');
             const bodyHtml = await this._form.generateReadOnlyView(item);
@@ -69,8 +71,6 @@ export default class RequirementDetails {
             this._form.initializeReadOnlyInPanel(bodyEl, item);
 
             this._attachEventListeners();
-            attachBreadcrumbListeners(this.container, this.app);
-
         } catch (error) {
             errorHandler.handle(error, 'requirement-details');
             this.container.innerHTML = this._buildErrorHtml(error);
@@ -146,8 +146,7 @@ export default class RequirementDetails {
 
         return `
             <div class="os-detail">
-                ${this._buildBreadcrumbHtml(item)}
-                <div class="os-detail__toolbar">
+<div class="os-detail__toolbar">
                     <span class="os-detail__code">${this._esc(item.code ?? '')}</span>
                     ${isEditable
             ? '<button class="btn btn-primary os-detail__edit">Edit</button>'
@@ -158,24 +157,15 @@ export default class RequirementDetails {
         `;
     }
 
-    _buildBreadcrumbHtml(item) {
-        const base      = this._basePath();
-        const workspace = base.startsWith('/explore') ? 'Explore' : 'Elaborate';
-        const wPath     = base.startsWith('/explore') ? '/explore' : '/elaborate';
-        const code      = item.code ?? '';
-        const title     = item.title ?? String(item.itemId ?? item.id ?? '');
-        const label     = code ? `${code} — ${title}` : title;
-
-        if (this._mode === 'panel') {
-            return '';
-        }
-
-        return buildBreadcrumb([
-            { label: 'Home',         path: '/' },
-            { label: workspace,      path: wPath },
+    _buildCrumbs(item) {
+        const base  = this._basePath();
+        const code  = item.code ?? '';
+        const title = item.title ?? String(item.itemId ?? item.id ?? '');
+        const label = code ? `${code} — ${title}` : title;
+        return [
             { label: 'Requirements', path: `${base}/requirements` },
             { label },
-        ]);
+        ];
     }
 
     _buildLoadingHtml() {

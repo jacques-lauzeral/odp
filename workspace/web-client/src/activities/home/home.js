@@ -4,7 +4,7 @@
  *
  * Responsibilities:
  * - Fetch and display the edition list (all types, no filter)
- * - Show the Live Dataset tile only when a user is identified
+ * - Always show the Live Dataset row; disabled (non-clickable) when no user is identified
  * - On selection: set app dataset context and navigate to the appropriate workspace
  *
  * Dataset context shape stored on App:
@@ -12,8 +12,12 @@
  *   { type: 'edition', editionId: number }
  *
  * Navigation:
- *   Live Dataset selected → app.setDatasetContext({ type: 'live' })            → /elaborate
+ *   Live Dataset selected → app.setDatasetContext({ type: 'live' })               → /elaborate
  *   Edition selected      → app.setDatasetContext({ type: 'edition', editionId }) → /explore
+ *
+ * Re-render triggers:
+ *   - Initial mount (render)
+ *   - User change (App calls onUserChange) — Live Dataset row appears/disappears
  */
 import { apiClient } from '../../shared/api-client.js';
 import { errorHandler } from '../../shared/error-handler.js';
@@ -46,6 +50,17 @@ export default class HomeActivity {
 
         this.container.innerHTML = this._buildHtml();
         this._attachEventListeners();
+        this.app.header.setBreadcrumb([]);
+    }
+
+    /**
+     * Called by App after setUser(). Re-renders in place using cached edition data
+     * so the Live Dataset row appears or disappears without a network round-trip.
+     */
+    onUserChange() {
+        if (!this.container) return;
+        this.container.innerHTML = this._buildHtml();
+        this._attachEventListeners();
     }
 
     cleanup() {
@@ -58,14 +73,14 @@ export default class HomeActivity {
     // -------------------------------------------------------------------------
 
     _attachEventListeners() {
-        // Live Dataset tile (only rendered when user is identified)
-        const liveBtn = this.container.querySelector('.home__live-btn');
-        if (liveBtn) {
-            liveBtn.addEventListener('click', () => this._selectLive());
+        // Live Dataset row — only interactive when user is identified
+        const liveRow = dom.find('.home__live-row', this.container);
+        if (liveRow && !liveRow.classList.contains('home__live-row--disabled')) {
+            liveRow.addEventListener('click', () => this._selectLive());
         }
 
         // Edition rows
-        this.container.querySelectorAll('.home__edition-row').forEach(row => {
+        dom.findAll('.home__edition-row', this.container).forEach(row => {
             row.addEventListener('click', () => {
                 const editionId = Number(row.dataset.editionId);
                 this._selectEdition(editionId);
@@ -92,7 +107,7 @@ export default class HomeActivity {
     // -------------------------------------------------------------------------
 
     _buildLoadingHtml() {
-        return `<div class="home"><div class="loading"><p>Loading…</p></div></div>`;
+        return `<div class="home"><div class="home__loading">Loading…</div></div>`;
     }
 
     _buildHtml() {
@@ -100,74 +115,90 @@ export default class HomeActivity {
 
         return `
             <div class="home">
-                <div class="home__content">
-
-                    ${user ? this._buildLiveTile() : ''}
-
-                    <section class="home__editions">
-                        <h2 class="home__section-title">Editions</h2>
-                        ${this._buildEditionList()}
-                    </section>
-
+                <div class="home__list">
+                    ${this._buildLiveRow(!!user)}
+                    ${this._buildEditionRows()}
                 </div>
             </div>
         `;
     }
 
-    _buildLiveTile() {
+    /**
+     * @param {boolean} enabled — true when a user is identified
+     */
+    _buildLiveRow(enabled) {
+        const disabledClass = enabled ? '' : ' home__live-row--disabled';
+        const tabindex = enabled ? '0' : '-1';
         return `
-            <section class="home__live">
-                <div class="home__live-tile">
-                    <div class="home__live-info">
-                        <h2 class="home__live-title">Live Dataset</h2>
-                        <p class="home__live-desc">Working data — latest versions of all O*s.</p>
-                    </div>
-                    <button class="btn btn-primary home__live-btn">Elaborate</button>
+            <div class="home__live-row home__row${disabledClass}" role="button" tabindex="${tabindex}">
+                <div class="home__row-left">
+                    <span class="home__row-title">ODIP Dataset</span>
+                    <span class="home__row-meta">${enabled ? 'Live — continuously evolving' : 'Sign in to access the live dataset'}</span>
                 </div>
-            </section>
+                <span class="home__row-chevron">›</span>
+            </div>
         `;
     }
 
-    _buildEditionList() {
+    _buildEditionRows() {
         if (this.editions.length === 0) {
             return `<p class="home__empty">No editions available.</p>`;
         }
 
-        const rows = this.editions
+        const sorted = this.editions
             .slice()
-            .sort((a, b) => b.id - a.id)
-            .map(edition => this._buildEditionRow(edition))
-            .join('');
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-        return `
-            <table class="home__edition-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Title</th>
-                        <th>Start Date</th>
-                        <th>Created by</th>
-                        <th>Created</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        `;
+        // Group by createdAt year, preserving sort order
+        const byYear = new Map();
+        for (const edition of sorted) {
+            const year = edition.createdAt
+                ? new Date(edition.createdAt).getFullYear()
+                : 'Unknown';
+            if (!byYear.has(year)) byYear.set(year, []);
+            byYear.get(year).push(edition);
+        }
+
+        return [...byYear.entries()]
+            .map(([year, editions]) => `
+                <div class="home__year-group">
+                    <div class="home__year-label">${year}</div>
+                    ${editions.map(e => this._buildEditionRow(e)).join('')}
+                </div>
+            `)
+            .join('');
     }
 
+    /**
+     * @param {object} edition
+     * @param {string} edition.id
+     * @param {string} edition.title
+     * @param {string} edition.type  — 'DRAFT' | 'OFFICIAL'
+     * @param {string} edition.createdAt
+     * @returns {string}
+     */
     _buildEditionRow(edition) {
         const date = edition.createdAt
-            ? new Date(edition.createdAt).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })
+            ? new Date(edition.createdAt).toLocaleDateString('en-GB', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            })
             : '—';
 
+        const badge = edition.type === 'OFFICIAL'
+            ? `<span class="home__badge home__badge--official">Official</span>`
+            : `<span class="home__badge home__badge--draft">Draft</span>`;
+
         return `
-            <tr class="home__edition-row" data-edition-id="${edition.id}" title="Explore edition ${edition.id}">
-                <td class="home__edition-id">${edition.id}</td>
-                <td class="home__edition-title">${this._esc(edition.title ?? '')}</td>
-                <td>${this._esc(edition.startDate ?? '—')}</td>
-                <td>${this._esc(edition.createdBy ?? '—')}</td>
-                <td>${date}</td>
-            </tr>
+            <div class="home__edition-row home__row" data-edition-id="${edition.id}" role="button" tabindex="0">
+                <div class="home__row-left">
+                    <span class="home__row-title">${this._esc(edition.title ?? '')}</span>
+                    <span class="home__row-meta">${date}</span>
+                </div>
+                <div class="home__row-right">
+                    ${badge}
+                    <span class="home__row-chevron">›</span>
+                </div>
+            </div>
         `;
     }
 
@@ -175,7 +206,7 @@ export default class HomeActivity {
     // Utilities
     // -------------------------------------------------------------------------
 
-    /** Escape HTML special characters to prevent XSS. */
+    /** @param {string} str */
     _esc(str) {
         return String(str)
             .replace(/&/g, '&amp;')
@@ -184,3 +215,11 @@ export default class HomeActivity {
             .replace(/"/g, '&quot;');
     }
 }
+
+// ---------------------------------------------------------------------------
+// Local dom helper (mirrors shared/utils.js pattern for self-contained use)
+// ---------------------------------------------------------------------------
+const dom = {
+    find: (sel, ctx = document) => ctx.querySelector(sel),
+    findAll: (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel)),
+};

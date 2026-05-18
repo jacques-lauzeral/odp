@@ -1,4 +1,4 @@
-import { async as asyncUtils } from '../../shared/utils.js';
+import { async as asyncUtils } from '../shared/utils.js';
 
 /**
  * FilterBar - Add/remove filter UI with chip display

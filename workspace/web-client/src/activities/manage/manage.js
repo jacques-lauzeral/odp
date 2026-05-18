@@ -11,7 +11,6 @@ import { errorHandler } from '../../shared/error-handler.js';
 
 const SUB_ACTIVITIES = {
     editions: () => import('./editions/editions.js'),
-    admin:    () => import('./admin/admin.js'),
 };
 
 const DEFAULT_SUB = 'editions';

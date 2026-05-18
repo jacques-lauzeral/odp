@@ -5,8 +5,8 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "dev": "http-server src -p 3000 -c-1 --cors",
-    "preview": "http-server src -p 3000",
+    "dev": "sirv src --port 3000 --cors --single --dev --host",
+    "preview": "sirv src --port 3000 --cors --single --host",
     "build": "echo 'No build step required for vanilla JS'",
     "clean": "echo 'No artifacts to clean'"
   },
@@ -14,7 +14,7 @@
     "@odp/shared": "file:../shared"
   },
   "devDependencies": {
-    "http-server": "^14.1.1"
+    "sirv-cli": "^2.0.2"
   },
   "keywords": [
     "odp",

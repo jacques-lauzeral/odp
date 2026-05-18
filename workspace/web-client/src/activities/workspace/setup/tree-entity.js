@@ -1,6 +1,6 @@
 import { dom } from '../../../shared/utils.js';
 import { apiClient } from '../../../shared/api-client.js';
-import ReferenceManager from '../../../components/odp/reference-manager.js';
+import ReferenceManager from '../../../components/reference-manager.js';
 
 export default class TreeEntity {
     // Subclass declarations

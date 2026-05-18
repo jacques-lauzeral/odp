@@ -1,4 +1,4 @@
-import { async as asyncUtils } from '../../shared/utils.js';
+import { async as asyncUtils } from '../shared/utils.js';
 import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 import ReferenceListManager from './reference-list-manager.js';
 import ReferenceManager from './reference-manager.js';

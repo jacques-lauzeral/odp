@@ -1,0 +1,68 @@
+<svg width="48" height="48" viewBox="0 0 100 110" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <filter id="glow">
+    <feGaussianBlur stdDeviation="1.5" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="softglow">
+    <feGaussianBlur stdDeviation="0.8" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+
+<!-- Edges -->
+<line x1="50" y1="12" x2="28" y2="32" stroke="#3b82f6" stroke-width="0.7" fill="none" opacity="0.5"/>
+<line x1="50" y1="12" x2="72" y2="32" stroke="#3b82f6" stroke-width="0.7" fill="none" opacity="0.5"/>
+<line x1="50" y1="12" x2="50" y2="45" stroke="#8b5cf6" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="28" y1="32" x2="14" y2="58" stroke="#10b981" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="28" y1="32" x2="38" y2="65" stroke="#10b981" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="72" y1="32" x2="86" y2="58" stroke="#10b981" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="72" y1="32" x2="62" y2="65" stroke="#10b981" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="50" y1="45" x2="38" y2="65" stroke="#8b5cf6" stroke-width="0.7" fill="none" opacity="0.38"/>
+<line x1="50" y1="45" x2="62" y2="65" stroke="#8b5cf6" stroke-width="0.7" fill="none" opacity="0.38"/>
+<line x1="38" y1="65" x2="50" y2="82" stroke="#10b981" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="62" y1="65" x2="50" y2="82" stroke="#10b981" stroke-width="0.7" fill="none" opacity="0.45"/>
+<line x1="14" y1="58" x2="38" y2="65" stroke="#3b82f6" stroke-width="0.7" fill="none" opacity="0.35"/>
+<line x1="86" y1="58" x2="62" y2="65" stroke="#3b82f6" stroke-width="0.7" fill="none" opacity="0.35"/>
+
+<!-- Stars -->
+<g filter="url(#glow)">
+  <circle cx="50" cy="12" r="4.5" fill="#93c5fd" opacity="0.95"/>
+  <circle cx="50" cy="12" r="1.8" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="28" cy="32" r="3.2" fill="#93c5fd" opacity="0.9"/>
+  <circle cx="28" cy="32" r="1.2" fill="#ffffff"/>
+</g>
+<g filter="url(#glow)">
+  <circle cx="50" cy="45" r="3.8" fill="#c4b5fd" opacity="0.9"/>
+  <circle cx="50" cy="45" r="1.5" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="72" cy="32" r="3.2" fill="#93c5fd" opacity="0.9"/>
+  <circle cx="72" cy="32" r="1.2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="14" cy="58" r="2.5" fill="#6ee7b7" opacity="0.85"/>
+  <circle cx="14" cy="58" r="1" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="38" cy="65" r="2.5" fill="#6ee7b7" opacity="0.85"/>
+  <circle cx="38" cy="65" r="1" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="62" cy="65" r="2.5" fill="#6ee7b7" opacity="0.85"/>
+  <circle cx="62" cy="65" r="1" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="86" cy="58" r="2.5" fill="#6ee7b7" opacity="0.85"/>
+  <circle cx="86" cy="58" r="1" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="50" cy="82" r="2.8" fill="#93c5fd" opacity="0.85"/>
+  <circle cx="50" cy="82" r="1.1" fill="#ffffff"/>
+</g>
+
+<!-- Tiny wordmark for icon context -->
+<text x="50" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="500" fill="#93c5fd" letter-spacing="1.5">ODIP Space</text>
+</svg>

@@ -9,10 +9,10 @@
  *   getViewControlsEl()     — returns the HTMLElement where view controls are mounted
  *   isReadOnly              — boolean; true in Explore context (hides create button)
  */
-import CollectionEntity from '../../../../components/odp/collection-entity.js';
-import TreeTableEntity from '../../../../components/odp/tree-table-entity.js';
+import CollectionEntity from '../../../../components/collection-entity.js';
+import TreeTableEntity from '../../../../components/tree-table-entity.js';
 import RequirementForm from './requirement-form.js';
-import { odpColumnTypes } from '../../../../components/odp/odp-column-types.js';
+import { odpColumnTypes } from '../../../../components/odp-column-types.js';
 import {
     getOperationalRequirementTypeDisplay,
     getDraftingGroupDisplay

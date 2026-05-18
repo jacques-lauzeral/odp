@@ -9,10 +9,10 @@
  *   getViewControlsEl()     — returns the HTMLElement where view controls are mounted
  *   isReadOnly              — boolean; true in Explore context (hides create button)
  */
-import CollectionEntity from '../../../../components/odp/collection-entity.js';
+import CollectionEntity from '../../../../components/collection-entity.js';
 import ChangeForm from './change-form.js';
-import TemporalGrid from '../../../../components/odp/temporal-grid.js';
-import { odpColumnTypes } from '../../../../components/odp/odp-column-types.js';
+import TemporalGrid from '../../../../components/temporal-grid.js';
+import { odpColumnTypes } from '../../../../components/odp-column-types.js';
 import { getDraftingGroupDisplay } from '/shared/src/index.js';
 
 export default class ChangesEntity {

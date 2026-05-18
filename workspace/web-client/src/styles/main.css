@@ -49,6 +49,12 @@ body {
 
 /* CSS Custom Properties (Design Tokens) */
 :root {
+    /* EC / ODIP Space palette */
+    --ec-navy:  #1F3864;
+    --ec-blue:  #2E75B6;
+    --ec-sky:   #BDD7EE;
+    --ec-light: #EBF3FB;
+
     /* Colors */
     --primary-50: #f0f9ff;
     --primary-100: #e0f2fe;

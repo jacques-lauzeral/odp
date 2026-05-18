@@ -7,7 +7,7 @@ import { errorHandler } from './shared/error-handler.js';
 import { apiClient } from './shared/api-client.js';
 import { endpoints } from './config/api.js';
 import { Router } from './shared/router.js';
-import Header from './components/common/header.js';
+import Header from './components/header.js';
 
 const CONNECTION_CHECK_INTERVAL = 60000;
 
@@ -22,6 +22,7 @@ const ACTIVITY_PATHS = new Map([
     ['elaborate', './activities/workspace/elaborate/elaborate.js'],
     ['explore',   './activities/workspace/explore/explore.js'],
     ['manage',    './activities/manage/manage.js'],
+    ['converse',  './activities/converse/converse.js'],
 ]);
 
 export class App {
@@ -51,6 +52,7 @@ export class App {
         const headerContainer = document.getElementById('header-container');
         if (headerContainer) {
             this.header.render(headerContainer);
+            this.header.restoreUser();
         }
 
         this.router = new Router({
@@ -148,8 +150,10 @@ export class App {
     setUser(userData) {
         this.user = userData;
         console.log('User set:', userData?.name ?? null);
-        if (this.header) {
-            this.header.onUserChange();
+        if (this.header) this.header.onUserChange();
+        // Refresh Home if active — Live Dataset row visibility depends on user state
+        if (this.currentActivity?.name === 'home') {
+            this.currentActivity.onUserChange();
         }
     }
 
@@ -168,6 +172,7 @@ export class App {
      */
     setDatasetContext(context) {
         this.datasetContext = context;
+        if (this.header) this.header.onContextChange();
     }
 
     /**

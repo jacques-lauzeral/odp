@@ -18,6 +18,7 @@ const ROUTES = [
     { prefix: '/elaborate', activityKey: 'elaborate', protected: true  },
     { prefix: '/explore',   activityKey: 'explore',   protected: false },
     { prefix: '/manage',    activityKey: 'manage',    protected: true  },
+    { prefix: '/converse', activityKey: 'converse', protected: false },
     { prefix: '/',          activityKey: 'home',      protected: false },
 ];
 

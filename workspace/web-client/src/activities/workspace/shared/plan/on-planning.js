@@ -1,4 +1,4 @@
-import TemporalGrid from '../../../../components/odp/temporal-grid.js';
+import TemporalGrid from '../../../../components/temporal-grid.js';
 import RequirementForm from '../os/requirement-form.js';
 import {
     DraftingGroup,

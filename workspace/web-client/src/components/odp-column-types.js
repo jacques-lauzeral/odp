@@ -5,7 +5,7 @@
  * and annotated references for document references with notes
  */
 
-// Import shared enums and utilities from @odp/shared
+// Import shared enums and utilities from /shared/src/index.js
 import {
     DraftingGroup,
     getDraftingGroupDisplay,

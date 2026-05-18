@@ -1,6 +1,6 @@
-import CollectionEntity from '../../../components/odp/collection-entity.js';
+import CollectionEntity from '../../../components/collection-entity.js';
 import ODPEditionForm from './odp-edition-form.js';
-import { odpColumnTypes } from '../../../components/odp/odp-column-types.js';
+import { odpColumnTypes } from '../../../components/odp-column-types.js';
 import { apiClient } from '../../../shared/api-client.js';
 
 export default class ODPEditionsEntity {

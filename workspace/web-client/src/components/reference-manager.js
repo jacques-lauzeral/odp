@@ -1,4 +1,4 @@
-import { normalizeId, idsEqual } from '../../../../shared/src/index.js';
+import { normalizeId, idsEqual } from '/shared/src/index.js';
 
 /**
  * ReferenceManager

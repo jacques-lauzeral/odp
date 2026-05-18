@@ -44,7 +44,7 @@ export function buildBreadcrumb(crumbs) {
  * Attach click listeners to breadcrumb links within a container.
  * Uses data-navigate attribute to call app.navigate().
  * @param {HTMLElement} container
- * @param {import('../../../../app.js').App} app
+ * @param {import('../app.js').App} app
  */
 export function attachBreadcrumbListeners(container, app) {
     container.querySelectorAll('[data-navigate]').forEach(el => {

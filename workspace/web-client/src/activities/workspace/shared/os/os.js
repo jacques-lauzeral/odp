@@ -26,10 +26,9 @@
  *   └──────────────────────────────────────────────────────┘
  */
 import { apiClient } from '../../../../shared/api-client.js';
-import { buildBreadcrumb, attachBreadcrumbListeners } from './breadcrumb.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
 import MasterDetail from '../../../../components/master-detail.js';
-import FilterBar from '../../../../components/odp/filter-bar.js';
+import FilterBar from '../../../../components/filter-bar.js';
 import {
     getOperationalRequirementTypeDisplay,
     getDraftingGroupDisplay,
@@ -146,7 +145,6 @@ export default class OsActivity {
     _buildListShell() {
         this.container.innerHTML = `
             <div class="os-activity">
-                <div class="os-breadcrumb" id="osBreadcrumb"></div>
                 <div class="os-filters" id="osFilters"></div>
                 <div class="os-tabs" id="osTabs">
                     ${ENTITY_KEYS.map(key => `
@@ -490,18 +488,13 @@ export default class OsActivity {
     // -------------------------------------------------------------------------
 
     _renderBreadcrumb(tabKey, selectedItem = null) {
-        const el = this.container?.querySelector('#osBreadcrumb');
-        if (!el) return;
-
-        const workspace = this._basePath().startsWith('/explore') ? 'Explore' : 'Elaborate';
+        const workspace     = this._basePath().startsWith('/explore') ? 'Explore' : 'Elaborate';
         const workspacePath = this._basePath().startsWith('/explore') ? '/explore' : '/elaborate';
-        const tabLabel = tabKey === 'requirements' ? 'Requirements' : 'Changes';
-        const tabPath  = `${this._basePath()}/${tabKey}`;
+        const tabLabel      = tabKey === 'requirements' ? 'Requirements' : 'Changes';
+        const tabPath       = `${this._basePath()}/${tabKey}`;
 
         const crumbs = [
-            { label: 'Home',      path: '/' },
-            { label: workspace,   path: workspacePath },
-            { label: tabLabel,    path: tabPath },
+            { label: tabLabel, path: tabPath },
         ];
 
         if (selectedItem) {
@@ -510,8 +503,7 @@ export default class OsActivity {
             crumbs.push({ label: code ? `${code} — ${title}` : title });
         }
 
-        el.innerHTML = buildBreadcrumb(crumbs);
-        attachBreadcrumbListeners(el, this.app);
+        this.app.header.setBreadcrumb(crumbs);
     }
 
     _updateBreadcrumb(tabKey, selectedItem = null) {
