@@ -210,6 +210,77 @@ export class ApiClient {
             data: { expectedVersionId }
         });
     }
+
+    /**
+     * List all O* entities (ONs, ORs, OCs) with a unified filter interface.
+     * Fans out to /operational-requirements and /operational-changes in parallel,
+     * then merges the results. When a unified server endpoint becomes available,
+     * only this method needs to change.
+     *
+     * Skip optimisation:
+     *   - type includes OC only  → skip requirements call
+     *   - type excludes OC       → skip changes call
+     *   - type absent or mixed   → both calls
+     *
+     * @param {object} params - Unified filter parameters
+     * @param {string[]} [params.type]              - ON / OR / OC (array)
+     * @param {string}   [params.drg]               - Owner Domain (DrG enum)
+     * @param {string}   [params.maturity]          - DRAFT / ADVANCED / MATURE
+     * @param {string}   [params.domain]            - Impacted Domain ID
+     * @param {string}   [params.stakeholderCategory] - Stakeholder Category ID
+     * @param {string}   [params.implements]        - O* ID (→ implementedON for ORs, implementsOR for OCs)
+     * @param {string}   [params.strategicDocument] - Reference Document ID (requirements only)
+     * @param {string}   [params.text]              - Full-text search
+     * @param {string}   [params.edition]           - Edition ID for edition context
+     * @returns {Promise<Array>} Merged array of ONs, ORs, and OCs
+     */
+    async listOStars(params = {}) {
+        const { type, implements: impl, strategicDocument, ...shared } = params;
+
+        const types = Array.isArray(type) ? type : (type ? [type] : []);
+        const includesOC  = types.length === 0 || types.includes('OC');
+        const includesReq = types.length === 0 || types.some(t => t === 'ON' || t === 'OR');
+
+        const ocOnly  = types.length > 0 && !includesReq;
+        const reqOnly = types.length > 0 && !includesOC;
+
+        const calls = [];
+
+        if (!ocOnly) {
+            const reqParams = { ...shared };
+            if (types.filter(t => t !== 'OC').length > 0) {
+                // Pass ON/OR type filter (exclude OC)
+                const reqTypes = types.filter(t => t === 'ON' || t === 'OR');
+                if (reqTypes.length === 1) reqParams.type = reqTypes[0];
+                // If both ON and OR, omit type param (server returns both)
+            }
+            if (impl)              reqParams.implementedON    = impl;
+            if (strategicDocument) reqParams.strategicDocument = strategicDocument;
+            calls.push(
+                this.get('/operational-requirements', { params: reqParams })
+                    .then(res => res ?? [])
+                    .catch(() => [])
+            );
+        } else {
+            calls.push(Promise.resolve([]));
+        }
+
+        if (!reqOnly) {
+            const ocParams = { ...shared };
+            if (impl) ocParams.implementsOR = impl;
+            // strategicDocument not supported on /operational-changes
+            calls.push(
+                this.get('/operational-changes', { params: ocParams })
+                    .then(res => res ?? [])
+                    .catch(() => [])
+            );
+        } else {
+            calls.push(Promise.resolve([]));
+        }
+
+        const [requirements, changes] = await Promise.all(calls);
+        return [...requirements, ...changes];
+    }
 }
 
 // Export singleton instance (will be initialized with app in index.js)

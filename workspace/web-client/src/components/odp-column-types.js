@@ -13,8 +13,6 @@ import {
     getMilestoneEventDisplay,
     Visibility,
     getVisibilityDisplay,
-    OperationalRequirementType,
-    getOperationalRequirementTypeDisplay
 } from '/shared/src/index.js';
 
 // ====================
@@ -646,81 +644,9 @@ export const waveColumn = {
     }
 };
 
-// ====================
-// REQUIREMENT TYPE (Updated with shared enum)
-// ====================
 
-export const requirementTypeColumn = {
-    /**
-     * Render requirement type (ON/OR) with badges using shared enum
-     */
-    render: (value, column, item, context) => {
-        if (!value) return '-';
 
-        const displayValue = getOperationalRequirementTypeDisplay(value);
-        const typeClass = value === 'ON' ? 'req-type-on' : value === 'OR' ? 'req-type-or' : 'req-type-other';
 
-        return `<span class="item-badge ${typeClass}">${escapeHtml(displayValue)}</span>`;
-    },
-
-    /**
-     * Filter options for requirement type using shared enum
-     */
-    getFilterOptions: (column, context) => [
-        { value: '', label: 'All Types' },
-        { value: 'ON', label: getOperationalRequirementTypeDisplay('ON') },
-        { value: 'OR', label: getOperationalRequirementTypeDisplay('OR') }
-    ],
-
-    /**
-     * Group title for requirement type using shared enum
-     */
-    getGroupTitle: (value, column, context) => {
-        if (!value) return 'Unknown Type';
-
-        const displayValue = getOperationalRequirementTypeDisplay(value);
-        return value === 'ON' ? 'Operational Needs' :
-            value === 'OR' ? 'Operational Requirements' :
-                displayValue;
-    }
-};
-
-// ====================
-// VISIBILITY (Updated with shared enum)
-// ====================
-
-export const visibilityColumn = {
-    /**
-     * Render visibility with status badges using shared enum
-     */
-    render: (value, column, item, context) => {
-        if (!value) return '-';
-
-        const displayValue = getVisibilityDisplay(value);
-        const visibilityClass = value === 'NM' ? 'visibility-nm' :
-            value === 'NETWORK' ? 'visibility-network' :
-                'visibility-other';
-
-        return `<span class="item-status ${visibilityClass}">${escapeHtml(displayValue)}</span>`;
-    },
-
-    /**
-     * Filter options using shared enum
-     */
-    getFilterOptions: (column, context) => [
-        { value: '', label: 'All Visibility' },
-        { value: 'NM', label: getVisibilityDisplay('NM') },
-        { value: 'NETWORK', label: getVisibilityDisplay('NETWORK') }
-    ],
-
-    /**
-     * Group title using shared enum
-     */
-    getGroupTitle: (value, column, context) => {
-        if (!value) return 'Unknown Visibility';
-        return getVisibilityDisplay(value);
-    }
-};
 
 // ====================
 // DRAFTING GROUP (NEW - using shared enum)
@@ -955,6 +881,51 @@ export const implementedONsColumn = {
 };
 
 // ====================
+// O* IMPLEMENTS (merged ON/OR/OC — renders implementedONs or implementedORs)
+// ====================
+
+export const oStarImplementsColumn = {
+    // value = pre-computed item.implements array (set by OStarEntity.onDataUpdated)
+    render: (value, column, context) => {
+        const refs = Array.isArray(value) ? value : [];
+        if (!refs.length) return '-';
+        const maxDisplay = column.maxDisplay || 2;
+        const display = refs.slice(0, maxDisplay);
+        const remaining = refs.length - display.length;
+        let html = display.map(ref => {
+            const label = ref?.code || ref?.title || ref?.name || String(ref?.id ?? 'Unknown');
+            return `<span class="reference-item">${escapeHtml(label)}</span>`;
+        }).join(', ');
+        if (remaining > 0) html += `, <span class="reference-more">+${remaining} more</span>`;
+        return html;
+    },
+    sort: () => 0,
+    getGroupTitle: (value) => {
+        const refs = Array.isArray(value) ? value : [];
+        if (!refs.length) return 'None';
+        const first = refs[0];
+        return first?.code || first?.title || first?.id || 'Unknown';
+    },
+};
+
+// ====================
+// O* TYPE (ON / OR / OC — short badge)
+// ====================
+
+export const oStarTypeColumn = {
+    render: (value) => {
+        if (!value) return '-';
+        const cls = value === 'ON' ? 'ostar-type-on'
+            : value === 'OR' ? 'ostar-type-or'
+                : value === 'OC' ? 'ostar-type-oc'
+                    : 'ostar-type-other';
+        return `<span class="item-badge ${cls}">${value}</span>`;
+    },
+    sort: (a, b) => (a ?? '').localeCompare(b ?? ''),
+    getGroupTitle: (value) => value || 'Unknown',
+};
+
+// ====================
 // UTILITIES
 // ====================
 
@@ -981,8 +952,8 @@ export const odpColumnTypes = {
     'entity-reference-list': entityReferenceListColumn,
     'annotated-reference-list': annotatedReferenceListColumn,  // NEW
     'wave': waveColumn,
-    'requirement-type': requirementTypeColumn,
-    'visibility': visibilityColumn,
+    'o-star-type': oStarTypeColumn,
+    'o-star-implements': oStarImplementsColumn,
     'drafting-group': draftingGroupColumn,
     'milestone-events': milestoneEventsColumn,
     'implemented-ons': implementedONsColumn,

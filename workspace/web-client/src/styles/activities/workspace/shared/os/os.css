@@ -1,1 +1,73 @@
-/* os — placeholder */
+/* ── O* toolbar — single row: filters | counts | search ── */
+.os-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    min-height: 0;
+}
+
+.os-toolbar__filters {
+    flex: 1;
+    min-width: 0;
+}
+
+.os-toolbar__summary {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.os-summary__text {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+}
+
+.os-toolbar__search {
+    flex-shrink: 0;
+}
+
+/* ── Search input ── */
+.os-search__input {
+    width: 220px;
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-sm);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: white;
+    color: var(--text-primary);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.os-search__input:focus {
+    outline: none;
+    border-color: var(--ec-blue);
+    box-shadow: 0 0 0 3px rgba(46, 117, 182, 0.12);
+}
+
+.os-search__input::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* ── O* type badges ── */
+.ostar-type-on {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.ostar-type-or {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.ostar-type-oc {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.ostar-type-other {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}

@@ -1,16 +1,15 @@
 /**
  * @file os.js
- * @description O* workspace orchestrator. Routes between list view and detail pages,
- * owns tab switching, filter bar, data loading, and entity component lifecycle.
- * Replaces AbstractInteractionActivity — no inheritance, no back-references.
+ * @description O* workspace orchestrator. Unified list of ONs, ORs, and OCs.
+ * Routes between list view and detail pages, owns search box, filter bar,
+ * perspective/grouping controls, data loading, and entity component lifecycle.
  *
  * SubPath routing:
- *   []                           → list view, Requirements tab
- *   ['requirements']             → list view, Requirements tab
- *   ['changes']                  → list view, Changes tab
- *   ['requirement', '{id}']      → RequirementDetails in panel + breadcrumb
- *   ['change', '{id}']           → ChangeDetails in panel + breadcrumb
- *   page-mode detail (inter-O*): → full page via app.navigate from detail links
+ *   []                      → list view
+ *   ['on', '{id}']          → RequirementDetails in panel (ON)
+ *   ['or', '{id}']          → RequirementDetails in panel (OR)
+ *   ['oc', '{id}']          → ChangeDetails in panel (OC)
+ *   page-mode detail:       → full page via app.navigate from detail links
  *
  * Context/mode from app.getDatasetContext():
  *   { type: 'live' }               → isReadOnly: false
@@ -18,30 +17,23 @@
  *
  * Layout (list view):
  *   ┌──────────────────────────────────────────────────────┐
- *   │ Breadcrumb (full width)                              │
+ *   │ Search box (full width)                              │
  *   │ Filter bar (full width)                              │
- *   │ Tab bar: Requirements | Changes                      │
  *   │ View controls (perspective, grouping, create)        │
  *   │ MasterDetail: list column | detail panel             │
  *   └──────────────────────────────────────────────────────┘
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
+import { dom } from '../../../../shared/utils.js';
 import MasterDetail from '../../../../components/master-detail.js';
 import FilterBar from '../../../../components/filter-bar.js';
 import {
-    getOperationalRequirementTypeDisplay,
+    DraftingGroup,
     getDraftingGroupDisplay,
     MaturityLevel,
     getMaturityLevelDisplay,
 } from '/shared/src/index.js';
-
-const ENTITY_KEYS = ['requirements', 'changes'];
-
-const ENTITY_CONFIG = {
-    requirements: { name: 'Operational Requirements', endpoint: '/operational-requirements' },
-    changes:      { name: 'Operational Changes',      endpoint: '/operational-changes'      },
-};
 
 export default class OsActivity {
     /**
@@ -51,26 +43,18 @@ export default class OsActivity {
         this.app = app;
         this.container = null;
 
-        // List view state
-        this.currentTab      = 'requirements';
-        this.setupData       = null;
-        this.filterBar       = null;
-        this.masterDetail    = null;
+        this.setupData    = null;
+        this.filterBar    = null;
+        this.masterDetail = null;
         this._viewControlsEl = null;
-
-        this.sharedState = {
-            filtersObject: {},
-            filters:       [],
-        };
-
-        this.entityCounts = {
-            requirements: { ON: 0, OR: 0, total: 0 },
-            changes:      { total: 0 },
-        };
-
-        this._entityComponents   = {};
+        this._ostarEntity    = null;
         this._requirementDetails = null;
         this._changeDetails      = null;
+
+        this._searchText    = '';
+        this._filtersObject = {};
+        this._searchDebounce = null;
+        this._counts = { ON: 0, OR: 0, OC: 0 };
     }
 
     // -------------------------------------------------------------------------
@@ -81,15 +65,14 @@ export default class OsActivity {
         this.container = container;
 
         try {
-            const { entityType, id, tabSelect } = this._parseSubPath(subPath);
+            const { entityType, id } = this._parseSubPath(subPath);
 
-            if (entityType === 'requirement' && id !== null) {
+            if (entityType === 'on' || entityType === 'or') {
                 await this._renderRequirementDetail(id);
-            } else if (entityType === 'change' && id !== null) {
+            } else if (entityType === 'oc') {
                 await this._renderChangeDetail(id);
             } else {
-                if (tabSelect) this.currentTab = tabSelect;
-                await this._renderList(subPath);
+                await this._renderList();
             }
         } catch (error) {
             errorHandler.handle(error, 'os');
@@ -103,13 +86,14 @@ export default class OsActivity {
     cleanup() {
         this.filterBar?.destroy?.();
         this.masterDetail?.cleanup();
-        Object.values(this._entityComponents).forEach(c => c.cleanup?.());
+        this._ostarEntity?.cleanup?.();
         this._requirementDetails?.cleanup?.();
         this._changeDetails?.cleanup?.();
+        clearTimeout(this._searchDebounce);
 
         this.filterBar           = null;
         this.masterDetail        = null;
-        this._entityComponents   = {};
+        this._ostarEntity        = null;
         this._requirementDetails = null;
         this._changeDetails      = null;
         this.setupData           = null;
@@ -120,7 +104,7 @@ export default class OsActivity {
     // List view
     // -------------------------------------------------------------------------
 
-    async _renderList(subPath) {
+    async _renderList() {
         this.container.innerHTML = this._buildLoadingHtml();
 
         try {
@@ -130,201 +114,233 @@ export default class OsActivity {
             this.setupData = { stakeholderCategories: [], domains: [], referenceDocuments: [], waves: [] };
         }
 
-        if (subPath.length > 0 && ENTITY_KEYS.includes(subPath[0])) {
-            this.currentTab = subPath[0];
-        }
-
         this._buildListShell();
+        this._mountSearchBox();
         this._mountFilterBar();
-        await this._prepareEntityComponents();
-        await this._loadData(this.sharedState.filtersObject);
-        await this._activateTab(this.currentTab);
-        this._renderBreadcrumb(this.currentTab);
+        await this._prepareOStarEntity();
+        this.app.header.setBreadcrumb([{ label: 'O*s' }]);
+        await this._loadData();
+        this._ostarEntity.onActivated();
     }
 
     _buildListShell() {
         this.container.innerHTML = `
             <div class="os-activity">
-                <div class="os-filters" id="osFilters"></div>
-                <div class="os-tabs" id="osTabs">
-                    ${ENTITY_KEYS.map(key => `
-                        <button
-                            class="interaction-tab ${key === this.currentTab ? 'interaction-tab--active' : ''}"
-                            data-tab="${key}"
-                            id="osTab-${key}">
-                            ${this._tabLabel(key)}
-                        </button>
-                    `).join('')}
+                <div class="os-toolbar" id="osToolbar">
+                    <div class="os-toolbar__filters" id="osFilters"></div>
+                    <div class="os-toolbar__summary" id="osSummary"></div>
+                    <div class="os-toolbar__search" id="osSearch"></div>
                 </div>
                 <div class="os-view-controls" id="osViewControls"></div>
                 <div class="os-content" id="osContent"></div>
             </div>
         `;
 
-        this._viewControlsEl = this.container.querySelector('#osViewControls');
+        this._viewControlsEl = dom.find('#osViewControls', this.container);
 
-        this.container.querySelectorAll('.interaction-tab').forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (btn.dataset.tab !== this.currentTab) {
-                    this._switchTab(btn.dataset.tab);
-                }
-            });
-        });
-
-        const contentEl = this.container.querySelector('#osContent');
+        const contentEl = dom.find('#osContent', this.container);
         this.masterDetail = new MasterDetail(contentEl, {
             initialRatio: 0.67,
             placeholderHtml: `
                 <div class="master-detail__placeholder">
                     <div class="master-detail__placeholder-icon">🔍</div>
-                    <p class="master-detail__placeholder-text">Select an item to view details</p>
+                    <p class="master-detail__placeholder-text">Select an O* to view details</p>
                 </div>
             `,
         });
         this.masterDetail.render();
     }
 
+    _mountSearchBox() {
+        const el = dom.find('#osSearch', this.container);
+        if (!el) return;
+
+        el.innerHTML = `
+            <div class="os-search__box">
+                <input
+                    class="os-search__input"
+                    id="osSearchInput"
+                    type="search"
+                    placeholder="Search ONs, ORs, OCs…"
+                    autocomplete="off"
+                    value="${this._esc(this._searchText)}"
+                >
+            </div>
+        `;
+
+        dom.find('#osSearchInput', el)?.addEventListener('input', (e) => {
+            clearTimeout(this._searchDebounce);
+            this._searchDebounce = setTimeout(() => {
+                this._searchText = e.target.value.trim();
+                this._loadData();
+            }, 300);
+        });
+    }
+
     _mountFilterBar() {
-        const filtersEl = this.container.querySelector('#osFilters');
+        const filtersEl = dom.find('#osFilters', this.container);
         if (!filtersEl) return;
 
-        this.filterBar = new FilterBar(filtersEl, {
-            filters: this._getFilterConfig(),
-            fetchSuggestionsCallback: (key, query) => this._fetchFilterSuggestions(key, query),
-        });
+        this.filterBar = new FilterBar(this._getFilterConfig(), this.setupData);
+        this.filterBar.fetchSuggestionsCallback = (key, query) => this._fetchFilterSuggestions(key, query);
+        this.filterBar.render(filtersEl);
 
         filtersEl.addEventListener('filtersChanged', (e) => {
-            const filtersArray  = e.detail?.filters ?? [];
-            const filtersObject = Object.fromEntries(filtersArray.map(f => [f.key, f.value]));
-            this.sharedState.filters       = filtersArray;
-            this.sharedState.filtersObject = filtersObject;
-            this._loadData(filtersObject);
+            // e.detail.filters is the flat object { key: value }
+            this._filtersObject = e.detail?.filters ?? {};
+            this._loadData();
         });
     }
 
-    // -------------------------------------------------------------------------
-    // Tab management
-    // -------------------------------------------------------------------------
-
-    async _activateTab(tabKey) {
-        this.currentTab = tabKey;
-
-        this.container.querySelectorAll('.interaction-tab').forEach(btn => {
-            btn.classList.toggle('interaction-tab--active', btn.dataset.tab === tabKey);
+    async _prepareOStarEntity() {
+        if (this._ostarEntity) return;
+        const { default: OStarEntity } = await import('./o-star-entity.js');
+        this._ostarEntity = new OStarEntity(this.app, this.setupData, {
+            onItemSelect:      (item) => this._handleItemSelect(item),
+            getViewControlsEl: ()     => this._viewControlsEl,
+            isReadOnly:        this._isReadOnly(),
         });
-
-        ENTITY_KEYS.forEach(key => {
-            if (key !== tabKey) this._entityComponents[key]?.onDeactivated?.();
-        });
-
-        const entity = this._entityComponents[tabKey];
-        if (entity) {
-            entity.container = this.masterDetail.listContainer;
-            entity.onActivated?.();
-        }
-    }
-
-    async _switchTab(tabKey) {
-        this._entityComponents[this.currentTab]?.onDeactivated?.();
-        await this._activateTab(tabKey);
-        this.masterDetail?.clearDetail();
-        this._renderBreadcrumb(tabKey);
-        window.history.replaceState({}, '', `${this._basePath()}/${tabKey}`);
-    }
-
-    _updateTabLabels() {
-        ENTITY_KEYS.forEach(key => {
-            const el = this.container?.querySelector(`#osTab-${key}`);
-            if (el) el.innerHTML = this._tabLabel(key);
-        });
-    }
-
-    _tabLabel(key) {
-        if (key === 'requirements') {
-            const { ON, OR } = this.entityCounts.requirements;
-            return `<span>Operational Needs: ${ON} | Requirements: ${OR}</span>`;
-        }
-        return `<span>Operational Changes: ${this.entityCounts.changes.total}</span>`;
-    }
-
-    // -------------------------------------------------------------------------
-    // Entity component preparation
-    // -------------------------------------------------------------------------
-
-    async _prepareEntityComponents() {
-        const isReadOnly = this._isReadOnly();
-
-        for (const key of ENTITY_KEYS) {
-            if (this._entityComponents[key]) continue;
-
-            const modulePath = key === 'requirements' ? './requirements.js' : './changes.js';
-            const { default: EntityClass } = await import(modulePath);
-
-            this._entityComponents[key] = new EntityClass(
-                this.app,
-                ENTITY_CONFIG[key],
-                this.setupData,
-                {
-                    onItemSelect:      (item) => this._handleItemSelect(item, key),
-                    getViewControlsEl: ()     => this._viewControlsEl,
-                    isReadOnly,
-                }
-            );
-        }
+        this._ostarEntity.container = this.masterDetail.listContainer;
     }
 
     // -------------------------------------------------------------------------
     // Data loading
     // -------------------------------------------------------------------------
 
-    async _loadData(filtersObject = {}) {
-        await Promise.all(
-            ENTITY_KEYS.map(key => this._loadEntityData(key, filtersObject).catch(err => {
-                errorHandler.handle(err, `os-load-${key}`);
-            }))
-        );
+    async _loadData() {
+        try {
+            const params = this._buildQueryParams();
+            const raw    = await apiClient.listOStars(params);
+            const data   = Array.isArray(raw) ? raw : [];
+            // Normalise type — OCs have no type field from the API
+            data.forEach(item => { if (!item.type) item.type = 'OC'; });
+            this._counts = {
+                ON: data.filter(i => i.type === 'ON').length,
+                OR: data.filter(i => i.type === 'OR').length,
+                OC: data.filter(i => i.type === 'OC').length,
+            };
+            this._updateSummary();
+            this._ostarEntity?.onDataUpdated(data);
+        } catch (error) {
+            errorHandler.handle(error, 'os-load');
+        }
     }
 
-    async _loadEntityData(key, filtersObject) {
-        const params = this._buildQueryParams(filtersObject);
-        const data   = await apiClient.listEntities(ENTITY_CONFIG[key].endpoint, params);
-        const list   = Array.isArray(data) ? data : [];
+    _updateSummary() {
+        const el = dom.find('#osSummary', this.container);
+        if (!el) return;
+        const { ON, OR, OC } = this._counts;
+        el.innerHTML = `<span class="os-summary__text">${ON} ONs &nbsp;·&nbsp; ${OR} ORs &nbsp;·&nbsp; ${OC} OCs</span>`;
+    }
 
-        if (key === 'requirements') {
-            this.entityCounts.requirements = {
-                ON:    list.filter(i => i.type === 'ON').length,
-                OR:    list.filter(i => i.type === 'OR').length,
-                total: list.length,
-            };
-        } else {
-            this.entityCounts.changes = { total: list.length };
+    _buildQueryParams() {
+        const params = {};
+        const ctx    = this.app.getDatasetContext();
+
+        if (ctx?.type === 'edition') params.edition = ctx.editionId;
+        if (this._searchText)        params.text     = this._searchText;
+
+        // Map unified filter keys to listOStars param shape
+        const keyMap = {
+            implements: 'implements',
+            drg:        'drg',
+            type:       'type',
+            maturity:   'maturity',
+            domain:     'domain',
+            stakeholderCategory: 'stakeholderCategory',
+            strategicDocument:   'strategicDocument',
+        };
+
+        Object.entries(this._filtersObject).forEach(([key, value]) => {
+            if (value === null || value === undefined || value === '') return;
+            const mapped = keyMap[key] ?? key;
+            params[mapped] = Array.isArray(value) ? value.join(',') : value;
+        });
+
+        return params;
+    }
+
+    // -------------------------------------------------------------------------
+    // Filter configuration
+    // -------------------------------------------------------------------------
+
+    _getFilterConfig() {
+        return [
+            {
+                key: 'type', label: 'Type', inputType: 'select',
+                options: [
+                    { value: 'ON', label: 'ON' },
+                    { value: 'OR', label: 'OR' },
+                    { value: 'OC', label: 'OC' },
+                ],
+            },
+            {
+                key: 'drg', label: 'Owner Domain', inputType: 'select',
+                options: Object.values(DraftingGroup).map(k => ({ value: k, label: getDraftingGroupDisplay(k) ?? k })),
+            },
+            {
+                key: 'maturity', label: 'Maturity', inputType: 'select',
+                options: Object.keys(MaturityLevel).map(k => ({ value: k, label: getMaturityLevelDisplay(k) })),
+            },
+            {
+                key: 'domain', label: 'Impacted Domain', inputType: 'suggest',
+                options: (this.setupData?.domains ?? []).map(d => ({ value: d.id, label: d.name })),
+            },
+            {
+                key: 'stakeholderCategory', label: 'Stakeholder', inputType: 'suggest',
+                options: (this.setupData?.stakeholderCategories ?? []).map(s => ({ value: s.id, label: s.name })),
+            },
+            {
+                key: 'implements', label: 'Implements', inputType: 'suggest',
+            },
+            {
+                key: 'strategicDocument', label: 'Strategic Doc', inputType: 'suggest',
+                options: (this.setupData?.referenceDocuments ?? []).map(r => ({ value: r.id, label: r.name })),
+            },
+        ];
+    }
+
+    async _fetchFilterSuggestions(key, query) {
+        if (!query || query.length < 2) return [];
+        if (key === 'implements') {
+            try {
+                const results = await apiClient.get(`/operational-requirements`, { params: { title: query, limit: 10 } });
+                return (results ?? []).map(item => ({
+                    value: String(item.itemId ?? item.id),
+                    label: `[${item.type ?? '?'}] ${item.code ? item.code + ' — ' : ''}${item.title}`,
+                }));
+            } catch { return []; }
         }
-
-        this._entityComponents[key]?.onDataUpdated?.(list);
-        this._updateTabLabels();
+        return [];
     }
 
     // -------------------------------------------------------------------------
     // Item selection → render detail in panel
     // -------------------------------------------------------------------------
 
-    async _handleItemSelect(item, tabKey) {
-        const entityType = tabKey === 'requirements' ? 'requirement' : 'change';
+    async _handleItemSelect(item) {
         const id         = item.itemId ?? item.id;
+        const isOC       = item.type === 'OC' || (!item.type && item.code?.startsWith('OC-'));
+        const entityType = isOC ? 'oc' : (item.type === 'ON' ? 'on' : 'or');
 
-        // Update breadcrumb to show selected item
-        this._updateBreadcrumb(tabKey, item);
+        const code  = item.code ?? '';
+        const title = item.title ?? String(id ?? '');
+        this.app.header.setBreadcrumb([
+            { label: 'O*s', path: `${this._basePath()}` },
+            { label: code ? `${code} — ${title}` : title },
+        ]);
 
-        // Render detail in MasterDetail right panel
-        if (entityType === 'requirement') {
-            await this._renderRequirementDetailInPanel(id);
-        } else {
+        if (isOC) {
             await this._renderChangeDetailInPanel(id);
+        } else {
+            await this._renderRequirementDetailInPanel(id);
         }
+
+        window.history.replaceState({}, '', `${this._basePath()}/${entityType}/${id}`);
     }
 
     // -------------------------------------------------------------------------
-    // Detail — panel mode (item selected in list)
+    // Detail — panel mode
     // -------------------------------------------------------------------------
 
     async _renderRequirementDetailInPanel(id) {
@@ -344,7 +360,7 @@ export default class OsActivity {
     }
 
     // -------------------------------------------------------------------------
-    // Detail — page mode (inter-O* navigation, direct URL)
+    // Detail — page mode (direct URL or inter-O* navigation)
     // -------------------------------------------------------------------------
 
     async _renderRequirementDetail(id) {
@@ -361,90 +377,6 @@ export default class OsActivity {
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
         await this._changeDetails.render(this.container, id, 'page');
-    }
-
-    // -------------------------------------------------------------------------
-    // Filter configuration
-    // -------------------------------------------------------------------------
-
-    _getFilterConfig() {
-        return [
-            {
-                key: 'type', label: 'Type', inputType: 'select',
-                options: ['ON', 'OR'].map(v => ({ value: v, label: getOperationalRequirementTypeDisplay(v) })),
-            },
-            {
-                key: 'maturity', label: 'Maturity', inputType: 'select',
-                options: Object.keys(MaturityLevel).map(k => ({ value: k, label: getMaturityLevelDisplay(k) })),
-            },
-            {
-                key: 'drg', label: 'DrG', inputType: 'select',
-                options: (this.setupData?.domains ?? []).map(d => ({ value: d.id, label: getDraftingGroupDisplay(d.id) ?? d.id })),
-            },
-            { key: 'title',    label: 'Title',    inputType: 'text'    },
-            { key: 'text',     label: 'Text',     inputType: 'text'    },
-            {
-                key: 'stakeholderCategory', label: 'Stakeholder', inputType: 'select',
-                options: (this.setupData?.stakeholderCategories ?? []).map(s => ({ value: s.id, label: s.name })),
-            },
-            {
-                key: 'domain', label: 'Domain', inputType: 'suggest',
-                options: (this.setupData?.domains ?? []).map(d => ({ value: d.id, label: d.name })),
-            },
-            {
-                key: 'strategicDocument', label: 'Strategic Doc', inputType: 'suggest',
-                options: (this.setupData?.referenceDocuments ?? []).map(r => ({ value: r.id, label: r.name })),
-            },
-            { key: 'refines',     label: 'Refines',      inputType: 'suggest' },
-            { key: 'implements',  label: 'Implements',   inputType: 'suggest' },
-            { key: 'dependency',  label: 'Depends On',   inputType: 'suggest' },
-            { key: 'implementsOR', label: 'Implements OR', inputType: 'suggest' },
-        ];
-    }
-
-    async _fetchFilterSuggestions(key, query) {
-        if (!query || query.length < 2) return [];
-        const endpointMap = {
-            refines:      '/operational-requirements',
-            implements:   '/operational-requirements',
-            dependency:   '/operational-requirements',
-            implementsOR: '/operational-requirements',
-        };
-        const endpoint = endpointMap[key];
-        if (!endpoint) return [];
-        try {
-            const results = await apiClient.get(`${endpoint}?title=${encodeURIComponent(query)}&limit=10`);
-            return (results ?? []).map(item => ({
-                value: String(item.itemId ?? item.id),
-                label: `[${item.type ?? '?'}] ${item.code ? item.code + ' – ' : ''}${item.title}`,
-            }));
-        } catch {
-            return [];
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Query params
-    // -------------------------------------------------------------------------
-
-    _buildQueryParams(filtersObject = {}) {
-        const params = {};
-        const ctx    = this.app.getDatasetContext();
-
-        if (ctx?.type === 'edition') params.edition = ctx.editionId;
-
-        const keyMap = {
-            refines:      'refinesParent',
-            implements:   'implementedON',
-            implementsOR: 'implementsOR',
-        };
-
-        Object.entries(filtersObject).forEach(([key, value]) => {
-            if (value === null || value === undefined || value === '') return;
-            params[keyMap[key] ?? key] = Array.isArray(value) ? value.join(',') : value;
-        });
-
-        return params;
     }
 
     // -------------------------------------------------------------------------
@@ -472,45 +404,22 @@ export default class OsActivity {
         if (subPath.length >= 2) {
             const entityType = subPath[0];
             const id         = parseInt(subPath[1], 10);
-            if ((entityType === 'requirement' || entityType === 'change') && !isNaN(id)) {
-                return { entityType, id, tabSelect: null };
+            if (['on', 'or', 'oc'].includes(entityType) && !isNaN(id)) {
+                return { entityType, id };
             }
         }
-        // Bare tab name: ['requirements'] or ['changes']
-        if (subPath.length === 1 && ENTITY_KEYS.includes(subPath[0])) {
-            return { entityType: null, id: null, tabSelect: subPath[0] };
-        }
-        return { entityType: null, id: null, tabSelect: null };
-    }
-
-    // -------------------------------------------------------------------------
-    // Breadcrumb
-    // -------------------------------------------------------------------------
-
-    _renderBreadcrumb(tabKey, selectedItem = null) {
-        const workspace     = this._basePath().startsWith('/explore') ? 'Explore' : 'Elaborate';
-        const workspacePath = this._basePath().startsWith('/explore') ? '/explore' : '/elaborate';
-        const tabLabel      = tabKey === 'requirements' ? 'Requirements' : 'Changes';
-        const tabPath       = `${this._basePath()}/${tabKey}`;
-
-        const crumbs = [
-            { label: tabLabel, path: tabPath },
-        ];
-
-        if (selectedItem) {
-            const code  = selectedItem.code ?? '';
-            const title = selectedItem.title ?? String(selectedItem.itemId ?? selectedItem.id ?? '');
-            crumbs.push({ label: code ? `${code} — ${title}` : title });
-        }
-
-        this.app.header.setBreadcrumb(crumbs);
-    }
-
-    _updateBreadcrumb(tabKey, selectedItem = null) {
-        this._renderBreadcrumb(tabKey, selectedItem);
+        return { entityType: null, id: null };
     }
 
     _buildLoadingHtml() {
         return `<div class="os-activity"><div class="loading"><p>Loading…</p></div></div>`;
+    }
+
+    _esc(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 }
