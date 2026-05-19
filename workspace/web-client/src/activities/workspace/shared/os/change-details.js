@@ -68,6 +68,7 @@ export default class ChangeDetails {
             this.item       = item;
             this._setupData = setupData;
 
+            const formExisted = this._form != null;
             await this._ensureForm(setupData);
 
             // Render shell
@@ -76,9 +77,9 @@ export default class ChangeDetails {
             // Set header breadcrumb
             this.app.header.setBreadcrumb(this._buildCrumbs(item));
 
-            // Inject tabbed body from form
+            // Inject tabbed body from form — preserve active tab on re-renders
             const bodyEl   = this.container.querySelector('#osDetailBody');
-            const bodyHtml = await this._form.generateReadOnlyView(item);
+            const bodyHtml = await this._form.generateReadOnlyView(item, formExisted);
             bodyEl.innerHTML = bodyHtml;
 
             // Initialise Quill editors and reference managers inside the body
