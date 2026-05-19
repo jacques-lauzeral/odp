@@ -9,29 +9,22 @@
 
 .tab-headers {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     border-bottom: 1px solid var(--border-primary, #ddd);
     margin-bottom: var(--space-4, 1rem);
     flex-shrink: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-.tab-headers::-webkit-scrollbar {
-    display: none;
 }
 
 .tab-header {
-    padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+    padding: var(--space-2, 0.5rem) var(--space-2, 0.5rem);
     border: none;
     background: none;
     cursor: pointer;
     border-bottom: 2px solid transparent;
-    font-size: var(--text-sm, 0.875rem);
+    font-size: var(--font-size-xs, 0.75rem);
     color: var(--text-secondary, #666);
     transition: color 0.2s, border-color 0.2s;
+    white-space: nowrap;
 }
 
 .tab-header:hover {
@@ -46,7 +39,7 @@
 
 .tab-contents {
     flex: 1;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .tab-panel {
@@ -58,6 +51,27 @@
 
 .tab-panel.active {
     display: block;
+}
+
+/* ── Detail fields (read-only view) ── */
+.detail-field {
+    padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+}
+
+.detail-field label {
+    display: block;
+    font-size: var(--font-size-xs, 0.75rem);
+    font-weight: var(--font-weight-semibold, 600);
+    color: var(--text-secondary, #6b7280);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: var(--space-1, 0.25rem);
+}
+
+.detail-value {
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--text-primary, #111827);
+    line-height: 1.5;
 }
 
 /* Tag Selector Component */

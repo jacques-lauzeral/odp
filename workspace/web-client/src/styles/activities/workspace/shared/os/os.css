@@ -1,9 +1,8 @@
-/* ── O* detail shell — height propagation ── */
+/* ── O* detail shell ── */
 .os-detail {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    overflow: hidden;
+    min-width: 520px;
 }
 
 .os-detail__toolbar {
@@ -12,8 +11,6 @@
 
 .os-detail__body {
     flex: 1;
-    overflow: hidden;
-    min-height: 0;
 }
 
 /* ── O* activity shell — height propagation ── */
