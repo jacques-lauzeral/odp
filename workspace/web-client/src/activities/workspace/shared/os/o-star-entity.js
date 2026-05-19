@@ -42,9 +42,10 @@ export default class OStarEntity {
         this.app       = app;
         this.setupData = setupData;
 
-        this._onItemSelect      = options.onItemSelect      ?? (() => {});
-        this._getViewControlsEl = options.getViewControlsEl ?? (() => null);
-        this._isReadOnly        = options.isReadOnly        ?? false;
+        this._onItemSelect            = options.onItemSelect            ?? (() => {});
+        this._getViewControlsEl       = options.getViewControlsEl       ?? (() => null);
+        this._isReadOnly              = options.isReadOnly              ?? false;
+        this._onViewControlsRendered  = options.onViewControlsRendered  ?? (() => {});
 
         this.container          = null;
         this.currentPerspective = 'collection';
@@ -330,6 +331,7 @@ export default class OStarEntity {
         ).join('')}
                     </select>
                 </div>` : ''}
+                <span class="os-summary__text" id="osSummaryText"></span>
                 ${!this._isReadOnly ? `
                 <div class="ostar-controls__actions">
                     <button class="btn btn-primary btn-sm" id="createON">+ ON</button>
@@ -352,6 +354,8 @@ export default class OStarEntity {
         el.querySelector('#createON')?.addEventListener('click', () => this._handleCreate('ON'));
         el.querySelector('#createOR')?.addEventListener('click', () => this._handleCreate('OR'));
         el.querySelector('#createOC')?.addEventListener('click', () => this._handleCreate('OC'));
+
+        this._onViewControlsRendered();
     }
 
     _switchPerspective(perspective) {

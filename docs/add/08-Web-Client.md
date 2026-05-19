@@ -35,8 +35,7 @@ web-client/src/
 │   │   └── shared/
 │   │       ├── os/
 │   │       │   ├── os.js                   O* workspace orchestrator
-│   │       │   ├── requirements.js         RequirementsEntity (list + tree)
-│   │       │   ├── changes.js              ChangesEntity (list + temporal)
+│   │       │   ├── o-star-entity.js        Unified ON/OR/OC list — Collection + Tree perspectives
 │   │       │   ├── requirement-details.js  ON/OR read-only detail view
 │   │       │   ├── change-details.js       OC read-only detail view
 │   │       │   ├── requirement-form.js     ON/OR create/edit form
@@ -141,16 +140,16 @@ Context difference (live vs edition, R/W vs R/O) flows transparently through `ap
 
 ### 3.4 O* Sub-Path Routing
 
-`OsActivity` handles:
+`OsActivity` handles a unified ON/OR/OC list. Sub-path routing:
 
 | SubPath | Rendering |
 |---|---|
-| `[]` or `['requirements']` | List view, Requirements tab active |
-| `['changes']` | List view, Changes tab active |
-| `['requirement', '{id}']` | `RequirementDetails` in MasterDetail panel |
-| `['change', '{id}']` | `ChangeDetails` in MasterDetail panel |
+| `[]` | List view — unified ON/OR/OC result set |
+| `['on', '{id}']` | `RequirementDetails` (ON) in MasterDetail panel |
+| `['or', '{id}']` | `RequirementDetails` (OR) in MasterDetail panel |
+| `['oc', '{id}']` | `ChangeDetails` (OC) in MasterDetail panel |
 
-Full-page detail (page mode) is reached only via inter-O\* reference navigation from the detail panel.
+On item selection the URL is updated via `replaceState` to reflect the selected entity. Full-page detail (page mode) is reached only via inter-O\* reference navigation from the detail panel.
 
 ### 3.5 Browser History
 
@@ -451,56 +450,59 @@ temporalGrid.setMilestoneRendering({
 
 ### 10.1 Architecture
 
-`OsActivity` is the orchestrator for all O\* interaction. It replaces the former `AbstractInteractionActivity` and eliminates all back-references to parent activities.
+`OsActivity` (`os.js`) is the orchestrator. `OStarEntity` (`o-star-entity.js`) owns the unified ON/OR/OC list component.
 
-Responsibilities of `OsActivity`:
+Responsibilities:
 
 | Concern | Owner |
 |---|---|
 | SubPath routing (list vs detail) | `OsActivity` |
-| Tab switching (Requirements / Changes) | `OsActivity` |
-| Entity component lifecycle | `OsActivity` |
+| Shell layout (toolbar, view controls, MasterDetail) | `OsActivity` |
+| Search box (debounced text input) | `OsActivity` |
 | Filter bar instantiation and wiring | `OsActivity` |
-| Filter state management | `OsActivity` |
-| Data fetching (requirements / changes) | `OsActivity` |
-| Query param building (edition context + filters) | `OsActivity` |
-| Entity counts / tab badge labels | `OsActivity` |
+| Data fetching via `listOStars` | `OsActivity` |
+| OC type normalisation (`type = 'OC'`) | `OsActivity` |
+| Count summary (ONs · ORs · OCs) | `OsActivity` |
+| Breadcrumb trail | `OsActivity` |
 | Two-column layout + resizable divider | `MasterDetail` component |
-| Setup data loading | `App.getSetupData()` |
-| List rendering, view controls, perspective toggle | `RequirementsEntity` / `ChangesEntity` |
+| List rendering — Collection + Tree perspectives | `OStarEntity` |
+| Perspective toggle, grouping selector, create buttons | `OStarEntity` |
+| Virtual `implements` field pre-computation | `OStarEntity` |
 | Detail panel content | `RequirementDetails` / `ChangeDetails` |
-| Breadcrumb trail (list view) | `OsActivity` |
-| Breadcrumb trail (page mode) | `RequirementDetails` / `ChangeDetails` |
 
-### 10.2 Entity Components
+### 10.2 OStarEntity
 
-`RequirementsEntity` and `ChangesEntity` receive three injected callbacks at construction:
+`OStarEntity` receives injected callbacks at construction:
 
 ```js
 {
-    onItemSelect(item),       // called on row click; OsActivity renders detail in panel
-    getViewControlsEl(),      // returns HTMLElement for view controls mount
-    isReadOnly,               // boolean; true in Explore/edition context
+    onItemSelect(item),             // called on row click
+    getViewControlsEl(),            // returns HTMLElement for view controls mount
+    isReadOnly,                     // boolean; true in Explore/edition context
+    onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
 }
 ```
 
 Lifecycle hooks called by `OsActivity`:
 - `onActivated()` — mounts view controls, renders from cache
 - `onDeactivated()` — clears view controls
-- `onDataUpdated(data)` — receives fresh data, re-renders if active
+- `onDataUpdated(data)` — pre-computes virtual fields, caches data, re-renders if active
+
+**Virtual field pre-computation** in `onDataUpdated()`:
+- `item.implements` = `item.implementedONs` (OR) or `item.implementedORs` (OC), whichever is non-empty
 
 ### 10.3 Detail Views
 
-`RequirementDetails` and `ChangeDetails` own the detail shell (breadcrumb, toolbar, edit button) and delegate body rendering to the form class via `generateReadOnlyView(item)` + `initializeReadOnlyInPanel(container, item)`. Single source of truth for field layout, tabs, and rich text rendering.
+`RequirementDetails` and `ChangeDetails` own the detail shell and delegate body rendering to the form class via `generateReadOnlyView(item)` + `initializeReadOnlyInPanel(container, item)`.
 
 Two rendering modes:
 
-| Mode | Context | Breadcrumb | Back button |
-|---|---|---|---|
-| `'panel'` | MasterDetail right column | Suppressed (os.js owns outer breadcrumb) | None |
-| `'page'` | Full page (inter-O\* navigation) | Full trail rendered internally | None (breadcrumb provides navigation) |
+| Mode | Context | Back button |
+|---|---|---|
+| `'panel'` | MasterDetail right column | None |
+| `'page'` | Full page (inter-O\* navigation) | None (breadcrumb provides navigation) |
 
-Toolbar in both modes: code identifier + Edit button (Elaborate only).
+Detail views call `app.header.setBreadcrumb(crumbs)` after render — crumbs start at sub-level (e.g. `Requirements > OR-AIRSPACE-0033`).
 
 ### 10.4 Navigable References
 
@@ -509,19 +511,25 @@ Inter-O\* references in read-only detail views are rendered as navigable chips:
 1. `RequirementDetails` / `ChangeDetails` pass `onNavigate(ref)` to the form at construction
 2. `CollectionEntityForm` stores `onNavigate` and passes `onItemClick` to `ReferenceListManager` / `ReferenceManager` in read mode
 3. Managers render `selected-chip--link` spans; `stopPropagation` prevents panel deselection
-4. `onItemClick` fires; `_navigateToRef` builds the path from `ref.entityType` and navigates
-
-Entity type is derived from `field.formatArgs[0]` mapped to URL segment (`'requirement'` or `'change'`).
+4. `onItemClick` fires; `_navigateToRef` builds the path and navigates
 
 ### 10.5 Breadcrumb
 
-`breadcrumb.js` (`components/breadcrumb.js`) provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`. Moved from `activities/workspace/shared/os/` to `components/` to serve as a shared utility for all activities.
+`breadcrumb.js` (`components/breadcrumb.js`) provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`.
 
-The breadcrumb trail is rendered in header row 2 and updated by each activity via `app.header.setBreadcrumb(crumbs)`. Crumbs start at sub-level — Home and the workspace root are omitted since the active nav tab already conveys that context:
+All activities call `app.header.setBreadcrumb(crumbs)`. Crumbs start at sub-level — Home and workspace root are omitted since the active nav tab already conveys that context:
 
 ```
-Requirements > OR-AIRSPACE-0033 — AIS reference baseline management
+O*s > OR-AIRSPACE-0033 — AIS reference baseline management
 ```
+
+### 10.6 API Client — listOStars
+
+`apiClient.listOStars(params)` is the unified O* query method. See §10 of the API Client documentation (ADD chapter 04) for full parameter mapping. Key behaviour:
+
+- Fans out to `/operational-requirements` + `/operational-changes` in parallel
+- Skip optimisation: OC-only type filter skips requirements call; non-OC type filter skips changes call
+- Returns merged array in fetch order (requirements first, then changes) — no client-side sorting
 
 ---
 
@@ -606,6 +614,8 @@ styles/
 ├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
 ├── feedback-components.css           Toasts, error notifications, loading/skeleton states
 ├── layout-components.css             Top header (two-row: nav tabs + breadcrumb), connect popup, cards, modals
+│   ├── activities/workspace/shared/os/
+│   │   └── os-additions.css              O* toolbar, search input, type badges, view controls, perspective toggle
 ├── components/
 │   ├── filter-bar.css                FilterBar chip component
 │   ├── form-components.css           Form tabs, tag selector, multi-select, Quill integration
@@ -685,11 +695,11 @@ ONs with a `tentative` period get two milestones: `period-start` (▶) and `peri
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-    mode: 'icon',
-    eventTypes: {
-        'period-start': { icon: '▶', colour: '#2563eb' },
-        'period-end':   { icon: '◀', colour: '#2563eb' }
-    }
+  mode: 'icon',
+  eventTypes: {
+    'period-start': { icon: '▶', colour: '#2563eb' },
+    'period-end':   { icon: '◀', colour: '#2563eb' }
+  }
 })
 ```
 
@@ -745,9 +755,9 @@ Pure aggregation logic in `shared/src/model/bandwidth-aggregation.js` — no DOM
 
 ```javascript
 {
-    cells:      Map<waveId, Map<drg, CellData>>,
-        waveGlobal: Map<waveId, CellData>,
-        unplanned:  OC[]
+  cells:      Map<waveId, Map<drg, CellData>>,
+  waveGlobal: Map<waveId, CellData>,
+  unplanned:  OC[]
 }
 // CellData
 { consumed: number, available: number | null, ocs: OC[] }
@@ -911,31 +921,48 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 | `static-label` | `<div>` with `staticText`, no `name` | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
 | `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed via `parseTentative()` → `parseYearPeriod()` |
 
-### 18.6 Filter Bar
+### 18.6 O*s Activity — Unified List
 
-`getFilterConfig()` in `OsActivity` (formerly `abstract-interaction-activity.js`):
+`OsActivity` (`os.js`) and `OStarEntity` (`o-star-entity.js`) together implement the unified ON/OR/OC workspace.
 
-- Removed: `service`, `dataCategory`, `document`
-- Added: `domain` (suggest), `strategicDocument` (suggest)
-- Renamed: `satisfies` → `implements`
+**Layout:**
+```
+[ Filter bar ]  [ 🔍 search ]        ← single toolbar row
+[ Collection | Tree ]  [ counts ]    ← view controls row
+[ MasterDetail: list | detail ]
+```
 
-All relationship filters are scalar — single ID passed to API.
+**Search:** free-text input (debounced 300ms), maps to `text` parameter — visually separate from structured filters.
 
-**`RequirementsEntity` column config:**
+**Filter bar:** Type · Owner Domain · Maturity · Impacted Domain · Stakeholder · Implements · Strategic Document.
 
-| Column | `appliesTo` | Notes |
-|---|---|---|
-| `strategicDocuments` | `['on-node']` | ON only |
-| `implementedONs` | `['or-node']` | OR only |
-| `dependencies` | `['or-node']` | OR only |
-| `impactedStakeholders` | `['or-node']` | OR only |
-| `impactedDomains` | `['or-node']` | OR only |
+**Perspectives:** Collection (flat + grouping) and Tree (REFINES hierarchy). Toggle persists across data reloads.
 
-**`RequirementsEntity` path builder priority:**
+**Grouping** (Collection only): Type · Owner Domain (DrG) · Maturity.
+
+**Column set:**
+
+| Column | Perspective | Applies to | Sortable |
+|---|---|---|---|
+| Type | both | all | Yes |
+| Code | both | all | Yes |
+| Title | both | all | Yes |
+| Maturity | both | all | Yes |
+| Owner Domain | collection | all | Yes |
+| Implements | both | OR, OC | No |
+| Refines | collection | ON, OR | No |
+| Strategic Documents | both | ON only | No |
+| Impacted Stakeholders | both | OR, OC | No |
+| Impacted Domain | both | OR, OC | No |
+
+**Virtual field:** `item.implements` is pre-computed in `OStarEntity.onDataUpdated()` — merges `implementedONs` (OR) and `implementedORs` (OC) into a single array for the Implements column renderer.
+
+**OC type normalisation:** OCs from `/operational-changes` have no `type` field — normalised to `'OC'` in `_loadData()` after merge.
+
+**Tree path builder priority:**
 1. `refinesParents` — if present, nest under parent node (graph-based); `path` ignored
 2. `path` — if no refines relation, build virtual folder nodes
-
-**Grouping config** includes `strategicDocuments` as a grouping option.
+3. OCs — always flat under their DrG group node
 
 ---
 

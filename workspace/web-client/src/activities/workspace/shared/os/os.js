@@ -119,8 +119,8 @@ export default class OsActivity {
         this._mountFilterBar();
         await this._prepareOStarEntity();
         this.app.header.setBreadcrumb([{ label: 'O*s' }]);
-        await this._loadData();
         this._ostarEntity.onActivated();
+        await this._loadData();
     }
 
     _buildListShell() {
@@ -128,7 +128,6 @@ export default class OsActivity {
             <div class="os-activity">
                 <div class="os-toolbar" id="osToolbar">
                     <div class="os-toolbar__filters" id="osFilters"></div>
-                    <div class="os-toolbar__summary" id="osSummary"></div>
                     <div class="os-toolbar__search" id="osSearch"></div>
                 </div>
                 <div class="os-view-controls" id="osViewControls"></div>
@@ -196,9 +195,10 @@ export default class OsActivity {
         if (this._ostarEntity) return;
         const { default: OStarEntity } = await import('./o-star-entity.js');
         this._ostarEntity = new OStarEntity(this.app, this.setupData, {
-            onItemSelect:      (item) => this._handleItemSelect(item),
-            getViewControlsEl: ()     => this._viewControlsEl,
-            isReadOnly:        this._isReadOnly(),
+            onItemSelect:            (item) => this._handleItemSelect(item),
+            getViewControlsEl:       ()     => this._viewControlsEl,
+            isReadOnly:              this._isReadOnly(),
+            onViewControlsRendered:  ()     => this._updateSummary(),
         });
         this._ostarEntity.container = this.masterDetail.listContainer;
     }
@@ -227,10 +227,10 @@ export default class OsActivity {
     }
 
     _updateSummary() {
-        const el = dom.find('#osSummary', this.container);
+        const el = dom.find('#osSummaryText', this.container);
         if (!el) return;
         const { ON, OR, OC } = this._counts;
-        el.innerHTML = `<span class="os-summary__text">${ON} ONs &nbsp;·&nbsp; ${OR} ORs &nbsp;·&nbsp; ${OC} OCs</span>`;
+        el.textContent = `${ON} ONs · ${OR} ORs · ${OC} OCs`;
     }
 
     _buildQueryParams() {

@@ -15,11 +15,6 @@
     min-width: 0;
 }
 
-.os-toolbar__summary {
-    flex-shrink: 0;
-    white-space: nowrap;
-}
-
 .os-summary__text {
     font-size: var(--font-size-xs);
     color: var(--text-tertiary);
