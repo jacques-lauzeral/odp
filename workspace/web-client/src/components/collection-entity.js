@@ -4,6 +4,10 @@
  * Data is always injected by parent (activity level)
  * Parent manages: data fetching (server-side filtered), edition context
  * Collection manages: display, rendering, client-side operations
+ *
+ * Keyboard navigation: ArrowDown / ArrowUp move selection through the flat data array.
+ * The collection-content wrapper is focusable (tabIndex=0). Clicking a row auto-focuses
+ * it so arrow keys work immediately after selection without an extra tab/click.
  */
 export default class CollectionEntity {
     constructor(app, entityConfig, options = {}) {
@@ -484,12 +488,13 @@ export default class CollectionEntity {
     // ====================
 
     bindEvents() {
-        // Row selection
+        // Row selection — auto-focus the list container so arrow keys work immediately
         const rows = this.container.querySelectorAll('.collection-row');
         rows.forEach(row => {
             row.addEventListener('click', (e) => {
                 const itemId = row.dataset.itemId;
                 this.selectItem(itemId);
+                this.container.querySelector('.collection-content')?.focus();
             });
         });
 
@@ -501,6 +506,44 @@ export default class CollectionEntity {
                 this.handleSort(column);
             });
         });
+
+        // Keyboard navigation — ArrowDown / ArrowUp move selection through flat data array
+        const collectionContent = this.container.querySelector('.collection-content');
+        if (collectionContent) {
+            collectionContent.addEventListener('keydown', (e) => {
+                if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                e.preventDefault();
+                this._navigateByKey(e.key === 'ArrowDown' ? 1 : -1);
+            });
+        }
+    }
+
+    /**
+     * Move selection up or down by delta within the flat data array.
+     * Wraps at boundaries (no wrap — clamps at first/last item).
+     * @param {number} delta — +1 for down, -1 for up
+     */
+    _navigateByKey(delta) {
+        if (!this.data.length) return;
+
+        const currentId = this.selectedItem ? this.getItemId(this.selectedItem) : null;
+        const currentIndex = currentId != null
+            ? this.data.findIndex(item => this.getItemId(item) === currentId)
+            : -1;
+
+        const nextIndex = currentIndex === -1
+            ? (delta > 0 ? 0 : this.data.length - 1)
+            : Math.max(0, Math.min(this.data.length - 1, currentIndex + delta));
+
+        if (nextIndex === currentIndex) return;
+
+        const nextItem = this.data[nextIndex];
+        const nextId = this.getItemId(nextItem);
+        this.selectItem(String(nextId));
+
+        // Scroll selected row into view
+        const row = this.container.querySelector(`.collection-row[data-item-id="${nextId}"]`);
+        row?.scrollIntoView({ block: 'nearest' });
     }
 
     // ====================
