@@ -684,11 +684,12 @@ export class CollectionEntityForm {
                     readOnly: isReadMode,
                     onItemClick: (isReadMode && onNavigate)
                         ? (id, option) => {
-                            // entityType derived from field.formatArgs[0] ('requirement'|'change')
-                            // Falls back to 'requirement' if not specified.
-                            const rawType = (field.formatArgs && field.formatArgs[0]) || 'requirement';
-                            // Map O* type labels to URL segments
-                            const entityType = (rawType === 'change' || rawType === 'OC') ? 'change' : 'requirement';
+                            // entityType derived from field.formatArgs[0]
+                            // Maps any legacy or current value to canonical URL segment: on | or | oc
+                            const rawType = (field.formatArgs && field.formatArgs[0]) || 'OR';
+                            const entityType = rawType === 'OC' || rawType === 'change' ? 'oc'
+                                : rawType === 'ON' || rawType === 'on'      ? 'on'
+                                    : 'or';
                             onNavigate({ id: option.value, label: option.label, entityType });
                         }
                         : null,
@@ -768,8 +769,10 @@ export class CollectionEntityForm {
                     readOnly: isReadMode,
                     onItemClick: (isReadMode && onNavigate)
                         ? (id, option) => {
-                            const rawType = (field.formatArgs && field.formatArgs[0]) || 'requirement';
-                            const entityType = (rawType === 'change' || rawType === 'OC') ? 'change' : 'requirement';
+                            const rawType = (field.formatArgs && field.formatArgs[0]) || 'OR';
+                            const entityType = rawType === 'OC' || rawType === 'change' ? 'oc'
+                                : rawType === 'ON' || rawType === 'on'      ? 'on'
+                                    : 'or';
                             onNavigate({ id: option.value, label: option.label, entityType });
                         }
                         : null,

@@ -118,6 +118,11 @@ export default class ExploreActivity {
         const subName    = (subPath[0] && SUB_ACTIVITIES[subPath[0]]) ? subPath[0] : DEFAULT_SUB;
         const subSubPath = subPath[0] === subName ? subPath.slice(1) : subPath;
 
+        // Redirect bare /explore to /explore/os
+        if (!subPath[0] || !SUB_ACTIVITIES[subPath[0]]) {
+            window.history.replaceState({}, '', `${BASE_PATH}/${subName}`);
+        }
+
         this._updateActiveTab(subName);
 
         try {

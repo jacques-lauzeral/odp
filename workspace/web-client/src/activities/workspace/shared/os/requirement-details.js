@@ -132,9 +132,12 @@ export default class RequirementDetails {
     // -------------------------------------------------------------------------
 
     _navigateToRef(ref) {
-        const entityType = ref.entityType ?? 'requirement';
+        const raw = ref.entityType ?? 'or';
+        const segment = raw === 'OC' || raw === 'change' || raw === 'oc' ? 'oc'
+            : raw === 'ON' || raw === 'on'                     ? 'on'
+                : 'or';
         const base = this._basePath();
-        this.app.navigate(`${base}/${entityType}/${ref.id}`);
+        this.app.navigate(`${base}/${segment}/${ref.id}`);
     }
 
     // -------------------------------------------------------------------------
@@ -163,7 +166,7 @@ export default class RequirementDetails {
         const title = item.title ?? String(item.itemId ?? item.id ?? '');
         const label = code ? `${code} — ${title}` : title;
         return [
-            { label: 'Requirements', path: `${base}/requirements` },
+            { label: 'O*s', path: base },
             { label },
         ];
     }

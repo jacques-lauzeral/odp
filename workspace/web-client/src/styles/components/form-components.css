@@ -522,13 +522,16 @@
 }
 
 .annotated-ref-link {
-    color: var(--color-primary, #2563eb);
+    color: var(--link-color);
     text-decoration: none;
     font-size: var(--font-size-sm, 0.875rem);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    transition: color var(--transition-fast);
 }
 
 .annotated-ref-link:hover {
-    text-decoration: underline;
+    color: var(--link-color-hover);
 }
 
 /* Quill Rich Text Editor Integration */
