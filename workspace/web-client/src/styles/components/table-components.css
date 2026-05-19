@@ -71,6 +71,13 @@
     transform: rotate(-90deg);
 }
 
+/* Collection content — direct child of master-detail__list */
+.collection-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
 /* Collection Table Container */
 .collection-table-container {
     border: 1px solid var(--border-primary);

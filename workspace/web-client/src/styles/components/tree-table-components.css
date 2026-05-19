@@ -269,17 +269,21 @@
 }
 
 /* Tree Table in Collection List Container */
-.collection-list .tree-table-container {
-    margin: var(--space-4);
+.collection-list .tree-table-container,
+.master-detail__list .tree-table-container {
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: auto;
+    min-height: 0;
 }
 
-.collection-list .tree-table-wrapper {
+.collection-list .tree-table-wrapper,
+.master-detail__list .tree-table-wrapper {
     flex: 1;
     overflow-y: auto;
+    overflow-x: auto;
 }
 
 /* Striping for better readability (only for non-selected rows) */

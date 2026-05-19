@@ -9,9 +9,18 @@
 
 .tab-headers {
     display: flex;
+    flex-wrap: nowrap;
     border-bottom: 1px solid var(--border-primary, #ddd);
     margin-bottom: var(--space-4, 1rem);
     flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.tab-headers::-webkit-scrollbar {
+    display: none;
 }
 
 .tab-header {

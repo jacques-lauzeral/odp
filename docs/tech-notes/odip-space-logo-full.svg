@@ -1,0 +1,141 @@
+<svg width="100%" viewBox="0 0 680 420" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="bg" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#0f1f3d"/>
+    <stop offset="100%" stop-color="#020814"/>
+  </radialGradient>
+  <radialGradient id="sg1" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#ffffff"/>
+    <stop offset="100%" stop-color="#93c5fd"/>
+  </radialGradient>
+  <radialGradient id="sg2" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#ffffff"/>
+    <stop offset="100%" stop-color="#6ee7b7"/>
+  </radialGradient>
+  <radialGradient id="sg3" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#ffffff"/>
+    <stop offset="100%" stop-color="#c4b5fd"/>
+  </radialGradient>
+  <radialGradient id="nebula1" cx="30%" cy="40%" r="50%">
+    <stop offset="0%" stop-color="#1e3a8a" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="#020814" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="nebula2" cx="70%" cy="60%" r="50%">
+    <stop offset="0%" stop-color="#164e63" stop-opacity="0.2"/>
+    <stop offset="100%" stop-color="#020814" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="glow">
+    <feGaussianBlur stdDeviation="3" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="softglow">
+    <feGaussianBlur stdDeviation="1.5" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+
+<!-- Night sky background -->
+<rect width="680" height="420" fill="url(#bg)" rx="8"/>
+<rect width="680" height="420" fill="url(#nebula1)" rx="8"/>
+<rect width="680" height="420" fill="url(#nebula2)" rx="8"/>
+
+<!-- Distant star field -->
+<circle cx="42" cy="18" r="0.8" fill="#e2e8f0" opacity="0.7"/>
+<circle cx="95" cy="35" r="0.6" fill="#bfdbfe" opacity="0.6"/>
+<circle cx="155" cy="12" r="0.9" fill="#ffffff" opacity="0.8"/>
+<circle cx="198" cy="42" r="0.6" fill="#e2e8f0" opacity="0.5"/>
+<circle cx="245" cy="22" r="0.7" fill="#ffffff" opacity="0.7"/>
+<circle cx="312" cy="38" r="0.5" fill="#c7d2fe" opacity="0.6"/>
+<circle cx="378" cy="15" r="0.9" fill="#ffffff" opacity="0.9"/>
+<circle cx="430" cy="44" r="0.6" fill="#bfdbfe" opacity="0.5"/>
+<circle cx="490" cy="20" r="0.7" fill="#ffffff" opacity="0.7"/>
+<circle cx="548" cy="38" r="0.8" fill="#e2e8f0" opacity="0.6"/>
+<circle cx="605" cy="18" r="0.6" fill="#ffffff" opacity="0.8"/>
+<circle cx="648" cy="40" r="0.7" fill="#c4b5fd" opacity="0.6"/>
+<circle cx="68" cy="68" r="0.6" fill="#ffffff" opacity="0.5"/>
+<circle cx="118" cy="88" r="0.8" fill="#bfdbfe" opacity="0.6"/>
+<circle cx="188" cy="72" r="0.5" fill="#ffffff" opacity="0.7"/>
+<circle cx="258" cy="90" r="0.7" fill="#e2e8f0" opacity="0.5"/>
+<circle cx="560" cy="70" r="0.6" fill="#ffffff" opacity="0.6"/>
+<circle cx="625" cy="85" r="0.8" fill="#c4b5fd" opacity="0.5"/>
+<circle cx="52" cy="340" r="0.7" fill="#ffffff" opacity="0.5"/>
+<circle cx="112" cy="360" r="0.6" fill="#bfdbfe" opacity="0.6"/>
+<circle cx="175" cy="345" r="0.8" fill="#ffffff" opacity="0.4"/>
+<circle cx="505" cy="355" r="0.6" fill="#6ee7b7" opacity="0.4"/>
+<circle cx="572" cy="342" r="0.7" fill="#ffffff" opacity="0.5"/>
+<circle cx="638" cy="362" r="0.8" fill="#c4b5fd" opacity="0.5"/>
+<circle cx="30" cy="200" r="0.6" fill="#ffffff" opacity="0.4"/>
+<circle cx="655" cy="215" r="0.7" fill="#bfdbfe" opacity="0.4"/>
+<circle cx="22" cy="270" r="0.8" fill="#ffffff" opacity="0.5"/>
+<circle cx="660" cy="280" r="0.6" fill="#e2e8f0" opacity="0.4"/>
+
+<!-- Edges -->
+<line x1="340" y1="85" x2="210" y2="150" stroke="#3b82f6" stroke-width="0.8" fill="none" opacity="0.4"/>
+<line x1="340" y1="85" x2="470" y2="150" stroke="#3b82f6" stroke-width="0.8" fill="none" opacity="0.4"/>
+<line x1="340" y1="85" x2="340" y2="190" stroke="#8b5cf6" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="210" y1="150" x2="145" y2="245" stroke="#10b981" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="210" y1="150" x2="270" y2="275" stroke="#10b981" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="470" y1="150" x2="535" y2="245" stroke="#10b981" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="470" y1="150" x2="410" y2="275" stroke="#10b981" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="340" y1="190" x2="270" y2="275" stroke="#8b5cf6" stroke-width="0.8" fill="none" opacity="0.3"/>
+<line x1="340" y1="190" x2="410" y2="275" stroke="#8b5cf6" stroke-width="0.8" fill="none" opacity="0.3"/>
+<line x1="145" y1="245" x2="270" y2="275" stroke="#3b82f6" stroke-width="0.8" fill="none" opacity="0.3"/>
+<line x1="535" y1="245" x2="410" y2="275" stroke="#3b82f6" stroke-width="0.8" fill="none" opacity="0.3"/>
+<line x1="270" y1="275" x2="340" y2="325" stroke="#10b981" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="410" y1="275" x2="340" y2="325" stroke="#10b981" stroke-width="0.8" fill="none" opacity="0.35"/>
+<line x1="145" y1="245" x2="100" y2="318" stroke="#8b5cf6" stroke-width="0.8" fill="none" opacity="0.28"/>
+<line x1="535" y1="245" x2="580" y2="318" stroke="#8b5cf6" stroke-width="0.8" fill="none" opacity="0.28"/>
+<line x1="210" y1="150" x2="340" y2="190" stroke="#6366f1" stroke-width="0.8" fill="none" opacity="0.15"/>
+<line x1="470" y1="150" x2="340" y2="190" stroke="#6366f1" stroke-width="0.8" fill="none" opacity="0.15"/>
+
+<!-- Stars -->
+<g filter="url(#glow)">
+  <circle cx="340" cy="85" r="10" fill="url(#sg1)" opacity="0.95"/>
+  <circle cx="340" cy="85" r="4" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="210" cy="150" r="7.5" fill="url(#sg1)" opacity="0.9"/>
+  <circle cx="210" cy="150" r="2.8" fill="#ffffff"/>
+</g>
+<g filter="url(#glow)">
+  <circle cx="340" cy="190" r="8.5" fill="url(#sg3)" opacity="0.9"/>
+  <circle cx="340" cy="190" r="3.2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="470" cy="150" r="7.5" fill="url(#sg1)" opacity="0.9"/>
+  <circle cx="470" cy="150" r="2.8" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="145" cy="245" r="6" fill="url(#sg2)" opacity="0.85"/>
+  <circle cx="145" cy="245" r="2.2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="270" cy="275" r="6" fill="url(#sg2)" opacity="0.85"/>
+  <circle cx="270" cy="275" r="2.2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="410" cy="275" r="6" fill="url(#sg2)" opacity="0.85"/>
+  <circle cx="410" cy="275" r="2.2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="535" cy="245" r="6" fill="url(#sg2)" opacity="0.85"/>
+  <circle cx="535" cy="245" r="2.2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="100" cy="318" r="4.5" fill="url(#sg3)" opacity="0.8"/>
+  <circle cx="100" cy="318" r="1.6" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="340" cy="325" r="5.5" fill="url(#sg1)" opacity="0.85"/>
+  <circle cx="340" cy="325" r="2" fill="#ffffff"/>
+</g>
+<g filter="url(#softglow)">
+  <circle cx="580" cy="318" r="4.5" fill="url(#sg3)" opacity="0.8"/>
+  <circle cx="580" cy="318" r="1.6" fill="#ffffff"/>
+</g>
+
+<!-- Wordmark -->
+<text x="340" y="368" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="500" fill="#e0f2fe" letter-spacing="3">ODIP Space</text>
+<text x="340" y="386" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="400" fill="#475569" letter-spacing="4">operational development &amp; implementation plan</text>
+<text x="340" y="408" text-anchor="middle" font-family="Arial, sans-serif" font-size="9" font-weight="400" fill="#334155" letter-spacing="2">EUROCONTROL Network Management — ACD</text>
+</svg>
