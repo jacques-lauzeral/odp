@@ -211,14 +211,19 @@ export default class RequirementForm extends CollectionEntityForm {
     transformDataForRead(item) {
         if (!item) return {};
         const transformed = { ...item };
-        // Compute implementedBy IDs for ONs (not stored on item, derived from setupData)
         if (item.type === 'ON') {
             transformed.implementedBy = this._computeImplementedByIds(item);
+            transformed.refinedBy     = this._computeRefinedByIds(item);
         }
         return transformed;
     }
 
     _computeRefinedByIds(item) {
+        // Prefer extended projection field when available (GET ?projection=extended)
+        if (Array.isArray(item?.refinedBy) && item.refinedBy.length > 0) {
+            return item.refinedBy.map(r => normalizeId(r?.id ?? r?.itemId ?? r));
+        }
+        // Fall back to scanning loaded requirements
         const requirements = this.context.getRequirements?.() || [];
         if (!item?.itemId && !item?.id) return [];
         const targetId = normalizeId(item.itemId ?? item.id);
@@ -233,10 +238,12 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     _computeImplementedByIds(item) {
-        const requirements = this.context.getRequirements?.() || [];
-        if (requirements.length === 0) {
-            console.warn('[RequirementForm] _computeImplementedByIds: setupData.requirements is empty');
+        // Prefer extended projection field when available (GET ?projection=extended)
+        if (Array.isArray(item?.implementedByORs) && item.implementedByORs.length > 0) {
+            return item.implementedByORs.map(r => normalizeId(r?.id ?? r?.itemId ?? r));
         }
+        // Fall back to scanning loaded requirements
+        const requirements = this.context.getRequirements?.() || [];
         if (!item?.itemId && !item?.id) return [];
         const targetId = normalizeId(item.itemId ?? item.id);
         return requirements

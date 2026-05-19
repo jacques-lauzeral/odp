@@ -119,7 +119,23 @@ export default class RequirementDetails {
         this._form = new RequirementForm(entityConfig, {
             setupData,
             getSetupData:    () => this._setupData,
-            getRequirements: () => [],
+            // Synthesise a minimal requirements list from extended projection fields
+            // so that ReferenceListManager can resolve labels for refinedBy / implementedBy chips.
+            getRequirements: () => {
+                const item = this.item;
+                if (!item) return [];
+                return [
+                    ...(item.implementedByORs ?? []),
+                    ...(item.refinedBy ?? []),
+                    ...(item.requiredByORs ?? []),
+                ].map(r => ({
+                    itemId: r.id ?? r.itemId,
+                    id:     r.id ?? r.itemId,
+                    title:  r.title ?? '',
+                    code:   r.code  ?? '',
+                    type:   r.type  ?? 'OR',
+                }));
+            },
             onNavigate: (ref) => this._navigateToRef(ref),
         });
     }
