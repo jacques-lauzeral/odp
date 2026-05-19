@@ -9,7 +9,10 @@
  * Two modes:
  *   'panel' — rendered into MasterDetail right column; no back button;
  *             outer breadcrumb owned by os.js; inter-O* links navigate full page.
+ *             'Full page' action available — calls onFullPage(item).
  *   'page'  — rendered into full container; back button + standalone breadcrumb.
+ *             'In collection' and 'In tree' actions available — call onInCollection(item)
+ *             and onInTree(item) respectively.
  *
  * API call:
  *   GET /operational-changes/{id}?projection=extended
@@ -27,6 +30,10 @@ export default class ChangeDetails {
         this.app    = app;
         this.config = config;
 
+        this._onFullPage     = null;
+        this._onInCollection = null;
+        this._onInTree       = null;
+
         this.container = null;
         this.item      = null;
         this._mode     = 'page'; // 'panel' | 'page'
@@ -40,9 +47,16 @@ export default class ChangeDetails {
     // Lifecycle
     // -------------------------------------------------------------------------
 
-    async render(container, id, mode = 'page') {
+    async render(container, id, mode = 'page', callbacks = {}) {
         this.container = container;
         this._mode     = mode;
+
+        // Re-inject callbacks on every render — ensures correct wiring
+        // regardless of whether the instance is newly created or cached.
+        this._onFullPage     = callbacks.onFullPage     ?? null;
+        this._onInCollection = callbacks.onInCollection ?? null;
+        this._onInTree       = callbacks.onInTree       ?? null;
+
         this.container.innerHTML = this._buildLoadingHtml();
 
         try {
@@ -116,6 +130,15 @@ export default class ChangeDetails {
     _attachEventListeners() {
         this.container.querySelector('.os-detail__edit')
             ?.addEventListener('click', () => this._openEditPopup());
+
+        this.container.querySelector('.os-detail__full-page')
+            ?.addEventListener('click', () => this._onFullPage?.(this.item));
+
+        this.container.querySelector('.os-detail__in-collection')
+            ?.addEventListener('click', () => this._onInCollection?.(this.item));
+
+        this.container.querySelector('.os-detail__in-tree')
+            ?.addEventListener('click', () => this._onInTree?.(this.item));
     }
 
     // -------------------------------------------------------------------------
@@ -145,22 +168,33 @@ export default class ChangeDetails {
     // -------------------------------------------------------------------------
 
     _buildShellHtml(item) {
-        const isEditable = this.config.mode === 'edit';
+        const isEditable       = this.config.mode === 'edit';
+        const showFullPage     = this._mode === 'panel' && this._onFullPage     != null;
+        const showInCollection = this._mode === 'page'  && this._onInCollection != null;
+        const showInTree       = this._mode === 'page'  && this._onInTree       != null;
 
         return `
             <div class="os-detail">
-<div class="os-detail__toolbar">
-                    ${this._mode === 'page'
-            ? '<button class="btn btn-secondary os-detail__back">← Back</button>'
-            : ''}
+                <div class="os-detail__toolbar">
                     <div class="os-detail__identity">
                         <span class="os-detail__code">${this._esc(item.code ?? '')}</span>
                         <span class="os-detail__type-badge">Operational Change</span>
                         <span class="os-detail__maturity">${this._esc(item.maturity ?? '')}</span>
                     </div>
-                    ${isEditable
+                    <div class="os-detail__actions">
+                        ${isEditable
             ? '<button class="btn btn-primary os-detail__edit">Edit</button>'
             : ''}
+                        ${showFullPage
+            ? '<button class="btn btn-secondary os-detail__full-page">Full page</button>'
+            : ''}
+                        ${showInCollection
+            ? '<button class="btn btn-secondary os-detail__in-collection">In collection</button>'
+            : ''}
+                        ${showInTree
+            ? '<button class="btn btn-secondary os-detail__in-tree">In tree</button>'
+            : ''}
+                    </div>
                 </div>
                 <div class="os-detail__body" id="osDetailBody"></div>
             </div>

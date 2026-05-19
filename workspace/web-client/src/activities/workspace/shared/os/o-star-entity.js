@@ -37,6 +37,7 @@ export default class OStarEntity {
      * @param {Function} options.onItemSelect      - (item) => void
      * @param {Function} options.getViewControlsEl - () => HTMLElement|null
      * @param {boolean}  options.isReadOnly        - true in Explore/review context
+     * @param {Function} options.onViewControlsRendered - () => void
      */
     constructor(app, setupData, options = {}) {
         this.app       = app;
@@ -356,6 +357,17 @@ export default class OStarEntity {
         el.querySelector('#createOC')?.addEventListener('click', () => this._handleCreate('OC'));
 
         this._onViewControlsRendered();
+    }
+
+    /**
+     * Programmatically switch perspective — called by OsActivity when restoring
+     * state from ?perspective search param. Equivalent to a user click on the
+     * perspective toggle button.
+     * @param {'collection'|'tree'} perspective
+     */
+    setPerspective(perspective) {
+        if (perspective !== 'collection' && perspective !== 'tree') return;
+        this._switchPerspective(perspective);
     }
 
     _switchPerspective(perspective) {

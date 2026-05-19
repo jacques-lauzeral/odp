@@ -22,6 +22,11 @@
  *   │ View controls (perspective, grouping, create)        │
  *   │ MasterDetail: list column | detail panel             │
  *   └──────────────────────────────────────────────────────┘
+ *
+ * Plain page ↔ master detail navigation:
+ *   'Full page' button (panel mode)  — pushes /{base}/os/{type}/{id}
+ *   'In context' button (page mode)  — navigates to /{base}/os?perspective=coll|tree&selected={id}
+ *   On list render, ?perspective and ?selected are consumed once to restore state.
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
@@ -137,6 +142,9 @@ export default class OsActivity {
         this.app.header.setBreadcrumb([{ label: 'O*s' }]);
         this._ostarEntity.onActivated();
         await this._loadData();
+
+        // Consume one-shot restore hints from ?perspective and ?selected
+        this._restoreFromSearchParams();
     }
 
     _buildListShell() {
@@ -281,6 +289,48 @@ export default class OsActivity {
     }
 
     // -------------------------------------------------------------------------
+    // Search params restore (one-shot, consumed on list render)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Read ?perspective and ?selected from the current URL and restore list state.
+     * Called once after _renderList() + _loadData() complete.
+     * Cleans the params from the URL via replaceState after consuming them.
+     */
+    _restoreFromSearchParams() {
+        const sp          = new URLSearchParams(window.location.search);
+        const perspective = sp.get('perspective');
+        const selectedId  = sp.has('selected') ? parseInt(sp.get('selected'), 10) : null;
+
+        if (!perspective && selectedId == null) return;
+
+        // URL param uses 'coll'|'tree'; OStarEntity uses 'collection'|'tree'
+        const normalised = perspective === 'tree' ? 'tree' : 'collection';
+
+        // Resolve selected item first so that setPerspective() sees it in
+        // sharedState and can run _expandToItem correctly for tree mode.
+        let item = null;
+        if (!isNaN(selectedId) && selectedId != null) {
+            item = this._ostarEntity.data.find(
+                i => (i.itemId ?? i.id) === selectedId
+            ) ?? null;
+            if (item) this._ostarEntity.sharedState.selectedItem = item;
+        }
+
+        // Switch perspective — if tree, _switchPerspective will expand to item
+        if (perspective && normalised !== this._ostarEntity.currentPerspective) {
+            this._ostarEntity.setPerspective(normalised);
+        }
+
+        // Trigger panel render and breadcrumb update
+        if (item) this._handleItemSelect(item);
+
+        // Clean search params from URL without adding a history entry
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState(null, '', cleanUrl);
+    }
+
+    // -------------------------------------------------------------------------
     // Filter configuration
     // -------------------------------------------------------------------------
 
@@ -366,7 +416,11 @@ export default class OsActivity {
             const { default: RequirementDetails } = await import('./requirement-details.js');
             this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
         }
-        await this._requirementDetails.render(this.masterDetail.detailContainer, id, 'panel');
+        await this._requirementDetails.render(this.masterDetail.detailContainer, id, 'panel', {
+            onFullPage:      (item) => this._navigateToFullPage(item),
+            onInCollection:  null,
+            onInTree:        null,
+        });
     }
 
     async _renderChangeDetailInPanel(id) {
@@ -374,7 +428,11 @@ export default class OsActivity {
             const { default: ChangeDetails } = await import('./change-details.js');
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
-        await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel');
+        await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel', {
+            onFullPage:      (item) => this._navigateToFullPage(item),
+            onInCollection:  null,
+            onInTree:        null,
+        });
     }
 
     // -------------------------------------------------------------------------
@@ -387,7 +445,11 @@ export default class OsActivity {
             this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
         }
         this._inPageMode = true;
-        await this._requirementDetails.render(this.container, id, 'page');
+        await this._requirementDetails.render(this.container, id, 'page', {
+            onFullPage:      null,
+            onInCollection:  (item) => this._navigateToList(item, 'coll'),
+            onInTree:        (item) => this._navigateToList(item, 'tree'),
+        });
     }
 
     async _renderChangeDetail(id) {
@@ -396,7 +458,39 @@ export default class OsActivity {
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
         this._inPageMode = true;
-        await this._changeDetails.render(this.container, id, 'page');
+        await this._changeDetails.render(this.container, id, 'page', {
+            onFullPage:      null,
+            onInCollection:  (item) => this._navigateToList(item, 'coll'),
+            onInTree:        (item) => this._navigateToList(item, 'tree'),
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Plain page ↔ master detail navigation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Navigate from panel detail to full-page detail.
+     * Pushes /{base}/os/{type}/{id} to browser history.
+     * @param {object} item
+     */
+    _navigateToFullPage(item) {
+        const id         = item.itemId ?? item.id;
+        const isOC       = item.type === 'OC';
+        const entityType = isOC ? 'oc' : (item.type === 'ON' ? 'on' : 'or');
+        this.app.navigate(`${this._basePath()}/${entityType}/${id}`);
+    }
+
+    /**
+     * Navigate from full-page detail back to master detail list,
+     * restoring the given perspective and selection via one-shot search params.
+     * @param {object} item
+     * @param {'coll'|'tree'} perspective
+     */
+    _navigateToList(item, perspective) {
+        const id = item.itemId ?? item.id;
+        const p  = perspective === 'tree' ? 'tree' : 'coll';
+        this.app.navigate(`${this._basePath()}?perspective=${p}&selected=${id}`);
     }
 
     // -------------------------------------------------------------------------
