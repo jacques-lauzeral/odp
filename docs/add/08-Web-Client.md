@@ -145,15 +145,17 @@ Context difference (live vs edition, R/W vs R/O) flows transparently through `ap
 | SubPath | Rendering |
 |---|---|
 | `[]` | List view — unified ON/OR/OC result set |
-| `['on', '{id}']` | `RequirementDetails` (ON) in MasterDetail panel |
-| `['or', '{id}']` | `RequirementDetails` (OR) in MasterDetail panel |
-| `['oc', '{id}']` | `ChangeDetails` (OC) in MasterDetail panel |
+| `['on', '{id}']` | `RequirementDetails` (ON) — full-page mode |
+| `['or', '{id}']` | `RequirementDetails` (OR) — full-page mode |
+| `['oc', '{id}']` | `ChangeDetails` (OC) — full-page mode |
 
-On item selection the URL is updated via `replaceState` to reflect the selected entity. Full-page detail (page mode) is reached only via inter-O\* reference navigation from the detail panel.
+Panel selection (clicking a row in the master list) does **not** update the browser URL. The URL stays at `/elaborate/os` (or `/explore/os`) throughout list browsing. Full-page detail mode is reached only via inter-O\* reference navigation from the detail panel — the canonical URL `/{base}/os/{type}/{id}` is then pushed to browser history.
+
+Bare `/elaborate` and `/explore` paths redirect to `/elaborate/os` and `/explore/os` respectively via `replaceState`.
 
 ### 3.5 Browser History
 
-Every meaningful state transition pushes a URL history entry via `window.history.pushState`. Tab switches within the O\* workspace use `replaceState`. All canonical URLs are deep-linkable and reconstructable from the URL alone.
+Every inter-O\* navigation pushes a URL history entry via `window.history.pushState`. Panel row selection does not affect browser history. Tab switches between workspace sub-activities (O\*s, Plan, Notes, Setup) push history entries via the router. All canonical O\* URLs are deep-linkable and reconstructable from the URL alone.
 
 ---
 
@@ -309,6 +311,13 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 - **Shared state**: filters, selection, and grouping coordinated across perspectives in `sharedState`
 - **Perspective switching**: tab-driven by entity component, preserves selection and filter state
 - **Injected callbacks**: `onItemSelect`, `getViewControlsEl`, `isReadOnly` — no back-references to parent activity
+
+**Cross-perspective selection sync** (O\* workspace): when switching between Collection and Tree perspectives with an item selected, `OStarEntity._switchPerspective` synchronises state:
+
+- **Collection → Tree**: `_expandToItem(itemId)` expands all ancestor nodes to make the selected item visible; the tree re-renders, marks the row selected, and `tree.scrollToItem(itemId)` centres it in the viewport.
+- **Tree → Collection**: the collection re-renders with the selected row marked, then `scrollIntoView` brings it into view.
+
+**Tree scroll preservation**: `TreeTableEntity.renderContent()` saves and restores `scrollTop` on `.tree-table-container` around every `innerHTML` replacement — ensuring expand/collapse and row selection do not scroll the tree back to the top.
 
 ---
 
@@ -470,6 +479,8 @@ Responsibilities:
 | Virtual `implements` field pre-computation | `OStarEntity` |
 | Detail panel content | `RequirementDetails` / `ChangeDetails` |
 
+**Full-page mode navigation pattern:** when inter-O\* reference navigation triggers a full-page detail render, `OsActivity` sets `_inPageMode = true` and renders the detail view into `this.container`, replacing the list shell. When the user navigates back (breadcrumb "O\*s" click or O\*s tab click), `ElaborateActivity._route` calls `os.handleSubPath([])`, which detects `_inPageMode` and calls `_renderList()` to rebuild the full list shell. `_prepareOStarEntity()` reconnects `_ostarEntity.container` to the new `masterDetail.listContainer` after each rebuild.
+
 ### 10.2 OStarEntity
 
 `OStarEntity` receives injected callbacks at construction:
@@ -502,16 +513,21 @@ Two rendering modes:
 | `'panel'` | MasterDetail right column | None |
 | `'page'` | Full page (inter-O\* navigation) | None (breadcrumb provides navigation) |
 
-Detail views call `app.header.setBreadcrumb(crumbs)` after render — crumbs start at sub-level (e.g. `Requirements > OR-AIRSPACE-0033`).
+Detail views call `app.header.setBreadcrumb(crumbs)` after render — crumbs follow the pattern `O*s (clickable) > {code — title} (current, non-clickable)`.
 
 ### 10.4 Navigable References
 
-Inter-O\* references in read-only detail views are rendered as navigable chips:
+Inter-O\* references in read-only detail views are rendered as navigable links:
 
 1. `RequirementDetails` / `ChangeDetails` pass `onNavigate(ref)` to the form at construction
 2. `CollectionEntityForm` stores `onNavigate` and passes `onItemClick` to `ReferenceListManager` / `ReferenceManager` in read mode
 3. Managers render `selected-chip--link` spans; `stopPropagation` prevents panel deselection
-4. `onItemClick` fires; `_navigateToRef` builds the path and navigates
+4. `onItemClick` fires; `_navigateToRef` maps `ref.entityType` to a canonical URL segment (`on`, `or`, `oc`) and navigates
+5. `annotated-ref-link` anchors (`strategicDocuments`) navigate to the document URL directly
+
+Entity type mapping in `_navigateToRef` is defensive — accepts both legacy values (`requirement`, `change`) and canonical values (`ON`, `OR`, `OC`, `on`, `or`, `oc`).
+
+**Link style:** navigable reference chips use `--link-color` (`--ec-blue`) with `font-weight: semibold` and no underline. The shared `.odip-link` utility class in `main.css` defines the canonical link style; `selected-chip--link` and `annotated-ref-link` in `reference-list-manager.css` and `form-components.css` reference the same tokens.
 
 ### 10.5 Breadcrumb
 
@@ -522,6 +538,8 @@ All activities call `app.header.setBreadcrumb(crumbs)`. Crumbs start at sub-leve
 ```
 O*s > OR-AIRSPACE-0033 — AIS reference baseline management
 ```
+
+`O*s` is clickable and navigates to `/{base}/os`. The O* code and title is non-clickable (current page).
 
 ### 10.6 API Client — listOStars
 
@@ -610,7 +628,7 @@ All GET routes on the server accept requests without `x-user-id` header (returni
 
 ```
 styles/
-├── main.css                          Design tokens, CSS reset, typography, layout utilities — includes EC palette tokens (--ec-navy, --ec-blue, --ec-sky, --ec-light)
+├── main.css                          Design tokens, CSS reset, typography, layout utilities — includes EC palette tokens (--ec-navy, --ec-blue, --ec-sky, --ec-light), link tokens (--link-color, --link-color-hover), and .odip-link utility class
 ├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
 ├── feedback-components.css           Toasts, error notifications, loading/skeleton states
 ├── layout-components.css             Top header (two-row: nav tabs + breadcrumb), connect popup, cards, modals
@@ -634,7 +652,7 @@ styles/
     │   ├── explore/explore.css
     │   ├── setup/setup.css           Setup entity tabs, three-pane layout
     │   └── shared/
-    │       ├── os/os.css
+    │       ├── os/os.css             O* activity shell layout, detail shell height propagation, type badge colours (ON blue, OR green, OC purple)
     │       ├── plan/plan.css         ON plan two-pane layout, TemporalGrid context
     │       ├── quality/quality.css
     │       └── notes/notes.css
@@ -695,11 +713,11 @@ ONs with a `tentative` period get two milestones: `period-start` (▶) and `peri
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-  mode: 'icon',
-  eventTypes: {
-    'period-start': { icon: '▶', colour: '#2563eb' },
-    'period-end':   { icon: '◀', colour: '#2563eb' }
-  }
+    mode: 'icon',
+    eventTypes: {
+        'period-start': { icon: '▶', colour: '#2563eb' },
+        'period-end':   { icon: '◀', colour: '#2563eb' }
+    }
 })
 ```
 
@@ -755,9 +773,9 @@ Pure aggregation logic in `shared/src/model/bandwidth-aggregation.js` — no DOM
 
 ```javascript
 {
-  cells:      Map<waveId, Map<drg, CellData>>,
-  waveGlobal: Map<waveId, CellData>,
-  unplanned:  OC[]
+    cells:      Map<waveId, Map<drg, CellData>>,
+        waveGlobal: Map<waveId, CellData>,
+        unplanned:  OC[]
 }
 // CellData
 { consumed: number, available: number | null, ocs: OC[] }

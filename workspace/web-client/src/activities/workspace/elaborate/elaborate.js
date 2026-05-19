@@ -113,6 +113,7 @@ export default class ElaborateActivity {
     async _route(subPath) {
         const subName    = (subPath[0] && SUB_ACTIVITIES[subPath[0]]) ? subPath[0] : DEFAULT_SUB;
         const subSubPath = subPath[0] === subName ? subPath.slice(1) : subPath;
+        console.log('elaborate._route', subPath, '_currentSubName:', this._currentSubName, 'subName:', subName, 'subSubPath:', subSubPath);
 
         // Redirect bare /elaborate to /elaborate/os
         if (!subPath[0] || !SUB_ACTIVITIES[subPath[0]]) {
@@ -123,8 +124,12 @@ export default class ElaborateActivity {
 
         try {
             const sub = await this._getSub(subName);
-            await sub.render(this.subContainer, subSubPath);
-            this._currentSubName = subName;
+            if (this._currentSubName === subName && sub.handleSubPath) {
+                await sub.handleSubPath(subSubPath);
+            } else {
+                await sub.render(this.subContainer, subSubPath);
+                this._currentSubName = subName;
+            }
         } catch (error) {
             errorHandler.handle(error, `elaborate-${subName}`);
         }

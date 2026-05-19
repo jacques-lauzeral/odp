@@ -80,6 +80,22 @@ export default class OsActivity {
     }
 
     async handleSubPath(subPath) {
+        // If navigating back to the list view
+        if (!subPath || subPath.length === 0) {
+            if (this._inPageMode) {
+                // Full-page detail was shown — rebuild list
+                this._inPageMode = false;
+                return this._renderList();
+            }
+            if (this.masterDetail && this._ostarEntity) {
+                // Panel mode — clear detail and restore
+                this.masterDetail.clearDetail();
+                this._ostarEntity.onActivated();
+                this.app.header.setBreadcrumb([{ label: 'O*s' }]);
+                return;
+            }
+            return this._renderList();
+        }
         return this.render(this.container, subPath);
     }
 
@@ -192,7 +208,11 @@ export default class OsActivity {
     }
 
     async _prepareOStarEntity() {
-        if (this._ostarEntity) return;
+        if (this._ostarEntity) {
+            // Reconnect to new masterDetail list container after a rebuild
+            this._ostarEntity.container = this.masterDetail.listContainer;
+            return;
+        }
         const { default: OStarEntity } = await import('./o-star-entity.js');
         this._ostarEntity = new OStarEntity(this.app, this.setupData, {
             onItemSelect:            (item) => this._handleItemSelect(item),
@@ -335,8 +355,6 @@ export default class OsActivity {
         } else {
             await this._renderRequirementDetailInPanel(id);
         }
-
-        window.history.replaceState({}, '', `${this._basePath()}/${entityType}/${id}`);
     }
 
     // -------------------------------------------------------------------------
@@ -368,6 +386,7 @@ export default class OsActivity {
             const { default: RequirementDetails } = await import('./requirement-details.js');
             this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
         }
+        this._inPageMode = true;
         await this._requirementDetails.render(this.container, id, 'page');
     }
 
@@ -376,6 +395,7 @@ export default class OsActivity {
             const { default: ChangeDetails } = await import('./change-details.js');
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
+        this._inPageMode = true;
         await this._changeDetails.render(this.container, id, 'page');
     }
 

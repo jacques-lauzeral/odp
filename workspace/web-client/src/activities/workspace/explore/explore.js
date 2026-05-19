@@ -127,8 +127,12 @@ export default class ExploreActivity {
 
         try {
             const sub = await this._getSub(subName);
-            await sub.render(this.subContainer, subSubPath);
-            this._currentSubName = subName;
+            if (this._currentSubName === subName && sub.handleSubPath) {
+                await sub.handleSubPath(subSubPath);
+            } else {
+                await sub.render(this.subContainer, subSubPath);
+                this._currentSubName = subName;
+            }
         } catch (error) {
             errorHandler.handle(error, `explore-${subName}`);
         }
