@@ -363,6 +363,19 @@ export default class OStarEntity {
         this.currentPerspective = perspective;
         this.renderViewControls();
         this.renderFromCache();
+
+        const selected   = this.sharedState.selectedItem;
+        const selectedId = this._getItemId(selected);
+
+        if (perspective === 'tree' && selected) {
+            this._expandToItem(selectedId);
+            this.tree.render(this.container);
+            this._restoreSelection();
+            this.tree.scrollToItem(selectedId);
+        } else if (perspective === 'collection' && selected) {
+            this._restoreSelection();
+            this._scrollCollectionToItem(selectedId);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -392,6 +405,40 @@ export default class OStarEntity {
         }
     }
 
+    /**
+     * Expand all ancestor nodes in the tree that contain the item with the given itemId.
+     * @param {string|number} itemId
+     */
+    _expandToItem(itemId) {
+        if (!this.tree.treeData || itemId == null) return;
+
+        const expand = (node) => {
+            // Check if any descendant leaf matches
+            const hasTarget = (n) => {
+                if (n.entity && this._getItemId(n.entity) === itemId) return true;
+                return Object.values(n.children).some(hasTarget);
+            };
+            if (!hasTarget(node)) return false;
+            node.expanded = true;
+            this.tree.expandedNodes.add(node.id);
+            Object.values(node.children).forEach(expand);
+            return true;
+        };
+
+        Object.values(this.tree.treeData.children).forEach(expand);
+    }
+
+    /**
+     * Scroll the collection list so the selected row is visible.
+     * @param {string|number} itemId
+     */
+    _scrollCollectionToItem(itemId) {
+        if (!this.container || itemId == null) return;
+        const row = this.container.querySelector(`.collection-row[data-item-id="${itemId}"]`);
+        if (!row) return;
+        row.scrollIntoView({ block: 'nearest' });
+    }
+
     _restoreSelection() {
         const selected   = this.sharedState.selectedItem;
         if (!selected) return;
@@ -400,6 +447,9 @@ export default class OStarEntity {
 
         if (this.currentPerspective === 'tree') {
             this.tree.selectedItem = selected;
+            this.container?.querySelectorAll('.tree-row').forEach(row => {
+                row.classList.toggle('selected', row.dataset.itemId === String(selectedId));
+            });
         } else {
             this.collection.selectedItem = selected;
             this.container?.querySelectorAll('.collection-row').forEach(row => {

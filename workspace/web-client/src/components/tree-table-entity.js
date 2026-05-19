@@ -269,6 +269,10 @@ export default class TreeTableEntity {
             return;
         }
 
+        // Save scroll position before re-render
+        const scrollEl = this.container.querySelector('.tree-table-container');
+        const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
+
         const tableHtml = `
             <div class="tree-table-container">
                 <table class="tree-table">
@@ -287,6 +291,11 @@ export default class TreeTableEntity {
         `;
 
         this.container.innerHTML = tableHtml;
+
+        // Restore scroll position after re-render
+        const newScrollEl = this.container.querySelector('.tree-table-container');
+        if (newScrollEl && savedScrollTop) newScrollEl.scrollTop = savedScrollTop;
+
         this.attachEventListeners();
 
         // Notify parent that data is displayed
@@ -632,4 +641,25 @@ export default class TreeTableEntity {
                 this._collectVisibleNodes(child, result);
             }
         });
-    }}
+    }
+
+    /**
+     * Scroll the tree so the row for the given itemId is visible.
+     * Call after renderContent() has run.
+     * @param {string|number} itemId
+     */
+    scrollToItem(itemId) {
+        if (!this.container || itemId == null) return;
+        const row = this.container.querySelector(`tr[data-item-id="${itemId}"]`);
+        if (!row) return;
+        const scrollEl = this.container.querySelector('.tree-table-container');
+        if (!scrollEl) return;
+        const rowTop    = row.offsetTop;
+        const rowBottom = rowTop + row.offsetHeight;
+        const viewTop    = scrollEl.scrollTop;
+        const viewBottom = viewTop + scrollEl.clientHeight;
+        if (rowTop < viewTop || rowBottom > viewBottom) {
+            scrollEl.scrollTop = rowTop - scrollEl.clientHeight / 2;
+        }
+    }
+}
