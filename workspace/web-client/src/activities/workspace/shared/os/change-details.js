@@ -176,23 +176,19 @@ export default class ChangeDetails {
         return `
             <div class="os-detail">
                 <div class="os-detail__toolbar">
-                    <div class="os-detail__identity">
-                        <span class="os-detail__code">${this._esc(item.code ?? '')}</span>
-                        <span class="os-detail__type-badge">Operational Change</span>
-                        <span class="os-detail__maturity">${this._esc(item.maturity ?? '')}</span>
-                    </div>
+                    <span class="os-detail__title">${this._esc(item.title ?? item.code ?? '')}</span>
                     <div class="os-detail__actions">
                         ${isEditable
-            ? '<button class="btn btn-primary os-detail__edit">Edit</button>'
+            ? '<button class="os-action-btn os-action-btn--primary os-detail__edit">Edit</button>'
             : ''}
                         ${showFullPage
-            ? '<button class="btn btn-secondary os-detail__full-page">Full page</button>'
+            ? '<button class="os-action-btn os-detail__full-page">Full page</button>'
             : ''}
                         ${showInCollection
-            ? '<button class="btn btn-secondary os-detail__in-collection">In collection</button>'
+            ? '<button class="os-action-btn os-detail__in-collection">In collection</button>'
             : ''}
                         ${showInTree
-            ? '<button class="btn btn-secondary os-detail__in-tree">In tree</button>'
+            ? '<button class="os-action-btn os-detail__in-tree">In tree</button>'
             : ''}
                     </div>
                 </div>

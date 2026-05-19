@@ -7,7 +7,7 @@
  * Injected callbacks (required):
  *   onItemSelect(item)      — called when user selects a row
  *   getViewControlsEl()     — returns the HTMLElement where view controls are mounted
- *   isReadOnly              — boolean; true in Explore context (hides create buttons)
+ *   isReadOnly              — boolean; true in Explore context
  *
  * Column set:
  *   Both perspectives: Type · Code · Title · Maturity · Implements · Strategic Documents · Impacted Stakeholders · Impacted Domain
@@ -333,12 +333,6 @@ export default class OStarEntity {
                     </select>
                 </div>` : ''}
                 <span class="os-summary__text" id="osSummaryText"></span>
-                ${!this._isReadOnly ? `
-                <div class="ostar-controls__actions">
-                    <button class="btn btn-primary btn-sm" id="createON">+ ON</button>
-                    <button class="btn btn-primary btn-sm" id="createOR">+ OR</button>
-                    <button class="btn btn-primary btn-sm" id="createOC">+ OC</button>
-                </div>` : ''}
             </div>
         `;
 
@@ -350,11 +344,6 @@ export default class OStarEntity {
             this.sharedState.grouping = e.target.value;
             this.collection.handleGrouping(e.target.value);
         });
-
-        // Create buttons — forms loaded lazily when clicked
-        el.querySelector('#createON')?.addEventListener('click', () => this._handleCreate('ON'));
-        el.querySelector('#createOR')?.addEventListener('click', () => this._handleCreate('OR'));
-        el.querySelector('#createOC')?.addEventListener('click', () => this._handleCreate('OC'));
 
         this._onViewControlsRendered();
     }

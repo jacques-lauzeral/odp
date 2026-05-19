@@ -5,10 +5,6 @@
     min-width: 520px;
 }
 
-.os-detail__toolbar {
-    flex-shrink: 0;
-}
-
 .os-detail__body {
     flex: 1;
 }
@@ -31,7 +27,7 @@
     overflow: hidden;
 }
 
-/* ── O* toolbar — single row: filters | counts | search ── */
+/* ── O* toolbar — single row: filters | search | create ── */
 .os-toolbar {
     display: flex;
     align-items: center;
@@ -54,6 +50,13 @@
 }
 
 .os-toolbar__search {
+    flex-shrink: 0;
+}
+
+.os-toolbar__create {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     flex-shrink: 0;
 }
 
@@ -171,10 +174,73 @@
     cursor: pointer;
 }
 
-/* ── Create actions ── */
-.ostar-controls__actions {
+/* ── Create buttons (+ON / +OR / +OC) in toolbar ── */
+.os-create-btn {
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 4px 9px;
+    border-radius: 4px;
+    border: 0.5px solid #B5D4F4;
+    background: white;
+    color: #185FA5;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.os-create-btn:hover {
+    background: var(--ec-light, #EBF3FB);
+}
+
+/* ── Detail toolbar — single row: title | actions ── */
+.os-detail__toolbar {
     display: flex;
-    gap: var(--space-2);
-    margin-left: auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 0.5px solid var(--border-primary);
+    min-height: 36px;
     flex-shrink: 0;
+}
+
+.os-detail__title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.os-detail__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* ── Detail action buttons ── */
+.os-action-btn {
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.3;
+    padding: 4px 9px;
+    border-radius: 4px;
+    border: 0.5px solid #cbd5e1;
+    background: white;
+    color: #1a1a2e;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.os-action-btn:hover {
+    background: var(--bg-secondary);
+}
+
+.os-action-btn--primary {
+    background: var(--ec-navy, #1F3864);
+    color: white;
+    border-color: var(--ec-navy, #1F3864);
+}
+.os-action-btn--primary:hover {
+    background: #162b50;
 }

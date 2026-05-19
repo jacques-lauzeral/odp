@@ -168,27 +168,27 @@ export default class RequirementDetails {
     // -------------------------------------------------------------------------
 
     _buildShellHtml(item) {
-        const isEditable      = this.config.mode === 'edit';
-        const showFullPage    = this._mode === 'panel' && this._onFullPage     != null;
+        const isEditable       = this.config.mode === 'edit';
+        const showFullPage     = this._mode === 'panel' && this._onFullPage     != null;
         const showInCollection = this._mode === 'page'  && this._onInCollection != null;
         const showInTree       = this._mode === 'page'  && this._onInTree       != null;
 
         return `
             <div class="os-detail">
                 <div class="os-detail__toolbar">
-                    <span class="os-detail__code">${this._esc(item.code ?? '')}</span>
+                    <span class="os-detail__title">${this._esc(item.title ?? item.code ?? '')}</span>
                     <div class="os-detail__actions">
                         ${isEditable
-            ? '<button class="btn btn-primary os-detail__edit">Edit</button>'
+            ? '<button class="os-action-btn os-action-btn--primary os-detail__edit">Edit</button>'
             : ''}
                         ${showFullPage
-            ? '<button class="btn btn-secondary os-detail__full-page">Full page</button>'
+            ? '<button class="os-action-btn os-detail__full-page">Full page</button>'
             : ''}
                         ${showInCollection
-            ? '<button class="btn btn-secondary os-detail__in-collection">In collection</button>'
+            ? '<button class="os-action-btn os-detail__in-collection">In collection</button>'
             : ''}
                         ${showInTree
-            ? '<button class="btn btn-secondary os-detail__in-tree">In tree</button>'
+            ? '<button class="os-action-btn os-detail__in-tree">In tree</button>'
             : ''}
                     </div>
                 </div>

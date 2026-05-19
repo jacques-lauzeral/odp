@@ -153,6 +153,7 @@ export default class OsActivity {
                 <div class="os-toolbar" id="osToolbar">
                     <div class="os-toolbar__filters" id="osFilters"></div>
                     <div class="os-toolbar__search" id="osSearch"></div>
+                    <div class="os-toolbar__create" id="osCreateActions"></div>
                 </div>
                 <div class="os-view-controls" id="osViewControls"></div>
                 <div class="os-content" id="osContent"></div>
@@ -198,6 +199,21 @@ export default class OsActivity {
                 this._loadData();
             }, 300);
         });
+
+        // Create buttons — only in live (non-read-only) context
+        if (!this._isReadOnly()) {
+            const createEl = dom.find('#osCreateActions', this.container);
+            if (createEl) {
+                createEl.innerHTML = `
+                    <button class="os-create-btn" id="toolbarCreateON">+ ON</button>
+                    <button class="os-create-btn" id="toolbarCreateOR">+ OR</button>
+                    <button class="os-create-btn" id="toolbarCreateOC">+ OC</button>
+                `;
+                createEl.querySelector('#toolbarCreateON')?.addEventListener('click', () => this._ostarEntity?._handleCreate('ON'));
+                createEl.querySelector('#toolbarCreateOR')?.addEventListener('click', () => this._ostarEntity?._handleCreate('OR'));
+                createEl.querySelector('#toolbarCreateOC')?.addEventListener('click', () => this._ostarEntity?._handleCreate('OC'));
+            }
+        }
     }
 
     _mountFilterBar() {
@@ -429,7 +445,7 @@ export default class OsActivity {
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
         await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel', {
-            onFullPage:      (item) => this._navigateToFullPage(item),
+            onFullPage:      (item) => this._navigateToFullPage(item, 'oc'),
             onInCollection:  null,
             onInTree:        null,
         });
@@ -474,10 +490,11 @@ export default class OsActivity {
      * Pushes /{base}/os/{type}/{id} to browser history.
      * @param {object} item
      */
-    _navigateToFullPage(item) {
-        const id         = item.itemId ?? item.id;
-        const isOC       = item.type === 'OC';
-        const entityType = isOC ? 'oc' : (item.type === 'ON' ? 'on' : 'or');
+    _navigateToFullPage(item, segment) {
+        const id = item.itemId ?? item.id;
+        const entityType = segment
+            ?? (item.type === 'OC' || item.code?.startsWith('OC-') ? 'oc'
+                : item.type === 'ON' ? 'on' : 'or');
         this.app.navigate(`${this._basePath()}/${entityType}/${id}`);
     }
 
