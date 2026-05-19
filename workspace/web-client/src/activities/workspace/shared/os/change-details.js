@@ -179,16 +179,16 @@ export default class ChangeDetails {
                     <span class="os-detail__title">${this._esc(item.title ?? item.code ?? '')}</span>
                     <div class="os-detail__actions">
                         ${isEditable
-            ? '<button class="os-action-btn os-action-btn--primary os-detail__edit">Edit</button>'
+            ? '<button class="odip-btn odip-btn--primary os-detail__edit">Edit</button>'
             : ''}
                         ${showFullPage
-            ? '<button class="os-action-btn os-detail__full-page">Full page</button>'
+            ? '<button class="odip-btn os-detail__full-page">Full page</button>'
             : ''}
                         ${showInCollection
-            ? '<button class="os-action-btn os-detail__in-collection">In collection</button>'
+            ? '<button class="odip-btn os-detail__in-collection">In collection</button>'
             : ''}
                         ${showInTree
-            ? '<button class="os-action-btn os-detail__in-tree">In tree</button>'
+            ? '<button class="odip-btn os-detail__in-tree">In tree</button>'
             : ''}
                     </div>
                 </div>

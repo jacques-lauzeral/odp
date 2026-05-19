@@ -47,7 +47,7 @@ export class MilestoneManager {
             html += `
                 <div class="milestones-header">
                     <span class="milestones-label">Milestones:</span>
-                    <button type="button" class="btn btn-secondary btn-sm" id="add-milestone-btn">
+                    <button type="button" class="odip-btn" id="add-milestone-btn">
                         + Add Milestone
                     </button>
                 </div>
@@ -406,7 +406,7 @@ export class MilestoneManager {
                     <input type="text" 
                         id="milestone-name" 
                         name="name" 
-                        class="form-control" 
+                        class="odip-input" 
                         value="${this.escapeHtml(name)}"
                         placeholder="Enter milestone name"
                         required>
@@ -418,7 +418,7 @@ export class MilestoneManager {
                     <textarea 
                         id="milestone-description" 
                         name="description" 
-                        class="form-control" 
+                        class="odip-input" 
                         rows="3"
                         placeholder="Describe this milestone...">${this.escapeHtml(description)}</textarea>
                     <div class="validation-message"></div>
@@ -426,7 +426,7 @@ export class MilestoneManager {
 
                 <div class="form-group" data-field="waveId">
                     <label for="milestone-wave">Target Wave</label>
-                    <select id="milestone-wave" name="waveId" class="form-control">
+                    <select id="milestone-wave" name="waveId" class="odip-input">
                         <option value="">Not assigned</option>
                         ${this.renderWaveOptions(waveId)}
                     </select>
@@ -441,7 +441,7 @@ export class MilestoneManager {
                             ${this.renderSelectedEventTypes(selectedEventTypes)}
                         </div>
                         <div class="add-tag-container">
-                            <select id="event-type-dropdown" class="form-control">
+                            <select id="event-type-dropdown" class="odip-input">
                                 <option value="">+ Add Event Type</option>
                                 ${this.renderAvailableEventTypes(selectedEventTypes)}
                             </select>

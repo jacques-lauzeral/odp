@@ -126,7 +126,7 @@ export default class ReferenceManager {
         return `
             <input type="text"
                    id="${this.config.fieldId}-search"
-                   class="form-control reference-manager-input"
+                   class="odip-input reference-manager-input"
                    placeholder="${this._escapeHtml(this.config.placeholder)}"
                    value="${this._escapeHtml(this.searchTerm)}"
                    autocomplete="off">

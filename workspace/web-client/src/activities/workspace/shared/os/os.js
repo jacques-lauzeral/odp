@@ -205,9 +205,9 @@ export default class OsActivity {
             const createEl = dom.find('#osCreateActions', this.container);
             if (createEl) {
                 createEl.innerHTML = `
-                    <button class="os-create-btn" id="toolbarCreateON">+ ON</button>
-                    <button class="os-create-btn" id="toolbarCreateOR">+ OR</button>
-                    <button class="os-create-btn" id="toolbarCreateOC">+ OC</button>
+                    <button class="odip-btn odip-btn--create" id="toolbarCreateON">+ ON</button>
+                    <button class="odip-btn odip-btn--create" id="toolbarCreateOR">+ OR</button>
+                    <button class="odip-btn odip-btn--create" id="toolbarCreateOC">+ OC</button>
                 `;
                 createEl.querySelector('#toolbarCreateON')?.addEventListener('click', () => this._ostarEntity?._handleCreate('ON'));
                 createEl.querySelector('#toolbarCreateOR')?.addEventListener('click', () => this._ostarEntity?._handleCreate('OR'));

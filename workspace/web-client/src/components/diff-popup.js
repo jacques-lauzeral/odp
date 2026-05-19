@@ -125,7 +125,7 @@ export class DiffPopup {
                         </div>
                     </div>
                     <div class="history-popup-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-action="close">Close</button>
+                        <button type="button" class="odip-btn" data-action="close">Close</button>
                     </div>
                 </div>
             </div>`);
@@ -147,7 +147,7 @@ export class DiffPopup {
                     ${this._headerHtml(vA, vB, entityA, countLabel)}
                     <div class="history-popup-body">${bodyHtml}</div>
                     <div class="history-popup-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-action="close">Close</button>
+                        <button type="button" class="odip-btn" data-action="close">Close</button>
                     </div>
                 </div>
             </div>`);

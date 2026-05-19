@@ -110,7 +110,7 @@ export default class AnnotatedMultiselectManager {
                     </td>
                     <td class="cell-note">
                         <textarea
-                            class="form-control form-control-sm edit-note-input"
+                            class="odip-input edit-note-input"
                             data-item-id="${item.id}"
                             rows="3"
                             maxlength="${this.config.maxNoteLength}">${this.escapeHtml(item.note || '')}</textarea>
@@ -118,13 +118,13 @@ export default class AnnotatedMultiselectManager {
                     <td class="cell-actions">
                         <button 
                             type="button" 
-                            class="btn btn-sm btn-primary btn-save" 
+                            class="odip-btn odip-btn--primary btn-save" 
                             data-item-id="${item.id}">
                             Save
                         </button>
                         <button 
                             type="button" 
-                            class="btn btn-sm btn-secondary btn-cancel" 
+                            class="odip-btn btn-cancel" 
                             data-item-id="${item.id}">
                             Cancel
                         </button>
@@ -148,13 +148,13 @@ export default class AnnotatedMultiselectManager {
                 <td class="cell-actions">
                     <button 
                         type="button" 
-                        class="btn btn-sm btn-secondary btn-edit" 
+                        class="odip-btn btn-edit" 
                         data-item-id="${item.id}">
                         Edit
                     </button>
                     <button 
                         type="button" 
-                        class="btn btn-sm btn-danger btn-remove" 
+                        class="odip-btn odip-btn--danger btn-remove" 
                         data-item-id="${item.id}">
                         Remove
                     </button>
@@ -173,7 +173,7 @@ export default class AnnotatedMultiselectManager {
             <div class="annotated-footer">
                 <div class="footer-selector">
                     <select 
-                        class="form-control form-control-sm" 
+                        class="odip-input" 
                         id="${this.config.fieldId}-dropdown"
                         ${availableOptions.length === 0 ? 'disabled' : ''}>
                         <option value="">${this.config.placeholder}</option>
@@ -185,7 +185,7 @@ export default class AnnotatedMultiselectManager {
                 <div class="footer-note">
                     <input 
                         type="text" 
-                        class="form-control form-control-sm" 
+                        class="odip-input" 
                         id="${this.config.fieldId}-note"
                         placeholder="${this.config.noteLabel}"
                         maxlength="${this.config.maxNoteLength}">
@@ -193,7 +193,7 @@ export default class AnnotatedMultiselectManager {
                 <div class="footer-action">
                     <button 
                         type="button" 
-                        class="btn btn-sm btn-primary" 
+                        class="odip-btn odip-btn--primary" 
                         id="${this.config.fieldId}-add">
                         Add
                     </button>

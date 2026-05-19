@@ -471,7 +471,7 @@ export class CollectionEntityForm {
                 return `<input type="${field.type}" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     value="${this.escapeHtml(value || '')}" 
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -484,7 +484,7 @@ export class CollectionEntityForm {
                 return `<textarea 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     rows="${rows}" 
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -506,7 +506,7 @@ export class CollectionEntityForm {
                     name="${field.key}" 
                     id="${fieldId}-data">`;
             case 'select':
-                let html = `<select id="${fieldId}" name="${field.key}" class="form-control" ${required}>`;
+                let html = `<select id="${fieldId}" name="${field.key}" class="odip-input odip-input--standard" ${required}>`;
 
                 // Add empty option if not required or specified
                 if (!field.required || field.includeEmpty) {
@@ -573,7 +573,7 @@ export class CollectionEntityForm {
                 return `<input type="date" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     value="${value || ''}" 
                     ${required}
                     ${field.min ? `min="${field.min}"` : ''}
@@ -600,7 +600,7 @@ export class CollectionEntityForm {
                 return `<input type="text"
                     id="${fieldId}"
                     name="${field.key}"
-                    class="form-control"
+                    class="odip-input odip-input--standard"
                     value="${this.escapeHtml(value || '')}"
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -618,7 +618,7 @@ export class CollectionEntityForm {
                 return `<input type="text" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     value="${this.escapeHtml(value || '')}" 
                     ${required}>`;
         }
@@ -1391,14 +1391,14 @@ export class CollectionEntityForm {
                 </div>
                 ${showFooter ? `
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
-                        <button type="button" class="btn btn-primary" data-action="save">
+                        <button type="button" class="odip-btn odip-btn--standard" data-action="close">Cancel</button>
+                        <button type="button" class="odip-btn odip-btn--primary odip-btn--standard" data-action="save">
                             ${mode === 'create' ? 'Create' : 'Save Changes'}
                         </button>
                     </div>
                 ` : `
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" data-action="close">Close</button>
+                        <button type="button" class="odip-btn odip-btn--primary odip-btn--standard" data-action="close">Close</button>
                     </div>
                 `}
             </div>
@@ -1534,7 +1534,7 @@ export class CollectionEntityForm {
                         <p>Review the restored content, then <strong>Save</strong> to create a new version.</p>
                     </div>
                     <div class="history-popup-footer">
-                        <button type="button" class="btn btn-primary btn-sm" id="${id}-ok">Got it</button>
+                        <button type="button" class="odip-btn odip-btn--primary" id="${id}-ok">Got it</button>
                     </div>
                 </div>
             </div>

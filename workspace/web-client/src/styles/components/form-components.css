@@ -129,7 +129,7 @@
     margin-top: var(--space-2);
 }
 
-.add-tag-container .form-control {
+.add-tag-container .odip-input {
     max-width: 200px;
     font-size: var(--font-size-sm);
 }
@@ -191,10 +191,7 @@
     gap: var(--space-1);
 }
 
-.milestone-actions .btn {
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--font-size-xs);
-}
+/* .milestone-actions buttons use odip-btn — no size override needed */
 
 /* Form Field Groups */
 .form-field-group {
@@ -459,8 +456,8 @@
     display: flex;
 }
 
-.footer-selector .form-control,
-.footer-note .form-control {
+.footer-selector .odip-input,
+.footer-note .odip-input {
     width: 100%;
 }
 

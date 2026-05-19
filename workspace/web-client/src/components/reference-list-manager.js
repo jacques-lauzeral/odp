@@ -124,14 +124,14 @@ export default class ReferenceListManager {
         return `
             <button 
                 type="button" 
-                class="btn btn-sm btn-primary btn-add-inline" 
+                class="odip-btn odip-btn--primary btn-add-inline" 
                 ${!hasAvailable ? 'disabled' : ''}>
                 + Add
             </button>
             ${this.selectedIds.length > 0 ? `
                 <button 
                     type="button" 
-                    class="btn btn-sm btn-secondary btn-clear-inline">
+                    class="odip-btn btn-clear-inline">
                     Clear All
                 </button>
             ` : ''}
@@ -144,14 +144,14 @@ export default class ReferenceListManager {
                 <div class="search-popup-header">
                     <input 
                         type="text" 
-                        class="form-control search-input" 
+                        class="odip-input search-input" 
                         id="${this.config.fieldId}-search-input"
                         placeholder="${this.config.placeholder}"
                         value="${this.escapeHtml(this.searchTerm)}"
                         autocomplete="off">
                     <button 
                         type="button" 
-                        class="btn btn-sm btn-secondary btn-cancel-search">
+                        class="odip-btn btn-cancel-search">
                         Cancel
                     </button>
                 </div>
