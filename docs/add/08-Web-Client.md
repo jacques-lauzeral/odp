@@ -330,10 +330,10 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 ```javascript
 // TimelineMilestone
 {
-  label:       string,        // short display label
-  description: string,        // tooltip / detail text
-  eventTypes:  string[],      // one or more event type keys
-  date:        Date           // calendar position
+    label:       string,        // short display label
+        description: string,        // tooltip / detail text
+    eventTypes:  string[],      // one or more event type keys
+    date:        Date           // calendar position
 }
 ```
 
@@ -377,12 +377,12 @@ One call per instance before adding rows. Two modes:
 
 ```javascript
 {
-  mode: 'pixmap', rows: 1, cols: 3,
-  eventTypes: {
-    'API_PUBLICATION':    { row: 0, col: 0, colour: '#3b82f6' },
-    'UI_TEST_DEPLOYMENT': { row: 0, col: 1, colour: '#8b5cf6' },
-    'OPS_DEPLOYMENT':     { row: 0, col: 2, colour: '#10b981' }
-  }
+    mode: 'pixmap', rows: 1, cols: 3,
+        eventTypes: {
+        'API_PUBLICATION':    { row: 0, col: 0, colour: '#3b82f6' },
+        'UI_TEST_DEPLOYMENT': { row: 0, col: 1, colour: '#8b5cf6' },
+        'OPS_DEPLOYMENT':     { row: 0, col: 2, colour: '#10b981' }
+    }
 }
 ```
 
@@ -438,14 +438,14 @@ Changes with no milestones within the current time interval are excluded before 
 
 ```javascript
 temporalGrid.setMilestoneRendering({
-  mode: 'pixmap', rows: 1, cols: 3,
-  eventTypes: {
-    'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
-    'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
-    'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
-    'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
-    'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
-  }
+    mode: 'pixmap', rows: 1, cols: 3,
+    eventTypes: {
+        'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
+        'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
+        'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
+        'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
+        'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
+    }
 })
 ```
 
@@ -488,9 +488,9 @@ Responsibilities:
 ```js
 {
     onItemSelect(item),             // called on row click
-    getViewControlsEl(),            // returns HTMLElement for view controls mount
-    isReadOnly,                     // boolean; true in Explore/edition context
-    onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
+        getViewControlsEl(),            // returns HTMLElement for view controls mount
+        isReadOnly,                     // boolean; true in Explore/edition context
+        onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
 }
 ```
 
@@ -1022,5 +1022,158 @@ The edition details panel exposes a **Publish** button (triggers server-side Ant
 5. On other error: error message displayed
 
 **`apiClient.publishEdition(id, options)`** — `post('/odp-editions', options, { id, subPath: 'publish' })`. Response: `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }` — all nullable. URLs made absolute using `apiClient.baseUrl`.
+
+---
+
+## 20. ODIP Design System — UI Primitives
+
+### 20.1 Overview
+
+ODIP Space uses a canonical set of UI primitive classes defined in `primitives.css`. These replace Bootstrap-legacy class names (`btn`, `btn-primary`, `form-control`) throughout all ODIP components. The design system enforces two tiers — **compact** (inline/toolbar contexts) and **standard** (modal/form contexts) — with semantic variants for both buttons and inputs.
+
+### 20.2 Button System — `odip-btn`
+
+All buttons in ODIP components use `odip-btn`. The base class defines the compact tier; `--standard` upgrades to form-body size.
+
+**Size tiers:**
+
+| Class | Font size | Padding | Border |
+|---|---|---|---|
+| `.odip-btn` (default) | 11px | 4px 9px | 0.5px solid |
+| `.odip-btn.odip-btn--standard` | `--font-size-sm` | `--space-2` `--space-4` | 1px solid |
+
+**Semantic variants:**
+
+| Modifier | Use | Background | Text | Border |
+|---|---|---|---|---|
+| (none) | Neutral — History, Cancel, navigation | white | `#1a1a2e` | `#cbd5e1` |
+| `--primary` | Primary action — Edit, Save, Submit | `--ec-navy` (#1F3864) | white | `--ec-navy` |
+| `--danger` | Destructive — Delete, Delete version | white | `#A32D2D` | `#F7C1C1` |
+| `--warning` | Consequential — Decommission | white | `#854F0B` | `#FAC775` |
+| `--create` | New-object — +ON, +OR, +OC | white | `#185FA5` | `#B5D4F4` |
+
+**Usage pattern:**
+```html
+<button class="odip-btn">History</button>
+<button class="odip-btn odip-btn--primary">Edit</button>
+<button class="odip-btn odip-btn--danger">Delete</button>
+<button class="odip-btn odip-btn--primary odip-btn--standard">Save</button>
+<button class="odip-btn odip-btn--standard">Cancel</button>
+<button class="odip-btn odip-btn--create">+ ON</button>
+```
+
+The legacy `.btn` / `.btn-primary` / `.btn-secondary` / `.btn-sm` classes remain in `primitives.css` but are not used in any ODIP component.
+
+### 20.3 Input System — `odip-input`
+
+All text inputs, selects, and textareas in ODIP components use `odip-input`. Same two-tier pattern as `odip-btn`.
+
+**Size tiers:**
+
+| Class | Font size | Padding | Border |
+|---|---|---|---|
+| `.odip-input` (default) | 11px | 4px 9px | 0.5px solid |
+| `.odip-input.odip-input--standard` | `--font-size-sm` | `--space-2` `--space-3` | 1px solid |
+
+**Modifiers:**
+
+| Modifier | Use |
+|---|---|
+| `--textarea` | Adds `min-height: 80px`, `resize: vertical` |
+| `--error` | Red border for validation error state |
+
+**Usage pattern:**
+```html
+<input class="odip-input" type="text">                          <!-- compact -->
+<input class="odip-input odip-input--standard" type="text">    <!-- form body -->
+<select class="odip-input">…</select>                          <!-- compact select -->
+<textarea class="odip-input odip-input--standard odip-input--textarea">…</textarea>
+```
+
+The legacy `form-control`, `form-select`, `form-textarea`, `form-control-sm` classes are not used in any ODIP component.
+
+### 20.4 Link Style — `odip-link`
+
+Navigable inline references (O* chips, strategic document links) use `.odip-link` defined in `main.css`:
+
+```css
+color: var(--link-color)       /* --ec-blue */
+font-weight: semibold
+cursor: pointer
+text-decoration: none
+```
+
+Hover: `color: var(--link-color-hover)` (`--ec-navy`).
+
+### 20.5 Affected Files
+
+| File | Change |
+|---|---|
+| `primitives.css` | Added `odip-btn` and `odip-input` systems |
+| `os.css` | Added `os-toolbar__create`, `os-detail__toolbar`, `os-detail__title`, `os-detail__actions`; removed `os-action-btn`, `os-create-btn` |
+| `form-components.css` | Migrated `.form-control` selectors to `.odip-input`; removed `.milestone-actions .btn` sizing override |
+| `collection-entity-form.js` | `btn` → `odip-btn`; `form-control` → `odip-input odip-input--standard` |
+| `change-form-milestone.js` | `btn` → `odip-btn`; `form-control` → `odip-input` |
+| `annotated-multiselect-manager.js` | `btn` → `odip-btn`; `form-control` → `odip-input` |
+| `reference-list-manager.js` | `btn` → `odip-btn`; `form-control` → `odip-input` |
+| `reference-manager.js` | `form-control` → `odip-input` |
+| `diff-popup.js` | `btn` → `odip-btn` |
+| `os.js` | `os-action-btn` → `odip-btn`; `os-create-btn` → `odip-btn odip-btn--create` |
+| `requirement-details.js` | `os-action-btn` → `odip-btn` |
+| `change-details.js` | `os-action-btn` → `odip-btn` |
+
+---
+
+## 21. O* Workspace — Plain Page / Master Detail Navigation
+
+### 21.1 Layout Changes
+
+The O* workspace toolbar row has been restructured:
+
+```
+[ filter bar · · · · · · · · · · 🔍 search  +ON  +OR  +OC ]
+[ perspective | grouping | counts                           ]
+[ list panel                    ‖ detail panel              ]
+```
+
+The +ON / +OR / +OC create buttons moved from the view controls row (owned by `OStarEntity`) to the toolbar row (owned by `OsActivity`). This eliminates visual competition between create buttons and detail action buttons.
+
+Create buttons are only rendered in live (non-read-only) context. They delegate to `_ostarEntity._handleCreate(type)`.
+
+### 21.2 Detail Panel Header
+
+The detail panel (`RequirementDetails` / `ChangeDetails`) uses a single toolbar row:
+
+```
+[ title (fills available space) · · · · Edit  Full page ]   ← panel mode
+[ title (fills available space) · · · In collection  In tree ]  ← page mode
+```
+
+`os-detail__title` takes `flex: 1` and truncates with ellipsis. Action buttons are right-aligned, compact (`odip-btn`).
+
+### 21.3 Plain Page ↔ Master Detail Navigation
+
+Two new action buttons per detail view, mode-dependent:
+
+| Mode | Button | Action |
+|---|---|---|
+| Panel | **Full page** | Pushes `/{base}/os/{type}/{id}` to browser history |
+| Page | **In collection** | Navigates to `/{base}/os?perspective=coll&selected={id}` |
+| Page | **In tree** | Navigates to `/{base}/os?perspective=tree&selected={id}` |
+
+**Callback injection** — callbacks are passed into `render()` on every call (not at construction), ensuring cached instances always receive correct wiring:
+
+```js
+await this._requirementDetails.render(container, id, 'panel', {
+    onFullPage:     (item) => this._navigateToFullPage(item),
+    onInCollection: null,
+    onInTree:       null,
+});
+```
+
+**Search param restore** — `_restoreFromSearchParams()` is called once after `_renderList()` completes. It reads `?perspective` and `?selected`, sets `sharedState.selectedItem` before calling `setPerspective()` (ensuring tree expansion fires with the item already known), then calls `_handleItemSelect()` for panel render. Params are cleaned via `replaceState` after consumption.
+
+**`OStarEntity.setPerspective(perspective)`** — public method added for programmatic perspective switching. Accepts `'collection'` or `'tree'`. Thin wrapper around `_switchPerspective`.
+
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)
