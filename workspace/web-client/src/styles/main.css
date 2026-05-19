@@ -138,6 +138,10 @@ body {
     --transition-fast: 150ms ease-in-out;
     --transition-base: 200ms ease-in-out;
     --transition-slow: 300ms ease-in-out;
+
+    /* Links */
+    --link-color:       var(--ec-blue);
+    --link-color-hover: var(--ec-navy);
 }
 
 /* Typography */
@@ -181,6 +185,19 @@ a:hover {
 a:focus {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
+}
+
+/* Navigable reference link — used on chips, table cells, and any inline O* reference */
+.odip-link {
+    color: var(--link-color);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: var(--font-weight-semibold);
+    transition: color var(--transition-fast);
+}
+
+.odip-link:hover {
+    color: var(--link-color-hover);
 }
 
 /* Layout Utilities */

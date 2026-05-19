@@ -208,6 +208,18 @@
     content: "•";
     color: var(--text-secondary);
     flex-shrink: 0;
+    text-decoration: none;
+}
+
+.detail-field .reference-list-inline .selected-chip--link {
+    color: var(--link-color);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: var(--font-weight-semibold);
+}
+
+.detail-field .reference-list-inline .selected-chip--link:hover {
+    color: var(--link-color-hover);
 }
 
 /* Plain "None" — font-style reset, consistent with annotated-reference-list */
@@ -244,6 +256,18 @@
     content: "•";
     color: var(--text-secondary);
     flex-shrink: 0;
+    text-decoration: none;
+}
+
+.detail-field .reference-manager .selected-chip--link {
+    color: var(--link-color);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: var(--font-weight-semibold);
+}
+
+.detail-field .reference-manager .selected-chip--link:hover {
+    color: var(--link-color-hover);
 }
 
 /* Plain "None" — font-style reset, consistent with annotated-reference-list */
