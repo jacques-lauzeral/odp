@@ -25,11 +25,6 @@ paths:
   /stakeholder-categories/{id}:
     $ref: 'openapi-setup.yml#/paths/~1stakeholder-categories~1{id}'
 
-  /domains:
-    $ref: 'openapi-setup.yml#/paths/~1domains'
-  /domains/{id}:
-    $ref: 'openapi-setup.yml#/paths/~1domains~1{id}'
-
   /reference-documents:
     $ref: 'openapi-setup.yml#/paths/~1reference-documents'
   /reference-documents/{id}:
@@ -76,6 +71,16 @@ paths:
   /operational-changes/{id}/versions/{versionNumber}:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes~1{id}~1versions~1{versionNumber}'
 
+  # Chapter endpoints
+  /chapters:
+    $ref: 'openapi-chapter.yml#/paths/~1chapters'
+  /chapters/{id}:
+    $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}'
+  /chapters/{id}/versions:
+    $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}~1versions'
+  /chapters/{id}/versions/{versionNumber}:
+    $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}~1versions~1{versionNumber}'
+
   # Milestone endpoints
   /operational-changes/{id}/milestones:
     $ref: 'openapi-operational-milestones.yml#/paths/~1operational-changes~1{id}~1milestones'
@@ -102,8 +107,6 @@ paths:
 tags:
   - name: Stakeholder Categories
     description: Stakeholder category management
-  - name: Domains
-    description: Business domain management
   - name: Reference Documents
     description: Strategic reference document management
   - name: Bandwidths
@@ -118,6 +121,8 @@ tags:
     description: Operational change management with versioning
   - name: Milestones
     description: Milestone management within operational changes
+  - name: Chapters
+    description: Chapter management — narrative and O* presentation hierarchy for ODIP Editions
   - name: Baselines
     description: Baseline management for deployment planning
   - name: ODP

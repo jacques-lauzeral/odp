@@ -1,10 +1,8 @@
 import StakeholderCategoryService from '../StakeholderCategoryService.js';
-import DomainService from '../DomainService.js';
 import ReferenceDocumentService from '../ReferenceDocumentService.js';
 import WaveService from '../WaveService.js';
 import OperationalRequirementService from '../OperationalRequirementService.js';
 import OperationalChangeService from '../OperationalChangeService.js';
-import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
 import Comparator from '../../../../shared/src/model/Comparator.js';
 
 /**
@@ -91,7 +89,6 @@ class StandardImporter {
         return {
             // Setup element maps (externalId → entity)
             stakeholderMap: new Map(),
-            domainMap: new Map(),
             documentMap: new Map(),
             waveMap: new Map(),
 
@@ -176,16 +173,14 @@ class StandardImporter {
     async _buildCodeMaps(userId, context) {
         try {
             // Load setup elements
-            const [stakeholders, domains, documents, waves] = await Promise.all([
+            const [stakeholders, documents, waves] = await Promise.all([
                 StakeholderCategoryService.listItems(userId),
-                DomainService.listItems(userId),
                 ReferenceDocumentService.listItems(userId),
                 WaveService.listItems(userId)
             ]);
 
             // Build setup element maps by name (case-insensitive)
             this._buildSetupElementMap(stakeholders, 'stakeholder', context.stakeholderMap);
-            this._buildSetupElementMap(domains, 'domain', context.domainMap);
 
             // Build document and wave maps by name
             documents.forEach(doc => {
@@ -215,7 +210,7 @@ class StandardImporter {
                 context.codeOCMap.set(change.code, change);
             });
 
-            console.log(`Loaded: Stakeholders=${stakeholders.length}, Domains=${domains.length}, Documents=${documents.length}, Waves=${waves.length}`);
+            console.log(`Loaded: Stakeholders=${stakeholders.length}, Documents=${documents.length}, Waves=${waves.length}`);
             console.log(`Loaded: ONs=${context.codeONMap.size}, ORs=${context.codeORMap.size}, OCs=${context.codeOCMap.size}`);
 
         } catch (error) {
@@ -297,13 +292,6 @@ class StandardImporter {
                 context
             );
             resolvedCount += onData.impactedStakeholders.length;
-
-            onData.impactedDomains = this._resolveAnnotatedReferences(
-                onData.impactedDomains || [],
-                context.domainMap,
-                context
-            );
-            resolvedCount += onData.impactedDomains.length;
         }
 
         // Resolve references in all OR candidates (toCreate + updateCandidate)
@@ -314,13 +302,6 @@ class StandardImporter {
                 context
             );
             resolvedCount += orData.impactedStakeholders.length;
-
-            orData.impactedDomains = this._resolveAnnotatedReferences(
-                orData.impactedDomains || [],
-                context.domainMap,
-                context
-            );
-            resolvedCount += orData.impactedDomains.length;
         }
 
         console.log(`Resolved ${resolvedCount} annotated references (setup elements)`);
@@ -416,7 +397,6 @@ class StandardImporter {
 
         // Annotated references already resolved in Phase 3
         request.impactedStakeholders = reqData.impactedStakeholders || [];
-        request.impactedDomains = reqData.impactedDomains || [];
 
         // Skip operational references in Phase 4
         if (!skipOperationalRefs) {
@@ -657,7 +637,6 @@ class StandardImporter {
 
         // All references already resolved in Phase 3 (annotated) and Phase 5 (operational)
         request.impactedStakeholders = reqData.impactedStakeholders || [];
-        request.impactedDomains = reqData.impactedDomains || [];
         request.refinesParents = reqData.refinesParents || [];
         request.implementedONs = reqData.implementedONs || [];
         request.dependencies = reqData.dependencies || [];

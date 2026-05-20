@@ -23,14 +23,6 @@ export const StakeholderCategory = {
     parentId: null // string or null
 };
 
-export const Domain = {
-    id: '',
-    name: '',
-    description: '',
-    contact: '',  // optional
-    parentId: null // string or null
-};
-
 export const Bandwidth = {
     id: '',
     year: 0,

@@ -1,0 +1,211 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Chapter Management
+  description: Chapter Management Operations — narrative and O* hierarchy for ODIP Edition publication
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  /chapters:
+    get:
+      summary: List all chapters (latest versions, with config-owned fields merged)
+      tags: [Chapters]
+      description: |
+        Returns all chapters in flat list order (top-level chapters followed by their
+        sub-chapters). Config-owned fields (title, domain, position) are merged from
+        edition.json at read time. No create endpoint — chapters are managed by server bootstrap.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/Chapter'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /chapters/{id}:
+    get:
+      summary: Get chapter by ID (latest or edition context)
+      tags: [Chapters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Chapter Item ID"
+        - name: edition
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Optional edition ID. When provided, returns the chapter in the edition context. Omit for latest version."
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Chapter'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Bad Request - Invalid edition ID
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    put:
+      summary: Full update — replace narrative and osHierarchy (creates new version)
+      tags: [Chapters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ChapterUpdateRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Chapter'
+        '409':
+          description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid osHierarchy structure or missing expectedVersionId
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    patch:
+      summary: Partial update — update narrative and/or osHierarchy (creates new version)
+      tags: [Chapters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ChapterPatchRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Chapter'
+        '409':
+          description: Version Conflict
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '400':
+          description: Validation Error - Invalid osHierarchy structure or missing expectedVersionId
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /chapters/{id}/versions:
+    get:
+      summary: Get version history for chapter
+      tags: [Chapters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/VersionHistory'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /chapters/{id}/versions/{versionNumber}:
+    get:
+      summary: Get specific version of chapter
+      tags: [Chapters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Chapter'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+tags:
+  - name: Chapters
+    description: Chapter management — narrative and O* presentation hierarchy for ODIP Editions

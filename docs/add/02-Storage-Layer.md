@@ -44,10 +44,10 @@ BaseStore                              (base-store.js)
 ├── ODPEditionStore                    (odp-edition-store.js)
 ├── OperationalChangeMilestoneStore    (operational-change-milestone-store.js)
 ├── RefinableEntityStore               (refinable-entity-store.js)
-│   ├── DomainStore                    (domain-store.js)
 │   ├── ReferenceDocumentStore         (reference-document-store.js)
 │   └── StakeholderCategoryStore       (stakeholder-category-store.js)
 ├── VersionedItemStore                 (versioned-item-store.js)
+│   ├── ChapterStore                   (chapter-store.js)
 │   ├── OperationalChangeStore         (operational-change-store.js)
 │   └── OperationalRequirementStore    (operational-requirement-store.js)
 └── WaveStore                          (wave-store.js)
@@ -164,7 +164,7 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_buildReference(record, titleField?)` — builds a `{id, title, code, ...}` Reference object from a Neo4j record
 - `_validateReferences(label, ids, tx)` — batch-validates that all referenced node IDs exist; throws `StoreError` listing missing IDs
 
-**Note on `code` field**: Item nodes carry a `code` property (e.g. `OR-IDL-0042`) that is generated at creation time from the entity type and DRG. Codes are stable identifiers used for round-trip import matching alongside `externalId`.
+**Note on `code` field**: Item nodes carry a `code` property (e.g. `OR-IDL-0042`) that is generated at creation time from the entity type and domain key. Codes are stable identifiers used for round-trip import matching alongside `externalId`.
 
 ### 3.4 Concrete Stores
 
@@ -173,14 +173,14 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 | Store | Base | Additional relationships / notes |
 |---|---|---|
 | `StakeholderCategoryStore` | `RefinableEntityStore` | — |
-| `DomainStore` | `RefinableEntityStore` | — |
 | `ReferenceDocumentStore` | `RefinableEntityStore` | — |
 | `WaveStore` | `BaseStore` | — |
 | `BandwidthStore` | `BaseStore` | — |
 | `BaselineStore` | `BaseStore` | `HAS_ITEMS` capture; immutable |
 | `ODPEditionStore` | `BaseStore` | `EXPOSES`, context resolution; immutable |
 | `OperationalChangeMilestoneStore` | `BaseStore` | `BELONGS_TO`, `TARGETS`; internal to `OperationalChangeStore` |
-| `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `IMPACTS_DOMAIN`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
+| `ChapterStore` | `VersionedItemStore` | No relationships; `findByKey(key, tx)` for bootstrap; config-owned fields merged at read time |
+| `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
 | `OperationalChangeStore` | `VersionedItemStore` | `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`; milestones delegated |
 
 ---
@@ -189,17 +189,37 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 ### 4.1 Setup Entity Stores
 
-`StakeholderCategoryStore` and `DomainStore` both inherit `RefinableEntityStore → BaseStore` and expose no additional public methods beyond those described in §3.1 and §3.2.
+`StakeholderCategoryStore` inherits `RefinableEntityStore → BaseStore` and exposes no additional public methods beyond those described in §3.1 and §3.2.
 
 `WaveStore` inherits `BaseStore` only. Business rules: `year` is a 4-digit integer, `sequenceNumber` is a positive integer. The `(year, sequenceNumber)` pair is unique (e.g. wave `27#2`). `implementationDate` is optional (ISO format).
 
-`ReferenceDocumentStore` inherits `RefinableEntityStore → BaseStore`. Supports REFINES parent-child hierarchy consistent with `DomainStore` and `StakeholderCategoryStore`. Fields: `name`, `description` (optional), `version` (optional), `url`, `parentId` (optional). Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
+`ReferenceDocumentStore` inherits `RefinableEntityStore → BaseStore`. Supports REFINES parent-child hierarchy consistent with `StakeholderCategoryStore`. Fields: `name`, `description` (optional), `version` (optional), `url`, `parentId` (optional). Reference documents are referenced via `REFERENCES` relationships from operational requirement versions, not via any method on `ReferenceDocumentStore` itself.
 
 `BandwidthStore` inherits `BaseStore` only. Fields: `year`, `planned` (optional, integer, in MW), `waveId` (optional), `scopeId` (optional). The `(year, waveId, scopeId)` tuple is unique. NM internal — not exposed to external stakeholders.
 
 ---
 
-### 4.2 OperationalRequirementStore (`operational-requirement-store.js`)
+### 4.2 ChapterStore (`chapter-store.js`)
+
+Inherits `VersionedItemStore → BaseStore`. Chapters have no graph relationships — all content is stored as scalar fields on `ChapterVersion`. Config-owned fields (`title`, `domain`, `position`) are not stored in the DB — they are merged from `edition-config` at read time by `_mergeConfigFields()`.
+
+**No `create()` from `VersionedItemStore`** — chapter creation is bootstrap-only via `createChapter(key, parentItemId, tx)`. `_getEntityTypeForCode()` returns `null` (no code generation for chapters).
+
+**Additional public methods:**
+
+**`findByKey(key, tx)`** → `object|null` — find a chapter by its stable config key. Used by `initializeDatabase()` to check existence before creating.
+
+**`createChapter(key, parentItemId, tx)`** — bootstrap-only creation. Stores `key` and `parentItemId` on the item node; initialises version with empty `narrative` and null `jsonOsHierarchy`.
+
+**`findAll(tx)`** → all chapters ordered by item ID, with config-owned fields merged.
+
+**`findById(itemId, tx, baselineId?, editionId?)`** → single chapter with config-owned fields merged; returns `null` if not found.
+
+Config fields absent in `edition-config` (e.g. after a config drift) are set to `null` rather than throwing — drift is visible at read time rather than fatal.
+
+---
+
+### 4.3 OperationalRequirementStore (`operational-requirement-store.js`)
 
 Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extended with optional context and projection: `findById(itemId, tx, baselineId?, startDate?, projection?)`.
 
@@ -211,7 +231,6 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `strategicDocuments` | `REFERENCES` → ReferenceDocument | ON only | `note` |
 | `implementedONs` | `IMPLEMENTS` → OR Item (ON type) | OR only | — |
 | `impactedStakeholders` | `IMPACTS_STAKEHOLDER` → StakeholderCategory | OR only | `note` |
-| `impactedDomains` | `IMPACTS_DOMAIN` → Domain | OR only | `note` |
 | `dependencies` | `DEPENDS_ON` → OR Item | OR only | — |
 
 **`findAll(tx, baselineId?, filters?, projection?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Filters object:
@@ -222,11 +241,9 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `type` | `'ON'\|'OR'\|null` | Exact match on version field |
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS across statement, rationale, flows, privateNotes |
-| `drg` | `string\|null` | Exact match on DRG enum value |
+| `domain` | `string\|null` | Exact match on `version.domain` string field |
 | `maturity` | `string\|null` | Exact match on maturity enum value |
-| `path` | `string\|null` | Array membership (`$path IN version.path`) |
 | `stakeholderCategory` | `number\|null` | Single ID — EXISTS via IMPACTS_STAKEHOLDER → StakeholderCategory. OR type only |
-| `domain` | `number\|null` | Single ID — EXISTS via IMPACTS_DOMAIN → Domain |
 | `strategicDocument` | `number\|null` | Single ID — EXISTS via REFERENCES → ReferenceDocument. ON type only |
 | `refinesParent` | `number\|null` | Single OR item ID — EXISTS via REFINES |
 | `dependsOn` | `number\|null` | Single OR item ID — EXISTS via DEPENDS_ON |
@@ -238,7 +255,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findRoots(tx, baselineId?, startDate?)`** → `Array<{id, title, code, type}>` — requirements with no REFINES parent
 
-**`findRequirementsThatImpact(targetLabel, targetId, tx, baselineId?, startDate?)`** → `Array<{id, title, code, type}>` — `targetLabel`: `'StakeholderCategory'` or `'Domain'`
+**`findRequirementsThatImpactStakeholder(targetId, tx, baselineId?)`** → `Array<{id, title, code, type}>` — requirements that impact a given `StakeholderCategory`
 
 **`findRequirementsThatImplement(onItemId, tx, baselineId?, startDate?)`** → `Array<{id, title, code, type}>` — OR requirements that IMPLEMENT a given ON
 
@@ -256,7 +273,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 ---
 
-### 4.3 OperationalChangeStore (`operational-change-store.js`)
+### 4.4 OperationalChangeStore (`operational-change-store.js`)
 
 Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegated** to an internal `OperationalChangeMilestoneStore` instance (see §4.6). Additional public methods:
 
@@ -267,9 +284,8 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 | `editionId` | `number\|null` | Edition membership — `$editionId IN r.editions` on baseline `HAS_ITEMS` relationship; requires `baselineId` to be set |
 | `title` | `string\|null` | CONTAINS match on title or code |
 | `text` | `string\|null` | CONTAINS search across purpose, initialState, finalState, details, privateNotes |
-| `drg` | `string\|null` | Exact match on DRG enum value |
+| `domain` | `string\|null` | Exact match on `version.domain` string field |
 | `maturity` | `string\|null` | Exact match on maturity enum value |
-| `path` | `string\|null` | Array membership (`$path IN version.path`) |
 | `stakeholderCategory` | `number[]\|null` | Via IMPLEMENTS\|DECOMMISSIONS → OR IMPACTS_STAKEHOLDER chain |
 | `implementsOR` | `number\|null` | Single OR item ID — EXISTS via IMPLEMENTS\|DECOMMISSIONS |
 
@@ -297,21 +313,21 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 
 ---
 
-### 4.4 BaselineStore (`baseline-store.js`)
+### 4.5 BaselineStore (`baseline-store.js`)
 
 Inherits `BaseStore`. `update()` and `delete()` are overridden to throw `StoreError` — baselines are immutable.
 
-**`create({title}, tx)`** — creates the Baseline node, atomically captures all current `LATEST_VERSION` targets for `OperationalRequirement` and `OperationalChange` as `HAS_ITEMS` relationships, returns baseline with `capturedItemCount`.
+**`create({title}, tx)`** — creates the Baseline node, atomically captures all current `LATEST_VERSION` targets for `OperationalRequirement`, `OperationalChange`, and `Chapter` as `HAS_ITEMS` relationships, returns baseline with `capturedItemCount`.
 
 **`findById(id, tx)`** → baseline with `capturedItemCount` (count of `HAS_ITEMS` targets)
 
 **`findAll(tx)`** → all baselines with `capturedItemCount`, ordered by `createdAt DESC`
 
-**`getBaselineItems(baselineId, tx)`** → `Array<{itemId, itemTitle, itemType, versionId, version, capturedAt}>` — all OR/OC versions captured, ordered by `itemType` then `itemTitle`
+**`getBaselineItems(baselineId, tx)`** → `Array<{itemId, itemTitle, itemType, versionId, version, capturedAt}>` — all OR/OC/Chapter versions captured, ordered by `itemType` then `itemTitle`
 
 ---
 
-### 4.5 ODPEditionStore (`odp-edition-store.js`)
+### 4.6 ODPEditionStore (`odp-edition-store.js`)
 
 Inherits `BaseStore`. `update()` and `delete()` are overridden to throw `StoreError` — editions are immutable.
 
@@ -344,7 +360,7 @@ SET r.editions = coalesce(r.editions, []) + $editionId
 
 ---
 
-### 4.6 OperationalChangeMilestoneStore (`operational-change-milestone-store.js`)
+### 4.7 OperationalChangeMilestoneStore (`operational-change-milestone-store.js`)
 
 Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public store accessor** — instantiated internally by `OperationalChangeStore` as `this.milestoneStore`. All milestone operations for OCs route through this class.
 
@@ -451,7 +467,6 @@ The client must supply `expectedVersionId` (the `versionId` of the version it la
 // Operational cross-references (from version node to item node)
 (ORVersion)-[:REFINES]->(ORItem)
 (ORVersion)-[:IMPACTS_STAKEHOLDER {note}]->(StakeholderCategory)
-(ORVersion)-[:IMPACTS_DOMAIN {note}]->(Domain)
 (ORVersion)-[:REFERENCES {note}]->(ReferenceDocument)
 (ORVersion)-[:DEPENDS_ON]->(ORItem)
 (ORVersion)-[:IMPLEMENTS]->(ORItem)   // OR → ON links
@@ -467,6 +482,7 @@ The client must supply `expectedVersionId` (the `versionId` of the version it la
 // Management
 (Baseline)-[:HAS_ITEMS {editions: [editionId, ...]}]->(ORVersion)
 (Baseline)-[:HAS_ITEMS {editions: [editionId, ...]}]->(OCVersion)
+(Baseline)-[:HAS_ITEMS {editions: [editionId, ...]}]->(ChapterVersion)
 (ODIPEdition)-[:EXPOSES]->(Baseline)
 ```
 
@@ -517,7 +533,7 @@ At baseline creation, all current `LATEST_VERSION` pointers are captured atomica
 
 ```cypher
 MATCH (item)-[:LATEST_VERSION]->(version)
-WHERE item:OperationalRequirement OR item:OperationalChange
+WHERE item:OperationalRequirement OR item:OperationalChange OR item:Chapter
 CREATE (baseline)-[:HAS_ITEMS]->(version)
 ```
 
@@ -599,7 +615,7 @@ export function getDriver()                   // used by createTransaction()
 export async function closeConnection()       // called on server shutdown
 ```
 
-The driver is configured with `maxConnectionPoolSize` and `connectionTimeout` from `config.json`. Stores are initialised once via `initializeStores(driver)` and accessed through named accessor functions that throw if called before initialisation:
+The driver is configured with `maxConnectionPoolSize` and `connectionTimeout` from `config.json`. Stores are initialised once via `initializeStores()` in `store/index.js`. After store initialisation, `initializeDatabase()` (also in `store/index.js`) ensures config-driven DB entities exist — currently bootstrapping `Chapter` nodes from `edition.json`. Both are called from `server/src/index.js` at startup. Stores are accessed through named accessor functions that throw if called before initialisation:
 
 ```javascript
 export function operationalRequirementStore() {

@@ -46,13 +46,13 @@ Three base classes cover all entity types.
 SimpleItemService          (CRUD + transaction wrapping)
 └── TreeItemService        (+ name/description validation + REFINES hierarchy)
     ├── StakeholderCategoryService
-    ├── DomainService
     └── ReferenceDocumentService
     (also flat, no hierarchy:)
     WaveService
     BandwidthService
 
 VersionedItemService       (versioned CRUD + patch + multi-context)
+├── ChapterService
 ├── OperationalRequirementService
 └── OperationalChangeService
 
@@ -113,27 +113,29 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 `patch()` is implemented entirely in the base class: it fetches the current entity (latest version), calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
 
+`ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full). It also disables `create()` and `delete()` — chapters are bootstrap-only.
+
 **Edition context resolution:** When `editionId` is provided to `getAll` or `getById`, the service calls `odpEditionStore().resolveContext(editionId, tx)` within the same transaction to obtain `{baselineId, editionId}`. It then passes `baselineId` as the store's positional argument and `editionId` via `filters.editionId`. The store applies `$editionId IN r.editions` as a WHERE condition on the `HAS_ITEMS` relationship. The route layer has no knowledge of baselines — it passes only `editionId` or `null`.
 
 ### 3.4 OperationalRequirementService
 
-Extends `VersionedItemService`. Required fields at create: `title`, `type`, `maturity`. Optional: `drg`, `path`, and all relationship arrays. Further fields are required conditionally based on maturity level (see maturity-gated rules below).
+Extends `VersionedItemService`. Required fields at create: `title`, `type`, `maturity`, `domain`. All relationship arrays are optional. Further fields are required conditionally based on maturity level (see maturity-gated rules below).
 
 Key validation rules:
 
 - `type` must be `ON` or `OR` (validated against `OperationalRequirementType` enum)
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
-- `drg` is optional but if present must be a valid `DraftingGroup` value
-- Type-gated fields — `ON` only: `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders`, `impactedDomains` — rejected on the wrong type
+- `domain` is mandatory and must be a valid domain key from `domains.json` (validated via `isDomainValid()`)
+- Type-gated fields — `ON` only: `tentative`, `strategicDocuments`; `OR` only: `implementedONs`, `dependencies`, `impactedStakeholders` — rejected on the wrong type
 - `tentative` if present must be `{start, end}` integer year range with `start <= end`
 - `implementedONs` only allowed on `OR`-type requirements; each referenced item must exist and be `ON`-type
 - `OR` requirements cannot refine `ON` requirements (and vice versa); parent type checked per-item
-- Annotated reference arrays (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) must use `{id, note?}` object format
-- Referenced entities (`impactedStakeholders`, `impactedDomains`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
+- Annotated reference arrays (`impactedStakeholders`, `strategicDocuments`) must use `{id, note?}` object format
+- Referenced entities (`impactedStakeholders`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 
 ### 3.5 OperationalChangeService
 
-Extends `VersionedItemService`. Required fields: `title`, `purpose`, `initialState`, `finalState`, `drg`, `maturity` (note: `drg` is **required** on OC, unlike OR).
+Extends `VersionedItemService`. Required fields: `title`, `purpose`, `initialState`, `finalState`, `domain`, `maturity` (note: `domain` is **required** on OC as on OR).
 
 Additional milestone methods — all require `expectedVersionId` because each operation creates a new OC version internally:
 
@@ -161,7 +163,7 @@ Milestone mutations work by fetching the current OC, rebuilding the full milesto
 This asymmetry is intentional: milestone mutations own their own validation and payload construction, and do not go through the generic update pipeline.
 
 Validation rules:
-- `drg` is required and must be a valid `DraftingGroup` value
+- `domain` is required and must be a valid domain key from `domains.json` (validated via `isDomainValid()`)
 - `maturity` must be a valid `MaturityLevel` value (`DRAFT`, `ADVANCED`, or `MATURE`)
 - `cost` if present must be an integer
 - `orCosts` items must be `{orId, cost}` with integer `cost`; each `orId` validated for existence
@@ -175,7 +177,15 @@ Validation rules:
 - Reference validations run in parallel using `Promise.all`
 - `_buildCompletePayload()` extracts the common logic of rebuilding the full OC payload for all three milestone mutation methods
 
-### 3.6 BaselineService
+### 3.6 ChapterService
+
+Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `jsonOsHierarchy` (`OsHierarchy` object).
+
+- `create()` and `delete()` are not supported — chapters are managed by server bootstrap (`initializeDatabase()`)
+- `getAll(userId)` — no edition context, no filters; always returns all chapters with config-owned fields merged
+- `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
+
+### 3.7 BaselineService
 
 Standalone management service (no base class). Baselines are immutable once created.
 
@@ -188,7 +198,7 @@ Standalone management service (no base class). Baselines are immutable once crea
 
 The atomic snapshot of all current latest-version ORs and OCs is handled inside `baselineStore().create()`, not by the service orchestrating multiple stores.
 
-### 3.7 ODIPEditionService
+### 3.8 ODIPEditionService
 
 Standalone management service. Editions are immutable once created.
 
@@ -261,8 +271,8 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Enum values valid | Service, before transaction | Uses `@odp/shared` enum validators |
 | `maturity` valid | Service, before transaction | `MaturityLevel` enum on OR and OC |
 | Array field types | Service, before transaction | Checks `Array.isArray` |
-| `{id, note?}` object format | Service, before transaction | For `impactedStakeholders`, `impactedDomains`, `strategicDocuments` |
-| Type-gated fields (ON/OR) | Service, before transaction | Wrong-type fields rejected immediately |
+| `{id, note?}` object format | Service, before transaction | For `impactedStakeholders`, `strategicDocuments` |
+| Type-gated fields (ON/OR) | Service, before transaction | Wrong-type fields rejected immediately (OR only: `implementedONs`, `dependencies`, `impactedStakeholders`) |
 | `tentative` range integrity | Service, before transaction | `start <= end`, both integers |
 | `orCosts` structure | Service, before transaction | `{orId, cost}` with integer cost |
 | Referenced entity existence | Service, separate `'system'` tx | Per-entity store `.exists()` calls |
@@ -280,10 +290,10 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Service | Base | Primary Store(s) |
 |---|---|---|
 | `StakeholderCategoryService` | `TreeItemService` | `StakeholderCategoryStore` |
-| `DomainService` | `TreeItemService` | `DomainStore` |
 | `WaveService` | `SimpleItemService` | `WaveStore` |
 | `ReferenceDocumentService` | `TreeItemService` | `ReferenceDocumentStore` |
-| `BandwidthService` | `SimpleItemService` | `BandwidthStore`, `WaveStore`, `DomainStore` |
+| `BandwidthService` | `SimpleItemService` | `BandwidthStore`, `WaveStore` |
+| `ChapterService` | `VersionedItemService` | `ChapterStore` |
 | `OperationalRequirementService` | `VersionedItemService` | `OperationalRequirementStore` |
 | `OperationalChangeService` | `VersionedItemService` | `OperationalChangeStore` |
 | `BaselineService` | — | `BaselineStore` |

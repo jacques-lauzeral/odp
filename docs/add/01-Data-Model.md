@@ -4,7 +4,7 @@
 
 The ODIP data model is organised into three categories of entities:
 
-- **Setup Entities** — reference data configured once and referenced throughout (reference documents, stakeholder categories, domains, bandwidths, waves)
+- **Setup Entities** — reference data configured once and referenced throughout (reference documents, stakeholder categories, bandwidths, waves)
 - **Operational Entities** — versioned content authored by contributors (operational requirements, operational changes)
 - **Management Entities** — immutable lifecycle records (baselines, editions)
 
@@ -25,7 +25,7 @@ The `@odp/shared` package defines:
 All layers import from `@odp/shared`, ensuring that field names, enum values, and validation logic are never duplicated.
 
 ```javascript
-import { OperationalRequirement, DraftingGroup, isDraftingGroupValid } from '@odp/shared';
+import { OperationalRequirement, isDomainValid, isMaturityLevelValid } from '@odp/shared';
 ```
 
 ### 2.2 File Organisation
@@ -33,21 +33,40 @@ import { OperationalRequirement, DraftingGroup, isDraftingGroupValid } from '@od
 ```
 shared/src/
 ├── index.js                  # Aggregated exports
+├── config/                   # Config loaders — used by server and CLI at startup
+│   ├── loader.js             # Single entry point: loadConfig(configDir)
+│   ├── domains-config.js     # Domain tree loader + accessors (getDomainKeys, isDomainValid, …)
+│   └── edition-config.js     # Edition structure loader + accessors (getChapters, getChapterByKey, …)
 ├── messages/                 # API exchange contracts: request/response shapes
 │   └── messages.js           # Request/response model definitions
 └── model/                    # Domain model: entities, enums, utilities
-    ├── drafting-groups.js    # DRG enum + validation helpers
+    ├── chapter-elements.js   # Chapter entity model + OsHierarchy type
+    ├── drafting-groups.js    # DRG enum + validation helpers — retained for Bandwidth.scope only
     ├── maturity-levels.js    # Maturity level enum (DRAFT, ADVANCED, MATURE)
     ├── milestone-events.js   # Milestone event types
     ├── odp-edition-types.js  # Edition type enum (DRAFT, OFFICIAL)
     ├── odp-elements.js       # Operational and management entity models
     ├── or-types.js           # OR type enum (ON, OR)
     ├── projections.js        # Projection definitions and field set mappings
-    ├── setup-elements.js     # Setup entity models
+    ├── setup-elements.js     # Setup entity models (Domain removed)
     └── utils.js              # ID normalisation, lazy comparison
 ```
 
 > **model/ vs messages/**: `model/` defines what entities *are* (structure, enums, validation). `messages/` defines what is *exchanged over the API* (request payloads, response shapes). Keeping them separate makes it easier to evolve API contracts independently of the domain model.
+
+### 2.4 Config Model
+
+Two JSON config files live in `workspace/server/config/` (source) and are deployed to `$ODIP_HOME/config/` at install time by `odip-admin`. They are loaded once at server and CLI startup via `loadConfig(configDir)` from `@odip/shared`.
+
+#### `domains.json`
+
+Defines the domain tree — the semantic classification authority for O\*s. Maximum two levels.
+
+Domain keys are stable string identifiers stored directly on `OperationalRequirementVersion.domain` and `OperationalChangeVersion.domain`, and referenced by `ChapterVersion.domain`. The `isDomainValid(key)` accessor validates domain keys at service layer.
+
+#### `edition.json`
+
+Defines the publication chapter structure. Every chapter entry is bootstrapped as a versioned `Chapter` DB entity at server startup (`initializeDatabase()` in `store/index.js`). Config-owned fields (`title`, `domain`, `position`) are never stored on version nodes — they are merged from the config at read time.
 
 ### 2.3 Enum Pattern
 
@@ -72,6 +91,8 @@ export const getDraftingGroupDisplay = (key) => DraftingGroup[key] || key;
 ### 3.1 Setup Entities
 
 Setup entities are non-versioned reference data. They support hierarchical organisation via the REFINES relationship where noted.
+
+> **Phase 2 change:** The former **Domain** setup entity — used to characterise OR impact via `IMPACTS_DOMAIN` — has been fully retired. The term *domain* now unambiguously refers to the domain key string from `domains.json` (see §2.4). The `DraftingGroup` enum is retained exclusively for `Bandwidth.scope` — it has been removed from OR and OC.
 
 #### ReferenceDocument (Strategic Documents)
 
@@ -111,21 +132,6 @@ Characterises the operational stakeholder impact of ORs. Organised in a two-leve
 | `description` | rich text | |
 
 Supports REFINES hierarchy (parent-child, max two levels).
-
-#### Domain
-
-Represents a business domain used to characterise the impact of ORs (e.g. "Flight Planning", "Flow Management").
-
-> **Terminology note**: the term *domain* has two distinct uses in the ODIP model. In this context it refers to the **Domain setup entity** — a structured list of impact areas that can be attached to ORs. It is unrelated to the concept of *competency domain* or *DrG scope*, which is expressed through the `DraftingGroup` enum (see §6.1).
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | integer | Neo4j internal ID |
-| `name` | string | Short name, e.g. "Flight Planning" |
-| `description` | rich text | |
-| `contact` | rich text | NM contact point for this domain; optional |
-
-Supports REFINES hierarchy (max two levels, top-level mandatory).
 
 #### Bandwidth
 
@@ -173,9 +179,8 @@ Several attributes are type-specific. The service layer enforces these rules; th
 |---|---|---|---|---|---|
 | `version` | integer | both | mandatory | summary | Sequential (1, 2, 3…) |
 | `type` | enum | both | mandatory | summary | ON \| OR |
-| `drg` | enum | both | mandatory | summary | Drafting Group (see §6.1) |
+| `domain` | string | both | mandatory | summary | Domain key from `domains.json` (see §2.4) |
 | `maturity` | enum | both | mandatory | summary | DRAFT \| ADVANCED \| MATURE |
-| `path` | string[] | both | optional | summary | Folder hierarchy for navigation |
 | `tentative` | integer[] | **ON only** | mandatory (root ON), optional (child ON) | summary | Tentative implementation time: `[year]` or `[start, end]` where start ≤ end |
 | `nfrs` | rich text | **OR only** | optional | standard | Non-functional requirements from business perspective |
 | `statement` | rich text | both | mandatory | standard | Core requirement statement |
@@ -192,7 +197,6 @@ Several attributes are type-specific. The service layer enforces these rules; th
 | `strategicDocuments` | **ON only** | mandatory (root ON), optional otherwise | summary | Annotated list of ReferenceDocuments |
 | `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | summary | List of implemented ONs |
 | `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | summary | List of StakeholderCategories |
-| `impactedDomains` | **OR only** | mandatory (root OR), optional otherwise | summary | List of Domains |
 | `dependencies` | **OR only** | optional | summary | List of ORs that must be implemented before this OR |
 
 **Derived fields** (reverse-traversal, available in `extended` projection only):
@@ -216,10 +220,9 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 | Field | Type | Cardinality | Projection | Notes |
 |---|---|---|---|---|
 | `version` | integer | mandatory | summary | Sequential |
-| `drg` | enum | mandatory | summary | Drafting Group |
+| `domain` | string | mandatory | summary | Domain key from `domains.json` (see §2.4) |
 | `maturity` | enum | mandatory | summary | DRAFT \| ADVANCED \| MATURE |
 | `cost` | integer | optional | summary | Estimated development cost in MW |
-| `path` | string[] | optional | summary | Folder hierarchy |
 | `purpose` | rich text | mandatory | standard | Why the OC is needed |
 | `initialState` | rich text | mandatory | standard | Current operational situation before deployment |
 | `finalState` | rich text | mandatory | standard | Target operational situation after deployment |
@@ -250,6 +253,47 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 | `or` | reference | The OR reference |
 | `cost` | integer | Cost in MW |
 
+#### Chapter
+
+Chapters organise an ODIP Edition for human consumption. They group domains, carry narrative text, and define the O\* presentation order via `osHierarchy`. A domain chapter references a domain key from `domains.json`; a pure narrative chapter has no domain reference.
+
+Chapters are **config-owned** (title, domain, position declared in `edition.json`) but **user-maintained** (narrative, osHierarchy edited by integrators). They are **versioned** — every narrative or hierarchy edit creates a new ChapterVersion. Chapters are created by the bootstrap process and cannot be deleted.
+
+**Item node fields** (stable across versions):
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `key` | string | Stable identifier matching `edition.json` |
+| `parentItemId` | integer | Parent chapter item ID — null for top-level chapters |
+
+**Version node fields** (user-maintained, stored on ChapterVersion):
+
+| Field | Type | Cardinality | Notes |
+|---|---|---|---|
+| `narrative` | rich text | optional | Chapter introduction / narrative content |
+| `jsonOsHierarchy` | JSON | optional | Topic tree defining O\* presentation order |
+
+**Config-owned fields** (not stored on nodes — merged from `edition.json` at read time):
+
+| Field | Type | Notes |
+|---|---|---|
+| `title` | string | Display title |
+| `domain` | string | Domain key — null on pure narrative chapters |
+| `position` | integer | Ordering within parent |
+
+**OsHierarchy type:**
+
+```
+OsHierarchy
+└── topics: OsHierarchyTopic[]
+    ├── topic: string            — topic label
+    ├── ons: number[]            — ON item IDs in this topic
+    ├── ors: number[]            — OR item IDs in this topic
+    ├── ocs: number[]            — OC item IDs in this topic
+    └── subtopics: OsHierarchyTopic[]   — recursive
+```
+
 ---
 
 ### 3.3 Management Entities
@@ -266,9 +310,9 @@ An immutable snapshot of the repository at a point in time.
 | `title` | string | Short human-readable identifier |
 | `createdAt` | timestamp | |
 | `createdBy` | string | |
-| `capturedItemCount` | integer | Number of OR/OC versions captured at creation time |
+| `capturedItemCount` | integer | Number of OR/OC/Chapter versions captured at creation time |
 
-At creation, the baseline captures `HAS_ITEMS` relationships pointing to the specific `ItemVersion` nodes that were latest at that moment.
+At creation, the baseline captures `HAS_ITEMS` relationships pointing to the specific `ItemVersion` nodes that were latest at that moment — for `OperationalRequirement`, `OperationalChange`, and `Chapter` item types.
 
 #### Edition
 
@@ -338,7 +382,7 @@ The store layer calls `getProjectionFields` to determine exactly which fields an
 
 ### 4.1 Hierarchy — REFINES
 
-Used by hierarchical setup entities (StakeholderCategory, Domain, ReferenceDocument) and by Requirements to express parent-child structuring.
+Used by hierarchical setup entities (StakeholderCategory, ReferenceDocument) and by Requirements to express parent-child structuring.
 
 ```
 (Child)-[:REFINES]->(Parent)
@@ -363,7 +407,6 @@ Tree structure is enforced: a node can have only one parent. Self-reference is p
 | Relationship | From | To | Notes |
 |---|---|---|---|
 | `IMPACTS_STAKEHOLDER` | ORVersion | StakeholderCategory | |
-| `IMPACTS_DOMAIN` | ORVersion | Domain | |
 | `REFERENCES` | RequirementVersion | ReferenceDocument | Optional `note` property (plain text, e.g. "Section 3.2") |
 
 ### 4.4 Milestone Relationships
@@ -421,7 +464,9 @@ At baseline creation, the system captures `HAS_ITEMS` relationships pointing to 
 
 ### 6.1 Drafting Groups (DRG)
 
-The `DraftingGroup` enum identifies the competency domain or drafting group responsible for a requirement, change, or bandwidth scope.
+> **Deprecation note:** `DraftingGroup` is retained exclusively for `Bandwidth.scope`. It has been removed from `OperationalRequirement` and `OperationalChange` — O\*s now carry a `domain` string field validated against `domains.json`. Do not use `DraftingGroup` for any new O\* classification purpose.
+
+The `DraftingGroup` enum identifies the drafting group scope for bandwidth planning.
 
 | Key | Display                            |
 |---|------------------------------------|
@@ -505,7 +550,7 @@ Comparison is entity-type-aware, handling these field categories:
 
 | Category | Comparison strategy |
 |---|---|
-| Simple fields (`title`, `drg`, `maturity`, …) | Normalised string equality (trim, null → `''`) |
+| Simple fields (`title`, `domain`, `maturity`, …) | Normalised string equality (trim, null → `''`) |
 | Rich text fields (Quill delta JSON) | Structural normalisation — empty delta variants (`{}`, `{"ops":[]}`, single `\n`) all resolve to `''`; valid content is re-serialised before comparison |
 | Reference arrays (`refinesParents`, `implementedORs`, …) | Sorted ID comparison (order-insensitive) |
 | Annotated reference arrays (`strategicDocuments`, …) | Sorted `{id, note}` comparison |

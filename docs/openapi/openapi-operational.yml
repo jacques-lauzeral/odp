@@ -29,12 +29,12 @@ paths:
             enum: [ON, OR]
           description: "Filter by requirement type. Omit for all types."
           example: "OR"
-        - name: drg
+        - name: domain
           in: query
           required: false
           schema:
-            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
-          description: "Filter by Drafting Group. Omit for all DRG values."
+            type: string
+          description: "Filter by domain key (exact match on version.domain). Omit for all domains."
           example: "4DT"
         - name: title
           in: query
@@ -57,13 +57,6 @@ paths:
             type: string
           description: "Filter by impacted stakeholder category ID. Single ID. OR type only."
           example: "123"
-        - name: domain
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Filter by domain ID. Single ID. For ONs: filters by assigned domain. For ORs: filters by impacted domains."
-          example: "42"
         - name: strategicDocument
           in: query
           required: false
@@ -135,7 +128,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '400':
-          description: Validation Error - Invalid DRG, maturity, implementedONs type mismatch, or missing required fields
+          description: Validation Error - Invalid domain, maturity, implementedONs type mismatch, or missing required fields
           content:
             application/json:
               schema:
@@ -215,7 +208,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG, maturity, or implementedONs type constraint violation
+          description: Validation Error - Invalid domain, maturity, or implementedONs type constraint violation
           content:
             application/json:
               schema:
@@ -250,7 +243,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG, maturity, or implementedONs type constraint violation
+          description: Validation Error - Invalid domain, maturity, or implementedONs type constraint violation
           content:
             application/json:
               schema:
@@ -325,12 +318,12 @@ paths:
             type: string
           description: "Optional edition ID. When provided, returns changes in the edition context. Omit for repository (latest versions)."
           example: "42"
-        - name: drg
+        - name: domain
           in: query
           required: false
           schema:
-            $ref: 'openapi-base.yml#/components/schemas/DraftingGroup'
-          description: "Filter by Drafting Group. Omit for all DRG values."
+            type: string
+          description: "Filter by domain key (exact match on version.domain). Omit for all domains."
           example: "FLOW"
         - name: title
           in: query
@@ -353,14 +346,6 @@ paths:
             type: string
           description: "Filter by stakeholder category ID(s) via implemented/decommissioned ORs. Comma-separated for OR logic."
           example: "123,456"
-        - name: domain
-          in: query
-          required: false
-          schema:
-            type: string
-          description: "Filter by domain ID(s) via implemented/decommissioned ORs. Comma-separated for OR logic."
-          example: "789,101"
-
         # Relationship-based filtering parameters
         - name: implementsOR
           in: query
@@ -410,7 +395,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '400':
-          description: Validation Error - Invalid DRG, maturity, milestone eventTypes, or missing required fields
+          description: Validation Error - Invalid domain, maturity, milestone eventTypes, or missing required fields
           content:
             application/json:
               schema:
@@ -490,7 +475,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG, maturity, or missing required fields. Milestones are not accepted in this endpoint.
+          description: Validation Error - Invalid domain, maturity, or missing required fields. Milestones are not accepted in this endpoint.
           content:
             application/json:
               schema:
@@ -525,7 +510,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '400':
-          description: Validation Error - Invalid DRG, maturity, or missing required fields. Milestones are not accepted in this endpoint.
+          description: Validation Error - Invalid domain, maturity, or missing required fields. Milestones are not accepted in this endpoint.
           content:
             application/json:
               schema:

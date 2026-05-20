@@ -13,8 +13,8 @@ class OperationalRequirementRouter extends VersionedItemRouter {
             filters.type = req.query.type;
         }
 
-        if (req.query.drg) {
-            filters.drg = req.query.drg;
+        if (req.query.domain) {
+            filters.domain = req.query.domain;
         }
 
         if (req.query.maturity) {
@@ -27,14 +27,6 @@ class OperationalRequirementRouter extends VersionedItemRouter {
 
         if (req.query.text) {
             filters.text = req.query.text;
-        }
-
-        if (req.query.path) {
-            filters.path = req.query.path;
-        }
-
-        if (req.query.domain) {
-            filters.domain = parseInt(req.query.domain);
         }
 
         if (req.query.strategicDocument) {

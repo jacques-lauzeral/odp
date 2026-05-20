@@ -51,8 +51,7 @@ export const OperationalRequirement = {
     code: '',
     type: '',                   // ON | OR
     maturity: '',               // DRAFT | ADVANCED | MATURE
-    path: [],                   // array of strings
-    drg: '',                    // DraftingGroup enum
+    domain: '',                 // domain key from domains.json
     refinesParents: [],         // array of OperationalEntityReference {id, code, title, type}
     // ON only — summary
     tentative: null,            // year period [year] or [start, end] where start <= end
@@ -60,7 +59,6 @@ export const OperationalRequirement = {
     // OR only — summary
     implementedONs: [],         // array of OperationalEntityReference {id, code, title, type}
     impactedStakeholders: [],   // array of AnnotatedReference {id, title, note} (StakeholderCategory)
-    impactedDomains: [],        // array of AnnotatedReference {id, title, note} (Domain)
     dependencies: [],           // array of OperationalEntityReference {id, code, title, type} (OR)
 
     // rich-text fields — available in standard and extended projections only
@@ -98,8 +96,7 @@ export const OperationalChange = {
     createdBy: '',
     code: '',
     maturity: '',               // DRAFT | ADVANCED | MATURE
-    path: [],                   // array of strings
-    drg: '',                    // DraftingGroup enum
+    domain: '',                 // domain key from domains.json
     implementedORs: [],         // array of OperationalEntityReference {id, code, title, type}
     decommissionedORs: [],      // array of OperationalEntityReference {id, code, title, type}
     dependencies: [],           // array of OperationalEntityReference {id, code, title, type} (OC)

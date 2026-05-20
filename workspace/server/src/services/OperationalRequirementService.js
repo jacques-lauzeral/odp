@@ -1,7 +1,6 @@
 import { VersionedItemService } from './VersionedItemService.js';
 import {
-    DraftingGroup,
-    isDraftingGroupValid,
+    isDomainValid,
     OperationalRequirementType,
     isOperationalRequirementTypeValid,
     MaturityLevel,
@@ -10,7 +9,6 @@ import {
 import {
     operationalRequirementStore,
     stakeholderCategoryStore,
-    domainStore,
     referenceDocumentStore,
     createTransaction,
     commitTransaction,
@@ -41,7 +39,7 @@ export class OperationalRequirementService extends VersionedItemService {
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateMaturity(payload.maturity);
-        this._validateDRG(payload.drg);
+        this._validateDomain(payload.domain);
         this._validateRelationshipArrays(payload);
         this._validateTypeGatedFields(payload);
         this._validateMaturityGatedFields(payload);
@@ -71,7 +69,7 @@ export class OperationalRequirementService extends VersionedItemService {
         this._validateRequiredFields(payload);
         this._validateType(payload.type);
         this._validateMaturity(payload.maturity);
-        this._validateDRG(payload.drg);
+        this._validateDomain(payload.domain);
         this._validateRelationshipArrays(payload);
         this._validateTypeGatedFields(payload);
         this._validateMaturityGatedFields(payload);
@@ -90,8 +88,7 @@ export class OperationalRequirementService extends VersionedItemService {
             privateNotes: patchPayload.privateNotes !== undefined ? patchPayload.privateNotes : current.privateNotes,
             additionalDocumentation: patchPayload.additionalDocumentation !== undefined ? patchPayload.additionalDocumentation : current.additionalDocumentation,
             maturity: patchPayload.maturity !== undefined ? patchPayload.maturity : current.maturity,
-            path: patchPayload.path !== undefined ? patchPayload.path : current.path,
-            drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
+            domain: patchPayload.domain !== undefined ? patchPayload.domain : current.domain,
             refinesParents: patchPayload.refinesParents !== undefined ? patchPayload.refinesParents : current.refinesParents.map(ref => ref.id),
             // ON-only fields
             strategicDocuments: patchPayload.strategicDocuments !== undefined ? patchPayload.strategicDocuments : current.strategicDocuments.map(ref => ({ id: ref.id, note: ref.note })),
@@ -100,7 +97,6 @@ export class OperationalRequirementService extends VersionedItemService {
             implementedONs: patchPayload.implementedONs !== undefined ? patchPayload.implementedONs : current.implementedONs.map(ref => ref.id),
             dependencies: patchPayload.dependencies !== undefined ? patchPayload.dependencies : current.dependencies.map(ref => ref.id),
             impactedStakeholders: patchPayload.impactedStakeholders !== undefined ? patchPayload.impactedStakeholders : current.impactedStakeholders.map(ref => ({ id: ref.id, note: ref.note })),
-            impactedDomains: patchPayload.impactedDomains !== undefined ? patchPayload.impactedDomains : current.impactedDomains.map(ref => ({ id: ref.id, note: ref.note })),
             nfrs: patchPayload.nfrs !== undefined ? patchPayload.nfrs : current.nfrs
         };
     }
@@ -108,7 +104,7 @@ export class OperationalRequirementService extends VersionedItemService {
     // Validation helper methods
 
     _validateRequiredFields(payload) {
-        const requiredFields = ['title', 'type', 'maturity'];
+        const requiredFields = ['title', 'type', 'maturity', 'domain'];
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {
                 throw new Error(`Validation failed: missing required field: ${field}`);
@@ -128,9 +124,9 @@ export class OperationalRequirementService extends VersionedItemService {
         }
     }
 
-    _validateDRG(drg) {
-        if (drg !== undefined && drg !== null && !isDraftingGroupValid(drg)) {
-            throw new Error(`Validation failed: drg must be one of: ${Object.keys(DraftingGroup).join(', ')}`);
+    _validateDomain(domain) {
+        if (!domain || !isDomainValid(domain)) {
+            throw new Error(`Validation failed: domain must be a valid domain key from domains.json`);
         }
     }
 
@@ -154,9 +150,6 @@ export class OperationalRequirementService extends VersionedItemService {
             }
             if (payload.impactedStakeholders && payload.impactedStakeholders.length > 0) {
                 throw new Error('Validation failed: impactedStakeholders is only allowed on OR-type requirements');
-            }
-            if (payload.impactedDomains && payload.impactedDomains.length > 0) {
-                throw new Error('Validation failed: impactedDomains is only allowed on OR-type requirements');
             }
         }
 
@@ -215,7 +208,7 @@ export class OperationalRequirementService extends VersionedItemService {
     _validateRelationshipArrays(payload) {
         const arrayFields = [
             'refinesParents', 'implementedONs', 'dependencies',
-            'impactedStakeholders', 'impactedDomains', 'strategicDocuments'
+            'impactedStakeholders', 'strategicDocuments'
         ];
         for (const field of arrayFields) {
             if (payload[field] !== undefined && !Array.isArray(payload[field])) {
@@ -224,7 +217,7 @@ export class OperationalRequirementService extends VersionedItemService {
         }
 
         // Validate {id, note?} object format for annotated reference arrays
-        const annotatedRefFields = ['impactedStakeholders', 'impactedDomains', 'strategicDocuments'];
+        const annotatedRefFields = ['impactedStakeholders', 'strategicDocuments'];
         for (const field of annotatedRefFields) {
             if (payload[field]) {
                 for (const ref of payload[field]) {
@@ -241,13 +234,6 @@ export class OperationalRequirementService extends VersionedItemService {
             }
         }
 
-        if (payload.path) {
-            for (const pathElement of payload.path) {
-                if (typeof pathElement !== 'string') {
-                    throw new Error('Validation failed: path elements must be strings');
-                }
-            }
-        }
     }
 
     async _validateRefinementRules(type, refinesParents, itemId) {
@@ -314,11 +300,6 @@ export class OperationalRequirementService extends VersionedItemService {
         if (payload.impactedStakeholders && payload.impactedStakeholders.length > 0) {
             const ids = payload.impactedStakeholders.map(ref => ref.id);
             validationPromises.push(this._validateEntityIds(ids, stakeholderCategoryStore(), 'stakeholder category'));
-        }
-
-        if (payload.impactedDomains && payload.impactedDomains.length > 0) {
-            const ids = payload.impactedDomains.map(ref => ref.id);
-            validationPromises.push(this._validateEntityIds(ids, domainStore(), 'domain'));
         }
 
         if (payload.strategicDocuments && payload.strategicDocuments.length > 0) {

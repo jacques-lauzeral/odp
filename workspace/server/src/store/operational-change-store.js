@@ -67,10 +67,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             // Content filtering conditions
             if (filters && Object.keys(filters).length > 0) {
-                if (filters.drg) {
-                    whereConditions.push('version.drg = $drg');
-                    params.drg = filters.drg;
-                }
+
                 if (filters.title) {
                     whereConditions.push(`(
                     item.title CONTAINS $title OR
@@ -78,10 +75,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 )`);
                     params.title = filters.title;
                 }
-                if (filters.path) {
-                    whereConditions.push('$path IN version.path');
-                    params.path = filters.path;
-                }
+
                 if (filters.text) {
                     whereConditions.push(`(
                         item.title CONTAINS $text OR 
@@ -110,13 +104,8 @@ export class OperationalChangeStore extends VersionedItemStore {
                     params.stakeholderCategory = filters.stakeholderCategory.map(id => this.normalizeId(id));
                 }
                 if (filters.domain !== undefined && filters.domain !== null) {
-                    whereConditions.push(`EXISTS {
-                        MATCH (version)-[:IMPLEMENTS|DECOMMISSIONS]->(req:OperationalRequirement)
-                        MATCH (req)-[:LATEST_VERSION]->(reqVersion:OperationalRequirementVersion)
-                        MATCH (reqVersion)-[:IMPACTS_DOMAIN]->(d:Domain)
-                        WHERE id(d) = $domain
-                    }`);
-                    params.domain = this.normalizeId(filters.domain, 'domain');
+                    whereConditions.push('version.domain = $domain');
+                    params.domain = filters.domain;
                 }
                 if (filters.maturity) {
                     whereConditions.push('version.maturity = $maturity');
@@ -136,7 +125,7 @@ export class OperationalChangeStore extends VersionedItemStore {
 
             // Build RETURN clause
             const scalarVersionFields = [
-                'drg', 'maturity', 'path', 'cost', 'orCosts',
+                'domain', 'maturity', 'cost', 'orCosts',
                 'purpose', 'initialState', 'finalState', 'details', 'privateNotes', 'additionalDocumentation'
             ].filter(includeField);
 
@@ -191,7 +180,7 @@ export class OperationalChangeStore extends VersionedItemStore {
                 };
 
                 const scalarVersionFields = [
-                    'drg', 'maturity', 'path', 'cost', 'orCosts',
+                    'domain', 'maturity', 'cost', 'orCosts',
                     'purpose', 'initialState', 'finalState', 'details', 'privateNotes', 'additionalDocumentation'
                 ];
                 for (const f of scalarVersionFields) {

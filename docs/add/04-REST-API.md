@@ -12,7 +12,7 @@ Two reusable base routers cover all entity types, plus hand-written routers for 
 
 ### 2.1 SimpleItemRouter
 
-Used by all setup entity routes (`stakeholder-category.js`, `domain.js`, `reference-reference-document.js`, `bandwidth.js`, `wave.js`). Wires standard CRUD to the corresponding `SimpleItemService` / `TreeItemService` methods:
+Used by all setup entity routes (`stakeholder-category.js`, `reference-document.js`, `bandwidth.js`, `wave.js`). Wires standard CRUD to the corresponding `SimpleItemService` / `TreeItemService` methods:
 
 ```
 GET    /           → service.listItems(userId)
@@ -51,7 +51,22 @@ PUT    /:id/milestones/:milestoneKey        → service.updateMilestone(id, mile
 DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, milestoneKey, expectedVersionId, userId)
 ```
 
-### 2.3 Management Entity Routers
+### 2.3 ChapterRouter
+
+`chapter.js` is a hand-written router (not a `VersionedItemRouter` subclass — chapters have no `create`/`delete` and `getAll` takes no edition context or content filters):
+
+```
+GET    /                          → service.getAll(userId)
+GET    /:id                       → service.getById(id, userId, editionId?)
+GET    /:id/versions              → service.getVersionHistory(id, userId)
+GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, userId)
+PUT    /:id                       → service.update(id, body, expectedVersionId, userId)
+PATCH  /:id                       → service.patch(id, body, expectedVersionId, userId)
+```
+
+All GET routes allow anonymous access (`getUserIdOptional`). PUT and PATCH require `x-user-id`.
+
+### 2.4 Management Entity Routers
 
 `baseline.js` and `odp-edition.js` are hand-written. They expose create and read operations only. Any `PUT` or `DELETE` returns `405 METHOD_NOT_ALLOWED`. `odp-edition.js` additionally handles the AsciiDoc ZIP export endpoint and the `POST /:id/publish` endpoint, which accepts an optional JSON request body (`PublishOptions`) — absent or empty body defaults to `{ pdf: { flat: true } }`.
 
@@ -94,7 +109,8 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 |---|---|
 | `openapi.yml` | Entry point, aggregates all modules |
 | `openapi-base.yml` | Shared schemas (models, enums, common parameters) |
-| `openapi-setup.yml` | Setup entities (stakeholder categories, domains, reference documents, bandwidths, waves) |
+| `openapi-setup.yml` | Setup entities (stakeholder categories, reference documents, bandwidths, waves) |
+| `openapi-chapter.yml` | Chapter management endpoints |
 | `openapi-operational.yml` | Operational requirements and changes |
 | `openapi-operational-milestones.yml` | Milestone sub-resource endpoints |
 | `openapi-baseline.yml` | Baselines |

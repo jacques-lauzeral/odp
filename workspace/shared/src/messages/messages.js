@@ -1,7 +1,7 @@
 // Messages
 
 import { OperationalRequirement, OperationalChange } from '../model/odp-elements.js';
-import { StakeholderCategory, Domain, Bandwidth, ReferenceDocument, Wave } from '../model/setup-elements.js';
+import { StakeholderCategory, Bandwidth, ReferenceDocument, Wave } from '../model/setup-elements.js';
 
 // Request Models
 export const OperationalRequirementRequests = {
@@ -12,13 +12,27 @@ export const OperationalRequirementRequests = {
         version: undefined,
         code: undefined,
         createdAt: undefined,
-        createdBy: undefined
+        createdBy: undefined,
+        // derived fields excluded from create/update
+        implementedByORs: undefined,
+        implementedByOCs: undefined,
+        decommissionedByOCs: undefined,
+        refinedBy: undefined,
+        requiredByORs: undefined,
+        // path: transient topic locator on create only — not stored on the version
+        path: ''
     },
 
     update: {
         ...OperationalRequirement,
         code: undefined,
-        expectedVersionId: ''
+        expectedVersionId: '',
+        // derived fields excluded from update
+        implementedByORs: undefined,
+        implementedByOCs: undefined,
+        decommissionedByOCs: undefined,
+        refinedBy: undefined,
+        requiredByORs: undefined,
     },
 
     patch: {
@@ -35,13 +49,19 @@ export const OperationalChangeRequests = {
         version: undefined,
         code: undefined,
         createdAt: undefined,
-        createdBy: undefined
+        createdBy: undefined,
+        // derived fields excluded from create/update
+        requiredByOCs: undefined,
+        // path: transient topic locator on create only — not stored on the version
+        path: ''
     },
 
     update: {
         ...OperationalChange,
         code: undefined,
-        expectedVersionId: ''
+        expectedVersionId: '',
+        // derived fields excluded from update
+        requiredByOCs: undefined,
     }
 };
 
@@ -54,23 +74,6 @@ export const StakeholderCategoryRequests = {
 
     update: {
         ...StakeholderCategory,
-        parentId: null
-    },
-
-    query: {
-        parentId: null
-    }
-};
-
-export const DomainRequests = {
-    create: {
-        ...Domain,
-        id: undefined,
-        parentId: null
-    },
-
-    update: {
-        ...Domain,
         parentId: null
     },
 

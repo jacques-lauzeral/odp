@@ -2,9 +2,9 @@ import express from 'express';
 import fs from 'fs';
 import nodePath from 'path';
 import { execSync } from 'child_process';
-import { initializeStores, closeStores } from './store/index.js';
+import { initializeStores, initializeDatabase, closeStores } from './store/index.js';
 import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
-import domainRoutes from './routes/domain.js';
+import chapterRoutes from './routes/chapter.js';
 import referenceDocumentRoutes from './routes/reference-document.js';
 import bandwidthRoutes from './routes/bandwidth.js';
 import waveRoutes from './routes/wave.js';
@@ -15,6 +15,8 @@ import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
 import MapperRegistry from './services/import/MapperRegistry.js';
+import { loadConfig } from '../../shared/src/config/loader.js';
+import { getDomainChapterSlugs } from '../../shared/src/config/edition-config.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
 
 const app = express();
@@ -82,7 +84,7 @@ app.use('/docx', docxExportRoutes);
 
 // Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
-app.use('/domains', domainRoutes);
+app.use('/chapters', chapterRoutes);
 app.use('/reference-documents', referenceDocumentRoutes);
 app.use('/bandwidths', bandwidthRoutes);
 app.use('/waves', waveRoutes);
@@ -186,35 +188,34 @@ async function initializePublicationWorkspace() {
     const publicationPath = process.env.PUBLICATION_PATH ||
         nodePath.join(new URL('../../../publication', import.meta.url).pathname);
 
-    const sharedConfigPath  = nodePath.join(publicationPath, 'shared',  'config');
-    const sharedContentPath = nodePath.join(publicationPath, 'shared',  'content');
+    const sharedConfigPath   = nodePath.join(publicationPath, 'shared',   'config');
+    const websiteConfigPath  = nodePath.join(publicationPath, 'website',  'config');
+    const documentConfigPath = nodePath.join(publicationPath, 'document', 'config');
 
     const publicationDir = nodePath.join(odipHome, 'publication');
 
-    // Main works dir — shared/config only (npm install target for all build types)
+    // Main works dir — website build (HTML site + flat PDF/Word)
     await initializeWorksDir(
         nodePath.join(publicationDir, 'works'),
-        [sharedConfigPath],
+        [sharedConfigPath, websiteConfigPath],
         'main'
     );
 
-    // Intro works dir — shared/config only
+    // Intro works dir — document set intro build
     await initializeWorksDir(
         nodePath.join(publicationDir, 'works-intro'),
-        [sharedConfigPath],
+        [sharedConfigPath, documentConfigPath],
         'intro'
     );
 
-    // Per-DrG works dirs — shared/config only
-    const drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
-        .filter(e => e.isDirectory() && e.name !== 'intro')
-        .map(e => e.name);
-
-    for (const drgSlug of drgDirs) {
+    // Per-domain works dirs — derived from edition.json domain chapters
+    // (edition config is loaded before this function is called in startServer())
+    const domainSlugs = getDomainChapterSlugs();
+    for (const slug of domainSlugs) {
         await initializeWorksDir(
-            nodePath.join(publicationDir, `works-${drgSlug}`),
-            [sharedConfigPath],
-            drgSlug
+            nodePath.join(publicationDir, `works-${slug}`),
+            [sharedConfigPath, documentConfigPath],
+            slug
         );
     }
 }
@@ -224,6 +225,16 @@ async function startServer() {
         console.log('Initializing store layer...');
         await initializeStores();
         console.log('Store layer initialized successfully');
+
+        console.log('Loading domain and edition config...');
+        const odipHome = process.env.ODIP_HOME;
+        if (!odipHome) throw new Error('ODIP_HOME environment variable is not set');
+        loadConfig(nodePath.join(odipHome, 'config'));
+        console.log('Domain and edition config loaded successfully');
+
+        console.log('Initializing database...');
+        await initializeDatabase();
+        console.log('Database initialized successfully');
 
         console.log('Registering import mappers...');
         MapperRegistry.registerImportMappers();
@@ -245,7 +256,7 @@ async function startServer() {
             console.log(`  - POST http://localhost:${PORT}/import/requirements?drg=<DRG> (Content-Type: application/yaml)`);
             console.log(`Setup Entities:`);
             console.log(`  - http://localhost:${PORT}/stakeholder-categories`);
-            console.log(`  - http://localhost:${PORT}/domains`);
+            console.log(`  - http://localhost:${PORT}/chapters`);
             console.log(`  - http://localhost:${PORT}/reference-documents`);
             console.log(`  - http://localhost:${PORT}/bandwidths`);
             console.log(`  - http://localhost:${PORT}/waves`);

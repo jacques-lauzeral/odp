@@ -51,18 +51,28 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
 }
 
-# List all publication works directories
+# List all publication works directories.
+# Per-domain works dirs are derived from edition.json domain chapter keys.
+#
+# NOTE: jq and python3 are not reliably available in the target environment.
+# We use `node -e` instead, which is guaranteed present (ODIP requires Node.js).
+# The inline script flattens top-level and sub-chapters, filters those with a
+# "domain" key, then lowercases and replaces underscores with hyphens to form
+# directory-safe slugs matching the server's getDomainChapterSlugs() logic.
 list_works_dirs() {
     echo "${ODIP_HOME}/publication/works"
     echo "${ODIP_HOME}/publication/works-intro"
-    local shared_content="${ODIP_REPO}/publication/shared/content"
-    if [[ -d "$shared_content" ]]; then
-        for d in "$shared_content"/*/; do
-            local drg_slug
-            drg_slug=$(basename "$d")
-            [[ "$drg_slug" == "intro" ]] && continue
-            echo "${ODIP_HOME}/publication/works-${drg_slug}"
-        done
+    local edition_json="${ODIP_REPO}/workspace/server/config/edition.json"
+    if [[ -f "$edition_json" ]]; then
+        node -e "
+const e = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+const all = e.chapters.flatMap(c => [c, ...(c.subChapters || [])]);
+all.filter(c => c.domain)
+   .map(c => c.domain.toLowerCase().replace(/_/g, '-'))
+   .forEach(slug => process.stdout.write('${ODIP_HOME}/publication/works-' + slug + '\n'));
+" "$edition_json"
+    else
+        echo "Warning: edition.json not found — per-domain works dirs will not be created" >&2
     fi
 }
 

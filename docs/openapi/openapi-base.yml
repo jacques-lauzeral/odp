@@ -19,6 +19,7 @@ components:
 
     DraftingGroup:
       type: string
+      description: "Deprecated for O* classification — retained exclusively for Bandwidth.scope. Use domain string keys from domains.json for O* domain assignment."
       enum: [4DT, AIRPORT, AIRSPACE, ASM_ATFCM, CRISIS, FAAS, FLOW, RRT, TCF, TRANSVERSAL]
 
     AnnotatedReference:
@@ -66,37 +67,6 @@ components:
           type: string
         description:
           type: string
-        parentId:
-          type: string
-          nullable: true
-
-    Domain:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        description:
-          type: string
-        contact:
-          type: string
-          nullable: true
-        parentId:
-          type: string
-          nullable: true
-
-    DomainRequest:
-      type: object
-      required: [name, description]
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        contact:
-          type: string
-          nullable: true
         parentId:
           type: string
           nullable: true
@@ -262,12 +232,9 @@ components:
         maturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
-        path:
-          type: array
-          items:
-            type: string
-        drg:
-          $ref: '#/components/schemas/DraftingGroup'
+        domain:
+          type: string
+          description: "Domain key from domains.json"
         refinesParents:
           type: array
           items:
@@ -297,11 +264,6 @@ components:
           items:
             $ref: '#/components/schemas/AnnotatedReference'
           description: "Impacted stakeholder categories — OR only"
-        impactedDomains:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-          description: "Impacted domains — OR only"
         # --- rich-text fields (standard and extended projections only) ---
         statement:
           type: string
@@ -369,12 +331,12 @@ components:
         maturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
+        domain:
+          type: string
+          description: "Domain key from domains.json — mandatory"
         path:
-          type: array
-          items:
-            type: string
-        drg:
-          $ref: '#/components/schemas/DraftingGroup'
+          type: string
+          description: "Topic locator for osHierarchy placement — create only, not stored"
         refinesParents:
           type: array
           items:
@@ -409,12 +371,6 @@ components:
             $ref: '#/components/schemas/AnnotatedReference'
           default: []
           description: "Impacted stakeholder category IDs — OR only"
-        impactedDomains:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-          default: []
-          description: "Impacted domain IDs — OR only"
         nfrs:
           type: string
           nullable: true
@@ -454,12 +410,9 @@ components:
         maturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
-        path:
-          type: array
-          items:
-            type: string
-        drg:
-          $ref: '#/components/schemas/DraftingGroup'
+        domain:
+          type: string
+          description: "Domain key from domains.json"
         refinesParents:
           type: array
           items:
@@ -479,10 +432,6 @@ components:
           items:
             type: string
         impactedStakeholders:
-          type: array
-          items:
-            $ref: '#/components/schemas/AnnotatedReference'
-        impactedDomains:
           type: array
           items:
             $ref: '#/components/schemas/AnnotatedReference'
@@ -595,12 +544,9 @@ components:
         maturity:
           type: string
           enum: [DRAFT, ADVANCED, MATURE]
-        path:
-          type: array
-          items:
-            type: string
-        drg:
-          $ref: '#/components/schemas/DraftingGroup'
+        domain:
+          type: string
+          description: "Domain key from domains.json"
         implementedORs:
           type: array
           items:
@@ -680,12 +626,12 @@ components:
           items:
             $ref: '#/components/schemas/ORCost'
           default: []
+        domain:
+          type: string
+          description: "Domain key from domains.json — mandatory"
         path:
-          type: array
-          items:
-            type: string
-        drg:
-          $ref: '#/components/schemas/DraftingGroup'
+          type: string
+          description: "Topic locator for osHierarchy placement — create only, not stored"
         implementedORs:
           type: array
           items:
@@ -759,12 +705,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ORCost'
-        path:
-          type: array
-          items:
-            type: string
-        drg:
-          $ref: '#/components/schemas/DraftingGroup'
+        domain:
+          type: string
+          description: "Domain key from domains.json"
         implementedORs:
           type: array
           items:
@@ -777,6 +720,119 @@ components:
           type: array
           items:
             type: string
+
+    # Chapter Entity Schemas
+    OsHierarchyTopic:
+      type: object
+      required: [topic, ons, ors, ocs]
+      properties:
+        topic:
+          type: string
+          description: "Topic label"
+        ons:
+          type: array
+          items:
+            type: integer
+          description: "ON item IDs in this topic"
+        ors:
+          type: array
+          items:
+            type: integer
+          description: "OR item IDs in this topic"
+        ocs:
+          type: array
+          items:
+            type: integer
+          description: "OC item IDs in this topic"
+        subtopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/OsHierarchyTopic'
+          description: "Nested sub-topics (recursive)"
+
+    OsHierarchy:
+      type: object
+      required: [topics]
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/OsHierarchyTopic'
+
+    Chapter:
+      description: |
+        Chapter response. Config-owned fields (title, domain, position) are merged
+        from edition.json at read time and are not user-editable.
+      type: object
+      properties:
+        itemId:
+          type: string
+        key:
+          type: string
+          description: "Stable identifier matching edition.json"
+        parentItemId:
+          type: string
+          nullable: true
+          description: "Parent chapter item ID — null for top-level chapters"
+        versionId:
+          type: string
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        # config-owned fields — not stored, merged at read time
+        title:
+          type: string
+          description: "Display title from edition.json — not user-editable"
+        domain:
+          type: string
+          nullable: true
+          description: "Domain key from domains.json — null on pure narrative chapters"
+        position:
+          type: integer
+          description: "Ordering within parent from edition.json"
+        parentKey:
+          type: string
+          nullable: true
+          description: "Parent chapter key — null for top-level chapters"
+        # user-maintained fields
+        narrative:
+          type: string
+          nullable: true
+          description: "Chapter narrative content (Quill Delta JSON)"
+        jsonOsHierarchy:
+          $ref: '#/components/schemas/OsHierarchy'
+          nullable: true
+          description: "O* presentation order for this chapter"
+
+    ChapterUpdateRequest:
+      type: object
+      required: [expectedVersionId]
+      properties:
+        expectedVersionId:
+          type: string
+        narrative:
+          type: string
+          nullable: true
+        jsonOsHierarchy:
+          $ref: '#/components/schemas/OsHierarchy'
+          nullable: true
+
+    ChapterPatchRequest:
+      type: object
+      required: [expectedVersionId]
+      properties:
+        expectedVersionId:
+          type: string
+        narrative:
+          type: string
+          nullable: true
+        jsonOsHierarchy:
+          $ref: '#/components/schemas/OsHierarchy'
+          nullable: true
 
     VersionHistory:
       type: object

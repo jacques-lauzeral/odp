@@ -11,7 +11,7 @@ export class BaselineStore extends BaseStore {
     }
 
     /**
-     * Create new baseline by capturing all latest OR/OC versions
+     * Create new baseline by capturing all latest OR/OC/Chapter versions
      * @param {object} data - {title}
      * @param {Transaction} transaction - Must have user context
      * @returns {Promise<object>} Created baseline with captured count
@@ -45,7 +45,7 @@ export class BaselineStore extends BaseStore {
             const captureResult = await transaction.run(`
                 MATCH (baseline:Baseline) WHERE id(baseline) = $baselineId
                 MATCH (item)-[:LATEST_VERSION]->(version)
-                WHERE item:OperationalRequirement OR item:OperationalChange
+                WHERE item:OperationalRequirement OR item:OperationalChange OR item:Chapter
                 CREATE (baseline)-[:HAS_ITEMS]->(version)
                 RETURN count(version) as capturedCount
             `, { baselineId: baseline.id });

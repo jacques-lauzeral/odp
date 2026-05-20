@@ -4,7 +4,7 @@ import { getProjectionFields } from '../../../shared/src/index.js';
 
 /**
  * Store for OperationalRequirement items with versioning and relationship management.
- * Handles REFINES, IMPACTS_STAKEHOLDER, IMPACTS_DOMAIN, REFERENCES (ON only),
+ * Handles REFINES, IMPACTS_STAKEHOLDER, REFERENCES (ON only),
  * IMPLEMENTS (OR only), and DEPENDS_ON (OR only) relationships.
  *
  * Supports three query contexts (mutually exclusive):
@@ -71,10 +71,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     whereConditions.push('version.type = $type');
                     params.type = filters.type;
                 }
-                if (filters.drg) {
-                    whereConditions.push('version.drg = $drg');
-                    params.drg = filters.drg;
-                }
+
                 if (filters.title) {
                     whereConditions.push(`(
                     item.title CONTAINS $title OR
@@ -82,10 +79,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 )`);
                     params.title = filters.title;
                 }
-                if (filters.path) {
-                    whereConditions.push('$path IN version.path');
-                    params.path = filters.path;
-                }
+
                 if (filters.text) {
                     whereConditions.push(`(
                     item.title CONTAINS $text OR 
@@ -115,11 +109,8 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     params.stakeholderCategory = this.normalizeId(filters.stakeholderCategory);
                 }
                 if (filters.domain !== undefined && filters.domain !== null) {
-                    whereConditions.push(`EXISTS {
-                    MATCH (version)-[:IMPACTS_DOMAIN]->(d:Domain)
-                    WHERE id(d) = $domain
-                }`);
-                    params.domain = this.normalizeId(filters.domain);
+                    whereConditions.push('version.domain = $domain');
+                    params.domain = filters.domain;
                 }
                 if (filters.refinesParent !== undefined && filters.refinesParent !== null) {
                     whereConditions.push(`EXISTS {
@@ -165,11 +156,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             OPTIONAL MATCH (version)-[scRel:IMPACTS_STAKEHOLDER]->(sc:StakeholderCategory)
             `;
             }
-            if (includeField('impactedDomains')) {
-                cypher += `
-            OPTIONAL MATCH (version)-[dRel:IMPACTS_DOMAIN]->(dom:Domain)
-            `;
-            }
+
             if (includeField('implementedONs')) {
                 cypher += `
             OPTIONAL MATCH (version)-[:IMPLEMENTS]->(on:${this.nodeLabel})-[:LATEST_VERSION]->(onVersion:${this.versionLabel})
@@ -189,7 +176,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
 
             // Build RETURN clause — always include identity fields, gate the rest
             const versionFields = [
-                'type', 'drg', 'maturity', 'path', 'tentative',
+                'type', 'domain', 'maturity', 'tentative',
                 'statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'
             ].filter(includeField);
 
@@ -211,10 +198,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 collect(DISTINCT CASE WHEN sc IS NOT NULL
                     THEN {id: id(sc), title: sc.name, note: scRel.note}
                     ELSE NULL END) as impactedStakeholders` : ''}
-                ${includeField('impactedDomains') ? `,
-                collect(DISTINCT CASE WHEN dom IS NOT NULL
-                    THEN {id: id(dom), title: dom.name, note: dRel.note}
-                    ELSE NULL END) as impactedDomains` : ''}
+
                 ${includeField('implementedONs') ? `,
                 collect(DISTINCT CASE WHEN on IS NOT NULL
                     THEN {id: id(on), code: on.code, title: on.title, type: onVersion.type}
@@ -274,7 +258,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 };
 
                 const scalarVersionFields = [
-                    'type', 'drg', 'maturity', 'path', 'tentative',
+                    'type', 'domain', 'maturity', 'tentative',
                     'statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'
                 ];
                 for (const f of scalarVersionFields) {
@@ -284,7 +268,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 }
 
                 const relFields = [
-                    'refinesParents', 'impactedStakeholders', 'impactedDomains',
+                    'refinesParents', 'impactedStakeholders',
                     'implementedONs', 'strategicDocuments', 'dependencies'
                 ];
                 for (const f of relFields) {
@@ -415,7 +399,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
         const {
             refinesParents,
             impactedStakeholders,
-            impactedDomains,
             implementedONs,
             strategicDocuments,
             dependencies,
@@ -426,7 +409,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
             relationshipIds: {
                 refinesParents: refinesParents || [],
                 impactedStakeholders: impactedStakeholders || [],
-                impactedDomains: impactedDomains || [],
                 implementedONs: implementedONs || [],
                 strategicDocuments: strategicDocuments || [],
                 dependencies: dependencies || []
@@ -455,18 +437,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 ORDER BY target.name
             `, { versionId });
             const impactedStakeholders = stakeholderResult.records.map(record => ({
-                id: this.normalizeId(record.get('id')),
-                title: record.get('title'),
-                note: record.get('note') || ''
-            }));
-
-            const domainResult = await transaction.run(`
-                MATCH (version:${this.versionLabel})-[rel:IMPACTS_DOMAIN]->(target:Domain)
-                WHERE id(version) = $versionId
-                RETURN id(target) as id, target.name as title, rel.note as note
-                ORDER BY target.name
-            `, { versionId });
-            const impactedDomains = domainResult.records.map(record => ({
                 id: this.normalizeId(record.get('id')),
                 title: record.get('title'),
                 note: record.get('note') || ''
@@ -501,7 +471,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             `, { versionId });
             const dependencies = dependsOnResult.records.map(record => this._buildReference(record));
 
-            return { refinesParents, impactedStakeholders, impactedDomains, implementedONs, strategicDocuments, dependencies };
+            return { refinesParents, impactedStakeholders, implementedONs, strategicDocuments, dependencies };
         } catch (error) {
             throw new StoreError(`Failed to build relationship references: ${error.message}`, error);
         }
@@ -515,7 +485,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const {
                 refinesParents = [],
                 impactedStakeholders = [],
-                impactedDomains = [],
                 implementedONs = [],
                 strategicDocuments = [],
                 dependencies = []
@@ -550,7 +519,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
             }
 
             await this._createAnnotatedRelationships(versionId, 'IMPACTS_STAKEHOLDER', 'StakeholderCategory', impactedStakeholders, transaction);
-            await this._createAnnotatedRelationships(versionId, 'IMPACTS_DOMAIN', 'Domain', impactedDomains, transaction);
 
             if (implementedONs.length > 0) {
                 const normalizedONIds = implementedONs.map(id => this.normalizeId(id));
@@ -659,17 +627,17 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Find requirements that impact a specific item
-     * @param {string} targetLabel - 'StakeholderCategory' | 'Domain'
+     * Find requirements that impact a specific stakeholder category
      * @param {number} targetId
      * @param {Transaction} transaction
      * @param {number|null} baselineId
      * @returns {Promise<Array<object>>}
      */
-    async findRequirementsThatImpact(targetLabel, targetId, transaction, baselineId = null) {
+    async findRequirementsThatImpactStakeholder(targetId, transaction, baselineId = null) {
         try {
+            const targetLabel = 'StakeholderCategory';
+            const relType = 'IMPACTS_STAKEHOLDER';
             const normalizedTargetId = this.normalizeId(targetId);
-            const relType = targetLabel === 'StakeholderCategory' ? 'IMPACTS_STAKEHOLDER' : 'IMPACTS_DOMAIN';
             let query, params;
 
             if (baselineId === null) {

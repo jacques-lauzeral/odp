@@ -3,7 +3,8 @@ import { createTransaction, commitTransaction, rollbackTransaction } from './tra
 
 // Import store classes
 import { StakeholderCategoryStore } from './stakeholder-category-store.js';
-import { DomainStore } from './domain-store.js';
+import { ChapterStore } from './chapter-store.js';
+import { getChapters } from '../../../shared/src/index.js';
 import { ReferenceDocumentStore } from './reference-document-store.js';
 import { BandwidthStore } from './bandwidth-store.js';
 import { WaveStore } from './wave-store.js';
@@ -14,7 +15,7 @@ import { ODPEditionStore } from './odp-edition-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
-let domainStore = null;
+let chapterStore = null;
 let referenceDocumentStore = null;
 let bandwidthStore = null;
 let waveStore = null;
@@ -37,7 +38,7 @@ export async function initializeStores() {
         const driver = getDriver();
 
         stakeholderCategoryStore = new StakeholderCategoryStore(driver);
-        domainStore = new DomainStore(driver);
+        chapterStore = new ChapterStore(driver);
         referenceDocumentStore = new ReferenceDocumentStore(driver);
         bandwidthStore = new BandwidthStore(driver);
         waveStore = new WaveStore(driver);
@@ -49,7 +50,7 @@ export async function initializeStores() {
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
             stakeholderCategory: '✓',
-            domain: '✓',
+            chapter: '✓',
             referenceDocument: '✓',
             bandwidth: '✓',
             wave: '✓',
@@ -75,7 +76,7 @@ export async function closeStores() {
         console.log('Closing store layer...');
 
         stakeholderCategoryStore = null;
-        domainStore = null;
+        chapterStore = null;
         referenceDocumentStore = null;
         bandwidthStore = null;
         waveStore = null;
@@ -93,6 +94,48 @@ export async function closeStores() {
     }
 }
 
+/**
+ * Ensure all config-driven DB entities exist.
+ * Idempotent — safe to call on every server startup.
+ * Currently ensures: Chapter items (one per chapter key in edition.json).
+ *
+ * @returns {Promise<void>}
+ * @throws {Error} If any chapter cannot be created
+ */
+export async function initializeDatabase() {
+    console.log('Initializing database...');
+    const store = getChapterStore();
+    const chapters = getChapters();
+
+    const tx = createTransaction('write');
+    try {
+        // Build a key→itemId map as we go so sub-chapters can resolve parentItemId
+        const keyToItemId = new Map();
+
+        for (const chapter of chapters) {
+            const existing = await store.findByKey(chapter.key, tx);
+            if (existing) {
+                keyToItemId.set(chapter.key, existing.itemId);
+                continue;
+            }
+
+            const parentItemId = chapter.parentKey
+                ? (keyToItemId.get(chapter.parentKey) ?? null)
+                : null;
+
+            const created = await store.createChapter(chapter.key, parentItemId, tx);
+            keyToItemId.set(chapter.key, created.itemId);
+            console.log(`  Created chapter: ${chapter.key}`);
+        }
+
+        await commitTransaction(tx);
+        console.log(`Database initialized (${chapters.length} chapter(s) verified)`);
+    } catch (error) {
+        await rollbackTransaction(tx);
+        throw new Error(`Database initialization failed: ${error.message}`);
+    }
+}
+
 // Transaction management exports
 export { createTransaction, commitTransaction, rollbackTransaction };
 
@@ -103,9 +146,9 @@ function getStakeholderCategoryStore() {
     return stakeholderCategoryStore;
 }
 
-function getDomainStore() {
-    if (!domainStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
-    return domainStore;
+function getChapterStore() {
+    if (!chapterStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
+    return chapterStore;
 }
 
 function getReferenceDocumentStore() {
@@ -145,7 +188,7 @@ function getODPEditionStore() {
 
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
-    getDomainStore as domainStore,
+    getChapterStore as chapterStore,
     getReferenceDocumentStore as referenceDocumentStore,
     getBandwidthStore as bandwidthStore,
     getWaveStore as waveStore,
@@ -161,7 +204,7 @@ export {
 export function getAllStores() {
     return {
         stakeholderCategory: getStakeholderCategoryStore(),
-        domain: getDomainStore(),
+        chapter: getChapterStore(),
         referenceDocument: getReferenceDocumentStore(),
         bandwidth: getBandwidthStore(),
         wave: getWaveStore(),
@@ -178,7 +221,7 @@ export function getAllStores() {
 export function isStoreLayerInitialized() {
     return !!(
         stakeholderCategoryStore &&
-        domainStore &&
+        chapterStore &&
         referenceDocumentStore &&
         bandwidthStore &&
         waveStore &&
@@ -195,7 +238,7 @@ export function isStoreLayerInitialized() {
 export function getStoreLayerStatus() {
     const stores = {
         stakeholderCategory: !!stakeholderCategoryStore,
-        domain: !!domainStore,
+        chapter: !!chapterStore,
         referenceDocument: !!referenceDocumentStore,
         bandwidth: !!bandwidthStore,
         wave: !!waveStore,

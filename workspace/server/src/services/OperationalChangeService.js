@@ -1,8 +1,7 @@
 import { VersionedItemService } from './VersionedItemService.js';
 import {
     MilestoneEventType,
-    DraftingGroup,
-    isDraftingGroupValid,
+    isDomainValid,
     isMilestoneEventValid,
     MilestoneEventKeys,
     MaturityLevel,
@@ -229,10 +228,9 @@ export class OperationalChangeService extends VersionedItemService {
             privateNotes: current.privateNotes,
             additionalDocumentation: current.additionalDocumentation,
             maturity: current.maturity,
+            domain: current.domain,
             cost: current.cost,
             orCosts: current.orCosts,
-            path: current.path,
-            drg: current.drg,
             implementedORs: current.implementedORs.map(ref => ref.id),
             decommissionedORs: current.decommissionedORs.map(ref => ref.id),
             dependencies: current.dependencies.map(ref => ref.id),
@@ -250,7 +248,7 @@ export class OperationalChangeService extends VersionedItemService {
         if (payload.cost === '') payload.cost = null;
         this._sanitizeDeltaFields(payload, `OC (${payload.title || 'untitled'})`);
         this._validateRequiredFields(payload);
-        this._validateDRG(payload.drg);
+        this._validateDomain(payload.domain);
         this._validateMaturity(payload.maturity);
         this._validateMaturityGatedFields(payload);
         this._validateRelationshipArrays(payload);
@@ -264,7 +262,7 @@ export class OperationalChangeService extends VersionedItemService {
         if (payload.cost === '') payload.cost = null;
         this._sanitizeDeltaFields(payload, `OC ${itemId} (${payload.title || 'untitled'})`);
         this._validateRequiredFields(payload);
-        this._validateDRG(payload.drg);
+        this._validateDomain(payload.domain);
         this._validateMaturity(payload.maturity);
         this._validateMaturityGatedFields(payload);
         this._validateRelationshipArrays(payload);
@@ -281,10 +279,9 @@ export class OperationalChangeService extends VersionedItemService {
             privateNotes: patchPayload.privateNotes !== undefined ? patchPayload.privateNotes : current.privateNotes,
             additionalDocumentation: patchPayload.additionalDocumentation !== undefined ? patchPayload.additionalDocumentation : current.additionalDocumentation,
             maturity: patchPayload.maturity !== undefined ? patchPayload.maturity : current.maturity,
+            domain: patchPayload.domain !== undefined ? patchPayload.domain : current.domain,
             cost: patchPayload.cost !== undefined ? patchPayload.cost : current.cost,
             orCosts: patchPayload.orCosts !== undefined ? patchPayload.orCosts : current.orCosts,
-            path: patchPayload.path !== undefined ? patchPayload.path : current.path,
-            drg: patchPayload.drg !== undefined ? patchPayload.drg : current.drg,
             implementedORs: patchPayload.implementedORs !== undefined ? patchPayload.implementedORs : current.implementedORs.map(ref => ref.id),
             decommissionedORs: patchPayload.decommissionedORs !== undefined ? patchPayload.decommissionedORs : current.decommissionedORs.map(ref => ref.id),
             dependencies: patchPayload.dependencies !== undefined ? patchPayload.dependencies : current.dependencies.map(ref => ref.id),
@@ -295,7 +292,7 @@ export class OperationalChangeService extends VersionedItemService {
     // Validation helper methods
 
     _validateRequiredFields(payload) {
-        const requiredFields = ['title', 'purpose', 'initialState', 'finalState', 'drg', 'maturity'];
+        const requiredFields = ['title', 'purpose', 'initialState', 'finalState', 'domain', 'maturity'];
         for (const field of requiredFields) {
             if (payload[field] === undefined || payload[field] === null) {
                 throw new Error(`Validation failed: missing required field: ${field}`);
@@ -303,9 +300,9 @@ export class OperationalChangeService extends VersionedItemService {
         }
     }
 
-    _validateDRG(drg) {
-        if (!isDraftingGroupValid(drg)) {
-            throw new Error(`Validation failed: drg must be one of: ${Object.keys(DraftingGroup).join(', ')}`);
+    _validateDomain(domain) {
+        if (!domain || !isDomainValid(domain)) {
+            throw new Error(`Validation failed: domain must be a valid domain key from domains.json`);
         }
     }
 
@@ -379,23 +376,8 @@ export class OperationalChangeService extends VersionedItemService {
             throw new Error('Validation failed: cost must be an integer');
         }
 
-        if (payload.path) {
-            this._validatePath(payload.path);
-        }
-
         if (payload.milestones) {
             this._validateMilestones(payload.milestones);
-        }
-    }
-
-    _validatePath(path) {
-        if (!Array.isArray(path)) {
-            throw new Error('Validation failed: path must be an array');
-        }
-        for (const pathElement of path) {
-            if (typeof pathElement !== 'string') {
-                throw new Error('Validation failed: path elements must be strings');
-            }
         }
     }
 
