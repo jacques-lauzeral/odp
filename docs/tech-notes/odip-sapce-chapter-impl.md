@@ -23,7 +23,7 @@ The former **(impact) Domain** setup entity — used to characterise OR impact v
 ### Summary of changes
 
 - **`Chapter`** — new versioned entity. User-maintained fields: `narrative`, `osHierarchy`. Config-owned fields: `title`, `domain`, `position`.
-- **`DraftingGroup`** — retired from `OperationalRequirement` and `OperationalChange`. Replaced by `BELONGS_TO` relationship to `Chapter` item node, with domain key on `ChapterVersion`.
+- **`DraftingGroup`** — retired from `OperationalRequirement` and `OperationalChange`. Replaced by `domain` string field on `RequirementVersion` and `OperationalChangeVersion`, validated against `domains-config.js`.
 - **`path`** — removed from `RequirementVersion`. O\* organisation owned by `Chapter.osHierarchy`.
 - **(impact) Domain** — fully retired: `DomainStore`, `IMPACTS_DOMAIN`, `impactedDomains`, `GET /domains` and related endpoints all removed.
 - **`@odp/shared` `config/`** — new sub-package with `domains-config.js` and `edition-config.js`.
@@ -49,24 +49,24 @@ Defines the domain tree — the semantic classification authority for O\*s. Maxi
 
 ```json
 {
-  "domains": [
-    { "key": "4DT",              "label": "4D-Trajectory" },
-    { "key": "AIRPORT",          "label": "Airport" },
-    { "key": "AIRSPACE",         "label": "Airspace (iDL)" },
-    { "key": "ASM_ATFCM",        "label": "ASM/ATFCM Integration" },
-    { "key": "CRISIS",           "label": "Crisis" },
-    { "key": "FAAS",             "label": "FAAS" },
-    { "key": "FLOW",             "label": "Flow" },
-    { "key": "RRT",              "label": "Rerouting" },
-    { "key": "TCF",              "label": "Transponder Code Function" },
-    { "key": "TRANSVERSAL",      "label": "Transversal",
-      "subDomains": [
-        { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
-        { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
-        { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
-      ]
-    }
-  ]
+   "domains": [
+      { "key": "4DT",              "label": "4D-Trajectory" },
+      { "key": "AIRPORT",          "label": "Airport" },
+      { "key": "AIRSPACE",         "label": "Airspace (iDL)" },
+      { "key": "ASM_ATFCM",        "label": "ASM/ATFCM Integration" },
+      { "key": "CRISIS",           "label": "Crisis" },
+      { "key": "FAAS",             "label": "FAAS" },
+      { "key": "FLOW",             "label": "Flow" },
+      { "key": "RRT",              "label": "Rerouting" },
+      { "key": "TCF",              "label": "Transponder Code Function" },
+      { "key": "TRANSVERSAL",      "label": "Transversal",
+         "subDomains": [
+            { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
+            { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
+            { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
+         ]
+      }
+   ]
 }
 ```
 
@@ -81,40 +81,40 @@ Defines the publication chapter structure. Links domain chapters to domain keys 
 
 ```json
 {
-  "chapters": [
-    {
-      "key": "overview",
-      "title": "Overview",
-      "position": 1,
-      "subChapters": [
-        { "key": "overview-intro",     "title": "Introduction",       "position": 1 },
-        { "key": "overview-nm-odip",   "title": "NM ODIP",            "position": 2 },
-        { "key": "overview-portfolio", "title": "Portfolio Overview",  "position": 3 }
-      ]
-    },
-    {
-      "key": "transversal",
-      "title": "Transversal Layer",
-      "position": 2,
-      "domain": "TRANSVERSAL",
-      "subChapters": [
-        { "key": "transversal-nm",     "title": "Transversal NM",     "position": 1, "domain": "TRANSVERSAL_NM" },
-        { "key": "transversal-nmui",   "title": "Transversal NMUI",   "position": 2, "domain": "TRANSVERSAL_NMUI" },
-        { "key": "transversal-nm-b2b", "title": "Transversal NM-B2B", "position": 3, "domain": "TRANSVERSAL_NM_B2B" }
-      ]
-    },
-    { "key": "4dt",        "title": "4D-Trajectory",             "position": 3,  "domain": "4DT" },
-    { "key": "rerouting",  "title": "4D-Rerouting",              "position": 4,  "domain": "RRT" },
-    { "key": "flow",       "title": "Flow",                      "position": 5,  "domain": "FLOW" },
-    { "key": "asmatfcm",   "title": "ASM/ATFCM Integration",     "position": 6,  "domain": "ASM_ATFCM" },
-    { "key": "airspace",   "title": "Airspace (iDL)",            "position": 7,  "domain": "AIRSPACE" },
-    { "key": "airport",    "title": "Airport",                   "position": 8,  "domain": "AIRPORT" },
-    { "key": "tcf",        "title": "Transponder Code Function",  "position": 9, "domain": "TCF" },
-    { "key": "faas",       "title": "FAAS",                      "position": 10, "domain": "FAAS" },
-    { "key": "way-forward","title": "Way Forward",               "position": 11 },
-    { "key": "annex-acronyms",     "title": "Acronyms",              "position": 12, "template": "acronyms" },
-    { "key": "annex-traceability", "title": "Strategic Traceability", "position": 13, "template": "strategic-traceability" }
-  ]
+   "chapters": [
+      {
+         "key": "overview",
+         "title": "Overview",
+         "position": 1,
+         "subChapters": [
+            { "key": "overview-intro",     "title": "Introduction",       "position": 1 },
+            { "key": "overview-nm-odip",   "title": "NM ODIP",            "position": 2 },
+            { "key": "overview-portfolio", "title": "Portfolio Overview",  "position": 3 }
+         ]
+      },
+      {
+         "key": "transversal",
+         "title": "Transversal Layer",
+         "position": 2,
+         "domain": "TRANSVERSAL",
+         "subChapters": [
+            { "key": "transversal-nm",     "title": "Transversal NM",     "position": 1, "domain": "TRANSVERSAL_NM" },
+            { "key": "transversal-nmui",   "title": "Transversal NMUI",   "position": 2, "domain": "TRANSVERSAL_NMUI" },
+            { "key": "transversal-nm-b2b", "title": "Transversal NM-B2B", "position": 3, "domain": "TRANSVERSAL_NM_B2B" }
+         ]
+      },
+      { "key": "4dt",        "title": "4D-Trajectory",             "position": 3,  "domain": "4DT" },
+      { "key": "rerouting",  "title": "4D-Rerouting",              "position": 4,  "domain": "RRT" },
+      { "key": "flow",       "title": "Flow",                      "position": 5,  "domain": "FLOW" },
+      { "key": "asmatfcm",   "title": "ASM/ATFCM Integration",     "position": 6,  "domain": "ASM_ATFCM" },
+      { "key": "airspace",   "title": "Airspace (iDL)",            "position": 7,  "domain": "AIRSPACE" },
+      { "key": "airport",    "title": "Airport",                   "position": 8,  "domain": "AIRPORT" },
+      { "key": "tcf",        "title": "Transponder Code Function",  "position": 9, "domain": "TCF" },
+      { "key": "faas",       "title": "FAAS",                      "position": 10, "domain": "FAAS" },
+      { "key": "way-forward","title": "Way Forward",               "position": 11 },
+      { "key": "annex-acronyms",     "title": "Acronyms",              "position": 12, "template": "acronyms" },
+      { "key": "annex-traceability", "title": "Strategic Traceability", "position": 13, "template": "strategic-traceability" }
+   ]
 }
 ```
 
@@ -203,17 +203,17 @@ Defines the `Chapter` entity model, request structures, and the `OsHierarchy` ty
 
 ```javascript
 export const Chapter = {
-    id:              '',
-    title:           '',   // config-owned
-    domain:          null, // config-owned — domain key, nullable
-    position:        0,    // config-owned
-    narrative:       '',   // user-maintained — stringified Quill Delta
-    jsonOsHierarchy: null, // user-maintained — stringified JSON (REST boundary / Neo4j)
-    osHierarchy:     null, // user-maintained — parsed OsHierarchy object (internal use)
-    version:         0,
-    createdAt:       '',
-    createdBy:       '',
-    parentId:        null
+   id:              '',
+   title:           '',   // config-owned
+   domain:          null, // config-owned — domain key, nullable
+   position:        0,    // config-owned
+   narrative:       '',   // user-maintained — stringified Quill Delta
+   jsonOsHierarchy: null, // user-maintained — stringified JSON (REST boundary / Neo4j)
+   osHierarchy:     null, // user-maintained — parsed OsHierarchy object (internal use)
+   version:         0,
+   createdAt:       '',
+   createdBy:       '',
+   parentId:        null
 };
 ```
 
@@ -221,17 +221,17 @@ export const Chapter = {
 
 ```javascript
 export const ChapterRequests = {
-    // No create — chapters are bootstrap-only
-    update: {
-        narrative:         '',
-        jsonOsHierarchy:   null,
-        expectedVersionId: ''
-    },
-    patch: {
-        narrative:         undefined,
-        jsonOsHierarchy:   undefined,
-        expectedVersionId: ''
-    }
+   // No create — chapters are bootstrap-only
+   update: {
+      narrative:         '',
+      jsonOsHierarchy:   null,
+      expectedVersionId: ''
+   },
+   patch: {
+      narrative:         undefined,
+      jsonOsHierarchy:   undefined,
+      expectedVersionId: ''
+   }
 };
 ```
 
@@ -495,36 +495,36 @@ No `DELETE /chapters` — chapters are config-owned.
 
 ```yaml
 OsHierarchyTopic:
-  type: object
-  required: [topic, ons, ors, ocs]
-  properties:
-    topic:
-      type: string
-    ons:
-      type: array
-      items:
-        type: integer
-    ors:
-      type: array
-      items:
-        type: integer
-    ocs:
-      type: array
-      items:
-        type: integer
-    subtopics:
-      type: array
-      items:
-        $ref: '#/components/schemas/OsHierarchyTopic'
+   type: object
+   required: [topic, ons, ors, ocs]
+   properties:
+      topic:
+         type: string
+      ons:
+         type: array
+         items:
+            type: integer
+      ors:
+         type: array
+         items:
+            type: integer
+      ocs:
+         type: array
+         items:
+            type: integer
+      subtopics:
+         type: array
+         items:
+            $ref: '#/components/schemas/OsHierarchyTopic'
 
 OsHierarchy:
-  type: object
-  required: [topics]
-  properties:
-    topics:
-      type: array
-      items:
-        $ref: '#/components/schemas/OsHierarchyTopic'
+   type: object
+   required: [topics]
+   properties:
+      topics:
+         type: array
+         items:
+            $ref: '#/components/schemas/OsHierarchyTopic'
 ```
 
 **`OperationalRequirement` schema:**
