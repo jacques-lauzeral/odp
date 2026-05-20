@@ -51,19 +51,23 @@ export class CollectionEntityForm {
     }
 
     initTabDelegation() {
-        // Prevent multiple bindings
+        // Prevent multiple bindings — one document-level listener shared across all instances.
         if (CollectionEntityForm._tabDelegationInitialized) {
             return;
         }
 
         // Single event listener for all tab headers anywhere in the document.
+        // Updates the static _activeInstance so the correct form instance tracks currentTabIndex.
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('tab-header')) {
                 const tabIndex = e.target.dataset.tab;
                 const container = e.target.closest('.form-tabs, .item-details, .modal');
                 if (container && tabIndex !== undefined) {
-                    this.switchTabInContainer(container, tabIndex);
-                    this.currentTabIndex = parseInt(tabIndex, 10);
+                    const active = CollectionEntityForm._activeInstance;
+                    if (active) {
+                        active.switchTabInContainer(container, tabIndex);
+                        active.currentTabIndex = parseInt(tabIndex, 10);
+                    }
                 }
             }
         });
@@ -209,6 +213,10 @@ export class CollectionEntityForm {
      * @param {object} item - The item whose data was rendered
      */
     initializeReadOnlyInPanel(container, item) {
+        // Mark this instance as active so the shared tab delegation listener
+        // updates the correct currentTabIndex.
+        CollectionEntityForm._activeInstance = this;
+
         this.currentModal = container;
         this.currentItem  = item;
         this.currentMode  = 'read';
@@ -471,7 +479,7 @@ export class CollectionEntityForm {
                 return `<input type="${field.type}" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="odip-input odip-input--standard" 
+                    class="form-control" 
                     value="${this.escapeHtml(value || '')}" 
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -484,7 +492,7 @@ export class CollectionEntityForm {
                 return `<textarea 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="odip-input odip-input--standard" 
+                    class="form-control" 
                     rows="${rows}" 
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -506,7 +514,7 @@ export class CollectionEntityForm {
                     name="${field.key}" 
                     id="${fieldId}-data">`;
             case 'select':
-                let html = `<select id="${fieldId}" name="${field.key}" class="odip-input odip-input--standard" ${required}>`;
+                let html = `<select id="${fieldId}" name="${field.key}" class="form-control" ${required}>`;
 
                 // Add empty option if not required or specified
                 if (!field.required || field.includeEmpty) {
@@ -573,7 +581,7 @@ export class CollectionEntityForm {
                 return `<input type="date" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="odip-input odip-input--standard" 
+                    class="form-control" 
                     value="${value || ''}" 
                     ${required}
                     ${field.min ? `min="${field.min}"` : ''}
@@ -600,7 +608,7 @@ export class CollectionEntityForm {
                 return `<input type="text"
                     id="${fieldId}"
                     name="${field.key}"
-                    class="odip-input odip-input--standard"
+                    class="form-control"
                     value="${this.escapeHtml(value || '')}"
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -618,7 +626,7 @@ export class CollectionEntityForm {
                 return `<input type="text" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="odip-input odip-input--standard" 
+                    class="form-control" 
                     value="${this.escapeHtml(value || '')}" 
                     ${required}>`;
         }
@@ -1022,6 +1030,10 @@ export class CollectionEntityForm {
                     readOnly: true // Use readOnly instead of disable for cleaner rendering
                 });
 
+                // Quill steals focus on init even in readOnly mode — blur immediately
+                // to avoid disrupting keyboard navigation in the master list.
+                quillEditor.root.blur();
+
                 // Set content
                 quillEditor.setContents(deltaValue);
 
@@ -1391,14 +1403,14 @@ export class CollectionEntityForm {
                 </div>
                 ${showFooter ? `
                     <div class="modal-footer">
-                        <button type="button" class="odip-btn odip-btn--standard" data-action="close">Cancel</button>
-                        <button type="button" class="odip-btn odip-btn--primary odip-btn--standard" data-action="save">
+                        <button type="button" class="btn btn-secondary" data-action="close">Cancel</button>
+                        <button type="button" class="btn btn-primary" data-action="save">
                             ${mode === 'create' ? 'Create' : 'Save Changes'}
                         </button>
                     </div>
                 ` : `
                     <div class="modal-footer">
-                        <button type="button" class="odip-btn odip-btn--primary odip-btn--standard" data-action="close">Close</button>
+                        <button type="button" class="btn btn-primary" data-action="close">Close</button>
                     </div>
                 `}
             </div>
@@ -1534,7 +1546,7 @@ export class CollectionEntityForm {
                         <p>Review the restored content, then <strong>Save</strong> to create a new version.</p>
                     </div>
                     <div class="history-popup-footer">
-                        <button type="button" class="odip-btn odip-btn--primary" id="${id}-ok">Got it</button>
+                        <button type="button" class="btn btn-primary btn-sm" id="${id}-ok">Got it</button>
                     </div>
                 </div>
             </div>

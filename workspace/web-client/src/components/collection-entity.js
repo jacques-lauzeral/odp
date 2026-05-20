@@ -171,7 +171,7 @@ export default class CollectionEntity {
         // Apply current grouping strategy
         const groupedData = this.groupData(this.data);
 
-        let html = '<div class="collection-content">';
+        let html = '<div class="collection-content" tabindex="0">';
 
         // Render groups
         if (Array.isArray(groupedData)) {
@@ -507,43 +507,43 @@ export default class CollectionEntity {
             });
         });
 
-        // Keyboard navigation — ArrowDown / ArrowUp move selection through flat data array
+        // Keyboard navigation — ArrowDown / ArrowUp move selection through visible rows
         const collectionContent = this.container.querySelector('.collection-content');
         if (collectionContent) {
             collectionContent.addEventListener('keydown', (e) => {
                 if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
                 e.preventDefault();
                 this._navigateByKey(e.key === 'ArrowDown' ? 1 : -1);
+                // Restore focus so subsequent arrow keys keep working
+                collectionContent.focus({ preventScroll: true });
             });
         }
     }
 
     /**
-     * Move selection up or down by delta within the flat data array.
-     * Wraps at boundaries (no wrap — clamps at first/last item).
+     * Move selection up or down by delta within the currently visible rows.
+     * Operates on DOM rows so filtering and search are automatically respected.
+     * Clamps at boundaries — no wrap.
      * @param {number} delta — +1 for down, -1 for up
      */
     _navigateByKey(delta) {
-        if (!this.data.length) return;
+        const rows = Array.from(this.container.querySelectorAll('.collection-row'));
+        if (!rows.length) return;
 
-        const currentId = this.selectedItem ? this.getItemId(this.selectedItem) : null;
+        const currentId = this.selectedItem ? String(this.getItemId(this.selectedItem)) : null;
         const currentIndex = currentId != null
-            ? this.data.findIndex(item => this.getItemId(item) === currentId)
+            ? rows.findIndex(row => row.dataset.itemId === currentId)
             : -1;
 
         const nextIndex = currentIndex === -1
-            ? (delta > 0 ? 0 : this.data.length - 1)
-            : Math.max(0, Math.min(this.data.length - 1, currentIndex + delta));
+            ? (delta > 0 ? 0 : rows.length - 1)
+            : Math.max(0, Math.min(rows.length - 1, currentIndex + delta));
 
         if (nextIndex === currentIndex) return;
 
-        const nextItem = this.data[nextIndex];
-        const nextId = this.getItemId(nextItem);
-        this.selectItem(String(nextId));
-
-        // Scroll selected row into view
-        const row = this.container.querySelector(`.collection-row[data-item-id="${nextId}"]`);
-        row?.scrollIntoView({ block: 'nearest' });
+        const nextRow = rows[nextIndex];
+        this.selectItem(nextRow.dataset.itemId);
+        nextRow.scrollIntoView({ block: 'nearest' });
     }
 
     // ====================

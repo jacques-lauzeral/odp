@@ -151,6 +151,8 @@ export default class ChangeForm extends CollectionEntityForm {
 
         if (!item?.itemId) return;
 
+        this._historyObserver?.disconnect();
+
         // Observe the DOM for #history-tab-container to appear
         this._historyObserver = new MutationObserver(() => {
             const container = document.getElementById('history-tab-container');
