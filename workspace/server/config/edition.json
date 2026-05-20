@@ -1,0 +1,36 @@
+{
+  "chapters": [
+    {
+      "key": "overview",
+      "title": "Overview",
+      "position": 1,
+      "subChapters": [
+        { "key": "overview-intro",     "title": "Introduction",      "position": 1 },
+        { "key": "overview-nm-odip",   "title": "NM ODIP",           "position": 2 },
+        { "key": "overview-portfolio", "title": "Portfolio Overview", "position": 3 }
+      ]
+    },
+    {
+      "key": "transversal",
+      "title": "Transversal Layer",
+      "position": 2,
+      "domain": "TRANSVERSAL",
+      "subChapters": [
+        { "key": "transversal-nm",     "title": "Transversal NM",     "position": 1, "domain": "TRANSVERSAL_NM" },
+        { "key": "transversal-nmui",   "title": "Transversal NMUI",   "position": 2, "domain": "TRANSVERSAL_NMUI" },
+        { "key": "transversal-nm-b2b", "title": "Transversal NM-B2B", "position": 3, "domain": "TRANSVERSAL_NM_B2B" }
+      ]
+    },
+    { "key": "4dt",        "title": "4D-Trajectory",            "position": 3,  "domain": "4DT" },
+    { "key": "rerouting",  "title": "4D-Rerouting",             "position": 4,  "domain": "RRT" },
+    { "key": "flow",       "title": "Flow",                     "position": 5,  "domain": "FLOW" },
+    { "key": "asmatfcm",   "title": "ASM/ATFCM Integration",    "position": 6,  "domain": "ASM_ATFCM" },
+    { "key": "airspace",   "title": "Airspace (iDL)",           "position": 7,  "domain": "AIRSPACE" },
+    { "key": "airport",    "title": "Airport",                  "position": 8,  "domain": "AIRPORT" },
+    { "key": "tcf",        "title": "Transponder Code Function", "position": 9, "domain": "TCF" },
+    { "key": "faas",       "title": "FAAS",                     "position": 10, "domain": "FAAS" },
+    { "key": "way-forward","title": "Way Forward",              "position": 11 },
+    { "key": "annex-acronyms",     "title": "Acronyms",              "position": 12, "template": "acronyms" },
+    { "key": "annex-traceability", "title": "Strategic Traceability", "position": 13, "template": "strategic-traceability" }
+  ]
+}

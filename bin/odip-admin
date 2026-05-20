@@ -79,6 +79,20 @@ ensure_runtime_dirs() {
     done < <(list_works_dirs)
 }
 
+deploy_config_files() {
+    local config_src="${ODIP_REPO}/workspace/server/config"
+    local config_dst="${ODIP_HOME}/config"
+    mkdir -p "$config_dst"
+    for f in domains.json edition.json; do
+        if [[ -f "${config_src}/${f}" ]]; then
+            cp "${config_src}/${f}" "${config_dst}/${f}"
+            log "Deployed config: ${config_dst}/${f}"
+        else
+            log "Warning: config file not found — skipping: ${config_src}/${f}"
+        fi
+    done
+}
+
 extract_data_dir() {
     local data_dir="$1"
     if [[ -z "$data_dir" ]]; then
@@ -214,6 +228,7 @@ EOF
     done
 
     ensure_runtime_dirs
+    deploy_config_files
 
     # Download Antora UI bundle if not already present
     local bundle_src="${ODIP_REPO}/publication/shared/config/ui-bundle.zip"
