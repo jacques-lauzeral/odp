@@ -1176,4 +1176,43 @@ await this._requirementDetails.render(container, id, 'panel', {
 **`OStarEntity.setPerspective(perspective)`** — public method added for programmatic perspective switching. Accepts `'collection'` or `'tree'`. Thin wrapper around `_switchPerspective`.
 
 
+## 22. CollectionEntity — Keyboard Navigation & Focus Management
+
+### 22.1 Keyboard Navigation
+
+`CollectionEntity` supports ArrowDown / ArrowUp keyboard navigation through the visible collection rows.
+
+- `collection-content` wrapper has `tabindex="0"` — making it focusable without affecting tab order of interactive elements inside
+- Clicking a row calls `selectItem()` then immediately focuses `collection-content` so arrow keys work without an extra click
+- `keydown` listener on `collection-content` intercepts ArrowDown / ArrowUp, calls `_navigateByKey(±1)`, then re-asserts focus via `focus({ preventScroll: true })`
+- `_navigateByKey(delta)` operates on **visible DOM rows** (`querySelectorAll('.collection-row')`) — not `this.data` — so filtering and search are automatically respected
+- Clamps at boundaries; no wrap
+
+### 22.2 Tab Preservation Across Item Selection
+
+When the user switches selection in the master list, the active tab in the detail form is preserved:
+
+- `RequirementDetails.render()` and `ChangeDetails.render()` capture `formExisted = this._form != null` before `_ensureForm()`
+- `generateReadOnlyView(item, formExisted)` — `preserveTabIndex=true` on re-renders, `false` on first render
+- `CollectionEntityForm._activeInstance` static property tracks the currently rendered panel form instance
+- `initializeReadOnlyInPanel` sets `CollectionEntityForm._activeInstance = this` on every panel render
+- The shared document-level tab delegation listener updates `_activeInstance.currentTabIndex` — fixing a bug where only the first-constructed form instance ever had its tab index tracked
+
+### 22.3 OC-Specific Focus Fixes
+
+**Stale MutationObserver** — `ChangeForm.loadHistoryWithObserver` is called on every `generateReadOnlyView`. Without a disconnect guard, each OC re-render accumulated a new observer on `document.body`. Stale observers fired on subsequent DOM mutations, causing interference. Fix: `this._historyObserver?.disconnect()` before creating the new observer.
+
+**Quill read-only focus theft** — `new Quill(placeholder, { readOnly: true })` steals focus on instantiation even in read-only mode. Fix: `quillEditor.root.blur()` immediately after init in `initializeRichtextReadOnly`. Edit modal unaffected — `focusFirstInput()` runs after modal open and overrides focus correctly.
+
+### 22.4 Affected Files
+
+| File | Change |
+|---|---|
+| `collection-entity.js` | `tabindex="0"` on `collection-content`; auto-focus on row click; `_navigateByKey` uses visible DOM rows |
+| `collection-entity-form.js` | `_activeInstance` static property; tab delegation updates `_activeInstance`; Quill `root.blur()` in read-only init |
+| `requirement-details.js` | `formExisted` flag passed as `preserveTabIndex` to `generateReadOnlyView`; `getRequirements` synthesised from extended projection |
+| `change-details.js` | `formExisted` flag passed as `preserveTabIndex` to `generateReadOnlyView` |
+| `change-form.js` | `_historyObserver?.disconnect()` before new observer creation |
+| `requirement-form.js` | `_computeRefinedByIds` and `_computeImplementedByIds` prefer extended projection fields |
+
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)
