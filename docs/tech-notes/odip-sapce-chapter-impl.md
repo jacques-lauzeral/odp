@@ -1,6 +1,6 @@
 # Implementation Note — Chapter Entity and Domain Model Evolution
 
-**Version:** 3  
+**Version:** 4  
 **Scope:** Shared model, config, store, service, REST API, CLI (high-level), web client (high-level)  
 **Status:** Design confirmed — pending implementation
 
@@ -49,24 +49,24 @@ Defines the domain tree — the semantic classification authority for O\*s. Maxi
 
 ```json
 {
-   "domains": [
-      { "key": "4DT",              "label": "4D-Trajectory" },
-      { "key": "AIRPORT",          "label": "Airport" },
-      { "key": "AIRSPACE",         "label": "Airspace (iDL)" },
-      { "key": "ASM_ATFCM",        "label": "ASM/ATFCM Integration" },
-      { "key": "CRISIS",           "label": "Crisis" },
-      { "key": "FAAS",             "label": "FAAS" },
-      { "key": "FLOW",             "label": "Flow" },
-      { "key": "RRT",              "label": "Rerouting" },
-      { "key": "TCF",              "label": "Transponder Code Function" },
-      { "key": "TRANSVERSAL",      "label": "Transversal",
-         "subDomains": [
-            { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
-            { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
-            { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
-         ]
-      }
-   ]
+  "domains": [
+    { "key": "4DT",              "label": "4D-Trajectory" },
+    { "key": "AIRPORT",          "label": "Airport" },
+    { "key": "AIRSPACE",         "label": "Airspace (iDL)" },
+    { "key": "ASM_ATFCM",        "label": "ASM/ATFCM Integration" },
+    { "key": "CRISIS",           "label": "Crisis" },
+    { "key": "FAAS",             "label": "FAAS" },
+    { "key": "FLOW",             "label": "Flow" },
+    { "key": "RRT",              "label": "Rerouting" },
+    { "key": "TCF",              "label": "Transponder Code Function" },
+    { "key": "TRANSVERSAL",      "label": "Transversal",
+      "subDomains": [
+        { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
+        { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
+        { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
+      ]
+    }
+  ]
 }
 ```
 
@@ -248,43 +248,45 @@ Note: `title`, `domain`, and `position` are config-owned — absent from all req
 
 | Field | Reason |
 |---|---|
-| `drg` | Replaced by `BELONGS_TO` at item level |
-| `path` | Replaced by `Chapter.osHierarchy` |
+| `drg` | Replaced by `domain` string field |
+| `path` | Replaced by `Chapter.osHierarchy` (not stored on version node) |
 | `impactedDomains` | (impact) Domain retired |
 
-**`OperationalRequirement` — added:**
+**`OperationalRequirement` version fields — added:**
 
-| Field | Level | Type | Notes |
+| Field | Type | Cardinality | Notes |
 |---|---|---|---|
-| `chapterId` | item | integer | ID of the `Chapter` item node — stable, not version-specific |
+| `domain` | string | mandatory | Domain key from `domains.json` — validated against `isDomainValid()` |
 
 **`OperationalChange` version fields — removed:**
 
 | Field | Reason |
 |---|---|
-| `drg` | Replaced by `BELONGS_TO` at item level |
+| `drg` | Replaced by `domain` string field |
 
-**`OperationalChange` — added:**
+**`OperationalChange` version fields — added:**
 
-| Field | Level | Type | Notes |
+| Field | Type | Cardinality | Notes |
 |---|---|---|---|
-| `chapterId` | item | integer | ID of the `Chapter` item node — stable, not version-specific |
+| `domain` | string | mandatory | Domain key from `domains.json` — validated against `isDomainValid()` |
 
 ### 2.7 Modified: request structures (`messages.js`)
 
 **`OperationalRequirementRequests`:**
 - Remove `drg`, `path`, `impactedDomains` from `create`, `update`, `patch`
-- Add `chapterId` (integer, mandatory on `create`, optional on `patch`)
+- Add `domain` (string, mandatory on `create` and `update`, optional on `patch`) — stored on version node
+- Add `path` (string, mandatory on `create` only) — topic locator within `osHierarchy`; **not stored on version node**; consumed by service layer to update chapter
 
 **`OperationalChangeRequests`:**
 - Remove `drg` from `create`, `update`, `patch`
-- Add `chapterId` (integer, mandatory on `create`, optional on `patch`)
+- Add `domain` (string, mandatory on `create` and `update`, optional on `patch`) — stored on version node
+- Add `path` (string, mandatory on `create` only) — topic locator; **not stored on version node**
 
 ### 2.8 Modified: `projections.js`
 
 - Remove `drg`, `path`, `impactedDomains` from all `OperationalRequirement` field sets
 - Remove `drg` from all `OperationalChange` field sets
-- Add `chapterId` to `summary` field set for both
+- Add `domain` to `summary` field set for both
 
 ### 2.9 `drafting-groups.js` — retained unchanged
 
@@ -341,8 +343,9 @@ Service layer and above always work with the parsed `osHierarchy` object.
 | Method | Returns | Notes |
 |---|---|---|
 | `findByKey(key, tx)` | `Chapter \| null` | Bootstrap — matches on `chapter.key` |
-| `findByDomain(domainKey, tx)` | `Chapter \| null` | Import pipeline |
+| `findByDomain(domainKey, tx)` | `Chapter \| null` | Resolves chapter by domain key |
 | `findAll(tx)` | `Chapter[]` | Ordered by `position`, sub-chapters nested |
+| `appendToHierarchy(domainKey, path, itemId, itemType, tx)` | `void` | Resolves chapter by domain key; appends O\* item ID to the specified topic/path in `osHierarchy`; creates new `ChapterVersion` |
 
 ### 3.2 Deleted: `DomainStore` (`domain-store.js`)
 
@@ -354,29 +357,26 @@ Service layer and above always work with the parsed `osHierarchy` object.
 
 **`RequirementVersion` — remove relationship:** `IMPACTS_DOMAIN` → (impact) Domain
 
-**New `BELONGS_TO` relationship:**
-- Written at create/update time from `chapterId` in the input payload
-- Relationship is on the **item node** — stable across versions
-- Read as `chapterId` (integer) in `findAll` / `findById` results
+**`RequirementVersion` — add field:** `domain` (string — domain key, stored on version node)
 
 **`buildFindAllQuery` changes:**
-- Remove `drg`, `path`, `domain` from WHERE clauses and RETURN
-- Add `chapterId` to RETURN via `(item)-[:BELONGS_TO]->(c:Chapter)`
-- Add `chapterId` filter: `EXISTS { (item)-[:BELONGS_TO]->(c) WHERE id(c) = $chapterId }`
+- Remove `drg`, `path`, `domain` (old impact domain) from WHERE clauses and RETURN
+- Add `domain` to RETURN and scalar fields
+- Add `domain` filter: exact match on `version.domain`
 
-**Filter object — removed:** `drg`, `path`, `domain`
+**Filter object — removed:** `drg`, `path`, `domain` (old impact domain filter)
 
 **Filter object — added:**
 
 | Filter field | Type | Behaviour |
 |---|---|---|
-| `chapterId` | `number\|null` | EXISTS via `BELONGS_TO` → Chapter item |
+| `domain` | `string\|null` | Exact match on `version.domain` |
 
 ### 3.4 Modified: `OperationalChangeStore`
 
 - Remove `drg` from version node fields, queries, and filters
-- Add `BELONGS_TO` relationship at item level
-- Add `chapterId` to results and filters
+- Add `domain` string field on version node
+- Add `domain` filter: exact match on `version.domain`
 
 ### 3.5 New: `ChapterBootstrapService` (`server/src/bootstrap/chapter-bootstrap.js`)
 
@@ -394,7 +394,7 @@ Startup service — not a store. Called once from `server/src/index.js` during s
 
 No decision has been taken on whether to migrate an existing DB or restart from scratch. The following points should be considered if migration is chosen:
 
-- **`drg` → `BELONGS_TO`** — for each existing `RequirementItem` and `OperationalChangeItem`, resolve the former `drg` value to the matching `Chapter` node (via `ChapterVersion.domain`) and create the `BELONGS_TO` relationship
+- **`drg` → `domain`** — for each existing `RequirementVersion` and `OperationalChangeVersion`, rename the `drg` property to `domain`; values remain the same (existing DrG keys are valid domain keys)
 - **`path` removal** — `path` arrays on existing `RequirementVersion` nodes must be dropped; no replacement needed (ordering moves to `Chapter.osHierarchy`)
 - **`IMPACTS_DOMAIN` removal** — all `IMPACTS_DOMAIN` relationships and `Domain` nodes must be removed
 - **`Chapter` nodes** — created by bootstrap at startup; no migration needed for chapter structure itself
@@ -431,29 +431,39 @@ Extends `VersionedItemService`.
 
 **Removed:**
 - `drg` enum validation
-- `path` array handling
+- `path` array handling (storage)
 - `impactedDomains` foreign key validation (from `Promise.all` block)
 
 **Added:**
-- `chapterId` — mandatory on create; validated for existence via separate `'system'` transaction
-- `chapterId` — optional on patch; validated for existence if provided
+- `domain` — mandatory on create and update; validated against `isDomainValid()` from `domains-config.js`
+- `path` — mandatory on create only (topic locator, not persisted); used to update `ChapterVersion.osHierarchy`
 
-**Maturity-gated rules:** remove any conditions referencing `drg`, `path`, or `impactedDomains`.
+**O\* create — two-entity transaction:**
+
+`create()` opens a single transaction covering:
+1. `OperationalRequirementStore.create(data, tx)` — creates `RequirementVersion` with `domain` stored
+2. `ChapterStore.appendToHierarchy(domain, path, itemId, 'on'|'or', tx)` — resolves chapter by domain key, appends O\* item ID to correct topic, creates new `ChapterVersion`
+
+This is an intentional exception to the single-entity-per-transaction pattern — the two operations are semantically atomic.
+
+**Maturity-gated rules:** remove any conditions referencing `drg`, `path` (storage), or `impactedDomains`.
 
 ### 4.4 Modified: `OperationalChangeService`
 
 - Remove `drg` mandatory requirement and enum validation
-- Add `chapterId` mandatory on create, validated for existence
+- Add `domain` mandatory on create and update; validated against `isDomainValid()`
+- Add `path` mandatory on create only (topic locator, not persisted)
+- `create()` opens two-entity transaction: `OperationalChangeStore.create()` + `ChapterStore.appendToHierarchy()` — same pattern as `OperationalRequirementService`
 
 ### 4.5 Import Pipeline — Impact of Model Changes (decision pending)
 
 No decision has been taken on the import strategy for Edition 1. The following impacts are identified:
 
-- **`drg` field on mappers** — all existing DrG mappers (`ASM_ATFCM_Mapper`, `IDL_Mapper`, etc.) currently set `drg` on O\*s. With `drg` removed, mappers must instead set `chapterId` — requiring a chapter lookup by domain key at import time via `ChapterStore.findByDomain()`
-- **`path` field on mappers** — `path` arrays currently used for topic grouping within a DrG. With `path` removed, topic grouping moves to `Chapter.osHierarchy`. Mappers would need to either populate `osHierarchy` on the relevant chapter or leave it empty for post-import editorial organisation
+- **`drg` → `domain`** — all existing DrG mappers set `drg` on O\*s; field must be renamed to `domain`; values (e.g. `"4DT"`, `"FLOW"`) are valid domain keys and require no transformation
+- **`path` field on mappers** — `path` arrays currently used for topic grouping within a DrG; must be replaced by the `path` topic locator on create requests, which drives `ChapterStore.appendToHierarchy()` at import time
 - **`impactedDomains` on mappers** — any mapper fields populating `impactedDomains` must be removed
 - **`BootstrapMapper`** — likely survives as the only mapper; all other DrG-specific mappers (`ASM_ATFCM_Mapper`, etc.) are candidates for decommissioning once Edition 1 is imported via ODIP Space directly
-- **JSON structured import model** — the `setup.json` external ID model references `drg` implicitly via mapper conventions; must be reviewed against the new `chapterId` requirement
+- **JSON structured import model** — the `setup.json` external ID model references `drg` implicitly via mapper conventions; must be reviewed against the new `domain` + `path` requirements
 - **Decision point** — if Edition 1 O\*s are imported via the updated pipeline, mappers must be updated before import; if authors re-enter O\*s directly in ODIP Space, mappers may be decommissioned without updating
 
 ---
@@ -519,19 +529,22 @@ OsHierarchy:
 
 **`OperationalRequirement` schema:**
 - Remove `drg`, `path`, `impactedDomains` fields
-- Add `chapterId` (string, summary projection)
+- Add `domain` (string, summary projection)
 
 **`OperationalChange` schema:**
 - Remove `drg` field
-- Add `chapterId` (string, summary projection)
+- Add `domain` (string, summary projection)
 
 **`OperationalRequirementBaseRequest`:**
-- Remove `drg`, `path`, `impactedDomains`
-- Add `chapterId` (string, mandatory on create)
+- Remove `drg`, `impactedDomains`
+- Remove `path` from stored fields
+- Add `domain` (string, mandatory on create and update)
+- Add `path` (string, mandatory on create only — topic locator, not stored)
 
 **`OperationalChangeBaseRequest`:**
 - Remove `drg`
-- Add `chapterId` (string, mandatory on create)
+- Add `domain` (string, mandatory on create and update)
+- Add `path` (string, mandatory on create only — topic locator, not stored)
 
 **`Domain` and `DomainRequest` schemas — removed.**
 
@@ -540,12 +553,12 @@ OsHierarchy:
 ### 5.3 Modified: `openapi-operational.yml`
 
 **`GET /operational-requirements` query parameters:**
-- Remove `drg`, `path`, `domain` filter parameters
-- Add `chapter` (chapter item ID)
+- Remove `drg`, `path`, `domain` (old impact domain) filter parameters
+- Add `domain` (domain key string — exact match on `version.domain`)
 
 **`GET /operational-changes` query parameters:**
 - Remove `drg` filter parameter
-- Add `chapter` (chapter item ID)
+- Add `domain` (domain key string)
 
 ### 5.4 Modified: `openapi-setup.yml`
 
@@ -572,13 +585,15 @@ Detailed design deferred.
 
 ### 6.3 Modified: `requirement` command
 
-- Remove `--drg`, `--path`, `--impacted-domains` flags from `list`, `create`, `update`, `patch`
-- Add `--chapter <id>` to `list` (filter), `create` (mandatory), `update`, `patch`
+- Remove `--drg`, `--path` (storage), `--impacted-domains` flags from `list`, `create`, `update`, `patch`
+- Add `--domain <key>` to `list` (filter), `create` (mandatory), `update`, `patch`
+- Add `--path <topic-path>` to `create` only (topic locator, not stored)
 
 ### 6.4 Modified: `change` command
 
 - Remove `--drg` flag
-- Add `--chapter <id>` flag
+- Add `--domain <key>` flag
+- Add `--path <topic-path>` to `create` only
 
 Detailed design deferred.
 
@@ -603,13 +618,15 @@ Detailed design deferred.
 
 **`RequirementForm` / `requirement-form-fields.js`:**
 - Remove `drg` field (select, DraftingGroup enum)
-- Remove `path` field
+- Remove `path` field (stored folder hierarchy)
 - Remove `impactedDomains` field (AnnotatedMultiselectManager against Domain collection)
-- Add `chapter` field (`ReferenceManager` against `GET /chapters`)
+- Add `domain` field (select against domain keys from `domains-config.js`)
+- Add `path` field (text input — topic locator, create mode only)
 
 **`ChangeForm` / `change-form-fields.js`:**
 - Remove `drg` field
-- Add `chapter` field
+- Add `domain` field
+- Add `path` field (create mode only)
 
 ### 7.4 O\* tree perspective
 
