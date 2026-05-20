@@ -1,8 +1,32 @@
 # Migration Note — ODIP Tool → ODIP Space
 
-**Version:** 3
+**Version:** 4
 **Scope:** Web client only. Server route files patched for anonymous read access. API, CLI, shared package otherwise unchanged.
 **Strategy:** Incremental, phase-by-phase. Each phase independently deployable and reversible.
+
+---
+
+## Phase 2 — Chapter Entity and Domain Model Evolution
+
+Phase 2 is a cross-cutting model change affecting all layers (shared model, store, service, REST API, CLI, web client). It is fully specified in a dedicated implementation note:
+
+**`odip-space-chapter-impl-note-v3.md`**
+
+Key changes:
+- New versioned entity `Chapter` replacing `DraftingGroup` as the O\* root organisational level
+- (impact) `Domain` setup entity retired
+- `path` removed from `RequirementVersion`
+- New `@odp/shared` `config/` sub-package (`domains-config.js`, `edition-config.js`)
+- Config files `domains.json` and `edition.json` introduced at `$ODIP_HOME/config/`
+- DB migration strategy pending; import pipeline strategy pending
+
+Phase 2 is not yet started. ADD chapters 01–05, 07–08 will be updated as implementation progresses.
+
+---
+
+## Phase A (complete)
+
+*The remainder of this document describes Phase A — as implemented.*
 
 ---
 
