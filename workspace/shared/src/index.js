@@ -22,6 +22,4 @@ export * from './model/projections.js';
 export * from './messages/messages.js';
 
 // Export config loaders and accessors
-export * from './config/loader.js';
-export * from './config/domains-config.js';
-export * from './config/edition-config.js';
+export * from './config/config.js';

@@ -1,9 +1,6 @@
 // workspace/cli/src/commands/operational-change.js
 import { VersionedCommands } from '../base-commands.js';
 import {
-    isDomainValid,
-    getDomainKeys,
-    getDomainLabel,
     MilestoneEventType,
     MilestoneEventKeys,
     isMilestoneEventValid,
@@ -22,28 +19,19 @@ class OperationalChangeCommands extends VersionedCommands {
         );
     }
 
-    /**
-     * Override addListCommand to add content filtering support for OperationalChanges
-     */
     addListCommand(itemCommand) {
         itemCommand
             .command('list')
             .description(`List all ${this.displayName}s (latest versions, baseline context, or edition context)`)
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
-            .option('--domain <domain>', 'Filter by domain key')
+            .option('--domain <domain>', 'Filter by domain key — see "odp domain list" for valid values')
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via IMPLEMENTS/DECOMMISSIONS requirements (comma-separated)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
-                    if (options.domain && !isDomainValid(options.domain)) {
-                        console.error(`Invalid domain key: ${options.domain}`);
-                        console.error(`Valid values: ${getDomainKeys().join(', ')}`);
-                        process.exit(1);
-                    }
-
                     if (!['summary', 'standard'].includes(options.projection)) {
                         console.error(`Invalid projection: ${options.projection}. Valid values: summary, standard`);
                         process.exit(1);
@@ -87,12 +75,10 @@ class OperationalChangeCommands extends VersionedCommands {
                     const trunc = (val) => val ? String(val).substring(0, 16) : '—';
 
                     items.forEach(item => {
-                        const domainDisplay = item.domain ? getDomainLabel(item.domain) : '-';
-                        const codeDisplay = item.code || '-';
                         table.push([
                             item.itemId,
-                            codeDisplay,
-                            domainDisplay,
+                            item.code || '-',
+                            item.domain || '-',
                             item.title,
                             item.version,
                             item.createdBy,
@@ -117,45 +103,35 @@ class OperationalChangeCommands extends VersionedCommands {
 
     buildContentFilterParams(options) {
         const params = [];
-
         if (options.domain) params.push(`domain=${encodeURIComponent(options.domain)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
-
         return params;
     }
 
     appendFilterParams(url, filterParams) {
         if (filterParams.length === 0) return url;
-
         const separator = url.includes('?') ? '&' : '?';
         return url + separator + filterParams.join('&');
     }
 
     buildFilterDisplaySummary(options) {
         const filters = [];
-
         if (options.domain) filters.push(`domain=${options.domain}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
-
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
 
-    /**
-     * Override displayItemDetails for operational changes
-     */
     displayItemDetails(item) {
         super.displayItemDetails(item);
-
         console.log(`Code: ${item.code || '—'}`);
-        console.log(`Domain: ${item.domain ? getDomainLabel(item.domain) : '—'}`);
+        console.log(`Domain: ${item.domain || '—'}`);
         console.log(`Maturity: ${item.maturity || '—'}`);
         console.log(`Cost: ${item.cost != null ? item.cost : '—'}`);
 
-        // rich-text fields — standard and extended projections
         console.log(`\nPurpose: ${item.purpose !== undefined ? (item.purpose || '—') : '(not in projection)'}`);
         console.log(`Initial State: ${item.initialState !== undefined ? (item.initialState || '—') : '(not in projection)'}`);
         console.log(`Final State: ${item.finalState !== undefined ? (item.finalState || '—') : '(not in projection)'}`);
@@ -163,7 +139,6 @@ class OperationalChangeCommands extends VersionedCommands {
         console.log(`Private Notes: ${item.privateNotes !== undefined ? (item.privateNotes || '—') : '(not in projection)'}`);
         console.log(`Additional Documentation: ${item.additionalDocumentation !== undefined ? (item.additionalDocumentation || '—') : '(not in projection)'}`);
 
-        // relationship fields
         console.log(`\nImplements ORs:`);
         if (item.implementedORs && item.implementedORs.length > 0) {
             item.implementedORs.forEach(req => console.log(`  - ${req.code} [ID: ${req.id}] ${req.title}`));
@@ -197,7 +172,6 @@ class OperationalChangeCommands extends VersionedCommands {
             console.log(table.toString());
         } else { console.log(`  None`); }
 
-        // derived fields — extended projection only
         console.log(`\n--- Derived fields (extended projection) ---`);
         console.log(`Required By (OCs): ${item.requiredByOCs !== undefined ? '' : '(not in projection)'}`);
         if (item.requiredByOCs && item.requiredByOCs.length > 0) {
@@ -207,7 +181,6 @@ class OperationalChangeCommands extends VersionedCommands {
 
     parseIds(input) {
         if (!input) return [];
-
         const ids = Array.isArray(input) ? input : input.split(/[,\s]+/).filter(id => id.trim());
         return ids.map(id => id.trim());
     }
@@ -217,7 +190,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
             .option('--purpose <purpose>', 'Purpose of the change', '')
-            .requiredOption('--domain <domain>', 'Domain key from domains.json')
+            .requiredOption('--domain <domain>', 'Domain key — see "odp domain list" for valid values')
             .option('--initial-state <state>', 'Initial state description', '')
             .option('--final-state <state>', 'Final state description', '')
             .option('--details <details>', 'Additional details', '')
@@ -228,12 +201,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions (space-separated)')
             .action(async (title, options) => {
                 try {
-                    if (!isDomainValid(options.domain)) {
-                        console.error(`Invalid domain key: ${options.domain}`);
-                        console.error(`Valid values: ${getDomainKeys().join(', ')}`);
-                        process.exit(1);
-                    }
-
                     const data = {
                         title,
                         purpose: options.purpose,
@@ -277,7 +244,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version with complete replacement)`)
             .option('--purpose <purpose>', 'New purpose')
-            .option('--domain <domain>', 'Domain key from domains.json')
+            .option('--domain <domain>', 'Domain key — see "odp domain list" for valid values')
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
             .option('--details <details>', 'Additional details')
@@ -314,14 +281,12 @@ class OperationalChangeCommands extends VersionedCommands {
                         console.error(`${this.displayName} with ID ${itemId} not found.`);
                         process.exit(1);
                     }
-
                     if (response.status === 409) {
                         const error = await response.json();
                         console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
                         console.error(`Use "show ${itemId}" to get current version ID and retry`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         const error = await response.json();
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
@@ -344,7 +309,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
             .option('--purpose <purpose>', 'New purpose')
-            .option('--domain <domain>', 'Domain key from domains.json')
+            .option('--domain <domain>', 'Domain key — see "odp domain list" for valid values')
             .option('--initial-state <state>', 'Initial state description')
             .option('--final-state <state>', 'Final state description')
             .option('--details <details>', 'Additional details')
@@ -356,7 +321,6 @@ class OperationalChangeCommands extends VersionedCommands {
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
-
                     if (options.title) data.title = options.title;
                     if (options.purpose) data.purpose = options.purpose;
                     if (options.domain !== undefined) data.domain = options.domain;
@@ -379,14 +343,12 @@ class OperationalChangeCommands extends VersionedCommands {
                         console.error(`${this.displayName} with ID ${itemId} not found.`);
                         process.exit(1);
                     }
-
                     if (response.status === 409) {
                         const error = await response.json();
                         console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
                         console.error(`Use "show ${itemId}" to get current version ID and retry`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         const error = await response.json();
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
@@ -403,9 +365,6 @@ class OperationalChangeCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * Override createCommands to add milestone commands and delete command
-     */
     createCommands(program) {
         super.createCommands(program);
 
@@ -426,12 +385,10 @@ class OperationalChangeCommands extends VersionedCommands {
                         console.error(`${this.displayName} with ID ${itemId} not found.`);
                         process.exit(1);
                     }
-
                     if (response.status === 409) {
                         console.error(`Cannot delete ${this.displayName} with ID ${itemId}: has dependencies.`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                     }
@@ -446,7 +403,6 @@ class OperationalChangeCommands extends VersionedCommands {
 
     _addMilestoneCommands(itemCommand) {
         // Milestone commands have their own lifecycle and are managed via the milestone sub-resource API.
-        // Implementation left for milestone-specific route integration.
     }
 }
 

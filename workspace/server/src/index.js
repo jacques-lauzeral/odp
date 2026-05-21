@@ -15,8 +15,7 @@ import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
 import MapperRegistry from './services/import/MapperRegistry.js';
-import { loadConfig } from '../../shared/src/config/loader.js';
-import { getDomainChapterSlugs } from '../../shared/src/config/edition-config.js';
+import { loadConfig, getDomainChapterSlugs } from './config/loader.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
 
 const app = express();
@@ -130,7 +129,7 @@ process.on('SIGINT', async () => {
  * Safe to call on every restart — all steps are idempotent.
  *
  * @param {string} worksDir - Absolute path to the works directory
- * @param {string} staticContentPath - Absolute path to the static content to bootstrap from
+ * @param {string[]} sourcePaths - Ordered source paths to bootstrap from
  * @param {string} label - Human-readable label for log messages
  */
 async function initializeWorksDir(worksDir, sourcePaths, label) {
@@ -150,7 +149,6 @@ async function initializeWorksDir(worksDir, sourcePaths, label) {
 
     const packageJsonPath = nodePath.join(worksDir, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
-        // Bootstrap: copy from each source path in order (later paths override earlier)
         for (const srcPath of sourcePaths) {
             if (fs.existsSync(srcPath)) {
                 console.log(`[${label}] bootstrapping from ${srcPath}...`);
@@ -170,14 +168,8 @@ async function initializeWorksDir(worksDir, sourcePaths, label) {
 }
 
 /**
- * Initialize all publication workspaces on server startup:
- * - works/          HTML site + flat document builds
- * - works-intro/    Word multipart intro build
- * - works-{drg}/    Word multipart per-domain builds (one per DrG)
- *
- * Each works dir is bootstrapped from shared/config only (package.json + shared assets).
- * Playbooks and antora.yml are NOT bootstrapped — they are injected via ZIP at publish time,
- * landing in works/{website|flat|multipart}/ subdirectories to avoid name clashes.
+ * Initialize all publication workspaces on server startup.
+ * Requires config to be loaded (loadConfig called) before invocation.
  */
 async function initializePublicationWorkspace() {
     const odipHome = process.env.ODIP_HOME;
@@ -194,22 +186,18 @@ async function initializePublicationWorkspace() {
 
     const publicationDir = nodePath.join(odipHome, 'publication');
 
-    // Main works dir — website build (HTML site + flat PDF/Word)
     await initializeWorksDir(
         nodePath.join(publicationDir, 'works'),
         [sharedConfigPath, websiteConfigPath],
         'main'
     );
 
-    // Intro works dir — document set intro build
     await initializeWorksDir(
         nodePath.join(publicationDir, 'works-intro'),
         [sharedConfigPath, documentConfigPath],
         'intro'
     );
 
-    // Per-domain works dirs — derived from edition.json domain chapters
-    // (edition config is loaded before this function is called in startServer())
     const domainSlugs = getDomainChapterSlugs();
     for (const slug of domainSlugs) {
         await initializeWorksDir(
@@ -222,15 +210,15 @@ async function initializePublicationWorkspace() {
 
 async function startServer() {
     try {
-        console.log('Initializing store layer...');
-        await initializeStores();
-        console.log('Store layer initialized successfully');
-
         console.log('Loading domain and edition config...');
         const odipHome = process.env.ODIP_HOME;
         if (!odipHome) throw new Error('ODIP_HOME environment variable is not set');
         loadConfig(nodePath.join(odipHome, 'config'));
         console.log('Domain and edition config loaded successfully');
+
+        console.log('Initializing store layer...');
+        await initializeStores();
+        console.log('Store layer initialized successfully');
 
         console.log('Initializing database...');
         await initializeDatabase();

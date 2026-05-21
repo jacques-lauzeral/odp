@@ -14,6 +14,59 @@ class ChapterCommands extends VersionedCommands {
     }
 
     /**
+     * Override createCommands to add the domain subcommand.
+     */
+    createCommands(program) {
+        super.createCommands(program);
+        this._addDomainCommand(program);
+    }
+
+    /**
+     * domain list — fetches GET /chapters and extracts unique non-null domains.
+     */
+    _addDomainCommand(program) {
+        program.command('domain list')
+            .description('List all valid domain keys and their chapter titles')
+            .action(async () => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/chapters`, {
+                        headers: this.createHeaders()
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const chapters = await response.json();
+                    const domains = chapters
+                        .filter(c => c.domain)
+                        .reduce((acc, c) => {
+                            if (!acc.find(d => d.key === c.domain)) {
+                                acc.push({ key: c.domain, title: c.title || '—' });
+                            }
+                            return acc;
+                        }, []);
+
+                    if (domains.length === 0) {
+                        console.log('No domains found.');
+                        return;
+                    }
+
+                    const table = new Table({
+                        head: ['Domain Key', 'Chapter Title'],
+                        colWidths: [25, 50]
+                    });
+
+                    domains.forEach(d => table.push([d.key, d.title]));
+                    console.log(table.toString());
+                } catch (error) {
+                    console.error('Error listing domains:', error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    /**
      * Override addListCommand — chapters have no edition context or content filters.
      */
     addListCommand(itemCommand) {
@@ -62,9 +115,6 @@ class ChapterCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * Override displayItemDetails for chapters.
-     */
     displayItemDetails(item) {
         console.log(`Item ID:    ${item.itemId}`);
         console.log(`Key:        ${item.key}`);
@@ -78,16 +128,10 @@ class ChapterCommands extends VersionedCommands {
         console.log(`osHierarchy: ${item.jsonOsHierarchy ? JSON.stringify(item.jsonOsHierarchy).substring(0, 80) + '…' : '—'}`);
     }
 
-    /**
-     * Chapters are bootstrap-only — no create command.
-     */
     _addCreateCommand(_itemCommand) {
         // no-op: chapters are managed by server bootstrap
     }
 
-    /**
-     * Update narrative and/or osHierarchy (full replacement).
-     */
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId>')
@@ -97,10 +141,7 @@ class ChapterCommands extends VersionedCommands {
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
-
-                    if (options.narrative !== undefined) {
-                        data.narrative = options.narrative;
-                    }
+                    if (options.narrative !== undefined) data.narrative = options.narrative;
                     if (options.osHierarchy !== undefined) {
                         try {
                             data.jsonOsHierarchy = JSON.parse(options.osHierarchy);
@@ -116,18 +157,13 @@ class ChapterCommands extends VersionedCommands {
                         body: JSON.stringify(data)
                     });
 
-                    if (response.status === 404) {
-                        console.error(`Chapter with ID ${itemId} not found.`);
-                        process.exit(1);
-                    }
-
+                    if (response.status === 404) { console.error(`Chapter with ID ${itemId} not found.`); process.exit(1); }
                     if (response.status === 409) {
                         const error = await response.json();
                         console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
                         console.error(`Use "show ${itemId}" to get current version ID and retry`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         const error = await response.json();
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
@@ -143,9 +179,6 @@ class ChapterCommands extends VersionedCommands {
             });
     }
 
-    /**
-     * Patch narrative and/or osHierarchy (partial update).
-     */
     _addPatchCommand(itemCommand) {
         itemCommand
             .command('patch <itemId> <expectedVersionId>')
@@ -155,10 +188,7 @@ class ChapterCommands extends VersionedCommands {
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
-
-                    if (options.narrative !== undefined) {
-                        data.narrative = options.narrative;
-                    }
+                    if (options.narrative !== undefined) data.narrative = options.narrative;
                     if (options.osHierarchy !== undefined) {
                         try {
                             data.jsonOsHierarchy = JSON.parse(options.osHierarchy);
@@ -174,18 +204,13 @@ class ChapterCommands extends VersionedCommands {
                         body: JSON.stringify(data)
                     });
 
-                    if (response.status === 404) {
-                        console.error(`Chapter with ID ${itemId} not found.`);
-                        process.exit(1);
-                    }
-
+                    if (response.status === 404) { console.error(`Chapter with ID ${itemId} not found.`); process.exit(1); }
                     if (response.status === 409) {
                         const error = await response.json();
                         console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
                         console.error(`Use "show ${itemId}" to get current version ID and retry`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         const error = await response.json();
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);

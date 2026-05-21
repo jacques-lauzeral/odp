@@ -1,6 +1,5 @@
 // workspace/cli/src/commands/operational-requirement.js
 import { VersionedCommands } from '../base-commands.js';
-import { isDomainValid, getDomainKeys, getDomainLabel } from '../../../shared/src/index.js';
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 
@@ -14,9 +13,6 @@ class OperationalRequirementCommands extends VersionedCommands {
         );
     }
 
-    /**
-     * Override addListCommand to add content filtering support for OperationalRequirements
-     */
     addListCommand(itemCommand) {
         itemCommand
             .command('list')
@@ -24,19 +20,13 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
             .option('--type <type>', 'Filter by requirement type (ON or OR)')
-            .option('--domain <domain>', 'Filter by domain key')
+            .option('--domain <domain>', 'Filter by domain key — see "odp domain list" for valid values')
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
-                    if (options.domain && !isDomainValid(options.domain)) {
-                        console.error(`Invalid domain key: ${options.domain}`);
-                        console.error(`Valid values: ${getDomainKeys().join(', ')}`);
-                        process.exit(1);
-                    }
-
                     if (!['summary', 'standard'].includes(options.projection)) {
                         console.error(`Invalid projection: ${options.projection}. Valid values: summary, standard`);
                         process.exit(1);
@@ -80,13 +70,11 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const trunc = (val) => val ? String(val).substring(0, 16) : '—';
 
                     items.forEach(item => {
-                        const domainDisplay = item.domain ? getDomainLabel(item.domain) : '-';
-                        const codeDisplay = item.code || '-';
                         table.push([
                             item.itemId,
-                            codeDisplay,
+                            item.code || '-',
                             item.type,
-                            domainDisplay,
+                            item.domain || '-',
                             item.title,
                             item.version,
                             item.createdBy,
@@ -111,48 +99,38 @@ class OperationalRequirementCommands extends VersionedCommands {
 
     buildContentFilterParams(options) {
         const params = [];
-
         if (options.type) params.push(`type=${encodeURIComponent(options.type)}`);
         if (options.domain) params.push(`domain=${encodeURIComponent(options.domain)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
-
         return params;
     }
 
     appendFilterParams(url, filterParams) {
         if (filterParams.length === 0) return url;
-
         const separator = url.includes('?') ? '&' : '?';
         return url + separator + filterParams.join('&');
     }
 
     buildFilterDisplaySummary(options) {
         const filters = [];
-
         if (options.type) filters.push(`type=${options.type}`);
         if (options.domain) filters.push(`domain=${options.domain}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
-
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
     }
 
-    /**
-     * Override displayItemDetails for operational requirements
-     */
     displayItemDetails(item) {
         super.displayItemDetails(item);
-
         console.log(`Type: ${item.type}`);
         console.log(`Code: ${item.code || '—'}`);
-        console.log(`Domain: ${item.domain ? getDomainLabel(item.domain) : '—'}`);
+        console.log(`Domain: ${item.domain || '—'}`);
         console.log(`Maturity: ${item.maturity || '—'}`);
         console.log(`Tentative: ${item.tentative ? `${item.tentative[0]} – ${item.tentative[1]}` : '—'}`);
 
-        // rich-text fields — standard and extended projections
         console.log(`\nStatement: ${item.statement !== undefined ? (item.statement || '—') : '(not in projection)'}`);
         console.log(`Rationale: ${item.rationale !== undefined ? (item.rationale || '—') : '(not in projection)'}`);
         console.log(`Flows: ${item.flows !== undefined ? (item.flows || '—') : '(not in projection)'}`);
@@ -160,7 +138,6 @@ class OperationalRequirementCommands extends VersionedCommands {
         console.log(`Private Notes: ${item.privateNotes !== undefined ? (item.privateNotes || '—') : '(not in projection)'}`);
         console.log(`Additional Documentation: ${item.additionalDocumentation !== undefined ? (item.additionalDocumentation || '—') : '(not in projection)'}`);
 
-        // relationship fields
         console.log(`\nRefines:`);
         if (item.refinesParents && item.refinesParents.length > 0) {
             item.refinesParents.forEach(p => console.log(`  - ${p.code} [ID: ${p.id}] ${p.title}`));
@@ -189,7 +166,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             });
         } else { console.log(`  None`); }
 
-        // derived fields — extended projection only
         console.log(`\n--- Derived fields (extended projection) ---`);
         console.log(`Implemented By (ORs): ${item.implementedByORs !== undefined ? '' : '(not in projection)'}`);
         if (item.implementedByORs && item.implementedByORs.length > 0) {
@@ -219,7 +195,6 @@ class OperationalRequirementCommands extends VersionedCommands {
 
     parseIds(input) {
         if (!input) return [];
-
         const ids = Array.isArray(input) ? input : input.split(/[,\s]+/).filter(id => id.trim());
         return ids.map(id => id.trim());
     }
@@ -229,7 +204,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
             .option('--type <type>', `ON | OR (default: OR)`)
-            .requiredOption('--domain <domain>', `Domain key from domains.json`)
+            .requiredOption('--domain <domain>', `Domain key — see "odp domain list" for valid values`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--flows <flows>', `Flows`)
@@ -242,12 +217,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .action(async (title, options) => {
                 try {
-                    if (!isDomainValid(options.domain)) {
-                        console.error(`Invalid domain key: ${options.domain}`);
-                        console.error(`Valid values: ${getDomainKeys().join(', ')}`);
-                        process.exit(1);
-                    }
-
                     const data = {
                         title,
                         type: options.type || 'OR',
@@ -291,7 +260,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version)`)
             .option('--type <type>', `ON | OR`)
-            .option('--domain <domain>', `Domain key from domains.json`)
+            .option('--domain <domain>', `Domain key — see "odp domain list" for valid values`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--flows <flows>', `Flows`)
@@ -331,14 +300,12 @@ class OperationalRequirementCommands extends VersionedCommands {
                         console.error(`${this.displayName} with ID ${itemId} not found.`);
                         process.exit(1);
                     }
-
                     if (response.status === 409) {
                         const error = await response.json();
                         console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
                         console.error(`Use "show ${itemId}" to get current version ID and retry`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         const error = await response.json();
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
@@ -361,7 +328,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
             .option('--type <type>', 'ON | OR')
-            .option('--domain <domain>', 'Domain key from domains.json')
+            .option('--domain <domain>', 'Domain key — see "odp domain list" for valid values')
             .option('--statement <statement>', 'New statement')
             .option('--rationale <rationale>', 'New rationale')
             .option('--flows <flows>', 'New flows')
@@ -375,7 +342,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
-
                     if (options.title) data.title = options.title;
                     if (options.type) data.type = options.type;
                     if (options.domain !== undefined) data.domain = options.domain;
@@ -400,14 +366,12 @@ class OperationalRequirementCommands extends VersionedCommands {
                         console.error(`${this.displayName} with ID ${itemId} not found.`);
                         process.exit(1);
                     }
-
                     if (response.status === 409) {
                         const error = await response.json();
                         console.error(`Version conflict: ${error.error?.message || 'Version has changed'}`);
                         console.error(`Use "show ${itemId}" to get current version ID and retry`);
                         process.exit(1);
                     }
-
                     if (!response.ok) {
                         const error = await response.json();
                         throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);

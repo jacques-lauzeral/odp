@@ -1,7 +1,6 @@
 import { VersionedItemStore } from './versioned-item-store.js';
 import { StoreError } from './transaction.js';
-import { getChapterByKey } from '../../../shared/src/index.js';
-
+import { getChapterByKey } from '../config/loader.js';
 /**
  * Store for Chapter items with versioning.
  * Chapters are config-owned (creation via bootstrap only; no delete).

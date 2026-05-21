@@ -14,8 +14,6 @@ import { operationalRequirementCommands } from './commands/operational-requireme
 import { operationalChangeCommands } from './commands/operational-change.js';
 import { importCommands } from './commands/import.js';
 import { docxCommands } from './commands/docx.js';
-import { loadConfig } from '../../shared/src/config/loader.js';
-import nodePath from 'path';
 
 const program = new Command();
 
@@ -26,7 +24,6 @@ program
     .version('1.0.0')
     .option('--user <userId>', 'User identifier for audit context (required)')
     .hook('preAction', (thisCommand, actionCommand) => {
-        // Validate user argument before any command execution
         const options = thisCommand.opts();
         if (!options.user) {
             console.error('Error: --user argument is required for all operations');
@@ -37,7 +34,6 @@ program
             console.error('  npm run dev -- --user jane.smith chapter list');
             console.error('  npm run dev -- --user bin requirement show 123');
             console.error('  npm run dev -- --user bin baseline create "Q1 2025 Release"');
-            console.error('  npm run dev -- --user bin requirement list --baseline 456');
             console.error('  npm run dev -- --user bin odp-edition create "Q1 Edition" 123 DRAFT 456');
             process.exit(1);
         }
@@ -58,14 +54,6 @@ operationalRequirementCommands(program, config);
 operationalChangeCommands(program, config);
 importCommands(program, config);
 docxCommands(program, config);
-
-// Load domain and edition config from $ODIP_HOME/config/
-const odipHome = process.env.ODIP_HOME;
-if (!odipHome) {
-    console.error('Error: ODIP_HOME environment variable is not set');
-    process.exit(1);
-}
-loadConfig(nodePath.join(odipHome, 'config'));
 
 // Parse command line arguments
 program.parse();

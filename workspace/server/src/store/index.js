@@ -4,7 +4,7 @@ import { createTransaction, commitTransaction, rollbackTransaction } from './tra
 // Import store classes
 import { StakeholderCategoryStore } from './stakeholder-category-store.js';
 import { ChapterStore } from './chapter-store.js';
-import { getChapters } from '../../../shared/src/index.js';
+import { getChapters } from '../config/loader.js';
 import { ReferenceDocumentStore } from './reference-document-store.js';
 import { BandwidthStore } from './bandwidth-store.js';
 import { WaveStore } from './wave-store.js';
