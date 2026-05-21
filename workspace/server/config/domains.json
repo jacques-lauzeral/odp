@@ -9,12 +9,8 @@
     { "key": "FLOW",        "label": "Flow" },
     { "key": "RRT",         "label": "Rerouting" },
     { "key": "TCF",         "label": "Transponder Code Function" },
-    { "key": "TRANSVERSAL", "label": "Transversal",
-      "subDomains": [
-        { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
-        { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
-        { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
-      ]
-    }
+    { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
+    { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
+    { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
   ]
 }

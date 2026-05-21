@@ -14,7 +14,7 @@
  *   ['os', ...]         → OsActivity
  *   ['plan', ...]       → PlanActivity
  *   ['quality', ...]    → QualityActivity
- *   ['notes', ...]      → NotesActivity
+ *   ['narrative', ...] → NarrativeActivity
  *   ['setup', ...]      → SetupActivity
  */
 import { errorHandler } from '../../../shared/error-handler.js';
@@ -24,16 +24,16 @@ const SUB_ACTIVITIES = {
     os:      () => import('../shared/os/os.js'),
     plan:    () => import('../shared/plan/plan.js'),
     quality: () => import('../shared/quality/quality.js'),
-    notes:   () => import('../shared/notes/notes.js'),
+    narrative: () => import('../shared/narrative/narrative.js'),
     setup:   () => import('../setup/setup.js'),
 };
 
 const TABS = [
-    { key: 'os',      label: 'O*s'     },
-    { key: 'plan',    label: 'Plan'    },
-    { key: 'quality', label: 'Quality' },
-    { key: 'notes',   label: 'Notes'   },
-    { key: 'setup',   label: 'Setup'   },
+    { key: 'os',        label: 'O*s'       },
+    { key: 'narrative', label: 'Narrative' },
+    { key: 'plan',      label: 'Plan'      },
+    { key: 'quality',   label: 'Quality'   },
+    { key: 'setup',     label: 'Setup'     },
 ];
 
 const DEFAULT_SUB = 'os';
@@ -78,6 +78,10 @@ export default class ExploreActivity {
     // -------------------------------------------------------------------------
 
     _renderShell() {
+        const ctx       = this.app.getDatasetContext();
+        const editionId = ctx?.editionId ?? '';
+        const label     = editionId ? `Edition ${editionId} · Read only` : 'Read only';
+
         this.container.innerHTML = `
             <div class="workspace-shell">
                 <nav class="interaction-tabs workspace-shell__tabs" id="workspace-tabs">
@@ -88,6 +92,7 @@ export default class ExploreActivity {
                             data-path="${BASE_PATH}/${t.key}"
                         ><span class="interaction-tab__name">${t.label}</span></button>
                     `).join('')}
+                    <span class="workspace-shell__mode-badge workspace-shell__mode-badge--ro">${label}</span>
                 </nav>
                 <div class="workspace-shell__content" id="workspace-content"></div>
             </div>

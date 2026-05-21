@@ -1,1 +1,6 @@
-/* explore — placeholder */
+/* ── Explore workspace shell ── */
+.workspace-shell__mode-badge--ro {
+    color: #166534;
+    border: 1px solid #86efac;
+    background: #f0fdf4;
+}

@@ -39,6 +39,8 @@ export class App {
         this._setupDataPromise = null; // in-flight guard
         this._domains = null;          // config-derived domain list, cached permanently
         this._domainsPromise = null;   // in-flight guard
+        this._chapters = null;         // config-driven chapter list, cached permanently
+        this._chaptersPromise = null;  // in-flight guard
         this.header = null;
         this.router = null;
         this.connectionCheckInterval = null;
@@ -262,6 +264,34 @@ export class App {
         });
 
         return this._domainsPromise;
+    }
+
+    // -------------------------------------------------------------------------
+    // Chapters (public — config-driven, cached permanently)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns all chapters with their osHierarchy, fetching on first call.
+     * Chapters are config-driven and stable at runtime — never invalidated.
+     * Parallel calls share one in-flight fetch.
+     *
+     * @returns {Promise<Array>}
+     */
+    async getChapters() {
+        if (this._chapters) return this._chapters;
+
+        if (this._chaptersPromise) return this._chaptersPromise;
+
+        this._chaptersPromise = apiClient.listChapters().then(chapters => {
+            this._chapters = chapters ?? [];
+            this._chaptersPromise = null;
+            return this._chapters;
+        }).catch(error => {
+            this._chaptersPromise = null;
+            throw error;
+        });
+
+        return this._chaptersPromise;
     }
 
     // -------------------------------------------------------------------------

@@ -14,7 +14,6 @@
       "key": "transversal",
       "title": "Transversal Layer",
       "position": 2,
-      "domain": "TRANSVERSAL",
       "subChapters": [
         { "key": "transversal-nm",     "title": "Transversal NM",     "position": 1, "domain": "TRANSVERSAL_NM" },
         { "key": "transversal-nmui",   "title": "Transversal NMUI",   "position": 2, "domain": "TRANSVERSAL_NMUI" },

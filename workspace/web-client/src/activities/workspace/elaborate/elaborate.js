@@ -10,7 +10,7 @@
  *   ['os', ...]         → OsActivity
  *   ['plan', ...]       → PlanActivity
  *   ['quality', ...]    → QualityActivity
- *   ['notes', ...]      → NotesActivity
+ *   ['narrative', ...] → NarrativeActivity
  *   ['setup', ...]      → SetupActivity
  */
 import { errorHandler } from '../../../shared/error-handler.js';
@@ -20,16 +20,16 @@ const SUB_ACTIVITIES = {
     os:      () => import('../shared/os/os.js'),
     plan:    () => import('../shared/plan/plan.js'),
     quality: () => import('../shared/quality/quality.js'),
-    notes:   () => import('../shared/notes/notes.js'),
+    narrative: () => import('../shared/narrative/narrative.js'),
     setup:   () => import('../setup/setup.js'),
 };
 
 const TABS = [
-    { key: 'os',      label: 'O*s'     },
-    { key: 'plan',    label: 'Plan'    },
-    { key: 'quality', label: 'Quality' },
-    { key: 'notes',   label: 'Notes'   },
-    { key: 'setup',   label: 'Setup'   },
+    { key: 'os',        label: 'O*s'       },
+    { key: 'narrative', label: 'Narrative' },
+    { key: 'plan',      label: 'Plan'      },
+    { key: 'quality',   label: 'Quality'   },
+    { key: 'setup',     label: 'Setup'     },
 ];
 
 const DEFAULT_SUB = 'os';
@@ -84,6 +84,7 @@ export default class ElaborateActivity {
                             data-path="${BASE_PATH}/${t.key}"
                         ><span class="interaction-tab__name">${t.label}</span></button>
                     `).join('')}
+                    <span class="workspace-shell__mode-badge workspace-shell__mode-badge--rw">Live dataset · Editable</span>
                 </nav>
                 <div class="workspace-shell__content" id="workspace-content"></div>
             </div>

@@ -280,6 +280,37 @@ export class ApiClient {
         const [requirements, changes] = await Promise.all(calls);
         return [...requirements, ...changes];
     }
+
+    // -------------------------------------------------------------------------
+    // Chapters
+    // -------------------------------------------------------------------------
+
+    /**
+     * List all chapters (config-driven, includes osHierarchy).
+     * @returns {Promise<Array>}
+     */
+    async listChapters() {
+        return this.get('/chapters');
+    }
+
+    /**
+     * Get a single chapter by item ID (includes osHierarchy and narrative).
+     * @param {number|string} id
+     * @returns {Promise<object>}
+     */
+    async getChapter(id) {
+        return this.get('/chapters', { id });
+    }
+
+    /**
+     * Patch a chapter — narrative and/or osHierarchy.
+     * @param {number|string} id
+     * @param {object} data — { narrative?, jsonOsHierarchy?, expectedVersionId }
+     * @returns {Promise<object>}
+     */
+    async patchChapter(id, data) {
+        return this.patch('/chapters', data, { id });
+    }
 }
 
 // Export singleton instance (will be initialized with app in index.js)
