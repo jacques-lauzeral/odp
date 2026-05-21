@@ -995,41 +995,6 @@
       "parentExternalId": "stakeholder:network"
     }
   ],
-  "domains": [
-    {
-      "externalId": "domain:airspace",
-      "name": "Airspace",
-      "description": "Airspace domain"
-    },
-    {
-      "externalId": "domain:flight",
-      "name": "Flight",
-      "description": "Flight domain"
-    },
-    {
-      "externalId": "domain:flight/flight_planning",
-      "name": "Flight Planning",
-      "description": "Flight plan validation and other services related to flight planning",
-      "parentExternalId": "domain:flight"
-    },
-    {
-      "externalId": "domain:flight/flight_rerouting",
-      "name": "Flight Rerouting",
-      "description": "Flight rerouting support",
-      "parentExternalId": "domain:flight"
-    },
-    {
-      "externalId": "domain:flight/flight_filing",
-      "name": "Flight Filing",
-      "description": "Flight plan filing",
-      "parentExternalId": "domain:flight"
-    },
-    {
-      "externalId": "domain:flow",
-      "name": "Flow",
-      "description": "Flow domain"
-    }
-  ],
   "waves": [
     {
       "externalId": "wave:2027.1",
