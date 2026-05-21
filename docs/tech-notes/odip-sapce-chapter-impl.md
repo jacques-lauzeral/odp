@@ -1,8 +1,8 @@
 # Implementation Note — Chapter Entity and Domain Model Evolution
 
-**Version:** 4  
-**Scope:** Shared model, config, store, service, REST API, CLI (high-level), web client (high-level)  
-**Status:** Design confirmed — pending implementation
+**Version:** 5  
+**Scope:** All layers — config, shared model, store, service, REST API, CLI, web client  
+**Status:** Phase 2 complete. Open items documented in §9.
 
 ---
 
@@ -18,642 +18,229 @@ The two concepts are deliberately decoupled: domain classification on O\*s is st
 
 ### Retirement of former (impact) Domain setup entity
 
-The former **(impact) Domain** setup entity — used to characterise OR impact via `IMPACTS_DOMAIN` — is **fully retired**. Its organisational role is superseded by the new domain/chapter model. The term "domain" is now unambiguously reserved for the O\* root organisational concept defined in `domains.json`. The terminology note in ADD ch.01 §3.1 is consequently superseded.
+The former **(impact) Domain** setup entity — used to characterise OR impact via `IMPACTS_DOMAIN` — is **fully retired**. Its organisational role is superseded by the new domain/chapter model. The term "domain" is now unambiguously reserved for the O\* root organisational concept defined in `domains.json`.
 
 ### Summary of changes
 
-- **`Chapter`** — new versioned entity. User-maintained fields: `narrative`, `osHierarchy`. Config-owned fields: `title`, `domain`, `position`.
-- **`DraftingGroup`** — retired from `OperationalRequirement` and `OperationalChange`. Replaced by `domain` string field on `RequirementVersion` and `OperationalChangeVersion`, validated against `domains-config.js`.
-- **`path`** — removed from `RequirementVersion`. O\* organisation owned by `Chapter.osHierarchy`.
+- **`Chapter`** — new versioned entity. User-maintained fields: `narrative`, `jsonOsHierarchy`. Config-owned fields: `title`, `domain`, `position` (merged from `edition.json` at read time, not stored on version nodes).
+- **`DraftingGroup`** — retired from `OperationalRequirement` and `OperationalChange`. Replaced by `domain` string field validated against `domains-config.js`. Retained for `Bandwidth.scope` only.
+- **`path`** — removed from `RequirementVersion` and `OperationalChangeVersion`. O\* organisation owned by `Chapter.osHierarchy`.
 - **(impact) Domain** — fully retired: `DomainStore`, `IMPACTS_DOMAIN`, `impactedDomains`, `GET /domains` and related endpoints all removed.
-- **`@odp/shared` `config/`** — new sub-package with `domains-config.js` and `edition-config.js`.
-- **Config files** — `domains.json` and `edition.json` in `workspace/server/config/`, deployed to `$ODIP_HOME/config/`.
-- **Bootstrap** — server startup ensures each configured chapter exists in the DB.
+- **`@odp/shared` `config/`** — new sub-package with `domains-config.js`, `edition-config.js`, `loader.js`.
+- **Config files** — `domains.json` and `edition.json` in `workspace/server/config/`, deployed to `$ODIP_HOME/config/` by `odip-admin`.
+- **Bootstrap** — `initializeDatabase()` in `store/index.js` ensures each configured chapter exists in the DB at server startup.
 
 ---
 
-## 1. Config Model
+## 1. Config Files (Step 1 — complete)
 
-### 1.1 Location
+### Artefacts
 
-| Concern | Authoring location | Deployed location |
-|---|---|---|
-| Domain tree | `workspace/server/config/domains.json` | `$ODIP_HOME/config/domains.json` |
-| Edition structure | `workspace/server/config/edition.json` | `$ODIP_HOME/config/edition.json` |
-
-Config files are copied/mounted from the workspace to `$ODIP_HOME/config/` as part of deployment via `odip-admin`. The server reads from `$ODIP_HOME/config/` at runtime.
-
-### 1.2 `domains.json`
-
-Defines the domain tree — the semantic classification authority for O\*s. Maximum two levels.
-
-```json
-{
-   "domains": [
-      { "key": "4DT",              "label": "4D-Trajectory" },
-      { "key": "AIRPORT",          "label": "Airport" },
-      { "key": "AIRSPACE",         "label": "Airspace (iDL)" },
-      { "key": "ASM_ATFCM",        "label": "ASM/ATFCM Integration" },
-      { "key": "CRISIS",           "label": "Crisis" },
-      { "key": "FAAS",             "label": "FAAS" },
-      { "key": "FLOW",             "label": "Flow" },
-      { "key": "RRT",              "label": "Rerouting" },
-      { "key": "TCF",              "label": "Transponder Code Function" },
-      { "key": "TRANSVERSAL",      "label": "Transversal",
-         "subDomains": [
-            { "key": "TRANSVERSAL_NM",     "label": "Transversal NM" },
-            { "key": "TRANSVERSAL_NMUI",   "label": "Transversal NMUI" },
-            { "key": "TRANSVERSAL_NM_B2B", "label": "Transversal NM-B2B" }
-         ]
-      }
-   ]
-}
-```
-
-Domain `key` values are stable identifiers used by:
-- `ChapterVersion.domain` — identifying which domain a chapter covers
-- `Bandwidth.scope` — DrG-scoped bandwidth planning (migration deferred)
-- Import pipeline mappers — replacing the `drg` field on O\*s
-
-### 1.3 `edition.json`
-
-Defines the publication chapter structure. Links domain chapters to domain keys via `domain`. Pure narrative chapters have no `domain`. Appendices carry a `template` key driving the publication pipeline renderer.
-
-```json
-{
-   "chapters": [
-      {
-         "key": "overview",
-         "title": "Overview",
-         "position": 1,
-         "subChapters": [
-            { "key": "overview-intro",     "title": "Introduction",       "position": 1 },
-            { "key": "overview-nm-odip",   "title": "NM ODIP",            "position": 2 },
-            { "key": "overview-portfolio", "title": "Portfolio Overview",  "position": 3 }
-         ]
-      },
-      {
-         "key": "transversal",
-         "title": "Transversal Layer",
-         "position": 2,
-         "domain": "TRANSVERSAL",
-         "subChapters": [
-            { "key": "transversal-nm",     "title": "Transversal NM",     "position": 1, "domain": "TRANSVERSAL_NM" },
-            { "key": "transversal-nmui",   "title": "Transversal NMUI",   "position": 2, "domain": "TRANSVERSAL_NMUI" },
-            { "key": "transversal-nm-b2b", "title": "Transversal NM-B2B", "position": 3, "domain": "TRANSVERSAL_NM_B2B" }
-         ]
-      },
-      { "key": "4dt",        "title": "4D-Trajectory",             "position": 3,  "domain": "4DT" },
-      { "key": "rerouting",  "title": "4D-Rerouting",              "position": 4,  "domain": "RRT" },
-      { "key": "flow",       "title": "Flow",                      "position": 5,  "domain": "FLOW" },
-      { "key": "asmatfcm",   "title": "ASM/ATFCM Integration",     "position": 6,  "domain": "ASM_ATFCM" },
-      { "key": "airspace",   "title": "Airspace (iDL)",            "position": 7,  "domain": "AIRSPACE" },
-      { "key": "airport",    "title": "Airport",                   "position": 8,  "domain": "AIRPORT" },
-      { "key": "tcf",        "title": "Transponder Code Function",  "position": 9, "domain": "TCF" },
-      { "key": "faas",       "title": "FAAS",                      "position": 10, "domain": "FAAS" },
-      { "key": "way-forward","title": "Way Forward",               "position": 11 },
-      { "key": "annex-acronyms",     "title": "Acronyms",              "position": 12, "template": "acronyms" },
-      { "key": "annex-traceability", "title": "Strategic Traceability", "position": 13, "template": "strategic-traceability" }
-   ]
-}
-```
-
-**Chapter entry fields:**
-
-| Field | Type | Notes |
-|---|---|---|
-| `key` | string | Stable identifier — used for bootstrap DB matching |
-| `title` | string | Display title — config-owned, not user-editable |
-| `position` | integer | Ordering within parent |
-| `domain` | string | Domain key from `domains.json` — optional; absent on pure narrative chapters |
-| `template` | string | Publication template key — optional; drives renderer for generated sections |
-| `subChapters` | array | Optional — max one level of nesting |
-
----
-
-## 2. Shared Model (`@odp/shared`)
-
-### 2.1 New sub-package: `shared/src/config/`
-
-```
-shared/src/
-├── index.js
-├── config/                    # new
-│   ├── domains-config.js      # domain tree loader + accessors
-│   └── edition-config.js      # edition structure loader + accessors
-├── messages/
-│   └── messages.js
-└── model/
-    ├── chapter-elements.js    # new
-    ├── drafting-groups.js     # retained — Bandwidth.scope only (migration deferred)
-    ├── maturity-levels.js
-    ├── milestone-events.js
-    ├── odp-edition-types.js
-    ├── odp-elements.js        # modified
-    ├── or-types.js
-    ├── projections.js         # modified
-    ├── setup-elements.js      # modified — (impact) Domain removed
-    └── utils.js
-```
-
-### 2.2 New: `shared/src/config/domains-config.js`
-
-Loads `$ODIP_HOME/config/domains.json` at initialisation. Exposes:
-
-| Export | Description |
+| File | Location |
 |---|---|
-| `loadDomainsConfig(configPath)` | Loads and validates the config file |
-| `getDomainKeys()` | Flat list of all domain keys including sub-domains |
-| `getDomainLabel(key)` | Display label for a domain key |
-| `isDomainValid(key)` | Validation helper |
-| `getDomainTree()` | Full tree structure |
+| `domains.json` | `workspace/server/config/domains.json` → `$ODIP_HOME/config/domains.json` |
+| `edition.json` | `workspace/server/config/edition.json` → `$ODIP_HOME/config/edition.json` |
+| `odip-admin` | Updated: `deploy_config_files()` helper + `list_works_dirs()` uses `node -e` to parse `edition.json` |
 
-### 2.3 New: `shared/src/config/edition-config.js`
+`odip-admin` note: `jq` and `python3` are not available in the target environment. `node -e` is used to parse `edition.json` for works dir derivation — commented in the script.
 
-Loads `$ODIP_HOME/config/edition.json` at initialisation. Exposes:
+---
 
-| Export | Description |
+## 2. Shared Config (Step 2 — complete)
+
+### Artefacts
+
+| File | Location |
 |---|---|
-| `loadEditionConfig(configPath)` | Loads and validates the config file |
-| `getChapters()` | Flat ordered list of all chapters including sub-chapters |
-| `getChapterTree()` | Nested chapter structure |
-| `getChapterByKey(key)` | Single chapter entry by stable key |
+| `loader.js` | `shared/src/config/loader.js` — single entry point: `loadConfig(configDir)` |
+| `domains-config.js` | `shared/src/config/domains-config.js` |
+| `edition-config.js` | `shared/src/config/edition-config.js` |
+| `shared/src/index.js` | Updated: re-exports all three config modules |
+| `server/src/index.js` | Updated: `loadConfig(nodePath.join(odipHome, 'config'))` called in `startServer()` after `initializeStores()` |
+| `cli/src/index.js` | Updated: `loadConfig()` called before `program.parse()` |
 
-### 2.4 New: `shared/src/model/chapter-elements.js`
+**Key design decisions:**
+- `loadConfig(configDir)` is the only entry point — server and CLI both call this once at startup
+- Config modules hold module-level state; accessors throw if called before `loadConfig()`
+- `getDomainChapterSlugs()` on `edition-config` drives publication works dir derivation in both `odip-admin` and `initializePublicationWorkspace()`
 
-Defines the `Chapter` entity model, request structures, and the `OsHierarchy` type.
+---
 
-**`OsHierarchy` type:**
+## 3. Shared Model (Step 3 — complete)
 
-```javascript
-/**
- * @typedef {Object} OsHierarchyTopic
- * @property {string}   topic               - Topic label
- * @property {number[]} ons                 - Ordered ON item IDs
- * @property {number[]} ors                 - Ordered OR item IDs
- * @property {number[]} ocs                 - Ordered OC item IDs
- * @property {OsHierarchyTopic[]} [subtopics] - Optional sub-topics (max one level)
- *
- * @typedef {Object} OsHierarchy
- * @property {OsHierarchyTopic[]} topics
- */
-```
+### Artefacts
 
-**`Chapter` model:**
-
-```javascript
-export const Chapter = {
-   id:              '',
-   title:           '',   // config-owned
-   domain:          null, // config-owned — domain key, nullable
-   position:        0,    // config-owned
-   narrative:       '',   // user-maintained — stringified Quill Delta
-   jsonOsHierarchy: null, // user-maintained — stringified JSON (REST boundary / Neo4j)
-   osHierarchy:     null, // user-maintained — parsed OsHierarchy object (internal use)
-   version:         0,
-   createdAt:       '',
-   createdBy:       '',
-   parentId:        null
-};
-```
-
-**`ChapterRequests`:**
-
-```javascript
-export const ChapterRequests = {
-   // No create — chapters are bootstrap-only
-   update: {
-      narrative:         '',
-      jsonOsHierarchy:   null,
-      expectedVersionId: ''
-   },
-   patch: {
-      narrative:         undefined,
-      jsonOsHierarchy:   undefined,
-      expectedVersionId: ''
-   }
-};
-```
-
-Note: `title`, `domain`, and `position` are config-owned — absent from all request shapes.
-
-### 2.5 Modified: `shared/src/model/setup-elements.js`
-
-- `Domain` entity definition — **removed**
-- `DomainRequests` — **removed**
-
-### 2.6 Modified: `shared/src/model/odp-elements.js`
-
-**`OperationalRequirement` version fields — removed:**
-
-| Field | Reason |
+| File | Change |
 |---|---|
-| `drg` | Replaced by `domain` string field |
-| `path` | Replaced by `Chapter.osHierarchy` (not stored on version node) |
-| `impactedDomains` | (impact) Domain retired |
+| `shared/src/model/chapter-elements.js` | **New** — `Chapter`, `ChapterRequests`, `OsHierarchy`, `OsHierarchyTopic` |
+| `shared/src/model/odp-elements.js` | `drg`, `path`, `impactedDomains` removed; `domain` added on OR and OC |
+| `shared/src/model/projections.js` | Same field removals/additions in `requirement` and `change` field sets |
+| `shared/src/model/setup-elements.js` | `Domain` export removed |
+| `shared/src/messages/messages.js` | `Domain` import and `DomainRequests` removed; OR/OC requests updated; transient `path` (string) added on create only |
+| `shared/src/index.js` | `chapter-elements.js` re-export added |
 
-**`OperationalRequirement` version fields — added:**
+---
 
-| Field | Type | Cardinality | Notes |
-|---|---|---|---|
-| `domain` | string | mandatory | Domain key from `domains.json` — validated against `isDomainValid()` |
+## 4. Store Layer (Step 4 — complete)
 
-**`OperationalChange` version fields — removed:**
+### Artefacts
 
-| Field | Reason |
+| File | Change |
 |---|---|
-| `drg` | Replaced by `domain` string field |
+| `server/src/store/chapter-store.js` | **New** — `VersionedItemStore` subclass; `findByKey(key, tx)`; `createChapter(key, parentItemId, tx)`; config-owned fields merged at read time via `_mergeConfigFields()` |
+| `server/src/store/operational-requirement-store.js` | `drg`/`path` filters removed; `domain` filter = simple string match; `impactedDomains` relationships removed; `findRequirementsThatImpact` renamed to `findRequirementsThatImpactStakeholder` |
+| `server/src/store/operational-change-store.js` | Same: `drg`/`path` filters removed; `domain` string filter added |
+| `server/src/store/baseline-store.js` | `HAS_ITEMS` capture extended to include `Chapter` nodes |
+| `server/src/store/index.js` | `DomainStore` → `ChapterStore`; `initializeDatabase()` added |
 
-**`OperationalChange` version fields — added:**
+### `initializeDatabase()` in `store/index.js`
 
-| Field | Type | Cardinality | Notes |
-|---|---|---|---|
-| `domain` | string | mandatory | Domain key from `domains.json` — validated against `isDomainValid()` |
+Called from `server/src/index.js` after `loadConfig()`. Iterates `getChapters()`, creates missing chapters via `chapterStore.createChapter()`. Single write transaction. Idempotent. Builds `key→itemId` map to resolve `parentItemId` for sub-chapters.
 
-### 2.7 Modified: request structures (`messages.js`)
-
-**`OperationalRequirementRequests`:**
-- Remove `drg`, `path`, `impactedDomains` from `create`, `update`, `patch`
-- Add `domain` (string, mandatory on `create` and `update`, optional on `patch`) — stored on version node
-- Add `path` (string, mandatory on `create` only) — topic locator within `osHierarchy`; **not stored on version node**; consumed by service layer to update chapter
-
-**`OperationalChangeRequests`:**
-- Remove `drg` from `create`, `update`, `patch`
-- Add `domain` (string, mandatory on `create` and `update`, optional on `patch`) — stored on version node
-- Add `path` (string, mandatory on `create` only) — topic locator; **not stored on version node**
-
-### 2.8 Modified: `projections.js`
-
-- Remove `drg`, `path`, `impactedDomains` from all `OperationalRequirement` field sets
-- Remove `drg` from all `OperationalChange` field sets
-- Add `domain` to `summary` field set for both
-
-### 2.9 `drafting-groups.js` — retained unchanged
-
-Retained for `Bandwidth.scope` only. `DraftingGroup` no longer exported from `shared/src/index.js` for general use — only `BandwidthStore` imports it directly. Migration of bandwidth scope to domain keys deferred.
+`startServer()` sequence: `initializeStores()` → `loadConfig()` → `initializeDatabase()` → `registerImportMappers()` → `initializePublicationWorkspace()` → `listen()`.
 
 ---
 
-## 3. Store Layer
+## 5. Service Layer (Step 6 — complete)
 
-### 3.1 New: `ChapterStore` (`chapter-store.js`)
+### Artefacts
 
-Extends `VersionedItemStore`. Dual-node pattern: `Chapter` (item node) + `ChapterVersion` (version node).
-
-**`Chapter` item node fields:**
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | integer | Neo4j internal ID |
-| `key` | string | Stable config key — used for bootstrap matching |
-| `createdAt` | timestamp | |
-| `createdBy` | string | |
-| `latest_version` | integer | Cached current version number |
-
-**`ChapterVersion` node fields:**
-
-| Field | Type | Cardinality | Notes |
-|---|---|---|---|
-| `version` | integer | mandatory | Sequential (1, 2, 3…) |
-| `title` | string | mandatory | Config-owned |
-| `domain` | string | optional | Domain key — nullable for pure narrative chapters |
-| `position` | integer | mandatory | Config-owned |
-| `narrative` | string | mandatory | Stringified Quill Delta — user-maintained |
-| `jsonOsHierarchy` | string | optional | Stringified JSON — user-maintained, nullable |
-| `createdAt` | timestamp | mandatory | |
-| `createdBy` | string | mandatory | |
-
-**Serialisation boundary (store layer):**
-- Write: `JSON.stringify(osHierarchy)` → stored as `jsonOsHierarchy`
-- Read: `JSON.parse(jsonOsHierarchy)` → exposed as `osHierarchy` on returned object
-
-Service layer and above always work with the parsed `osHierarchy` object.
-
-**Graph relationships:**
-
-```
-(chapter)-[:LATEST_VERSION]->(chapterVersion)
-(chapterVersion)-[:VERSION_OF]->(chapter)
-(chapter)-[:REFINES]->(parentChapter)       // sub-chapter → chapter, optional, max 1 level
-(baseline)-[:HAS_ITEMS]->(chapterVersion)   // baseline snapshot
-```
-
-**Additional methods beyond `VersionedItemStore`:**
-
-| Method | Returns | Notes |
-|---|---|---|
-| `findByKey(key, tx)` | `Chapter \| null` | Bootstrap — matches on `chapter.key` |
-| `findByDomain(domainKey, tx)` | `Chapter \| null` | Resolves chapter by domain key |
-| `findAll(tx)` | `Chapter[]` | Ordered by `position`, sub-chapters nested |
-| `appendToHierarchy(domainKey, path, itemId, itemType, tx)` | `void` | Resolves chapter by domain key; appends O\* item ID to the specified topic/path in `osHierarchy`; creates new `ChapterVersion` |
-
-### 3.2 Deleted: `DomainStore` (`domain-store.js`)
-
-`DomainStore` and the `Domain` node label are removed. All `IMPACTS_DOMAIN` relationships are removed from `OperationalRequirementVersion` nodes.
-
-### 3.3 Modified: `OperationalRequirementStore`
-
-**`RequirementVersion` — remove fields:** `drg`, `path`
-
-**`RequirementVersion` — remove relationship:** `IMPACTS_DOMAIN` → (impact) Domain
-
-**`RequirementVersion` — add field:** `domain` (string — domain key, stored on version node)
-
-**`buildFindAllQuery` changes:**
-- Remove `drg`, `path`, `domain` (old impact domain) from WHERE clauses and RETURN
-- Add `domain` to RETURN and scalar fields
-- Add `domain` filter: exact match on `version.domain`
-
-**Filter object — removed:** `drg`, `path`, `domain` (old impact domain filter)
-
-**Filter object — added:**
-
-| Filter field | Type | Behaviour |
-|---|---|---|
-| `domain` | `string\|null` | Exact match on `version.domain` |
-
-### 3.4 Modified: `OperationalChangeStore`
-
-- Remove `drg` from version node fields, queries, and filters
-- Add `domain` string field on version node
-- Add `domain` filter: exact match on `version.domain`
-
-### 3.5 New: `ChapterBootstrapService` (`server/src/bootstrap/chapter-bootstrap.js`)
-
-Startup service — not a store. Called once from `server/src/index.js` during startup.
-
-**Algorithm (idempotent):**
-1. Load `$ODIP_HOME/config/edition.json` via `edition-config.js`
-2. For each chapter entry, depth-first (parents before children):
-   - `ChapterStore.findByKey(key, tx)`
-   - If missing → `ChapterStore.create(...)` with `title`, `domain`, `position`, `key` from config; empty `narrative`; `jsonOsHierarchy: null`
-   - If exists → no-op
-3. Log created / existing counts at startup
-
-### 3.6 DB Migration (decision pending)
-
-No decision has been taken on whether to migrate an existing DB or restart from scratch. The following points should be considered if migration is chosen:
-
-- **`drg` → `domain`** — for each existing `RequirementVersion` and `OperationalChangeVersion`, rename the `drg` property to `domain`; values remain the same (existing DrG keys are valid domain keys)
-- **`path` removal** — `path` arrays on existing `RequirementVersion` nodes must be dropped; no replacement needed (ordering moves to `Chapter.osHierarchy`)
-- **`IMPACTS_DOMAIN` removal** — all `IMPACTS_DOMAIN` relationships and `Domain` nodes must be removed
-- **`Chapter` nodes** — created by bootstrap at startup; no migration needed for chapter structure itself
-- **Baseline `HAS_ITEMS`** — existing baseline snapshots do not reference `ChapterVersion` nodes; historical baselines will be incomplete with respect to chapter content. Strategy for historical baseline consistency to be decided.
-- **Restart from scratch** — avoids all of the above; viable if Edition 1 O\*s are re-imported via the updated pipeline
-
----
-
-## 4. Service Layer
-
-### 4.1 New: `ChapterService` (`chapter-service.js`)
-
-Extends `VersionedItemService`.
-
-**User-maintained fields only:** `narrative`, `osHierarchy` (passed as parsed object; service serialises to `jsonOsHierarchy` before calling store).
-
-**Validation rules:**
-- `narrative` — required on update; must be valid Quill Delta JSON string
-- `osHierarchy` — optional; if present, must conform to `OsHierarchy` schema; all referenced O\* item IDs validated for existence via separate `'system'` transaction using `Promise.all`
-- `title`, `domain`, `position` — rejected if present in request (config-owned, read-only from API)
-
-**Methods:**
-
-| Method | Description |
+| File | Change |
 |---|---|
-| `findAll(userId)` | All chapters ordered by position, sub-chapters nested |
-| `findById(chapterId, userId, baselineId?, editionId?)` | Single chapter with version content |
-| `update(chapterId, data, expectedVersionId, userId)` | Full update of `narrative` + `osHierarchy` |
-| `patch(chapterId, data, expectedVersionId, userId)` | Partial update |
-
-### 4.2 Deleted: `DomainService` (`domain-service.js`)
-
-### 4.3 Modified: `OperationalRequirementService`
-
-**Removed:**
-- `drg` enum validation
-- `path` array handling (storage)
-- `impactedDomains` foreign key validation (from `Promise.all` block)
-
-**Added:**
-- `domain` — mandatory on create and update; validated against `isDomainValid()` from `domains-config.js`
-- `path` — mandatory on create only (topic locator, not persisted); used to update `ChapterVersion.osHierarchy`
-
-**O\* create — two-entity transaction:**
-
-`create()` opens a single transaction covering:
-1. `OperationalRequirementStore.create(data, tx)` — creates `RequirementVersion` with `domain` stored
-2. `ChapterStore.appendToHierarchy(domain, path, itemId, 'on'|'or', tx)` — resolves chapter by domain key, appends O\* item ID to correct topic, creates new `ChapterVersion`
-
-This is an intentional exception to the single-entity-per-transaction pattern — the two operations are semantically atomic.
-
-**Maturity-gated rules:** remove any conditions referencing `drg`, `path` (storage), or `impactedDomains`.
-
-### 4.4 Modified: `OperationalChangeService`
-
-- Remove `drg` mandatory requirement and enum validation
-- Add `domain` mandatory on create and update; validated against `isDomainValid()`
-- Add `path` mandatory on create only (topic locator, not persisted)
-- `create()` opens two-entity transaction: `OperationalChangeStore.create()` + `ChapterStore.appendToHierarchy()` — same pattern as `OperationalRequirementService`
-
-### 4.5 Import Pipeline — Impact of Model Changes (decision pending)
-
-No decision has been taken on the import strategy for Edition 1. The following impacts are identified:
-
-- **`drg` → `domain`** — all existing DrG mappers set `drg` on O\*s; field must be renamed to `domain`; values (e.g. `"4DT"`, `"FLOW"`) are valid domain keys and require no transformation
-- **`path` field on mappers** — `path` arrays currently used for topic grouping within a DrG; must be replaced by the `path` topic locator on create requests, which drives `ChapterStore.appendToHierarchy()` at import time
-- **`impactedDomains` on mappers** — any mapper fields populating `impactedDomains` must be removed
-- **`BootstrapMapper`** — likely survives as the only mapper; all other DrG-specific mappers (`ASM_ATFCM_Mapper`, etc.) are candidates for decommissioning once Edition 1 is imported via ODIP Space directly
-- **JSON structured import model** — the `setup.json` external ID model references `drg` implicitly via mapper conventions; must be reviewed against the new `domain` + `path` requirements
-- **Decision point** — if Edition 1 O\*s are imported via the updated pipeline, mappers must be updated before import; if authors re-enter O\*s directly in ODIP Space, mappers may be decommissioned without updating
+| `server/src/services/ChapterService.js` | **New** — `VersionedItemService` subclass; no `create`/`delete`; `getAll()` overrides base (no edition context, no filters); `_validateOsHierarchy()` recursive validation |
+| `server/src/services/OperationalRequirementService.js` | `DraftingGroup`/`isDraftingGroupValid` removed; `isDomainValid` added; `domain` now mandatory; `_validateDRG` → `_validateDomain`; `impactedDomains` removed everywhere |
+| `server/src/services/OperationalChangeService.js` | Same: `drg` → `domain` (mandatory); `_validatePath` removed |
 
 ---
 
-## 5. REST API / OpenAPI
+## 6. REST API (Step 7 — complete)
 
-### 5.1 New file: `openapi-chapter.yml`
+### Artefacts
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/chapters` | List all chapters (nested hierarchy) |
-| `GET` | `/chapters/{id}` | Get chapter by ID (latest or edition context) |
-| `PUT` | `/chapters/{id}` | Full update — `narrative` + `osHierarchy` |
-| `PATCH` | `/chapters/{id}` | Partial update |
-| `GET` | `/chapters/{id}/versions` | Version history |
-| `GET` | `/chapters/{id}/versions/{versionNumber}` | Specific version |
-
-No `POST /chapters` — creation is bootstrap-only.  
-No `DELETE /chapters` — chapters are config-owned.
-
-**Schemas:**
-- `Chapter` — full representation: `id`, `title`, `domain`, `position`, `narrative`, `jsonOsHierarchy`, `parentId`, versioning fields
-- `ChapterUpdateRequest` — `narrative`, `jsonOsHierarchy`, `expectedVersionId`
-- `ChapterPatchRequest` — same fields, all optional except `expectedVersionId`
-
-### 5.2 Modified: `openapi-base.yml`
-
-**New schemas:**
-
-```yaml
-OsHierarchyTopic:
-   type: object
-   required: [topic, ons, ors, ocs]
-   properties:
-      topic:
-         type: string
-      ons:
-         type: array
-         items:
-            type: integer
-      ors:
-         type: array
-         items:
-            type: integer
-      ocs:
-         type: array
-         items:
-            type: integer
-      subtopics:
-         type: array
-         items:
-            $ref: '#/components/schemas/OsHierarchyTopic'
-
-OsHierarchy:
-   type: object
-   required: [topics]
-   properties:
-      topics:
-         type: array
-         items:
-            $ref: '#/components/schemas/OsHierarchyTopic'
-```
-
-**`OperationalRequirement` schema:**
-- Remove `drg`, `path`, `impactedDomains` fields
-- Add `domain` (string, summary projection)
-
-**`OperationalChange` schema:**
-- Remove `drg` field
-- Add `domain` (string, summary projection)
-
-**`OperationalRequirementBaseRequest`:**
-- Remove `drg`, `impactedDomains`
-- Remove `path` from stored fields
-- Add `domain` (string, mandatory on create and update)
-- Add `path` (string, mandatory on create only — topic locator, not stored)
-
-**`OperationalChangeBaseRequest`:**
-- Remove `drg`
-- Add `domain` (string, mandatory on create and update)
-- Add `path` (string, mandatory on create only — topic locator, not stored)
-
-**`Domain` and `DomainRequest` schemas — removed.**
-
-**`DraftingGroup` schema** — retained for `Bandwidth` only. Deprecation note: *"Used exclusively for Bandwidth.scope. Deprecated for all other uses — migration to domain keys deferred."*
-
-### 5.3 Modified: `openapi-operational.yml`
-
-**`GET /operational-requirements` query parameters:**
-- Remove `drg`, `path`, `domain` (old impact domain) filter parameters
-- Add `domain` (domain key string — exact match on `version.domain`)
-
-**`GET /operational-changes` query parameters:**
-- Remove `drg` filter parameter
-- Add `domain` (domain key string)
-
-### 5.4 Modified: `openapi-setup.yml`
-
-- `GET /domains`, `POST /domains`, `GET /domains/{id}`, `PUT /domains/{id}`, `DELETE /domains/{id}` — **removed**
-- `Bandwidth` schema and endpoints — no change; `scope` retains `$ref: DraftingGroup`
-
----
-
-## 6. CLI (high-level)
-
-### 6.1 New: `chapter` command group
-
-| Command | Description |
+| File | Change |
 |---|---|
-| `chapter list` | List all chapters |
-| `chapter show <id>` | Show chapter detail |
-| `chapter update <id> <expectedVersionId>` | Update `narrative` and/or `osHierarchy` |
-| `chapter patch <id> <expectedVersionId>` | Partial update |
-| `chapter versions <id>` | Version history |
-
-Detailed design deferred.
-
-### 6.2 Deleted: `domain` command group
-
-### 6.3 Modified: `requirement` command
-
-- Remove `--drg`, `--path` (storage), `--impacted-domains` flags from `list`, `create`, `update`, `patch`
-- Add `--domain <key>` to `list` (filter), `create` (mandatory), `update`, `patch`
-- Add `--path <topic-path>` to `create` only (topic locator, not stored)
-
-### 6.4 Modified: `change` command
-
-- Remove `--drg` flag
-- Add `--domain <key>` flag
-- Add `--path <topic-path>` to `create` only
-
-Detailed design deferred.
+| `openapi-chapter.yml` | **New** — Chapter endpoints |
+| `openapi-base.yml` | `Domain`/`DomainRequest` removed; `OsHierarchy*`, `Chapter*` schemas added; OR/OC schemas updated |
+| `openapi-operational.yml` | `drg`/`path`/old-domain filters replaced; `domain` string filter added |
+| `openapi-setup.yml` | `/domains` endpoints removed |
+| `openapi.yml` | Domain paths removed; chapter paths added; tags updated |
+| `server/src/routes/chapter.js` | **New** — chapter route handler |
+| `server/src/routes/operational-requirement.js` | `drg`/`path` filters removed; `domain` string filter |
+| `server/src/routes/operational-change.js` | Same |
+| `server/src/index.js` | `domainRoutes` → `chapterRoutes`; `/domains` → `/chapters` |
 
 ---
 
-## 7. Web Client (high-level)
+## 7. CLI (Step 8 — complete)
 
-### 7.1 Chapter management
+### Artefacts
 
-New **Chapters** section in the Setup activity (Elaborate workspace). Integrators can:
-- Browse chapter hierarchy
-- Edit `narrative` (Quill rich text editor)
-- Edit `osHierarchy` via drag-and-drop tree interface
-
-Detailed design deferred.
-
-### 7.2 Deleted: `domains.js` (Setup activity)
-
-`domains.js` removed from Setup activity. `domains` collection removed from `setupData` cache on `App`.
-
-### 7.3 O\* form changes
-
-**`RequirementForm` / `requirement-form-fields.js`:**
-- Remove `drg` field (select, DraftingGroup enum)
-- Remove `path` field (stored folder hierarchy)
-- Remove `impactedDomains` field (AnnotatedMultiselectManager against Domain collection)
-- Add `domain` field (select against domain keys from `domains-config.js`)
-- Add `path` field (text input — topic locator, create mode only)
-
-**`ChangeForm` / `change-form-fields.js`:**
-- Remove `drg` field
-- Add `domain` field
-- Add `path` field (create mode only)
-
-### 7.4 O\* tree perspective
-
-Tree perspective rebuilt from `Chapter.osHierarchy` rather than `REFINES` + `path`. User selects a chapter; tree renders from its `osHierarchy`. Drag-and-drop updates `osHierarchy` on the chapter version — new chapter version, same O\* versions (decoupled).
-
-Detailed design deferred.
-
-### 7.5 Prioritisation activity
-
-`PrioritisationGrid` columns currently derived from `DraftingGroup` enum. With `drg` removed from OCs, columns must be derived from domain chapters. **Blocker for prioritisation activity** — detailed design deferred.
-
-### 7.6 Setup data
-
-`setupData` cache on `App` extended to include chapters. Loaded once, cached, invalidated after chapter update. `domains` collection removed.
+| File | Change |
+|---|---|
+| `cli/src/commands/chapter.js` | **New** — `list`, `show`, `update`, `patch`, `versions`, `show-version`; no `create`/`delete` |
+| `cli/src/commands/operational-requirement.js` | `DraftingGroup` imports removed; `isDomainValid`/`getDomainKeys`/`getDomainLabel` added; `--drg`/`--path`/`--impacted-domains` removed; `--domain` added (required on create) |
+| `cli/src/commands/operational-change.js` | Same pattern |
+| `cli/src/index.js` | `domainCommands` → `chapterCommands`; `loadConfig()` called before `program.parse()` |
 
 ---
 
-## 8. Layer sequence
+## 8. Web Client (Step 9 — complete except open items)
 
-| Step | Layer | Artefacts |
+### Artefacts
+
+| File | Change |
+|---|---|
+| `app.js` | `/domains` fetch removed from `getSetupData()`; `domains` field removed from cache shape |
+| `shared/api-client.js` | JsDoc updated — `drg` param removed, `domain` description updated |
+| `activities/workspace/setup/setup.js` | `domains` entity removed |
+| `activities/workspace/setup/domains.js` | **Deleted** |
+| `activities/workspace/shared/os/os.js` | `DraftingGroup` → `getDomainKeys`/`getDomainLabel`; filter config updated; `_buildQueryParams` keyMap updated |
+| `activities/workspace/shared/os/o-star-entity.js` | `drg` column → `domain`; `impactedDomains` column removed; grouping updated; tree path builder uses `entity.domain`; `path` folder logic removed |
+| `activities/workspace/shared/os/requirement-form-fields.js` | `drg`/`path`/`impactedDomains` fields removed; `domain` select added |
+| `activities/workspace/shared/os/requirement-form.js` | `DraftingGroup` imports removed; `getDomainOptions()` config-driven; `formatDomain()`; `drg`/`path`/`impactedDomains` handling removed |
+| `activities/workspace/shared/os/change-form-fields.js` | `drg` → `domain`; `cost` removed from `optionalTextFields` (was latent bug) |
+| `activities/workspace/shared/os/change-form.js` | Same pattern as requirement-form |
+| `activities/workspace/shared/plan/on-planning.js` | `DraftingGroup` → `getDomainLabel`; grouping by `entity.domain`; `path` folder logic removed |
+
+`change-details.js`, `requirement-details.js`, `elaborate.js`, `explore.js`, `odp-editions.js`, `prioritisation.js` — **no changes needed** (either delegate fully to form layer, or use DrG for bandwidth which is retained).
+
+---
+
+## 9. Open Items / Known Limitations
+
+### 9.1 Prioritisation Board (parked)
+
+`prioritisation.js` and `prioritisation-grid.js` still use `oc.drg` for board column placement. OCs now carry `domain` instead — the board is broken for Phase 2 data. `DraftingGroup` enum is retained for `Bandwidth.scope` but OC cards can no longer be placed by DrG. **Redesign of the prioritisation board around the domain model is deferred.**
+
+### 9.2 Import Pipeline (parked)
+
+The import pipeline layer was not updated in Phase 2. Known gaps:
+
+- **`ExternalIdBuilder.js`** — `_buildRequirementId()` and `_buildChangeId()` use `drg` as a required field. Must be updated to use `domain` key.
+- **All DrG mappers** — reference `drg` field on entities. Must be updated to emit `domain` instead.
+- **`openapi-import.yml`** — `ImportSummary` schema still has `domains` counter; `StructuredImportData` output still references `drg`, `path`, `impactedDomains`.
+- **`openapi-docx.yml`** — `drg` still a required query parameter on docx export.
+- **`05-Import-Pipeline.md`** — ADD chapter not yet updated for Phase 2.
+
+### 9.3 O\* Tree Perspective (partial)
+
+The tree perspective in `o-star-entity.js` now groups by `entity.domain` (top-level domain group node) instead of `entity.drg`. The `osHierarchy` on `ChapterVersion` defines O\* presentation order for **publication** — it is not yet used to drive the web client tree perspective. A future phase could rebuild the tree from `Chapter.osHierarchy`, rendering Chapter → topic → sub-topic → O\* nodes.
+
+### 9.4 Chapter Management UI (not implemented)
+
+The Chapter management section in the Setup activity (Elaborate workspace) — browse chapter hierarchy, edit `narrative`, edit `osHierarchy` via drag-and-drop — is not yet implemented. The API and service layer are complete; only the web client UI is missing.
+
+### 9.5 ADD chapters not yet updated
+
+The following ADD chapters were updated as part of Phase 2: `01-Data-Model.md`, `02-Storage-Layer.md`, `03-Service-Layer.md`, `04-REST-API.md`, `07-CLI.md`, `08-Web-Client.md`. Not yet updated: `05-Import-Pipeline.md`, `06-Publication.md`, `09-Deployment.md`.
+
+---
+
+## 10. Next Steps
+
+### 10.1 Web Client
+
+- **Narrative edition** — Chapter detail view with Quill rich text editor for `narrative` field. PUT/PATCH via `ChapterService`. Integrates into the Setup activity (Elaborate workspace) under a new "Chapters" tab.
+- **O\* organisation editor** — UI for editing `jsonOsHierarchy` on a chapter: topic creation/renaming, O\* drag-and-drop into topics and sub-topics, topic reordering. Each save creates a new `ChapterVersion`.
+
+### 10.2 Import Pipeline
+
+- **Restore `BootstrapMapper`** — update `ExternalIdBuilder._buildRequirementId()` and `_buildChangeId()` to use `domain` instead of `drg`; update all DrG mappers to emit `domain` field on requirements and changes; update `openapi-import.yml` and `openapi-docx.yml` accordingly.
+
+---
+
+## 11. Open Design Questions
+
+### 11.1 Chapter tree vs O\* tree — decoupling
+
+The current O\* tree perspective groups by `entity.domain` (flat domain → ON → OR hierarchy). If a chapter-driven tree is introduced (Chapter → topic → O\* nodes, from `jsonOsHierarchy`), two questions arise:
+
+- Should the chapter tree **replace** the domain-grouped tree, or be a **separate perspective** alongside it?
+- The O\* tree should remain free of narrative-only chapter entries (chapters with no `domain`). How are narrative chapters surfaced — suppressed in the O\* tree, or shown as non-selectable separators?
+
+Design recommendation deferred.
+
+### 11.2 Narrative format — AsciiDoc vs Quill Delta
+
+`ChapterVersion.narrative` is currently typed as `richtext` (Quill Delta JSON string), consistent with all other rich text fields in the model. However, chapters feed directly into the Antora/AsciiDoc publication pipeline. Two options:
+
+- **Quill Delta** — consistent with O\* rich text; requires `DeltaToAsciidocConverter` on the publication path; enables WYSIWYG editing in the web client.
+- **AsciiDoc** — direct pipeline integration; no conversion needed; but requires an AsciiDoc editor in the web client (non-trivial) and breaks consistency with other rich text fields.
+
+Decision pending. Current implementation stores as Quill Delta.
+
+---
+
+## 12. Layer Sequence Summary
+
+| Step | Layer | Status |
 |---|---|---|
-| 1 | Config files | `domains.json`, `edition.json`; `odip-admin` deployment step |
-| 2 | Shared config | `shared/src/config/domains-config.js`, `edition-config.js` |
-| 3 | Shared model | `chapter-elements.js` (new); modified `odp-elements.js`, `projections.js`, `messages.js`; modified `setup-elements.js` ((impact) Domain removed) |
-| 4 | Store | `ChapterStore` (new); deleted `DomainStore`; modified `OperationalRequirementStore`, `OperationalChangeStore` |
-| 5 | Bootstrap | `server/src/bootstrap/chapter-bootstrap.js` (new); server startup hook |
-| 6 | Service | `ChapterService` (new); deleted `DomainService`; modified `OperationalRequirementService`, `OperationalChangeService` |
-| 7 | REST API | `openapi-chapter.yml` (new); modified `openapi-base.yml`, `openapi-operational.yml`, `openapi-setup.yml` |
-| 8 | CLI | `chapter` command (new); deleted `domain` command; modified `requirement`, `change` commands |
-| 9 | Web client | Chapter management UI (new); deleted `domains.js`; modified O\* forms, tree perspective, prioritisation |
+| 1 | Config files (`domains.json`, `edition.json`, `odip-admin`) | ✅ Complete |
+| 2 | Shared config (`loader.js`, `domains-config.js`, `edition-config.js`) | ✅ Complete |
+| 3 | Shared model (`chapter-elements.js`, `odp-elements.js`, `projections.js`, `messages.js`, `setup-elements.js`) | ✅ Complete |
+| 4 | Store (`ChapterStore`, `BaselineStore`, `ORStore`, `OCStore`, `store/index.js`) | ✅ Complete |
+| 5 | Bootstrap (`initializeDatabase()` in `store/index.js`) | ✅ Complete |
+| 6 | Service (`ChapterService`, `ORService`, `OCService`) | ✅ Complete |
+| 7 | REST API (`openapi-chapter.yml`, `openapi-base.yml`, `openapi-operational.yml`, `openapi-setup.yml`, routes) | ✅ Complete |
+| 8 | CLI (`chapter.js`, `operational-requirement.js`, `operational-change.js`, `index.js`) | ✅ Complete |
+| 9 | Web Client (forms, O\* entity, planning, setup) | ✅ Complete (open items in §9) |
