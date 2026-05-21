@@ -67,28 +67,14 @@ export const requirementFieldDefinitions = [
                 }
             },
             {
-                key: 'drg',
-                label: 'Drafting Group',
+                key: 'domain',
+                label: 'Domain',
                 type: 'select',
                 modes: ['create', 'read', 'edit'],
-                required: false,
-                optionsKey: 'getDraftingGroupOptions',
-                helpText: 'Select the drafting group responsible for this requirement',
-                formatKey: 'formatDraftingGroup'
-            },
-            {
-                key: 'path',
-                label: 'Path',
-                type: 'textarea',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                rows: 2,
-                placeholder: 'Enter path elements separated by commas (e.g., "Technical Aspects, Service Lifecycle, Versioning")',
-                helpText: 'Organizational path for this requirement (comma-separated)',
-                format: (value) => {
-                    if (!value || !Array.isArray(value) || value.length === 0) return 'No path';
-                    return value.join(' > ');
-                }
+                required: true,
+                optionsKey: 'getDomainOptions',
+                helpText: 'Select the domain for this requirement',
+                formatKey: 'formatDomain'
             }
         ]
     },
@@ -246,21 +232,7 @@ export const requirementFieldDefinitions = [
                 setupEntity: 'stakeholderCategories',
                 helpText: 'Select affected stakeholder categories and optionally add notes about the nature of the impact'
             },
-            {
-                key: 'impactedDomains',
-                label: 'Domains',
-                type: 'annotated-reference-list',
-                modes: ['create', 'read', 'edit'],
-                required: false,
-                visibleWhen: (data) => data.type === 'OR',
-                maxNoteLength: 200,
-                placeholder: 'Select impacted domains...',
-                noteLabel: 'Note',
-                optionsKey: 'getDomainOptions',
-                setupEntity: 'domains',
-                helpText: 'Select business domains impacted by this operational requirement',
-                formatKey: 'formatAnnotatedReferences'
-            }
+
         ]
     },
 
@@ -356,7 +328,6 @@ export const requiredIdentifierArrayFields = [
  */
 export const requiredAnnotatedReferenceArrayFields = [
     'impactedStakeholders',
-    'impactedDomains',
     'strategicDocuments'
 ];
 

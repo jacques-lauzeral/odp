@@ -224,9 +224,8 @@ export class ApiClient {
      *
      * @param {object} params - Unified filter parameters
      * @param {string[]} [params.type]              - ON / OR / OC (array)
-     * @param {string}   [params.drg]               - Owner Domain (DrG enum)
+     * @param {string}   [params.domain]            - Domain key string filter (exact match)
      * @param {string}   [params.maturity]          - DRAFT / ADVANCED / MATURE
-     * @param {string}   [params.domain]            - Impacted Domain ID
      * @param {string}   [params.stakeholderCategory] - Stakeholder Category ID
      * @param {string}   [params.implements]        - O* ID (→ implementedON for ORs, implementsOR for OCs)
      * @param {string}   [params.strategicDocument] - Reference Document ID (requirements only)

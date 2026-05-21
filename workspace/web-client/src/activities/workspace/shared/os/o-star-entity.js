@@ -10,21 +10,21 @@
  *   isReadOnly              — boolean; true in Explore context
  *
  * Column set:
- *   Both perspectives: Type · Code · Title · Maturity · Implements · Strategic Documents · Impacted Stakeholders · Impacted Domain
- *   Collection only:   Owner Domain · Refines
- *   Tree:              Owner Domain implicit from tree structure
+ *   Both perspectives: Type · Code · Title · Maturity · Implements · Strategic Documents · Impacted Stakeholders
+ *   Collection only:   Domain · Refines
+ *   Tree:              Domain implicit from tree structure
  *
- * Grouping (collection only): Type · Owner Domain (drg) · Maturity
+ * Grouping (collection only): Type · Domain · Maturity
  *
  * Tree structure:
- *   DrG → path folders → ONs → refined ORs
- *   OCs appended below in DrG groups (flat)
+ *   Domain → ONs → refined ORs
+ *   OCs appended below in domain groups (flat)
  */
 import CollectionEntity from '../../../../components/collection-entity.js';
 import TreeTableEntity from '../../../../components/tree-table-entity.js';
 import { odpColumnTypes } from '../../../../components/odp-column-types.js';
 import {
-    getDraftingGroupDisplay,
+    getDomainLabel,
     getMaturityLevelDisplay,
     MaturityLevel,
 } from '/shared/src/index.js';
@@ -107,9 +107,10 @@ export default class OStarEntity {
                 type: 'text', sortable: true,
                 appliesTo: ['on-node', 'or-node', 'oc-node'],
             },
-            drg: {
-                key: 'drg', label: 'Owner Domain', width: '120px',
-                type: 'drafting-group', sortable: true,
+            domain: {
+                key: 'domain', label: 'Domain', width: '120px',
+                type: 'text', sortable: true,
+                render: (value) => value ? getDomainLabel(value) : '—',
                 appliesTo: ['on-node', 'or-node', 'oc-node'],
             },
             refinesParents: {
@@ -134,21 +135,16 @@ export default class OStarEntity {
                 setupEntity: 'stakeholderCategories',
                 appliesTo: ['or-node', 'oc-node'],
             },
-            impactedDomains: {
-                key: 'impactedDomains', label: 'Impacted Domain', width: '120px',
-                type: 'annotated-reference-list', sortable: false, maxDisplay: 2,
-                setupEntity: 'domains',
-                appliesTo: ['or-node', 'oc-node'],
-            },
+
         };
     }
 
     _getCollectionColumns() {
         const c = OStarEntity._cols();
         return [
-            c.type, c.code, c.title, c.maturity, c.drg,
+            c.type, c.code, c.title, c.maturity, c.domain,
             c.refinesParents, c.implements,
-            c.strategicDocuments, c.impactedStakeholders, c.impactedDomains,
+            c.strategicDocuments, c.impactedStakeholders,
         ];
     }
 
@@ -157,7 +153,7 @@ export default class OStarEntity {
         return [
             c.title, c.code, c.maturity,
             c.implements,
-            c.strategicDocuments, c.impactedStakeholders, c.impactedDomains,
+            c.strategicDocuments, c.impactedStakeholders,
         ];
     }
 
@@ -165,7 +161,7 @@ export default class OStarEntity {
         return [
             { key: 'none',     label: 'No grouping'   },
             { key: 'type',     label: 'Type'          },
-            { key: 'drg',      label: 'Owner Domain'  },
+            { key: 'domain',   label: 'Domain'        },
             { key: 'maturity', label: 'Maturity'      },
         ];
     }
@@ -187,19 +183,21 @@ export default class OStarEntity {
             entity:   entity,
         };
 
-        // OCs — flat under their DrG group
+        // OCs — flat under their domain group
         if (entity.type === 'OC') {
+            const domainKey   = entity.domain ?? 'no-domain';
+            const domainLabel = entity.domain ? getDomainLabel(entity.domain) : '—';
             return [
-                { type: 'drg', value: getDraftingGroupDisplay(entity.drg) ?? entity.drg ?? '—', id: `drg:${entity.drg ?? 'no-drg'}` },
+                { type: 'drg', value: domainLabel, id: `domain:${domainKey}` },
                 leaf,
             ];
         }
 
-        // ONs and ORs — DrG → path folders → (parent ON leaf) → entity leaf
+        // ONs and ORs — domain → (parent ON leaf) → entity leaf
         const path = [];
 
-        if (entity.drg) {
-            path.push({ type: 'drg', value: getDraftingGroupDisplay(entity.drg) ?? entity.drg, id: `drg:${entity.drg}` });
+        if (entity.domain) {
+            path.push({ type: 'drg', value: getDomainLabel(entity.domain), id: `domain:${entity.domain}` });
         }
 
         if (entity.refinesParents?.length) {
@@ -214,14 +212,6 @@ export default class OStarEntity {
                     path.push(...parentPath.slice(1));
                 }
             }
-        } else if (entity.path?.length) {
-            entity.path.forEach((segment, idx) => {
-                path.push({
-                    type:  'org-folder',
-                    value: segment,
-                    id:    `${entity.drg ?? 'no-drg'}:path:${entity.path.slice(0, idx + 1).join('/')}`,
-                });
-            });
         }
 
         path.push(leaf);

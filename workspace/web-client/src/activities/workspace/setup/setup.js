@@ -15,11 +15,6 @@ export default class Setup {
                 endpoint: '/stakeholder-categories',
                 type: 'tree'
             },
-            'domains': {
-                name: 'Domains',
-                endpoint: '/domains',
-                type: 'tree'
-            },
             'reference-documents': {
                 name: 'Reference Documents',
                 endpoint: '/reference-documents',

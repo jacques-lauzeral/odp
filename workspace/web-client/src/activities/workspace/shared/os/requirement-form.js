@@ -2,11 +2,11 @@ import { CollectionEntityForm } from '../../../../components/collection-entity-f
 import { HistoryTab } from '../../../../components/history-tab.js';
 import { apiClient } from '../../../../shared/api-client.js';
 import {
-    DraftingGroup,
-    getDraftingGroupDisplay,
     getOperationalRequirementTypeDisplay,
     MaturityLevel,
     getMaturityLevelDisplay,
+    getDomainKeys,
+    getDomainLabel,
     idsEqual,
     normalizeId
 } from '/shared/src/index.js';
@@ -162,14 +162,6 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
-        // Handle path field - convert from textarea input to array
-        if (typeof transformed.path === 'string') {
-            transformed.path = transformed.path
-                .split(',')
-                .map(s => s.trim())
-                .filter(s => s.length > 0);
-        }
-
         // Handle tentative field - parse "YYYY" or "YYYY-ZZZZ" into [start, end]
         if (transformed.tentative !== undefined && transformed.tentative !== null) {
             if (typeof transformed.tentative === 'string' && transformed.tentative.trim()) {
@@ -184,18 +176,12 @@ export default class RequirementForm extends CollectionEntityForm {
             }
         });
 
-        // Handle DrG field
-        if (transformed.drg === '' || transformed.drg === null) {
-            transformed.drg = null;
-        }
-
         // Type-specific field clearing
         if (transformed.type === 'ON') {
             // OR-only fields must be cleared for ONs
             transformed.implementedONs = [];
             transformed.dependencies = [];
             transformed.impactedStakeholders = [];
-            transformed.impactedDomains = [];
             transformed.nfrs = undefined;
         } else {
             // ON-only fields must be cleared for ORs
@@ -261,11 +247,6 @@ export default class RequirementForm extends CollectionEntityForm {
 
         const transformed = { ...item };
 
-        // Handle path - convert array to comma-separated string for textarea editing
-        if (transformed.path && Array.isArray(transformed.path)) {
-            transformed.path = transformed.path.join(', ');
-        }
-
         // Handle tentative - convert {start, end} object (or legacy array) to display string for text input
         if (transformed.tentative) {
             transformed.tentative = this.formatTentative(transformed.tentative);
@@ -311,10 +292,6 @@ export default class RequirementForm extends CollectionEntityForm {
     async onValidate(data, mode, item) {
         const errors = [];
 
-        if (data.drg && !Object.keys(DraftingGroup).includes(data.drg)) {
-            errors.push({ field: 'drg', message: 'Invalid drafting group selected' });
-        }
-
         if (data.maturity && !Object.keys(MaturityLevel).includes(data.maturity)) {
             errors.push({ field: 'maturity', message: 'Invalid maturity level selected' });
         }
@@ -353,20 +330,16 @@ export default class RequirementForm extends CollectionEntityForm {
         return options;
     }
 
-    getDraftingGroupOptions() {
-        const options = [{ value: '', label: 'Not assigned' }];
-        Object.keys(DraftingGroup).forEach(key => {
-            options.push({ value: key, label: getDraftingGroupDisplay(key) });
+    getDomainOptions() {
+        const options = [{ value: '', label: 'Select domain...' }];
+        getDomainKeys().forEach(key => {
+            options.push({ value: key, label: getDomainLabel(key) });
         });
         return options;
     }
 
     getStakeholderCategoryOptions() {
         return this.getSetupDataOptions('stakeholderCategories');
-    }
-
-    getDomainOptions() {
-        return this.getSetupDataOptions('domains');
     }
 
     getReferenceDocumentOptions() {
@@ -495,8 +468,8 @@ export default class RequirementForm extends CollectionEntityForm {
     // FORMAT HELPERS
     // ====================
 
-    formatDraftingGroup(value) {
-        return value ? getDraftingGroupDisplay(value) : 'Not assigned';
+    formatDomain(value) {
+        return value ? getDomainLabel(value) : 'Not assigned';
     }
 
     formatEntityReferences(values, expectedType = null) {
@@ -558,7 +531,7 @@ export default class RequirementForm extends CollectionEntityForm {
         const type = formData.type;
 
         // Fields that are OR-only
-        const orOnlyFields = ['implementedONs', 'dependencies', 'impactedStakeholders', 'impactedDomains', 'nfrs'];
+        const orOnlyFields = ['implementedONs', 'dependencies', 'impactedStakeholders', 'nfrs'];
         orOnlyFields.forEach(fieldKey => {
             const el = this.currentModal?.querySelector(`[data-field="${fieldKey}"]`);
             if (el) el.style.display = type === 'OR' ? 'block' : 'none';

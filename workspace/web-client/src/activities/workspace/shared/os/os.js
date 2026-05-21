@@ -34,8 +34,8 @@ import { dom } from '../../../../shared/utils.js';
 import MasterDetail from '../../../../components/master-detail.js';
 import FilterBar from '../../../../components/filter-bar.js';
 import {
-    DraftingGroup,
-    getDraftingGroupDisplay,
+    getDomainKeys,
+    getDomainLabel,
     MaturityLevel,
     getMaturityLevelDisplay,
 } from '/shared/src/index.js';
@@ -132,7 +132,7 @@ export default class OsActivity {
             this.setupData = await this.app.getSetupData();
         } catch (error) {
             errorHandler.handle(error, 'os-setup-data');
-            this.setupData = { stakeholderCategories: [], domains: [], referenceDocuments: [], waves: [] };
+            this.setupData = { stakeholderCategories: [], referenceDocuments: [], waves: [] };
         }
 
         this._buildListShell();
@@ -287,7 +287,6 @@ export default class OsActivity {
         // Map unified filter keys to listOStars param shape
         const keyMap = {
             implements: 'implements',
-            drg:        'drg',
             type:       'type',
             maturity:   'maturity',
             domain:     'domain',
@@ -361,16 +360,12 @@ export default class OsActivity {
                 ],
             },
             {
-                key: 'drg', label: 'Owner Domain', inputType: 'select',
-                options: Object.values(DraftingGroup).map(k => ({ value: k, label: getDraftingGroupDisplay(k) ?? k })),
+                key: 'domain', label: 'Domain', inputType: 'select',
+                options: getDomainKeys().map(k => ({ value: k, label: getDomainLabel(k) })),
             },
             {
                 key: 'maturity', label: 'Maturity', inputType: 'select',
                 options: Object.keys(MaturityLevel).map(k => ({ value: k, label: getMaturityLevelDisplay(k) })),
-            },
-            {
-                key: 'domain', label: 'Impacted Domain', inputType: 'suggest',
-                options: (this.setupData?.domains ?? []).map(d => ({ value: d.id, label: d.name })),
             },
             {
                 key: 'stakeholderCategory', label: 'Stakeholder', inputType: 'suggest',

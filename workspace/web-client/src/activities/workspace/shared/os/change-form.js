@@ -2,11 +2,11 @@ import { CollectionEntityForm } from '../../../../components/collection-entity-f
 import { HistoryTab } from '../../../../components/history-tab.js';
 import { apiClient } from '../../../../shared/api-client.js';
 import {
-    DraftingGroup,
-    getDraftingGroupDisplay,
     MilestoneEventType,
     MaturityLevel,
-    getMaturityLevelDisplay
+    getMaturityLevelDisplay,
+    getDomainKeys,
+    getDomainLabel
 } from '/shared/src/index.js';
 import { MilestoneManager } from './change-form-milestone.js';
 import {
@@ -192,27 +192,12 @@ export default class ChangeForm extends CollectionEntityForm {
             }
         });
 
-        // Handle path field - convert from textarea input to array
-        if (typeof transformed.path === 'string') {
-            transformed.path = transformed.path
-                .split(',')
-                .map(s => s.trim())
-                .filter(s => s.length > 0);
-        }
-
         // Ensure all required text fields are present
         [...requiredTextFields, ...optionalTextFields].forEach(key => {
             if (transformed[key] === undefined || transformed[key] === null) {
                 transformed[key] = '';
             }
         });
-
-        // Handle DrG field
-        if (transformed.drg !== undefined) {
-            if (transformed.drg === '' || transformed.drg === null) {
-                transformed.drg = null;
-            }
-        }
 
         // Add version ID for optimistic locking on edit
         if (mode === 'edit' && item) {
@@ -238,11 +223,6 @@ export default class ChangeForm extends CollectionEntityForm {
         if (!item) return {};
 
         const transformed = { ...item };
-
-        // Handle path - convert array to comma-separated string for textarea editing
-        if (transformed.path && Array.isArray(transformed.path)) {
-            transformed.path = transformed.path.join(', ');
-        }
 
         // Extract IDs from object references
         const referenceFields = ['implementedORs', 'decommissionedORs', 'dependsOnChanges'];
@@ -323,16 +303,11 @@ export default class ChangeForm extends CollectionEntityForm {
         return options;
     }
 
-    getDraftingGroupOptions() {
-        const options = [{ value: '', label: 'Not assigned' }];
-
-        Object.keys(DraftingGroup).forEach(key => {
-            options.push({
-                value: key,
-                label: getDraftingGroupDisplay(key)
-            });
+    getDomainOptions() {
+        const options = [{ value: '', label: 'Select domain...' }];
+        getDomainKeys().forEach(key => {
+            options.push({ value: key, label: getDomainLabel(key) });
         });
-
         return options;
     }
 
@@ -398,9 +373,11 @@ export default class ChangeForm extends CollectionEntityForm {
     // FORMAT HELPERS (Referenced by field config)
     // ====================
 
-    formatDraftingGroup(value) {
-        return value ? getDraftingGroupDisplay(value) : 'Not assigned';
+    formatDomain(value) {
+        return value ? getDomainLabel(value) : 'Not assigned';
     }
+
+
 
     formatEntityReferences(values, type) {
         if (!values || !Array.isArray(values) || values.length === 0) {

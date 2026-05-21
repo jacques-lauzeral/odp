@@ -191,7 +191,7 @@ export class App {
      * Returns setup data, fetching from the server on first call.
      * Subsequent calls return the cached result. Parallel calls share one fetch.
      *
-     * Shape: { stakeholderCategories, domains, referenceDocuments, waves }
+     * Shape: { stakeholderCategories, referenceDocuments, waves }
      *
      * @returns {Promise<object>}
      */
@@ -202,13 +202,11 @@ export class App {
 
         this._setupDataPromise = Promise.all([
             apiClient.get('/stakeholder-categories'),
-            apiClient.get('/domains'),
             apiClient.get('/reference-documents'),
             apiClient.get('/waves'),
-        ]).then(([stakeholderCategories, domains, referenceDocuments, waves]) => {
+        ]).then(([stakeholderCategories, referenceDocuments, waves]) => {
             this._setupData = {
                 stakeholderCategories: stakeholderCategories ?? [],
-                domains:               domains               ?? [],
                 referenceDocuments:    referenceDocuments    ?? [],
                 waves:                 waves                 ?? [],
             };

@@ -1,8 +1,8 @@
 import TemporalGrid from '../../../../components/temporal-grid.js';
 import RequirementForm from '../os/requirement-form.js';
 import {
-    DraftingGroup,
-    getDraftingGroupDisplay
+    getDomainLabel,
+    getDomainKeys
 } from '/shared/src/index.js';
 import { formatTentativeArray } from '/shared/src/model/year-period.js';
 
@@ -14,7 +14,7 @@ import { formatTentativeArray } from '/shared/src/model/year-period.js';
  *   Right : Selected ON details (RequirementForm read-only view)
  *
  * Row hierarchy in TemporalGrid:
- *   separator  → DrG label (e.g. "NM B2B")
+ *   separator  → Domain label (e.g. "4D-Trajectory")
  *   group      → root ON (refinesParents empty), collapsible
  *   child      → ON with refinesParents, indented under its parent group
  */
@@ -267,7 +267,7 @@ export default class ONPlanning {
      * Build all rows from ON data and feed into TemporalGrid.
      *
      * Row structure:
-     *   group (top, aggregate)    — DrG (alphabetical by display label)
+     *   group (top, aggregate)    — Domain (alphabetical by display label)
      *   group (nested, aggregate) — path[0] folder, only when >1 root ONs share the folder
      *   group/flat                — root ON: group if has refining children, flat (addRow) if leaf
      *   child                     — refining ON, always under its parent root ON group
@@ -291,10 +291,6 @@ export default class ONPlanning {
             const ref = on.refinesParents[0];
             return String(ref.itemId || ref.id || ref);
         };
-
-        // Helper: path[0] folder label, or null
-        const pathFolderOf = (on) =>
-            (Array.isArray(on.path) && on.path.length > 0) ? on.path[0] : null;
 
         // Helper: build aggregate [min-start, max-end] milestones for a set of ONs
         const aggregateMilestones = (ons) => {
@@ -334,73 +330,45 @@ export default class ONPlanning {
             }
         };
 
-        // Helper: emit all rows for one DrG
-        const emitDrgOns = (ons, drgId) => {
-            const roots            = ons.filter(isRoot);
-            const rootsWithPath    = roots.filter(on => pathFolderOf(on) !== null);
-            const rootsWithoutPath = roots.filter(on => pathFolderOf(on) === null);
-
-            // Group roots-with-path by path[0]
-            const byFolder = new Map();
-            rootsWithPath.forEach(on => {
-                const folder = pathFolderOf(on);
-                if (!byFolder.has(folder)) byFolder.set(folder, []);
-                byFolder.get(folder).push(on);
-            });
-
-            // Emit path folders alphabetically; promote single-ON folders
-            [...byFolder.keys()].sort((a, b) => a.localeCompare(b)).forEach(folder => {
-                const folderOns = byFolder.get(folder);
-                if (folderOns.length > 1) {
-                    const folderId        = `${drgId}:folder:${folder}`;
-                    const folderMilestones = aggregateMilestones(folderOns);
-                    this.temporalGrid.addGroupRow(folderId, folder, folderMilestones, drgId, true);
-                    folderOns
-                        .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-                        .forEach(root => emitRootOn(root, ons, folderId));
-                } else {
-                    // Single-ON folder: promote directly under DrG group
-                    emitRootOn(folderOns[0], ons, drgId);
-                }
-            });
-
-            // Root ONs without a path go directly under DrG group
-            rootsWithoutPath
+        // Helper: emit all rows for one domain group
+        const emitDrgOns = (ons, domainId) => {
+            const roots = ons.filter(isRoot);
+            roots
                 .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-                .forEach(root => emitRootOn(root, ons, drgId));
+                .forEach(root => emitRootOn(root, ons, domainId));
         };
 
-        // Group ONs by DrG, sort DrG keys alphabetically by display label
-        const byDrg = new Map();
-        const noDrg = [];
+        // Group ONs by domain, sort domain keys alphabetically by display label
+        const byDomain = new Map();
+        const noDomain = [];
 
         this.onData.forEach(on => {
-            if (on.drg) {
-                if (!byDrg.has(on.drg)) byDrg.set(on.drg, []);
-                byDrg.get(on.drg).push(on);
+            if (on.domain) {
+                if (!byDomain.has(on.domain)) byDomain.set(on.domain, []);
+                byDomain.get(on.domain).push(on);
             } else {
-                noDrg.push(on);
+                noDomain.push(on);
             }
         });
 
-        [...byDrg.keys()].sort((a, b) => {
-            const la = getDraftingGroupDisplay(a) || a;
-            const lb = getDraftingGroupDisplay(b) || b;
+        [...byDomain.keys()].sort((a, b) => {
+            const la = getDomainLabel(a) || a;
+            const lb = getDomainLabel(b) || b;
             return la.localeCompare(lb);
-        }).forEach(drg => {
-            const drgLabel      = getDraftingGroupDisplay(drg) || drg;
-            const drgOns        = byDrg.get(drg);
-            const drgMilestones = aggregateMilestones(drgOns);
-            this.temporalGrid.addGroupRow(`drg:${drg}`, drgLabel, drgMilestones, null, true);
-            emitDrgOns(drgOns, `drg:${drg}`);
+        }).forEach(domain => {
+            const domainLabel      = getDomainLabel(domain) || domain;
+            const domainOns        = byDomain.get(domain);
+            const domainMilestones = aggregateMilestones(domainOns);
+            this.temporalGrid.addGroupRow(`domain:${domain}`, domainLabel, domainMilestones, null, true);
+            emitDrgOns(domainOns, `domain:${domain}`);
         });
 
-        // ONs with no DrG
-        if (noDrg.length > 0) {
-            this.temporalGrid.addGroupRow('drg:none', '(No DrG)', aggregateMilestones(noDrg), null, true);
-            noDrg.filter(isRoot)
+        // ONs with no domain
+        if (noDomain.length > 0) {
+            this.temporalGrid.addGroupRow('domain:none', '(No Domain)', aggregateMilestones(noDomain), null, true);
+            noDomain.filter(isRoot)
                 .sort((a, b) => (a.title || '').localeCompare(b.title || ''))
-                .forEach(root => emitRootOn(root, noDrg, 'drg:none'));
+                .forEach(root => emitRootOn(root, noDomain, 'domain:none'));
         }
 
         // Restore selection

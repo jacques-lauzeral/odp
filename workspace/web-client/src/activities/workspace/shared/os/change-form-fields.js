@@ -56,14 +56,14 @@ export const changeFieldDefinitions = [
                 }
             },
             {
-                key: 'drg',
-                label: 'Drafting Group',
+                key: 'domain',
+                label: 'Domain',
                 type: 'select',
                 modes: ['create', 'read', 'edit'],
-                required: false,
-                optionsKey: 'getDraftingGroupOptions',
-                helpText: 'Select the drafting group responsible for this change',
-                formatKey: 'formatDraftingGroup'
+                required: true,
+                optionsKey: 'getDomainOptions',
+                helpText: 'Select the domain for this change',
+                formatKey: 'formatDomain'
             }
         ]
     },
@@ -277,8 +277,7 @@ export const requiredTextFields = [
 export const optionalTextFields = [
     'initialState',
     'finalState',
-    'details',
-    'cost'
+    'details'
 ];
 
 /**

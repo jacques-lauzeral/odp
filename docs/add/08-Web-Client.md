@@ -29,7 +29,6 @@ web-client/src/
 │   │   │   ├── setup.js
 │   │   │   ├── stakeholder-categories.js
 │   │   │   ├── reference-documents.js
-│   │   │   ├── domains.js
 │   │   │   ├── waves.js
 │   │   │   └── bandwidth.js
 │   │   └── shared/
@@ -180,7 +179,7 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 **Setup data shape** (loaded once, cached):
 
 ```js
-{ stakeholderCategories, domains, referenceDocuments, waves }
+{ stakeholderCategories, referenceDocuments, waves }
 ```
 
 `invalidateSetupData()` must be called after any setup entity CRUD operation.
@@ -236,7 +235,7 @@ Four base component classes cover all entity management needs.
 
 ### 6.1 TreeEntity
 
-Used for hierarchical setup entities (`StakeholderCategory`, `Domain`, `ReferenceDocument`). Located in `activities/workspace/setup/tree-entity.js`. Manages real parent–child relationships stored in the database as `REFINES` edges — `parentId` is never stored as a node property. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child, Delete restricted to leaves).
+Used for hierarchical setup entities (`StakeholderCategory`, `ReferenceDocument`). Located in `activities/workspace/setup/tree-entity.js`. Manages real parent–child relationships stored in the database as `REFINES` edges — `parentId` is never stored as a node property. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child, Delete restricted to leaves).
 
 Concrete subclasses declare only three things — no methods required:
 
@@ -703,7 +702,7 @@ Two-pane horizontal layout with resizable column divider:
 
 | Row kind | Content |
 |---|---|
-| `group` (separator) | DrG display name |
+| `group` (separator) | Domain display label |
 | `group` | Root ON (no `refinesParents`); expand/collapse |
 | `child` | Refined ON (has `refinesParents`); indented |
 
@@ -752,10 +751,10 @@ The Prioritisation activity (`activities/workspace/shared/plan/prioritisation.js
 
 | Source | Usage |
 |---|---|
-| `GET /operational-changes` | OCs with `cost`, `drg`, `maturity`, `dependencies`, `milestones` |
+| `GET /operational-changes` | OCs with `cost`, `domain`, `maturity`, `dependencies`, `milestones` |
 | `GET /waves` | Wave definitions |
 | `GET /bandwidths` | Available MW per (waveId, scope) pair |
-| `DraftingGroup` enum | Hardcoded column order |
+| `DraftingGroup` enum | Hardcoded column order — **known limitation**: prioritisation board still uses DrG-based columns; OC `domain` field not yet integrated. Redesign pending. |
 
 ### 17.2 Bandwidth Aggregation Module
 
@@ -848,7 +847,7 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 | `DataCategory` removed | `data-categories.js` deleted |
 | `Service` removed | `services.js` deleted |
 | `Document` → `ReferenceDocument` | `reference-documents.js`; `description` field added; hierarchy up to three levels; now a `TreeEntity`; endpoint `/reference-documents` |
-| `Domain` added | New `TreeEntity` (`domains.js`); has `contact` textarea field |
+| `Domain` removed | `domains.js` deleted — Domain setup entity retired; domain is now a config-driven key from `domains.json` |
 | `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scope)`; `scope` is a `DraftingGroup` enum key |
 | `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed |
 
@@ -876,7 +875,7 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 |---|---|
 | `strategicDocuments` | `referenceDocuments` |
 | `impactedStakeholders` | `stakeholderCategories` |
-| `impactedDomains` | `domains` |
+
 
 ### 18.2 Operational Requirement Fields
 
@@ -900,14 +899,15 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 |---|---|---|
 | `nfrs` | `richtext` | Optional operational NFRs |
 | `impactedStakeholders` | `annotated-reference-list` | Options from `stakeholderCategories` |
-| `impactedDomains` | `annotated-reference-list` | Options from `domains` |
 | `refinesParents` | `reference` | Single-select typeahead; wraps id in `[id]` array on save |
 | `refinedBy` | `reference-list` | Computed, read-only. Uses `computeKey: '_computeRefinedByIds'` |
 | `implementedBy` | `reference-list` | Computed, read-only, ON only. Uses `computeKey: '_computeImplementedByIds'` |
 
 **Renamed:** `impactsStakeholderCategories` → `impactedStakeholders`, `dependsOnRequirements` → `dependencies`, `documentReferences` → `strategicDocuments` (ON only).
 
-**Removed:** `impactsData`, `impactsServices`, `documentReferences` (from OR).
+**Removed:** `impactsData`, `impactsServices`, `documentReferences` (from OR), `impactedDomains` (from OR — replaced by `domain` on the item itself), `drg`, `path`.
+
+**Added to both ON and OR:** `domain` (`select`, required, options from `getDomainKeys()`).
 
 **Traceability tab field order:** Strategic Documents → Refines (Parent) → Refined By → Implements (ONs) → Implemented By (ORs).
 
@@ -926,7 +926,9 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 
 **Renamed:** `satisfiesRequirements` → `implementedORs`, `supersedsRequirements` → `decommissionedORs`.
 
-**Removed:** `documentReferences` section, `visibility` field.
+**Removed:** `documentReferences` section, `visibility` field, `drg`, `path`.
+
+**Added:** `domain` (`select`, required, options from `getDomainKeys()`).
 
 ### 18.4 Milestone Name Field
 
@@ -952,11 +954,11 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 
 **Search:** free-text input (debounced 300ms), maps to `text` parameter — visually separate from structured filters.
 
-**Filter bar:** Type · Owner Domain · Maturity · Impacted Domain · Stakeholder · Implements · Strategic Document.
+**Filter bar:** Type · Domain · Maturity · Stakeholder · Implements · Strategic Document.
 
 **Perspectives:** Collection (flat + grouping) and Tree (REFINES hierarchy). Toggle persists across data reloads.
 
-**Grouping** (Collection only): Type · Owner Domain (DrG) · Maturity.
+**Grouping** (Collection only): Type · Domain · Maturity.
 
 **Column set:**
 
@@ -966,25 +968,55 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 | Code | both | all | Yes |
 | Title | both | all | Yes |
 | Maturity | both | all | Yes |
-| Owner Domain | collection | all | Yes |
+| Domain | collection | all | Yes |
 | Implements | both | OR, OC | No |
 | Refines | collection | ON, OR | No |
 | Strategic Documents | both | ON only | No |
 | Impacted Stakeholders | both | OR, OC | No |
-| Impacted Domain | both | OR, OC | No |
 
 **Virtual field:** `item.implements` is pre-computed in `OStarEntity.onDataUpdated()` — merges `implementedONs` (OR) and `implementedORs` (OC) into a single array for the Implements column renderer.
 
 **OC type normalisation:** OCs from `/operational-changes` have no `type` field — normalised to `'OC'` in `_loadData()` after merge.
 
 **Tree path builder priority:**
-1. `refinesParents` — if present, nest under parent node (graph-based); `path` ignored
-2. `path` — if no refines relation, build virtual folder nodes
-3. OCs — always flat under their DrG group node
+1. `refinesParents` — if present, nest under parent node (graph-based)
+2. ONs/ORs without `refinesParents` — flat under their domain group node
+3. OCs — always flat under their domain group node
 
 ---
 
-## 19. Edition Content Selection — Manage Activity Changes
+## 19. Phase 2 — Domain/Chapter Model Evolution
+
+### 19.1 Setup Layer
+
+| Change | Detail |
+|---|---|
+| `Domain` setup entity retired | `domains.js` deleted; domain is now a config-driven string key from `domains.json` |
+| `domains` removed from setup data cache | `app.getSetupData()` no longer fetches `/domains`; `setupData.domains` no longer exists |
+
+### 19.2 O* Fields
+
+| Field | Change |
+|---|---|
+| `drg` | Removed from OR and OC — replaced by `domain` (string key) |
+| `path` | Removed from OR and OC |
+| `impactedDomains` | Removed from OR |
+| `domain` | Added to both OR and OC — mandatory string key validated against `domains.json` |
+
+### 19.3 O*s Activity
+
+- Filter bar: `drg` and `impactedDomain` filters replaced by single `domain` string key filter
+- Grouping: `drg` grouping replaced by `domain` grouping
+- Tree perspective: root group nodes are now domain groups (`domain:KEY`) instead of DrG groups
+- `on-planning.js`: TemporalGrid separator rows now show domain labels (via `getDomainLabel()`)
+
+### 19.4 Known Limitations (Phase 2)
+
+- **Prioritisation board** (`prioritisation.js`, `prioritisation-grid.js`) still uses `oc.drg` for column placement. OCs now carry `domain` instead. The board is broken for Phase 2 data — redesign of the prioritisation board around the domain model is deferred.
+
+---
+
+## 20. Edition Content Selection — Manage Activity Changes
 
 ### 19.1 ODPEditionForm (`manage/editions/odp-edition-form.js`)
 
