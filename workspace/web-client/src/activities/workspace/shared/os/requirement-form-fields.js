@@ -14,31 +14,10 @@
  * - visibleWhen: Function that determines field visibility based on form data
  */
 export const requirementFieldDefinitions = [
-    // Basic Information Section
+    // Main Section
     {
-        title: 'General',
+        title: 'Main',
         fields: [
-            {
-                key: 'itemId',
-                label: 'ID',
-                type: 'text',
-                modes: ['read', 'edit'],
-                readOnly: true
-            },
-            {
-                key: 'version',
-                label: 'Version',
-                type: 'text',
-                modes: ['read', 'edit'],
-                readOnly: true
-            },
-            {
-                key: 'code',
-                label: 'Code',
-                type: 'text',
-                modes: ['read', 'edit'],
-                readOnly: true
-            },
             {
                 key: 'type',
                 label: 'Type',
@@ -75,14 +54,7 @@ export const requirementFieldDefinitions = [
                 optionsKey: 'getDomainOptions',
                 helpText: 'Select the domain for this requirement',
                 formatKey: 'formatDomain'
-            }
-        ]
-    },
-
-    // Details Section
-    {
-        title: 'Details',
-        fields: [
+            },
             {
                 key: 'statement',
                 label: 'Statement',
@@ -214,9 +186,44 @@ export const requirementFieldDefinitions = [
         ]
     },
 
-    // Impact Section
+    // History Information Section
     {
-        title: 'Impact',
+        title: 'History',
+        fields: [
+            {
+                key: 'itemId',
+                label: 'ID',
+                type: 'text',
+                modes: ['read', 'edit'],
+                readOnly: true
+            },
+            {
+                key: 'version',
+                label: 'Version',
+                type: 'text',
+                modes: ['read', 'edit'],
+                readOnly: true
+            },
+            {
+                key: 'code',
+                label: 'Code',
+                type: 'text',
+                modes: ['read', 'edit'],
+                readOnly: true
+            },
+            {
+                key: '_history',
+                label: 'Version History',
+                type: 'history',
+                modes: ['read', 'edit'],
+                readOnly: true
+            }
+        ]
+    },
+
+    // Under Work Section
+    {
+        title: 'Other',
         fields: [
             {
                 key: 'impactedStakeholders',
@@ -232,14 +239,6 @@ export const requirementFieldDefinitions = [
                 setupEntity: 'stakeholderCategories',
                 helpText: 'Select affected stakeholder categories and optionally add notes about the nature of the impact'
             },
-
-        ]
-    },
-
-    // Planning Section
-    {
-        title: 'Planning',
-        fields: [
             {
                 key: 'maturity',
                 label: 'Maturity',
@@ -271,14 +270,7 @@ export const requirementFieldDefinitions = [
                 optionsKey: 'getDependencyRequirementOptions',
                 helpText: 'ORs that must be implemented before this OR',
                 formatKey: 'formatEntityReferences'
-            }
-        ]
-    },
-
-    // Documentation Section
-    {
-        title: 'Documentation',
-        fields: [
+            },
             {
                 key: 'additionalDocumentation',
                 label: 'Additional Documentation',
@@ -287,21 +279,8 @@ export const requirementFieldDefinitions = [
                 staticText: 'Not available yet'
             }
         ]
-    },
-
-    // History Section
-    {
-        title: 'History',
-        fields: [
-            {
-                key: '_history',
-                label: 'Version History',
-                type: 'history',
-                modes: ['read', 'edit'],
-                readOnly: true
-            }
-        ]
     }
+
 ];
 
 /**
