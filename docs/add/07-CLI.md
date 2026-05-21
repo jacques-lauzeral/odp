@@ -8,7 +8,7 @@ The ODIP CLI is a Node.js command-line tool built with Commander.js. It is a pur
 CLI Command → node-fetch → REST API → Service Layer → Store → Neo4j
 ```
 
-**Entry point**: `cli/src/index.js`  
+**Entry point**: `cli/src/index.js` — loads domain and edition config from `$ODIP_HOME/config/` at startup via `loadConfig()` before command execution  
 **Base utilities**: `cli/src/base-commands.js` — shared HTTP helpers, output formatting, error handling, and user identity management  
 **Commands**: one file per entity in `cli/src/commands/`
 
@@ -46,9 +46,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `stakeholder-category create <name> <description>` | Create |
 | `stakeholder-category update <id> <name> <description>` | Update |
 | `stakeholder-category delete <id>` | Delete |
-| *(same pattern for `domain`, `reference-document`, `bandwidth`, `wave`)* | |
-
-**`domain`** supports `--parent <id>` (Domain REFINES hierarchy). Fields: `name`, `description`, `contact`.
+| *(same pattern for `reference-document`, `bandwidth`, `wave`)* | |
 
 **`reference-document`** supports `--parent <id>` (ReferenceDocument REFINES hierarchy). Fields: `name`, `description` (optional), `version` (optional), `url`. Hierarchy supports up to three levels (root / child / grandchild).
 
@@ -70,13 +68,13 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `requirement versions <itemId>` | List version history |
 | `requirement show-version <itemId> <versionNumber>` | Show specific version |
 
-**`requirement list` filter flags**: `--type ON|OR`, `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
+**`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
 **`requirement list` projection**: `--projection summary|standard` (default: `standard`). `summary` omits rich-text fields; all six rich-text columns render `—` in the list table.
 
 **`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`.
 
-**`requirement create/update` options**: `--type`, `--drg`, `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--impacted-domains`, `--maturity`, `--dependencies`, `--nfrs`.
+**`requirement create/update` options**: `--type`, `--domain` (required on create), `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--maturity`, `--dependencies`, `--nfrs`.
 
 ### Operational Changes
 
@@ -92,13 +90,28 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `change versions <itemId>` | List version history |
 | `change show-version <itemId> <versionNumber>` | Show specific version |
 
-**`change list` filter flags**: `--drg`, `--title`, `--text`, `--path`, `--stakeholder-category <ids>`.
+**`change list` filter flags**: `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
 **`change list` projection**: `--projection summary|standard` (default: `standard`). `summary` omits rich-text fields; all six rich-text columns render `—` in the list table.
 
 **`change show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends the derived field `requiredByOCs`. Fields absent from the projection render as `(not in projection)`.
 
-**`change create/update` options**: `--purpose`, `--drg`, `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
+**`change create/update` options**: `--purpose`, `--domain` (required on create), `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
+
+### Chapters
+
+| Command | Action |
+|---|---|
+| `chapter list` | List all chapters (config-owned fields merged) |
+| `chapter show <itemId>` | Show chapter latest version (or `--edition` context) |
+| `chapter update <itemId> <expectedVersionId>` | Full update — replace narrative and/or osHierarchy |
+| `chapter patch <itemId> <expectedVersionId>` | Partial update — update narrative and/or osHierarchy |
+| `chapter versions <itemId>` | List version history |
+| `chapter show-version <itemId> <versionNumber>` | Show specific version |
+
+No `create` or `delete` — chapters are managed by server bootstrap from `edition.json`.
+
+**`chapter update/patch` options**: `--narrative <delta-json>`, `--os-hierarchy <json>`.
 
 ### Management Entities
 
@@ -188,6 +201,7 @@ The following command files were removed in the Edition 4 model update:
 | `data-category.js` | `DataCategory` entity removed from model |
 | `service.js` | `Service` entity removed from model |
 | `document.js` | `Document` renamed to `ReferenceDocument`; replaced by `reference-document.js` |
+| `domain.js` | `Domain` setup entity retired — replaced by `chapter.js` and config-driven domain keys |
 
 ---
 

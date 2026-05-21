@@ -1,6 +1,6 @@
 // workspace/cli/src/commands/operational-requirement.js
 import { VersionedCommands } from '../base-commands.js';
-import { DraftingGroup, DraftingGroupKeys, isDraftingGroupValid, getDraftingGroupDisplay } from '../../../shared/src/index.js';
+import { isDomainValid, getDomainKeys, getDomainLabel } from '../../../shared/src/index.js';
 import Table from 'cli-table3';
 import fetch from "node-fetch";
 
@@ -24,17 +24,16 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--baseline <id>', 'Show items as they existed in specified baseline')
             .option('--edition <id>', 'Show items in specified edition context (mutually exclusive with --baseline)')
             .option('--type <type>', 'Filter by requirement type (ON or OR)')
-            .option('--drg <drg>', `Filter by drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('--domain <domain>', 'Filter by domain key')
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
-            .option('--path <path>', 'Filter by path element')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
-                    if (options.drg && !isDraftingGroupValid(options.drg)) {
-                        console.error(`Invalid DRG value: ${options.drg}`);
-                        console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
+                    if (options.domain && !isDomainValid(options.domain)) {
+                        console.error(`Invalid domain key: ${options.domain}`);
+                        console.error(`Valid values: ${getDomainKeys().join(', ')}`);
                         process.exit(1);
                     }
 
@@ -74,20 +73,20 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Type', 'DRG', 'Title', 'Version', 'Created By', 'Statement', 'Rationale', 'Flows', 'NFRs', 'Private Notes', 'Add. Doc.'],
-                        colWidths: [10, 15, 8, 12, 25, 10, 20, 18, 18, 18, 18, 18, 18]
+                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version', 'Created By', 'Statement', 'Rationale', 'Flows', 'NFRs', 'Private Notes', 'Add. Doc.'],
+                        colWidths: [10, 15, 8, 15, 25, 10, 20, 18, 18, 18, 18, 18, 18]
                     });
 
                     const trunc = (val) => val ? String(val).substring(0, 16) : '—';
 
                     items.forEach(item => {
-                        const drgDisplay = item.drg ? getDraftingGroupDisplay(item.drg) : '-';
+                        const domainDisplay = item.domain ? getDomainLabel(item.domain) : '-';
                         const codeDisplay = item.code || '-';
                         table.push([
                             item.itemId,
                             codeDisplay,
                             item.type,
-                            drgDisplay,
+                            domainDisplay,
                             item.title,
                             item.version,
                             item.createdBy,
@@ -114,10 +113,9 @@ class OperationalRequirementCommands extends VersionedCommands {
         const params = [];
 
         if (options.type) params.push(`type=${encodeURIComponent(options.type)}`);
-        if (options.drg) params.push(`drg=${encodeURIComponent(options.drg)}`);
+        if (options.domain) params.push(`domain=${encodeURIComponent(options.domain)}`);
         if (options.title) params.push(`title=${encodeURIComponent(options.title)}`);
         if (options.text) params.push(`text=${encodeURIComponent(options.text)}`);
-        if (options.path) params.push(`path=${encodeURIComponent(options.path)}`);
         if (options.stakeholderCategory) params.push(`stakeholderCategory=${encodeURIComponent(options.stakeholderCategory)}`);
 
         return params;
@@ -134,10 +132,9 @@ class OperationalRequirementCommands extends VersionedCommands {
         const filters = [];
 
         if (options.type) filters.push(`type=${options.type}`);
-        if (options.drg) filters.push(`drg=${options.drg}`);
+        if (options.domain) filters.push(`domain=${options.domain}`);
         if (options.title) filters.push(`title="${options.title}"`);
         if (options.text) filters.push(`text="${options.text}"`);
-        if (options.path) filters.push(`path="${options.path}"`);
         if (options.stakeholderCategory) filters.push(`stakeholder-categories=[${options.stakeholderCategory}]`);
 
         return filters.length > 0 ? ` (Filtered: ${filters.join(', ')})` : '';
@@ -151,10 +148,9 @@ class OperationalRequirementCommands extends VersionedCommands {
 
         console.log(`Type: ${item.type}`);
         console.log(`Code: ${item.code || '—'}`);
-        console.log(`DRG: ${item.drg ? getDraftingGroupDisplay(item.drg) : '—'}`);
+        console.log(`Domain: ${item.domain ? getDomainLabel(item.domain) : '—'}`);
         console.log(`Maturity: ${item.maturity || '—'}`);
         console.log(`Tentative: ${item.tentative ? `${item.tentative[0]} – ${item.tentative[1]}` : '—'}`);
-        console.log(`Path: ${item.path && item.path.length > 0 ? item.path.join(' > ') : '—'}`);
 
         // rich-text fields — standard and extended projections
         console.log(`\nStatement: ${item.statement !== undefined ? (item.statement || '—') : '(not in projection)'}`);
@@ -178,11 +174,6 @@ class OperationalRequirementCommands extends VersionedCommands {
         console.log(`Impacted Stakeholders:`);
         if (item.impactedStakeholders && item.impactedStakeholders.length > 0) {
             item.impactedStakeholders.forEach(s => console.log(`  - ${s.title} [ID: ${s.id}]`));
-        } else { console.log(`  None`); }
-
-        console.log(`Impacted Domains:`);
-        if (item.impactedDomains && item.impactedDomains.length > 0) {
-            item.impactedDomains.forEach(d => console.log(`  - ${d.title} [ID: ${d.id}]`));
         } else { console.log(`  None`); }
 
         console.log(`Dependencies:`);
@@ -226,18 +217,6 @@ class OperationalRequirementCommands extends VersionedCommands {
         } else if (item.requiredByORs !== undefined) { console.log(`  None`); }
     }
 
-    validateDRG(drg) {
-        if (!drg) return null;
-
-        if (!isDraftingGroupValid(drg)) {
-            console.error(`Invalid DRG value: ${drg}`);
-            console.error(`Valid values: ${DraftingGroupKeys.join(', ')}`);
-            process.exit(1);
-        }
-
-        return drg;
-    }
-
     parseIds(input) {
         if (!input) return [];
 
@@ -250,7 +229,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .command('create <title>')
             .description(`Create a new ${this.displayName}`)
             .option('--type <type>', `ON | OR (default: OR)`)
-            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .requiredOption('--domain <domain>', `Domain key from domains.json`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--flows <flows>', `Flows`)
@@ -260,25 +239,28 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
-            .option('--impacted-domains <ids>', `Impacted domain IDs (comma-separated)`)
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .action(async (title, options) => {
                 try {
+                    if (!isDomainValid(options.domain)) {
+                        console.error(`Invalid domain key: ${options.domain}`);
+                        console.error(`Valid values: ${getDomainKeys().join(', ')}`);
+                        process.exit(1);
+                    }
+
                     const data = {
                         title,
                         type: options.type || 'OR',
-                        drg: this.validateDRG(options.drg),
+                        domain: options.domain,
                         statement: options.statement || '',
                         rationale: options.rationale || '',
                         flows: options.flows || '',
                         nfrs: options.nfrs || '',
                         privateNotes: options.privateNotes || '',
                         maturity: options.maturity || 'DRAFT',
-                        path: [],
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
-                        impactedDomains: this.parseIds(options.impactedDomains),
                         dependencies: this.parseIds(options.dependencies)
                     };
 
@@ -296,9 +278,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const entity = await response.json();
                     console.log(`Created ${this.displayName}: ${entity.title} (ID: ${entity.itemId})`);
                     console.log(`Version: ${entity.version} (Version ID: ${entity.versionId})`);
-                    if (entity.drg) {
-                        console.log(`DRG: ${getDraftingGroupDisplay(entity.drg)}`);
-                    }
+                    console.log(`Domain: ${entity.domain || '—'}`);
                 } catch (error) {
                     console.error(`Error creating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -311,7 +291,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .command('update <itemId> <expectedVersionId> <title>')
             .description(`Update a ${this.displayName} (creates new version)`)
             .option('--type <type>', `ON | OR`)
-            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('--domain <domain>', `Domain key from domains.json`)
             .option('--statement <statement>', `Statement`)
             .option('--rationale <rationale>', `Rationale`)
             .option('--flows <flows>', `Flows`)
@@ -321,7 +301,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--parent <requirement-id>', `Parent ${this.displayName} ID`)
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
-            .option('--impacted-domains <ids>', `Impacted domain IDs (comma-separated)`)
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
@@ -329,18 +308,16 @@ class OperationalRequirementCommands extends VersionedCommands {
                         expectedVersionId,
                         title,
                         type: options.type || 'OR',
-                        drg: this.validateDRG(options.drg),
+                        domain: options.domain,
                         statement: options.statement || '',
                         rationale: options.rationale || '',
                         flows: options.flows || '',
                         nfrs: options.nfrs || '',
                         privateNotes: options.privateNotes || '',
                         maturity: options.maturity || 'DRAFT',
-                        path: [],
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
-                        impactedDomains: this.parseIds(options.impactedDomains),
                         dependencies: this.parseIds(options.dependencies)
                     };
 
@@ -370,9 +347,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const item = await response.json();
                     console.log(`Updated ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
                     console.log(`New version: ${item.version} (Version ID: ${item.versionId})`);
-                    if (item.drg) {
-                        console.log(`DRG: ${getDraftingGroupDisplay(item.drg)}`);
-                    }
+                    console.log(`Domain: ${item.domain || '—'}`);
                 } catch (error) {
                     console.error(`Error updating ${this.displayName}:`, error.message);
                     process.exit(1);
@@ -386,7 +361,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .description(`Patch a ${this.displayName} (partial update, creates new version)`)
             .option('--title <title>', 'New title')
             .option('--type <type>', 'ON | OR')
-            .option('--drg <drg>', `Drafting group (${DraftingGroupKeys.join(', ')})`)
+            .option('--domain <domain>', 'Domain key from domains.json')
             .option('--statement <statement>', 'New statement')
             .option('--rationale <rationale>', 'New rationale')
             .option('--flows <flows>', 'New flows')
@@ -396,7 +371,6 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--parent <requirement-id>', 'Parent requirement ID')
             .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
             .option('--impacted-stakeholders <ids>', 'Impacted stakeholder category IDs (comma-separated)')
-            .option('--impacted-domains <ids>', 'Impacted domain IDs (comma-separated)')
             .option('--dependencies <ids>', 'Dependency OR IDs (comma-separated)')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
@@ -404,7 +378,7 @@ class OperationalRequirementCommands extends VersionedCommands {
 
                     if (options.title) data.title = options.title;
                     if (options.type) data.type = options.type;
-                    if (options.drg !== undefined) data.drg = this.validateDRG(options.drg);
+                    if (options.domain !== undefined) data.domain = options.domain;
                     if (options.statement) data.statement = options.statement;
                     if (options.rationale) data.rationale = options.rationale;
                     if (options.flows) data.flows = options.flows;
@@ -414,7 +388,6 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.parent) data.refinesParents = [options.parent];
                     if (options.implementedOns !== undefined) data.implementedONs = this.parseIds(options.implementedOns);
                     if (options.impactedStakeholders) data.impactedStakeholders = this.parseIds(options.impactedStakeholders);
-                    if (options.impactedDomains) data.impactedDomains = this.parseIds(options.impactedDomains);
                     if (options.dependencies) data.dependencies = this.parseIds(options.dependencies);
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
@@ -443,9 +416,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const item = await response.json();
                     console.log(`Patched ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
                     console.log(`New version: ${item.version} (Version ID: ${item.versionId})`);
-                    if (item.drg) {
-                        console.log(`DRG: ${getDraftingGroupDisplay(item.drg)}`);
-                    }
+                    console.log(`Domain: ${item.domain || '—'}`);
                 } catch (error) {
                     console.error(`Error patching ${this.displayName}:`, error.message);
                     process.exit(1);
