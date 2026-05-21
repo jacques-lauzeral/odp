@@ -5,8 +5,6 @@ import {
     getOperationalRequirementTypeDisplay,
     MaturityLevel,
     getMaturityLevelDisplay,
-    getDomainKeys,
-    getDomainLabel,
     idsEqual,
     normalizeId
 } from '/shared/src/index.js';
@@ -28,6 +26,9 @@ import {
 export default class RequirementForm extends CollectionEntityForm {
     constructor(entityConfig, context) {
         super(entityConfig, context);
+
+        // Domains — passed via context from RequirementDetails, derived from GET /chapters
+        this._domains = context.domains ?? [];
 
         // Cache for parent requirements, ON requirements, and dependency requirements
         this.parentRequirementsCache = null;
@@ -332,8 +333,8 @@ export default class RequirementForm extends CollectionEntityForm {
 
     getDomainOptions() {
         const options = [{ value: '', label: 'Select domain...' }];
-        getDomainKeys().forEach(key => {
-            options.push({ value: key, label: getDomainLabel(key) });
+        this._domains.forEach(d => {
+            options.push({ value: d.key, label: d.title });
         });
         return options;
     }
@@ -469,7 +470,9 @@ export default class RequirementForm extends CollectionEntityForm {
     // ====================
 
     formatDomain(value) {
-        return value ? getDomainLabel(value) : 'Not assigned';
+        if (!value) return 'Not assigned';
+        const domain = this._domains.find(d => d.key === value);
+        return domain ? domain.title : value;
     }
 
     formatEntityReferences(values, expectedType = null) {

@@ -4,9 +4,7 @@ import { apiClient } from '../../../../shared/api-client.js';
 import {
     MilestoneEventType,
     MaturityLevel,
-    getMaturityLevelDisplay,
-    getDomainKeys,
-    getDomainLabel
+    getMaturityLevelDisplay
 } from '/shared/src/index.js';
 import { MilestoneManager } from './change-form-milestone.js';
 import {
@@ -31,6 +29,9 @@ import {
 export default class ChangeForm extends CollectionEntityForm {
     constructor(entityConfig, context) {
         super(entityConfig, context);
+
+        // Domains — passed via context from ChangeDetails, derived from GET /chapters
+        this._domains = context.domains ?? [];
 
         // Cache for requirements
         this.requirementsCache = null;
@@ -305,8 +306,8 @@ export default class ChangeForm extends CollectionEntityForm {
 
     getDomainOptions() {
         const options = [{ value: '', label: 'Select domain...' }];
-        getDomainKeys().forEach(key => {
-            options.push({ value: key, label: getDomainLabel(key) });
+        this._domains.forEach(d => {
+            options.push({ value: d.key, label: d.title });
         });
         return options;
     }
@@ -374,7 +375,9 @@ export default class ChangeForm extends CollectionEntityForm {
     // ====================
 
     formatDomain(value) {
-        return value ? getDomainLabel(value) : 'Not assigned';
+        if (!value) return 'Not assigned';
+        const domain = this._domains.find(d => d.key === value);
+        return domain ? domain.title : value;
     }
 
 

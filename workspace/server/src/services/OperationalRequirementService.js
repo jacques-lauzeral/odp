@@ -1,11 +1,11 @@
 import { VersionedItemService } from './VersionedItemService.js';
 import {
-    isDomainValid,
     OperationalRequirementType,
     isOperationalRequirementTypeValid,
     MaturityLevel,
     isMaturityLevelValid
 } from '../../../shared/src/index.js';
+import { isDomainValid } from '../config/loader.js';
 import {
     operationalRequirementStore,
     stakeholderCategoryStore,

@@ -60,13 +60,15 @@ export default class ChangeDetails {
         this.container.innerHTML = this._buildLoadingHtml();
 
         try {
-            const [item, setupData] = await Promise.all([
+            const [item, setupData, domains] = await Promise.all([
                 this._fetch(id),
                 this.app.getSetupData(),
+                this.app.getDomains(),
             ]);
 
             this.item       = item;
             this._setupData = setupData;
+            this._domains   = domains;
 
             const formExisted = this._form != null;
             await this._ensureForm(setupData);
@@ -118,6 +120,7 @@ export default class ChangeDetails {
         const entityConfig = { endpoint: '/operational-changes' };
         this._form = new ChangeForm(entityConfig, {
             setupData,
+            domains:         this._domains ?? [],
             getSetupData:    () => this._setupData,
             getRequirements: () => [],
             onNavigate: (ref) => this._navigateToRef(ref),

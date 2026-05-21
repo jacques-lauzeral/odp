@@ -1437,6 +1437,7 @@ export class CollectionEntityForm {
 
         // Set as current modal
         this.currentModal = modalElement;
+        CollectionEntityForm._activeInstance = this;
 
         // Attach events
         this.attachModalEvents();

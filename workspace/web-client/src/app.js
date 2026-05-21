@@ -37,6 +37,8 @@ export class App {
         this.datasetContext = null;
         this._setupData = null;        // lazy-loaded shared cache
         this._setupDataPromise = null; // in-flight guard
+        this._domains = null;          // config-derived domain list, cached permanently
+        this._domainsPromise = null;   // in-flight guard
         this.header = null;
         this.router = null;
         this.connectionCheckInterval = null;
@@ -227,6 +229,39 @@ export class App {
     invalidateSetupData() {
         this._setupData = null;
         this._setupDataPromise = null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Domains (public — config-derived, cached permanently)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns domain list derived from chapter config, fetching on first call.
+     * Domains are config-driven and stable at runtime — never invalidated.
+     * Parallel calls share one in-flight fetch.
+     *
+     * Shape: { key: string, title: string }[]
+     *
+     * @returns {Promise<Array<{ key: string, title: string }>>}
+     */
+    async getDomains() {
+        if (this._domains) return this._domains;
+
+        if (this._domainsPromise) return this._domainsPromise;
+
+        this._domainsPromise = apiClient.get('/chapters').then(chapters => {
+            const seen = new Set();
+            this._domains = (chapters ?? [])
+                .filter(c => c.domain && !seen.has(c.domain) && seen.add(c.domain))
+                .map(c => ({ key: c.domain, title: c.title ?? c.domain }));
+            this._domainsPromise = null;
+            return this._domains;
+        }).catch(error => {
+            this._domainsPromise = null;
+            throw error;
+        });
+
+        return this._domainsPromise;
     }
 
     // -------------------------------------------------------------------------

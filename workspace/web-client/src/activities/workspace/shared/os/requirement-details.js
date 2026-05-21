@@ -60,13 +60,15 @@ export default class RequirementDetails {
         this.container.innerHTML = this._buildLoadingHtml();
 
         try {
-            const [item, setupData] = await Promise.all([
+            const [item, setupData, domains] = await Promise.all([
                 this._fetch(id),
                 this.app.getSetupData(),
+                this.app.getDomains(),
             ]);
 
             this.item       = item;
             this._setupData = setupData;
+            this._domains   = domains;
 
             const formExisted = this._form != null;
             await this._ensureForm(setupData);
@@ -118,6 +120,7 @@ export default class RequirementDetails {
         const entityConfig = { endpoint: '/operational-requirements' };
         this._form = new RequirementForm(entityConfig, {
             setupData,
+            domains:         this._domains ?? [],
             getSetupData:    () => this._setupData,
             // Synthesise a minimal requirements list from extended projection fields
             // so that ReferenceListManager can resolve labels for refinedBy / implementedBy chips.

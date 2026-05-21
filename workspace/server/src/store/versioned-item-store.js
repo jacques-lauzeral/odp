@@ -34,15 +34,15 @@ export class VersionedItemStore extends BaseStore {
     }
 
     /**
-     * Find the maximum code number for a given entity type and DRG combination
+     * Find the maximum code number for a given entity type and domain combination
      * @param {string} entityType - 'ON', 'OR', or 'OC'
-     * @param {string} drg - Drafting Group enum value
+     * @param {string} domain - Domain key (e.g. 'ASM_ATFCM')
      * @param {Transaction} transaction - Transaction instance
      * @returns {Promise<number>} Maximum code number found (0 if none exist)
      */
-    async _findMaxCodeNumber(entityType, drg, transaction) {
+    async _findMaxCodeNumber(entityType, domain, transaction) {
         try {
-            const codePrefix = `${entityType}-${drg}-`;
+            const codePrefix = `${entityType}-${domain}-`;
 
             const result = await transaction.run(`
                 MATCH (item:${this.nodeLabel})
@@ -67,15 +67,15 @@ export class VersionedItemStore extends BaseStore {
     /**
      * Generate a unique code for an entity
      * @param {string} entityType - 'ON', 'OR', or 'OC'
-     * @param {string} drg - Drafting Group enum value
+     * @param {string} domain - Domain key (e.g. 'ASM_ATFCM')
      * @param {Transaction} transaction - Transaction instance
-     * @returns {Promise<string>} Generated code (e.g., "ON-IDL-0001")
+     * @returns {Promise<string>} Generated code (e.g., "ON-ASM_ATFCM-0001")
      */
-    async _generateCode(entityType, drg, transaction) {
-        const maxNumber = await this._findMaxCodeNumber(entityType, drg, transaction);
+    async _generateCode(entityType, domain, transaction) {
+        const maxNumber = await this._findMaxCodeNumber(entityType, domain, transaction);
         const nextNumber = maxNumber + 1;
         const paddedNumber = nextNumber.toString().padStart(4, '0');
-        return `${entityType}-${drg}-${paddedNumber}`;
+        return `${entityType}-${domain}-${paddedNumber}`;
     }
 
     /**
@@ -97,11 +97,11 @@ export class VersionedItemStore extends BaseStore {
             // Extract relationships from version data (null currentVersionId = create path)
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData, null, transaction);
 
-            // Generate code if drg is provided
+            // Generate code if domain is provided
             let code = null;
-            if (contentData.drg) {
+            if (contentData.domain) {
                 const entityType = this._getEntityTypeForCode(data);
-                code = await this._generateCode(entityType, contentData.drg, transaction);
+                code = await this._generateCode(entityType, contentData.domain, transaction);
             }
 
             // Create Item node with code

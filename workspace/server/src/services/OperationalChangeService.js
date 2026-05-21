@@ -1,12 +1,12 @@
 import { VersionedItemService } from './VersionedItemService.js';
 import {
     MilestoneEventType,
-    isDomainValid,
     isMilestoneEventValid,
     MilestoneEventKeys,
     MaturityLevel,
     isMaturityLevelValid
 } from '../../../shared/src/index.js';
+import { isDomainValid } from '../config/loader.js';
 import {
     operationalChangeStore,
     operationalRequirementStore,

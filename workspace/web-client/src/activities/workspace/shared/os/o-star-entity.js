@@ -24,7 +24,6 @@ import CollectionEntity from '../../../../components/collection-entity.js';
 import TreeTableEntity from '../../../../components/tree-table-entity.js';
 import { odpColumnTypes } from '../../../../components/odp-column-types.js';
 import {
-    getDomainLabel,
     getMaturityLevelDisplay,
     MaturityLevel,
 } from '/shared/src/index.js';
@@ -42,6 +41,7 @@ export default class OStarEntity {
     constructor(app, setupData, options = {}) {
         this.app       = app;
         this.setupData = setupData;
+        this._domains  = options.domains ?? [];
 
         this._onItemSelect            = options.onItemSelect            ?? (() => {});
         this._getViewControlsEl       = options.getViewControlsEl       ?? (() => null);
@@ -110,7 +110,7 @@ export default class OStarEntity {
             domain: {
                 key: 'domain', label: 'Domain', width: '120px',
                 type: 'text', sortable: true,
-                render: (value) => value ? getDomainLabel(value) : '—',
+                render: (value) => value ? (this._domains.find(d => d.key === value)?.title ?? value) : '—',
                 appliesTo: ['on-node', 'or-node', 'oc-node'],
             },
             refinesParents: {
@@ -186,7 +186,7 @@ export default class OStarEntity {
         // OCs — flat under their domain group
         if (entity.type === 'OC') {
             const domainKey   = entity.domain ?? 'no-domain';
-            const domainLabel = entity.domain ? getDomainLabel(entity.domain) : '—';
+            const domainLabel = entity.domain ? (this._domains.find(d => d.key === entity.domain)?.title ?? entity.domain) : '—';
             return [
                 { type: 'drg', value: domainLabel, id: `domain:${domainKey}` },
                 leaf,
@@ -197,7 +197,7 @@ export default class OStarEntity {
         const path = [];
 
         if (entity.domain) {
-            path.push({ type: 'drg', value: getDomainLabel(entity.domain), id: `domain:${entity.domain}` });
+            path.push({ type: 'drg', value: this._domains.find(d => d.key === entity.domain)?.title ?? entity.domain, id: `domain:${entity.domain}` });
         }
 
         if (entity.refinesParents?.length) {
@@ -383,14 +383,14 @@ export default class OStarEntity {
             const { default: ChangeForm } = await import('./change-form.js');
             const form = new ChangeForm(
                 { endpoint: '/operational-changes' },
-                { setupData: this.setupData, getSetupData: () => this.setupData, getRequirements: () => this.data }
+                { setupData: this.setupData, domains: this._domains, getSetupData: () => this.setupData, getRequirements: () => this.data }
             );
             form.showCreateModal();
         } else {
             const { default: RequirementForm } = await import('./requirement-form.js');
             const form = new RequirementForm(
                 { endpoint: '/operational-requirements' },
-                { setupData: this.setupData, getSetupData: () => this.setupData, getRequirements: () => this.data }
+                { setupData: this.setupData, domains: this._domains, getSetupData: () => this.setupData, getRequirements: () => this.data }
             );
             form.showCreateModal({ defaultType: type });
         }

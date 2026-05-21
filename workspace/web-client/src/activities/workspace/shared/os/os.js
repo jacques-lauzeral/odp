@@ -34,8 +34,6 @@ import { dom } from '../../../../shared/utils.js';
 import MasterDetail from '../../../../components/master-detail.js';
 import FilterBar from '../../../../components/filter-bar.js';
 import {
-    getDomainKeys,
-    getDomainLabel,
     MaturityLevel,
     getMaturityLevelDisplay,
 } from '/shared/src/index.js';
@@ -60,6 +58,7 @@ export default class OsActivity {
         this._filtersObject = {};
         this._searchDebounce = null;
         this._counts = { ON: 0, OR: 0, OC: 0 };
+        this._domains = [];
     }
 
     // -------------------------------------------------------------------------
@@ -133,6 +132,13 @@ export default class OsActivity {
         } catch (error) {
             errorHandler.handle(error, 'os-setup-data');
             this.setupData = { stakeholderCategories: [], referenceDocuments: [], waves: [] };
+        }
+
+        try {
+            this._domains = await this.app.getDomains();
+        } catch (error) {
+            errorHandler.handle(error, 'os-domains');
+            this._domains = [];
         }
 
         this._buildListShell();
@@ -239,6 +245,7 @@ export default class OsActivity {
         }
         const { default: OStarEntity } = await import('./o-star-entity.js');
         this._ostarEntity = new OStarEntity(this.app, this.setupData, {
+            domains:                 this._domains,
             onItemSelect:            (item) => this._handleItemSelect(item),
             getViewControlsEl:       ()     => this._viewControlsEl,
             isReadOnly:              this._isReadOnly(),
@@ -361,7 +368,7 @@ export default class OsActivity {
             },
             {
                 key: 'domain', label: 'Domain', inputType: 'select',
-                options: getDomainKeys().map(k => ({ value: k, label: getDomainLabel(k) })),
+                options: this._domains.map(d => ({ value: d.key, label: d.title })),
             },
             {
                 key: 'maturity', label: 'Maturity', inputType: 'select',
