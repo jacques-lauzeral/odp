@@ -69,7 +69,7 @@ export default class ChapterToc {
                     <select class="odip-input chapter-toc__chapter-select" id="chapterTocSelect">
                         ${ordered.map(({ chapter, depth }) => {
             const indent  = '— '.repeat(depth);
-            const title   = chapter.title ?? chapter.key ?? String(chapter.itemId);
+            const title   = chapter.title ?? chapter.code ?? String(chapter.itemId);
             const domain  = chapter.domain ? ` [${chapter.domain}]` : '';
             const sel     = chapter.itemId === selectedItemId ? ' selected' : '';
             return `<option value="${this._esc(String(chapter.itemId))}"${sel}>${this._esc(indent + title + domain)}</option>`;
@@ -115,6 +115,11 @@ export default class ChapterToc {
                     id:   o.id   ?? o.itemId,
                     type: o.type ?? 'OC',
                 }));
+
+                // Build ID lookup for hierarchy item enrichment
+                const oStarById = new Map(normalised.map(o => [String(o.id ?? o.itemId), o]));
+                this._enrichHierarchy(hierarchy, oStarById);
+
                 const assignedIds = new Set(this._collectAssignedIds(hierarchy));
                 this._unassignedOStars = normalised.filter(o =>
                     !assignedIds.has(String(o.itemId ?? o.id))
@@ -355,11 +360,54 @@ export default class ChapterToc {
     }
 
     _parseHierarchy(chapter) {
-        let raw = chapter?.osHierarchy ?? chapter?.jsonOsHierarchy ?? [];
+        let raw = chapter?.osHierarchy ?? chapter?.jsonOsHierarchy ?? null;
         if (typeof raw === 'string') {
-            try { raw = JSON.parse(raw); } catch { raw = []; }
+            try { raw = JSON.parse(raw); } catch { raw = null; }
         }
-        return Array.isArray(raw) ? raw : [];
+        if (!raw) return [];
+        // osHierarchy is { topics: [...] }; unwrap to the topics array
+        const topics = Array.isArray(raw) ? raw : (raw.topics ?? []);
+        return topics.map(t => this._normaliseTopic(t));
+    }
+
+    /**
+     * Enrich normalised hierarchy items with code and title from the O* lookup map.
+     * Mutates items in place.
+     *
+     * @param {object[]} topics - Normalised hierarchy (output of _parseHierarchy)
+     * @param {Map<string, object>} oStarById - itemId string → O* object
+     */
+    _enrichHierarchy(topics, oStarById) {
+        for (const topic of topics ?? []) {
+            for (const item of topic.items ?? []) {
+                const o = oStarById.get(String(item.id));
+                if (o) {
+                    item.code  = o.code  ?? null;
+                    item.title = o.title ?? null;
+                }
+            }
+            this._enrichHierarchy(topic.subTopics ?? [], oStarById);
+        }
+    }
+
+    /**
+     * Normalise a stored topic (ons/ors/ocs/subtopics) to the render shape
+     * (items/subTopics) used by _renderTopic and _buildEntry.
+     *
+     * @param {object} t - Raw topic from osHierarchy
+     * @returns {object}
+     */
+    _normaliseTopic(t) {
+        const items = [
+            ...(t.ons ?? []).map(id => ({ id, type: 'ON' })),
+            ...(t.ors ?? []).map(id => ({ id, type: 'OR' })),
+            ...(t.ocs ?? []).map(id => ({ id, type: 'OC' })),
+        ];
+        return {
+            topic:     t.topic,
+            items,
+            subTopics: (t.subtopics ?? []).map(s => this._normaliseTopic(s)),
+        };
     }
 
     _typeBadge(type) {

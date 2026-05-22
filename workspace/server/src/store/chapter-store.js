@@ -1,12 +1,21 @@
 import { VersionedItemStore } from './versioned-item-store.js';
 import { StoreError } from './transaction.js';
-import { getChapterByKey } from '../config/loader.js';
+
 /**
  * Store for Chapter items with versioning.
  * Chapters are config-owned (creation via bootstrap only; no delete).
- * User-maintained fields: narrative, jsonOsHierarchy.
- * Config-owned fields (title, domain, position, key, parentId) are merged from
- * edition-config at read time — they are not stored on the version node.
+ * User-maintained fields: narrative, osHierarchy.
+ *
+ * Item node fields: code (= chapter key), title.
+ * Version node fields: narrative, jsonOsHierarchy.
+ *
+ * Config-owned fields (domain, position, parentKey) are merged by ChapterService.
+ *
+ * Serialization contract:
+ *   - Callers pass and receive osHierarchy (object or null).
+ *   - _prepareInput serializes osHierarchy → jsonOsHierarchy before Neo4j writes.
+ *   - _prepareOutput deserializes jsonOsHierarchy → osHierarchy after reads.
+ *   - jsonOsHierarchy is never visible above the store layer.
  *
  * Relationships: none (Chapter has no graph relationships to other entities).
  */
@@ -16,7 +25,7 @@ export class ChapterStore extends VersionedItemStore {
     }
 
     /**
-     * Code generation not applicable for chapters.
+     * Code generation not applicable for chapters — code = chapter key, set at bootstrap.
      * @override
      */
     _getEntityTypeForCode(_data) {
@@ -48,6 +57,38 @@ export class ChapterStore extends VersionedItemStore {
     }
 
     /**
+     * Serialize osHierarchy object → jsonOsHierarchy string before writing to Neo4j.
+     *
+     * @override
+     * @param {object} contentData
+     * @returns {object}
+     */
+    _prepareInput(contentData) {
+        const { osHierarchy, ...rest } = contentData;
+        return {
+            ...rest,
+            jsonOsHierarchy: osHierarchy !== undefined
+                ? (osHierarchy !== null ? JSON.stringify(osHierarchy) : null)
+                : (rest.jsonOsHierarchy ?? undefined),
+        };
+    }
+
+    /**
+     * Deserialize jsonOsHierarchy string → osHierarchy object after reading from Neo4j.
+     *
+     * @override
+     * @param {object} item
+     * @returns {object}
+     */
+    _prepareOutput(item) {
+        const { jsonOsHierarchy, ...rest } = item;
+        return {
+            ...rest,
+            osHierarchy: jsonOsHierarchy ? JSON.parse(jsonOsHierarchy) : null,
+        };
+    }
+
+    /**
      * Build query for findAll — returns all chapters ordered by item ID.
      * @override
      */
@@ -56,8 +97,8 @@ export class ChapterStore extends VersionedItemStore {
             cypher: `
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
                 RETURN id(item) as itemId,
-                       item.key as key,
-                       item.parentItemId as parentItemId,
+                       item.code as code,
+                       item.title as title,
                        id(version) as versionId,
                        version.version as version,
                        version.createdAt as createdAt,
@@ -71,8 +112,7 @@ export class ChapterStore extends VersionedItemStore {
     }
 
     /**
-     * Find all chapters. Config-owned fields (title, domain, position, parentKey)
-     * are merged from edition-config at read time.
+     * Find all chapters. Config-owned fields are merged by ChapterService.
      *
      * @param {Transaction} transaction
      * @returns {Promise<Array<object>>}
@@ -81,7 +121,7 @@ export class ChapterStore extends VersionedItemStore {
         try {
             const { cypher, params } = this.buildFindAllQuery(null, {}, null);
             const result = await transaction.run(cypher, params);
-            return result.records.map(record => this._buildChapterItem(record));
+            return result.records.map(record => this._prepareOutput(this._buildChapterItem(record)));
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find all Chapters: ${error.message}`, error);
@@ -89,86 +129,67 @@ export class ChapterStore extends VersionedItemStore {
     }
 
     /**
-     * Find a chapter by its stable config key.
+     * Find a chapter by its stable code (= chapter key from edition.json).
      * Used by bootstrap to check existence before creating.
      *
-     * @param {string} key - Stable chapter key from edition.json
+     * @param {string} code - Stable chapter code/key
      * @param {Transaction} transaction
      * @returns {Promise<object|null>}
      */
-    async findByKey(key, transaction) {
+    async findByCode(code, transaction) {
         try {
             const result = await transaction.run(`
-                MATCH (item:${this.nodeLabel} {key: $key})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                MATCH (item:${this.nodeLabel} {code: $code})-[:LATEST_VERSION]->(version:${this.versionLabel})
                 RETURN id(item) as itemId,
-                       item.key as key,
-                       item.parentItemId as parentItemId,
+                       item.code as code,
+                       item.title as title,
                        id(version) as versionId,
                        version.version as version,
                        version.createdAt as createdAt,
                        version.createdBy as createdBy,
                        version.narrative as narrative,
                        version.jsonOsHierarchy as jsonOsHierarchy
-            `, { key });
+            `, { code });
 
             if (result.records.length === 0) return null;
-            return this._buildChapterItem(result.records[0]);
+            return this._prepareOutput(this._buildChapterItem(result.records[0]));
         } catch (error) {
-            throw new StoreError(`Failed to find Chapter by key '${key}': ${error.message}`, error);
-        }
-    }
-
-    /**
-     * Find a chapter by item ID with optional baseline/edition context.
-     * Config-owned fields merged from edition-config at read time.
-     *
-     * @param {number} itemId
-     * @param {Transaction} transaction
-     * @param {number|null} baselineId
-     * @param {number|null} editionId
-     * @returns {Promise<object|null>}
-     */
-    async findById(itemId, transaction, baselineId = null, editionId = null) {
-        try {
-            const baseResult = await super.findById(itemId, transaction, baselineId, editionId);
-            if (!baseResult) return null;
-            return this._mergeConfigFields(baseResult);
-        } catch (error) {
-            if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to find Chapter by ID: ${error.message}`, error);
+            throw new StoreError(`Failed to find Chapter by code '${code}': ${error.message}`, error);
         }
     }
 
     /**
      * Create a chapter item node — bootstrap only.
-     * key and parentItemId are stored on the item node (stable config identifiers).
+     * code (= chapter key) and title are stored on the item node.
      * narrative and jsonOsHierarchy are stored on the version node (user-maintained).
      *
-     * @param {string} key - Stable chapter key from edition.json
-     * @param {number|null} parentItemId - Parent chapter item ID (null for top-level)
+     * @param {string} code - Stable chapter key from edition.json
+     * @param {string} title - Chapter title from edition.json
      * @param {Transaction} transaction
      * @returns {Promise<object>}
      */
-    async createChapter(key, parentItemId, transaction) {
+    async createChapter(code, title, transaction) {
         try {
             const createdAt = new Date().toISOString();
             const createdBy = transaction.getUserId();
 
             const itemResult = await transaction.run(`
                 CREATE (item:${this.nodeLabel} {
-                    key: $key,
-                    parentItemId: $parentItemId,
+                    code: $code,
+                    title: $title,
+                    _label: $title,
                     createdAt: $createdAt,
                     createdBy: $createdBy
                 })
                 RETURN id(item) as itemId
-            `, { key, parentItemId, createdAt, createdBy });
+            `, { code, title, createdAt, createdBy });
 
             const itemId = this.normalizeId(itemResult.records[0].get('itemId'));
 
             const versionResult = await transaction.run(`
                 CREATE (version:${this.versionLabel} {
                     version: 1,
+                    _label: "1",
                     createdAt: $createdAt,
                     createdBy: $createdBy,
                     narrative: '',
@@ -189,7 +210,7 @@ export class ChapterStore extends VersionedItemStore {
             return await this.findById(itemId, transaction);
         } catch (error) {
             if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to create Chapter '${key}': ${error.message}`, error);
+            throw new StoreError(`Failed to create Chapter '${code}': ${error.message}`, error);
         }
     }
 
@@ -198,41 +219,23 @@ export class ChapterStore extends VersionedItemStore {
     // ---------------------------------------------------------------------------
 
     /**
-     * Build a chapter item object from a Neo4j record and merge config-owned fields.
+     * Build a raw chapter item object from a Neo4j record.
+     * Does not apply _prepareOutput or config merging — callers handle that.
+     *
      * @param {Record} record
      * @returns {object}
      */
     _buildChapterItem(record) {
-        const item = {
+        return {
             itemId: this.normalizeId(record.get('itemId')),
-            key: record.get('key'),
-            parentItemId: record.get('parentItemId'),
+            code: record.get('code'),
+            title: record.get('title') || null,
             versionId: this.normalizeId(record.get('versionId')),
             version: this.normalizeId(record.get('version')),
             createdAt: record.get('createdAt'),
             createdBy: record.get('createdBy'),
             narrative: record.get('narrative') || '',
             jsonOsHierarchy: record.get('jsonOsHierarchy') || null,
-        };
-        return this._mergeConfigFields(item);
-    }
-
-    /**
-     * Merge config-owned fields (title, domain, position, parentKey) from edition-config.
-     * Fields absent in config are set to null — does not throw for unknown keys
-     * so that DB/config drift is visible rather than fatal at read time.
-     *
-     * @param {object} item
-     * @returns {object}
-     */
-    _mergeConfigFields(item) {
-        const configEntry = getChapterByKey(item.key);
-        return {
-            ...item,
-            title: configEntry?.title ?? null,
-            domain: configEntry?.domain ?? null,
-            position: configEntry?.position ?? null,
-            parentKey: configEntry?.parentKey ?? null,
         };
     }
 }

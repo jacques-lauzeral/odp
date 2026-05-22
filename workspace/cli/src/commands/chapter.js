@@ -91,18 +91,17 @@ class ChapterCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Key', 'Title', 'Domain', 'Position', 'Parent Key', 'Version'],
-                        colWidths: [10, 20, 35, 18, 10, 20, 10]
+                        head: ['Item ID', 'Code', 'Title', 'Domain', 'Position', 'Version'],
+                        colWidths: [10, 25, 35, 18, 10, 10]
                     });
 
                     chapters.forEach(c => {
                         table.push([
                             c.itemId,
-                            c.key,
+                            c.code,
                             c.title || '—',
                             c.domain || '(narrative)',
                             c.position ?? '—',
-                            c.parentKey || '—',
                             c.version
                         ]);
                     });
@@ -117,15 +116,14 @@ class ChapterCommands extends VersionedCommands {
 
     displayItemDetails(item) {
         console.log(`Item ID:    ${item.itemId}`);
-        console.log(`Key:        ${item.key}`);
+        console.log(`Code:       ${item.code}`);
         console.log(`Title:      ${item.title || '—'}`);
         console.log(`Domain:     ${item.domain || '(narrative)'}`);
         console.log(`Position:   ${item.position ?? '—'}`);
-        console.log(`Parent Key: ${item.parentKey || '—'}`);
         console.log(`Version:    ${item.version} (Version ID: ${item.versionId})`);
         console.log(`Created:    ${item.createdAt ? new Date(item.createdAt).toLocaleString() : '—'} by ${item.createdBy || '—'}`);
         console.log(`Narrative:  ${item.narrative ? item.narrative.substring(0, 80) + (item.narrative.length > 80 ? '…' : '') : '—'}`);
-        console.log(`osHierarchy: ${item.jsonOsHierarchy ? JSON.stringify(item.jsonOsHierarchy).substring(0, 80) + '…' : '—'}`);
+        console.log(`osHierarchy: ${item.osHierarchy ? JSON.stringify(item.osHierarchy).substring(0, 80) + '…' : '—'}`);
     }
 
     _addCreateCommand(_itemCommand) {
@@ -144,7 +142,7 @@ class ChapterCommands extends VersionedCommands {
                     if (options.narrative !== undefined) data.narrative = options.narrative;
                     if (options.osHierarchy !== undefined) {
                         try {
-                            data.jsonOsHierarchy = JSON.parse(options.osHierarchy);
+                            data.osHierarchy = JSON.parse(options.osHierarchy);
                         } catch {
                             console.error('Invalid JSON for --os-hierarchy');
                             process.exit(1);
@@ -170,7 +168,7 @@ class ChapterCommands extends VersionedCommands {
                     }
 
                     const chapter = await response.json();
-                    console.log(`Updated chapter: ${chapter.title || chapter.key} (ID: ${chapter.itemId})`);
+                    console.log(`Updated chapter: ${chapter.title || chapter.code} (ID: ${chapter.itemId})`);
                     console.log(`New version: ${chapter.version} (Version ID: ${chapter.versionId})`);
                 } catch (error) {
                     console.error('Error updating chapter:', error.message);
@@ -191,7 +189,7 @@ class ChapterCommands extends VersionedCommands {
                     if (options.narrative !== undefined) data.narrative = options.narrative;
                     if (options.osHierarchy !== undefined) {
                         try {
-                            data.jsonOsHierarchy = JSON.parse(options.osHierarchy);
+                            data.osHierarchy = JSON.parse(options.osHierarchy);
                         } catch {
                             console.error('Invalid JSON for --os-hierarchy');
                             process.exit(1);
@@ -217,7 +215,7 @@ class ChapterCommands extends VersionedCommands {
                     }
 
                     const chapter = await response.json();
-                    console.log(`Patched chapter: ${chapter.title || chapter.key} (ID: ${chapter.itemId})`);
+                    console.log(`Patched chapter: ${chapter.title || chapter.code} (ID: ${chapter.itemId})`);
                     console.log(`New version: ${chapter.version} (Version ID: ${chapter.versionId})`);
                 } catch (error) {
                     console.error('Error patching chapter:', error.message);

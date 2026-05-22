@@ -109,22 +109,11 @@ export async function initializeDatabase() {
 
     const tx = createTransaction('write');
     try {
-        // Build a key→itemId map as we go so sub-chapters can resolve parentItemId
-        const keyToItemId = new Map();
-
         for (const chapter of chapters) {
-            const existing = await store.findByKey(chapter.key, tx);
-            if (existing) {
-                keyToItemId.set(chapter.key, existing.itemId);
-                continue;
-            }
+            const existing = await store.findByCode(chapter.key, tx);
+            if (existing) continue;
 
-            const parentItemId = chapter.parentKey
-                ? (keyToItemId.get(chapter.parentKey) ?? null)
-                : null;
-
-            const created = await store.createChapter(chapter.key, parentItemId, tx);
-            keyToItemId.set(chapter.key, created.itemId);
+            await store.createChapter(chapter.key, chapter.title, tx);
             console.log(`  Created chapter: ${chapter.key}`);
         }
 

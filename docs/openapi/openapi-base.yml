@@ -761,19 +761,16 @@ components:
 
     Chapter:
       description: |
-        Chapter response. Config-owned fields (title, domain, position) are merged
-        from edition.json at read time and are not user-editable.
+        Chapter response. title is stored on the item node (set at bootstrap).
+        domain, position, and parentKey are config-owned fields merged from edition.json
+        at read time by the service layer and are not user-editable.
       type: object
       properties:
         itemId:
           type: string
-        key:
+        code:
           type: string
-          description: "Stable identifier matching edition.json"
-        parentItemId:
-          type: string
-          nullable: true
-          description: "Parent chapter item ID — null for top-level chapters"
+          description: "Stable chapter identifier (= chapter key from edition.json) — set at bootstrap"
         versionId:
           type: string
         version:
@@ -783,10 +780,11 @@ components:
           format: date-time
         createdBy:
           type: string
-        # config-owned fields — not stored, merged at read time
+        # item node field — set at bootstrap, not user-editable
         title:
           type: string
-          description: "Display title from edition.json — not user-editable"
+          description: "Display title — stored on item node at bootstrap"
+        # config-owned fields — not stored, merged at read time
         domain:
           type: string
           nullable: true
@@ -797,13 +795,13 @@ components:
         parentKey:
           type: string
           nullable: true
-          description: "Parent chapter key — null for top-level chapters"
+          description: "Parent chapter code — null for top-level chapters"
         # user-maintained fields
         narrative:
           type: string
           nullable: true
           description: "Chapter narrative content (Quill Delta JSON)"
-        jsonOsHierarchy:
+        osHierarchy:
           $ref: '#/components/schemas/OsHierarchy'
           nullable: true
           description: "O* presentation order for this chapter"
@@ -817,7 +815,7 @@ components:
         narrative:
           type: string
           nullable: true
-        jsonOsHierarchy:
+        osHierarchy:
           $ref: '#/components/schemas/OsHierarchy'
           nullable: true
 
@@ -830,7 +828,7 @@ components:
         narrative:
           type: string
           nullable: true
-        jsonOsHierarchy:
+        osHierarchy:
           $ref: '#/components/schemas/OsHierarchy'
           nullable: true
 

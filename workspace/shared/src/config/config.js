@@ -107,14 +107,14 @@ export function getChapters(config) {
 }
 
 /**
- * Single chapter entry by stable key, or null if not found.
+ * Single chapter entry by stable code (= chapter key from edition.json), or null if not found.
  *
  * @param {EditionConfig} config
- * @param {string} key
+ * @param {string} code - Stable chapter code stored as item.code in DB
  * @returns {ChapterEntry|null}
  */
-export function getChapterByKey(config, key) {
-    return getChapters(config).find(c => c.key === key) ?? null;
+export function getChapterByCode(config, code) {
+    return getChapters(config).find(c => c.key === code) ?? null;
 }
 
 /**

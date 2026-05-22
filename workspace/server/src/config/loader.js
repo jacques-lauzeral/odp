@@ -5,7 +5,7 @@ import {
     getDomainLabel as _getDomainLabel,
     isDomainValid as _isDomainValid,
     getChapters as _getChapters,
-    getChapterByKey as _getChapterByKey,
+    getChapterByCode as _getChapterByCode,
     getDomainChapterSlugs as _getDomainChapterSlugs,
 } from '@odp/shared';
 
@@ -168,11 +168,11 @@ export function getChapters() {
 }
 
 /**
- * @param {string} key
+ * @param {string} code - Stable chapter code (= chapter key from edition.json)
  * @returns {import('@odp/shared').ChapterEntry|null}
  */
-export function getChapterByKey(key) {
-    return _getChapterByKey(_requireEditionConfig(), key);
+export function getChapterByCode(code) {
+    return _getChapterByCode(_requireEditionConfig(), code);
 }
 
 /**

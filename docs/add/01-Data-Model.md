@@ -36,7 +36,7 @@ shared/src/
 ├── config/                   # Config loaders — used by server and CLI at startup
 │   ├── loader.js             # Single entry point: loadConfig(configDir)
 │   ├── domains-config.js     # Domain tree loader + accessors (getDomainKeys, isDomainValid, …)
-│   └── edition-config.js     # Edition structure loader + accessors (getChapters, getChapterByKey, …)
+│   └── edition-config.js     # Edition structure loader + accessors (getChapters, getChapterByCode, …)
 ├── messages/                 # API exchange contracts: request/response shapes
 │   └── messages.js           # Request/response model definitions
 └── model/                    # Domain model: entities, enums, utilities
@@ -257,30 +257,30 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 
 Chapters organise an ODIP Edition for human consumption. They group domains, carry narrative text, and define the O\* presentation order via `osHierarchy`. A domain chapter references a domain key from `domains.json`; a pure narrative chapter has no domain reference.
 
-Chapters are **config-owned** (title, domain, position declared in `edition.json`) but **user-maintained** (narrative, osHierarchy edited by integrators). They are **versioned** — every narrative or hierarchy edit creates a new ChapterVersion. Chapters are created by the bootstrap process and cannot be deleted.
+Chapters are **config-owned** (domain, position declared in `edition.json`) but **user-maintained** (narrative, osHierarchy edited by integrators). They are **versioned** — every narrative or hierarchy edit creates a new ChapterVersion. Chapters are created by the bootstrap process and cannot be deleted.
 
-**Item node fields** (stable across versions):
+**Item node fields** (stable across versions, set at bootstrap):
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
-| `key` | string | Stable identifier matching `edition.json` |
-| `parentItemId` | integer | Parent chapter item ID — null for top-level chapters |
+| `code` | string | Stable identifier (= chapter key from `edition.json`) |
+| `title` | string | Display title from `edition.json` |
 
 **Version node fields** (user-maintained, stored on ChapterVersion):
 
 | Field | Type | Cardinality | Notes |
 |---|---|---|---|
 | `narrative` | rich text | optional | Chapter introduction / narrative content |
-| `jsonOsHierarchy` | JSON | optional | Topic tree defining O\* presentation order |
+| `jsonOsHierarchy` | JSON string | optional | Serialised OsHierarchy — deserialized to `osHierarchy` by store layer |
 
-**Config-owned fields** (not stored on nodes — merged from `edition.json` at read time):
+**Config-owned fields** (not stored on nodes — merged from `edition.json` at read time by service layer):
 
 | Field | Type | Notes |
 |---|---|---|
-| `title` | string | Display title |
 | `domain` | string | Domain key — null on pure narrative chapters |
 | `position` | integer | Ordering within parent |
+| `parentKey` | string | Parent chapter code — null for top-level chapters |
 
 **OsHierarchy type:**
 
@@ -295,6 +295,7 @@ OsHierarchy
 ```
 
 ---
+
 
 ### 3.3 Management Entities
 

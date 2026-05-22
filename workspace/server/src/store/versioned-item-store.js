@@ -88,6 +88,30 @@ export class VersionedItemStore extends BaseStore {
         throw new Error('_getEntityTypeForCode must be implemented by concrete store');
     }
 
+    /**
+     * Prepare input data before writing to Neo4j.
+     * Override in subclasses to serialize complex fields (e.g. object → JSON string).
+     * Called on contentData after relationship extraction, before SET version += $contentData.
+     *
+     * @param {object} contentData - Version content fields to be written
+     * @returns {object} Prepared content data (may be mutated or replaced)
+     */
+    _prepareInput(contentData) {
+        return contentData;
+    }
+
+    /**
+     * Prepare output data after reading from Neo4j.
+     * Override in subclasses to deserialize complex fields (e.g. JSON string → object).
+     * Called on the assembled item before returning from find methods.
+     *
+     * @param {object} item - Assembled item object
+     * @returns {object} Prepared item (may be mutated or replaced)
+     */
+    _prepareOutput(item) {
+        return item;
+    }
+
     async create(data, transaction) {
         try {
             const { title, ...versionData } = data;
@@ -128,7 +152,7 @@ export class VersionedItemStore extends BaseStore {
                 })
                 SET version += $contentData
                 RETURN id(version) as versionId
-            `, { createdAt, createdBy, contentData });
+            `, { createdAt, createdBy, contentData: this._prepareInput(contentData) });
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
@@ -211,7 +235,7 @@ export class VersionedItemStore extends BaseStore {
                 })
                 SET version += $contentData
                 RETURN id(version) as versionId
-            `, { newVersion, createdAt, createdBy, contentData });
+            `, { newVersion, createdAt, createdBy, contentData: this._prepareInput(contentData) });
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
@@ -321,7 +345,7 @@ export class VersionedItemStore extends BaseStore {
             };
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-            return { ...baseItem, ...relationshipReferences };
+            return this._prepareOutput({ ...baseItem, ...relationshipReferences });
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
         }
@@ -363,7 +387,7 @@ export class VersionedItemStore extends BaseStore {
             };
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-            return { ...baseItem, ...relationshipReferences };
+            return this._prepareOutput({ ...baseItem, ...relationshipReferences });
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID and version: ${error.message}`, error);
         }
