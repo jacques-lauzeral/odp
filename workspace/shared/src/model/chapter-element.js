@@ -1,49 +1,104 @@
 /**
- * @typedef {Object} OsHierarchyTopic
- * @property {string}             topic      - Topic label
- * @property {number[]}           ons        - ON item IDs in this topic
- * @property {number[]}           ors        - OR item IDs in this topic
- * @property {number[]}           ocs        - OC item IDs in this topic
- * @property {OsHierarchyTopic[]} subtopics  - Nested sub-topics (recursive)
+ * @file chapter-elements.js
+ * @description Chapter entity model and OsHierarchy type definitions.
+ *
+ * Write path (API input): osHierarchy.topics[].ons/ors/ocs contain bare integer ids.
+ * Read path (API output): ons/ors/ocs contain enriched OsHierarchyItem objects
+ *   { id, type, code, title } — resolved by ChapterService from O* stores.
+ *
+ * parentCode (formerly parentKey) — parent chapter code from edition.json config.
  */
 
 /**
- * @typedef {Object} OsHierarchy
- * @property {OsHierarchyTopic[]} topics - Top-level topics
+ * Enriched O* item in an osHierarchy topic (read path only).
+ * On write, callers send bare integer ids.
+ *
+ * @typedef {object} OsHierarchyItem
+ * @property {number}      id    — O* item id
+ * @property {string}      type  — 'ON' | 'OR' | 'OC'
+ * @property {string|null} code  — O* code, null if not found
+ * @property {string|null} title — O* title, null if not found
  */
-
-// Chapter entity — versioned
-
-export const Chapter = {
-    // identity
-    id: '',
-    itemId: '',
-    versionId: '',
-    version: 0,
-    createdAt: '',
-    createdBy: '',
-
-    // config-owned fields (not user-editable)
-    key: '',        // stable identifier matching edition.json
-    title: '',      // display title
-    domain: null,   // domain key from domains.json — null on pure narrative chapters
-    position: 0,    // ordering within parent
-    parentId: null, // parent chapter item ID — null for top-level chapters
-
-    // user-maintained fields
-    narrative: '',          // rich text — chapter introduction / narrative content
-    jsonOsHierarchy: null,  // OsHierarchy — topic tree defining O* presentation order
+export const OsHierarchyItem = {
+    id:    null,
+    type:  null,
+    code:  null,
+    title: null,
 };
 
-export const ChapterRequests = {
-    update: {
-        narrative: '',
-        jsonOsHierarchy: null,
-        expectedVersionId: ''
-    },
+/**
+ * A single topic in an OsHierarchy (read path).
+ * ons/ors/ocs are OsHierarchyItem[] on read, integer[] on write.
+ *
+ * @typedef {object} OsHierarchyTopic
+ * @property {string}             topic
+ * @property {OsHierarchyItem[]}  ons
+ * @property {OsHierarchyItem[]}  ors
+ * @property {OsHierarchyItem[]}  ocs
+ * @property {OsHierarchyTopic[]} subtopics
+ */
+export const OsHierarchyTopic = {
+    topic:     '',
+    ons:       [],
+    ors:       [],
+    ocs:       [],
+    subtopics: [],
+};
 
-    patch: {
-        expectedVersionId: '',
-        // Any subset of: narrative, jsonOsHierarchy
-    }
+/**
+ * @typedef {object} OsHierarchy
+ * @property {OsHierarchyTopic[]} topics
+ */
+export const OsHierarchy = {
+    topics: [],
+};
+
+/**
+ * Chapter entity (read path).
+ * Config-owned fields (domain, position, parentCode) are merged at read time
+ * by ChapterService from edition.json — not stored in the database.
+ *
+ * @typedef {object} Chapter
+ * @property {number}           itemId
+ * @property {string}           code        — stable identifier (= chapter key from edition.json)
+ * @property {string}           title       — display title from edition.json
+ * @property {number}           versionId
+ * @property {number}           version
+ * @property {string}           createdAt
+ * @property {string}           createdBy
+ * @property {string|null}      narrative   — Quill Delta JSON string
+ * @property {OsHierarchy|null} osHierarchy — enriched on read; bare ids on write
+ * @property {string|null}      domain      — config-owned; null on pure narrative chapters
+ * @property {number|null}      position    — config-owned; ordering within parent
+ * @property {string|null}      parentCode  — config-owned; parent chapter code (null for root chapters)
+ */
+export const Chapter = {
+    itemId:      null,
+    code:        null,
+    title:       null,
+    versionId:   null,
+    version:     null,
+    createdAt:   null,
+    createdBy:   null,
+    narrative:   null,
+    osHierarchy: null,
+    // config-owned
+    domain:      null,
+    position:    null,
+    parentCode:  null,
+};
+
+/**
+ * Request shape for chapter update / patch (write path).
+ * osHierarchy.topics[].ons/ors/ocs must be integer arrays.
+ *
+ * @typedef {object} ChapterRequests
+ * @property {string|null}      narrative
+ * @property {OsHierarchy|null} osHierarchy — bare integer ids in ons/ors/ocs
+ * @property {number}           expectedVersionId
+ */
+export const ChapterRequests = {
+    narrative:         null,
+    osHierarchy:       null,
+    expectedVersionId: null,
 };

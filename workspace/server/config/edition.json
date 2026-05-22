@@ -21,7 +21,7 @@
       ]
     },
     { "key": "4dt",        "title": "4D-Trajectory",            "position": 3,  "domain": "4DT" },
-    { "key": "rerouting",  "title": "4D-Rerouting",             "position": 4,  "domain": "RRT" },
+    { "key": "rerouting",  "title": "Rerouting",                "position": 4,  "domain": "RRT" },
     { "key": "flow",       "title": "Flow",                     "position": 5,  "domain": "FLOW" },
     { "key": "asmatfcm",   "title": "ASM/ATFCM Integration",    "position": 6,  "domain": "ASM_ATFCM" },
     { "key": "airspace",   "title": "Airspace (iDL)",           "position": 7,  "domain": "AIRSPACE" },

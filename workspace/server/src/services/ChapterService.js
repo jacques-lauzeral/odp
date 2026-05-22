@@ -3,9 +3,12 @@ import {
     createTransaction,
     commitTransaction,
     rollbackTransaction,
-    chapterStore
+    chapterStore,
+    operationalRequirementStore,
+    operationalChangeStore,
 } from '../store/index.js';
 import { getChapterByCode } from '../config/loader.js';
+import { normalizeId } from '../../../shared/src/index.js';
 
 /**
  * ChapterService provides versioned CRUD operations for Chapter entities.
@@ -25,8 +28,11 @@ import { getChapterByCode } from '../config/loader.js';
  * Field contract:
  * - Callers pass and receive osHierarchy (object or null).
  * - Serialization to/from jsonOsHierarchy is handled exclusively by ChapterStore.
- * - Config-owned fields (domain, position, parentKey) are merged here
+ * - Config-owned fields (domain, position, parentCode) are merged here
  *   from edition-config after every store read, keyed on item.code.
+ * - osHierarchy items are enriched on read: bare integer ids replaced with
+ *   { id, type, code, title } objects resolved from O* stores.
+ *   On write, callers still send bare integer ids — validation unchanged.
  */
 export class ChapterService extends VersionedItemService {
     constructor() {
@@ -34,7 +40,11 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
-     * List all chapters (latest versions, with config-owned fields merged).
+     * List all chapters (latest versions, config-owned fields merged,
+     * osHierarchy items enriched with O* {id, type, code, title}).
+     *
+     * Two parallel calls: all requirements (summary) + all changes (summary).
+     * Build a single lookup map, then enrich all chapters in one pass.
      *
      * @param {string} userId
      * @returns {Promise<Array<object>>}
@@ -44,7 +54,20 @@ export class ChapterService extends VersionedItemService {
         try {
             const chapters = await this.getStore().findAll(tx);
             await commitTransaction(tx);
-            return chapters.map(c => this._mergeConfigFields(c));
+
+            const merged = chapters.map(c => this._mergeConfigFields(c));
+
+            // Check whether any chapter has osHierarchy with items to enrich
+            const needsEnrichment = merged.some(c => this._hasHierarchyItems(c.osHierarchy));
+            if (!needsEnrichment) return merged;
+
+            const oStarMap = await this._buildOStarMap(userId);
+            return merged.map(c => ({
+                ...c,
+                osHierarchy: c.osHierarchy
+                    ? this._enrichOsHierarchy(c.osHierarchy, oStarMap)
+                    : null,
+            }));
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
@@ -52,19 +75,131 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
-     * @override — merges config fields after store read.
+     * @override — merges config fields and enriches osHierarchy after store read.
      */
     async getById(itemId, userId, editionId = null, projection = 'standard') {
         const result = await super.getById(itemId, userId, editionId, projection);
-        return result ? this._mergeConfigFields(result) : null;
+        if (!result) return null;
+        const merged = this._mergeConfigFields(result);
+        if (!this._hasHierarchyItems(merged.osHierarchy)) return merged;
+        const oStarMap = await this._buildOStarMap(userId);
+        return {
+            ...merged,
+            osHierarchy: this._enrichOsHierarchy(merged.osHierarchy, oStarMap),
+        };
     }
 
     /**
-     * @override — merges config fields after store read.
+     * @override — merges config fields after store read (no enrichment on version history).
      */
     async getByIdAndVersion(itemId, versionNumber, userId) {
         const result = await super.getByIdAndVersion(itemId, versionNumber, userId);
         return result ? this._mergeConfigFields(result) : null;
+    }
+
+    // -------------------------------------------------------------------------
+    // O* enrichment
+    // -------------------------------------------------------------------------
+
+    /**
+     * Build a single lookup map of normalised itemId → {id, type, code, title}
+     * from all requirements (ON + OR) and all changes (OC) in one pass.
+     *
+     * Uses summary projection to avoid fetching rich-text fields.
+     *
+     * @param {string} userId
+     * @returns {Promise<Map<number, {id: number, type: string, code: string, title: string}>>}
+     */
+    async _buildOStarMap(userId) {
+        const [requirements, changes] = await Promise.all([
+            operationalRequirementStore().findAll(
+                createTransaction(userId), null, {}, 'summary'
+            ).catch(() => []),
+            operationalChangeStore().findAll(
+                createTransaction(userId), null, {}, 'summary'
+            ).catch(() => []),
+        ]);
+
+        const map = new Map();
+        for (const r of requirements) {
+            const nid = normalizeId(r.itemId);
+            map.set(nid, { id: nid, type: r.type, code: r.code, title: r.title });
+        }
+        for (const c of changes) {
+            const nid = normalizeId(c.itemId);
+            map.set(nid, { id: nid, type: 'OC', code: c.code, title: c.title });
+        }
+        return map;
+    }
+
+    /**
+     * Recursively enrich an OsHierarchy object — replace bare integer ids
+     * in ons/ors/ocs arrays with {id, type, code, title} objects.
+     * Unknown ids are preserved as {id, type, code: null, title: null}.
+     *
+     * The stored structure uses bare ids on write; this enrichment is
+     * read-only and does not affect the persisted form.
+     *
+     * @param {object} hierarchy  — { topics: OsHierarchyTopic[] }
+     * @param {Map}    oStarMap   — normalised itemId → {id, type, code, title}
+     * @returns {object}
+     */
+    _enrichOsHierarchy(hierarchy, oStarMap) {
+        if (!hierarchy?.topics) return hierarchy;
+        return {
+            ...hierarchy,
+            topics: hierarchy.topics.map(t => this._enrichTopic(t, oStarMap)),
+        };
+    }
+
+    /**
+     * Enrich a single topic recursively.
+     * @param {object} topic
+     * @param {Map}    oStarMap
+     * @returns {object}
+     */
+    _enrichTopic(topic, oStarMap) {
+        return {
+            ...topic,
+            ons:       (topic.ons ?? []).map(id => this._resolveOStarItem(id, 'ON',  oStarMap)),
+            ors:       (topic.ors ?? []).map(id => this._resolveOStarItem(id, 'OR',  oStarMap)),
+            ocs:       (topic.ocs ?? []).map(id => this._resolveOStarItem(id, 'OC',  oStarMap)),
+            subtopics: (topic.subtopics ?? []).map(sub => this._enrichTopic(sub, oStarMap)),
+        };
+    }
+
+    /**
+     * Resolve a bare integer id to an enriched O* item.
+     * Falls back gracefully if id not found in map.
+     *
+     * @param {number} rawId
+     * @param {string} impliedType  — 'ON' | 'OR' | 'OC' (from array context)
+     * @param {Map}    oStarMap
+     * @returns {{ id: number, type: string, code: string|null, title: string|null }}
+     */
+    _resolveOStarItem(rawId, impliedType, oStarMap) {
+        try {
+            const nid = normalizeId(rawId);
+            const found = oStarMap.get(nid);
+            if (found) return found;
+            return { id: nid, type: impliedType, code: null, title: null };
+        } catch {
+            return { id: rawId, type: impliedType, code: null, title: null };
+        }
+    }
+
+    /**
+     * Returns true if the osHierarchy contains any O* id references.
+     * @param {object|null} hierarchy
+     * @returns {boolean}
+     */
+    _hasHierarchyItems(hierarchy) {
+        if (!hierarchy?.topics) return false;
+        const check = (topics) => topics.some(t =>
+            (t.ons?.length > 0) || (t.ors?.length > 0) || (t.ocs?.length > 0) ||
+            check(t.subtopics ?? [])
+        );
+        return check(hierarchy.topics);
     }
 
     // -------------------------------------------------------------------------
@@ -91,13 +226,13 @@ export class ChapterService extends VersionedItemService {
      * Both current and patchPayload use osHierarchy (object) — store handles serialization.
      *
      * @override
-     * @param {object} current - Current chapter state from store (osHierarchy as object)
-     * @param {object} patchPayload - Partial update payload (osHierarchy as object)
+     * @param {object} current      — Current chapter state from store (osHierarchy as object)
+     * @param {object} patchPayload — Partial update payload (osHierarchy as object)
      * @returns {object}
      */
     async _computePatchedPayload(current, patchPayload) {
         return {
-            narrative: patchPayload.narrative !== undefined ? patchPayload.narrative : current.narrative,
+            narrative:   patchPayload.narrative   !== undefined ? patchPayload.narrative   : current.narrative,
             osHierarchy: patchPayload.osHierarchy !== undefined ? patchPayload.osHierarchy : current.osHierarchy,
         };
     }
@@ -114,10 +249,9 @@ export class ChapterService extends VersionedItemService {
     // -------------------------------------------------------------------------
 
     /**
-     * Merge config-owned fields (domain, position, parentKey) from edition-config.
-     * Keyed on item.code (= chapter key stored at bootstrap).
-     * Fields absent in config are set to null — does not throw for unknown codes
-     * so that DB/config drift is visible rather than fatal at read time.
+     * Merge config-owned fields (domain, position, parentCode) from edition-config.
+     * Keyed on item.code. parentKey renamed to parentCode for consistency.
+     * Fields absent in config are set to null.
      *
      * @param {object} item
      * @returns {object}
@@ -126,9 +260,9 @@ export class ChapterService extends VersionedItemService {
         const configEntry = getChapterByCode(item.code);
         return {
             ...item,
-            domain: configEntry?.domain ?? null,
-            position: configEntry?.position ?? null,
-            parentKey: configEntry?.parentKey ?? null,
+            domain:     configEntry?.domain     ?? null,
+            position:   configEntry?.position   ?? null,
+            parentCode: configEntry?.parentKey  ?? configEntry?.parentCode ?? null,
         };
     }
 
@@ -139,6 +273,7 @@ export class ChapterService extends VersionedItemService {
     /**
      * Validate chapter update/patch payload.
      * Only narrative and osHierarchy are user-editable.
+     * osHierarchy items are validated as bare integer ids on write.
      *
      * @param {object} payload
      */
@@ -153,7 +288,7 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
-     * Validate OsHierarchy structure.
+     * Validate OsHierarchy structure (write path — items are bare integer ids).
      * @param {object} hierarchy
      */
     _validateOsHierarchy(hierarchy) {
@@ -169,7 +304,7 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
-     * Validate a single OsHierarchyTopic recursively.
+     * Validate a single OsHierarchyTopic recursively (write path).
      * @param {object} topic
      */
     _validateOsHierarchyTopic(topic) {

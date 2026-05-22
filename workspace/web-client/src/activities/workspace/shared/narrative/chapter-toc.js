@@ -2,223 +2,476 @@
  * @file chapter-toc.js
  * @description Chapter TOC — left panel of the Narrative activity.
  *
- * Layout:
- *   ┌─────────────────────────────────┐
- *   │ [chapter selector — dropdown]   │  ← chapter header
- *   │ [domain badge if applicable]    │
- *   ├─────────────────────────────────┤
- *   │ Topic                           │  ← tree: O*s only
- *   │   ON · title                    │
- *   │   OR · title                    │
- *   │ Sub-topic                       │
- *   │   OR · title                    │
- *   │ ⚠ Unassigned (n)               │
- *   │   ON · title                    │
- *   └─────────────────────────────────┘
+ * Two render modes driven by NarrativeActivity scope state:
  *
- * No "Narrative" root entry — narrative is the default body state.
- * Selecting a chapter fires onChapterChange(chapter).
- * Selecting a topic or O* fires onSelect(entry).
+ * ODIP scope  — renderOdip(chapters, selectedItemId)
+ *   Collapsible chapter tree. Each node supports three interactions:
+ *     • label click  → onOdipSelect(chapter)   [selection-read in body]
+ *     • chevron      → expand / collapse subtree
+ *     • dive button  → onDive(chapter)          [switches to chapter scope]
+ *   Collapse of a node that contains the current selection moves selection
+ *   to the collapsed parent.
  *
- * entry shapes:
- *   { type: 'topic',      topic, chapter }
- *   { type: 'ostar',      ostar, topic, chapter }
- *   { type: 'unassigned', items, chapter }
+ * Chapter scope — renderChapter(chapter)
+ *   Single chapter TOC: back control + topic/subtopic/O* tree.
+ *   Node click → onChapterSelect(entry).
+ *   setActiveKey(key)  — highlights a node (body→TOC sync).
+ *   scrollToKey(key)   — scrolls the tree to bring a node into view.
+ *
+ * All itemId comparisons use normalizeId() from shared/utils.js to handle
+ * mixed int / string / Neo4j Integer values safely.
  */
-import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
+import { normalizeId } from '../../../../shared/src/index.js';
 
 export default class ChapterToc {
     /**
      * @param {HTMLElement} container
      * @param {object}   options
      * @param {boolean}  options.isEditable
-     * @param {object[]} options.chapters            — flat chapter list
-     * @param {Map}      options.chapterMap          — itemId → chapter
-     * @param {Function} options.onChapterChange     — called with chapter on selector change
-     * @param {Function} options.onSelect            — called with entry on tree selection
-     * @param {Function} options.buildOrderedChapters — returns { chapter, depth }[]
+     * @param {object[]} options.chapters              — flat chapter list
+     * @param {Map}      options.chapterMap            — itemId → chapter (raw keys)
+     * @param {Function} options.onOdipSelect          — (chapter) ODIP scope label click
+     * @param {Function} options.onDive                — (chapter) dive into chapter
+     * @param {Function} options.onClimb               — () climb back to ODIP scope
+     * @param {Function} options.onChapterSelect       — (entry) chapter scope node click
+     * @param {Function} options.buildOrderedChapters  — () → { chapter, depth }[]
      */
     constructor(container, options = {}) {
         this.container             = container;
         this._isEditable           = options.isEditable           ?? false;
         this._chapters             = options.chapters             ?? [];
         this._chapterMap           = options.chapterMap           ?? new Map();
-        this._onChapterChange      = options.onChapterChange      ?? (() => {});
-        this._onSelect             = options.onSelect             ?? (() => {});
+        this._onOdipSelect         = options.onOdipSelect         ?? (() => {});
+        this._onDive               = options.onDive               ?? (() => {});
+        this._onClimb              = options.onClimb              ?? (() => {});
+        this._onChapterSelect      = options.onChapterSelect      ?? (() => {});
         this._buildOrderedChapters = options.buildOrderedChapters ?? (() => []);
 
+        // ODIP scope state — all ids stored as normalizeId() integers
+        this._collapsedIds  = new Set();
+        this._odipActiveId  = null;
+
+        // Chapter scope state
         this._chapter          = null;
         this._activeKey        = null;
         this._unassignedOStars = [];
+        this._collapsedTopics  = new Set();  // string keys e.g. 'topic-0'
+        this._hierarchy        = [];
     }
 
-    // -------------------------------------------------------------------------
-    // Initial render — chapter selector only, no chapter selected yet
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // ODIP scope
+    // =========================================================================
 
     /**
-     * Called once by NarrativeActivity after shell mount.
-     * Renders the selector; tree area shown after first renderChapter().
+     * @param {object[]}    chapters
+     * @param {*|null}      selectedId  — raw itemId (any type) or null
      */
-    renderSelector(selectedItemId = null) {
-        const ordered = this._buildOrderedChapters();
+    renderOdip(chapters, selectedId = null) {
+        this._chapters    = chapters;
+        this._odipActiveId = selectedId != null ? normalizeId(selectedId) : null;
+
         this.container.innerHTML = `
-            <div class="chapter-toc">
-                <div class="chapter-toc__selector-wrap">
-                    <select class="odip-input chapter-toc__chapter-select" id="chapterTocSelect">
-                        ${ordered.map(({ chapter, depth }) => {
-            const indent  = '— '.repeat(depth);
-            const title   = chapter.title ?? chapter.code ?? String(chapter.itemId);
-            const domain  = chapter.domain ? ` [${chapter.domain}]` : '';
-            const sel     = chapter.itemId === selectedItemId ? ' selected' : '';
-            return `<option value="${this._esc(String(chapter.itemId))}"${sel}>${this._esc(indent + title + domain)}</option>`;
-        }).join('')}
-                    </select>
+            <div class="chapter-toc chapter-toc--odip" id="chapterTocOdip">
+                <div class="chapter-toc__odip-header">
+                    <span class="chapter-toc__odip-title">ODIP Chapters</span>
                 </div>
                 <div class="chapter-toc__tree" id="chapterTocTree"></div>
             </div>
         `;
-        this._attachSelectorListener();
+
+        // Attach once on the stable shell — survives treeEl re-renders
+        this.container.querySelector('#chapterTocOdip')
+            .addEventListener('click', (e) => this._handleOdipClick(e));
+
+        this._renderOdipTree();
     }
 
-    // -------------------------------------------------------------------------
-    // Chapter render — called by NarrativeActivity after chapter is loaded
-    // -------------------------------------------------------------------------
+    _renderOdipTree() {
+        const treeEl = this.container.querySelector('#chapterTocTree');
+        if (!treeEl) return;
+
+        // Build parent→children map keyed by code string (parentKey / parentCode).
+        const pcode = c => c.parentCode ?? c.parentKey ?? null;
+        const byParent = new Map();
+        for (const c of this._chapters) {
+            const pid = pcode(c);
+            if (!byParent.has(pid)) byParent.set(pid, []);
+            byParent.get(pid).push(c);
+        }
+        for (const group of byParent.values()) {
+            group.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        }
+
+        // Build chapter number map: code → display prefix e.g. "1.2"
+        const numberMap = this._buildNumberMap(byParent);
+
+        const html = this._renderOdipLevel(null, byParent, numberMap, 0);
+        treeEl.innerHTML = html || '<div class="chapter-toc__empty">No chapters defined.</div>';
+        this._odipByParent = byParent;   // stored for _handleOdipClick
+    }
+
+    _handleOdipClick(e) {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const action  = btn.dataset.action;
+        const nid     = parseInt(btn.dataset.nid, 10);
+        const chapter = this._resolveChapter(nid);
+        if (!chapter) return;
+
+        const treeEl = this.container?.querySelector('#chapterTocTree');
+
+        if (action === 'select') {
+            this._odipActiveId = nid;
+            if (treeEl) this._refreshOdipActive(treeEl);
+            this._onOdipSelect({ type: 'chapter', chapter });
+        } else if (action === 'toggle') {
+            const code = btn.dataset.code;
+            if (this._collapsedIds.has(code)) {
+                this._collapsedIds.delete(code);
+            } else {
+                this._collapsedIds.add(code);
+                if (this._odipActiveId != null &&
+                    this._isDescendant(this._odipActiveId, code, this._odipByParent)) {
+                    this._odipActiveId = nid;
+                }
+            }
+            this._renderOdipTree();
+        } else if (action === 'toggle-topic') {
+            // Toggle a topic node within a chapter's inline tree
+            const key = btn.dataset.code;   // reuses data-code for the topic key
+            if (this._collapsedIds.has(key)) {
+                this._collapsedIds.delete(key);
+            } else {
+                this._collapsedIds.add(key);
+            }
+            this._renderOdipTree();
+        } else if (action === 'select-topic') {
+            const hierarchy = this._parseHierarchy(chapter);
+            const topicKey  = btn.dataset.topicKey;
+            const topic     = this._findTopicByKey(topicKey, chapter.code, hierarchy);
+            this._onOdipSelect({ type: 'topic', topic, chapter });
+        } else if (action === 'select-ostar') {
+            const hierarchy = this._parseHierarchy(chapter);
+            const itemId    = btn.dataset.itemId;
+            const itemType  = btn.dataset.itemType;
+            const ostar     = this._findOStarById(itemId, hierarchy) ?? { id: itemId, type: itemType, code: null, title: null };
+            this._onOdipSelect({ type: 'ostar', ostar, chapter });
+        } else if (action === 'dive') {
+            this._onDive(chapter);
+        }
+    }
+
+    /**
+     * Find a topic object in the hierarchy by its rendered key.
+     * Key format: "topic:{chapterCode}:{index}" or "topic:{chapterCode}:{parentIndex}-{index}"
+     */
+    _findTopicByKey(topicKey, chapterCode, hierarchy) {
+        // Strip prefix "topic:{chapterCode}:"
+        const prefix  = `topic:${chapterCode}:`;
+        const rest    = topicKey.startsWith(prefix) ? topicKey.slice(prefix.length) : topicKey;
+        const parts   = rest.split('-');
+
+        if (parts.length === 1) {
+            return hierarchy[parseInt(parts[0], 10)] ?? null;
+        }
+        const parent = hierarchy[parseInt(parts[0], 10)];
+        return parent?.subTopics?.[parseInt(parts[1], 10)] ?? null;
+    }
+
+    /**
+     * Find an O* item by id across all topics/subtopics in the hierarchy.
+     */
+    _findOStarById(itemId, hierarchy) {
+        const search = (topics) => {
+            for (const t of topics ?? []) {
+                for (const item of t.items ?? []) {
+                    if (String(item.id) === String(itemId)) return item;
+                }
+                const found = search(t.subTopics ?? []);
+                if (found) return found;
+            }
+            return null;
+        };
+        return search(hierarchy);
+    }
+
+    /**
+     * Build a map of normalised itemId → chapter number string ("1", "1.1", "2.3.1" …).
+     * @param {Map} byParent
+     * @returns {Map<number, string>}
+     */
+    /**
+     * Build map of chapter code → display number ("1", "1.1", "2.3.1" …).
+     * @param {Map} byParent  keyed by parentCode string (null for roots)
+     * @returns {Map<string, string>}
+     */
+    _buildNumberMap(byParent) {
+        const map = new Map();
+        const walk = (parentCode, prefix) => {
+            const children = byParent.get(parentCode) ?? [];
+            children.forEach((c, i) => {
+                const num = prefix ? `${prefix}.${i + 1}` : String(i + 1);
+                map.set(c.code, num);
+                walk(c.code, num);
+            });
+        };
+        walk(null, '');
+        return map;
+    }
+
+    _renderOdipLevel(parentCode, byParent, numberMap, depth) {
+        const children = byParent.get(parentCode) ?? [];
+        return children.map(chapter => {
+            const code        = chapter.code;
+            const nid         = normalizeId(chapter.itemId);
+            const hasChildren = (byParent.get(code) ?? []).length > 0;
+            const collapsed   = this._collapsedIds.has(code);
+            const active      = this._odipActiveId === nid;
+            const indent      = depth * 14;
+            const num         = numberMap.get(code) ? `${numberMap.get(code)}. ` : '';
+            const title       = this._esc(`${num}${chapter.title ?? code}`);
+
+            const chevron = hasChildren
+                ? `<button class="chapter-toc__chevron" data-action="toggle" data-code="${this._esc(code)}" data-nid="${nid}"
+                           title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▶' : '▼'}</button>`
+                : `<span class="chapter-toc__chevron-placeholder"></span>`;
+
+            // Inline topic tree for this chapter
+            const hierarchy  = this._parseHierarchy(chapter);
+            const topicTree  = this._renderOdipTopics(hierarchy, code, nid, indent + 14);
+
+            const subtree = hasChildren && !collapsed
+                ? `<div class="chapter-toc__children">${this._renderOdipLevel(code, byParent, numberMap, depth + 1)}</div>`
+                : '';
+
+            return `
+                <div class="chapter-toc__chapter-node">
+                    <div class="chapter-toc__chapter-row ${active ? 'chapter-toc__chapter-row--active' : ''}"
+                         style="padding-left:${indent + 6}px">
+                        ${chevron}
+                        <button class="chapter-toc__chapter-label" data-action="select" data-nid="${nid}"
+                                title="${title}">${title}</button>
+                        <button class="chapter-toc__dive-btn" data-action="dive" data-nid="${nid}"
+                                title="Open chapter">→</button>
+                    </div>
+                    ${topicTree}
+                    ${subtree}
+                </div>`;
+        }).join('');
+    }
+
+    /**
+     * Render topic/subtopic/O* tree inline under a chapter node in ODIP scope.
+     * Topic collapse state stored in _collapsedIds using key `topic:{chapterCode}:{topicIndex}`.
+     *
+     * @param {object[]} hierarchy  — normalised topics array
+     * @param {string}   chapterCode
+     * @param {number}   chapterNid
+     * @param {number}   baseIndent — px indent for topic rows
+     * @returns {string}
+     */
+    _renderOdipTopics(hierarchy, chapterCode, chapterNid, baseIndent) {
+        if (!hierarchy?.length) return '';
+        return hierarchy.map((topic, ti) =>
+            this._renderOdipTopic(topic, chapterCode, chapterNid, ti, null, baseIndent)
+        ).join('');
+    }
+
+    _renderOdipTopic(topic, chapterCode, chapterNid, topicIndex, parentIndex, indent) {
+        const key         = parentIndex != null
+            ? `topic:${chapterCode}:${parentIndex}-${topicIndex}`
+            : `topic:${chapterCode}:${topicIndex}`;
+        const collapsed   = this._collapsedIds.has(key);
+        const hasChildren = (topic.subTopics?.length > 0) || (topic.items?.length > 0);
+
+        return `
+            <div class="chapter-toc__odip-topic-group">
+                <div class="chapter-toc__chapter-row chapter-toc__chapter-row--topic"
+                     style="padding-left:${indent}px">
+                    ${hasChildren
+            ? `<button class="chapter-toc__chevron" data-action="toggle-topic"
+                                   data-code="${this._esc(key)}" data-nid="${chapterNid}"
+                                   title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▶' : '▼'}</button>`
+            : `<span class="chapter-toc__chevron-placeholder"></span>`}
+                    <button class="chapter-toc__chapter-label chapter-toc__chapter-label--topic"
+                            data-action="select-topic"
+                            data-nid="${chapterNid}"
+                            data-topic-key="${this._esc(key)}"
+                            title="${this._esc(topic.topic ?? '')}">${this._esc(topic.topic ?? '')}</button>
+                </div>
+                ${collapsed ? '' : [
+            ...(topic.subTopics ?? []).map((sub, si) =>
+                this._renderOdipTopic(sub, chapterCode, chapterNid, si, topicIndex, indent + 14)
+            ),
+            ...(topic.items ?? []).map((item, ii) =>
+                this._renderOdipOStar(item, chapterCode, chapterNid, key, ii, indent + 14)
+            ),
+        ].join('')}
+            </div>`;
+    }
+
+    _renderOdipOStar(item, chapterCode, chapterNid, topicKey, itemIndex, indent) {
+        const entryKey = `ostar:${chapterCode}:${topicKey}:${itemIndex}`;
+        const type     = (item.type ?? 'OR').toUpperCase();
+        const label    = item.code ? `${item.code} — ${item.title ?? ''}` : (item.title ?? String(item.id ?? ''));
+
+        return `
+            <div class="chapter-toc__chapter-row chapter-toc__chapter-row--ostar"
+                 style="padding-left:${indent}px">
+                <span class="chapter-toc__chevron-placeholder"></span>
+                <button class="chapter-toc__chapter-label chapter-toc__chapter-label--ostar"
+                        data-action="select-ostar"
+                        data-nid="${chapterNid}"
+                        data-item-id="${this._esc(String(item.id ?? ''))}"
+                        data-item-type="${type}"
+                        data-entry-key="${this._esc(entryKey)}"
+                        title="${this._esc(label)}">
+                    ${this._typeBadge(type)}
+                    <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar">${this._esc(label)}</span>
+                </button>
+            </div>`;
+    }
+
+    _isDescendant(childNid, ancestorCode, byParent) {
+        for (const c of (byParent.get(ancestorCode) ?? [])) {
+            if (normalizeId(c.itemId) === childNid) return true;
+            if (this._isDescendant(childNid, c.code, byParent)) return true;
+        }
+        return false;
+    }
+
+    _refreshOdipActive(treeEl) {
+        treeEl.querySelectorAll('.chapter-toc__chapter-row').forEach(row => {
+            const btn = row.querySelector('[data-action="select"]');
+            const nid = btn ? parseInt(btn.dataset.nid, 10) : NaN;
+            row.classList.toggle('chapter-toc__chapter-row--active', nid === this._odipActiveId);
+        });
+    }
+
+    /** Resolve a chapter from normalised integer id. */
+    _resolveChapter(nid) {
+        for (const c of this._chapters) {
+            try { if (normalizeId(c.itemId) === nid) return c; } catch { /* skip */ }
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // Chapter scope
+    // =========================================================================
 
     async renderChapter(chapter) {
         this._chapter          = chapter;
         this._activeKey        = null;
         this._unassignedOStars = [];
+        this._collapsedTopics  = new Set();
+        this._hierarchy        = [];
 
-        // Ensure selector exists (first render) or update selected value
-        if (!this.container.querySelector('.chapter-toc__chapter-select')) {
-            this.renderSelector(chapter.itemId);
-        } else {
-            const sel = this.container.querySelector('.chapter-toc__chapter-select');
-            if (sel) sel.value = String(chapter.itemId);
-        }
+        const title = this._esc(chapter.title ?? chapter.code ?? '');
 
-        // Update domain badge
-        this._renderDomainBadge(chapter);
+        this.container.innerHTML = `
+            <div class="chapter-toc chapter-toc--chapter" id="chapterTocChapter">
+                <div class="chapter-toc__chapter-header">
+                    <button class="chapter-toc__back-btn" id="chapterTocBack">← Chapters</button>
+                    <span class="chapter-toc__chapter-name" title="${title}">${title}</span>
+                </div>
+                <div class="chapter-toc__tree" id="chapterTocTree"></div>
+            </div>
+        `;
 
-        // Fetch O*s for domain chapters
+        this.container.querySelector('#chapterTocBack')
+            ?.addEventListener('click', () => this._onClimb());
+
+        // Attach once on the stable shell — survives treeEl re-renders
+        this.container.querySelector('#chapterTocChapter')
+            .addEventListener('click', (e) => this._handleChapterClick(e));
+
+        // osHierarchy items are pre-enriched server-side: { id, type, code, title }
         const hierarchy = this._parseHierarchy(chapter);
-        if (chapter.domain) {
-            try {
-                const params     = { domain: chapter.domain };
-                console.log('[ChapterToc] fetching O*s for domain:', chapter.domain);
-                const oStars     = await apiClient.listOStars(params);
-                console.log('[ChapterToc] listOStars result:', oStars?.length);
-                const normalised = (oStars ?? []).map(o => ({
-                    ...o,
-                    id:   o.id   ?? o.itemId,
-                    type: o.type ?? 'OC',
-                }));
-
-                // Build ID lookup for hierarchy item enrichment
-                const oStarById = new Map(normalised.map(o => [String(o.id ?? o.itemId), o]));
-                this._enrichHierarchy(hierarchy, oStarById);
-
-                const assignedIds = new Set(this._collectAssignedIds(hierarchy));
-                this._unassignedOStars = normalised.filter(o =>
-                    !assignedIds.has(String(o.itemId ?? o.id))
-                );
-            } catch (error) {
-                errorHandler.handle(error, 'chapter-toc-ostar-load');
-            }
-        }
-
-        this._renderTree(hierarchy);
+        this._hierarchy = hierarchy;
+        this._renderChapterTree();
     }
 
-    cleanup() {
-        this.container         = null;
-        this._chapter          = null;
-        this._activeKey        = null;
-        this._unassignedOStars = [];
-    }
-
-    // -------------------------------------------------------------------------
-    // Domain badge
-    // -------------------------------------------------------------------------
-
-    _renderDomainBadge(chapter) {
-        const wrap = this.container.querySelector('.chapter-toc__selector-wrap');
-        if (!wrap) return;
-        wrap.querySelector('.chapter-toc__domain-badge')?.remove();
-        if (chapter.domain) {
-            const badge = document.createElement('span');
-            badge.className   = 'chapter-toc__domain-badge';
-            badge.textContent = chapter.domain;
-            wrap.appendChild(badge);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Tree rendering — O*s only (no chapter root entry)
-    // -------------------------------------------------------------------------
-
-    _renderTree(hierarchy) {
-        const treeEl = this.container.querySelector('#chapterTocTree');
+    _renderChapterTree() {
+        const treeEl    = this.container?.querySelector('#chapterTocTree');
         if (!treeEl) return;
+        const hierarchy = this._hierarchy;
 
         const hasTopics     = hierarchy.length > 0;
         const hasUnassigned = this._unassignedOStars.length > 0;
 
-        treeEl.innerHTML = `
-            ${hierarchy.map((topic, ti) => this._renderTopic(topic, ti)).join('')}
-            ${hasUnassigned ? this._renderUnassignedBucket() : ''}
-            ${!hasTopics && !hasUnassigned ? `
-                <div class="chapter-toc__empty">No O*s in this chapter.</div>
-            ` : ''}
-        `;
+        treeEl.innerHTML = [
+            ...hierarchy.map((topic, ti) => this._renderTopic(topic, ti)),
+            hasUnassigned ? this._renderUnassignedBucket() : '',
+            (!hasTopics && !hasUnassigned) ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>' : '',
+        ].join('');
+    }
 
-        this._attachTreeListeners();
+    _handleChapterClick(e) {
+        const toggler = e.target.closest('[data-toggle-key]');
+        if (toggler) {
+            const key = toggler.dataset.toggleKey;
+            if (this._collapsedTopics.has(key)) {
+                this._collapsedTopics.delete(key);
+            } else {
+                if (this._activeKey === key || this._activeKey?.startsWith(key + '-')) {
+                    this._activeKey = null;
+                }
+                this._collapsedTopics.add(key);
+            }
+            this._renderChapterTree();
+            return;
+        }
+        const btn = e.target.closest('.chapter-toc__entry');
+        if (btn) this._handleChapterEntryClick(btn);
     }
 
     _renderTopic(topic, topicIndex) {
-        const key          = `topic-${topicIndex}`;
-        const hasSubTopics = topic.subTopics?.length > 0;
-        const hasItems     = topic.items?.length > 0;
+        const key         = `topic-${topicIndex}`;
+        const collapsed   = this._collapsedTopics.has(key);
+        const hasChildren = (topic.subTopics?.length > 0) || (topic.items?.length > 0);
 
         return `
             <div class="chapter-toc__topic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--topic"
                         data-key="${key}" data-type="topic" data-topic-index="${topicIndex}">
-                    <span class="chapter-toc__entry-icon">▸</span>
+                    ${hasChildren
+            ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
+            : `<span class="chapter-toc__topic-toggle-placeholder"></span>`}
                     <span class="chapter-toc__entry-label">${this._esc(topic.topic ?? '')}</span>
                 </button>
-                ${hasSubTopics ? topic.subTopics.map((sub, si) =>
-            this._renderSubTopic(sub, topicIndex, si)
-        ).join('') : ''}
-                ${hasItems ? topic.items.map((item, ii) =>
-            this._renderOStar(item, topicIndex, null, ii)
-        ).join('') : ''}
-            </div>
-        `;
+                ${collapsed ? '' : [
+            ...(topic.subTopics ?? []).map((sub, si) => this._renderSubTopic(sub, topicIndex, si)),
+            ...(topic.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, null, ii)),
+        ].join('')}
+            </div>`;
     }
 
     _renderSubTopic(subTopic, topicIndex, subIndex) {
-        const key      = `subtopic-${topicIndex}-${subIndex}`;
-        const hasItems = subTopic.items?.length > 0;
+        const key       = `subtopic-${topicIndex}-${subIndex}`;
+        const collapsed = this._collapsedTopics.has(key);
+        const hasItems  = (subTopic.items?.length > 0);
 
         return `
             <div class="chapter-toc__subtopic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--subtopic"
                         data-key="${key}" data-type="topic"
                         data-topic-index="${topicIndex}" data-sub-index="${subIndex}">
-                    <span class="chapter-toc__entry-icon">▸</span>
+                    ${hasItems
+            ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
+            : `<span class="chapter-toc__topic-toggle-placeholder"></span>`}
                     <span class="chapter-toc__entry-label">${this._esc(subTopic.topic ?? '')}</span>
                 </button>
-                ${hasItems ? subTopic.items.map((item, ii) =>
-            this._renderOStar(item, topicIndex, subIndex, ii)
-        ).join('') : ''}
-            </div>
-        `;
+                ${collapsed || !hasItems ? '' :
+            subTopic.items.map((item, ii) =>
+                this._renderOStarEntry(item, topicIndex, subIndex, ii)
+            ).join('')}
+            </div>`;
     }
 
-    _renderOStar(item, topicIndex, subIndex, itemIndex) {
+    _renderOStarEntry(item, topicIndex, subIndex, itemIndex) {
         const key   = `ostar-${topicIndex}-${subIndex ?? 'x'}-${itemIndex}`;
         const type  = (item.type ?? 'OR').toUpperCase();
         const code  = item.code  ?? '';
@@ -236,8 +489,7 @@ export default class ChapterToc {
                 ${this._typeBadge(type)}
                 <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar"
                       title="${this._esc(label)}">${this._esc(label)}</span>
-            </button>
-        `;
+            </button>`;
     }
 
     _renderUnassignedBucket() {
@@ -246,8 +498,8 @@ export default class ChapterToc {
             <div class="chapter-toc__topic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--topic chapter-toc__entry--unassigned"
                         data-key="_unassigned" data-type="unassigned">
-                    <span class="chapter-toc__entry-icon">⚠</span>
-                    <span class="chapter-toc__entry-label">Unassigned (${items.length})</span>
+                    <span class="chapter-toc__topic-toggle-placeholder"></span>
+                    <span class="chapter-toc__entry-label">⚠ Unassigned (${items.length})</span>
                 </button>
                 ${items.map((item, ii) => {
             const type  = (item.type ?? 'OC').toUpperCase();
@@ -264,52 +516,25 @@ export default class ChapterToc {
                             ${this._typeBadge(type)}
                             <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar"
                                   title="${this._esc(label)}">${this._esc(label)}</span>
-                        </button>
-                    `;
+                        </button>`;
         }).join('')}
-            </div>
-        `;
+            </div>`;
     }
 
-    // -------------------------------------------------------------------------
-    // Event handling
-    // -------------------------------------------------------------------------
-
-    _attachSelectorListener() {
-        this.container.querySelector('#chapterTocSelect')
-            ?.addEventListener('change', (e) => {
-                const id      = parseInt(e.target.value, 10);
-                const chapter = this._chapterMap.get(id);
-                if (chapter) this._onChapterChange(chapter);
-            });
-    }
-
-    _attachTreeListeners() {
-        this.container.querySelectorAll('.chapter-toc__entry').forEach(btn => {
-            btn.addEventListener('click', () => this._handleEntryClick(btn));
-        });
-    }
-
-    _handleEntryClick(btn) {
+    _handleChapterEntryClick(btn) {
         const key  = btn.dataset.key;
         const type = btn.dataset.type;
-
-        this._activeKey = key;
-        this.container.querySelectorAll('.chapter-toc__entry').forEach(b => {
-            b.classList.toggle('chapter-toc__entry--active', b.dataset.key === key);
-        });
-
+        this.setActiveKey(key);
         const entry = this._buildEntry(btn, type);
-        if (entry) this._onSelect(entry);
+        if (entry) this._onChapterSelect(entry);
     }
 
     _buildEntry(btn, type) {
-        const hierarchy = this._parseHierarchy(this._chapter);
+        const hierarchy = this._hierarchy;
 
         if (type === 'unassigned') {
             return { type: 'unassigned', chapter: this._chapter, items: this._unassignedOStars };
         }
-
         if (type === 'topic') {
             const ti       = parseInt(btn.dataset.topicIndex, 10);
             const si       = btn.dataset.subIndex !== '' ? parseInt(btn.dataset.subIndex, 10) : null;
@@ -317,112 +542,88 @@ export default class ChapterToc {
             const topic    = si != null ? topicObj?.subTopics?.[si] : topicObj;
             return { type: 'topic', topic, chapter: this._chapter };
         }
-
         if (type === 'ostar') {
             if (btn.dataset.unassignedIndex !== undefined) {
                 const ii    = parseInt(btn.dataset.unassignedIndex, 10);
-                const ostar = this._normaliseOStar(this._unassignedOStars[ii]);
-                return { type: 'ostar', ostar, topic: null, chapter: this._chapter };
+                return { type: 'ostar', ostar: this._normaliseOStar(this._unassignedOStars[ii]), topic: null, chapter: this._chapter };
             }
             const ti       = parseInt(btn.dataset.topicIndex, 10);
             const si       = btn.dataset.subIndex !== '' ? parseInt(btn.dataset.subIndex, 10) : null;
             const ii       = parseInt(btn.dataset.itemIndex, 10);
             const topicObj = hierarchy[ti];
             const topic    = si != null ? topicObj?.subTopics?.[si] : topicObj;
-            const item     = topic?.items?.[ii];
-            return { type: 'ostar', ostar: item, topic, chapter: this._chapter };
+            return { type: 'ostar', ostar: topic?.items?.[ii], topic, chapter: this._chapter };
         }
-
         return null;
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // External sync API
+    // =========================================================================
 
-    _collectAssignedIds(hierarchy) {
-        const ids = [];
-        const walk = (topics) => {
-            for (const t of topics ?? []) {
-                for (const item of t.items ?? []) {
-                    ids.push(String(item.id ?? item.itemId ?? ''));
-                }
-                walk(t.subTopics ?? []);
-            }
-        };
-        walk(hierarchy);
-        return ids;
+    setActiveKey(key) {
+        this._activeKey = key;
+        this.container?.querySelectorAll('.chapter-toc__entry').forEach(b => {
+            b.classList.toggle('chapter-toc__entry--active', b.dataset.key === key);
+        });
     }
 
-    _normaliseOStar(ostar) {
-        if (!ostar) return ostar;
-        return { ...ostar, id: ostar.id ?? ostar.itemId };
+    scrollToKey(key) {
+        const btn = this.container?.querySelector(`[data-key="${CSS.escape(key)}"]`);
+        btn?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
+    // =========================================================================
+    // Shared helpers
+    // =========================================================================
+
+    cleanup() {
+        this.container         = null;
+        this._chapter          = null;
+        this._activeKey        = null;
+        this._unassignedOStars = [];
+        this._collapsedTopics  = new Set();
+        this._hierarchy        = [];
+    }
+
+
+    /**
+     * Normalise a stored topic to the render shape used throughout this file.
+     * Server enriches ons/ors/ocs as { id, type, code, title } objects.
+     * Fall back to bare-id shape for backward compat if plain integers arrive.
+     */
     _parseHierarchy(chapter) {
         let raw = chapter?.osHierarchy ?? chapter?.jsonOsHierarchy ?? null;
         if (typeof raw === 'string') {
             try { raw = JSON.parse(raw); } catch { raw = null; }
         }
         if (!raw) return [];
-        // osHierarchy is { topics: [...] }; unwrap to the topics array
         const topics = Array.isArray(raw) ? raw : (raw.topics ?? []);
         return topics.map(t => this._normaliseTopic(t));
     }
 
-    /**
-     * Enrich normalised hierarchy items with code and title from the O* lookup map.
-     * Mutates items in place.
-     *
-     * @param {object[]} topics - Normalised hierarchy (output of _parseHierarchy)
-     * @param {Map<string, object>} oStarById - itemId string → O* object
-     */
-    _enrichHierarchy(topics, oStarById) {
-        for (const topic of topics ?? []) {
-            for (const item of topic.items ?? []) {
-                const o = oStarById.get(String(item.id));
-                if (o) {
-                    item.code  = o.code  ?? null;
-                    item.title = o.title ?? null;
-                }
-            }
-            this._enrichHierarchy(topic.subTopics ?? [], oStarById);
-        }
-    }
-
-    /**
-     * Normalise a stored topic (ons/ors/ocs/subtopics) to the render shape
-     * (items/subTopics) used by _renderTopic and _buildEntry.
-     *
-     * @param {object} t - Raw topic from osHierarchy
-     * @returns {object}
-     */
     _normaliseTopic(t) {
-        const items = [
-            ...(t.ons ?? []).map(id => ({ id, type: 'ON' })),
-            ...(t.ors ?? []).map(id => ({ id, type: 'OR' })),
-            ...(t.ocs ?? []).map(id => ({ id, type: 'OC' })),
-        ];
+        const mapItem = (raw, impliedType) =>
+            (raw && typeof raw === 'object')
+                ? { id: raw.id, type: raw.type ?? impliedType, code: raw.code ?? null, title: raw.title ?? null }
+                : { id: raw,    type: impliedType,             code: null,             title: null };
         return {
             topic:     t.topic,
-            items,
+            items:     [
+                ...(t.ons ?? []).map(o => mapItem(o, 'ON')),
+                ...(t.ors ?? []).map(o => mapItem(o, 'OR')),
+                ...(t.ocs ?? []).map(o => mapItem(o, 'OC')),
+            ],
             subTopics: (t.subtopics ?? []).map(s => this._normaliseTopic(s)),
         };
     }
 
     _typeBadge(type) {
-        const cls = type === 'ON' ? 'ostar-type-on'
-            : type === 'OR' ? 'ostar-type-or'
-                : type === 'OC' ? 'ostar-type-oc'
-                    : 'ostar-type-other';
+        const cls = type === 'ON' ? 'ostar-type-on' : type === 'OR' ? 'ostar-type-or' : type === 'OC' ? 'ostar-type-oc' : 'ostar-type-other';
         return `<span class="chapter-toc__type-badge ${cls}">${type}</span>`;
     }
 
     _esc(str) {
-        return String(str ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+        return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 }

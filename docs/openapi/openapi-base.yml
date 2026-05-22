@@ -722,6 +722,30 @@ components:
             type: string
 
     # Chapter Entity Schemas
+
+    OsHierarchyItem:
+      description: |
+        Enriched O* reference in an osHierarchy topic — read path only.
+        On write (update/patch), callers send bare integer ids; ChapterService
+        enriches them to this shape on read.
+      type: object
+      properties:
+        id:
+          type: integer
+          description: "O* item id"
+        type:
+          type: string
+          enum: [ON, OR, OC]
+          description: "O* entity type"
+        code:
+          type: string
+          nullable: true
+          description: "O* code — null if item no longer exists"
+        title:
+          type: string
+          nullable: true
+          description: "O* title — null if item no longer exists"
+
     OsHierarchyTopic:
       type: object
       required: [topic, ons, ors, ocs]
@@ -732,18 +756,18 @@ components:
         ons:
           type: array
           items:
-            type: integer
-          description: "ON item IDs in this topic"
+            $ref: '#/components/schemas/OsHierarchyItem'
+          description: "ON items in this topic (enriched on read; integer ids on write)"
         ors:
           type: array
           items:
-            type: integer
-          description: "OR item IDs in this topic"
+            $ref: '#/components/schemas/OsHierarchyItem'
+          description: "OR items in this topic (enriched on read; integer ids on write)"
         ocs:
           type: array
           items:
-            type: integer
-          description: "OC item IDs in this topic"
+            $ref: '#/components/schemas/OsHierarchyItem'
+          description: "OC items in this topic (enriched on read; integer ids on write)"
         subtopics:
           type: array
           items:
@@ -762,7 +786,7 @@ components:
     Chapter:
       description: |
         Chapter response. title is stored on the item node (set at bootstrap).
-        domain, position, and parentKey are config-owned fields merged from edition.json
+        domain, position, and parentCode are config-owned fields merged from edition.json
         at read time by the service layer and are not user-editable.
       type: object
       properties:
@@ -792,10 +816,10 @@ components:
         position:
           type: integer
           description: "Ordering within parent from edition.json"
-        parentKey:
+        parentCode:
           type: string
           nullable: true
-          description: "Parent chapter code — null for top-level chapters"
+          description: "Parent chapter code — null for top-level chapters (formerly parentKey)"
         # user-maintained fields
         narrative:
           type: string
@@ -805,6 +829,42 @@ components:
           $ref: '#/components/schemas/OsHierarchy'
           nullable: true
           description: "O* presentation order for this chapter"
+
+    OsHierarchyWriteTopic:
+      description: |
+        Write-path topic shape — ons/ors/ocs are integer arrays.
+        Used in ChapterUpdateRequest and ChapterPatchRequest.
+      type: object
+      required: [topic, ons, ors, ocs]
+      properties:
+        topic:
+          type: string
+        ons:
+          type: array
+          items:
+            type: integer
+        ors:
+          type: array
+          items:
+            type: integer
+        ocs:
+          type: array
+          items:
+            type: integer
+        subtopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/OsHierarchyWriteTopic'
+
+    OsHierarchyWrite:
+      description: "Write-path OsHierarchy — topics contain integer id arrays."
+      type: object
+      required: [topics]
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/OsHierarchyWriteTopic'
 
     ChapterUpdateRequest:
       type: object
@@ -816,7 +876,7 @@ components:
           type: string
           nullable: true
         osHierarchy:
-          $ref: '#/components/schemas/OsHierarchy'
+          $ref: '#/components/schemas/OsHierarchyWrite'
           nullable: true
 
     ChapterPatchRequest:
@@ -829,7 +889,7 @@ components:
           type: string
           nullable: true
         osHierarchy:
-          $ref: '#/components/schemas/OsHierarchy'
+          $ref: '#/components/schemas/OsHierarchyWrite'
           nullable: true
 
     VersionHistory:

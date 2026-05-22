@@ -337,3 +337,377 @@
     flex-shrink: 0;
     margin-left: auto;
 }
+/* =========================================================================
+   ODIP scope — chapter tree
+   ========================================================================= */
+
+.chapter-toc--odip .chapter-toc__odip-header {
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+}
+
+.chapter-toc__odip-title {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Chapter row (ODIP scope) */
+.chapter-toc__chapter-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 32px;
+    border-left: 2px solid transparent;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.chapter-toc__chapter-row:hover {
+    background: var(--bg-secondary);
+}
+
+.chapter-toc__chapter-row--active {
+    background: var(--ec-light, #EBF3FB);
+    border-left-color: var(--ec-blue, #2E75B6);
+}
+
+/* Chevron expand/collapse */
+.chapter-toc__chevron {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.chapter-toc__chevron:hover {
+    color: var(--text-primary);
+    background: var(--border-primary);
+}
+
+.chapter-toc__chevron-placeholder {
+    flex-shrink: 0;
+    width: 24px;
+}
+
+/* Chapter label button */
+.chapter-toc__chapter-label {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--ec-navy, #1F3864);
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 0;
+    line-height: 1.4;
+}
+
+/* Dive button — visible on row hover */
+.chapter-toc__dive-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.chapter-toc__chapter-row:hover .chapter-toc__dive-btn {
+    opacity: 1;
+}
+
+.chapter-toc__dive-btn:hover {
+    color: var(--ec-blue, #2E75B6);
+    background: var(--ec-light, #EBF3FB);
+}
+
+/* Children container */
+.chapter-toc__children {
+    /* no extra indent — handled by padding-left on rows */
+}
+
+/* =========================================================================
+   Chapter scope — back control and header
+   ========================================================================= */
+
+.chapter-toc--chapter .chapter-toc__chapter-header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-2) var(--space-1);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    min-height: 0;
+}
+
+.chapter-toc__back-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    color: var(--ec-blue, #2E75B6);
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    transition: background var(--transition-fast);
+}
+
+.chapter-toc__back-btn:hover {
+    background: var(--ec-light, #EBF3FB);
+}
+
+.chapter-toc__back-label {
+    /* inline inside button */
+}
+
+.chapter-toc__chapter-name {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--ec-navy, #1F3864);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* =========================================================================
+   Mode bar (chapter scope only — sits above MasterDetail)
+   ========================================================================= */
+
+.narrative-mode-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+}
+
+.narrative-mode-bar__modes {
+    display: flex;
+    gap: 2px;
+}
+
+.narrative-mode-bar__btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border-primary);
+}
+
+.narrative-mode-bar__btn--active {
+    color: var(--ec-navy, #1F3864);
+    background: var(--ec-light, #EBF3FB);
+    border-color: var(--ec-sky, #BDD7EE);
+    font-weight: var(--font-weight-medium);
+}
+
+.narrative-mode-bar__sync {
+    margin-left: auto;
+}
+
+.narrative-mode-bar__btn--sync-on {
+    color: var(--ec-blue, #2E75B6);
+    background: var(--ec-light, #EBF3FB);
+    border-color: var(--ec-blue, #2E75B6);
+}
+
+/* =========================================================================
+   Sequential body
+   ========================================================================= */
+
+.chapter-body--sequential {
+    display: block;
+    height: 100%;
+    overflow-y: auto;
+    padding: 0;
+}
+
+/* Section anchors */
+.seq-section {
+    padding: var(--space-5) var(--space-6) var(--space-4);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.seq-section:last-child {
+    border-bottom: none;
+}
+
+.seq-section--narrative {
+    background: white;
+}
+
+.seq-section--topic {
+    background: var(--bg-secondary);
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-3);
+}
+
+.seq-section--subtopic {
+    background: white;
+    padding-left: calc(var(--space-6) + 12px);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-2);
+}
+
+.seq-section__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+    flex-shrink: 0;
+}
+
+.seq-section__title {
+    font-size: 17px;
+    font-weight: var(--font-weight-medium);
+    color: var(--ec-navy, #1F3864);
+    margin: 0;
+    line-height: 1.3;
+}
+
+.seq-section__topic-title {
+    font-size: 13px;
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin: 0;
+}
+
+.seq-section__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+
+.seq-section__edit-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+.seq-section__narrative-wrap {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.seq-section__ostar-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.seq-section__empty {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    font-style: italic;
+    padding: var(--space-2) 0;
+}
+
+/* Sequential O* card */
+.seq-ostar-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 0.5px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: white;
+    font-size: var(--font-size-xs);
+    transition: border-color var(--transition-fast);
+}
+
+.seq-ostar-card:hover {
+    border-color: var(--ec-blue, #2E75B6);
+}
+
+.seq-ostar-card__edit {
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+/* ── Chapter scope topic toggle ── */
+.chapter-toc__topic-toggle {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.chapter-toc__topic-toggle:hover {
+    color: var(--text-primary);
+    background: var(--border-primary);
+}
+
+.chapter-toc__topic-toggle-placeholder {
+    flex-shrink: 0;
+    width: 22px;
+    display: inline-block;
+}
+
+/* ── ODIP scope inline topic/O* rows ── */
+.chapter-toc__chapter-row--topic {
+    min-height: 26px;
+}
+
+.chapter-toc__chapter-label--topic {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+}
+
+.chapter-toc__chapter-row--ostar {
+    min-height: 22px;
+}
+
+.chapter-toc__chapter-label--ostar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: normal;
+}
+
+.chapter-toc__odip-topic-group {
+    /* no extra styles — rows already indented via padding-left */
+}
