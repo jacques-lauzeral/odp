@@ -1,7 +1,8 @@
 export const MaturityLevel = {
     'DRAFT':    'Draft',
     'ADVANCED': 'Advanced',
-    'MATURE':   'Mature'
+    'MATURE':   'Mature',
+    'NO_SHOW':  'No Show'
 };
 
 export const MaturityLevelKeys = Object.keys(MaturityLevel);

@@ -231,7 +231,7 @@ components:
           enum: [ON, OR]
         maturity:
           type: string
-          enum: [DRAFT, ADVANCED, MATURE]
+          enum: [DRAFT, ADVANCED, MATURE, NO_SHOW]
         domain:
           type: string
           description: "Domain key from domains.json"
@@ -330,7 +330,7 @@ components:
           nullable: true
         maturity:
           type: string
-          enum: [DRAFT, ADVANCED, MATURE]
+          enum: [DRAFT, ADVANCED, MATURE, NO_SHOW]
         domain:
           type: string
           description: "Domain key from domains.json — mandatory"
@@ -409,7 +409,7 @@ components:
           nullable: true
         maturity:
           type: string
-          enum: [DRAFT, ADVANCED, MATURE]
+          enum: [DRAFT, ADVANCED, MATURE, NO_SHOW]
         domain:
           type: string
           description: "Domain key from domains.json"

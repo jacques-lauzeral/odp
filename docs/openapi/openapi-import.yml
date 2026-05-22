@@ -252,8 +252,77 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
+  /import/distributed:
+    post:
+      summary: Import distributed edition source JSON file directly
+      description: |
+        Import a single per-chapter source JSON file (conforming to source.schema.json)
+        directly into the database. No extract or map stage — the source JSON is consumed
+        as-is by DistributedEditionImporter.
+
+        Processing order per file:
+          1. Chapter narrative: blocks[] converted to Quill Delta and patched onto the
+             chapter identified by chapterFolder
+          2. Reference maps built from existing DB (no setup entity import — setup entities
+             must already exist; failed resolution emits warnings)
+          3. Requirements created as DRAFT (3-phase algorithm)
+          4. References resolved and final maturity applied
+
+        Field mapping from source schema:
+          drg               → domain
+          expTit            → tentative (ON only)
+          tentativeImplTime → prepended to privateNotes
+          noShow: true      → maturity NO_SHOW
+          EMERGING maturity → mapped to DRAFT
+          refinesON         → refinesParents (scalar alias, ON only)
+          refinesORs        → refinesParents (array alias, OR only)
+      tags: [Import]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: "Source JSON conforming to source.schema.json"
+      responses:
+        '200':
+          description: Import completed with summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistributedImportSummary'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
 components:
   schemas:
+    DistributedImportSummary:
+      type: object
+      description: "Summary returned by POST /import/distributed"
+      properties:
+        chapters:
+          type: integer
+          description: "Number of chapter narratives patched"
+        requirements:
+          type: integer
+          description: "Number of requirements created"
+        errors:
+          type: array
+          items: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+
     ImportSummary:
       type: object
       properties:
