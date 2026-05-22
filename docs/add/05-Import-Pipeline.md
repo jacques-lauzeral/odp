@@ -2,7 +2,9 @@
 
 ## 1. Overview
 
-The import pipeline ingests operational content from heterogeneous Office documents (Word / Excel) produced by Drafting Groups and loads it into the ODIP database. It is a three-stage pipeline with a clean separation between document parsing, business rule mapping, and database persistence.
+The import pipeline ingests operational content from heterogeneous Office documents (Word / Excel) produced by Drafting Groups and loads it into the ODIP database. It operates in two distinct modes:
+
+**Three-stage pipeline** (Office documents):
 
 ```
 Office Document (.docx / .xlsx)
@@ -20,7 +22,17 @@ Office Document (.docx / .xlsx)
   Database (Neo4j)
 ```
 
-Each stage is independently testable and independently replaceable. Adding support for a new DrG requires only a new mapper — extraction and import are unchanged.
+**Distributed edition import** (source JSON files):
+
+```
+Source JSON (source.schema.json)
+        ↓
+  [Direct Import]   — DistributedEditionImporter, no extract/map stage
+        ↓
+  Database (Neo4j)
+```
+
+Each stage of the three-stage pipeline is independently testable and independently replaceable. Adding support for a new DrG requires only a new mapper — extraction and import are unchanged.
 
 ---
 
@@ -194,6 +206,56 @@ Returned by both importers:
 
 ---
 
+## 4.3 DistributedEditionImporter
+
+**Class**: `DistributedEditionImporter`  
+**Selected by**: `POST /import/distributed`  
+**API endpoint**: `POST /import/distributed`
+
+Used for importing ODIP distributed edition source JSON files directly — one file per chapter, conforming to `source.schema.json`. No extraction or mapping stage — the source JSON is consumed directly. Setup entities (reference documents, waves, stakeholder categories) must already exist in the database; failed resolution emits warnings rather than errors.
+
+**Processing phases per file:**
+
+| Phase | Action |
+|---|---|
+| 0a | Resolve chapter identity from `chapterFolder` / `documentId` → chapter `itemId` and `domain` |
+| 0b | Convert `blocks[]` or `chapterIntro[]` to Quill Delta; patch chapter narrative |
+| 1 | Build reference maps from existing DB (stakeholders, reference documents, waves, requirements) |
+| 2 | Create requirements as DRAFT without references |
+| 3 | Resolve references; apply final maturity |
+| 4 | Build `osHierarchy` from `path[0]` groupings; patch chapter |
+
+**Source field mapping:**
+
+| Source field | ODIP field | Notes |
+|---|---|---|
+| `drg` | `domain` | Hyphens normalised to underscores (`ASM-ATFCM` → `ASM_ATFCM`); overridden by chapter config domain for iDL sub-chapters |
+| `expTit` | `tentative` | ON only; scalar integer normalised to `[year, year]` |
+| `tentativeImplTime` | `privateNotes` (prefix) | Prepended as `"Source Tentative Implementation Time: ..."` |
+| `noShow: true` | `maturity: NO_SHOW` | Overrides stated maturity; no reference resolution |
+| `EMERGING` maturity | `DRAFT` | Legacy value mapped at both Phase 2 and Phase 3 |
+| `refinesON` (scalar) | `refinesParents: [value]` | ON alias |
+| `refinesORs` (array) | `refinesParents` | OR alias |
+
+**`chapterFolder` resolution:** lowercased, parenthetical suffixes stripped (e.g. `(LoA)`, `(TCF)`), spaces replaced with hyphens. Exact-lowercase fallback applied if normalised key not found. Must match a chapter `code` in the bootstrapped DB.
+
+**`osHierarchy` construction:** requirements grouped by `path[0]` (topic), preserving source order. ONs listed before ORs within each topic. Requirements with empty `path[]` (sub-entities via `refinesParents`) are excluded from topic placement. `ocs: []` always.
+
+**`DistributedImportSummary`** returned:
+
+```json
+{
+  "chapters": 1,
+  "requirements": 48,
+  "errors": [],
+  "warnings": ["Unresolved references: ..."]
+}
+```
+
+**Error handling**: greedy — errors on individual requirements are collected and do not abort the import. Unresolved cross-references (entities in other not-yet-imported files) are emitted as warnings, not errors.
+
+---
+
 ## 5. Docx Export (Round-Trip Pathway)
 
 **Classes**: `DocxExportService`, `DocxGenerator`, `DocxEntityRenderer`, `DocxStyles`  
@@ -215,19 +277,21 @@ The exported `.docx` can be edited manually in Word and re-imported via the stan
 
 ```
 services/import/
-├── DocxExtractor.js             Word document extractor
-├── HierarchicalDocxExtractor.js ZIP of Word documents extractor
-├── XlsxExtractor.js             Excel extractor
-├── Mapper.js                    Abstract mapper base class
-├── MapperRegistry.js            DrG → mapper lookup
-├── StandardImporter.js          Round-trip importer (code-based)
-├── JSONImporter.js              DrG-specific importer (externalId-based)
-└── mappers/                     One file per DrG + shared bootstrap mapper
-    ├── BootstrapMapper.js       Shared mapper for iCDM bootstrap-format Word docs
-    ├── NM_B2B_Mapper.js         TRANSVERSAL/NM-B2B folder mapper
-    ├── iDL_Mapper_sections.js   AIRSPACE section-based folders (ADP, ADMM)
-    ├── iDL_Mapper_tables.js     AIRSPACE table-based folders
-    ├── iDL_Mapper_new_format.js AIRSPACE new-format folders (TCF, LoA)
+├── DocxExtractor.js              Word document extractor
+├── HierarchicalDocxExtractor.js  ZIP of Word documents extractor
+├── XlsxExtractor.js              Excel extractor
+├── Mapper.js                     Abstract mapper base class
+├── MapperRegistry.js             DrG → mapper lookup
+├── StandardImporter.js           Round-trip importer (code-based)
+├── JSONImporter.js               DrG-specific importer (externalId-based)
+├── DistributedEditionImporter.js Distributed source JSON importer (direct, no mapper)
+├── BlocksToQuillDeltaConverter.js blocks[]/chapterIntro[] → Quill Delta converter
+└── mappers/                      One file per DrG + shared bootstrap mapper
+    ├── BootstrapMapper.js        Shared mapper for iCDM bootstrap-format Word docs
+    ├── NM_B2B_Mapper.js          TRANSVERSAL/NM-B2B folder mapper
+    ├── iDL_Mapper_sections.js    AIRSPACE section-based folders (ADP, ADMM)
+    ├── iDL_Mapper_tables.js      AIRSPACE table-based folders
+    ├── iDL_Mapper_new_format.js  AIRSPACE new-format folders (TCF, LoA)
     └── ...
 
 services/export/
@@ -235,11 +299,11 @@ services/export/
 ├── DocxGenerator.js
 ├── DocxEntityRenderer.js
 ├── DocxStyles.js
-├── ODPEditionAggregator.js      Data aggregation for AsciiDoc export
+├── ODPEditionAggregator.js       Data aggregation for AsciiDoc export
 ├── ODPEditionTemplateRenderer.js
-├── DeltaToAsciidocConverter.js  Quill Delta → AsciiDoc
-├── DeltaToDocxConverter.js      Quill Delta → docx content
-└── templates/                   Mustache templates for AsciiDoc output
+├── DeltaToAsciidocConverter.js   Quill Delta → AsciiDoc
+├── DeltaToDocxConverter.js       Quill Delta → docx content
+└── templates/                    Mustache templates for AsciiDoc output
 ```
 
 ---

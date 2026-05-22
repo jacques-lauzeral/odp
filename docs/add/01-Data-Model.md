@@ -496,6 +496,9 @@ The `DraftingGroup` enum identifies the drafting group scope for bandwidth plann
 | DRAFT | Under work; not ready for prioritisation or ODIP edition display |
 | ADVANCED | Under work but good enough for prioritisation and ODIP edition display |
 | MATURE | Considered finalised for prioritisation and ODIP edition display |
+| NO_SHOW | Imported from source with `noShow: true`; excluded from publication and edition display |
+
+`NO_SHOW` applies to ONs and ORs only. It is set automatically by `DistributedEditionImporter` when the source entry carries `noShow: true`. It is not a valid value for OCs, and is not available as a `minONMaturity` gate on editions. The `maturity-levels.js` enum and `openapi-base.yml` maturity enums on `OperationalRequirement`, `OperationalRequirementRequest`, and `OperationalRequirementPatchRequest` include `NO_SHOW`; OC maturity enums do not.
 
 ### 6.4 Edition Types
 
