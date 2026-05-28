@@ -203,17 +203,24 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 
 Inherits `VersionedItemStore → BaseStore`. Chapters have no graph relationships — all content is stored as scalar fields on `ChapterVersion`. Config-owned fields (`title`, `domain`, `position`) are not stored in the DB — they are merged from `edition-config` at read time by `_mergeConfigFields()`.
 
-**No `create()` from `VersionedItemStore`** — chapter creation is bootstrap-only via `createChapter(key, parentItemId, tx)`. `_getEntityTypeForCode()` returns `null` (no code generation for chapters).
+**No `create()` from `VersionedItemStore`** — chapter creation is bootstrap-only via `createChapter(code, title, tx)`. `_getEntityTypeForCode()` returns `null` (no code generation for chapters).
+
+**Projection:**
+
+| Projection | Fields included |
+|---|---|
+| `'standard'` | All identity and scalar fields — excludes `narrative` and `osHierarchy` |
+| `'extended'` | All fields including `narrative` and `osHierarchy` |
 
 **Additional public methods:**
 
-**`findByKey(key, tx)`** → `object|null` — find a chapter by its stable config key. Used by `initializeDatabase()` to check existence before creating.
+**`findByCode(code, tx)`** → `object|null` — find a chapter by its stable config code. Used by `initializeDatabase()` to check existence before creating. Always returns `extended` projection.
 
-**`createChapter(key, parentItemId, tx)`** — bootstrap-only creation. Stores `key` and `parentItemId` on the item node; initialises version with empty `narrative` and null `jsonOsHierarchy`.
+**`createChapter(code, title, tx)`** — bootstrap-only creation. Stores `code` and `title` on the item node; initialises version with empty `narrative` and null `jsonOsHierarchy`.
 
-**`findAll(tx)`** → all chapters ordered by item ID, with config-owned fields merged.
+**`findAll(tx, projection?)`** → all chapters ordered by item ID. Defaults to `'standard'` projection — `narrative` and `osHierarchy` are excluded. Config-owned fields are merged by `ChapterService`.
 
-**`findById(itemId, tx, baselineId?, editionId?)`** → single chapter with config-owned fields merged; returns `null` if not found.
+**`findById(itemId, tx, baselineId?, editionId?, projection?)`** → single chapter; defaults to `'extended'` projection. Delegates to `super.findById` for ID normalisation and query execution, then strips `narrative`/`osHierarchy` if `'standard'` is requested. Returns `null` if not found.
 
 Config fields absent in `edition-config` (e.g. after a config drift) are set to `null` rather than throwing — drift is visible at read time rather than fatal.
 

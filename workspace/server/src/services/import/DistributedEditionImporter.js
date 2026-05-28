@@ -139,7 +139,7 @@ class DistributedEditionImporter {
 
         // Store chapter domain — overrides drg for sub-chapters (e.g. iDL)
         // where source drg='AIRSPACE' but domain='IDL_ADMM', 'IDL_ADP', etc.
-        const chapter = await ChapterService.getById(chapterItemId, userId);
+        const chapter = await ChapterService.getById(chapterItemId, userId, null, 'standard');
         if (chapter.domain) {
             context.chapterDomain = chapter.domain;
         }
@@ -171,7 +171,7 @@ class DistributedEditionImporter {
         }
 
         try {
-            const current = await ChapterService.getById(context.chapterItemId, userId);
+            const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
             await ChapterService.patch(
                 context.chapterItemId,
                 { narrative },
@@ -254,7 +254,7 @@ class DistributedEditionImporter {
         }));
 
         try {
-            const current = await ChapterService.getById(context.chapterItemId, userId);
+            const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
             await ChapterService.patch(
                 context.chapterItemId,
                 { osHierarchy: { topics } },

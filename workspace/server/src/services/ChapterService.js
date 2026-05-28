@@ -4,9 +4,9 @@ import {
     commitTransaction,
     rollbackTransaction,
     chapterStore,
-    operationalRequirementStore,
-    operationalChangeStore,
 } from '../store/index.js';
+import OperationalRequirementService from './OperationalRequirementService.js';
+import OperationalChangeService from './OperationalChangeService.js';
 import { getChapterByCode } from '../config/loader.js';
 import { normalizeId } from '../../../shared/src/index.js';
 
@@ -40,11 +40,11 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
-     * List all chapters (latest versions, config-owned fields merged,
-     * osHierarchy items enriched with O* {id, type, code, title}).
-     *
-     * Two parallel calls: all requirements (summary) + all changes (summary).
-     * Build a single lookup map, then enrich all chapters in one pass.
+     * List all chapters (latest versions, config-owned fields merged).
+     * Uses 'standard' projection — narrative and osHierarchy are excluded.
+     * O* enrichment is not performed on the list path; retrieve individual
+     * chapters via getById (which uses 'extended' projection) when full
+     * content is needed.
      *
      * @param {string} userId
      * @returns {Promise<Array<object>>}
@@ -52,22 +52,9 @@ export class ChapterService extends VersionedItemService {
     async getAll(userId) {
         const tx = createTransaction(userId);
         try {
-            const chapters = await this.getStore().findAll(tx);
+            const chapters = await this.getStore().findAll(tx, 'standard');
             await commitTransaction(tx);
-
-            const merged = chapters.map(c => this._mergeConfigFields(c));
-
-            // Check whether any chapter has osHierarchy with items to enrich
-            const needsEnrichment = merged.some(c => this._hasHierarchyItems(c.osHierarchy));
-            if (!needsEnrichment) return merged;
-
-            const oStarMap = await this._buildOStarMap(userId);
-            return merged.map(c => ({
-                ...c,
-                osHierarchy: c.osHierarchy
-                    ? this._enrichOsHierarchy(c.osHierarchy, oStarMap)
-                    : null,
-            }));
+            return chapters.map(c => this._mergeConfigFields(c));
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
@@ -77,7 +64,7 @@ export class ChapterService extends VersionedItemService {
     /**
      * @override — merges config fields and enriches osHierarchy after store read.
      */
-    async getById(itemId, userId, editionId = null, projection = 'standard') {
+    async getById(itemId, userId, editionId = null, projection = 'extended') {
         const result = await super.getById(itemId, userId, editionId, projection);
         if (!result) return null;
         const merged = this._mergeConfigFields(result);
@@ -105,19 +92,17 @@ export class ChapterService extends VersionedItemService {
      * Build a single lookup map of normalised itemId → {id, type, code, title}
      * from all requirements (ON + OR) and all changes (OC) in one pass.
      *
-     * Uses summary projection to avoid fetching rich-text fields.
+     * Delegates to OperationalRequirementService and OperationalChangeService so
+     * transaction lifecycle is owned by the service layer — no raw store calls.
+     * Uses 'summary' projection to avoid fetching rich-text fields.
      *
      * @param {string} userId
      * @returns {Promise<Map<number, {id: number, type: string, code: string, title: string}>>}
      */
     async _buildOStarMap(userId) {
         const [requirements, changes] = await Promise.all([
-            operationalRequirementStore().findAll(
-                createTransaction(userId), null, {}, 'summary'
-            ).catch(() => []),
-            operationalChangeStore().findAll(
-                createTransaction(userId), null, {}, 'summary'
-            ).catch(() => []),
+            OperationalRequirementService.getAll(userId, null, {}, 'summary').catch(() => []),
+            OperationalChangeService.getAll(userId, null, {}, 'summary').catch(() => []),
         ]);
 
         const map = new Map();

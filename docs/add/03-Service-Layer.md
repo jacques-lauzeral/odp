@@ -113,7 +113,7 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 `patch()` is implemented entirely in the base class: it fetches the current entity (latest version), calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
 
-`ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full). It also disables `create()` and `delete()` — chapters are bootstrap-only.
+`ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full, using `'standard'` projection). It also overrides `getById()` to default to `'extended'` projection. It disables `create()` and `delete()` — chapters are bootstrap-only.
 
 **Edition context resolution:** When `editionId` is provided to `getAll` or `getById`, the service calls `odpEditionStore().resolveContext(editionId, tx)` within the same transaction to obtain `{baselineId, editionId}`. It then passes `baselineId` as the store's positional argument and `editionId` via `filters.editionId`. The store applies `$editionId IN r.editions` as a WHERE condition on the `HAS_ITEMS` relationship. The route layer has no knowledge of baselines — it passes only `editionId` or `null`.
 
@@ -179,10 +179,12 @@ Validation rules:
 
 ### 3.6 ChapterService
 
-Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `jsonOsHierarchy` (`OsHierarchy` object).
+Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object).
 
 - `create()` and `delete()` are not supported — chapters are managed by server bootstrap (`initializeDatabase()`)
-- `getAll(userId)` — no edition context, no filters; always returns all chapters with config-owned fields merged
+- `getAll(userId)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative` and `osHierarchy` excluded). O* enrichment is not performed on the list path.
+- `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
+- `_buildOStarMap(userId)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
 
 ### 3.7 BaselineService

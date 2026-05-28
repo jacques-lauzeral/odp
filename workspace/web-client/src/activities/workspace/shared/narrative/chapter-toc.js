@@ -138,26 +138,6 @@ export default class ChapterToc {
                 }
             }
             this._renderOdipTree();
-        } else if (action === 'toggle-topic') {
-            // Toggle a topic node within a chapter's inline tree
-            const key = btn.dataset.code;   // reuses data-code for the topic key
-            if (this._collapsedIds.has(key)) {
-                this._collapsedIds.delete(key);
-            } else {
-                this._collapsedIds.add(key);
-            }
-            this._renderOdipTree();
-        } else if (action === 'select-topic') {
-            const hierarchy = this._parseHierarchy(chapter);
-            const topicKey  = btn.dataset.topicKey;
-            const topic     = this._findTopicByKey(topicKey, chapter.code, hierarchy);
-            this._onOdipSelect({ type: 'topic', topic, chapter });
-        } else if (action === 'select-ostar') {
-            const hierarchy = this._parseHierarchy(chapter);
-            const itemId    = btn.dataset.itemId;
-            const itemType  = btn.dataset.itemType;
-            const ostar     = this._findOStarById(itemId, hierarchy) ?? { id: itemId, type: itemType, code: null, title: null };
-            this._onOdipSelect({ type: 'ostar', ostar, chapter });
         } else if (action === 'dive') {
             this._onDive(chapter);
         }
@@ -238,10 +218,6 @@ export default class ChapterToc {
                            title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▶' : '▼'}</button>`
                 : `<span class="chapter-toc__chevron-placeholder"></span>`;
 
-            // Inline topic tree for this chapter
-            const hierarchy  = this._parseHierarchy(chapter);
-            const topicTree  = this._renderOdipTopics(hierarchy, code, nid, indent + 14);
-
             const subtree = hasChildren && !collapsed
                 ? `<div class="chapter-toc__children">${this._renderOdipLevel(code, byParent, numberMap, depth + 1)}</div>`
                 : '';
@@ -256,82 +232,9 @@ export default class ChapterToc {
                         <button class="chapter-toc__dive-btn" data-action="dive" data-nid="${nid}"
                                 title="Open chapter">→</button>
                     </div>
-                    ${topicTree}
                     ${subtree}
                 </div>`;
         }).join('');
-    }
-
-    /**
-     * Render topic/subtopic/O* tree inline under a chapter node in ODIP scope.
-     * Topic collapse state stored in _collapsedIds using key `topic:{chapterCode}:{topicIndex}`.
-     *
-     * @param {object[]} hierarchy  — normalised topics array
-     * @param {string}   chapterCode
-     * @param {number}   chapterNid
-     * @param {number}   baseIndent — px indent for topic rows
-     * @returns {string}
-     */
-    _renderOdipTopics(hierarchy, chapterCode, chapterNid, baseIndent) {
-        if (!hierarchy?.length) return '';
-        return hierarchy.map((topic, ti) =>
-            this._renderOdipTopic(topic, chapterCode, chapterNid, ti, null, baseIndent)
-        ).join('');
-    }
-
-    _renderOdipTopic(topic, chapterCode, chapterNid, topicIndex, parentIndex, indent) {
-        const key         = parentIndex != null
-            ? `topic:${chapterCode}:${parentIndex}-${topicIndex}`
-            : `topic:${chapterCode}:${topicIndex}`;
-        const collapsed   = this._collapsedIds.has(key);
-        const hasChildren = (topic.subTopics?.length > 0) || (topic.items?.length > 0);
-
-        return `
-            <div class="chapter-toc__odip-topic-group">
-                <div class="chapter-toc__chapter-row chapter-toc__chapter-row--topic"
-                     style="padding-left:${indent}px">
-                    ${hasChildren
-            ? `<button class="chapter-toc__chevron" data-action="toggle-topic"
-                                   data-code="${this._esc(key)}" data-nid="${chapterNid}"
-                                   title="${collapsed ? 'Expand' : 'Collapse'}">${collapsed ? '▶' : '▼'}</button>`
-            : `<span class="chapter-toc__chevron-placeholder"></span>`}
-                    <button class="chapter-toc__chapter-label chapter-toc__chapter-label--topic"
-                            data-action="select-topic"
-                            data-nid="${chapterNid}"
-                            data-topic-key="${this._esc(key)}"
-                            title="${this._esc(topic.topic ?? '')}">${this._esc(topic.topic ?? '')}</button>
-                </div>
-                ${collapsed ? '' : [
-            ...(topic.subTopics ?? []).map((sub, si) =>
-                this._renderOdipTopic(sub, chapterCode, chapterNid, si, topicIndex, indent + 14)
-            ),
-            ...(topic.items ?? []).map((item, ii) =>
-                this._renderOdipOStar(item, chapterCode, chapterNid, key, ii, indent + 14)
-            ),
-        ].join('')}
-            </div>`;
-    }
-
-    _renderOdipOStar(item, chapterCode, chapterNid, topicKey, itemIndex, indent) {
-        const entryKey = `ostar:${chapterCode}:${topicKey}:${itemIndex}`;
-        const type     = (item.type ?? 'OR').toUpperCase();
-        const label    = item.code ? `${item.code} — ${item.title ?? ''}` : (item.title ?? String(item.id ?? ''));
-
-        return `
-            <div class="chapter-toc__chapter-row chapter-toc__chapter-row--ostar"
-                 style="padding-left:${indent}px">
-                <span class="chapter-toc__chevron-placeholder"></span>
-                <button class="chapter-toc__chapter-label chapter-toc__chapter-label--ostar"
-                        data-action="select-ostar"
-                        data-nid="${chapterNid}"
-                        data-item-id="${this._esc(String(item.id ?? ''))}"
-                        data-item-type="${type}"
-                        data-entry-key="${this._esc(entryKey)}"
-                        title="${this._esc(label)}">
-                    ${this._typeBadge(type)}
-                    <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar">${this._esc(label)}</span>
-                </button>
-            </div>`;
     }
 
     _isDescendant(childNid, ancestorCode, byParent) {

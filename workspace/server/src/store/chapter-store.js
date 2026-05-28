@@ -17,6 +17,11 @@ import { StoreError } from './transaction.js';
  *   - _prepareOutput deserializes jsonOsHierarchy → osHierarchy after reads.
  *   - jsonOsHierarchy is never visible above the store layer.
  *
+ * Projection:
+ *   - 'standard' (default for findAll) — all fields except narrative and osHierarchy.
+ *   - 'extended' (default for findById) — all fields including narrative and osHierarchy.
+ *   findByCode (bootstrap-only) always returns extended.
+ *
  * Relationships: none (Chapter has no graph relationships to other entities).
  */
 export class ChapterStore extends VersionedItemStore {
@@ -75,24 +80,42 @@ export class ChapterStore extends VersionedItemStore {
 
     /**
      * Deserialize jsonOsHierarchy string → osHierarchy object after reading from Neo4j.
+     * When projection is 'standard', narrative and osHierarchy are omitted from output.
      *
      * @override
      * @param {object} item
+     * @param {string} [projection='extended']
      * @returns {object}
      */
-    _prepareOutput(item) {
-        const { jsonOsHierarchy, ...rest } = item;
+    _prepareOutput(item, projection = 'extended') {
+        const { jsonOsHierarchy, narrative, ...rest } = item;
+        if (projection === 'standard') {
+            return rest;
+        }
         return {
             ...rest,
+            narrative: narrative ?? '',
             osHierarchy: jsonOsHierarchy ? JSON.parse(jsonOsHierarchy) : null,
         };
     }
 
     /**
-     * Build query for findAll — returns all chapters ordered by item ID.
+     * Build query for findAll.
+     * 'standard' projection omits narrative and jsonOsHierarchy columns.
+     * 'extended' projection includes all fields.
+     *
+     * @param {*} _baselineId
+     * @param {*} _filters
+     * @param {*} _fields
+     * @param {string} [projection='standard']
      * @override
      */
-    buildFindAllQuery(_baselineId, _filters, _fields) {
+    buildFindAllQuery(_baselineId, _filters, _fields, projection = 'standard') {
+        const extraFields = projection === 'extended'
+            ? `,
+                       version.narrative as narrative,
+                       version.jsonOsHierarchy as jsonOsHierarchy`
+            : '';
         return {
             cypher: `
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
@@ -102,9 +125,7 @@ export class ChapterStore extends VersionedItemStore {
                        id(version) as versionId,
                        version.version as version,
                        version.createdAt as createdAt,
-                       version.createdBy as createdBy,
-                       version.narrative as narrative,
-                       version.jsonOsHierarchy as jsonOsHierarchy
+                       version.createdBy as createdBy${extraFields}
                 ORDER BY id(item)
             `,
             params: {}
@@ -113,15 +134,17 @@ export class ChapterStore extends VersionedItemStore {
 
     /**
      * Find all chapters. Config-owned fields are merged by ChapterService.
+     * Defaults to 'standard' projection — narrative and osHierarchy are excluded.
      *
      * @param {Transaction} transaction
+     * @param {string} [projection='standard']
      * @returns {Promise<Array<object>>}
      */
-    async findAll(transaction) {
+    async findAll(transaction, projection = 'standard') {
         try {
-            const { cypher, params } = this.buildFindAllQuery(null, {}, null);
+            const { cypher, params } = this.buildFindAllQuery(null, {}, null, projection);
             const result = await transaction.run(cypher, params);
-            return result.records.map(record => this._prepareOutput(this._buildChapterItem(record)));
+            return result.records.map(record => this._prepareOutput(this._buildChapterItem(record), projection));
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find all Chapters: ${error.message}`, error);
@@ -129,8 +152,36 @@ export class ChapterStore extends VersionedItemStore {
     }
 
     /**
+     * Find a chapter by item ID.
+     * Defaults to 'extended' projection — narrative and osHierarchy are included.
+     * Delegates to super for ID normalisation, baseline/edition context, and
+     * versionData map projection (which includes all version properties).
+     * _prepareOutput then strips narrative/osHierarchy for 'standard' projection.
+     *
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @param {number|null} [baselineId=null]
+     * @param {number|null} [editionId=null]
+     * @param {string} [projection='extended']
+     * @returns {Promise<object|null>}
+     */
+    async findById(itemId, transaction, baselineId = null, editionId = null, projection = 'extended') {
+        // super.findById calls this._prepareOutput (polymorphic) defaulting to 'extended',
+        // so narrative and osHierarchy are always deserialized on the returned object.
+        // For 'standard' projection, strip them from the result.
+        const result = await super.findById(itemId, transaction, baselineId, editionId);
+        if (!result) return null;
+        if (projection === 'standard') {
+            const { narrative, osHierarchy, ...rest } = result;
+            return rest;
+        }
+        return result;
+    }
+
+    /**
      * Find a chapter by its stable code (= chapter key from edition.json).
      * Used by bootstrap to check existence before creating.
+     * Always returns extended projection (narrative + osHierarchy included).
      *
      * @param {string} code - Stable chapter code/key
      * @param {Transaction} transaction
@@ -221,21 +272,24 @@ export class ChapterStore extends VersionedItemStore {
     /**
      * Build a raw chapter item object from a Neo4j record.
      * Does not apply _prepareOutput or config merging — callers handle that.
+     * narrative and jsonOsHierarchy may be absent from the record when the
+     * query uses 'standard' projection — defaults are applied defensively.
      *
      * @param {Record} record
      * @returns {object}
      */
     _buildChapterItem(record) {
+        const keys = record.keys;
         return {
-            itemId: this.normalizeId(record.get('itemId')),
-            code: record.get('code'),
-            title: record.get('title') || null,
-            versionId: this.normalizeId(record.get('versionId')),
-            version: this.normalizeId(record.get('version')),
-            createdAt: record.get('createdAt'),
-            createdBy: record.get('createdBy'),
-            narrative: record.get('narrative') || '',
-            jsonOsHierarchy: record.get('jsonOsHierarchy') || null,
+            itemId:          this.normalizeId(record.get('itemId')),
+            code:            record.get('code'),
+            title:           record.get('title') || null,
+            versionId:       this.normalizeId(record.get('versionId')),
+            version:         this.normalizeId(record.get('version')),
+            createdAt:       record.get('createdAt'),
+            createdBy:       record.get('createdBy'),
+            ...(keys.includes('narrative')       ? { narrative:       record.get('narrative') || ''   } : {}),
+            ...(keys.includes('jsonOsHierarchy') ? { jsonOsHierarchy: record.get('jsonOsHierarchy') || null } : {}),
         };
     }
 }
