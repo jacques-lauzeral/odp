@@ -6,6 +6,8 @@
  *   - paragraph    → plain Quill ops with inline formatting
  *   - bullet       → Quill list:bullet attribute
  *   - numbered     → Quill list:ordered attribute
+ *   - figure       → Quill image embed op (data URI from base64)
+ *   - caption      → italic paragraph
  *   - placeholder_section, page_break → silently skipped
  *
  * Each block carries content as either:
@@ -72,6 +74,12 @@ class BlocksToQuillDeltaConverter {
                 break;
             case 'numbered':
                 this._convertList(block, ops, 'ordered');
+                break;
+            case 'figure':
+                this._convertFigure(block, ops);
+                break;
+            case 'caption':
+                this._convertCaption(block, ops);
                 break;
             case 'placeholder_section':
             case 'page_break':
@@ -151,6 +159,36 @@ class BlocksToQuillDeltaConverter {
 
         ops.push(...inlineOps);
         ops.push({ insert: '\n', attributes: { list: listType } });
+    }
+
+    /**
+     * Convert a figure block.
+     * Emits a Quill image embed op using a data URI assembled from the
+     * block's base64 payload, followed by a plain newline.
+     * @private
+     */
+    _convertFigure(block, ops) {
+        const { data, media_type } = block.image ?? {};
+        if (!data || !media_type) {
+            return;
+        }
+        ops.push({ insert: { image: `data:${media_type};base64,${data}` } });
+        ops.push({ insert: '\n' });
+    }
+
+    /**
+     * Convert a caption block.
+     * Emits the caption text as an italic paragraph.
+     * Captions carry plain text only (no ops array in the source format).
+     * @private
+     */
+    _convertCaption(block, ops) {
+        const text = block.text;
+        if (typeof text !== 'string' || text.length === 0) {
+            return;
+        }
+        ops.push({ insert: text, attributes: { italic: true } });
+        ops.push({ insert: '\n' });
     }
 
     /**
