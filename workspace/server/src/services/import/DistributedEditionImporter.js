@@ -547,26 +547,28 @@ class DistributedEditionImporter {
             ?? (reqData.refinesON ? [reqData.refinesON] : null)
             ?? reqData.refinesORs
             ?? [];
-        const refinesParents = this._resolveExternalIds(rawRefinesParents, context);
+        const source = reqData.externalId;
+
+        const refinesParents = this._resolveExternalIds(rawRefinesParents, context, source);
 
         const implementedONs = this._resolveExternalIds(
             reqData.implementedONs || [],
-            context
+            context, source
         );
 
         const impactedStakeholders = this._resolveAnnotatedReferences(
             reqData.impactedStakeholders || [],
-            context
+            context, source
         );
 
         const dependencies = this._resolveExternalIds(
             reqData.dependencies || [],
-            context
+            context, source
         );
 
         const strategicDocuments = this._resolveDocumentReferences(
             reqData.strategicDocuments || [],
-            context
+            context, source
         );
 
         // Resolve final maturity
@@ -616,23 +618,18 @@ class DistributedEditionImporter {
      * Missing entries emit a warning (not an error).
      * @private
      */
-    _resolveExternalIds(externalIds, context) {
+    _resolveExternalIds(externalIds, context, source) {
         if (!Array.isArray(externalIds)) return [];
 
         const resolved = [];
-        const missing = [];
 
         for (const extId of externalIds) {
             const internalId = context.globalRefMap.get(extId.toLowerCase());
             if (internalId !== undefined) {
                 resolved.push(internalId);
             } else {
-                missing.push(extId);
+                context.warnings.push(`Unresolved OS reference: ${source} → ${extId}`);
             }
-        }
-
-        if (missing.length > 0) {
-            context.warnings.push(`Unresolved references: ${missing.join(', ')}`);
         }
 
         return resolved;
@@ -643,21 +640,20 @@ class DistributedEditionImporter {
      * { id, note? } objects via globalRefMap.
      * @private
      */
-    _resolveAnnotatedReferences(refs, context) {
+    _resolveAnnotatedReferences(refs, context, source) {
         if (!Array.isArray(refs)) return [];
 
         const resolved = [];
-        const missing = [];
 
         for (const ref of refs) {
             if (typeof ref !== 'object' || ref === null) {
-                context.warnings.push(`Invalid annotated reference (expected object): ${JSON.stringify(ref)}`);
+                context.warnings.push(`Unresolved stakeholder reference: ${source} → (invalid entry: ${JSON.stringify(ref)})`);
                 continue;
             }
 
             const externalId = ref.externalId;
             if (!externalId) {
-                context.warnings.push(`Annotated reference missing externalId: ${JSON.stringify(ref)}`);
+                context.warnings.push(`Unresolved stakeholder reference: ${source} → (missing externalId: ${JSON.stringify(ref)})`);
                 continue;
             }
 
@@ -667,12 +663,8 @@ class DistributedEditionImporter {
                 if (ref.note) entry.note = ref.note;
                 resolved.push(entry);
             } else {
-                missing.push(externalId);
+                context.warnings.push(`Unresolved stakeholder reference: ${source} → ${externalId}`);
             }
-        }
-
-        if (missing.length > 0) {
-            context.warnings.push(`Unresolved annotated references: ${missing.join(', ')}`);
         }
 
         return resolved;
@@ -683,21 +675,20 @@ class DistributedEditionImporter {
      * { id, note? } objects via documentIdMap.
      * @private
      */
-    _resolveDocumentReferences(refs, context) {
+    _resolveDocumentReferences(refs, context, source) {
         if (!Array.isArray(refs)) return [];
 
         const resolved = [];
-        const missing = [];
 
         for (const ref of refs) {
             if (typeof ref !== 'object' || ref === null) {
-                context.warnings.push(`Invalid document reference (expected object): ${JSON.stringify(ref)}`);
+                context.warnings.push(`Unresolved strategic document reference: ${source} → (invalid entry: ${JSON.stringify(ref)})`);
                 continue;
             }
 
             const externalId = ref.externalId;
             if (!externalId) {
-                context.warnings.push(`Document reference missing externalId: ${JSON.stringify(ref)}`);
+                context.warnings.push(`Unresolved strategic document reference: ${source} → (missing externalId: ${JSON.stringify(ref)})`);
                 continue;
             }
 
@@ -707,12 +698,8 @@ class DistributedEditionImporter {
                 if (ref.note) entry.note = ref.note;
                 resolved.push(entry);
             } else {
-                missing.push(externalId);
+                context.warnings.push(`Unresolved strategic document reference: ${source} → ${externalId}`);
             }
-        }
-
-        if (missing.length > 0) {
-            context.warnings.push(`Unresolved document references: ${missing.join(', ')}`);
         }
 
         return resolved;
