@@ -256,6 +256,44 @@ Used for importing ODIP distributed edition source JSON files directly — one f
 
 ---
 
+## 4.4 BlocksToQuillDeltaConverter
+
+**Class**: `BlocksToQuillDeltaConverter` (singleton export)
+**Location**: `services/import/BlocksToQuillDeltaConverter.js`
+
+Converts a `blocks[]` array from a distributed edition source JSON file into a Quill Delta JSON string, suitable for storage in Neo4j rich-text fields.
+
+**Handled block types:**
+
+| Block type | Source structure | Quill Delta output |
+|---|---|---|
+| `heading` | `level` (1–6), `text` or `ops[]` | Inline ops + `\n` with `{ header: level }` attribute |
+| `paragraph` | `ops[]` or `text` | Inline ops + `\n` |
+| `bullet` | `ops[]` or `text` | Inline ops + `\n` with `{ list: 'bullet' }` attribute |
+| `numbered` | `ops[]` or `text` | Inline ops + `\n` with `{ list: 'ordered' }` attribute |
+| `figure` | `image.data` (base64), `image.media_type` | `{ insert: { image: 'data:<type>;base64,...' } }` + `\n` |
+| `caption` | `text` (plain string) | Italic text op + `\n` |
+| `table` | `headers[]` (Delta ops arrays), `rows[][]` (plain strings) | Code-block lines (see below) |
+| `placeholder_section`, `page_break` | — | Silently skipped |
+
+**Inline attributes** (`bold`, `italic`, `underline`, `color`, `link`, `ref`, `anchor`, …) are preserved as-is from source ops. Unknown attributes pass through — Quill ignores unrecognised attributes, and `DeltaToAsciidocConverter` forwards them.
+
+**Table rendering (interim format):**
+
+Tables are stored as contiguous `code-block` lines — an interim format pending a proper Quill table blot in `RichTextComponent`:
+
+```
+** <header cell> | <header cell>     ← one line per header row, prefixed "** "
+---                                   ← separator (omitted if no body rows)
+<cell> | <cell>                       ← one line per body row, cells joined with " | "
+```
+
+Header cell text is extracted as plain text from their Delta ops arrays (formatting stripped — irrelevant in a code-block context). Body cells are plain strings in the source format.
+
+**Output**: JSON string `'{"ops":[...]}'`, or `null` if the blocks array is empty or produces no ops. The Delta always ends with a plain `\n` insert as required by Quill.
+
+---
+
 ## 5. Docx Export (Round-Trip Pathway)
 
 **Classes**: `DocxExportService`, `DocxGenerator`, `DocxEntityRenderer`, `DocxStyles`  
@@ -285,7 +323,7 @@ services/import/
 ├── StandardImporter.js           Round-trip importer (code-based)
 ├── JSONImporter.js               DrG-specific importer (externalId-based)
 ├── DistributedEditionImporter.js Distributed source JSON importer (direct, no mapper)
-├── BlocksToQuillDeltaConverter.js blocks[]/chapterIntro[] → Quill Delta converter
+├── BlocksToQuillDeltaConverter.js blocks[]/chapterIntro[] → Quill Delta converter (see §4.4)
 └── mappers/                      One file per DrG + shared bootstrap mapper
     ├── BootstrapMapper.js        Shared mapper for iCDM bootstrap-format Word docs
     ├── NM_B2B_Mapper.js          TRANSVERSAL/NM-B2B folder mapper
