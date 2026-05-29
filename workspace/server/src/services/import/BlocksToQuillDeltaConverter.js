@@ -78,6 +78,9 @@ class BlocksToQuillDeltaConverter {
             case 'figure':
                 this._convertFigure(block, ops);
                 break;
+            case 'table':
+                this._convertTable(block, ops);
+                break;
             case 'caption':
                 this._convertCaption(block, ops);
                 break;
@@ -174,6 +177,66 @@ class BlocksToQuillDeltaConverter {
         }
         ops.push({ insert: { image: `data:${media_type};base64,${data}` } });
         ops.push({ insert: '\n' });
+    }
+
+    /**
+     * Convert a table block to a Quill code-block representation.
+     *
+     * Tables are stored as plain-text code blocks — an interim format until
+     * a proper Quill table blot is implemented in RichTextComponent.
+     *
+     * Format:
+     *   ** cell | cell          ← header row(s), prefixed with "** "
+     *   ---                     ← separator
+     *   cell | cell             ← body rows
+     *
+     * Header cells are extracted as plain text from their Delta ops arrays.
+     * Body cells are plain strings in the source format.
+     *
+     * Each line is emitted as { insert: '...\n', attributes: { 'code-block': true } }.
+     * A plain newline follows the block to visually separate it from subsequent content.
+     *
+     * TODO: replace with proper table blot ops when RichTextComponent implements table support.
+     * @private
+     */
+    _convertTable(block, ops) {
+        const headers = block.headers ?? [];
+        const rows    = block.rows    ?? [];
+
+        if (headers.length === 0 && rows.length === 0) {
+            return;
+        }
+
+        // Header rows — extract plain text from Delta ops arrays
+        for (const headerDelta of headers) {
+            const text = this._extractPlainText(headerDelta.ops ?? []);
+            ops.push({ insert: `** ${text}\n`, attributes: { 'code-block': true } });
+        }
+
+        // Separator
+        if (headers.length > 0 && rows.length > 0) {
+            ops.push({ insert: '---\n', attributes: { 'code-block': true } });
+        }
+
+        // Body rows — plain string cells joined with ' | '
+        for (const row of rows) {
+            const text = row.map(cell => String(cell ?? '')).join(' | ');
+            ops.push({ insert: `${text}\n`, attributes: { 'code-block': true } });
+        }
+
+        // Blank line after the block
+        ops.push({ insert: '\n' });
+    }
+
+    /**
+     * Extract plain text from a Quill ops array, concatenating all string inserts.
+     * Used to reduce header Delta ops to a plain string for code-block rendering.
+     * @private
+     */
+    _extractPlainText(ops) {
+        return ops
+            .map(op => (typeof op.insert === 'string' ? op.insert : ''))
+            .join('');
     }
 
     /**
