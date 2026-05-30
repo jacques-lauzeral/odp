@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The ODIP web client is a Vanilla JavaScript single-page application (no framework, no build step). It communicates exclusively with the REST API and shares data models with the server via the `@odp/shared` workspace package. The deliberate absence of a framework keeps the application flexible and avoids build complexity while still enforcing consistent component patterns through class-based composition and delegation.
+The ODIP web client is a Vanilla JavaScript single-page application (no framework). It communicates exclusively with the REST API and shares data models with the server via the `@odp/shared` workspace package. **Vite** is used as the build tool and development server. The deliberate absence of a UI framework keeps the application flexible while still enforcing consistent component patterns through class-based composition and delegation.
 
 The client has been rewritten as **ODIP Space** — a structured multi-workspace SPA replacing the flat seven-activity layout of the former ODIP Tool. The migration is incremental; this chapter describes the target architecture as implemented from Phase A onward.
 
@@ -16,6 +16,8 @@ web-client/src/
 ├── index.js
 ├── app.js
 │
+├── assets/
+│   └── odip-space-logo.svg             Static assets processed by Vite (imported in JS)
 ├── activities/
 │   ├── home/
 │   │   └── home.js                         Dataset context selection gateway
@@ -68,6 +70,7 @@ web-client/src/
 │   ├── master-detail.js                    Reusable two-column resizable layout
 │   ├── collection-entity.js
 │   ├── collection-entity-form.js           Base form class with tab rendering
+│   ├── rich-text-component.js              TipTap-backed rich text editor/viewer component
 │   ├── tree-table-entity.js
 │   ├── temporal-grid.js
 │   ├── filter-bar.js
@@ -84,6 +87,8 @@ web-client/src/
     ├── utils.js
     └── src/                                @odp/shared copy (build artefact)
 ```
+
+`vite.config.js` lives at `web-client/vite.config.js` (workspace root for the web client package).
 
 ---
 
@@ -296,7 +301,7 @@ Key methods used by detail views:
 | Method | Purpose |
 |---|---|
 | `generateReadOnlyView(item)` | Returns tabbed HTML for read-only display |
-| `initializeReadOnlyInPanel(container, item)` | Initialises Quill editors and reference managers after HTML injection |
+| `initializeReadOnlyInPanel(container, item)` | Initialises rich text components and reference managers after HTML injection |
 | `showEditModal(item)` | Opens edit popup |
 | `showCreateModal()` | Opens create popup |
 
@@ -569,9 +574,77 @@ md.cleanup()                 // Unbind resize listeners
 
 ## 12. Rich Text
 
-Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **Quill** editor. Content is stored and transmitted as Quill Delta JSON serialised to a string. The web client renders Delta content in read mode using Quill's read-only renderer and edits it with the full Quill toolbar in write mode.
+Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **TipTap** editor. Content is stored and transmitted as TipTap document JSON serialised to a string. The web client renders content in read mode and edits it with a toolbar in write mode using `RichTextComponent`.
 
-Images can be embedded in Delta content as base64-encoded PNG data. The import pipeline handles the reverse path (Quill Delta → AsciiDoc → Word) for the docx round-trip workflow.
+### 12.1 Storage Format
+
+TipTap JSON document format:
+
+```json
+{ "type": "doc", "content": [ { "type": "paragraph", "content": [ { "type": "text", "text": "..." } ] } ] }
+```
+
+This is the canonical format at rest (Neo4j), in transit (REST API), and in the browser. The `DistributedEditionImporter` converts Quill Delta source files to TipTap JSON at import time via `_deltaToTipTap()`.
+
+### 12.2 RichTextComponent
+
+`RichTextComponent` (`components/rich-text-component.js`) encapsulates all TipTap instantiation, configuration, and lifecycle. It is the single point of rich text usage across all forms and detail views.
+
+**Constructor options:**
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `readOnly` | boolean | `false` | Read-only viewer (no toolbar, non-editable) |
+| `headings` | boolean | `false` | Enable H1/H2/H3 toolbar buttons (narrative context only) |
+| `images` | boolean | `true` | Enable image embed via file upload |
+| `tables` | boolean | `true` | Enable table toolbar buttons |
+| `placeholder` | string | `''` | Placeholder text for empty edit fields |
+| `onChange` | Function | `null` | Called with TipTap JSON string on every content change |
+
+**Public API:**
+
+| Method | Description |
+|---|---|
+| `mount(container)` | Mount editor into container element |
+| `getValue()` | Return current content as JSON string, or `null` if empty |
+| `setValue(jsonString)` | Replace editor content from JSON string |
+| `destroy()` | Destroy TipTap instance and clean up DOM |
+| `focus()` | Focus the editor (edit mode only) |
+| `blur()` | Blur the editor |
+
+**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipRef`, `OdipAnchor`.
+
+`OdipRef` and `OdipAnchor` are passthrough marks — registered so TipTap does not discard text nodes carrying these custom attributes. Rendered as `<span data-ref>` / `<span data-anchor>`; actual semantics handled by the publication pipeline.
+
+**Read-only mode** — `editable: false` is set on the TipTap instance; the toolbar is omitted; `blur()` is called immediately after mount to prevent focus theft.
+
+### 12.3 Integration with CollectionEntityForm
+
+`CollectionEntityForm` manages `RichTextComponent` instances:
+
+- **Edit/create** — `initializeRichTextEditors()` finds `.richtext-edit-placeholder` elements injected by `renderInput()` for `type: 'richtext'` fields, mounts a `RichTextComponent` per field, and wires `onChange` to a hidden `<input>` that participates in form data collection. Initial value (TipTap JSON string) is passed directly to `setValue()`.
+- **Read** — `initializeRichTextReadOnly()` finds `.richtext-readonly-placeholder` elements injected by `renderRichtextReadOnly()`, mounts a read-only `RichTextComponent` per field.
+- Instances are stored in `this.richTextComponents[fieldKey]` and destroyed in `cleanupRichTextComponents()`.
+
+### 12.4 Content Emptiness Check
+
+`VersionedItemService._isContentEmpty(value)` is the canonical check for whether a TipTap JSON string is empty:
+
+```js
+_isContentEmpty(value) {
+    if (!value) return true;
+    try {
+        const doc = typeof value === 'string' ? JSON.parse(value) : value;
+        return doc.type !== 'doc' || !Array.isArray(doc.content) || doc.content.length === 0;
+    } catch { return true; }
+}
+```
+
+Used by `OperationalRequirementService` and `OperationalChangeService` in `_validateMaturityGatedFields` to enforce that `statement`/`rationale` (ADVANCED+) and `purpose`/`initialState`/`finalState` (MATURE) are non-empty.
+
+### 12.5 Images
+
+Images are embedded as base64-encoded data URLs directly in the TipTap JSON (`type: 'image'`, `attrs.src`). The toolbar image button opens a hidden file input; the selected file is read via `FileReader.readAsDataURL` and inserted via `editor.chain().setImage({ src })`.
 
 ---
 
@@ -635,7 +708,7 @@ styles/
 │   │   └── os-additions.css              O* toolbar, search input, type badges, view controls, perspective toggle
 ├── components/
 │   ├── filter-bar.css                FilterBar chip component
-│   ├── form-components.css           Form tabs, tag selector, multi-select, Quill integration
+│   ├── form-components.css           Form tabs, tag selector, multi-select, rich text integration
 │   ├── history-tab.css               History version list, diff popup
 │   ├── master-detail.css             Two-column resizable layout
 │   ├── reference-list-manager.css    Inline chip list with search popup
@@ -859,7 +932,7 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 | `reference` | `ReferenceManager` | 0..1 | Inline typeahead; value wrapped in `[id]` array on save |
 | `reference-list` | `ReferenceListManager` | 0..n | Chip list + search popup |
 | `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Table with per-item note |
-| `richtext` | Quill editor | — | Delta stored as stringified JSON |
+| `richtext` | `RichTextComponent` (TipTap) | — | TipTap JSON stored as stringified JSON |
 
 ### 18.1c Annotated Reference List
 
@@ -1234,17 +1307,59 @@ When the user switches selection in the master list, the active tab in the detai
 
 **Stale MutationObserver** — `ChangeForm.loadHistoryWithObserver` is called on every `generateReadOnlyView`. Without a disconnect guard, each OC re-render accumulated a new observer on `document.body`. Stale observers fired on subsequent DOM mutations, causing interference. Fix: `this._historyObserver?.disconnect()` before creating the new observer.
 
-**Quill read-only focus theft** — `new Quill(placeholder, { readOnly: true })` steals focus on instantiation even in read-only mode. Fix: `quillEditor.root.blur()` immediately after init in `initializeRichtextReadOnly`. Edit modal unaffected — `focusFirstInput()` runs after modal open and overrides focus correctly.
+**TipTap read-only focus** — `RichTextComponent` in read-only mode calls `blur()` immediately after `mount()` to prevent focus theft. Edit modal unaffected — `focusFirstInput()` runs after modal open.
 
 ### 22.4 Affected Files
 
 | File | Change |
 |---|---|
 | `collection-entity.js` | `tabindex="0"` on `collection-content`; auto-focus on row click; `_navigateByKey` uses visible DOM rows |
-| `collection-entity-form.js` | `_activeInstance` static property; tab delegation updates `_activeInstance`; Quill `root.blur()` in read-only init |
+| `collection-entity-form.js` | `_activeInstance` static property; tab delegation updates `_activeInstance`; `RichTextComponent.blur()` in read-only init |
 | `requirement-details.js` | `formExisted` flag passed as `preserveTabIndex` to `generateReadOnlyView`; `getRequirements` synthesised from extended projection |
 | `change-details.js` | `formExisted` flag passed as `preserveTabIndex` to `generateReadOnlyView` |
 | `change-form.js` | `_historyObserver?.disconnect()` before new observer creation |
 | `requirement-form.js` | `_computeRefinedByIds` and `_computeImplementedByIds` prefer extended projection fields |
+
+---
+
+## 23. Build Tooling — Vite
+
+### 23.1 Role
+
+Vite replaces the former no-build-step approach. It provides:
+
+- **Development server** — fast dev server with ES module native serving; replaces `sirv-cli`
+- **Production build** — `npm run build` outputs a hashed, tree-shaken bundle to `web-client/dist/`
+- **Asset processing** — files in `src/assets/` are processed and fingerprinted; must be imported as ES modules to get the resolved URL
+
+### 23.2 Configuration (`vite.config.js`)
+
+Located at `web-client/vite.config.js`. Key settings: root set to `src/`, output to `dist/`, dev server port `3000`.
+
+### 23.3 Asset Import Pattern
+
+Static assets (SVG, images) that were previously referenced by hardcoded paths must be imported as ES modules:
+
+```js
+import logoUrl from '../assets/odip-space-logo.svg';
+// logoUrl resolves to the correct hashed path in production,
+// and to the dev server path in development
+```
+
+Placing an asset in `src/assets/` and referencing it by a static string path will fail in production — Vite does not serve `src/assets/` at a predictable URL after bundling.
+
+### 23.4 @odp/shared Copy
+
+The `@odp/shared` source is copied into `web-client/src/shared/src/` as a build preparation step (executed by `odip-admin` on `--rebuild`). This copy is imported directly as plain ES modules and processed by Vite as part of the main bundle.
+
+### 23.5 Development vs Production
+
+| Mode | Command | Output |
+|---|---|---|
+| Development | `npm run dev` | Vite dev server on port 3000; live reload |
+| Production build | `npm run build` | Hashed bundle in `dist/` |
+| Container | `CMD ["npm", "run", "dev"]` in Dockerfile | Vite dev server inside the container |
+
+The container always runs the Vite dev server — there is no separate production serving step in the current deployment model.
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

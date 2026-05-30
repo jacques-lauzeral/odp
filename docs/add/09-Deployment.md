@@ -14,7 +14,7 @@ Three containers share a single pod and communicate over localhost:
 |---|---|---|---|
 | `neo4j` | `$ODIP_DOCKER_REGISTRY/neo4j:5.15` + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
 | `odp-server` | `$ODIP_DOCKER_REGISTRY/odp-server:latest` (custom image) | 8080 (host) → 80 (container) | Express API + import/export + publication services |
-| `web-client` | `odp-web-client:latest` (local build) | 3000 | SPA dev server (sirv-cli) — serves static files with deep-link routing support |
+| `web-client` | `odp-web-client:latest` (local build) | 3000 | Vite dev server — serves the SPA with deep-link routing support |
 
 The server container receives `ODIP_HOME=/odip` as an env var (injected in `odip-deployment.yaml`). The `$ODIP_HOME` host path is mounted into the container at `/odip` via the `odip-runtime` volume, making the publication workspace at `$ODIP_HOME/publication/works/` accessible inside the container as `/odip/publication/works/`.
 
@@ -167,13 +167,15 @@ The `NPM_INSTALL` build arg controls whether `npm install` runs inside the conta
 
 `odip-admin` passes the correct `--build-arg` automatically based on `ODIP_NPM_MODE`.
 
-**Dev server:** `sirv-cli` (replaced `http-server`). The `--single` flag enables SPA routing — all unmatched paths return `index.html`, allowing the client-side router to handle deep-linked URLs. The `--host` flag exposes the server on all network interfaces (required for container port binding). The `--dev` flag disables caching during development.
+**Dev server:** Vite (replaces the former `sirv-cli` / `http-server` approach). Vite serves the SPA on port 3000 with native ES module support and live reload. All unmatched paths return `index.html` via Vite's SPA fallback, allowing the client-side router to handle deep-linked URLs.
 
 ```json
-"dev": "sirv src --port 3000 --cors --single --dev --host"
+"dev": "vite --host --port 3000"
 ```
 
-After any change to `devDependencies` (such as this migration from `http-server` to `sirv-cli`), run `odip-admin start --install --rebuild` to reinstall and rebuild the web client image.
+The `--host` flag exposes the server on all network interfaces (required for container port binding and remote browser access).
+
+After any change to `devDependencies` (e.g. adding a new TipTap extension), run `odip-admin start --install --rebuild` to reinstall and rebuild the web client image.
 
 ### 5.2 Server (`Dockerfile.odp-server`)
 

@@ -22,6 +22,7 @@
  */
 import { dom } from '../shared/utils.js';
 import { buildBreadcrumb, attachBreadcrumbListeners } from './breadcrumb.js';
+import logoUrl from '../assets/odip-space-logo.svg';
 
 const STORAGE_KEY = 'odip-space-user';
 
@@ -83,7 +84,7 @@ export default class Header {
 
         return `
             <header class="odp-header">
-                <img class="odp-header__logo" src="/assets/odip-space-logo.svg" alt="ODIP Space">
+                <img class="odp-header__logo" src="${logoUrl}" alt="ODIP Space">
                 <div class="odp-header__rows">
                     <div class="odp-header__row-top">
                         <span class="odp-header__title">ODIP Space</span>

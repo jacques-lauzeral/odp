@@ -181,8 +181,8 @@ This workflow is supported by the three-stage Import Pipeline (see [Chapter 05](
 | Runtime | Node.js 24+ | Full Debian image for native module compatibility |
 | Web framework | Express.js | Manual routing, no code generation |
 | Database | Neo4j 5.15 | Graph model for relationships and versioning |
-| Web client | Vanilla JavaScript | No framework; modular ES modules |
-| Rich text | Quill.js | Delta format; AsciiDoc conversion for export |
+| Web client | Vanilla JavaScript + Vite | Modular ES modules; Vite for bundling and dev server |
+| Rich text | TipTap | TipTap JSON document format; AsciiDoc conversion for export |
 | Document processing | mammoth.js, xlsx | Word and Excel extraction |
 | Document generation | Mustache templates | AsciiDoc / Word output |
 | Static site generation | Antora | Published ODIP Edition web site |
