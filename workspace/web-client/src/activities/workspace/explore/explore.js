@@ -1,31 +1,39 @@
 /**
  * @file explore.js
  * @description Explore workspace shell. Edition context, R/O mode.
- * Edition ID is read from app.getDatasetContext() on each render.
+ *
+ * The edition ID is the first URL segment after /explore:
+ *   /explore/{editionId}/os
+ *   /explore/{editionId}/plan
+ *   etc.
+ *
+ * ExploreActivity owns dataset context for the edition — it calls
+ * app.setDatasetContext() on mount, not HomeActivity.
  *
  * Renders a persistent level-2 tab strip and a sub-activity mount point.
  * Tab strip stays across sub-activity transitions; only the sub-container is swapped.
  *
- * Sub-path routing mirrors Elaborate exactly — same sub-activities and tabs.
- * Context difference (live vs edition, R/W vs R/O) is transparent to
- * sub-activities via app.getDatasetContext().
- *
+ * Sub-path routing (after the edition ID segment):
  *   []                  → os (default)
  *   ['os', ...]         → OsActivity
  *   ['plan', ...]       → PlanActivity
  *   ['quality', ...]    → QualityActivity
- *   ['narrative', ...] → NarrativeActivity
+ *   ['narrative', ...]  → NarrativeActivity
  *   ['setup', ...]      → SetupActivity
+ *
+ * Edition change detection:
+ *   handleSubPath compares the incoming edition ID against _currentEditionId.
+ *   If different, cleanup() + render() are called to fully re-initialize the shell.
  */
 import { errorHandler } from '../../../shared/error-handler.js';
 import { dom } from '../../../shared/utils.js';
 
 const SUB_ACTIVITIES = {
-    os:      () => import('../shared/os/os.js'),
-    plan:    () => import('../shared/plan/plan.js'),
-    quality: () => import('../shared/quality/quality.js'),
+    os:        () => import('../shared/os/os.js'),
+    plan:      () => import('../shared/plan/plan.js'),
+    quality:   () => import('../shared/quality/quality.js'),
     narrative: () => import('../shared/narrative/narrative.js'),
-    setup:   () => import('../setup/setup.js'),
+    setup:     () => import('../setup/setup.js'),
 };
 
 const TABS = [
@@ -37,16 +45,16 @@ const TABS = [
 ];
 
 const DEFAULT_SUB = 'os';
-const BASE_PATH   = '/explore';
 
 export default class ExploreActivity {
     /** @param {import('../../../app.js').App} app */
     constructor(app) {
         this.app = app;
-        this.container    = null;
-        this.subContainer = null;
+        this.container       = null;
+        this.subContainer    = null;
         this._subActivities  = {};
         this._currentSubName = null;
+        this._currentEditionId = null;
     }
 
     // -------------------------------------------------------------------------
@@ -54,23 +62,39 @@ export default class ExploreActivity {
     // -------------------------------------------------------------------------
 
     async render(container, subPath = []) {
+        const editionId = this._extractEditionId(subPath);
+        if (!editionId) { this.app.navigate('/'); return; }
+
+        this._currentEditionId = editionId;
+        this.app.setDatasetContext({ type: 'edition', editionId });
+
         this.container = container;
         this._renderShell();
-        return this._route(subPath);
+        return this._route(subPath.slice(1));
     }
 
     async handleSubPath(subPath) {
-        return this._route(subPath);
+        const editionId = this._extractEditionId(subPath);
+        if (!editionId) { this.app.navigate('/'); return; }
+
+        if (editionId !== this._currentEditionId) {
+            await this.cleanup();
+            await this.render(this.app.container, subPath);
+            return;
+        }
+
+        return this._route(subPath.slice(1));
     }
 
     async cleanup() {
         for (const sub of Object.values(this._subActivities)) {
             await sub.cleanup?.();
         }
-        this._subActivities  = {};
-        this._currentSubName = null;
-        this.container       = null;
-        this.subContainer    = null;
+        this._subActivities    = {};
+        this._currentSubName   = null;
+        this._currentEditionId = null;
+        this.container         = null;
+        this.subContainer      = null;
     }
 
     // -------------------------------------------------------------------------
@@ -78,9 +102,7 @@ export default class ExploreActivity {
     // -------------------------------------------------------------------------
 
     _renderShell() {
-        const ctx       = this.app.getDatasetContext();
-        const editionId = ctx?.editionId ?? '';
-        const label     = editionId ? `Edition ${editionId} · Read only` : 'Read only';
+        const basePath = `/explore/${this._currentEditionId}`;
 
         this.container.innerHTML = `
             <div class="workspace-shell">
@@ -89,10 +111,10 @@ export default class ExploreActivity {
                         <button
                             class="interaction-tab"
                             data-sub="${t.key}"
-                            data-path="${BASE_PATH}/${t.key}"
+                            data-path="${basePath}/${t.key}"
                         ><span class="interaction-tab__name">${t.label}</span></button>
                     `).join('')}
-                    <span class="workspace-shell__mode-badge workspace-shell__mode-badge--ro">${label}</span>
+                    <span class="workspace-shell__mode-badge workspace-shell__mode-badge--ro">Edition ${this._currentEditionId} · Read only</span>
                 </nav>
                 <div class="workspace-shell__content" id="workspace-content"></div>
             </div>
@@ -123,9 +145,9 @@ export default class ExploreActivity {
         const subName    = (subPath[0] && SUB_ACTIVITIES[subPath[0]]) ? subPath[0] : DEFAULT_SUB;
         const subSubPath = subPath[0] === subName ? subPath.slice(1) : subPath;
 
-        // Redirect bare /explore to /explore/os
+        // Redirect bare /explore/{editionId} to /explore/{editionId}/os
         if (!subPath[0] || !SUB_ACTIVITIES[subPath[0]]) {
-            window.history.replaceState({}, '', `${BASE_PATH}/${subName}`);
+            window.history.replaceState({}, '', `/explore/${this._currentEditionId}/${subName}`);
         }
 
         this._updateActiveTab(subName);
@@ -151,5 +173,19 @@ export default class ExploreActivity {
             this._subActivities[name] = new SubClass(this.app);
         }
         return this._subActivities[name];
+    }
+
+    // -------------------------------------------------------------------------
+    // Utilities
+    // -------------------------------------------------------------------------
+
+    /**
+     * Extract and validate the edition ID from the first subPath segment.
+     * @param {string[]} subPath
+     * @returns {number|null}
+     */
+    _extractEditionId(subPath) {
+        const id = parseInt(subPath[0], 10);
+        return Number.isFinite(id) ? id : null;
     }
 }

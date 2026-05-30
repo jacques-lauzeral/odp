@@ -5,15 +5,15 @@
  * Responsibilities:
  * - Fetch and display the edition list (all types, no filter)
  * - Always show the Live Dataset row; disabled (non-clickable) when no user is identified
- * - On selection: set app dataset context and navigate to the appropriate workspace
+ * - On selection: navigate to the appropriate workspace
  *
  * Dataset context shape stored on App:
  *   { type: 'live' }
  *   { type: 'edition', editionId: number }
  *
  * Navigation:
- *   Live Dataset selected → app.setDatasetContext({ type: 'live' })               → /elaborate
- *   Edition selected      → app.setDatasetContext({ type: 'edition', editionId }) → /explore
+ *   Live Dataset selected → app.setDatasetContext({ type: 'live' }) → /elaborate
+ *   Edition selected      → /explore/{editionId}  (ExploreActivity sets context on mount)
  *
  * Re-render triggers:
  *   - Initial mount (render)
@@ -50,7 +50,6 @@ export default class HomeActivity {
 
         this.container.innerHTML = this._buildHtml();
         this._attachEventListeners();
-        this.app.header.setBreadcrumb([]);
     }
 
     /**
@@ -98,8 +97,7 @@ export default class HomeActivity {
     }
 
     _selectEdition(editionId) {
-        this.app.setDatasetContext({ type: 'edition', editionId });
-        this.app.navigate('/explore');
+        this.app.navigate(`/explore/${editionId}`);
     }
 
     // -------------------------------------------------------------------------

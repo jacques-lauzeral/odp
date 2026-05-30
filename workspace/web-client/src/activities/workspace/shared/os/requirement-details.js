@@ -76,9 +76,6 @@ export default class RequirementDetails {
             // Render shell
             this.container.innerHTML = this._buildShellHtml(item);
 
-            // Set header breadcrumb
-            this.app.header.setBreadcrumb(this._buildCrumbs(item));
-
             // Inject tabbed body from form — preserve active tab on re-renders
             const bodyEl   = this.container.querySelector('#osDetailBody');
             const bodyHtml = await this._form.generateReadOnlyView(item, formExisted);
@@ -247,7 +244,10 @@ export default class RequirementDetails {
     // -------------------------------------------------------------------------
 
     _basePath() {
-        return window.location.pathname.startsWith('/explore') ? '/explore/os' : '/elaborate/os';
+        const ctx = this.app.getDatasetContext();
+        return ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}/os`
+            : '/elaborate/os';
     }
 
     _esc(str) {

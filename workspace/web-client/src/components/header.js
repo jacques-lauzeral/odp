@@ -21,7 +21,6 @@
  *   Visible only to integrators. Rendered in row 1 right cluster.
  */
 import { dom } from '../shared/utils.js';
-import { buildBreadcrumb, attachBreadcrumbListeners } from './breadcrumb.js';
 import logoUrl from '../assets/odip-space-logo.svg';
 
 const STORAGE_KEY = 'odip-space-user';
@@ -46,8 +45,6 @@ export default class Header {
     constructor(app) {
         this.app = app;
         this.container = null;
-        /** @type {Array<{ label: string, path?: string }>} */
-        this._crumbs = [];
     }
 
     // -------------------------------------------------------------------------
@@ -58,20 +55,7 @@ export default class Header {
         this.container = container; // Note: restoreUser() is called once by App.initialize(), not here
         container.innerHTML = this._buildHtml();
         this._attachEventListeners();
-        this._renderBreadcrumb();
-    }
-
-    // -------------------------------------------------------------------------
-    // Public API — called by activities
-    // -------------------------------------------------------------------------
-
-    /**
-     * Update the breadcrumb trail.
-     * @param {Array<{ label: string, path?: string }>} crumbs
-     */
-    setBreadcrumb(crumbs) {
-        this._crumbs = crumbs;
-        this._renderBreadcrumb();
+        this._updateActiveTab();
     }
 
     // -------------------------------------------------------------------------
@@ -100,7 +84,6 @@ export default class Header {
                             </div>
                         </div>
                     </div>
-                    <div class="odp-header__row-bottom" id="header-breadcrumb"></div>
                 </div>
             </header>
 
@@ -153,16 +136,8 @@ export default class Header {
     }
 
     // -------------------------------------------------------------------------
-    // Breadcrumb
+    // Active tab
     // -------------------------------------------------------------------------
-
-    _renderBreadcrumb() {
-        const el = dom.find('#header-breadcrumb', this.container);
-        if (!el) return;
-        el.innerHTML = buildBreadcrumb(this._crumbs);
-        attachBreadcrumbListeners(el, this.app);
-        this._updateActiveTab();
-    }
 
     _updateActiveTab() {
         const segment = this.app.activeSegment();
@@ -264,13 +239,11 @@ export default class Header {
     onUserChange() {
         this.render(this.container);
         this._updateConnectionStatus(this.app.getConnectionStatus());
-        this._renderBreadcrumb();
     }
 
     onContextChange() {
         this.render(this.container);
         this._updateConnectionStatus(this.app.getConnectionStatus());
-        this._renderBreadcrumb();
     }
 
     /** Update active tab highlight on route change. */

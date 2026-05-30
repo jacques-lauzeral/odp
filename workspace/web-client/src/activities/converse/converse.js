@@ -12,7 +12,6 @@ export default class ConverseActivity {
 
     async render(container) {
         this.container = container;
-        this.app.header.setBreadcrumb([]);
         container.innerHTML = `
             <div class="activity-placeholder">
                 <p>Converse — coming soon.</p>

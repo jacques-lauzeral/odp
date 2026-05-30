@@ -28,6 +28,15 @@
  *
  * Edit (Elaborate only): always as popup, consistent with elaborate/os.
  *
+ * SubPath routing:
+ *   []               → ODIP scope (chapter tree)
+ *   ['{chapterId}']  → chapter scope (dive directly into chapter)
+ *
+ * URL updates:
+ *   Dive into chapter → pushState /{base}/narrative/{chapterId}
+ *   Climb via button  → pushState /{base}/narrative
+ *   Climb via back    → no history entry (popstate already updated URL)
+ *
  * Context from app.getDatasetContext():
  *   { type: 'live' }               → isEditable: true  (Elaborate)
  *   { type: 'edition', editionId } → isEditable: false (Explore)
@@ -95,15 +104,50 @@ export default class NarrativeActivity {
         this._syncEnabled       = false;
 
         this._renderShell();
-        this.app.header.setBreadcrumb([{ label: 'Narrative' }]);
 
-        // Start in ODIP scope — show chapter tree, no pre-selection
+        const chapterId = this._parseChapterId(subPath);
+        if (chapterId != null) {
+            const chapter = this._chapterMap.get(chapterId)
+                ?? this._chapters.find(c => normalizeId(c.itemId) === chapterId)
+                ?? null;
+            if (chapter) {
+                await this._diveIntoChapter(chapter, /* pushState */ false);
+                return;
+            }
+        }
+
+        // Default: ODIP scope
         this._toc.renderOdip(this._chapters, null);
         this._body.renderOdipPlaceholder();
     }
 
     async handleSubPath(subPath) {
-        return this.render(this.container, subPath);
+        // If chapters not yet loaded fall back to full render
+        if (!this._chapters.length || !this._toc || !this._body) {
+            return this.render(this.container, subPath);
+        }
+
+        const chapterId = this._parseChapterId(subPath);
+
+        if (chapterId == null) {
+            this._climbToOdip();
+            return;
+        }
+
+        const chapter = this._chapterMap.get(chapterId)
+            ?? this._chapters.find(c => normalizeId(c.itemId) === chapterId)
+            ?? null;
+
+        if (!chapter) return;
+
+        if (this._scope === 'chapter' &&
+            this._selectedChapter &&
+            normalizeId(this._selectedChapter.itemId) === chapterId) {
+            // Already in this chapter — nothing to do
+            return;
+        }
+
+        await this._diveIntoChapter(chapter, /* pushState */ false);
     }
 
     async cleanup() {
@@ -143,7 +187,7 @@ export default class NarrativeActivity {
             chapterMap:           this._chapterMap,
             onOdipSelect:         (chapter) => this._handleOdipSelect(chapter),
             onDive:               (chapter) => this._diveIntoChapter(chapter),
-            onClimb:              ()         => this._climbToOdip(),
+            onClimb:              ()         => this._climbToOdip(true),
             onChapterSelect:      (entry)    => this._handleChapterTocSelect(entry),
             buildOrderedChapters: ()         => this._buildOrderedChapters(),
         });
@@ -168,10 +212,6 @@ export default class NarrativeActivity {
     async _handleOdipSelect(entry) {
         const chapter = entry.chapter;
         this._odipSelection = chapter.itemId;
-        this.app.header.setBreadcrumb([
-            { label: 'Narrative' },
-            { label: chapter.title ?? chapter.code ?? '' },
-        ]);
 
         const full = await this._loadChapter(chapter);
         if (!full) return;
@@ -190,7 +230,7 @@ export default class NarrativeActivity {
      * Switches to chapter scope.
      * @param {object} chapter
      */
-    async _diveIntoChapter(chapter) {
+    async _diveIntoChapter(chapter, pushState = true) {
         const full = await this._loadChapter(chapter);
         if (!full) return;
 
@@ -199,10 +239,10 @@ export default class NarrativeActivity {
         this._mode            = 'sequential';
         this._syncEnabled     = false;
 
-        this.app.header.setBreadcrumb([
-            { label: 'Narrative' },
-            { label: full.title ?? full.code ?? '' },
-        ]);
+        if (pushState) {
+            const chapterId = normalizeId(full.itemId);
+            window.history.pushState({}, '', `${this._basePath()}/${chapterId}`);
+        }
 
         await this._toc.renderChapter(full);
         await this._body.renderSequential(full);
@@ -213,15 +253,17 @@ export default class NarrativeActivity {
     // Chapter scope — climb back to ODIP
     // -------------------------------------------------------------------------
 
-    _climbToOdip() {
+    _climbToOdip(viaButton = false) {
         this._body?.stopSync?.();
-        this._scope           = 'chapter';   // will become 'odip' below
         this._selectedChapter = null;
         this._mode            = 'sequential';
         this._syncEnabled     = false;
         this._scope           = 'odip';
 
-        this.app.header.setBreadcrumb([{ label: 'Narrative' }]);
+        if (viaButton) {
+            window.history.pushState({}, '', this._basePath());
+        }
+
         this._toc.renderOdip(this._chapters, this._odipSelection);
         this._body.renderOdipPlaceholder();
         this._removeModeControls();
@@ -367,6 +409,31 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
     // Chapter ordering (for TOC)
     // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // Utilities
+    // -------------------------------------------------------------------------
+
+    /**
+     * Base path for this sub-activity, incorporating edition ID for Explore.
+     * @returns {string}
+     */
+    _basePath() {
+        const ctx = this.app.getDatasetContext();
+        return ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}/narrative`
+            : '/elaborate/narrative';
+    }
+
+    /**
+     * Extract and validate a chapter ID from subPath[0].
+     * @param {string[]} subPath
+     * @returns {number|null}
+     */
+    _parseChapterId(subPath) {
+        const id = parseInt(subPath?.[0], 10);
+        return Number.isFinite(id) ? id : null;
+    }
 
     _buildOrderedChapters() {
         const pcode = c => c.parentCode ?? c.parentKey ?? null;

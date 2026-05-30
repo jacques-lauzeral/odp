@@ -95,7 +95,6 @@ export default class OsActivity {
                 // Panel mode — clear detail and restore
                 this.masterDetail.clearDetail();
                 this._ostarEntity.onActivated();
-                this.app.header.setBreadcrumb([{ label: 'O*s' }]);
                 return;
             }
             return this._renderList();
@@ -145,7 +144,6 @@ export default class OsActivity {
         this._mountSearchBox();
         this._mountFilterBar();
         await this._prepareOStarEntity();
-        this.app.header.setBreadcrumb([{ label: 'O*s' }]);
         this._ostarEntity.onActivated();
         await this._loadData();
 
@@ -409,14 +407,6 @@ export default class OsActivity {
     async _handleItemSelect(item) {
         const id         = item.itemId ?? item.id;
         const isOC       = item.type === 'OC' || (!item.type && item.code?.startsWith('OC-'));
-        const entityType = isOC ? 'oc' : (item.type === 'ON' ? 'on' : 'or');
-
-        const code  = item.code ?? '';
-        const title = item.title ?? String(id ?? '');
-        this.app.header.setBreadcrumb([
-            { label: 'O*s', path: `${this._basePath()}` },
-            { label: code ? `${code} — ${title}` : title },
-        ]);
 
         if (isOC) {
             await this._renderChangeDetailInPanel(id);
@@ -530,7 +520,10 @@ export default class OsActivity {
     }
 
     _basePath() {
-        return window.location.pathname.startsWith('/explore') ? '/explore/os' : '/elaborate/os';
+        const ctx = this.app.getDatasetContext();
+        return ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}/os`
+            : '/elaborate/os';
     }
 
     _parseSubPath(subPath) {
