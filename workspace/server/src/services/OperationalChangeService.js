@@ -316,18 +316,8 @@ export class OperationalChangeService extends VersionedItemService {
         const maturityOrder = { DRAFT: 0, ADVANCED: 1, MATURE: 2 };
         const level = maturityOrder[payload.maturity] ?? 0;
 
-        const isDeltaEmpty = (value) => {
-            if (!value) return true;
-            try {
-                const delta = typeof value === 'string' ? JSON.parse(value) : value;
-                return !delta.ops || delta.ops.every(op => typeof op.insert === 'string' && op.insert.trim() === '');
-            } catch {
-                return false;
-            }
-        };
-
         if (level >= 1) {
-            if (!payload.purpose || isDeltaEmpty(payload.purpose)) {
+            if (this._isContentEmpty(payload.purpose)) {
                 throw new Error('Validation failed: purpose is required for maturity ADVANCED or MATURE');
             }
             if (!payload.implementedORs || payload.implementedORs.length === 0) {
@@ -336,10 +326,10 @@ export class OperationalChangeService extends VersionedItemService {
         }
 
         if (level >= 2) {
-            if (!payload.initialState || isDeltaEmpty(payload.initialState)) {
+            if (this._isContentEmpty(payload.initialState)) {
                 throw new Error('Validation failed: initialState is required for maturity MATURE');
             }
-            if (!payload.finalState || isDeltaEmpty(payload.finalState)) {
+            if (this._isContentEmpty(payload.finalState)) {
                 throw new Error('Validation failed: finalState is required for maturity MATURE');
             }
             if (payload.cost === undefined || payload.cost === null) {

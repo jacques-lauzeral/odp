@@ -162,10 +162,20 @@ install_host_dependencies() {
 build_web_client() {
     log "Rebuilding web client image (ODIP_NPM_MODE=${ODIP_NPM_MODE:-podman})"
     local npm_arg="true"
-    [[ "${ODIP_NPM_MODE:-podman}" == "host" ]] && npm_arg="false"
+    local build_arg="true"
+
+    if [[ "${ODIP_NPM_MODE:-podman}" == "host" ]]; then
+        npm_arg="false"
+        build_arg="false"
+        # Run Vite build on the host (proxy-aware npm environment)
+        log "Building web client on host (Vite)"
+        (cd "${ODIP_REPO}/workspace/web-client" && npm run build)
+    fi
+
     podman build --no-cache \
         -f "${ODIP_REPO}/Dockerfile.web-client" \
         --build-arg NPM_INSTALL="$npm_arg" \
+        --build-arg BUILD_WEB_CLIENT="$build_arg" \
         -t odp-web-client:latest \
         "$ODIP_REPO"
 }

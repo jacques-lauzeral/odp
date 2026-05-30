@@ -223,6 +223,22 @@ export class VersionedItemService {
     }
 
     /**
+     * Check whether a TipTap document JSON string is empty (null, unparseable,
+     * not a doc node, or has no content blocks).
+     * @param {string|null} value
+     * @returns {boolean}
+     */
+    _isContentEmpty(value) {
+        if (!value) return true;
+        try {
+            const doc = typeof value === 'string' ? JSON.parse(value) : value;
+            return doc.type !== 'doc' || !Array.isArray(doc.content) || doc.content.length === 0;
+        } catch {
+            return true;
+        }
+    }
+
+    /**
      * Override in subclasses to declare which fields contain Delta JSON strings.
      * @returns {string[]}
      */

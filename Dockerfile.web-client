@@ -1,9 +1,10 @@
 FROM node:20-alpine
 
 ARG NPM_INSTALL=true
+ARG BUILD_WEB_CLIENT=true
 
 WORKDIR /app
-# Copy entire codebase (including pre-installed node_modules if present)
+# Copy entire codebase (including pre-installed node_modules and pre-built dist/ if present)
 COPY . .
 # Pre-create the shared source structure
 RUN mkdir -p workspace/web-client/src/shared/src && \
@@ -12,7 +13,9 @@ RUN mkdir -p workspace/web-client/src/shared/src && \
 WORKDIR /app/workspace/web-client
 # Install dependencies unless host pre-installed them (ODIP_NPM_MODE=host)
 RUN if [ "$NPM_INSTALL" = "true" ]; then npm install; fi
+# Build the client unless host pre-built it (ODIP_NPM_MODE=host)
+RUN if [ "$BUILD_WEB_CLIENT" = "true" ]; then npm run build; fi
 # Expose port
 EXPOSE 3000
-# Start web server
-CMD ["npm", "run", "dev"]
+# Serve the built dist/ using vite preview (serves dist/ produced by vite build)
+CMD ["npm", "run", "preview"]

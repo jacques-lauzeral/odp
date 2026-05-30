@@ -6,7 +6,7 @@ import {
 } from '../../store/index.js';
 import {DraftingGroupKeys, getDraftingGroupDisplay, MilestoneEventOrder} from "../../../../shared/src/index.js";
 import baseline from "../../routes/baseline.js";
-import DeltaToAsciidocConverter from './DeltaToAsciidocConverter.js';
+import TipTapAsciidocConverter from './TipTapAsciidocConverter.js';
 
 /**
  * ODPEditionAggregator handles complex data assembly for ODIP Edition exports.
@@ -16,7 +16,7 @@ import DeltaToAsciidocConverter from './DeltaToAsciidocConverter.js';
 export class ODPEditionAggregator {
 
     constructor() {
-        this.deltaConverter = new DeltaToAsciidocConverter();
+        this.deltaConverter = new TipTapAsciidocConverter();
     }
 
     /**

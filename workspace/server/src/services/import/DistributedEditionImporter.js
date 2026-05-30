@@ -4,7 +4,7 @@ import StakeholderCategoryService from '../StakeholderCategoryService.js';
 import ReferenceDocumentService from '../ReferenceDocumentService.js';
 import WaveService from '../WaveService.js';
 import ExternalIdBuilder from '../../../../shared/src/model/ExternalIdBuilder.js';
-import BlocksToQuillDeltaConverter from './BlocksToQuillDeltaConverter.js';
+import BlocksToTipTapConverter from './BlocksToTipTapConverter.js';
 
 /**
  * Importer for ODIP distributed edition source JSON files.
@@ -164,7 +164,7 @@ class DistributedEditionImporter {
             return;
         }
 
-        const narrative = BlocksToQuillDeltaConverter.convert(blocks);
+        const narrative = BlocksToTipTapConverter.convert(blocks);
         if (!narrative) {
             console.log('Empty narrative after conversion — skipping patch.');
             return;
@@ -415,11 +415,11 @@ class DistributedEditionImporter {
                 const createRequest = {
                     title: reqData.title,
                     type: reqData.type,
-                    statement: reqData.statement || '',
-                    rationale: reqData.rationale || '',
-                    flows: reqData.flows || '',
-                    nfrs: reqData.nfrs || '',
-                    privateNotes: privateNotes || '',
+                    statement:    this._deltaToTipTap(reqData.statement)    || null,
+                    rationale:    this._deltaToTipTap(reqData.rationale)    || null,
+                    flows:        this._deltaToTipTap(reqData.flows)        || null,
+                    nfrs:         this._deltaToTipTap(reqData.nfrs)         || null,
+                    privateNotes: privateNotes || null,
                     // DRAFT-first: real maturity applied in phase 3 after references resolve,
                     // except NO_SHOW which is final and requires no reference validation
                     maturity: maturity === 'NO_SHOW' ? 'NO_SHOW' : 'DRAFT',
@@ -460,11 +460,180 @@ class DistributedEditionImporter {
     }
 
     /**
-     * Build the privateNotes Quill Delta string, prepending tentativeImplTime
-     * as a plain text line if present.
+     * Convert a Quill Delta JSON string to a TipTap document JSON string.
      *
-     * Format: "Source Tentative Implementation Time: <value>\n" prepended
-     * before any existing privateNotes content.
+     * Handles the Delta format produced by DrG mappers via textToDelta:
+     *   - Plain text inserts → paragraph nodes
+     *   - Bold/italic/underline/strike attributes → TipTap marks
+     *   - List newlines (list: 'bullet'|'ordered') → bulletList/orderedList nodes
+     *   - Code-block lines → skipped (interim table format — no longer used)
+     *   - Image embeds → TipTap image nodes
+     *
+     * Returns null for null/empty input.
+     * Returns a minimal single-paragraph TipTap doc if the Delta has no parseable content.
+     *
+     * @param {string|null} deltaJsonString
+     * @returns {string|null} TipTap document JSON string, or null
+     * @private
+     */
+    _deltaToTipTap(deltaJsonString) {
+        if (!deltaJsonString) return null;
+
+        let delta;
+        try {
+            delta = typeof deltaJsonString === 'string'
+                ? JSON.parse(deltaJsonString)
+                : deltaJsonString;
+        } catch {
+            // Not valid JSON — treat as plain text
+            return JSON.stringify({
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: String(deltaJsonString) }] }]
+            });
+        }
+
+        if (!delta?.ops || delta.ops.length === 0) return null;
+
+        // Normalise: split any multi-line insert strings into separate ops
+        const ops = [];
+        for (const op of delta.ops) {
+            if (typeof op.insert === 'string' && op.insert.includes('\n')) {
+                const parts = op.insert.split('\n');
+                parts.forEach((part, idx) => {
+                    if (part.length > 0) {
+                        const inlineAttrs = op.attributes
+                            ? Object.fromEntries(
+                                Object.entries(op.attributes).filter(
+                                    ([k]) => !['list', 'code-block', 'blockquote', 'indent', 'align'].includes(k)
+                                )
+                            )
+                            : undefined;
+                        ops.push({ insert: part, ...(inlineAttrs && Object.keys(inlineAttrs).length ? { attributes: inlineAttrs } : {}) });
+                    }
+                    if (idx < parts.length - 1) {
+                        ops.push({ insert: '\n', ...(op.attributes ? { attributes: op.attributes } : {}) });
+                    }
+                });
+            } else {
+                ops.push(op);
+            }
+        }
+
+        const content = [];
+        let currentInline = [];
+
+        const flushParagraph = () => {
+            if (currentInline.length > 0) {
+                content.push({ type: 'paragraph', content: currentInline });
+                currentInline = [];
+            }
+        };
+
+        // Accumulate consecutive list items per type
+        let currentListType = null;
+        let currentListItems = [];
+
+        const flushList = () => {
+            if (currentListItems.length > 0) {
+                content.push({ type: currentListType, content: currentListItems });
+                currentListItems = [];
+                currentListType = null;
+            }
+        };
+
+        for (const op of ops) {
+            // Image op
+            if (typeof op.insert === 'object' && op.insert?.image) {
+                flushList();
+                flushParagraph();
+                content.push({ type: 'image', attrs: { src: op.insert.image, alt: null, title: null } });
+                continue;
+            }
+
+            if (typeof op.insert !== 'string') continue;
+
+            if (op.insert === '\n') {
+                const listType = op.attributes?.list;
+                const isCodeBlock = op.attributes?.['code-block'] === true;
+
+                if (isCodeBlock) {
+                    // Skip interim code-block table lines — no longer relevant
+                    currentInline = [];
+                    continue;
+                }
+
+                if (listType) {
+                    const tiptapListType = listType === 'bullet' ? 'bulletList' : 'orderedList';
+                    if (currentListType && currentListType !== tiptapListType) {
+                        flushList();
+                    }
+                    currentListType = tiptapListType;
+                    if (currentInline.length > 0) {
+                        currentListItems.push({
+                            type: 'listItem',
+                            content: [{ type: 'paragraph', content: currentInline }]
+                        });
+                        currentInline = [];
+                    }
+                } else {
+                    flushList();
+                    flushParagraph();
+                }
+            } else {
+                // Text node
+                const textNode = { type: 'text', text: op.insert };
+                const marks = this._deltaAttrsToMarks(op.attributes || {});
+                if (marks.length > 0) textNode.marks = marks;
+                currentInline.push(textNode);
+            }
+        }
+
+        flushList();
+        flushParagraph();
+
+        if (content.length === 0) return null;
+
+        return JSON.stringify({ type: 'doc', content });
+    }
+
+    /**
+     * Convert Quill inline attributes to TipTap marks array.
+     * @private
+     */
+    _deltaAttrsToMarks(attributes) {
+        const marks = [];
+        for (const [key, value] of Object.entries(attributes)) {
+            if (!value) continue;
+            switch (key) {
+                case 'bold':
+                case 'italic':
+                case 'underline':
+                case 'strike':
+                    marks.push({ type: key });
+                    break;
+                case 'link':
+                    marks.push({ type: 'link', attrs: { href: value, target: '_blank' } });
+                    break;
+                case 'color':
+                    marks.push({ type: 'textStyle', attrs: { color: value } });
+                    break;
+                case 'ref':
+                    marks.push({ type: 'ref', attrs: { value } });
+                    break;
+                case 'anchor':
+                    marks.push({ type: 'anchor', attrs: { value } });
+                    break;
+                default:
+                    marks.push({ type: key, attrs: { value } });
+                    break;
+            }
+        }
+        return marks;
+    }
+
+    /**
+     * Build the privateNotes TipTap JSON string, prepending tentativeImplTime
+     * as a plain text line if present.
      *
      * tentativeImplTime shape: null | integer | [start, end]
      * @private
@@ -474,7 +643,7 @@ class DistributedEditionImporter {
         const existingNotes = reqData.privateNotes || reqData.privateNote || null;
 
         if (sourceTit == null) {
-            return existingNotes || '';
+            return existingNotes ? this._deltaToTipTap(existingNotes) : null;
         }
 
         const titDisplay = Array.isArray(sourceTit)
@@ -482,30 +651,26 @@ class DistributedEditionImporter {
             : String(sourceTit);
 
         const prefix = `Source Tentative Implementation Time: ${titDisplay}`;
+        const prefixNode = { type: 'paragraph', content: [{ type: 'text', text: prefix }] };
 
         if (!existingNotes) {
-            // Wrap as minimal Quill Delta
-            return JSON.stringify({ ops: [{ insert: `${prefix}\n` }] });
+            return JSON.stringify({ type: 'doc', content: [prefixNode] });
         }
 
-        // Prepend to existing Quill Delta ops
+        // Convert existing notes and prepend the prefix paragraph
+        const existingTipTap = this._deltaToTipTap(existingNotes);
+        if (!existingTipTap) {
+            return JSON.stringify({ type: 'doc', content: [prefixNode] });
+        }
+
         try {
-            const existing = typeof existingNotes === 'string'
-                ? JSON.parse(existingNotes)
-                : existingNotes;
-
-            const prefixOps = [{ insert: `${prefix}\n` }];
-            const mergedOps = [...prefixOps, ...(existing.ops || [])];
-            return JSON.stringify({ ops: mergedOps });
-
-        } catch {
-            // existingNotes is not valid JSON — treat as plain text
+            const existingDoc = JSON.parse(existingTipTap);
             return JSON.stringify({
-                ops: [
-                    { insert: `${prefix}\n` },
-                    { insert: existingNotes }
-                ]
+                type: 'doc',
+                content: [prefixNode, ...(existingDoc.content ?? [])]
             });
+        } catch {
+            return JSON.stringify({ type: 'doc', content: [prefixNode] });
         }
     }
 
@@ -585,11 +750,11 @@ class DistributedEditionImporter {
         const updateRequest = {
             title: current.title,
             type: current.type,
-            statement: current.statement,
-            rationale: current.rationale,
-            flows: current.flows,
-            nfrs: reqData.nfrs != null ? reqData.nfrs : (current.nfrs ?? null),
-            privateNotes: current.privateNotes,
+            statement:    this._deltaToTipTap(reqData.statement)    || current.statement    || null,
+            rationale:    this._deltaToTipTap(reqData.rationale)    || current.rationale   || null,
+            flows:        this._deltaToTipTap(reqData.flows)        || current.flows       || null,
+            nfrs:         this._deltaToTipTap(reqData.nfrs != null ? reqData.nfrs : null)  || current.nfrs || null,
+            privateNotes: current.privateNotes || null,
             maturity: finalMaturity,
             // XOR: path is nulled when refinesParents resolves non-empty
             path: refinesParents.length > 0 ? null : current.path,

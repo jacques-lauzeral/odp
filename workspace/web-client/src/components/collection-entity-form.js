@@ -2,6 +2,7 @@ import { async as asyncUtils } from '../shared/utils.js';
 import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 import ReferenceListManager from './reference-list-manager.js';
 import ReferenceManager from './reference-manager.js';
+import RichTextComponent from './rich-text-component.js';
 
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
@@ -35,8 +36,8 @@ export class CollectionEntityForm {
         // Single-select reference managers (ReferenceManager)
         this.referenceManagers = {};
 
-        // Quill rich text editors storage
-        this.quillEditors = {};
+        // RichTextComponent instances storage
+        this.richTextComponents = {};
 
         // Modified indicator flag — set when form data is changed or restored
         this._isDirty = false;
@@ -153,7 +154,7 @@ export class CollectionEntityForm {
         this.initializeAnnotatedMultiselects();
         this.initializeReferenceListManagers();
         this.initializeReferenceManagers();
-        this.initializeQuillEditors();
+        this.initializeRichTextEditors();
     }
 
     async showEditModal(item) {
@@ -173,7 +174,7 @@ export class CollectionEntityForm {
         this.initializeAnnotatedMultiselects();
         this.initializeReferenceListManagers();
         this.initializeReferenceManagers();
-        this.initializeQuillEditors();
+        this.initializeRichTextEditors();
     }
 
     async showReadOnlyModal(item) {
@@ -193,8 +194,8 @@ export class CollectionEntityForm {
         this.initializeReferenceListManagers();
         this.initializeReferenceManagers();
 
-        // Initialize read-only richtext fields with disabled Quill editors
-        this.initializeRichtextReadOnly();
+        // Initialize read-only richtext fields
+        this.initializeRichTextReadOnly();
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {
@@ -224,7 +225,7 @@ export class CollectionEntityForm {
         this.initializeAnnotatedMultiselects();
         this.initializeReferenceListManagers();
         this.initializeReferenceManagers();
-        this.initializeRichtextReadOnly(container);
+        this.initializeRichTextReadOnly(container);
 
         this.currentModal = null;
     }
@@ -499,19 +500,18 @@ export class CollectionEntityForm {
                     ${field.maxLength ? `maxlength="${field.maxLength}"` : ''}>${this.escapeHtml(value || '')}</textarea>`;
 
             case 'richtext':
-                // Render container for Quill editor and hidden input for form data
+                // Render container for RichTextComponent and hidden input for form data
                 const editorRows = field.rows || 4;
-                const minHeight = editorRows * 24; // Approximate line height
-                // Base64 encode the value to safely pass JSON through HTML attribute
-                const encodedValue = value ? btoa(encodeURIComponent(value)) : '';
-                return `<div id="${fieldId}" 
-                    class="quill-editor" 
+                const minHeight = editorRows * 24;
+                const initialValue = value ? value.replace(/"/g, '&quot;') : '';
+                return `<div id="${fieldId}"
+                    class="richtext-edit-placeholder"
                     data-field-key="${field.key}"
-                    data-initial-value="${encodedValue}"
+                    data-initial-value="${initialValue}"
                     data-placeholder="${this.escapeHtml(field.placeholder || '')}"
                     style="min-height: ${minHeight}px;"></div>
-                <input type="hidden" 
-                    name="${field.key}" 
+                <input type="hidden"
+                    name="${field.key}"
                     id="${fieldId}-data">`;
             case 'select':
                 let html = `<select id="${fieldId}" name="${field.key}" class="form-control" ${required}>`;
@@ -881,13 +881,12 @@ export class CollectionEntityForm {
     }
 
     renderRichtextReadOnly(field, value) {
-        // Parse stringified Delta from Neo4j
-        let deltaValue;
+        // Parse stringified TipTap JSON from Neo4j
+        let docValue;
         try {
-            deltaValue = JSON.parse(value);
+            docValue = JSON.parse(value);
         } catch (e) {
             console.warn(`Failed to parse richtext value for ${field.key}:`, e);
-            // Treat as plain text fallback
             return `
                 <div class="detail-field">
                     <label>${this.escapeHtml(field.label)}</label>
@@ -896,11 +895,17 @@ export class CollectionEntityForm {
             `;
         }
 
-        // Handle empty richtext
-        if (!deltaValue || !deltaValue.ops || deltaValue.ops.length === 0) {
-            if (!field.required) {
-                return ''; // Skip optional empty fields
-            }
+        // Handle empty richtext — TipTap empty doc has no content or a single empty paragraph
+        const isEmpty = !docValue
+            || docValue.type !== 'doc'
+            || !Array.isArray(docValue.content)
+            || docValue.content.length === 0
+            || (docValue.content.length === 1
+                && docValue.content[0].type === 'paragraph'
+                && (!docValue.content[0].content || docValue.content[0].content.length === 0));
+
+        if (isEmpty) {
+            if (!field.required) return '';
             return `
                 <div class="detail-field">
                     <label>${this.escapeHtml(field.label)}</label>
@@ -909,14 +914,13 @@ export class CollectionEntityForm {
             `;
         }
 
-        // Return placeholder that will be enhanced with disabled Quill editor after DOM insertion
-        // Store Delta JSON in data attribute for post-processing
-        const deltaJson = this.escapeHtml(JSON.stringify(deltaValue));
+        // Return placeholder that will be mounted with read-only RichTextComponent after DOM insertion
+        const escapedJson = this.escapeHtml(JSON.stringify(docValue));
         return `
             <div class="detail-field">
                 <label>${this.escapeHtml(field.label)}</label>
                 <div class="detail-value richtext-content">
-                    <div class="richtext-placeholder" data-delta="${deltaJson}" data-field-key="${field.key}"></div>
+                    <div class="richtext-readonly-placeholder" data-tiptap-json="${escapedJson}" data-field-key="${field.key}"></div>
                 </div>
             </div>
         `;
@@ -990,56 +994,86 @@ export class CollectionEntityForm {
         this.annotatedMultiselectManagers = {};
     }
 
-    /**
-     * Initialize read-only richtext fields with disabled Quill editors
-     * Called after modal is rendered in read mode, or after non-modal content is inserted
-     * @param {HTMLElement} container - Optional container to search within (defaults to currentModal)
-     */
-    initializeRichtextReadOnly(container = null) {
-        const searchRoot = container || this.currentModal;
+    // ====================
+    // RICH TEXT COMPONENTS
+    // ====================
 
-        if (!searchRoot) {
-            console.warn('No container provided for richtext initialization');
-            return;
-        }
+    initializeRichTextEditors() {
+        if (!this.currentModal) return;
 
-        if (typeof Quill === 'undefined') {
-            console.warn('Quill is not loaded. Rich text will not render properly.');
-            return;
-        }
-
-        // Find all richtext placeholders
-        const placeholders = searchRoot.querySelectorAll('.richtext-placeholder');
+        const placeholders = this.currentModal.querySelectorAll('.richtext-edit-placeholder');
 
         placeholders.forEach(placeholder => {
-            const deltaJson = placeholder.getAttribute('data-delta');
-            const fieldKey = placeholder.getAttribute('data-field-key');
+            const fieldKey  = placeholder.dataset.fieldKey;
+            const initialValue = placeholder.dataset.initialValue || '';
+            const placeholderText = placeholder.dataset.placeholder || '';
 
-            if (!deltaJson) {
-                console.warn(`No delta data found for richtext placeholder: ${fieldKey}`);
+            const allFields = [];
+            for (const section of this.getFieldDefinitions()) {
+                allFields.push(...(section.fields || [section]));
+            }
+            const field = allFields.find(f => f.key === fieldKey);
+            if (!field) return;
+
+            const hiddenInput = this.currentModal.querySelector(`#${placeholder.id}-data`);
+            if (!hiddenInput) {
+                console.warn(`No hidden input found for richtext field: ${fieldKey}`);
+                return;
+            }
+
+            const component = new RichTextComponent({
+                readOnly: false,
+                headings: field.headings ?? false,
+                images:   field.images   ?? true,
+                tables:   field.tables   ?? true,
+                placeholder: placeholderText,
+                onChange: (jsonString) => {
+                    hiddenInput.value = jsonString ?? '';
+                    if (this.currentMode === 'edit' || this.currentMode === 'create') {
+                        this.markDirty();
+                    }
+                },
+            });
+
+            component.mount(placeholder);
+
+            if (initialValue) {
+                component.setValue(initialValue);
+            }
+
+            // Sync hidden input with initial value
+            hiddenInput.value = component.getValue() ?? '';
+
+            this.richTextComponents[fieldKey] = component;
+        });
+    }
+
+    /**
+     * Mount read-only RichTextComponent instances into richtext-readonly-placeholder elements.
+     * Called after read-mode HTML is injected into a container (panel or modal).
+     * @param {HTMLElement} [container] — defaults to currentModal
+     */
+    initializeRichTextReadOnly(container = null) {
+        const searchRoot = container || this.currentModal;
+        if (!searchRoot) return;
+
+        const placeholders = searchRoot.querySelectorAll('.richtext-readonly-placeholder');
+
+        placeholders.forEach(placeholder => {
+            const jsonString = placeholder.getAttribute('data-tiptap-json');
+            const fieldKey   = placeholder.getAttribute('data-field-key');
+
+            if (!jsonString) {
+                console.warn(`No TipTap JSON found for richtext placeholder: ${fieldKey}`);
                 return;
             }
 
             try {
-                // Parse Delta JSON
-                const deltaValue = JSON.parse(deltaJson);
-
-                // Create Quill editor in the placeholder with minimal configuration
-                const quillEditor = new Quill(placeholder, {
-                    theme: null, // No theme for most compact rendering
-                    readOnly: true // Use readOnly instead of disable for cleaner rendering
-                });
-
-                // Quill steals focus on init even in readOnly mode — blur immediately
-                // to avoid disrupting keyboard navigation in the master list.
-                quillEditor.root.blur();
-
-                // Set content
-                quillEditor.setContents(deltaValue);
-
-                // Optional: Add styling to indicate read-only state
-                placeholder.classList.add('richtext-readonly');
-
+                const component = new RichTextComponent({ readOnly: true });
+                component.mount(placeholder);
+                component.setValue(jsonString);
+                // Prevent focus theft in panel context
+                component.blur();
             } catch (e) {
                 console.error(`Failed to initialize read-only richtext for ${fieldKey}:`, e);
                 placeholder.innerHTML = '<em>Error rendering content</em>';
@@ -1047,87 +1081,13 @@ export class CollectionEntityForm {
         });
     }
 
-    // ====================
-    // QUILL RICH TEXT EDITORS
-    // ====================
-
-    initializeQuillEditors() {
-        if (!this.currentModal) return;
-        if (typeof Quill === 'undefined') {
-            console.warn('Quill is not loaded. Rich text editing will not be available.');
-            return;
-        }
-
-        // Find all quill-editor containers
-        const containers = this.currentModal.querySelectorAll('.quill-editor');
-
-        containers.forEach(container => {
-            const fieldKey = container.dataset.fieldKey;
-            const placeholder = container.dataset.placeholder || '';
-            const hiddenInput = this.currentModal.querySelector(`#${container.id}-data`);
-
-            if (!hiddenInput) {
-                console.warn(`No hidden input found for richtext field: ${fieldKey}`);
-                return;
-            }
-
-            // Decode base64 value from data attribute
-            let initialContent = {ops: []};
-            try {
-                const encodedValue = container.dataset.initialValue;
-                if (encodedValue) {
-                    const decodedValue = decodeURIComponent(atob(encodedValue));
-                    initialContent = JSON.parse(decodedValue);
-                }
-            } catch (e) {
-                console.warn(`Failed to parse initial content for ${fieldKey}:`, e);
-            }
-
-            // Create Quill instance
-            const quill = new Quill(container, {
-                theme: 'snow',
-                placeholder: placeholder,
-                modules: {
-                    toolbar: [
-                        ['bold', 'italic', 'underline'],
-                        ['code', 'code-block'],  // inline code + code block
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        ['image']
-                    ]
-                }
-            });
-
-            // Set initial content
-            if (initialContent && initialContent.ops) {
-                quill.setContents(initialContent);
-            }
-
-            // Sync to hidden input on change
-            quill.on('text-change', () => {
-                const delta = quill.getContents();
-                hiddenInput.value = JSON.stringify(delta);
-                if (this.currentMode === 'edit' || this.currentMode === 'create') {
-                    this.markDirty();
-                }
-            });
-
-            // Store editor instance
-            this.quillEditors[fieldKey] = quill;
-
-            console.log(`Initialized Quill editor for field: ${fieldKey}`);
-        });
-    }
-
-    cleanupQuillEditors() {
-        // Destroy all Quill editor instances
-        Object.values(this.quillEditors).forEach(quill => {
-            if (quill && typeof quill.disable === 'function') {
-                quill.disable();
+    cleanupRichTextComponents() {
+        Object.values(this.richTextComponents).forEach(component => {
+            if (component && typeof component.destroy === 'function') {
+                component.destroy();
             }
         });
-
-        // Clear storage
-        this.quillEditors = {};
+        this.richTextComponents = {};
     }
 
     // ====================
@@ -1186,23 +1146,12 @@ export class CollectionEntityForm {
 
             switch (field.type) {
                 case 'richtext': {
-                    // Use transformedValue: richtext is stored as JSON string in the transformed item
-                    const quill = this.quillEditors[field.key];
-                    if (!quill) break;
-                    let delta = { ops: [] };
-                    try {
-                        if (transformedValue && typeof transformedValue === 'string') {
-                            delta = JSON.parse(transformedValue);
-                        } else if (transformedValue && typeof transformedValue === 'object') {
-                            delta = transformedValue;
-                        }
-                    } catch (e) {
-                        console.warn(`restoreVersionToForm: failed to parse richtext for ${field.key}`, e);
-                    }
-                    quill.setContents(delta);
+                    const component = this.richTextComponents[field.key];
+                    if (!component) break;
+                    component.setValue(transformedValue ?? null);
                     // Sync hidden input
                     const hiddenInput = this.currentModal.querySelector(`#field-${field.key}-data`);
-                    if (hiddenInput) hiddenInput.value = JSON.stringify(quill.getContents());
+                    if (hiddenInput) hiddenInput.value = component.getValue() ?? '';
                     break;
                 }
 
@@ -1566,7 +1515,7 @@ export class CollectionEntityForm {
         this.cleanupAnnotatedMultiselects();
         this.cleanupReferenceListManagers();
         this.cleanupReferenceManagers();
-        this.cleanupQuillEditors();
+        this.cleanupRichTextComponents();
 
         this._clearDirty();
         this.currentTabIndex = 0;
@@ -1673,12 +1622,11 @@ export class CollectionEntityForm {
     collectFormData(form) {
         console.log('CollectionEntityForm.collectFormData');
 
-        // Sync all Quill editors to hidden inputs before collecting data
-        Object.entries(this.quillEditors).forEach(([fieldKey, quill]) => {
+        // Sync all RichTextComponent values to hidden inputs before collecting data
+        Object.entries(this.richTextComponents).forEach(([fieldKey, component]) => {
             const hiddenInput = form.querySelector(`input[name="${fieldKey}"]`);
-            if (hiddenInput && quill) {
-                const delta = quill.getContents();
-                hiddenInput.value = JSON.stringify(delta);
+            if (hiddenInput && component) {
+                hiddenInput.value = component.getValue() ?? '';
             }
         });
 

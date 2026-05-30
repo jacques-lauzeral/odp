@@ -11,7 +11,7 @@ import {
     referenceDocumentStore
 } from '../../../store/index.js';
 import operationalRequirementService from '../../OperationalRequirementService.js';
-import DeltaToAsciidocConverter from '../../export/DeltaToAsciidocConverter.js';
+import TipTapAsciidocConverter from '../../export/TipTapAsciidocConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,7 +29,7 @@ export class DetailsModuleGenerator {
         this.staticContentPath = staticContentPath;
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
-        this.deltaConverter = new DeltaToAsciidocConverter();
+        this.deltaConverter = new TipTapAsciidocConverter();
         // Never reset the converter - keep global counter for unique filenames
     }
 

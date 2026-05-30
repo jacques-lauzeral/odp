@@ -176,22 +176,12 @@ export class OperationalRequirementService extends VersionedItemService {
         const maturityOrder = { DRAFT: 0, ADVANCED: 1, MATURE: 2 };
         const level = maturityOrder[maturity] ?? 0;
 
-        const isDeltaEmpty = (value) => {
-            if (!value) return true;
-            try {
-                const delta = typeof value === 'string' ? JSON.parse(value) : value;
-                return !delta.ops || delta.ops.every(op => typeof op.insert === 'string' && op.insert.trim() === '');
-            } catch {
-                return false;
-            }
-        };
-
         if (level >= 1) {
             // ADVANCED: statement and rationale required
-            if (!payload.statement || isDeltaEmpty(payload.statement)) {
+            if (this._isContentEmpty(payload.statement)) {
                 throw new Error('Validation failed: statement is required for maturity ADVANCED or MATURE');
             }
-            if (!payload.rationale || isDeltaEmpty(payload.rationale)) {
+            if (this._isContentEmpty(payload.rationale)) {
                 throw new Error('Validation failed: rationale is required for maturity ADVANCED or MATURE');
             }
 

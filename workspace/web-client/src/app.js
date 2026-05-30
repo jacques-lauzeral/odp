@@ -12,18 +12,21 @@ import Header from './components/header.js';
 const CONNECTION_CHECK_INTERVAL = 60000;
 
 /**
- * Activity loader map — maps activityKey to the module path used by dynamic import.
- * Nested paths (workspace shells, manage) are explicit here; no path convention assumed.
- *
- * @type {Map<string, string>}
+ * Load an activity module by key.
+ * Import paths must be string literals for Vite's static analyser — no variable imports.
+ * @param {string} activityKey
+ * @returns {Promise<object>} ES module
  */
-const ACTIVITY_PATHS = new Map([
-    ['home',      './activities/home/home.js'],
-    ['elaborate', './activities/workspace/elaborate/elaborate.js'],
-    ['explore',   './activities/workspace/explore/explore.js'],
-    ['manage',    './activities/manage/manage.js'],
-    ['converse',  './activities/converse/converse.js'],
-]);
+async function loadActivityModule(activityKey) {
+    switch (activityKey) {
+        case 'home':      return import('./activities/home/home.js');
+        case 'elaborate': return import('./activities/workspace/elaborate/elaborate.js');
+        case 'explore':   return import('./activities/workspace/explore/explore.js');
+        case 'manage':    return import('./activities/manage/manage.js');
+        case 'converse':  return import('./activities/converse/converse.js');
+        default: throw new Error(`No module registered for activity key: ${activityKey}`);
+    }
+}
 
 export class App {
     /**
@@ -114,11 +117,7 @@ export class App {
             let activity = this.activities.get(activityKey);
 
             if (!activity) {
-                const modulePath = ACTIVITY_PATHS.get(activityKey);
-                if (!modulePath) {
-                    throw new Error(`No module path registered for activity key: ${activityKey}`);
-                }
-                const module = await import(modulePath);
+                const module = await loadActivityModule(activityKey);
                 const ActivityClass = module.default ?? module[this._capitalize(activityKey)];
                 activity = new ActivityClass(this);
                 this.activities.set(activityKey, activity);

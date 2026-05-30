@@ -28,6 +28,7 @@
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
+import RichTextComponent from '../../../../components/rich-text-component.js';
 
 export default class ChapterBody {
     /**
@@ -45,7 +46,7 @@ export default class ChapterBody {
         this._onSaved    = options.onSaved            ?? (() => {});
         this._onVisibleKeyChange = options.onVisibleKeyChange ?? (() => {});
 
-        this._quill          = null;
+        this._richText       = null;
         this._currentChapter = null;
         this._dirty          = false;
         this._saving         = false;
@@ -65,7 +66,7 @@ export default class ChapterBody {
      */
     renderOdipPlaceholder() {
         this._stopObserver();
-        this._destroyQuill();
+        this._destroyRichText();
         this._currentChapter = null;
         this.container.innerHTML = `
             <div class="master-detail__placeholder">
@@ -83,7 +84,7 @@ export default class ChapterBody {
     async renderSelectionRead(entry, chapter, forceReadOnly = false) {
         await this._autoSaveIfDirty();
         this._stopObserver();
-        this._destroyQuill();
+        this._destroyRichText();
         this._currentChapter = chapter;
 
         const editable = this._isEditable && !forceReadOnly;
@@ -106,7 +107,7 @@ export default class ChapterBody {
     async renderSequential(chapter) {
         await this._autoSaveIfDirty();
         this._stopObserver();
-        this._destroyQuill();
+        this._destroyRichText();
         this._currentChapter = chapter;
 
         // osHierarchy items are pre-enriched server-side: { id, type, code, title }
@@ -150,7 +151,7 @@ export default class ChapterBody {
         // Initialise Quill for narrative
         const editorEl = this.container.querySelector('#seqNarrativeEditor');
         if (editorEl) {
-            this._initQuillNarrative(editorEl, chapter.narrative, editable);
+            this._initRichTextNarrative(editorEl, chapter.narrative, editable);
         }
 
         // Wire save button for sequential narrative edit
@@ -203,7 +204,7 @@ export default class ChapterBody {
     clear() {
         this._autoSaveIfDirty();
         this._stopObserver();
-        this._destroyQuill();
+        this._destroyRichText();
         this._currentChapter = null;
         this.container.innerHTML = `
             <div class="master-detail__placeholder">
@@ -214,7 +215,7 @@ export default class ChapterBody {
 
     cleanup() {
         this._stopObserver();
-        this._destroyQuill();
+        this._destroyRichText();
         this._requirementDetails?.cleanup?.();
         this._changeDetails?.cleanup?.();
         this.container              = null;
@@ -336,7 +337,7 @@ export default class ChapterBody {
         `;
 
         const editorEl = this.container.querySelector('#chapterNarrativeEditor');
-        this._initQuillNarrative(editorEl, chapter.narrative, editable);
+        this._initRichTextNarrative(editorEl, chapter.narrative, editable);
 
         if (editable) {
             this.container.querySelector('.chapter-body__save')
@@ -476,43 +477,34 @@ export default class ChapterBody {
     // Narrative save
     // =========================================================================
 
-    _initQuillNarrative(el, deltaJson, editable) {
-        const toolbarOptions = editable ? [
-            [{ header: [1, 2, 3, false] }],
-            ['bold', 'italic'],
-            [{ list: 'ordered' }, { list: 'bullet' }],
-            ['link'],
-            ['clean'],
-        ] : false;
-
-        this._quill = new Quill(el, {
-            theme:    'snow',
-            readOnly: !editable,
-            modules:  { toolbar: toolbarOptions },
-        });
-
-        if (deltaJson) {
-            try {
-                const delta = typeof deltaJson === 'string' ? JSON.parse(deltaJson) : deltaJson;
-                this._quill.setContents(delta, 'silent');
-            } catch {
-                this._quill.setText(String(deltaJson), 'silent');
-            }
-        }
-
-        if (!editable) {
-            this._quill.root.blur();
-        } else {
-            this._quill.on('text-change', () => {
+    _initRichTextNarrative(el, deltaJson, editable) {
+        this._richText = new RichTextComponent({
+            readOnly:    !editable,
+            headings:    true,
+            images:      true,
+            tables:      true,
+            placeholder: 'Write chapter narrative…',
+            onChange: () => {
+                if (!editable) return;
                 this._dirty = true;
                 const saveBtn = this.container?.querySelector('.chapter-body__save');
                 if (saveBtn) saveBtn.disabled = false;
-            });
+            },
+        });
+
+        this._richText.mount(el);
+
+        if (deltaJson) {
+            this._richText.setValue(typeof deltaJson === 'string' ? deltaJson : JSON.stringify(deltaJson));
+        }
+
+        if (!editable) {
+            this._richText.blur();
         }
     }
 
     async _saveNarrative(chapter) {
-        if (!this._quill || this._saving) return;
+        if (!this._richText || this._saving) return;
         this._saving = true;
 
         const saveBtn  = this.container?.querySelector('.chapter-body__save');
@@ -521,9 +513,9 @@ export default class ChapterBody {
         if (statusEl) statusEl.textContent = 'Saving…';
 
         try {
-            const delta   = JSON.stringify(this._quill.getContents());
+            const narrative = this._richText.getValue() ?? '';
             const updated = await apiClient.patchChapter(chapter.itemId, {
-                narrative:         delta,
+                narrative,
                 expectedVersionId: chapter.versionId,
             });
             if (updated?.versionId) chapter.versionId = updated.versionId;
@@ -591,8 +583,11 @@ export default class ChapterBody {
         this._observer = null;
     }
 
-    _destroyQuill() {
-        this._quill  = null;
+    _destroyRichText() {
+        if (this._richText) {
+            this._richText.destroy();
+            this._richText = null;
+        }
         this._dirty  = false;
         this._saving = false;
     }
