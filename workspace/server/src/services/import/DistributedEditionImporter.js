@@ -346,6 +346,28 @@ class DistributedEditionImporter {
             const externalId = resolveExternalId(s.id);
             context.globalRefMap.set(externalId.toLowerCase(), s.id);
         });
+
+        // Flat-name fallback: stakeholder:{normalize(name)} → id
+        // Source JSON may omit hierarchy (e.g. 'stakeholder:nrc' instead of 'stakeholder:network/ansp/nrc')
+        const normalizeFlat = (name) => `stakeholder:${name.trim().toLowerCase().replace(/[\s/,&]+/g, '_')}`;
+        stakeholders.forEach(s => {
+            const flatKey = normalizeFlat(s.name);
+            if (!context.globalRefMap.has(flatKey)) {
+                context.globalRefMap.set(flatKey, s.id);
+            }
+        });
+
+        // Explicit aliases for source keys that don't match any stakeholder name
+        const stakeholderAliases = {
+            'stakeholder:nm_opl': 'stakeholder:network/nm',
+            'stakeholder:ao':     'stakeholder:network/airspace_user'
+        };
+        for (const [alias, canonical] of Object.entries(stakeholderAliases)) {
+            const targetId = context.globalRefMap.get(canonical);
+            if (targetId !== undefined && !context.globalRefMap.has(alias)) {
+                context.globalRefMap.set(alias, targetId);
+            }
+        }
     }
 
     /**
@@ -731,10 +753,8 @@ class DistributedEditionImporter {
             context, source
         );
 
-        const dependencies = this._resolveExternalIds(
-            reqData.dependencies || [],
-            context, source
-        );
+        // source dependencies[] contains free-text labels, not resolvable external IDs — ignored
+        const dependencies = [];
 
         const strategicDocuments = this._resolveDocumentReferences(
             reqData.strategicDocuments || [],
