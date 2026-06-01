@@ -493,6 +493,7 @@ export default class ChapterBody {
         });
 
         this._richText.mount(el);
+        el.classList.add('rich-text-component--fill');
 
         if (deltaJson) {
             this._richText.setValue(typeof deltaJson === 'string' ? deltaJson : JSON.stringify(deltaJson));
