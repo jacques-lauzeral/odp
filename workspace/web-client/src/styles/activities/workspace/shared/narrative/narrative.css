@@ -106,6 +106,18 @@
     padding-left: 48px;
 }
 
+.chapter-toc__subtopic-group .chapter-toc__entry--subtopic {
+    padding-left: 40px;
+}
+
+.chapter-toc__subtopic-group .chapter-toc__subtopic-group .chapter-toc__entry--subtopic {
+    padding-left: 52px;
+}
+
+.chapter-toc__subtopic-group .chapter-toc__subtopic-group .chapter-toc__entry--ostar {
+    padding-left: 60px;
+}
+
 .chapter-toc__entry--unassigned {
     color: var(--next, #C55A11);
 }

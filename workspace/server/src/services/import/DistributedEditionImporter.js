@@ -202,8 +202,10 @@ class DistributedEditionImporter {
      * the chapter. Requirements with empty path[] (sub-ONs/ORs via refinesParents)
      * are excluded — they have no topic placement.
      *
+     * path[] maps to nested subtopics: path[0] → topic, path[1] → subtopic, etc.
+     * Requirements are placed at the leaf node of their path.
      * Topic order follows the order of first appearance in the source requirements[].
-     * Per topic: ONs listed before ORs, each in source order.
+     * Per node: ONs listed before ORs, each in source order.
      * @private
      */
     async _patchChapterOsHierarchy(sourceData, requirements, userId, context, summary) {
@@ -214,44 +216,47 @@ class DistributedEditionImporter {
 
         const chapterFolder = sourceData.chapterFolder || sourceData.documentId;
 
-        // Build ordered topic map — preserving first-appearance order from source
-        // Only requirements with a non-empty path[] get a topic placement
-        const topicOrder = [];
-        const topicOns = new Map();   // topic → ON itemId[]
-        const topicOrs = new Map();   // topic → OR itemId[]
+        /**
+         * Recursively insert a requirement into the topic tree at the leaf of its path.
+         * @param {Object[]} topics - Current level topic array (mutated in place)
+         * @param {string[]} path - Remaining path segments
+         * @param {number} itemId - Requirement itemId
+         * @param {string} type - 'ON' | 'OR'
+         */
+        const insertAtLeaf = (topics, path, itemId, type) => {
+            const [head, ...tail] = path;
+
+            let node = topics.find(t => t.topic === head);
+            if (!node) {
+                node = { topic: head, ons: [], ors: [], ocs: [], subtopics: [] };
+                topics.push(node);
+            }
+
+            if (tail.length === 0) {
+                // Leaf — place here
+                if (type === 'ON') node.ons.push(itemId);
+                else node.ors.push(itemId);
+            } else {
+                insertAtLeaf(node.subtopics, tail, itemId, type);
+            }
+        };
+
+        const topics = [];
 
         for (const reqData of requirements) {
             const path = reqData.path;
             if (!Array.isArray(path) || path.length === 0) continue;
 
-            const topic = path[0];
             const itemId = context.globalRefMap.get(reqData.externalId.toLowerCase());
             if (!itemId) continue;  // failed to create in phase 2 — skip
 
-            if (!topicOns.has(topic)) {
-                topicOrder.push(topic);
-                topicOns.set(topic, []);
-                topicOrs.set(topic, []);
-            }
-
-            if (reqData.type === 'ON') {
-                topicOns.get(topic).push(itemId);
-            } else {
-                topicOrs.get(topic).push(itemId);
-            }
+            insertAtLeaf(topics, path, itemId, reqData.type);
         }
 
-        if (topicOrder.length === 0) {
+        if (topics.length === 0) {
             console.log(`Chapter '${chapterFolder}': no path-bearing requirements — skipping osHierarchy patch.`);
             return;
         }
-
-        const topics = topicOrder.map(topic => ({
-            topic,
-            ons: topicOns.get(topic),
-            ors: topicOrs.get(topic),
-            ocs: []
-        }));
 
         try {
             const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
@@ -261,7 +266,7 @@ class DistributedEditionImporter {
                 current.versionId,
                 userId
             );
-            console.log(`Patched osHierarchy for chapter '${chapterFolder}': ${topics.length} topic(s).`);
+            console.log(`Patched osHierarchy for chapter '${chapterFolder}': ${topics.length} top-level topic(s).`);
         } catch (error) {
             context.errors.push(`Failed to patch osHierarchy for '${chapterFolder}': ${error.message}`);
         }

@@ -144,23 +144,6 @@ export default class ChapterToc {
     }
 
     /**
-     * Find a topic object in the hierarchy by its rendered key.
-     * Key format: "topic:{chapterCode}:{index}" or "topic:{chapterCode}:{parentIndex}-{index}"
-     */
-    _findTopicByKey(topicKey, chapterCode, hierarchy) {
-        // Strip prefix "topic:{chapterCode}:"
-        const prefix  = `topic:${chapterCode}:`;
-        const rest    = topicKey.startsWith(prefix) ? topicKey.slice(prefix.length) : topicKey;
-        const parts   = rest.split('-');
-
-        if (parts.length === 1) {
-            return hierarchy[parseInt(parts[0], 10)] ?? null;
-        }
-        const parent = hierarchy[parseInt(parts[0], 10)];
-        return parent?.subTopics?.[parseInt(parts[1], 10)] ?? null;
-    }
-
-    /**
      * Find an O* item by id across all topics/subtopics in the hierarchy.
      */
     _findOStarById(itemId, hierarchy) {
@@ -177,11 +160,6 @@ export default class ChapterToc {
         return search(hierarchy);
     }
 
-    /**
-     * Build a map of normalised itemId → chapter number string ("1", "1.1", "2.3.1" …).
-     * @param {Map} byParent
-     * @returns {Map<number, string>}
-     */
     /**
      * Build map of chapter code → display number ("1", "1.1", "2.3.1" …).
      * @param {Map} byParent  keyed by parentCode string (null for roots)
@@ -339,47 +317,63 @@ export default class ChapterToc {
         return `
             <div class="chapter-toc__topic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--topic"
-                        data-key="${key}" data-type="topic" data-topic-index="${topicIndex}">
+                        data-key="${key}" data-type="topic" data-topic-index="${topicIndex}"
+                        data-sub-path="">
                     ${hasChildren
             ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
             : `<span class="chapter-toc__topic-toggle-placeholder"></span>`}
                     <span class="chapter-toc__entry-label">${this._esc(topic.topic ?? '')}</span>
                 </button>
                 ${collapsed ? '' : [
-            ...(topic.subTopics ?? []).map((sub, si) => this._renderSubTopic(sub, topicIndex, si)),
-            ...(topic.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, null, ii)),
+            ...(topic.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, [], ii)),
+            ...(topic.subTopics ?? []).map((sub, si) => this._renderSubtopicNode(sub, topicIndex, [si])),
         ].join('')}
             </div>`;
     }
 
-    _renderSubTopic(subTopic, topicIndex, subIndex) {
-        const key       = `subtopic-${topicIndex}-${subIndex}`;
-        const collapsed = this._collapsedTopics.has(key);
-        const hasItems  = (subTopic.items?.length > 0);
+    /**
+     * Recursively render a subtopic node at any depth.
+     * @param {object}   node        — normalised topic node
+     * @param {number}   topicIndex  — top-level topic index (always)
+     * @param {number[]} subPath     — path of sub-indices from the top-level topic, e.g. [1] or [1, 2]
+     */
+    _renderSubtopicNode(node, topicIndex, subPath) {
+        const subPathStr  = subPath.join('-');
+        const key         = `subtopic-${topicIndex}-${subPathStr}`;
+        const collapsed   = this._collapsedTopics.has(key);
+        const hasChildren = (node.items?.length > 0) || (node.subTopics?.length > 0);
 
         return `
             <div class="chapter-toc__subtopic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--subtopic"
                         data-key="${key}" data-type="topic"
-                        data-topic-index="${topicIndex}" data-sub-index="${subIndex}">
-                    ${hasItems
+                        data-topic-index="${topicIndex}" data-sub-path="${subPathStr}">
+                    ${hasChildren
             ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
             : `<span class="chapter-toc__topic-toggle-placeholder"></span>`}
-                    <span class="chapter-toc__entry-label">${this._esc(subTopic.topic ?? '')}</span>
+                    <span class="chapter-toc__entry-label">${this._esc(node.topic ?? '')}</span>
                 </button>
-                ${collapsed || !hasItems ? '' :
-            subTopic.items.map((item, ii) =>
-                this._renderOStarEntry(item, topicIndex, subIndex, ii)
-            ).join('')}
+                ${collapsed || !hasChildren ? '' : [
+            ...(node.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, subPath, ii)),
+            ...(node.subTopics ?? []).map((sub, si) => this._renderSubtopicNode(sub, topicIndex, [...subPath, si])),
+        ].join('')}
             </div>`;
     }
 
-    _renderOStarEntry(item, topicIndex, subIndex, itemIndex) {
-        const key   = `ostar-${topicIndex}-${subIndex ?? 'x'}-${itemIndex}`;
-        const type  = (item.type ?? 'OR').toUpperCase();
-        const code  = item.code  ?? '';
-        const title = item.title ?? String(item.id ?? item.itemId ?? '');
-        const label = code ? `${code} — ${title}` : title;
+    /**
+     * Render a single O* entry button.
+     * @param {object}   item        — normalised O* item { id, type, code, title }
+     * @param {number}   topicIndex  — top-level topic index
+     * @param {number[]} subPath     — sub-index path ([] for direct topic items)
+     * @param {number}   itemIndex   — index within the owning node's items array
+     */
+    _renderOStarEntry(item, topicIndex, subPath, itemIndex) {
+        const subPathStr = subPath.join('-');
+        const key        = `ostar-${topicIndex}-${subPathStr || 'x'}-${itemIndex}`;
+        const type       = (item.type ?? 'OR').toUpperCase();
+        const code       = item.code  ?? '';
+        const title      = item.title ?? String(item.id ?? item.itemId ?? '');
+        const label      = code ? `${code} — ${title}` : title;
 
         return `
             <button class="chapter-toc__entry chapter-toc__entry--ostar"
@@ -387,7 +381,7 @@ export default class ChapterToc {
                     data-item-id="${this._esc(String(item.id ?? item.itemId ?? ''))}"
                     data-item-type="${type}"
                     data-topic-index="${topicIndex}"
-                    data-sub-index="${subIndex ?? ''}"
+                    data-sub-path="${subPathStr}"
                     data-item-index="${itemIndex}">
                 ${this._typeBadge(type)}
                 <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar"
@@ -432,29 +426,39 @@ export default class ChapterToc {
         if (entry) this._onChapterSelect(entry);
     }
 
-    _buildEntry(btn, type) {
-        const hierarchy = this._hierarchy;
+    /**
+     * Resolve a normalised topic node by traversing the hierarchy via topicIndex + subPath.
+     * @param {number}   ti       — top-level topic index
+     * @param {number[]} subPath  — sub-index path ([] means the top-level topic itself)
+     * @returns {object|null}
+     */
+    _resolveTopicByPath(ti, subPath) {
+        let node = this._hierarchy[ti] ?? null;
+        for (const si of subPath) {
+            node = node?.subTopics?.[si] ?? null;
+        }
+        return node;
+    }
 
+    _buildEntry(btn, type) {
         if (type === 'unassigned') {
             return { type: 'unassigned', chapter: this._chapter, items: this._unassignedOStars };
         }
         if (type === 'topic') {
-            const ti       = parseInt(btn.dataset.topicIndex, 10);
-            const si       = btn.dataset.subIndex !== '' ? parseInt(btn.dataset.subIndex, 10) : null;
-            const topicObj = hierarchy[ti];
-            const topic    = si != null ? topicObj?.subTopics?.[si] : topicObj;
+            const ti      = parseInt(btn.dataset.topicIndex, 10);
+            const subPath = btn.dataset.subPath ? btn.dataset.subPath.split('-').map(Number) : [];
+            const topic   = this._resolveTopicByPath(ti, subPath);
             return { type: 'topic', topic, chapter: this._chapter };
         }
         if (type === 'ostar') {
             if (btn.dataset.unassignedIndex !== undefined) {
-                const ii    = parseInt(btn.dataset.unassignedIndex, 10);
+                const ii = parseInt(btn.dataset.unassignedIndex, 10);
                 return { type: 'ostar', ostar: this._normaliseOStar(this._unassignedOStars[ii]), topic: null, chapter: this._chapter };
             }
-            const ti       = parseInt(btn.dataset.topicIndex, 10);
-            const si       = btn.dataset.subIndex !== '' ? parseInt(btn.dataset.subIndex, 10) : null;
-            const ii       = parseInt(btn.dataset.itemIndex, 10);
-            const topicObj = hierarchy[ti];
-            const topic    = si != null ? topicObj?.subTopics?.[si] : topicObj;
+            const ti      = parseInt(btn.dataset.topicIndex, 10);
+            const subPath = btn.dataset.subPath ? btn.dataset.subPath.split('-').map(Number) : [];
+            const ii      = parseInt(btn.dataset.itemIndex, 10);
+            const topic   = this._resolveTopicByPath(ti, subPath);
             return { type: 'ostar', ostar: topic?.items?.[ii], topic, chapter: this._chapter };
         }
         return null;
