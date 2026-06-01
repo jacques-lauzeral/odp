@@ -209,3 +209,20 @@
 .rich-text-component--readonly .rich-text-component__editor .tiptap {
     cursor: default;
 }
+/* ── Internal reference links (n-ref, o-ref, d-ref) ───────────────────────── */
+/* Render as clickable links in read-only mode — navigation wired via          */
+/* onInternalLink callback; full routing implemented in Step 8.                */
+
+.rich-text-component--readonly .rich-text-component__editor [data-n-ref],
+.rich-text-component--readonly .rich-text-component__editor [data-o-ref],
+.rich-text-component--readonly .rich-text-component__editor [data-d-ref] {
+    color: var(--link-color, var(--ec-blue, #185FA5));
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.rich-text-component--readonly .rich-text-component__editor [data-n-ref]:hover,
+.rich-text-component--readonly .rich-text-component__editor [data-o-ref]:hover,
+.rich-text-component--readonly .rich-text-component__editor [data-d-ref]:hover {
+    color: var(--link-color-hover, var(--ec-navy, #1F3864));
+}

@@ -287,6 +287,8 @@ export default class ChapterBody {
                 const saveBtn = this.container?.querySelector('.chapter-body__save');
                 if (saveBtn) saveBtn.disabled = false;
             },
+            // Internal link navigation — Step 8 will implement full URL construction.
+            onInternalLink: (type, value) => this._handleInternalLink(type, value),
         });
 
         this._richText.mount(el);
@@ -352,6 +354,21 @@ export default class ChapterBody {
         }
         this._dirty  = false;
         this._saving = false;
+    }
+
+    /**
+     * Handle internal link clicks from narrative rich text.
+     * Navigation URL construction deferred to Step 8 (Narrative sub-activity routing).
+     * @param {'n-ref'|'o-ref'|'d-ref'} type
+     * @param {string} value
+     * @private
+     */
+    _handleInternalLink(type, value) {
+        // TODO Step 8: construct canonical URL based on type and app dataset context.
+        // n-ref: {base}/narrative/{chapter-code}[?topic={topic-path}]
+        // o-ref: {base}/os/{type-segment}/{id}  (requires external-ID → id resolution)
+        // d-ref: {base}/setup/reference-documents?id={refdoc-external-id}
+        console.debug('[ChapterBody] internal link clicked', { type, value });
     }
 
     _esc(str) {

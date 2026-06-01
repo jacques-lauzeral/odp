@@ -18,7 +18,11 @@
  * Inline attribute mapping (Quill attributes → TipTap marks):
  *   bold, italic, underline → standard TipTap marks
  *   link                    → { type: 'link', attrs: { href } }
- *   ref, anchor             → custom marks preserved as-is for publication pipeline
+ *   ref                     → { type: 'n-ref', attrs: { value } }  (narrative reference)
+ *   xref                    → { type: 'o-ref', attrs: { value } }  (O* reference)
+ *   refdoc                  → { type: 'd-ref', attrs: { value } }  (strategic document reference)
+ *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{anchorValue}' } }
+ *                              (intra-chapter topic link; requires chapterCode passed to convert())
  *
  * Output is a JSON string — consistent with how rich-text fields are stored
  * in the ODIP database (Neo4j property string).
@@ -34,10 +38,13 @@ class BlocksToTipTapConverter {
      * @param {Array|null|undefined} blocks - Source file blocks array
      * @returns {string|null} TipTap document JSON string, or null if no content
      */
-    convert(blocks) {
+    convert(blocks, chapterCode = null) {
         if (!blocks || blocks.length === 0) {
             return null;
         }
+
+        // Store chapter code for anchor → n-ref resolution
+        this._chapterCode = chapterCode;
 
         const content = [];
 
@@ -249,8 +256,11 @@ class BlocksToTipTapConverter {
      * Attribute → mark mapping:
      *   bold, italic, underline → { type: 'bold' | 'italic' | 'underline' }
      *   link                    → { type: 'link', attrs: { href: value } }
-     *   ref                     → { type: 'ref', attrs: { value } }    (custom ODIP mark)
-     *   anchor                  → { type: 'anchor', attrs: { value } } (custom ODIP mark)
+     *   ref                     → { type: 'n-ref', attrs: { value } }  (narrative reference)
+     *   xref                    → { type: 'o-ref', attrs: { value } }  (O* reference)
+     *   refdoc                  → { type: 'd-ref', attrs: { value } }  (strategic document reference)
+     *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{anchorValue}' } }
+     *                              (intra-chapter topic link; requires chapterCode passed to convert())
      *   color                   → { type: 'textStyle', attrs: { color: value } }
      *   All others              → { type: key, attrs: { value } }      (pass-through)
      *
@@ -300,10 +310,29 @@ class BlocksToTipTapConverter {
                     marks.push({ type: 'textStyle', attrs: { color: value } });
                     break;
                 case 'ref':
-                    marks.push({ type: 'ref', attrs: { value } });
+                    marks.push({ type: 'n-ref', attrs: { value } });
+                    break;
+                case 'xref':
+                    marks.push({ type: 'o-ref', attrs: { value } });
+                    break;
+                case 'refdoc':
+                    marks.push({ type: 'd-ref', attrs: { value } });
                     break;
                 case 'anchor':
-                    marks.push({ type: 'anchor', attrs: { value } });
+                    // Intra-chapter topic link: anchor value is a topic identifier
+                    // within the current chapter. Converted to n-ref using the
+                    // chapter code stored by convert(blocks, chapterCode).
+                    if (value && this._chapterCode) {
+                        marks.push({ type: 'n-ref', attrs: { value: `${this._chapterCode}/${value}` } });
+                    }
+                    break;
+                case 'attributes':
+                    // Nested attributes object — unpack recursively.
+                    // Some source JSON ops wrap formatting as { attributes: { bold: true } }
+                    // instead of the flat Quill convention { bold: true }.
+                    if (value && typeof value === 'object') {
+                        marks.push(...this._attrsToMarks(value));
+                    }
                     break;
                 default:
                     // Pass-through — publication pipeline may consume unknown marks

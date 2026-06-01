@@ -143,6 +143,8 @@ class DistributedEditionImporter {
         if (chapter.domain) {
             context.chapterDomain = chapter.domain;
         }
+        // Store chapter code for BlocksToTipTapConverter anchor → n-ref resolution
+        context.chapterCode = chapter.code ?? normalised;
 
         console.log(`Resolved chapter '${chapterFolder}' → itemId=${chapterItemId}, domain=${context.chapterDomain || '(none)'}`);
     }
@@ -164,7 +166,7 @@ class DistributedEditionImporter {
             return;
         }
 
-        const narrative = BlocksToTipTapConverter.convert(blocks);
+        const narrative = BlocksToTipTapConverter.convert(blocks, context.chapterCode);
         if (!narrative) {
             console.log('Empty narrative after conversion — skipping patch.');
             return;
@@ -645,10 +647,24 @@ class DistributedEditionImporter {
                     marks.push({ type: 'textStyle', attrs: { color: value } });
                     break;
                 case 'ref':
-                    marks.push({ type: 'ref', attrs: { value } });
+                    marks.push({ type: 'n-ref', attrs: { value } });
+                    break;
+                case 'xref':
+                    marks.push({ type: 'o-ref', attrs: { value } });
+                    break;
+                case 'refdoc':
+                    marks.push({ type: 'd-ref', attrs: { value } });
                     break;
                 case 'anchor':
-                    marks.push({ type: 'anchor', attrs: { value } });
+                    // Dropped — publication-only marker, not stored in rich text
+                    break;
+                case 'attributes':
+                    // Nested attributes object — unpack recursively.
+                    // Some source JSON ops wrap formatting as { attributes: { bold: true } }
+                    // instead of the flat Quill convention { bold: true }.
+                    if (value && typeof value === 'object') {
+                        marks.push(...this._deltaAttrsToMarks(value));
+                    }
                     break;
                 default:
                     marks.push({ type: key, attrs: { value } });

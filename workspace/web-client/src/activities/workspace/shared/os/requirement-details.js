@@ -136,7 +136,8 @@ export default class RequirementDetails {
                     type:   r.type  ?? 'OR',
                 }));
             },
-            onNavigate: (ref) => this._navigateToRef(ref),
+            onNavigate:        (ref)         => this._navigateToRef(ref),
+            onInternalLink:    (type, value) => this._handleInternalLink(type, value),
         });
     }
 
@@ -171,6 +172,21 @@ export default class RequirementDetails {
     // Reference navigation
     // -------------------------------------------------------------------------
 
+
+    /**
+     * Handle internal link clicks from rich text fields.
+     * Navigation URL construction deferred to Step 8 (Narrative sub-activity routing).
+     * @param {'n-ref'|'o-ref'|'d-ref'} type
+     * @param {string} value
+     * @private
+     */
+    _handleInternalLink(type, value) {
+        // TODO Step 8: construct canonical URL based on type and app dataset context.
+        // n-ref: {base}/narrative/{chapter-code}[?topic={topic-path}]
+        // o-ref: {base}/os/{type-segment}/{id}  (requires external-ID → id resolution)
+        // d-ref: {base}/setup/reference-documents?id={refdoc-external-id}
+        console.debug('[%s] internal link clicked', this.constructor.name, { type, value });
+    }
     _navigateToRef(ref) {
         const raw = ref.entityType ?? 'or';
         const segment = raw === 'OC' || raw === 'change' || raw === 'oc' ? 'oc'

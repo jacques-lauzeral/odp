@@ -15,7 +15,10 @@
  *   images    {boolean}  — enable image upload/embed (default: true)
  *   tables    {boolean}  — enable table toolbar buttons (default: true)
  *   placeholder {string} — placeholder text for empty edit fields
- *   onChange  {Function} — called with TipTap JSON string on every content change
+ *   onChange        {Function} — called with TipTap JSON string on every content change
+ *   onInternalLink  {Function} — called with (type, value) when an internal link span is clicked
+ *                                type: 'n-ref' | 'o-ref' | 'd-ref'
+ *                                Navigation implementation deferred to Step 8.
  *
  * Storage format: TipTap document JSON, serialised as string.
  * Identical to what is stored in Neo4j richtext fields.
@@ -29,7 +32,7 @@
  *   blur()                   Blur the editor
  */
 
-import { Editor, Mark } from '@tiptap/core';
+import { Editor, Mark, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextStyle from '@tiptap/extension-text-style';
@@ -42,26 +45,45 @@ import TableCell from '@tiptap/extension-table-cell';
 import Placeholder from '@tiptap/extension-placeholder';
 
 /**
- * Passthrough mark for custom ODIP attributes (ref, anchor).
- * Registers the mark so TipTap does not discard text nodes carrying it.
- * Renders as a plain span — actual semantics handled by publication pipeline.
+ * Passthrough marks for ODIP internal reference types.
+ * Registered so TipTap does not discard text nodes carrying them.
+ * Render as plain spans — navigation via onInternalLink callback; styling deferred to Step 8.
+ *
+ * n-ref  — narrative reference (chapter / topic / subtopic), value: {chapter-code}[/{topic-path}]
+ * o-ref  — O* reference, value: O* external ID
+ * d-ref  — strategic document reference, value: refdoc external ID
  */
-const OdipRef = Mark.create({
-    name: 'ref',
+const OdipNRef = Mark.create({
+    name: 'n-ref',
     addAttributes() {
         return { value: { default: null } };
     },
-    parseHTML() { return [{ tag: 'span[data-ref]' }]; },
-    renderHTML({ HTMLAttributes }) { return ['span', { 'data-ref': HTMLAttributes.value }, 0]; },
+    parseHTML() { return [{ tag: 'span[data-n-ref]' }]; },
+    renderHTML({ HTMLAttributes }) {
+        return ['span', mergeAttributes({ 'data-n-ref': HTMLAttributes.value }), 0];
+    },
 });
 
-const OdipAnchor = Mark.create({
-    name: 'anchor',
+const OdipORef = Mark.create({
+    name: 'o-ref',
     addAttributes() {
         return { value: { default: null } };
     },
-    parseHTML() { return [{ tag: 'span[data-anchor]' }]; },
-    renderHTML({ HTMLAttributes }) { return ['span', { 'data-anchor': HTMLAttributes.value }, 0]; },
+    parseHTML() { return [{ tag: 'span[data-o-ref]' }]; },
+    renderHTML({ HTMLAttributes }) {
+        return ['span', mergeAttributes({ 'data-o-ref': HTMLAttributes.value }), 0];
+    },
+});
+
+const OdipDRef = Mark.create({
+    name: 'd-ref',
+    addAttributes() {
+        return { value: { default: null } };
+    },
+    parseHTML() { return [{ tag: 'span[data-d-ref]' }]; },
+    renderHTML({ HTMLAttributes }) {
+        return ['span', mergeAttributes({ 'data-d-ref': HTMLAttributes.value }), 0];
+    },
 });
 
 export default class RichTextComponent {
@@ -81,7 +103,8 @@ export default class RichTextComponent {
         this._images     = options.images     ?? true;
         this._tables     = options.tables     ?? true;
         this._placeholder = options.placeholder ?? '';
-        this._onChange   = options.onChange   ?? null;
+        this._onChange        = options.onChange        ?? null;
+        this._onInternalLink  = options.onInternalLink  ?? null;
 
         this._editor     = null;
         this._container  = null;
@@ -126,6 +149,23 @@ export default class RichTextComponent {
         // Prevent focus theft in read-only mode
         if (this._readOnly) {
             this._editor.view.dom.blur();
+        }
+
+        // Internal link click handler — delegated from rendered span elements
+        if (this._onInternalLink) {
+            editorEl.addEventListener('click', (e) => {
+                const span = e.target.closest('[data-n-ref],[data-o-ref],[data-d-ref]');
+                if (!span) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (span.hasAttribute('data-n-ref')) {
+                    this._onInternalLink('n-ref', span.getAttribute('data-n-ref'));
+                } else if (span.hasAttribute('data-o-ref')) {
+                    this._onInternalLink('o-ref', span.getAttribute('data-o-ref'));
+                } else if (span.hasAttribute('data-d-ref')) {
+                    this._onInternalLink('d-ref', span.getAttribute('data-d-ref'));
+                }
+            });
         }
     }
 
@@ -212,8 +252,9 @@ export default class RichTextComponent {
             }),
             Underline,
             TextStyle,   // Required for textStyle marks (color etc.) — prevents node discard
-            OdipRef,     // Passthrough — preserves ref marks from imported content
-            OdipAnchor,  // Passthrough — preserves anchor marks from imported content
+            OdipNRef,    // Passthrough — narrative reference (chapter/topic/subtopic)
+            OdipORef,    // Passthrough — O* reference
+            OdipDRef,    // Passthrough — strategic document reference
             Link.configure({
                 openOnClick: this._readOnly,
                 autolink: false,
