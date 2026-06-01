@@ -162,14 +162,15 @@ class BlocksToTipTapConverter {
      * Convert a table block to a TipTap table node.
      *
      * Source format:
-     *   headers[] — array of { ops[] } (Delta ops arrays, one per header row)
+     *   headers[] — array of { ops[] }, one delta per column header cell
      *   rows[][]  — array of arrays of plain strings (body cells)
      *
      * TipTap table structure:
-     *   table > tableRow > tableHeader (header rows)
+     *   table > tableRow > tableHeader (one row, one cell per headers[] entry)
      *   table > tableRow > tableCell  (body rows)
      *
-     * Header cell content is extracted as plain text from their Delta ops arrays.
+     * Header cell content is extracted from each column's Delta ops array,
+     * preserving inline marks (bold, italic, etc.).
      * Body cells are plain strings.
      * @private
      */
@@ -181,25 +182,21 @@ class BlocksToTipTapConverter {
 
         const tableRows = [];
 
-        // Header rows
-        for (const headerDelta of headers) {
-            const cells = (headerDelta.ops ?? []).length > 0
-                ? this._splitHeaderCells(headerDelta.ops)
-                : [];
-
-            if (cells.length === 0) continue;
-
-            tableRows.push({
-                type: 'tableRow',
-                content: cells.map(cellText => ({
+        // Header row — headers[] has one delta per column; build a single tableRow
+        // with one tableHeader cell per entry.
+        if (headers.length > 0) {
+            const headerCells = headers.map(headerDelta => {
+                const inlineNodes = Array.isArray(headerDelta.ops) && headerDelta.ops.length > 0
+                    ? headerDelta.ops.map(op => this._opToTextNode(op)).filter(Boolean)
+                    : [];
+                return {
                     type: 'tableHeader',
                     attrs: { colspan: 1, rowspan: 1, colwidth: null },
-                    content: [{
-                        type: 'paragraph',
-                        content: cellText ? [{ type: 'text', text: cellText }] : []
-                    }]
-                }))
+                    content: [{ type: 'paragraph', content: inlineNodes }]
+                };
             });
+
+            tableRows.push({ type: 'tableRow', content: headerCells });
         }
 
         // Body rows
@@ -222,19 +219,6 @@ class BlocksToTipTapConverter {
         if (tableRows.length === 0) return null;
 
         return { type: 'table', content: tableRows };
-    }
-
-    /**
-     * Split a header Delta ops array into cell text strings.
-     * Cells are delimited by ' | ' in the concatenated plain text.
-     * Falls back to a single cell containing all text.
-     * @private
-     */
-    _splitHeaderCells(ops) {
-        const fullText = ops
-            .map(op => (typeof op.insert === 'string' ? op.insert : ''))
-            .join('');
-        return fullText.split(' | ').map(s => s.trim());
     }
 
     /**
