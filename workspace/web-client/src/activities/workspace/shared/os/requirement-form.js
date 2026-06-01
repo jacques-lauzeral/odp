@@ -77,6 +77,10 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     getFormTitle(mode) {
+        const type = mode === 'create' ? this._forcedType : this.currentItem?.type;
+        if (type && (mode === 'create' || mode === 'edit')) {
+            return `${mode === 'create' ? 'Create' : 'Edit'} ${type}`;
+        }
         return requirementFormTitles[mode] || requirementFormTitles.default;
     }
 
@@ -589,12 +593,14 @@ export default class RequirementForm extends CollectionEntityForm {
     // ENHANCED MODAL METHODS
     // ====================
 
-    async showCreateModal() {
+    async showCreateModal({ defaultType } = {}) {
+        this._forcedType = defaultType ?? null;
+        const initialData = this._forcedType ? { type: this._forcedType } : null;
         this.context.onModalReady = () => {
             this.bindTypeChangeEvents();
-            this.updateFieldVisibility({ type: requirementDefaults.type });
+            this.updateFieldVisibility({ type: this._forcedType ?? requirementDefaults.type });
         };
-        await super.showCreateModal();
+        await super.showCreateModal(initialData);
     }
 
     async showEditModal(item) {

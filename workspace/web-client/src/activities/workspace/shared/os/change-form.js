@@ -100,6 +100,8 @@ export default class ChangeForm extends CollectionEntityForm {
     }
 
     getFormTitle(mode) {
+        if (mode === 'create') return 'Create OC';
+        if (mode === 'edit')   return 'Edit OC';
         return changeFormTitles[mode] || changeFormTitles.default;
     }
 

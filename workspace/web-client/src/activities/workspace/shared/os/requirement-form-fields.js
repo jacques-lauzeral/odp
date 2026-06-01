@@ -26,7 +26,8 @@ export const requirementFieldDefinitions = [
                 required: true,
                 editableOnlyOnCreate: true,
                 optionsKey: 'getTypeOptions',
-                helpTextAbove: 'Select ON for high-level operational needs, OR for specific requirements'
+                helpTextAbove: 'Select ON for high-level operational needs, OR for specific requirements',
+                visibleWhen: (data, mode) => mode !== 'create' || !data?.type
             },
             {
                 key: 'title',

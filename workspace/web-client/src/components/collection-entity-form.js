@@ -144,10 +144,10 @@ export class CollectionEntityForm {
     // PUBLIC API
     // ====================
 
-    async showCreateModal() {
+    async showCreateModal(initialData = null) {
         this.currentMode = 'create';
         this.currentItem = null;
-        const form = await this.generateForm('create', null);
+        const form = await this.generateForm('create', initialData);
         this.showModal(form, 'create');
 
         // Initialize managers after modal is shown
