@@ -7,24 +7,20 @@
  *   ┌──────────────────────┬──────────────────────────────┐
  *   │ Left panel (TOC)     │ Body (right panel)           │
  *   │                      │                              │
- *   │ ODIP scope:          │ selection-read:              │
- *   │   chapter tree       │   chapter narrative (R/O)    │
- *   │   expand/collapse    │   or topic card list         │
- *   │   select / dive →    │   or O* detail               │
+ *   │ ODIP scope:          │ chapter narrative (R/O)      │
+ *   │   chapter tree       │   or topic card list         │
+ *   │   expand/collapse    │   or O* detail               │
+ *   │   select / dive →    │                              │
  *   │                      │                              │
- *   │ Chapter scope:       │ sequential:                  │
- *   │   ← back             │   narrative → topics → O*s  │
- *   │   narrative (select) │   edit buttons (Elaborate)   │
+ *   │ Chapter scope:       │ chapter narrative (default)  │
+ *   │   ← back             │   or topic card list         │
+ *   │   chapter title ←    │   or O* detail               │
  *   │   topic → O*s        │                              │
  *   └──────────────────────┴──────────────────────────────┘
  *
  * Scope state machine:
- *   'odip'    — full chapter tree; default mode: selection-read
- *   'chapter' — single chapter TOC; default mode: sequential
- *
- * Body modes (chapter scope only):
- *   'sequential'     — full scrollable document; TOC sync available
- *   'selection-read' — single selected entry
+ *   'odip'    — full chapter tree
+ *   'chapter' — single chapter TOC; default: chapter narrative
  *
  * Edit (Elaborate only): always as popup, consistent with elaborate/os.
  *
@@ -65,10 +61,6 @@ export default class NarrativeActivity {
         this._scope           = 'odip';   // 'odip' | 'chapter'
         this._selectedChapter = null;     // chapter currently dived into
         this._odipSelection   = null;     // last ODIP-scope selection (chapter itemId)
-
-        // Body mode (chapter scope)
-        this._mode            = 'sequential';  // 'sequential' | 'selection-read'
-        this._syncEnabled     = false;
     }
 
     // -------------------------------------------------------------------------
@@ -97,11 +89,9 @@ export default class NarrativeActivity {
             return;
         }
 
-        this._scope             = 'odip';
-        this._selectedChapter   = null;
-        this._odipSelection     = null;
-        this._mode              = 'sequential';
-        this._syncEnabled       = false;
+        this._scope           = 'odip';
+        this._selectedChapter = null;
+        this._odipSelection   = null;
 
         this._renderShell();
 
@@ -151,7 +141,6 @@ export default class NarrativeActivity {
     }
 
     async cleanup() {
-        this._body?.stopSync?.();
         this._toc?.cleanup?.();
         this._body?.cleanup?.();
         this._masterDetail?.cleanup();
@@ -185,18 +174,17 @@ export default class NarrativeActivity {
             isEditable:           this._isEditable,
             chapters:             this._chapters,
             chapterMap:           this._chapterMap,
-            onOdipSelect:         (chapter) => this._handleOdipSelect(chapter),
+            onOdipSelect:         (entry)   => this._handleOdipSelect(entry),
             onDive:               (chapter) => this._diveIntoChapter(chapter),
-            onClimb:              ()         => this._climbToOdip(true),
-            onChapterSelect:      (entry)    => this._handleChapterTocSelect(entry),
-            buildOrderedChapters: ()         => this._buildOrderedChapters(),
+            onClimb:              ()        => this._climbToOdip(true),
+            onChapterSelect:      (entry)   => this._handleChapterTocSelect(entry),
+            buildOrderedChapters: ()        => this._buildOrderedChapters(),
         });
 
         this._body = new ChapterBody(this._masterDetail.detailContainer, {
-            app:               this.app,
-            isEditable:        this._isEditable,
-            onSaved:           (_id) => { /* versionId updated in place */ },
-            onVisibleKeyChange: (key) => this._handleBodyVisibleKey(key),
+            app:        this.app,
+            isEditable: this._isEditable,
+            onSaved:    (_id) => { /* versionId updated in place */ },
         });
     }
 
@@ -226,9 +214,10 @@ export default class NarrativeActivity {
     }
 
     /**
-     * User clicked dive (→) on a chapter node.
-     * Switches to chapter scope.
-     * @param {object} chapter
+     * User clicked dive (→) on a chapter node. Switches to chapter scope and
+     * renders the chapter narrative by default.
+     * @param {object}  chapter
+     * @param {boolean} [pushState=true]
      */
     async _diveIntoChapter(chapter, pushState = true) {
         const full = await this._loadChapter(chapter);
@@ -236,8 +225,6 @@ export default class NarrativeActivity {
 
         this._scope           = 'chapter';
         this._selectedChapter = full;
-        this._mode            = 'sequential';
-        this._syncEnabled     = false;
 
         if (pushState) {
             const chapterId = normalizeId(full.itemId);
@@ -245,8 +232,7 @@ export default class NarrativeActivity {
         }
 
         await this._toc.renderChapter(full);
-        await this._body.renderSequential(full);
-        this._renderModeControls();
+        this._body.renderSelectionRead({ type: 'chapter' }, full);
     }
 
     // -------------------------------------------------------------------------
@@ -254,10 +240,7 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
 
     _climbToOdip(viaButton = false) {
-        this._body?.stopSync?.();
         this._selectedChapter = null;
-        this._mode            = 'sequential';
-        this._syncEnabled     = false;
         this._scope           = 'odip';
 
         if (viaButton) {
@@ -266,7 +249,6 @@ export default class NarrativeActivity {
 
         this._toc.renderOdip(this._chapters, this._odipSelection);
         this._body.renderOdipPlaceholder();
-        this._removeModeControls();
     }
 
     // -------------------------------------------------------------------------
@@ -274,108 +256,11 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
 
     /**
-     * User clicked a TOC entry in chapter scope.
-     * Switches body to selection-read and updates mode toggle.
+     * User clicked a TOC entry in chapter scope (topic, O*, or chapter title).
      * @param {object} entry
      */
     _handleChapterTocSelect(entry) {
-        this._mode = 'selection-read';
-        this._body.stopSync?.();
-        this._syncEnabled = false;
         this._body.renderSelectionRead(entry, this._selectedChapter);
-        this._updateModeControls();
-    }
-
-    // -------------------------------------------------------------------------
-    // Mode controls (chapter scope only)
-    // -------------------------------------------------------------------------
-
-    _renderModeControls() {
-        this._removeModeControls();
-        const bar = document.createElement('div');
-        bar.className = 'narrative-mode-bar';
-        bar.id        = 'narrativeModeBar';
-        bar.innerHTML = `
-            <div class="narrative-mode-bar__modes">
-                <button class="odip-btn narrative-mode-bar__btn narrative-mode-bar__btn--active"
-                        id="narrativeModeSeq" title="Sequential read">≡ Sequential</button>
-                <button class="odip-btn narrative-mode-bar__btn"
-                        id="narrativeModeSelect" title="Selection read">◻ Selection</button>
-            </div>
-            <div class="narrative-mode-bar__sync" id="narrativeSyncWrap" style="display:none">
-                <button class="odip-btn narrative-mode-bar__btn narrative-mode-bar__btn--sync"
-                        id="narrativeSyncBtn" title="Synchronise TOC and body scroll">⇄ Sync</button>
-            </div>
-        `;
-        // Insert above the MasterDetail content area
-        const contentEl = dom.find('#narrativeContent', this.container);
-        contentEl?.parentElement?.insertBefore(bar, contentEl);
-        this._attachModeListeners();
-    }
-
-    _removeModeControls() {
-        dom.find('#narrativeModeBar', this.container)?.remove();
-    }
-
-    _updateModeControls() {
-        const seqBtn    = dom.find('#narrativeModeSeq',    this.container);
-        const selBtn    = dom.find('#narrativeModeSelect', this.container);
-        const syncWrap  = dom.find('#narrativeSyncWrap',   this.container);
-        if (!seqBtn) return;
-
-        const isSeq = this._mode === 'sequential';
-        seqBtn.classList.toggle('narrative-mode-bar__btn--active', isSeq);
-        selBtn.classList.toggle('narrative-mode-bar__btn--active', !isSeq);
-        if (syncWrap) syncWrap.style.display = isSeq ? '' : 'none';
-
-        const syncBtn = dom.find('#narrativeSyncBtn', this.container);
-        if (syncBtn) {
-            syncBtn.classList.toggle('narrative-mode-bar__btn--sync-on', this._syncEnabled);
-            syncBtn.textContent = this._syncEnabled ? '⇄ Sync ✓' : '⇄ Sync';
-        }
-    }
-
-    _attachModeListeners() {
-        dom.find('#narrativeModeSeq', this.container)?.addEventListener('click', async () => {
-            if (this._mode === 'sequential') return;
-            this._mode = 'sequential';
-            await this._body.renderSequential(this._selectedChapter);
-            this._updateModeControls();
-        });
-
-        dom.find('#narrativeModeSelect', this.container)?.addEventListener('click', () => {
-            if (this._mode === 'selection-read') return;
-            this._mode = 'selection-read';
-            this._body.stopSync?.();
-            this._syncEnabled = false;
-            this._body.renderSelectionRead({ type: 'chapter' }, this._selectedChapter);
-            this._updateModeControls();
-        });
-
-        dom.find('#narrativeSyncBtn', this.container)?.addEventListener('click', () => {
-            this._syncEnabled = !this._syncEnabled;
-            if (this._syncEnabled) {
-                this._body.startSync?.();
-            } else {
-                this._body.stopSync?.();
-            }
-            this._updateModeControls();
-        });
-    }
-
-    // -------------------------------------------------------------------------
-    // Body → TOC sync callback
-    // -------------------------------------------------------------------------
-
-    /**
-     * Called by ChapterBody IntersectionObserver when the topmost visible
-     * section changes in sequential mode.
-     * @param {string} key
-     */
-    _handleBodyVisibleKey(key) {
-        if (this._mode === 'sequential' && this._syncEnabled) {
-            this._toc.setActiveKey(key);
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -405,10 +290,6 @@ export default class NarrativeActivity {
             return null;
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Chapter ordering (for TOC)
-    // -------------------------------------------------------------------------
 
     // -------------------------------------------------------------------------
     // Utilities

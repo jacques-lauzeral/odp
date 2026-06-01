@@ -256,7 +256,7 @@ export default class ChapterToc {
             <div class="chapter-toc chapter-toc--chapter" id="chapterTocChapter">
                 <div class="chapter-toc__chapter-header">
                     <button class="chapter-toc__back-btn" id="chapterTocBack">← Chapters</button>
-                    <span class="chapter-toc__chapter-name" title="${title}">${title}</span>
+                    <button class="chapter-toc__chapter-name chapter-toc__chapter-name--btn" id="chapterTocNarrative" title="${title}">${title}</button>
                 </div>
                 <div class="chapter-toc__tree" id="chapterTocTree"></div>
             </div>
@@ -264,6 +264,9 @@ export default class ChapterToc {
 
         this.container.querySelector('#chapterTocBack')
             ?.addEventListener('click', () => this._onClimb());
+
+        this.container.querySelector('#chapterTocNarrative')
+            ?.addEventListener('click', () => this._onChapterSelect({ type: 'chapter', chapter }));
 
         // Attach once on the stable shell — survives treeEl re-renders
         this.container.querySelector('#chapterTocChapter')

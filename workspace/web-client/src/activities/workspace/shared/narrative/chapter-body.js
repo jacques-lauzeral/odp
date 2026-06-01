@@ -9,22 +9,12 @@
  *
  *   renderSelectionRead(entry, chapter, forceReadOnly?)
  *     → Renders a single TOC entry:
- *         entry.type === 'chapter'    → chapter narrative (Quill, editable or R/O)
+ *         entry.type === 'chapter'    → chapter narrative (editable or R/O)
  *         entry.type === 'topic'      → topic header + O* card list
  *         entry.type === 'unassigned' → unassigned O* list
  *         entry.type === 'ostar'      → O* detail view (RequirementDetails / ChangeDetails)
  *
- *   renderSequential(chapter)
- *     → Full scrollable document: narrative block → topic sections → O* cards.
- *       Each section has data-seq-key anchors for scroll sync.
- *       Edit buttons on narrative block and O* cards (Elaborate only) open edit popup.
- *       IntersectionObserver drives TOC highlight via onVisibleKeyChange callback.
- *
- * Sync lifecycle:
- *   startSync()  — starts IntersectionObserver; called by NarrativeActivity
- *   stopSync()   — disconnects observer
- *
- * Edit: always as popup (consistent with elaborate/os). No inline mode.
+ * Edit (Elaborate only): always as popup, consistent with elaborate/os.
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
@@ -37,21 +27,17 @@ export default class ChapterBody {
      * @param {object}   options.app
      * @param {boolean}  options.isEditable
      * @param {Function} options.onSaved             — (chapterId) after successful narrative patch
-     * @param {Function} options.onVisibleKeyChange  — (key) for body→TOC scroll sync
      */
     constructor(container, options = {}) {
         this.container   = container;
         this._app        = options.app;
         this._isEditable = options.isEditable ?? false;
-        this._onSaved    = options.onSaved            ?? (() => {});
-        this._onVisibleKeyChange = options.onVisibleKeyChange ?? (() => {});
+        this._onSaved    = options.onSaved ?? (() => {});
 
         this._richText       = null;
         this._currentChapter = null;
         this._dirty          = false;
         this._saving         = false;
-
-        this._observer       = null;   // IntersectionObserver for sequential sync
 
         this._requirementDetails = null;
         this._changeDetails      = null;
@@ -65,7 +51,6 @@ export default class ChapterBody {
      * ODIP scope placeholder — no chapter selected yet.
      */
     renderOdipPlaceholder() {
-        this._stopObserver();
         this._destroyRichText();
         this._currentChapter = null;
         this.container.innerHTML = `
@@ -76,14 +61,13 @@ export default class ChapterBody {
     }
 
     /**
-     * Render a single TOC entry (selection-read mode, or ODIP scope chapter select).
+     * Render a single TOC entry.
      * @param {object}  entry
      * @param {object}  chapter
      * @param {boolean} [forceReadOnly=false] — true when called from ODIP scope
      */
     async renderSelectionRead(entry, chapter, forceReadOnly = false) {
         await this._autoSaveIfDirty();
-        this._stopObserver();
         this._destroyRichText();
         this._currentChapter = chapter;
 
@@ -100,110 +84,8 @@ export default class ChapterBody {
         }
     }
 
-    /**
-     * Render the full sequential document for a chapter.
-     * @param {object} chapter
-     */
-    async renderSequential(chapter) {
-        await this._autoSaveIfDirty();
-        this._stopObserver();
-        this._destroyRichText();
-        this._currentChapter = chapter;
-
-        // osHierarchy items are pre-enriched server-side: { id, type, code, title }
-        const hierarchy = this._parseHierarchy(chapter);
-        const editable  = this._isEditable;
-        const title    = this._esc(chapter.title ?? chapter.code ?? '');
-
-        // Build the sequential document
-        let html = `<div class="chapter-body chapter-body--sequential" id="chapterBodySeq">`;
-
-        // ── Narrative section ─────────────────────────────────────────────────
-        html += `
-            <section class="seq-section seq-section--narrative" data-seq-key="narrative">
-                <div class="seq-section__header">
-                    <h2 class="seq-section__title">${title}</h2>
-                    ${editable ? `
-                        <div class="seq-section__actions">
-                            <button class="odip-btn odip-btn--sm seq-section__edit-btn"
-                                    data-edit-type="narrative" title="Edit narrative">Edit</button>
-                            <button class="odip-btn odip-btn--primary odip-btn--sm chapter-body__save"
-                                    style="display:none" disabled>Save</button>
-                            <span class="chapter-body__status"></span>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="seq-section__narrative-wrap">
-                    <div id="seqNarrativeEditor" class="chapter-body__editor"></div>
-                </div>
-            </section>
-        `;
-
-        // ── Topic / O* sections ───────────────────────────────────────────────
-        hierarchy.forEach((topic, ti) => {
-            html += this._renderSeqTopic(topic, ti, null, editable);
-        });
-
-        html += `</div>`;  // chapter-body--sequential
-
-        this.container.innerHTML = html;
-
-        // Initialise Quill for narrative
-        const editorEl = this.container.querySelector('#seqNarrativeEditor');
-        if (editorEl) {
-            this._initRichTextNarrative(editorEl, chapter.narrative, editable);
-        }
-
-        // Wire save button for sequential narrative edit
-        if (editable) {
-            this._attachSeqNarrativeListeners(chapter);
-        }
-
-        // Wire O* card clicks (edit popup)
-        this._attachSeqCardListeners();
-    }
-
-    /**
-     * Start IntersectionObserver for sequential scroll→TOC sync.
-     * Called by NarrativeActivity when sync is toggled on.
-     */
-    startSync() {
-        this._stopObserver();
-        const sections = this.container?.querySelectorAll('[data-seq-key]');
-        if (!sections?.length) return;
-
-        this._observer = new IntersectionObserver((entries) => {
-            // Find the topmost intersecting section
-            let topEntry = null;
-            for (const e of entries) {
-                if (!e.isIntersecting) continue;
-                if (!topEntry || e.boundingClientRect.top < topEntry.boundingClientRect.top) {
-                    topEntry = e;
-                }
-            }
-            if (topEntry) {
-                const key = topEntry.target.dataset.seqKey;
-                if (key) this._onVisibleKeyChange(key);
-            }
-        }, {
-            root:       this.container,
-            threshold:  0.1,
-            rootMargin: '0px 0px -60% 0px',
-        });
-
-        sections.forEach(s => this._observer.observe(s));
-    }
-
-    /**
-     * Stop IntersectionObserver.
-     */
-    stopSync() {
-        this._stopObserver();
-    }
-
     clear() {
         this._autoSaveIfDirty();
-        this._stopObserver();
         this._destroyRichText();
         this._currentChapter = null;
         this.container.innerHTML = `
@@ -214,7 +96,6 @@ export default class ChapterBody {
     }
 
     cleanup() {
-        this._stopObserver();
         this._destroyRichText();
         this._requirementDetails?.cleanup?.();
         this._changeDetails?.cleanup?.();
@@ -225,95 +106,7 @@ export default class ChapterBody {
     }
 
     // =========================================================================
-    // Sequential section renderers
-    // =========================================================================
-
-    _renderSeqTopic(topic, topicIndex, parentIndex, editable) {
-        const key   = parentIndex != null
-            ? `subtopic-${parentIndex}-${topicIndex}`
-            : `topic-${topicIndex}`;
-        const title = this._esc(topic.topic ?? '');
-        const depth = parentIndex != null ? 'seq-section--subtopic' : 'seq-section--topic';
-
-        let html = `
-            <section class="seq-section ${depth}" data-seq-key="${key}">
-                <div class="seq-section__header">
-                    <h3 class="seq-section__topic-title">${title}</h3>
-                </div>
-        `;
-
-        // O* cards in this topic
-        if (topic.items?.length) {
-            html += `<div class="seq-section__ostar-list">`;
-            topic.items.forEach(item => {
-                html += this._renderSeqOStarCard(item, editable);
-            });
-            html += `</div>`;
-        } else {
-            html += `<p class="seq-section__empty">No O*s assigned to this topic.</p>`;
-        }
-
-        // Sub-topics
-        (topic.subTopics ?? []).forEach((sub, si) => {
-            html += this._renderSeqTopic(sub, si, topicIndex, editable);
-        });
-
-        html += `</section>`;
-        return html;
-    }
-
-    _renderSeqOStarCard(item, editable) {
-        const id    = String(item.id ?? item.itemId ?? '');
-        const type  = (item.type ?? 'OR').toUpperCase();
-        const code  = item.code  ?? '';
-        const title = item.title ?? id;
-        const label = code ? `${code} — ${title}` : title;
-        const cls   = type === 'ON' ? 'ostar-type-on'
-            : type === 'OR'         ? 'ostar-type-or'
-                : type === 'OC'         ? 'ostar-type-oc'
-                    :                         'ostar-type-other';
-
-        return `
-            <div class="seq-ostar-card" data-id="${this._esc(id)}" data-type="${type}">
-                <span class="chapter-body__ostar-badge ${cls}">${type}</span>
-                <span class="chapter-body__ostar-label">${this._esc(label)}</span>
-                ${editable ? `
-                    <button class="odip-btn odip-btn--sm seq-ostar-card__edit"
-                            data-id="${this._esc(id)}" data-type="${type}">Edit</button>
-                ` : ''}
-            </div>
-        `;
-    }
-
-    // =========================================================================
-    // Sequential event wiring
-    // =========================================================================
-
-    _attachSeqNarrativeListeners(chapter) {
-        // Edit button shows/hides the inline save row (Quill already editable)
-        const editBtn = this.container.querySelector('[data-edit-type="narrative"]');
-        const saveBtn = this.container.querySelector('.chapter-body__save');
-        if (editBtn && saveBtn) {
-            editBtn.addEventListener('click', () => {
-                saveBtn.style.display = '';
-                editBtn.style.display = 'none';
-            });
-            saveBtn.addEventListener('click', () => this._saveNarrative(chapter));
-        }
-    }
-
-    _attachSeqCardListeners() {
-        this.container.querySelectorAll('.seq-ostar-card__edit').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const id   = btn.dataset.id;
-                const type = btn.dataset.type;
-                this._openOStarEdit(id, type);
-            });
-        });
-    }
-
-    // =========================================================================
-    // Selection-read renderers (unchanged from prior design)
+    // Selection-read renderers
     // =========================================================================
 
     _renderChapterNarrative(chapter, editable) {
@@ -545,44 +338,8 @@ export default class ChapterBody {
     }
 
     // =========================================================================
-    // Hierarchy helpers (mirror of ChapterToc)
-    // =========================================================================
-
-    _parseHierarchy(chapter) {
-        let raw = chapter?.osHierarchy ?? chapter?.jsonOsHierarchy ?? null;
-        if (typeof raw === 'string') {
-            try { raw = JSON.parse(raw); } catch { raw = null; }
-        }
-        if (!raw) return [];
-        const topics = Array.isArray(raw) ? raw : (raw.topics ?? []);
-        return topics.map(t => this._normaliseTopic(t));
-    }
-
-    _normaliseTopic(t) {
-        const mapItem = (raw, impliedType) =>
-            (raw && typeof raw === 'object')
-                ? { id: raw.id, type: raw.type ?? impliedType, code: raw.code ?? null, title: raw.title ?? null }
-                : { id: raw,    type: impliedType,             code: null,             title: null };
-        return {
-            topic:     t.topic,
-            items:     [
-                ...(t.ons ?? []).map(o => mapItem(o, 'ON')),
-                ...(t.ors ?? []).map(o => mapItem(o, 'OR')),
-                ...(t.ocs ?? []).map(o => mapItem(o, 'OC')),
-            ],
-            subTopics: (t.subtopics ?? []).map(s => this._normaliseTopic(s)),
-        };
-    }
-
-
-    // =========================================================================
     // Internal helpers
     // =========================================================================
-
-    _stopObserver() {
-        this._observer?.disconnect();
-        this._observer = null;
-    }
 
     _destroyRichText() {
         if (this._richText) {
