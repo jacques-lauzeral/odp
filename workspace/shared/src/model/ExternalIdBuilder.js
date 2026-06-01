@@ -18,7 +18,7 @@ class ExternalIdBuilder {
      * Characters replaced by underscores during normalization.
      * Extend this list if additional special characters are encountered.
      */
-    static NORMALIZED_CHARS = [' ', '/', ',', '&'];
+    static NORMALIZED_CHARS = [' ', '/', ',', '&', '-'];
 
     /**
      * Build external ID for an entity
