@@ -182,9 +182,10 @@ export default class NarrativeActivity {
         });
 
         this._body = new ChapterBody(this._masterDetail.detailContainer, {
-            app:        this.app,
-            isEditable: this._isEditable,
-            onSaved:    (_id) => { /* versionId updated in place */ },
+            app:              this.app,
+            isEditable:       this._isEditable,
+            onSaved:          (_id) => { /* versionId updated in place */ },
+            onChapterSelect:  (entry) => this._handleChapterTocSelect(entry),
         });
     }
 
@@ -256,10 +257,14 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
 
     /**
-     * User clicked a TOC entry in chapter scope (topic, O*, or chapter title).
+     * User clicked a TOC entry in chapter scope (topic, O*, or chapter title),
+     * or navigated from a body O* card. Updates TOC selection and renders body.
      * @param {object} entry
      */
     _handleChapterTocSelect(entry) {
+        if (entry.type === 'ostar' && entry.ostar?.id != null) {
+            this._toc.setActiveByItemId(entry.ostar.id);
+        }
         this._body.renderSelectionRead(entry, this._selectedChapter);
     }
 

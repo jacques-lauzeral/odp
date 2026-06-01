@@ -483,6 +483,60 @@ export default class ChapterToc {
         btn?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
+    /**
+     * Set active state by O* item id — used when navigation originates from the body.
+     * Searches the hierarchy data model to find which topic/subtopic path contains the
+     * item, expands any collapsed ancestors, re-renders the tree, then highlights the
+     * entry and scrolls it into view.
+     * @param {string|number} itemId
+     */
+    setActiveByItemId(itemId) {
+        const targetId = String(itemId);
+
+        // Walk the hierarchy tree. Each recursive call handles one level.
+        // topicIdx: the top-level topic index (fixed once we enter a topic).
+        // subPath:  array of sub-indices from the top-level topic downward.
+        // Returns the ordered ancestor key list, or null if not found.
+        const findAncestors = (nodes, topicIdx, subPath) => {
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const ti   = topicIdx ?? i;
+                const sp   = [...subPath, i];
+                const key  = subPath.length === 0 ? `topic-${i}` : `subtopic-${ti}-${sp.slice(1).join('-')}`;
+
+                for (const item of node.items ?? []) {
+                    if (String(item.id ?? item.itemId ?? '') === targetId) return [key];
+                }
+
+                const child = findAncestors(node.subTopics ?? [], ti, sp);
+                if (child) return [key, ...child];
+            }
+            return null;
+        };
+
+        const ancestors = findAncestors(this._hierarchy, null, []);
+
+        let expanded = false;
+        for (const key of ancestors ?? []) {
+            if (this._collapsedTopics.has(key)) {
+                this._collapsedTopics.delete(key);
+                expanded = true;
+            }
+        }
+
+        if (expanded) this._renderChapterTree();
+
+        const target = this.container?.querySelector(
+            `.chapter-toc__entry[data-item-id="${CSS.escape(targetId)}"]`
+        );
+        if (!target) return;
+        const key = target.dataset.key;
+        if (key) {
+            this.setActiveKey(key);
+            this.scrollToKey(key);
+        }
+    }
+
     // =========================================================================
     // Shared helpers
     // =========================================================================

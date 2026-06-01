@@ -29,10 +29,11 @@ export default class ChapterBody {
      * @param {Function} options.onSaved             — (chapterId) after successful narrative patch
      */
     constructor(container, options = {}) {
-        this.container   = container;
-        this._app        = options.app;
-        this._isEditable = options.isEditable ?? false;
-        this._onSaved    = options.onSaved ?? (() => {});
+        this.container        = container;
+        this._app             = options.app;
+        this._isEditable      = options.isEditable ?? false;
+        this._onSaved         = options.onSaved         ?? (() => {});
+        this._onChapterSelect = options.onChapterSelect ?? (() => {});
 
         this._richText       = null;
         this._currentChapter = null;
@@ -212,22 +213,25 @@ export default class ChapterBody {
                     :                         'ostar-type-other';
 
         return `
-            <div class="chapter-body__ostar-card" data-id="${this._esc(String(id))}" data-type="${type}">
+            <div class="chapter-body__ostar-card chapter-body__ostar-card--link"
+                 data-id="${this._esc(String(id))}" data-type="${type}"
+                 data-item-id="${this._esc(String(id))}" data-item-type="${type}"
+                 role="button" tabindex="0">
                 <span class="chapter-body__ostar-badge ${cls}">${type}</span>
                 <span class="chapter-body__ostar-label">${this._esc(label)}</span>
-                ${this._isEditable
-            ? `<button class="odip-btn odip-btn--sm chapter-body__ostar-edit"
-                               data-id="${this._esc(String(id))}" data-type="${type}">Edit</button>`
-            : ''}
             </div>
         `;
     }
 
     _attachOStarCardListeners() {
-        this.container.querySelectorAll('.chapter-body__ostar-edit').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this._openOStarEdit(btn.dataset.id, btn.dataset.type);
-            });
+        this.container.querySelectorAll('.chapter-body__ostar-card--link').forEach(card => {
+            const select = () => {
+                const id   = card.dataset.itemId;
+                const type = card.dataset.itemType;
+                this._onChapterSelect({ type: 'ostar', ostar: { id, type }, chapter: this._currentChapter });
+            };
+            card.addEventListener('click', select);
+            card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); } });
         });
     }
 

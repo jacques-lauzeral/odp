@@ -345,9 +345,17 @@
     color: var(--text-primary);
 }
 
-.chapter-body__ostar-edit {
-    flex-shrink: 0;
-    margin-left: auto;
+.chapter-body__ostar-card--link {
+    cursor: pointer;
+}
+
+.chapter-body__ostar-card--link:hover {
+    border-color: var(--ec-blue, #2E75B6);
+    background: var(--ec-light, #EBF3FB);
+}
+
+.chapter-body__ostar-card--link:hover .chapter-body__ostar-label {
+    color: var(--ec-navy, #1F3864);
 }
 /* =========================================================================
    ODIP scope — chapter tree
