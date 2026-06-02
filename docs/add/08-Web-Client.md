@@ -172,6 +172,8 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 - User state (`setUser` / `getUser`) — persisted to localStorage by Header
 - Dataset context (`setDatasetContext` / `getDatasetContext`) — set by Home on selection
 - Setup data cache (`getSetupData` / `invalidateSetupData`) — lazy-loaded, shared across all activities
+- Chapter cache (`getChapters`) — config-driven, cached permanently
+- O* summary cache (`getOStars` / `findOStar` / `invalidateOStars`) — TTL-refreshed, 5 minutes
 - Connection monitoring (polls `GET /ping` every 60 seconds; dispatches `connection:change` on `window`)
 
 **Dataset context shape:**
@@ -188,6 +190,14 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 ```
 
 `invalidateSetupData()` must be called after any setup entity CRUD operation.
+
+**O* summary shape** (TTL-cached, 5 minutes, stale-while-revalidate):
+
+```js
+{ itemId: number, type: string, code: string, title: string }
+```
+
+`getOStars()` returns the full summary array. `findOStar(itemId)` returns a single summary or `null`. `invalidateOStars()` must be called after any O* create/update/delete operation.
 
 ---
 
@@ -620,8 +630,8 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | Mark name | Rendered as | Semantics |
 |---|---|---|
 | `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}">` | Narrative reference: `{chapterId}[/{topicId}]` |
-| `o-ref` (`OdipORef`) | `<span data-o-ref="{value}">` | O* reference: O* external ID |
-| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}">` | Strategic document reference: refdoc external ID |
+| `o-ref` (`OdipORef`) | `<span data-o-ref="{value}">` | O* reference: opaque O* itemId |
+| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}">` | Strategic document reference: refdoc id |
 
 In read-only mode, these spans are styled as clickable links (`.rich-text-component--readonly [data-n-ref]` etc.) and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic.
 
@@ -1429,8 +1439,8 @@ Two-pane `MasterDetail` layout (28% / 72% initial ratio):
 | Mark type | Resolution | Target URL |
 |---|---|---|
 | `n-ref` | Value is `{chapterId}[/{topicId}]` — navigate directly, no lookup | `{base}/narrative/{chapterId}[?theme={topicId}]` |
-| `o-ref` | Not yet implemented | — |
-| `d-ref` | Not yet implemented | — |
+| `o-ref` | `app.findOStar(itemId)` resolves type; stale-while-revalidate via `app.getOStars()` | `{base}/os/{type}/{itemId}` |
+| `d-ref` | Direct — value is refdoc id | `{base}/setup/reference-documents/{id}` |
 
 ### 18.7 OsHierarchy Theme Model
 
