@@ -3,6 +3,7 @@ import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 import ReferenceListManager from './reference-list-manager.js';
 import ReferenceManager from './reference-manager.js';
 import RichTextComponent from './rich-text-component.js';
+import { buildLinkProvider } from './link-provider.js';
 
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
@@ -46,6 +47,13 @@ export class CollectionEntityForm {
         // Signature: onNavigate(ref: { id, code, title, type }) => void
         // Provided by RequirementDetails / ChangeDetails; absent in edit popup context.
         this.onNavigate = context.onNavigate || null;
+
+        // Optional internal-link handler for read-only rich text (n-ref / o-ref / d-ref clicks).
+        // Provided by RequirementDetails / ChangeDetails via context.onInternalLink.
+        this._onInternalLink = context.onInternalLink || null;
+
+        // Link provider for reference authoring in edit mode — lazily built from context.app.
+        this._linkProvider = null;
 
         // Initialize tab delegation once
         this.initTabDelegation();
@@ -1027,6 +1035,7 @@ export class CollectionEntityForm {
                 images:   field.images   ?? true,
                 tables:   field.tables   ?? true,
                 placeholder: placeholderText,
+                linkProvider: this._getLinkProvider(),
                 onChange: (jsonString) => {
                     hiddenInput.value = jsonString ?? '';
                     if (this.currentMode === 'edit' || this.currentMode === 'create') {
@@ -1069,7 +1078,10 @@ export class CollectionEntityForm {
             }
 
             try {
-                const component = new RichTextComponent({ readOnly: true });
+                const component = new RichTextComponent({
+                    readOnly: true,
+                    onInternalLink: this._onInternalLink || null,
+                });
                 component.mount(placeholder);
                 component.setValue(jsonString);
                 // Prevent focus theft in panel context
@@ -1088,6 +1100,20 @@ export class CollectionEntityForm {
             }
         });
         this.richTextComponents = {};
+    }
+
+    /**
+     * Return the shared link provider for reference authoring in edit mode.
+     * Lazily built from context.app on first call; returns null when no app is available.
+     * @returns {object|null}
+     * @private
+     */
+    _getLinkProvider() {
+        if (!this.context.app) return null;
+        if (!this._linkProvider) {
+            this._linkProvider = buildLinkProvider(this.context.app);
+        }
+        return this._linkProvider;
     }
 
     // ====================

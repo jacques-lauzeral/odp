@@ -644,9 +644,27 @@ In read-only mode, spans are styled as clickable links and a delegated click lis
 
 `CollectionEntityForm` manages `RichTextComponent` instances:
 
-- **Edit/create** — `initializeRichTextEditors()` finds `.richtext-edit-placeholder` elements injected by `renderInput()` for `type: 'richtext'` fields, mounts a `RichTextComponent` per field, and wires `onChange` to a hidden `<input>` that participates in form data collection. Initial value (TipTap JSON string) is passed directly to `setValue()`.
-- **Read** — `initializeRichTextReadOnly()` finds `.richtext-readonly-placeholder` elements injected by `renderRichtextReadOnly()`, mounts a read-only `RichTextComponent` per field.
+- **Edit/create** — `initializeRichTextEditors()` finds `.richtext-edit-placeholder` elements, mounts a `RichTextComponent` per field, wires `onChange` to a hidden `<input>`, and passes `linkProvider: this._getLinkProvider()` to enable reference authoring.
+- **Read** — `initializeRichTextReadOnly()` finds `.richtext-readonly-placeholder` elements, mounts a read-only `RichTextComponent` per field, and passes `onInternalLink: this._onInternalLink` so reference spans are navigable.
 - Instances are stored in `this.richTextComponents[fieldKey]` and destroyed in `cleanupRichTextComponents()`.
+
+**`_getLinkProvider()`** — lazily builds a `linkProvider` from `context.app` on first call via `buildLinkProvider(app)`. Returns `null` when `context.app` is absent (e.g. standalone modal not owned by a details view), in which case only the external-link toolbar button is shown.
+
+**Context fields consumed** (`context` passed at construction by `RequirementDetails` / `ChangeDetails`):
+
+| Field | Used by |
+|---|---|
+| `app` | `_getLinkProvider()` — reference target preloading |
+| `onInternalLink` | `initializeRichTextReadOnly()` — internal link click navigation |
+| `onNavigate` | Read-mode reference chips (O\* / strategic document navigation) |
+
+**`RequirementDetails` / `ChangeDetails`** pass `app: this.app` and `onInternalLink` in the context to `_ensureForm()`. Their `_handleInternalLink(type, value)` implementation resolves all three mark types against the active dataset context:
+
+| Mark | Resolution | Target |
+|---|---|---|
+| `n-ref` | Direct — value is `{chapterId}[/{topicId}]` | `{ctxBase}/narrative/{chapterId}[?theme={topicId}]` |
+| `o-ref` | `app.findOStar(itemId)` → resolves type | `{base}/os/{type}/{itemId}` |
+| `d-ref` | Direct — value is refdoc id | `{ctxBase}/setup/reference-documents/{id}` |
 
 ### 12.4 Content Emptiness Check
 

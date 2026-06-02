@@ -118,6 +118,7 @@ export default class RequirementDetails {
         this._form = new RequirementForm(entityConfig, {
             setupData,
             domains:         this._domains ?? [],
+            app:             this.app,
             getSetupData:    () => this._setupData,
             // Synthesise a minimal requirements list from extended projection fields
             // so that ReferenceListManager can resolve labels for refinedBy / implementedBy chips.
@@ -181,11 +182,36 @@ export default class RequirementDetails {
      * @private
      */
     _handleInternalLink(type, value) {
-        // TODO Step 8: construct canonical URL based on type and app dataset context.
-        // n-ref: {base}/narrative/{chapter-code}[?topic={topic-path}]
-        // o-ref: {base}/os/{type-segment}/{id}  (requires external-ID → id resolution)
-        // d-ref: {base}/setup/reference-documents?id={refdoc-external-id}
-        console.debug('[%s] internal link clicked', this.constructor.name, { type, value });
+        if (!value) return;
+        const ctx  = this.app.getDatasetContext();
+        const base = ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}/os`
+            : '/elaborate/os';
+
+        if (type === 'n-ref') {
+            const slashIdx  = value.indexOf('/');
+            const chapterId = slashIdx >= 0 ? value.slice(0, slashIdx) : value;
+            const topicPath = slashIdx >= 0 ? value.slice(slashIdx + 1) : null;
+            const ctxBase   = ctx?.type === 'edition' ? `/explore/${ctx.editionId}` : '/elaborate';
+            const path      = topicPath
+                ? `${ctxBase}/narrative/${chapterId}?theme=${encodeURIComponent(topicPath)}`
+                : `${ctxBase}/narrative/${chapterId}`;
+            this.app.navigate(path);
+            return;
+        }
+
+        if (type === 'o-ref') {
+            this.app.findOStar(value).then(ostar => {
+                if (!ostar) { console.warn('[RequirementDetails] o-ref: O* not found', value); return; }
+                this.app.navigate(`${base}/${ostar.type}/${value}`);
+            }).catch(() => console.warn('[RequirementDetails] o-ref: resolution failed', value));
+            return;
+        }
+
+        if (type === 'd-ref') {
+            const ctxBase = ctx?.type === 'edition' ? `/explore/${ctx.editionId}` : '/elaborate';
+            this.app.navigate(`${ctxBase}/setup/reference-documents/${value}`);
+        }
     }
     _navigateToRef(ref) {
         const raw = ref.entityType ?? 'or';
