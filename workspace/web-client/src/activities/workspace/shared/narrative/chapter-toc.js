@@ -299,7 +299,14 @@ export default class ChapterToc {
         const hasTopics     = hierarchy.length > 0;
         const hasUnassigned = this._unassignedOStars.length > 0;
 
+        // Chapter-root drop strip (Elaborate only) — drop a topic here to make it
+        // a top-level topic (reparent to chapter root).
+        const rootStrip = this._isEditable
+            ? '<div class="chapter-toc__root-drop" data-drop-path="root" data-drop-node-type="root"></div>'
+            : '';
+
         treeEl.innerHTML = [
+            rootStrip,
             ...hierarchy.map((topic, ti) => this._renderTopic(topic, ti, 0)),
             hasUnassigned ? this._renderUnassignedBucket() : '',
             (!hasTopics && !hasUnassigned) ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>' : '',
@@ -364,7 +371,7 @@ export default class ChapterToc {
         const key         = `subtopic-${topicIndex}-${subPathStr}`;
         const collapsed   = this._collapsedTopics.has(key);
         const hasChildren = (node.items?.length > 0) || (node.subTopics?.length > 0);
-        const dragPath    = `t:${topicIndex}.${subPathStr}`;
+        const dragPath    = `t:${this._encodeTPath(topicIndex, subPath)}`;
         const draggable   = this._isEditable ? 'draggable="true"' : '';
         const dragAttrs   = this._isEditable ? `data-drag-path="${dragPath}" data-drag-node-type="topic"` : '';
         const indent      = this._tocIndent(depth, false);
@@ -404,7 +411,7 @@ export default class ChapterToc {
         const code        = item.code  ?? '';
         const title       = item.title ?? String(item.id ?? item.itemId ?? '');
         const label       = code ? `${code} — ${title}` : title;
-        const topicPart   = subPathStr ? `${topicIndex}.${subPathStr}` : `${topicIndex}`;
+        const topicPart   = this._encodeTPath(topicIndex, subPath);
         const dragPath    = `o:${topicPart}:${itemIndex}`;
         const draggable   = this._isEditable ? 'draggable="true"' : '';
         const dragAttrs   = this._isEditable ? `data-drag-path="${dragPath}" data-drag-node-type="ostar"` : '';
@@ -570,48 +577,58 @@ export default class ChapterToc {
 
         const dragIsOStar = this._drag.nodeType === 'ostar';
 
-        // Both topic buttons and O* entries are now valid drop targets.
-        // Topic buttons carry chapter-toc__drop-zone; O* entries carry chapter-toc__entry--ostar.
-        const zone = e.target.closest('.chapter-toc__drop-zone, .chapter-toc__entry--ostar');
+        // Valid drop targets:
+        //   - topic buttons (.chapter-toc__drop-zone)
+        //   - O* entries (.chapter-toc__entry--ostar)  [O* drags only]
+        //   - chapter-root strip (.chapter-toc__root-drop)  [topic drags only]
+        const zone = e.target.closest(
+            '.chapter-toc__drop-zone, .chapter-toc__entry--ostar, .chapter-toc__root-drop'
+        );
         if (!zone) return;
 
-        // O* cannot drop onto another O* that belongs to a different topic row —
-        // but within the same topic O* entries are valid before/after targets.
-        // Topic drop-zones accept both topics (3-zone) and O* (append).
         const zoneIsOStar = zone.classList.contains('chapter-toc__entry--ostar');
+        const zoneIsRoot  = zone.classList.contains('chapter-toc__root-drop');
+
+        // O* drags cannot target the root strip; topic drags cannot target O* entries.
+        if (dragIsOStar && zoneIsRoot) return;
+        if (!dragIsOStar && zoneIsOStar) return;
 
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
 
-        const rect  = zone.getBoundingClientRect();
-        const relY  = e.clientY - rect.top;
-        const third = rect.height / 3;
-
         let position;
         if (dragIsOStar) {
-            position = zoneIsOStar
-                ? (relY < rect.height / 2 ? 'before' : 'after')
-                : 'into';   // dropping O* on a topic row → append
+            if (zoneIsOStar) {
+                // Before/after within the owning topic's item list
+                const rect = zone.getBoundingClientRect();
+                position = (e.clientY - rect.top) < rect.height / 2 ? 'before' : 'after';
+            } else {
+                // Dropping O* on a topic row → append into topic
+                position = 'into';
+            }
         } else {
-            // Topic drag — 3-zone on the button row itself (correct rect now)
-            position = relY < third     ? 'before'
-                : relY > third * 2 ? 'after'
-                    :                    'into';
+            // Topic drags: single gesture. Drop onto a topic → reparent as last child.
+            // Drop onto the root strip → reparent to chapter root.
+            position = zoneIsRoot ? 'root' : 'into';
         }
 
         this._clearDropIndicators();
-        zone.classList.add(
-            position === 'before' ? 'chapter-toc__drop--before'
-                : position === 'after'  ? 'chapter-toc__drop--after'
-                    : 'chapter-toc__drop--into'
-        );
+        if (position === 'before')      zone.classList.add('chapter-toc__drop--before');
+        else if (position === 'after')  zone.classList.add('chapter-toc__drop--after');
+        else if (position === 'root')   zone.classList.add('chapter-toc__drop--root');
+        else                            zone.classList.add('chapter-toc__drop--into');
         zone.dataset.dropPosition = position;
     }
 
     _handleDragLeave(e) {
-        const zone = e.target.closest('.chapter-toc__drop-zone, .chapter-toc__entry--ostar');
+        const zone = e.target.closest(
+            '.chapter-toc__drop-zone, .chapter-toc__entry--ostar, .chapter-toc__root-drop'
+        );
         if (zone && !zone.contains(e.relatedTarget)) {
-            zone.classList.remove('chapter-toc__drop--before', 'chapter-toc__drop--after', 'chapter-toc__drop--into');
+            zone.classList.remove(
+                'chapter-toc__drop--before', 'chapter-toc__drop--after',
+                'chapter-toc__drop--into', 'chapter-toc__drop--root'
+            );
             delete zone.dataset.dropPosition;
         }
     }
@@ -620,28 +637,50 @@ export default class ChapterToc {
         e.preventDefault();
         if (!this._drag) return;
 
-        const zone = e.target.closest('.chapter-toc__drop-zone, .chapter-toc__entry--ostar');
+        const zone = e.target.closest(
+            '.chapter-toc__drop-zone, .chapter-toc__entry--ostar, .chapter-toc__root-drop'
+        );
         if (!zone) { this._cancelDrag(); return; }
 
         const dropPosition = zone.dataset.dropPosition ?? 'into';
 
-        // Topic drop-zones carry data-drop-path; O* entries carry data-drag-path.
+        // Topic drop-zones carry data-drop-path; O* entries carry data-drag-path;
+        // the root strip carries data-drop-path="root".
         const dropPath = zone.dataset.dropPath ?? zone.dataset.dragPath ?? null;
         if (!dropPath || dropPath === this._drag.path) { this._cancelDrag(); return; }
 
         const src = this._parseDragPath(this._drag.path);
-        const dst = this._parseDragPath(dropPath);
-        if (!src || !dst) { this._cancelDrag(); return; }
+        if (!src) { this._cancelDrag(); return; }
 
-        // Prevent dropping a topic into one of its own descendants
-        if (src.nodeType === 'topic' && this._isAncestorPath(src, dst)) {
+        // Root strip: reparent a topic to chapter root (append). Only valid for topic drags.
+        if (dropPath === 'root') {
+            if (src.nodeType !== 'topic') { this._cancelDrag(); return; }
+            const mutated = this._applyTopicToRoot(this._cloneHierarchy(this._hierarchy), src);
+            this._commitMutation(mutated);
+            return;
+        }
+
+        const dst = this._parseDragPath(dropPath);
+        if (!dst) { this._cancelDrag(); return; }
+
+        // Prevent dropping a topic into one of its own descendants (or onto itself)
+        if (src.nodeType === 'topic' &&
+            (this._isAncestorPath(src, dst) || this._isSamePath(src, dst))) {
             this._cancelDrag();
             return;
         }
 
         const mutated = this._applyDrop(src, dst, dropPosition);
-        if (!mutated) { this._cancelDrag(); return; }
+        this._commitMutation(mutated);
+    }
 
+    /**
+     * Commit a mutated hierarchy: update state, re-render, fire change callback.
+     * No-op cancel if mutation failed.
+     * @param {object[]|null} mutated
+     */
+    _commitMutation(mutated) {
+        if (!mutated) { this._cancelDrag(); return; }
         this._hierarchy = mutated;
         this._clearDropIndicators();
         this._drag = null;
@@ -663,9 +702,12 @@ export default class ChapterToc {
 
     _clearDropIndicators() {
         this.container?.querySelectorAll(
-            '.chapter-toc__drop--before, .chapter-toc__drop--after, .chapter-toc__drop--into'
+            '.chapter-toc__drop--before, .chapter-toc__drop--after, .chapter-toc__drop--into, .chapter-toc__drop--root'
         ).forEach(el => {
-            el.classList.remove('chapter-toc__drop--before', 'chapter-toc__drop--after', 'chapter-toc__drop--into');
+            el.classList.remove(
+                'chapter-toc__drop--before', 'chapter-toc__drop--after',
+                'chapter-toc__drop--into', 'chapter-toc__drop--root'
+            );
             delete el.dataset.dropPosition;
         });
     }
@@ -682,6 +724,17 @@ export default class ChapterToc {
         const cp = candidate.subPath;
         if (ap.length >= cp.length) return false;
         return ap.every((v, i) => cp[i] === v);
+    }
+
+    /**
+     * Returns true if two topic paths refer to the same node.
+     * @param {{ topicIndex: number, subPath: number[] }} a
+     * @param {{ topicIndex: number, subPath: number[] }} b
+     */
+    _isSamePath(a, b) {
+        return a.topicIndex === b.topicIndex
+            && a.subPath.length === b.subPath.length
+            && a.subPath.every((v, i) => b.subPath[i] === v);
     }
 
     // -------------------------------------------------------------------------
@@ -754,75 +807,51 @@ export default class ChapterToc {
     }
 
     /**
-     * Move a topic node within the hierarchy tree.
-     * Handles both same-parent reorder and reparenting.
+     * Reparent a topic node as the LAST child of the destination topic.
+     * Topic moves do not preserve ordering — the node is always appended.
+     *
+     * Both node references are resolved BEFORE any mutation. Because we then
+     * splice by holding live object references, removing the source never
+     * invalidates the destination reference — no index adjustment is needed.
+     *
      * @param {object[]} h — cloned hierarchy
+     * @param {{ topicIndex, subPath }} src
+     * @param {{ topicIndex, subPath }} dst
+     * @returns {object[]|null}
      */
-    _applyTopicDrop(h, src, dst, position) {
-        // Extract source node
-        const srcParent = this._resolveParentArray(h, src);
-        if (!srcParent) return null;
-        const [extracted] = srcParent.parentArray.splice(srcParent.index, 1);
+    _applyTopicDrop(h, src, dst, _position) {
+        // Resolve both references on the un-mutated clone.
+        const srcRef  = this._resolveParentArray(h, src);
+        if (!srcRef) return null;
+        const srcNode = srcRef.parentArray?.[srcRef.index];
+        if (!srcNode) return null;
 
-        // After extraction the dst indices may have shifted if src and dst share a parent
-        // and src.index < dst effective index — adjust.
-        const adjustedDst = this._adjustPathAfterExtract(src, dst);
+        const dstNode = this._resolveTopicNode(h, dst);
+        if (!dstNode) return null;
 
-        if (position === 'into') {
-            // Make extracted a child of the dst topic node
-            const dstNode = this._resolveTopicNode(h, adjustedDst);
-            if (!dstNode) return null;
-            if (!Array.isArray(dstNode.subTopics)) dstNode.subTopics = [];
-            dstNode.subTopics.push(extracted);
-        } else {
-            // Insert as sibling before or after dst
-            const dstParent = this._resolveParentArray(h, adjustedDst);
-            if (!dstParent) return null;
-            const insertAt = position === 'before'
-                ? dstParent.index
-                : dstParent.index + 1;
-            dstParent.parentArray.splice(insertAt, 0, extracted);
-        }
+        // Splice src out by its now-resolved index, then append to dst by reference.
+        srcRef.parentArray.splice(srcRef.index, 1);
+        if (!Array.isArray(dstNode.subTopics)) dstNode.subTopics = [];
+        dstNode.subTopics.push(srcNode);
 
         return h;
     }
 
     /**
-     * When a topic is extracted from its parent array, indices of siblings that
-     * follow it shift by -1. Adjust the destination path accordingly.
-     * Only affects paths that share the same parent array as src.
-     * @param {{ topicIndex: number, subPath: number[] }} src
-     * @param {{ topicIndex: number, subPath: number[] }} dst
-     * @returns {{ topicIndex: number, subPath: number[] }}
+     * Reparent a topic node to chapter root (append as last top-level topic).
+     * @param {object[]} h — cloned hierarchy
+     * @param {{ topicIndex, subPath }} src
+     * @returns {object[]|null}
      */
-    _adjustPathAfterExtract(src, dst) {
-        const srcDepth = src.subPath.length;   // 0 = root level
-        const dstDepth = dst.subPath.length;
+    _applyTopicToRoot(h, src) {
+        const srcRef  = this._resolveParentArray(h, src);
+        if (!srcRef) return null;
+        const srcNode = srcRef.parentArray?.[srcRef.index];
+        if (!srcNode) return null;
 
-        // Check whether src and dst share the same parent array
-        const srcParentPath = src.subPath.slice(0, -1);  // path to src's parent's subTopics owner
-        const dstParentPath = dst.subPath.slice(0, -1);
-
-        const sameParent =
-            src.topicIndex === dst.topicIndex
-                ? srcDepth === dstDepth && srcParentPath.every((v, i) => dstParentPath[i] === v)
-                : srcDepth === 0 && dstDepth === 0;  // both at root, same array
-
-        if (!sameParent) return dst;
-
-        // The relevant index within the shared parent array
-        const srcIdx = srcDepth === 0 ? src.topicIndex : src.subPath[src.subPath.length - 1];
-        const dstIdx = dstDepth === 0 ? dst.topicIndex : dst.subPath[dst.subPath.length - 1];
-
-        if (srcIdx >= dstIdx) return dst;  // no shift needed
-
-        // Shift the last index of dst down by 1
-        if (dstDepth === 0) {
-            return { topicIndex: dst.topicIndex - 1, subPath: [] };
-        }
-        const newSubPath = [...dst.subPath];
-        newSubPath[newSubPath.length - 1] -= 1;
-        return { topicIndex: dst.topicIndex, subPath: newSubPath };
+        srcRef.parentArray.splice(srcRef.index, 1);
+        h.push(srcNode);
+        return h;
     }
 
     /**

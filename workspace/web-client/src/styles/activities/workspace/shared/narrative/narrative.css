@@ -574,12 +574,12 @@
     opacity: 0.4;
 }
 
-/* Insert before — horizontal line above the row (topics and O* entries) */
+/* Insert before — horizontal line above the row (O* entries only) */
 .chapter-toc__drop--before {
     border-top: 2px solid var(--ec-blue, #2E75B6);
 }
 
-/* Insert after — horizontal line below the row (topics and O* entries) */
+/* Insert after — horizontal line below the row (O* entries only) */
 .chapter-toc__drop--after {
     border-bottom: 2px solid var(--ec-blue, #2E75B6);
 }
@@ -589,4 +589,18 @@
 .chapter-toc__entry--subtopic.chapter-toc__drop--into {
     background: var(--ec-light, #EBF3FB);
     border-left-color: var(--ec-blue, #2E75B6);
+}
+
+/* Chapter-root drop strip — thin zone above the first topic for reparenting
+   a topic to top level. Always present (Elaborate) but visually minimal. */
+.chapter-toc__root-drop {
+    height: 8px;
+    margin: 2px 0;
+}
+
+.chapter-toc__root-drop.chapter-toc__drop--root {
+    height: 8px;
+    background: var(--ec-light, #EBF3FB);
+    border-top: 2px solid var(--ec-blue, #2E75B6);
+    border-bottom: 2px solid var(--ec-blue, #2E75B6);
 }
