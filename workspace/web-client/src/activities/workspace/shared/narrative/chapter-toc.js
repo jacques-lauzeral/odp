@@ -606,10 +606,20 @@ export default class ChapterToc {
                 // Dropping O* on a topic row → append into topic
                 position = 'into';
             }
+        } else if (zoneIsRoot) {
+            // Root strip → reparent to chapter root
+            position = 'root';
         } else {
-            // Topic drags: single gesture. Drop onto a topic → reparent as last child.
-            // Drop onto the root strip → reparent to chapter root.
-            position = zoneIsRoot ? 'root' : 'into';
+            // Topic onto topic: three-zone split.
+            //   top third    → insert as sibling before target
+            //   middle third → reparent as last child of target
+            //   bottom third → insert as sibling after target
+            const rect  = zone.getBoundingClientRect();
+            const relY  = e.clientY - rect.top;
+            const third = rect.height / 3;
+            position = relY < third       ? 'before'
+                : relY > third * 2   ? 'after'
+                    :                      'into';
         }
 
         this._clearDropIndicators();
@@ -807,33 +817,54 @@ export default class ChapterToc {
     }
 
     /**
-     * Reparent a topic node as the LAST child of the destination topic.
-     * Topic moves do not preserve ordering — the node is always appended.
+     * Move a topic node to a destination, by one of three gestures:
+     *   'into'           → reparent as the LAST child of dst (no order preserved)
+     *   'before'/'after' → insert as a sibling of dst, before or after it
      *
-     * Both node references are resolved BEFORE any mutation. Because we then
-     * splice by holding live object references, removing the source never
-     * invalidates the destination reference — no index adjustment is needed.
+     * All references (src node + parent array, dst node + parent array) are
+     * resolved BEFORE any mutation. We then splice src out and re-insert relative
+     * to the dst node found by identity (indexOf). Because we hold live object
+     * references, the splice never invalidates them — no index arithmetic.
      *
      * @param {object[]} h — cloned hierarchy
      * @param {{ topicIndex, subPath }} src
      * @param {{ topicIndex, subPath }} dst
+     * @param {'into'|'before'|'after'} position
      * @returns {object[]|null}
      */
-    _applyTopicDrop(h, src, dst, _position) {
-        // Resolve both references on the un-mutated clone.
-        const srcRef  = this._resolveParentArray(h, src);
+    _applyTopicDrop(h, src, dst, position) {
+        // Resolve everything on the un-mutated clone.
+        const srcRef = this._resolveParentArray(h, src);
         if (!srcRef) return null;
         const srcNode = srcRef.parentArray?.[srcRef.index];
         if (!srcNode) return null;
 
-        const dstNode = this._resolveTopicNode(h, dst);
+        if (position === 'into') {
+            const dstNode = this._resolveTopicNode(h, dst);
+            if (!dstNode) return null;
+            srcRef.parentArray.splice(srcRef.index, 1);
+            if (!Array.isArray(dstNode.subTopics)) dstNode.subTopics = [];
+            dstNode.subTopics.push(srcNode);
+            return h;
+        }
+
+        // before / after: insert as sibling of dst within dst's parent array
+        const dstRef = this._resolveParentArray(h, dst);
+        if (!dstRef) return null;
+        const dstNode = dstRef.parentArray?.[dstRef.index];
         if (!dstNode) return null;
 
-        // Splice src out by its now-resolved index, then append to dst by reference.
+        // Splice src out first (references stay valid).
         srcRef.parentArray.splice(srcRef.index, 1);
-        if (!Array.isArray(dstNode.subTopics)) dstNode.subTopics = [];
-        dstNode.subTopics.push(srcNode);
 
+        // Re-find dst's current index by identity — robust to the splice above
+        // having shifted indices when src and dst shared a parent array.
+        const dstParent = dstRef.parentArray;
+        const dstIdx = dstParent.indexOf(dstNode);
+        if (dstIdx < 0) return null;
+
+        const insertAt = position === 'before' ? dstIdx : dstIdx + 1;
+        dstParent.splice(insertAt, 0, srcNode);
         return h;
     }
 
