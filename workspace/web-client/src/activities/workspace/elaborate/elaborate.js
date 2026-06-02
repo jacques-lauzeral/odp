@@ -50,6 +50,7 @@ export default class ElaborateActivity {
     // -------------------------------------------------------------------------
 
     async render(container, subPath = []) {
+        this.app.setDatasetContext({ type: 'live' });
         this.container = container;
         this._renderShell();
         return this._route(subPath);
