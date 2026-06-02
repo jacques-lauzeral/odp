@@ -52,10 +52,10 @@ class DistributedEditionImporter {
             console.log('Phase 0a: Resolving chapter identity...');
             await this._resolveChapter(sourceData, userId, context);
 
-            // Phase 0b-pre: Build anchor → topic ID map from source requirements path[].
-            // Mirrors the ID assignment order of _patchChapterOsHierarchy so that
-            // BlocksToTipTapConverter can emit n-ref marks with numeric topic IDs.
-            context.anchorToId = this._buildAnchorToIdMap(sourceData.requirements ?? []);
+            // Phase 0b-pre: Build the canonical theme-label → id map from source
+            // requirements path[]. Single source of truth — used by both the
+            // narrative converter (n-ref resolution) and _patchChapterOsHierarchy.
+            context.themeIdMap = this._buildThemeIdMap(sourceData.requirements ?? []);
 
             // Phase 0b: Patch chapter narrative from blocks[]/chapterIntro[] if present
             console.log('Phase 0b: Patching chapter narrative...');
@@ -160,34 +160,34 @@ class DistributedEditionImporter {
      * @private
      */
     /**
-     * Build a map from anchor suffix strings to numeric topic IDs.
+     * Build the canonical theme-label → opaque-id map for a chapter.
      *
-     * Source anchor format: theme_{chapterPos}_{seq} where seq starts at 2 for the first topic.
-     * Topic IDs are assigned as sequential strings starting at "1" in source requirements order,
-     * mirroring the ID assignment in _patchChapterOsHierarchy.
-     * Map: anchor suffix string (e.g. "2", "3") → topic id string (e.g. "1", "2").
+     * Walks requirements[] in source order; for each path[] (left to right),
+     * assigns the first free positive integer (as string) to every theme label
+     * the first time it is seen. This is the single source of truth for theme
+     * IDs: consumed both by BlocksToTipTapConverter (narrative n-ref resolution)
+     * and by _patchChapterOsHierarchy (osHierarchy node IDs), so the two cannot
+     * diverge. Theme labels are assumed unique within a chapter.
      *
      * @param {object[]} requirements — sourceData.requirements array
-     * @returns {Map<string, string>} anchorSuffix → topicId
+     * @returns {Map<string, string>} themeLabel → id
      * @private
      */
-    _buildAnchorToIdMap(requirements) {
-        const anchorToId = new Map();
+    _buildThemeIdMap(requirements) {
+        const labelToId = new Map();
         let nextId = 1;
-        let seq    = 2;
-        const seen = new Set();
 
         for (const req of requirements) {
             const path = req.path;
             if (!Array.isArray(path) || path.length === 0) continue;
-            const topicLabel = path[0];
-            if (!seen.has(topicLabel)) {
-                seen.add(topicLabel);
-                anchorToId.set(String(seq++), String(nextId++));
+            for (const label of path) {
+                if (!labelToId.has(label)) {
+                    labelToId.set(label, String(nextId++));
+                }
             }
         }
 
-        return anchorToId;
+        return labelToId;
     }
 
     async _patchChapterNarrative(sourceData, userId, context, summary) {
@@ -202,7 +202,7 @@ class DistributedEditionImporter {
             return;
         }
 
-        const narrative = BlocksToTipTapConverter.convert(blocks, context.chapterCode, context.anchorToId);
+        const narrative = BlocksToTipTapConverter.convert(blocks, context.chapterCode, context.themeIdMap);
         if (!narrative) {
             console.log('Empty narrative after conversion — skipping patch.');
             return;
@@ -261,16 +261,14 @@ class DistributedEditionImporter {
          * @param {number} itemId - Requirement itemId
          * @param {string} type - 'ON' | 'OR'
          */
-            // Chapter-scoped ID counter — first free positive integer assigned to each new topic node.
-            // Shared across the full hierarchy tree via a single-element array (pass-by-reference).
-        const nextId = [1];
-
         const insertAtLeaf = (topics, path, itemId, type) => {
             const [head, ...tail] = path;
 
             let node = topics.find(t => t.topic === head);
             if (!node) {
-                node = { id: String(nextId[0]++), topic: head, narrative: null, ons: [], ors: [], ocs: [], subtopics: [] };
+                // ID comes from the canonical themeIdMap — the same allocation
+                // the narrative converter resolves against.
+                node = { id: context.themeIdMap.get(head), topic: head, narrative: null, ons: [], ors: [], ocs: [], subtopics: [] };
                 topics.push(node);
             }
 

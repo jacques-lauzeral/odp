@@ -21,8 +21,9 @@
  *   ref                     → { type: 'n-ref', attrs: { value } }  (narrative reference)
  *   xref                    → { type: 'o-ref', attrs: { value } }  (O* reference)
  *   refdoc                  → { type: 'd-ref', attrs: { value } }  (strategic document reference)
- *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{anchorValue}' } }
- *                              (intra-chapter topic link; requires chapterCode passed to convert())
+ *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{themeId}' } }
+ *                              (intra-chapter theme link; resolved by link text =
+ *                               theme label via themeIdMap passed to convert())
  *
  * Output is a JSON string — consistent with how rich-text fields are stored
  * in the ODIP database (Neo4j property string).
@@ -38,14 +39,14 @@ class BlocksToTipTapConverter {
      * @param {Array|null|undefined} blocks - Source file blocks array
      * @returns {string|null} TipTap document JSON string, or null if no content
      */
-    convert(blocks, chapterCode = null, anchorToId = null) {
+    convert(blocks, chapterCode = null, themeIdMap = null) {
         if (!blocks || blocks.length === 0) {
             return null;
         }
 
-        // Store chapter code and anchor→id map for n-ref resolution
+        // Store chapter code and theme-label → id map for n-ref resolution
         this._chapterCode = chapterCode;
-        this._anchorToId  = anchorToId;
+        this._themeIdMap  = themeIdMap;
 
         const content = [];
 
@@ -260,8 +261,8 @@ class BlocksToTipTapConverter {
      *   ref                     → { type: 'n-ref', attrs: { value } }  (narrative reference)
      *   xref                    → { type: 'o-ref', attrs: { value } }  (O* reference)
      *   refdoc                  → { type: 'd-ref', attrs: { value } }  (strategic document reference)
-     *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{anchorValue}' } }
-     *                              (intra-chapter topic link; requires chapterCode passed to convert())
+     *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{themeId}' } }
+     *                              (intra-chapter theme link; resolved by link text = theme label)
      *   color                   → { type: 'textStyle', attrs: { color: value } }
      *   All others              → { type: key, attrs: { value } }      (pass-through)
      *
@@ -278,7 +279,7 @@ class BlocksToTipTapConverter {
         const node = { type: 'text', text };
 
         if (op.attributes && typeof op.attributes === 'object') {
-            const marks = this._attrsToMarks(op.attributes);
+            const marks = this._attrsToMarks(op.attributes, text);
             if (marks.length > 0) {
                 node.marks = marks;
             }
@@ -289,9 +290,11 @@ class BlocksToTipTapConverter {
 
     /**
      * Convert a Quill attributes object to a TipTap marks array.
+     * @param {object} attributes - Quill inline attributes
+     * @param {string} text - The op's text content (the link label, for anchor resolution)
      * @private
      */
-    _attrsToMarks(attributes) {
+    _attrsToMarks(attributes, text) {
         const marks = [];
 
         for (const [key, value] of Object.entries(attributes)) {
@@ -320,12 +323,12 @@ class BlocksToTipTapConverter {
                     marks.push({ type: 'd-ref', attrs: { value } });
                     break;
                 case 'anchor':
-                    // Intra-chapter topic link — resolve anchor suffix to numeric topic ID
-                    // via anchorToId map (suffix → id, built from source requirements path[]).
-                    // Anchor format: theme_{chapterPos}_{seq} — last numeric suffix is the key.
-                    if (value && this._chapterCode && this._anchorToId) {
-                        const m = /(\d+)$/.exec(value);
-                        const topicId = m ? this._anchorToId.get(m[1]) : null;
+                    // Intra-chapter theme link. The source anchor value (theme_x_y_z)
+                    // is a source-internal bookmark and is discarded; the reliable
+                    // join key is the link's visible text, which equals the theme
+                    // label. Resolve label → opaque theme id via themeIdMap.
+                    if (this._chapterCode && this._themeIdMap) {
+                        const topicId = this._themeIdMap.get(text);
                         if (topicId) {
                             marks.push({ type: 'n-ref', attrs: { value: `${this._chapterCode}/${topicId}` } });
                         }
@@ -336,7 +339,7 @@ class BlocksToTipTapConverter {
                     // Some source JSON ops wrap formatting as { attributes: { bold: true } }
                     // instead of the flat Quill convention { bold: true }.
                     if (value && typeof value === 'object') {
-                        marks.push(...this._attrsToMarks(value));
+                        marks.push(...this._attrsToMarks(value, text));
                     }
                     break;
                 default:
