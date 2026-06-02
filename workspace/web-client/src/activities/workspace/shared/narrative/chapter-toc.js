@@ -1151,15 +1151,17 @@ export default class ChapterToc {
             (raw && typeof raw === 'object')
                 ? { id: raw.id, type: raw.type ?? impliedType, code: raw.code ?? null, title: raw.title ?? null }
                 : { id: raw,    type: impliedType,             code: null,             title: null };
-        return {
-            topic:     t.topic,
-            items:     [
+        const node = {
+            id:       t.id ?? null,
+            topic:    t.topic,
+            items:    [
                 ...(t.ons ?? []).map(o => mapItem(o, 'ON')),
                 ...(t.ors ?? []).map(o => mapItem(o, 'OR')),
                 ...(t.ocs ?? []).map(o => mapItem(o, 'OC')),
             ],
             subTopics: (t.subtopics ?? []).map(s => this._normaliseTopic(s)),
         };
+        return node;
     }
 
     /**
