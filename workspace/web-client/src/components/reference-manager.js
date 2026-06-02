@@ -1,50 +1,92 @@
 import { normalizeId, idsEqual } from '/shared/src/index.js';
 
 /**
- * ReferenceManager
+ * @file reference-manager.js
+ * @description Inline single-select component supporting both flat option lists
+ * and hierarchical trees with lazy node expansion.
  *
- * Inline single-select typeahead component.
+ * ## Backward compatibility
+ * Callers that pass `options: [{value, label}, ...]` continue to work unchanged.
+ * The flat array is auto-converted to a tree of leaf nodes internally.
  *
- * Displays the selected item as a removable chip.
- * When no item is selected (or after removal), shows a text input
- * with live filtering of available options below it.
+ * ## Tree mode
+ * Pass `nodes` instead of (or in addition to) `options`:
  *
- * Config:
- *   fieldId      {string}   Required. Used to scope DOM ids.
- *   options      {Array}    [{value, label}, ...] — full option list.
- *   initialValue {*}        Single id (number, string) or null/undefined.
- *   placeholder  {string}   Input placeholder text.
- *   noneLabel    {string}   Label shown when nothing is selected (default: '— None —').
- *   readOnly     {boolean}  When true, renders chip only with no controls.
- *   onChange     {Function} Called with the new value (id or null) on every change.
+ *   nodes: [
+ *     {
+ *       value,        {string|number|null}  Selection value. null = non-selectable header.
+ *       label,        {string}              Display label.
+ *       leaf,         {boolean}             When true, no expand arrow is shown.
+ *       children,     {Node[]|undefined}    Pre-populated static children.
+ *       onExpand,     {() => Promise<Node[]>|undefined}
+ *                                           Async loader; result is cached on the node.
+ *     },
+ *     ...
+ *   ]
+ *
+ * Any node with a non-null value is selectable regardless of whether it has children.
+ * Nodes with children or onExpand get an expand/collapse toggle.
+ * onExpand is called at most once — result is cached on node._children.
+ *
+ * ## Search
+ * A filter input is shown above the tree (edit mode). Typing filters across all
+ * statically known labels (loaded nodes). Lazy nodes that have not yet been
+ * expanded are not searched (their parent label remains visible if it matches).
+ * Clearing the filter restores the full tree with its current expand state.
+ *
+ * ## Config
+ *   fieldId      {string}    Required.
+ *   options      {Array}     Flat [{value, label}] — auto-converted to leaf nodes.
+ *   nodes        {Array}     Tree nodes (takes precedence over options).
+ *   initialValue {*}         Single id or null/undefined.
+ *   placeholder  {string}    Filter input placeholder.
+ *   noneLabel    {string}    Label when nothing selected (read-only, default 'None').
+ *   readOnly     {boolean}   Chip-only display when true.
+ *   onChange     {Function}  Called with raw value string (or null) on selection.
+ *   onItemClick  {Function}  (id, node) => void — navigable chip in read mode.
+ *
+ * ## Public API
+ *   render(container)  Mount into container element.
+ *   getValue()         Return current selected id (normalised) or null.
+ *   setValue(value)    Replace selection programmatically.
+ *   destroy()          Remove listeners and clear container reference.
  */
 export default class ReferenceManager {
-    constructor(config) {
-        if (!config.fieldId) {
-            throw new Error('ReferenceManager requires fieldId');
-        }
 
-        this.config = {
-            fieldId:     config.fieldId,
-            options:     config.options     || [],
-            placeholder: config.placeholder || 'Type to search...',
-            noneLabel:   config.noneLabel   || 'None',
-            readOnly:    config.readOnly    || false,
-            onChange:    config.onChange    || (() => {}),
-            onItemClick: config.onItemClick || null  // (id, option) => void — enables navigable link in read mode
-        };
+    constructor(config) {
+        if (!config.fieldId) throw new Error('ReferenceManager requires fieldId');
+
+        this._fieldId     = config.fieldId;
+        this._placeholder = config.placeholder || 'Type to filter…';
+        this._noneLabel   = config.noneLabel   || 'None';
+        this._readOnly    = config.readOnly    || false;
+        this._onChange    = config.onChange    || (() => {});
+        this._onItemClick = config.onItemClick || null;
+
+        // Build root node list — nodes take precedence; options is the flat fallback.
+        this._roots = config.nodes
+            ? config.nodes
+            : this._flatToNodes(config.options || []);
+
+        // Expand state keyed by node identity (using index path string)
+        // _expandedPaths: Set<string>  where path = '0', '0.2', '0.2.1' etc.
+        this._expandedPaths = new Set();
+
+        // Nodes currently loading (path string → Promise)
+        this._loadingPaths = new Set();
 
         this.selectedId    = this._normalizeValue(config.initialValue);
-        this.searchTerm    = '';
+        this._selectedNode = null;  // cached node for chip label — avoids tree search after lazy expansion
+        this._filterTerm   = '';
         this.container     = null;
-        this.boundHandlers = {};
+        this._handlers     = {};
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────
 
     render(container) {
         this.container = container;
-        container.innerHTML = this._buildHtml();
+        this._mount();
         this._bindEvents();
         return container;
     }
@@ -54,229 +96,402 @@ export default class ReferenceManager {
     }
 
     setValue(value) {
-        this.selectedId = this._normalizeValue(value);
-        this.searchTerm = '';
-        this._refresh();
+        this.selectedId    = this._normalizeValue(value);
+        this._selectedNode = null;
+        this._filterTerm   = '';
+        this._rerender();
     }
 
     destroy() {
         if (this.container) {
-            this.container.removeEventListener('click',  this.boundHandlers.click);
-            this.container.removeEventListener('input',  this.boundHandlers.input);
-            this.container.removeEventListener('keydown', this.boundHandlers.keydown);
+            this.container.removeEventListener('click',   this._handlers.click);
+            this.container.removeEventListener('input',   this._handlers.input);
+            this.container.removeEventListener('keydown', this._handlers.keydown);
             this.container = null;
         }
-        this.selectedId    = null;
-        this.searchTerm    = '';
-        this.boundHandlers = {};
+        this.selectedId  = null;
+        this._filterTerm = '';
+        this._handlers   = {};
     }
 
-    // ─── Rendering ───────────────────────────────────────────────────────────
+    // ─── Mount / rerender ────────────────────────────────────────────────────
 
-    _buildHtml() {
-        return `
-            <div class="reference-manager" id="${this.config.fieldId}-rm">
-                ${this._renderContent()}
+    _mount() {
+        this.container.innerHTML = `
+            <div class="reference-manager" id="${this._eid('rm')}">
+                ${this._renderInner()}
                 <input type="hidden"
-                       id="${this.config.fieldId}-data"
-                       name="${this.config.fieldId}"
-                       value="${this._escapeHtml(this.selectedId ?? '')}">
-            </div>
-        `;
+                       id="${this._eid('data')}"
+                       name="${this._fieldId}"
+                       value="${this._esc(this.selectedId ?? '')}">
+            </div>`;
     }
 
-    _renderContent() {
-        if (this.selectedId != null) {
-            return this._renderChip();
-        }
-        return this._renderSearch();
+    _rerender() {
+        const rm = this._rm();
+        if (!rm) return;
+        rm.innerHTML = `
+            ${this._renderInner()}
+            <input type="hidden"
+                   id="${this._eid('data')}"
+                   name="${this._fieldId}"
+                   value="${this._esc(this.selectedId ?? '')}">`;
     }
+
+    _rerenderTree() {
+        const rm = this._rm();
+        if (!rm) return;
+        // Replace only the tree div — input element is left untouched to preserve focus.
+        const treeEl = rm.querySelector('.reference-manager-tree');
+        if (treeEl) {
+            const nodes = this._filterTerm.trim()
+                ? this._filterNodes(this._roots, this._filterTerm.toLowerCase())
+                : this._roots;
+            treeEl.innerHTML = nodes.length > 0
+                ? this._renderNodes(nodes, '', 0)
+                : this._filterTerm
+                    ? '<div class="reference-manager-no-results">No matching items</div>'
+                    : '';
+        } else {
+            this._rerender();
+        }
+        this._syncHidden();
+    }
+
+    // ─── Inner content ───────────────────────────────────────────────────────
+
+    _renderInner() {
+        if (this.selectedId != null) return this._renderChip();
+        if (this._readOnly) {
+            return `<span class="reference-manager-none">${this._esc(this._noneLabel)}</span>`;
+        }
+        return this._renderBrowse();
+    }
+
+    // ─── Chip ─────────────────────────────────────────────────────────────────
 
     _renderChip() {
-        const option = this.config.options.find(o => idsEqual(o.value, this.selectedId));
-        const label  = option ? option.label : `ID ${this.selectedId}`;
+        const node  = this._selectedNode ?? this._findNode(this.selectedId, this._roots);
+        const label = node ? node.label : `ID ${this.selectedId}`;
 
-        if (this.config.readOnly) {
-            if (this.config.onItemClick) {
+        if (this._readOnly) {
+            if (this._onItemClick) {
                 return `<span class="selected-chip selected-chip--link"
-                              data-item-id="${this._escapeHtml(String(this.selectedId))}"
-                              role="link"
-                              tabindex="0"
-                              title="Open ${this._escapeHtml(label)}"
-                        >${this._escapeHtml(label)}</span>`;
+                              data-item-id="${this._esc(String(this.selectedId))}"
+                              role="link" tabindex="0"
+                              title="Open ${this._esc(label)}"
+                        >${this._esc(label)}</span>`;
             }
-            return `<span class="selected-chip">${this._escapeHtml(label)}</span>`;
+            return `<span class="selected-chip">${this._esc(label)}</span>`;
         }
 
-        return `
-            <span class="selected-chip">
-                ${this._escapeHtml(label)}
-                <button type="button" class="chip-remove" title="Remove">×</button>
-            </span>
-        `;
+        return `<span class="selected-chip">
+                    ${this._esc(label)}
+                    <button type="button" class="chip-remove" title="Remove">×</button>
+                </span>`;
     }
 
-    _renderSearch() {
-        if (this.config.readOnly) {
-            return `<span class="reference-manager-none">${this._escapeHtml(this.config.noneLabel)}</span>`;
-        }
+    // ─── Browse area (filter + tree) ─────────────────────────────────────────
 
-        const results = this._getFilteredOptions();
+    _renderBrowse() {
+        const nodes = this._filterTerm.trim()
+            ? this._filterNodes(this._roots, this._filterTerm.toLowerCase())
+            : this._roots;
 
         return `
-            <input type="text"
-                   id="${this.config.fieldId}-search"
-                   class="odip-input reference-manager-input"
-                   placeholder="${this._escapeHtml(this.config.placeholder)}"
-                   value="${this._escapeHtml(this.searchTerm)}"
-                   autocomplete="off">
-            ${results.length > 0 ? `
-                <ul class="reference-manager-results">
-                    ${results.map(o => `
-                        <li class="reference-manager-result-item"
-                            data-value="${this._escapeHtml(String(o.value))}">
-                            ${this._escapeHtml(o.label)}
-                        </li>
-                    `).join('')}
-                </ul>
-            ` : this.searchTerm ? `
-                <div class="reference-manager-no-results">No matching items</div>
-            ` : ''}
-        `;
+            <div class="reference-manager-browse">
+                <input type="text"
+                       id="${this._eid('search')}"
+                       class="odip-input reference-manager-input"
+                       placeholder="${this._esc(this._placeholder)}"
+                       value="${this._esc(this._filterTerm)}"
+                       autocomplete="off">
+                <div class="reference-manager-tree">
+                    ${nodes.length > 0
+            ? this._renderNodes(nodes, '', 0)
+            : this._filterTerm
+                ? '<div class="reference-manager-no-results">No matching items</div>'
+                : ''}
+                </div>
+            </div>`;
+    }
+
+    /**
+     * Render a list of nodes at a given indent depth.
+     * @param {object[]} nodes
+     * @param {string}   pathPrefix   dot-separated index path of parent, '' for root
+     * @param {number}   depth
+     * @returns {string}
+     */
+    _renderNodes(nodes, pathPrefix, depth) {
+        return nodes.map((node, idx) => {
+            const path     = pathPrefix ? `${pathPrefix}.${idx}` : String(idx);
+            const hasKids  = this._nodeHasChildren(node);
+            const expanded = this._expandedPaths.has(path);
+            const loading  = this._loadingPaths.has(path);
+            const selectable = node.value != null;
+            const isSelected = selectable && idsEqual(node.value, this.selectedId);
+
+            const indent = depth * 16; // px per level
+
+            const expandBtn = hasKids
+                ? `<button type="button"
+                           class="rm-expand-btn${loading ? ' rm-expand-btn--loading' : ''}"
+                           data-path="${this._esc(path)}"
+                           title="${expanded ? 'Collapse' : 'Expand'}"
+                   >${loading ? '…' : expanded ? '▾' : '▸'}</button>`
+                : `<span class="rm-expand-spacer"></span>`;
+
+            const displayLabel = node.displayLabel ?? node.label;
+
+            const labelEl = selectable
+                ? `<button type="button"
+                           class="rm-node-label${isSelected ? ' rm-node-label--selected' : ''}"
+                           data-value="${this._esc(String(node.value))}"
+                           data-path="${this._esc(path)}"
+                   >${this._esc(displayLabel)}</button>`
+                : `<span class="rm-node-label rm-node-label--header">${this._esc(displayLabel)}</span>`;
+
+            const children = (expanded && !loading)
+                ? this._renderExpandedChildren(node, path, depth)
+                : '';
+
+            return `<div class="rm-node" style="padding-left:${indent}px" data-node-path="${this._esc(path)}">
+                        <div class="rm-node-row">
+                            ${expandBtn}
+                            ${labelEl}
+                        </div>
+                        ${children}
+                    </div>`;
+        }).join('');
+    }
+
+    _renderExpandedChildren(node, path, depth) {
+        const kids = node._children ?? node.children ?? [];
+        if (!kids.length) return '';
+        return `<div class="rm-node-children">
+                    ${this._renderNodes(kids, path, depth + 1)}
+                </div>`;
+    }
+
+    // ─── Filtering ───────────────────────────────────────────────────────────
+
+    /**
+     * Return a filtered subset of nodes whose label (or any descendant label)
+     * matches the term. Matched nodes are returned with matching children only.
+     * Lazy nodes that haven't been expanded are included if their own label matches.
+     * @param {object[]} nodes
+     * @param {string}   term  lowercase
+     * @returns {object[]}
+     */
+    _filterNodes(nodes, term) {
+        const result = [];
+        for (const node of nodes) {
+            const selfMatch = node.label.toLowerCase().includes(term);
+            const kids = node._children ?? node.children ?? [];
+            const filteredKids = kids.length ? this._filterNodes(kids, term) : [];
+            if (selfMatch || filteredKids.length) {
+                result.push({ ...node, _children: filteredKids.length ? filteredKids : (node._children ?? node.children) });
+            }
+        }
+        return result;
     }
 
     // ─── Events ──────────────────────────────────────────────────────────────
 
     _bindEvents() {
-        if (this.config.readOnly) {
-            if (this.config.onItemClick) {
-                this.boundHandlers.click = e => this._handleReadOnlyClick(e);
-                this.container.addEventListener('click', this.boundHandlers.click);
+        if (this._readOnly) {
+            if (this._onItemClick) {
+                this._handlers.click = e => this._handleReadOnlyClick(e);
+                this.container.addEventListener('click', this._handlers.click);
             }
             return;
         }
 
-        this.boundHandlers.click   = e => this._handleClick(e);
-        this.boundHandlers.input   = e => this._handleInput(e);
-        this.boundHandlers.keydown = e => this._handleKeydown(e);
+        this._handlers.click   = e => this._handleClick(e);
+        this._handlers.input   = e => this._handleInput(e);
+        this._handlers.keydown = e => this._handleKeydown(e);
 
-        this.container.addEventListener('click',   this.boundHandlers.click);
-        this.container.addEventListener('input',   this.boundHandlers.input);
-        this.container.addEventListener('keydown', this.boundHandlers.keydown);
+        this.container.addEventListener('click',   this._handlers.click);
+        this.container.addEventListener('input',   this._handlers.input);
+        this.container.addEventListener('keydown', this._handlers.keydown);
     }
 
     _handleReadOnlyClick(e) {
         e.stopPropagation();
         const chip = e.target.closest('[data-item-id]');
         if (!chip) return;
-        const id     = this._normalizeValue(chip.dataset.itemId);
-        const option = this.config.options.find(o => idsEqual(o.value, id));
-        if (option) {
-            this.config.onItemClick(id, option);
-        }
+        const id   = this._normalizeValue(chip.dataset.itemId);
+        const node = this._findNode(id, this._roots);
+        if (node) this._onItemClick(id, node);
     }
 
     _handleClick(e) {
-        // Remove chip
+        // ── Chip remove ──────────────────────────────────────────────────────
         if (e.target.classList.contains('chip-remove')) {
-            this.selectedId = null;
-            this.searchTerm = '';
-            this._refresh();
-            this.config.onChange(null);
-            // Focus search input after removal
+            this.selectedId    = null;
+            this._selectedNode = null;
+            this._filterTerm   = '';
+            this._rerender();
+            this._onChange(null);
             this.container.querySelector('.reference-manager-input')?.focus();
             return;
         }
 
-        // Select result item
-        const item = e.target.closest('.reference-manager-result-item');
-        if (item) {
-            const rawValue = item.dataset.value;
-            this.selectedId = this._normalizeValue(rawValue);
-            this.searchTerm = '';
-            this._refresh();
-            this.config.onChange(rawValue);
+        // ── Expand/collapse toggle ────────────────────────────────────────────
+        const expandBtn = e.target.closest('.rm-expand-btn');
+        if (expandBtn) {
+            e.stopPropagation();
+            const path = expandBtn.dataset.path;
+            this._toggleExpand(path);
+            return;
+        }
+
+        // ── Node label selection ──────────────────────────────────────────────
+        const labelBtn = e.target.closest('.rm-node-label[data-value]');
+        if (labelBtn) {
+            const raw  = labelBtn.dataset.value;
+            const node = this._nodeAtPath(labelBtn.dataset.path);
+            this.selectedId    = this._normalizeValue(raw);
+            this._selectedNode = node ?? null;
+            this._filterTerm   = '';
+            this._rerender();
+            this._onChange(raw, node);
+            return;
         }
     }
 
     _handleInput(e) {
         if (e.target.classList.contains('reference-manager-input')) {
-            this.searchTerm = e.target.value;
-            this._refreshResults();
+            this._filterTerm = e.target.value;
+            this._rerenderTree();
         }
     }
 
     _handleKeydown(e) {
         if (e.key === 'Escape' && e.target.classList.contains('reference-manager-input')) {
-            this.searchTerm = '';
-            this._refreshResults();
+            this._filterTerm = '';
+            this._rerenderTree();
         }
     }
 
-    // ─── Refresh ─────────────────────────────────────────────────────────────
+    // ─── Expand / lazy load ──────────────────────────────────────────────────
 
-    _refresh() {
-        const rm = this.container?.querySelector(`#${this.config.fieldId}-rm`);
-        if (!rm) return;
+    /**
+     * Toggle expand state for the node at the given path string.
+     * If the node has an onExpand callback and hasn't been loaded yet, load it first.
+     * @param {string} path
+     */
+    _toggleExpand(path) {
+        const node = this._nodeAtPath(path);
+        if (!node) return;
 
-        // Replace content but keep hidden input
-        const hidden = this.container.querySelector(`#${this.config.fieldId}-data`);
-        rm.innerHTML = this._renderContent() + `
-            <input type="hidden"
-                   id="${this.config.fieldId}-data"
-                   name="${this.config.fieldId}"
-                   value="${this._escapeHtml(this.selectedId ?? '')}">
-        `;
-    }
-
-    _refreshResults() {
-        const rm = this.container?.querySelector(`#${this.config.fieldId}-rm`);
-        if (!rm || this.selectedId != null) return;
-
-        // Re-render only the results list below the input
-        const existing = rm.querySelector('.reference-manager-results, .reference-manager-no-results');
-        if (existing) existing.remove();
-
-        const results = this._getFilteredOptions();
-        if (results.length > 0) {
-            const ul = document.createElement('ul');
-            ul.className = 'reference-manager-results';
-            ul.innerHTML = results.map(o => `
-                <li class="reference-manager-result-item"
-                    data-value="${this._escapeHtml(String(o.value))}">
-                    ${this._escapeHtml(o.label)}
-                </li>
-            `).join('');
-            rm.appendChild(ul);
-        } else if (this.searchTerm) {
-            const div = document.createElement('div');
-            div.className = 'reference-manager-no-results';
-            div.textContent = 'No matching items';
-            rm.appendChild(div);
+        if (this._expandedPaths.has(path)) {
+            this._expandedPaths.delete(path);
+            this._rerenderTree();
+            return;
         }
 
-        // Sync hidden input
-        const hidden = rm.querySelector(`#${this.config.fieldId}-data`);
-        if (hidden) hidden.value = this.selectedId ?? '';
+        // Already has loaded children — just expand
+        if (node._children || node.children?.length) {
+            this._expandedPaths.add(path);
+            this._rerenderTree();
+            return;
+        }
+
+        // Lazy load via onExpand
+        if (typeof node.onExpand === 'function') {
+            this._loadingPaths.add(path);
+            this._rerenderTree();
+            Promise.resolve(node.onExpand(node)).then(children => {
+                node._children = children ?? [];
+                this._loadingPaths.delete(path);
+                this._expandedPaths.add(path);
+                this._rerenderTree();
+            }).catch(err => {
+                console.error(`[ReferenceManager] onExpand failed for path ${path}:`, err);
+                this._loadingPaths.delete(path);
+                this._rerenderTree();
+            });
+            return;
+        }
+
+        // Leaf — nothing to expand
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    _getFilteredOptions() {
-        if (!this.searchTerm || !this.searchTerm.trim()) return [];
-        const term = this.searchTerm.toLowerCase();
-        return this.config.options
-            .filter(o => !idsEqual(o.value, this.selectedId))
-            .filter(o => o.label.toLowerCase().includes(term))
-            .slice(0, 50);
+    /**
+     * Convert flat [{value, label}] array to leaf node tree.
+     * @param {object[]} options
+     * @returns {object[]}
+     */
+    _flatToNodes(options) {
+        return options.map(o => ({ value: o.value, label: o.label, leaf: true }));
     }
+
+    /**
+     * Returns true if the node has children (static or lazy).
+     * @param {object} node
+     */
+    _nodeHasChildren(node) {
+        if (node.leaf) return false;
+        if (node._children?.length) return true;
+        if (node.children?.length) return true;
+        if (typeof node.onExpand === 'function') return true;
+        return false;
+    }
+
+    /**
+     * Walk the tree to find a node by its selection value.
+     * Searches both static children and already-loaded lazy children.
+     * @param {*}        value
+     * @param {object[]} nodes
+     * @returns {object|null}
+     */
+    _findNode(value, nodes) {
+        for (const node of nodes) {
+            if (node.value != null && idsEqual(node.value, value)) return node;
+            const kids = node._children ?? node.children ?? [];
+            if (kids.length) {
+                const found = this._findNode(value, kids);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Walk the root tree using a dot-separated index path to retrieve a node.
+     * @param {string} path  e.g. '0', '2.1', '0.3.2'
+     * @returns {object|null}
+     */
+    _nodeAtPath(path) {
+        const parts = path.split('.').map(Number);
+        let nodes = this._roots;
+        let node  = null;
+        for (const idx of parts) {
+            if (!nodes || idx >= nodes.length) return null;
+            node  = nodes[idx];
+            nodes = node._children ?? node.children ?? [];
+        }
+        return node;
+    }
+
+    _syncHidden() {
+        const hidden = this._rm()?.querySelector(`#${this._eid('data')}`);
+        if (hidden) hidden.value = this.selectedId ?? '';
+    }
+
+    _rm()       { return this.container?.querySelector(`#${this._eid('rm')}`); }
+    _eid(suf)   { return `${this._fieldId}-${suf}`; }
 
     _normalizeValue(value) {
         if (value === null || value === undefined || value === '') return null;
         return normalizeId(value);
     }
 
-    _escapeHtml(text) {
+    _esc(text) {
         if (text === null || text === undefined) return '';
         const d = document.createElement('div');
         d.textContent = String(text);

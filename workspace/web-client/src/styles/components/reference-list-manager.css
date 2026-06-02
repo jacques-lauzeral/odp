@@ -277,6 +277,126 @@
     font-size: var(--font-size-sm);
 }
 
+/* --- Reference manager — browse / tree ------------------------------------- */
+
+.reference-manager-browse {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.reference-manager-tree {
+    overflow-y: auto;
+    max-height: 260px;
+    padding: var(--space-1) 0;
+}
+
+/* Node wrapper — padding-left set inline for depth indentation */
+.rm-node {
+    display: block;
+}
+
+/* Row: expand button + label, horizontally aligned */
+.rm-node-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 24px;
+}
+
+/* Expand / collapse toggle */
+.rm-expand-btn {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-base);
+    transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.rm-expand-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.rm-expand-btn--loading {
+    color: var(--text-tertiary);
+    cursor: wait;
+}
+
+/* Spacer — same width as expand button, for leaf nodes */
+.rm-expand-spacer {
+    flex-shrink: 0;
+    width: 18px;
+}
+
+/* Selectable node label */
+.rm-node-label {
+    flex: 1;
+    min-width: 0;
+    padding: 3px var(--space-2);
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-base);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.rm-node-label:hover {
+    background: var(--primary-50);
+    color: var(--ec-blue);
+}
+
+.rm-node-label--selected {
+    background: var(--primary-100);
+    color: var(--ec-blue);
+    font-weight: var(--font-weight-medium);
+}
+
+/* Non-selectable group header */
+.rm-node-label--header {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: default;
+    padding: var(--space-1) var(--space-2);
+}
+
+.rm-node-label--header:hover {
+    background: none;
+    color: var(--text-secondary);
+}
+
+/* Children container — no extra indent (indent is on the node itself) */
+.rm-node-children {
+    display: block;
+}
+
+/* No-results message */
+.reference-manager-no-results {
+    padding: var(--space-3) var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
 /* --- Responsive ------------------------------------------------------------- */
 
 @media (max-width: 768px) {

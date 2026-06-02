@@ -79,6 +79,70 @@
     border-color: var(--ec-blue, #185FA5);
 }
 
+/* ── Toolbar heading select ────────────────────────────────────────────────── */
+
+.rich-text-component__toolbar-select {
+    font-size: 11px;
+    padding: 4px 6px;
+    border: 0.5px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-base, 0.25rem);
+    background: transparent;
+    color: var(--text-secondary, #6b7280);
+    cursor: pointer;
+    height: 24px;
+    line-height: 1;
+}
+
+.rich-text-component__toolbar-select:hover {
+    background: var(--bg-tertiary, #f3f4f6);
+    border-color: var(--border-primary, #e5e7eb);
+    color: var(--text-primary, #111827);
+}
+
+/* ── Table dropdown menus ──────────────────────────────────────────────────── */
+
+.rich-text-component__menu-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.rich-text-component__dropdown-menu {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 200;
+    min-width: 160px;
+    background: white;
+    border: 1px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-base, 0.25rem);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    padding: var(--space-1, 0.25rem) 0;
+}
+
+.rich-text-component__dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 5px var(--space-3, 0.75rem);
+    font-size: 11px;
+    color: var(--text-primary, #111827);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.rich-text-component__dropdown-item:hover {
+    background: var(--bg-secondary, #f9fafb);
+    color: var(--ec-blue, #185FA5);
+}
+
+.rich-text-component__dropdown-sep {
+    height: 1px;
+    background: var(--border-primary, #e5e7eb);
+    margin: var(--space-1, 0.25rem) 0;
+}
+
 /* ── Editor area ───────────────────────────────────────────────────────────── */
 
 .rich-text-component__editor {
@@ -252,6 +316,34 @@
 
 .rich-text-ref-picker-mount {
     min-height: 120px;
+}
+
+/* ── Reference picker footer (label confirmation) ──────────────────────────── */
+
+.rich-text-ref-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+    border-top: 1px solid var(--border-primary, #e5e7eb);
+    background: var(--bg-secondary, #f9fafb);
+}
+
+.rich-text-ref-footer__label {
+    font-size: 11px;
+    color: var(--text-secondary, #6b7280);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.rich-text-ref-footer__input {
+    flex: 1;
+    min-width: 0;
+}
+
+.rich-text-ref-footer__input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Authored references in edit mode — subtle affordance so the author can see

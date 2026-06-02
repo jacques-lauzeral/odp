@@ -10,6 +10,13 @@
  *   edit      — full toolbar, editable content, onChange callback
  *   read-only — no toolbar, non-editable, no focus theft
  *
+ * Toolbar sections (edit mode):
+ *   1. Block style   — <select> Normal / H1 / H2 / H3 (when headings: true)
+ *   2. Inline marks  — Bold · Italic · Underline · Strikethrough
+ *   3. Insert        — External link · Internal reference · Image
+ *   4. Lists         — Bullet list · Ordered list
+ *   5. Table         — Insert · Row▾ · Col▾ · Cell▾ · Delete (when tables: true)
+ *
  * Options:
  *   headings  {boolean}  — enable heading toolbar buttons (narrative context only)
  *   images    {boolean}  — enable image upload/embed (default: true)
@@ -345,6 +352,11 @@ export default class RichTextComponent {
         const toolbar = document.createElement('div');
         toolbar.className = 'rich-text-component__toolbar';
 
+        // ── Block style selector (narrative context only) ───────────────────────
+        if (this._headings) {
+            toolbar.appendChild(this._createHeadingGroup());
+        }
+
         // ── Text formatting group ───────────────────────────────────────────────
         toolbar.appendChild(this._createGroup([
             this._btn('bold',      'B',   'Bold',      () => this._editor.chain().focus().toggleBold().run()),
@@ -352,15 +364,6 @@ export default class RichTextComponent {
             this._btn('underline', 'U',   'Underline', () => this._editor.chain().focus().toggleUnderline().run()),
             this._btn('strike',    'S̶',   'Strikethrough', () => this._editor.chain().focus().toggleStrike().run()),
         ]));
-
-        // ── Headings group (narrative context only) ─────────────────────────────
-        if (this._headings) {
-            toolbar.appendChild(this._createGroup([
-                this._btn('h1', 'H1', 'Heading 1', () => this._editor.chain().focus().toggleHeading({ level: 1 }).run()),
-                this._btn('h2', 'H2', 'Heading 2', () => this._editor.chain().focus().toggleHeading({ level: 2 }).run()),
-                this._btn('h3', 'H3', 'Heading 3', () => this._editor.chain().focus().toggleHeading({ level: 3 }).run()),
-            ]));
-        }
 
         // ── Lists group ─────────────────────────────────────────────────────────
         toolbar.appendChild(this._createGroup([
@@ -396,20 +399,7 @@ export default class RichTextComponent {
 
         // ── Table group ─────────────────────────────────────────────────────────
         if (this._tables) {
-            toolbar.appendChild(this._createGroup([
-                this._btn('insertTable',    '⊞',    'Insert table',
-                    () => this._editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()),
-                this._btn('addRowAfter',    '+row', 'Add row below',
-                    () => this._editor.chain().focus().addRowAfter().run()),
-                this._btn('deleteRow',      '-row', 'Delete row',
-                    () => this._editor.chain().focus().deleteRow().run()),
-                this._btn('addColumnAfter', '+col', 'Add column right',
-                    () => this._editor.chain().focus().addColumnAfter().run()),
-                this._btn('deleteColumn',   '-col', 'Delete column',
-                    () => this._editor.chain().focus().deleteColumn().run()),
-                this._btn('deleteTable',    '✕tbl', 'Delete table',
-                    () => this._editor.chain().focus().deleteTable().run()),
-            ]));
+            toolbar.appendChild(this._createTableGroup());
         }
 
         // Update active states on editor selection/transaction
@@ -419,6 +409,155 @@ export default class RichTextComponent {
         this._editor?.on('selectionUpdate', toolbar._updateActiveStates);
 
         return toolbar;
+    }
+
+    /**
+     * Create the block-style selector group (Normal / H1 / H2 / H3).
+     * Wrapped in a group div for consistent separator styling.
+     * @private
+     */
+    _createHeadingGroup() {
+        const select = document.createElement('select');
+        select.className = 'rich-text-component__toolbar-select';
+        select.title = 'Block style';
+        [
+            { value: 'normal', label: 'Normal' },
+            { value: 'h1',     label: 'H1' },
+            { value: 'h2',     label: 'H2' },
+            { value: 'h3',     label: 'H3' },
+        ].forEach(({ value, label }) => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            select.appendChild(opt);
+        });
+
+        select.addEventListener('mousedown', (e) => {
+            // Allow native select to open; just prevent editor blur
+            e.stopPropagation();
+        });
+        select.addEventListener('change', () => {
+            const val = select.value;
+            if (val === 'normal') {
+                this._editor.chain().focus().setParagraph().run();
+            } else {
+                const level = parseInt(val.replace('h', ''), 10);
+                this._editor.chain().focus().setHeading({ level }).run();
+            }
+        });
+
+        const group = document.createElement('div');
+        group.className = 'rich-text-component__toolbar-group';
+        group.appendChild(select);
+        return group;
+    }
+
+    /**
+     * Create the table controls group.
+     * Renders: ⊞ Insert · Row▾ · Col▾ · Cell▾ · ✕ Delete
+     * Row/Col/Cell each open a small dropdown menu on click.
+     * @private
+     */
+    _createTableGroup() {
+        const group = document.createElement('div');
+        group.className = 'rich-text-component__toolbar-group';
+
+        // ── Insert table ────────────────────────────────────────────────────────
+        group.appendChild(this._btn('insertTable', '⊞', 'Insert table',
+            () => this._editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()));
+
+        // ── Row menu ────────────────────────────────────────────────────────────
+        group.appendChild(this._tableMenuBtn('Row', [
+            { label: 'Add row before',    action: () => this._editor.chain().focus().addRowBefore().run() },
+            { label: 'Add row after',     action: () => this._editor.chain().focus().addRowAfter().run() },
+            { label: 'Delete row',        action: () => this._editor.chain().focus().deleteRow().run() },
+            { label: '─', separator: true },
+            { label: 'Toggle header row', action: () => this._editor.chain().focus().toggleHeaderRow().run() },
+        ]));
+
+        // ── Column menu ─────────────────────────────────────────────────────────
+        group.appendChild(this._tableMenuBtn('Col', [
+            { label: 'Add column before',    action: () => this._editor.chain().focus().addColumnBefore().run() },
+            { label: 'Add column after',     action: () => this._editor.chain().focus().addColumnAfter().run() },
+            { label: 'Delete column',        action: () => this._editor.chain().focus().deleteColumn().run() },
+            { label: '─', separator: true },
+            { label: 'Toggle header column', action: () => this._editor.chain().focus().toggleHeaderColumn().run() },
+        ]));
+
+        // ── Cell menu ───────────────────────────────────────────────────────────
+        group.appendChild(this._tableMenuBtn('Cell', [
+            { label: 'Merge cells',  action: () => this._editor.chain().focus().mergeCells().run() },
+            { label: 'Split cell',   action: () => this._editor.chain().focus().splitCell().run() },
+        ]));
+
+        // ── Delete table ────────────────────────────────────────────────────────
+        group.appendChild(this._btn('deleteTable', '✕', 'Delete table',
+            () => this._editor.chain().focus().deleteTable().run()));
+
+        return group;
+    }
+
+    /**
+     * Create a toolbar dropdown-menu button (label + ▾ arrow).
+     * Clicking opens a small positioned menu; clicking an item executes its action
+     * and closes the menu. Clicking outside also closes.
+     * @param {string} label
+     * @param {Array<{label:string, action?:Function, separator?:boolean}>} items
+     * @private
+     */
+    _tableMenuBtn(label, items) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'rich-text-component__menu-wrapper';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'odip-btn rich-text-component__toolbar-btn rich-text-component__menu-trigger';
+        btn.title = label;
+        btn.textContent = `${label} ▾`;
+
+        const menu = document.createElement('div');
+        menu.className = 'rich-text-component__dropdown-menu';
+        menu.style.display = 'none';
+
+        items.forEach(item => {
+            if (item.separator) {
+                const sep = document.createElement('div');
+                sep.className = 'rich-text-component__dropdown-sep';
+                menu.appendChild(sep);
+                return;
+            }
+            const itemEl = document.createElement('button');
+            itemEl.type = 'button';
+            itemEl.className = 'rich-text-component__dropdown-item';
+            itemEl.textContent = item.label;
+            itemEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                item.action();
+                menu.style.display = 'none';
+            });
+            menu.appendChild(itemEl);
+        });
+
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const isOpen = menu.style.display !== 'none';
+            // Close any other open menus in this toolbar
+            this._toolbar?.querySelectorAll('.rich-text-component__dropdown-menu').forEach(m => {
+                m.style.display = 'none';
+            });
+            menu.style.display = isOpen ? 'none' : 'block';
+        });
+
+        // Close on outside click
+        document.addEventListener('mousedown', (e) => {
+            if (!wrapper.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
+
+        wrapper.appendChild(btn);
+        wrapper.appendChild(menu);
+        return wrapper;
     }
 
     /**
@@ -461,6 +600,17 @@ export default class RichTextComponent {
      */
     _updateToolbarActiveStates(toolbar) {
         if (!this._editor) return;
+
+        // Heading select — reflect current block type
+        const headingSelect = toolbar.querySelector('.rich-text-component__toolbar-select');
+        if (headingSelect) {
+            if (this._editor.isActive('heading', { level: 1 })) headingSelect.value = 'h1';
+            else if (this._editor.isActive('heading', { level: 2 })) headingSelect.value = 'h2';
+            else if (this._editor.isActive('heading', { level: 3 })) headingSelect.value = 'h3';
+            else headingSelect.value = 'normal';
+        }
+
+        // Toolbar buttons — inline marks and list state
         toolbar.querySelectorAll('[data-action]').forEach(btn => {
             const action = btn.dataset.action;
             let isActive = false;
@@ -469,9 +619,6 @@ export default class RichTextComponent {
                 case 'italic':       isActive = this._editor.isActive('italic');       break;
                 case 'underline':    isActive = this._editor.isActive('underline');    break;
                 case 'strike':       isActive = this._editor.isActive('strike');       break;
-                case 'h1':           isActive = this._editor.isActive('heading', { level: 1 }); break;
-                case 'h2':           isActive = this._editor.isActive('heading', { level: 2 }); break;
-                case 'h3':           isActive = this._editor.isActive('heading', { level: 3 }); break;
                 case 'bulletList':   isActive = this._editor.isActive('bulletList');   break;
                 case 'orderedList':  isActive = this._editor.isActive('orderedList'); break;
                 case 'link':         isActive = this._editor.isActive('link');         break;
@@ -534,13 +681,24 @@ export default class RichTextComponent {
                 <div class="search-popup-results">
                     <div class="rich-text-ref-picker-mount"></div>
                 </div>
+                <div class="rich-text-ref-footer">
+                    <label class="rich-text-ref-footer__label">Link text</label>
+                    <input type="text"
+                           class="odip-input rich-text-ref-footer__input"
+                           placeholder="Select a reference above…"
+                           disabled>
+                    <button type="button" class="odip-btn odip-btn--primary rich-text-ref-footer__accept" disabled>Insert</button>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
         this._refOverlay = overlay;
 
-        const mountEl = overlay.querySelector('.rich-text-ref-picker-mount');
-        let currentType = 'o-ref';
+        const mountEl   = overlay.querySelector('.rich-text-ref-picker-mount');
+        const labelInput = overlay.querySelector('.rich-text-ref-footer__input');
+        const acceptBtn  = overlay.querySelector('.rich-text-ref-footer__accept');
+        let currentType  = 'o-ref';
+        let pendingId    = null;
 
         const close = () => {
             if (this._refPicker) { this._refPicker.destroy(); this._refPicker = null; }
@@ -549,21 +707,36 @@ export default class RichTextComponent {
             this._refSel = null;
         };
 
+        const onSelect = (id, node) => {
+            if (id == null) return;
+            pendingId = String(id);
+            labelInput.value    = node ? node.label : String(id);
+            labelInput.disabled = false;
+            acceptBtn.disabled  = false;
+            labelInput.focus();
+            labelInput.select();
+        };
+
+        acceptBtn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            if (!pendingId) return;
+            this._applyRef(currentType, pendingId, labelInput.value.trim() || pendingId);
+            close();
+        });
+
         const mountPicker = (type) => {
             if (this._refPicker) { this._refPicker.destroy(); this._refPicker = null; }
             mountEl.innerHTML = '';
+            pendingId           = null;
+            labelInput.value    = '';
+            labelInput.disabled = true;
+            acceptBtn.disabled  = true;
             this._refPicker = new ReferenceManager({
-                fieldId: 'rt-ref-picker',
-                options: this._linkProvider.options(type),
+                fieldId:      'rt-ref-picker',
+                nodes:        this._linkProvider.nodes(type),
                 initialValue: null,
-                placeholder: 'Type to search…',
-                onChange: (id) => {
-                    if (id == null) return;
-                    const opt = this._linkProvider.options(type)
-                        .find(o => String(o.value) === String(id));
-                    this._applyRef(type, String(id), opt ? opt.label : String(id));
-                    close();
-                },
+                placeholder:  'Type to filter…',
+                onChange:     onSelect,
             });
             this._refPicker.render(mountEl);
             mountEl.querySelector('.reference-manager-input')?.focus();
