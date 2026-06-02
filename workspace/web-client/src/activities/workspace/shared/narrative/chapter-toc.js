@@ -300,7 +300,7 @@ export default class ChapterToc {
         const hasUnassigned = this._unassignedOStars.length > 0;
 
         treeEl.innerHTML = [
-            ...hierarchy.map((topic, ti) => this._renderTopic(topic, ti)),
+            ...hierarchy.map((topic, ti) => this._renderTopic(topic, ti, 0)),
             hasUnassigned ? this._renderUnassignedBucket() : '',
             (!hasTopics && !hasUnassigned) ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>' : '',
         ].join('');
@@ -325,18 +325,20 @@ export default class ChapterToc {
         if (btn) this._handleChapterEntryClick(btn);
     }
 
-    _renderTopic(topic, topicIndex) {
+    _renderTopic(topic, topicIndex, depth = 0) {
         const key         = `topic-${topicIndex}`;
         const collapsed   = this._collapsedTopics.has(key);
         const hasChildren = (topic.subTopics?.length > 0) || (topic.items?.length > 0);
         const draggable   = this._isEditable ? 'draggable="true"' : '';
         const dragPath    = this._isEditable ? `data-drag-path="t:${topicIndex}" data-drag-node-type="topic"` : '';
+        const indent      = this._tocIndent(depth, false);
 
         return `
             <div class="chapter-toc__topic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--topic chapter-toc__drop-zone"
                         data-key="${key}" data-type="topic" data-topic-index="${topicIndex}"
                         data-sub-path="" data-drop-path="t:${topicIndex}" data-drop-node-type="topic"
+                        style="padding-left:${indent}px"
                         ${draggable} ${dragPath}>
                     ${hasChildren
             ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
@@ -344,8 +346,8 @@ export default class ChapterToc {
                     <span class="chapter-toc__entry-label">${this._esc(topic.topic ?? '')}</span>
                 </button>
                 ${collapsed ? '' : [
-            ...(topic.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, [], ii)),
-            ...(topic.subTopics ?? []).map((sub, si) => this._renderSubtopicNode(sub, topicIndex, [si])),
+            ...(topic.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, [], ii, depth)),
+            ...(topic.subTopics ?? []).map((sub, si) => this._renderSubtopicNode(sub, topicIndex, [si], depth + 1)),
         ].join('')}
             </div>`;
     }
@@ -355,8 +357,9 @@ export default class ChapterToc {
      * @param {object}   node        — normalised topic node
      * @param {number}   topicIndex  — top-level topic index (always)
      * @param {number[]} subPath     — path of sub-indices from the top-level topic, e.g. [1] or [1, 2]
+     * @param {number}   depth       — nesting depth (1 = first subtopic level)
      */
-    _renderSubtopicNode(node, topicIndex, subPath) {
+    _renderSubtopicNode(node, topicIndex, subPath, depth = 1) {
         const subPathStr  = subPath.join('-');
         const key         = `subtopic-${topicIndex}-${subPathStr}`;
         const collapsed   = this._collapsedTopics.has(key);
@@ -364,6 +367,7 @@ export default class ChapterToc {
         const dragPath    = `t:${topicIndex}.${subPathStr}`;
         const draggable   = this._isEditable ? 'draggable="true"' : '';
         const dragAttrs   = this._isEditable ? `data-drag-path="${dragPath}" data-drag-node-type="topic"` : '';
+        const indent      = this._tocIndent(depth, false);
 
         return `
             <div class="chapter-toc__subtopic-group">
@@ -371,6 +375,7 @@ export default class ChapterToc {
                         data-key="${key}" data-type="topic"
                         data-topic-index="${topicIndex}" data-sub-path="${subPathStr}"
                         data-drop-path="${dragPath}" data-drop-node-type="topic"
+                        style="padding-left:${indent}px"
                         ${draggable} ${dragAttrs}>
                     ${hasChildren
             ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
@@ -378,8 +383,8 @@ export default class ChapterToc {
                     <span class="chapter-toc__entry-label">${this._esc(node.topic ?? '')}</span>
                 </button>
                 ${collapsed || !hasChildren ? '' : [
-            ...(node.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, subPath, ii)),
-            ...(node.subTopics ?? []).map((sub, si) => this._renderSubtopicNode(sub, topicIndex, [...subPath, si])),
+            ...(node.items ?? []).map((item, ii) => this._renderOStarEntry(item, topicIndex, subPath, ii, depth)),
+            ...(node.subTopics ?? []).map((sub, si) => this._renderSubtopicNode(sub, topicIndex, [...subPath, si], depth + 1)),
         ].join('')}
             </div>`;
     }
@@ -390,8 +395,9 @@ export default class ChapterToc {
      * @param {number}   topicIndex  — top-level topic index
      * @param {number[]} subPath     — sub-index path ([] for direct topic items)
      * @param {number}   itemIndex   — index within the owning node's items array
+     * @param {number}   depth       — nesting depth of the owning topic (0 = top-level topic)
      */
-    _renderOStarEntry(item, topicIndex, subPath, itemIndex) {
+    _renderOStarEntry(item, topicIndex, subPath, itemIndex, depth = 0) {
         const subPathStr  = subPath.join('-');
         const key         = `ostar-${topicIndex}-${subPathStr || 'x'}-${itemIndex}`;
         const type        = (item.type ?? 'OR').toUpperCase();
@@ -402,6 +408,7 @@ export default class ChapterToc {
         const dragPath    = `o:${topicPart}:${itemIndex}`;
         const draggable   = this._isEditable ? 'draggable="true"' : '';
         const dragAttrs   = this._isEditable ? `data-drag-path="${dragPath}" data-drag-node-type="ostar"` : '';
+        const indent      = this._tocIndent(depth, true);
 
         return `
             <button class="chapter-toc__entry chapter-toc__entry--ostar"
@@ -411,6 +418,7 @@ export default class ChapterToc {
                     data-topic-index="${topicIndex}"
                     data-sub-path="${subPathStr}"
                     data-item-index="${itemIndex}"
+                    style="padding-left:${indent}px"
                     ${draggable} ${dragAttrs}>
                 ${this._typeBadge(type)}
                 <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar"
@@ -1015,6 +1023,19 @@ export default class ChapterToc {
             ],
             subTopics: (t.subtopics ?? []).map(s => this._normaliseTopic(s)),
         };
+    }
+
+    /**
+     * Compute the padding-left value (px) for a TOC entry at a given nesting depth.
+     * Base indent (topic at depth 0): 16px. Each additional level adds 12px.
+     * O* entries add a further 20px on top of the owning topic's indent.
+     * @param {number}  depth  — 0 = top-level topic, 1 = first subtopic level, …
+     * @param {boolean} isOStar
+     * @returns {number}
+     */
+    _tocIndent(depth, isOStar) {
+        const base = 16 + depth * 12;
+        return isOStar ? base + 20 : base;
     }
 
     _typeBadge(type) {

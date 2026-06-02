@@ -92,30 +92,12 @@
 }
 
 .chapter-toc__entry--subtopic {
-    padding-left: 28px;
     color: var(--text-secondary);
 }
 
 .chapter-toc__entry--ostar {
-    padding-left: 36px;
     color: var(--text-secondary);
     font-size: 11px;
-}
-
-.chapter-toc__subtopic-group .chapter-toc__entry--ostar {
-    padding-left: 48px;
-}
-
-.chapter-toc__subtopic-group .chapter-toc__entry--subtopic {
-    padding-left: 40px;
-}
-
-.chapter-toc__subtopic-group .chapter-toc__subtopic-group .chapter-toc__entry--subtopic {
-    padding-left: 52px;
-}
-
-.chapter-toc__subtopic-group .chapter-toc__subtopic-group .chapter-toc__entry--ostar {
-    padding-left: 60px;
 }
 
 .chapter-toc__entry--unassigned {
