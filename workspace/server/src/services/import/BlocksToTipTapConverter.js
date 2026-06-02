@@ -18,18 +18,25 @@
  * Inline attribute mapping (Quill attributes → TipTap marks):
  *   bold, italic, underline → standard TipTap marks
  *   link                    → { type: 'link', attrs: { href } }
- *   ref                     → { type: 'n-ref', attrs: { value } }  (narrative reference)
- *   xref                    → { type: 'o-ref', attrs: { value } }  (O* reference)
- *   refdoc                  → { type: 'd-ref', attrs: { value } }  (strategic document reference)
- *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{themeId}' } }
- *                              (intra-chapter theme link; resolved by link text =
- *                               theme label via themeIdMap passed to convert())
+ *   ref                     → { type: 'n-ref', attrs: { value, label? } }
+ *                              value = chapter itemId (resolved via nRef resolver)
+ *   xref                    → { type: 'o-ref', attrs: { value, label } }
+ *                              value = resolved opaque O* itemId; label = "code — title"
+ *   refdoc                  → { type: 'd-ref', attrs: { value, label } }
+ *                              value = resolved opaque refdoc id; label = refdoc name
+ *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterId}/{themeId}', label } }
+ *                              (intra-chapter theme link; join key = link text = theme label)
+ *
+ * Ref resolution is delegated to a refResolver supplied by the caller
+ * (DistributedEditionImporter._buildRefResolver). o-ref/d-ref are resolved to
+ * opaque ids; unresolvable ones drop the mark (text retained). n-ref keeps the
+ * chapter code as value and gains a label when resolvable.
  *
  * Output is a JSON string — consistent with how rich-text fields are stored
  * in the ODIP database (Neo4j property string).
  *
  * Usage:
- *   const json = BlocksToTipTapConverter.convert(blocks);
+ *   const json = BlocksToTipTapConverter.convert(blocks, refResolver);
  *   // → '{"type":"doc","content":[...]}' or null if blocks is empty/null
  */
 class BlocksToTipTapConverter {
@@ -37,16 +44,20 @@ class BlocksToTipTapConverter {
     /**
      * Convert a blocks array to a TipTap document JSON string.
      * @param {Array|null|undefined} blocks - Source file blocks array
+     * @param {object|null} [refResolver] - Ref resolver (oRef/dRef/nRefLabel/theme)
+     *                                       built by DistributedEditionImporter._buildRefResolver
      * @returns {string|null} TipTap document JSON string, or null if no content
      */
-    convert(blocks, chapterCode = null, themeIdMap = null) {
+    convert(blocks, refResolver = null) {
         if (!blocks || blocks.length === 0) {
             return null;
         }
 
-        // Store chapter code and theme-label → id map for n-ref resolution
-        this._chapterCode = chapterCode;
-        this._themeIdMap  = themeIdMap;
+        // Reference resolver — resolves o-ref/d-ref to opaque ids, supplies
+        // labels, and resolves intra-chapter theme anchors. Built by the caller
+        // (DistributedEditionImporter._buildRefResolver) from the import context.
+        // When null, ref marks degrade to value-only (used in standalone tests).
+        this._refResolver = refResolver;
 
         const content = [];
 
@@ -258,14 +269,15 @@ class BlocksToTipTapConverter {
      * Attribute → mark mapping:
      *   bold, italic, underline → { type: 'bold' | 'italic' | 'underline' }
      *   link                    → { type: 'link', attrs: { href: value } }
-     *   ref                     → { type: 'n-ref', attrs: { value } }  (narrative reference)
-     *   xref                    → { type: 'o-ref', attrs: { value } }  (O* reference)
-     *   refdoc                  → { type: 'd-ref', attrs: { value } }  (strategic document reference)
-     *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterCode}/{themeId}' } }
-     *                              (intra-chapter theme link; resolved by link text = theme label)
+     *   ref                     → { type: 'n-ref', attrs: { value, label? } }  (resolved chapter itemId)
+     *   xref                    → { type: 'o-ref', attrs: { value, label } }   (resolved O* itemId)
+     *   refdoc                  → { type: 'd-ref', attrs: { value, label } }   (resolved refdoc id)
+     *   anchor                  → { type: 'n-ref', attrs: { value: '{chapterId}/{themeId}', label } }
+     *                              (intra-chapter theme link; join key = link text = theme label)
      *   color                   → { type: 'textStyle', attrs: { color: value } }
      *   All others              → { type: key, attrs: { value } }      (pass-through)
      *
+     * Ref resolution (xref/refdoc/ref/anchor) is delegated to this._refResolver.
      * @private
      */
     _opToTextNode(op) {
@@ -313,27 +325,35 @@ class BlocksToTipTapConverter {
                 case 'color':
                     marks.push({ type: 'textStyle', attrs: { color: value } });
                     break;
-                case 'ref':
-                    marks.push({ type: 'n-ref', attrs: { value } });
+                case 'ref': {
+                    // Cross-chapter narrative reference. Resolve chapter code → itemId + label.
+                    // Unresolvable refs drop the mark (text retained, no stale value).
+                    const r = this._refResolver?.nRef?.(value);
+                    if (r) marks.push({ type: 'n-ref', attrs: { value: r.value, label: r.label } });
                     break;
-                case 'xref':
-                    marks.push({ type: 'o-ref', attrs: { value } });
+                }
+                case 'xref': {
+                    // O* reference. Resolve source externalId → opaque itemId + label.
+                    // Unresolvable refs drop the mark (text retained, no stale value).
+                    const r = this._refResolver?.oRef?.(value);
+                    if (r) marks.push({ type: 'o-ref', attrs: { value: r.value, label: r.label } });
                     break;
-                case 'refdoc':
-                    marks.push({ type: 'd-ref', attrs: { value } });
+                }
+                case 'refdoc': {
+                    // Strategic document reference. Resolve externalId → refdoc id + label.
+                    const r = this._refResolver?.dRef?.(value);
+                    if (r) marks.push({ type: 'd-ref', attrs: { value: r.value, label: r.label } });
                     break;
-                case 'anchor':
+                }
+                case 'anchor': {
                     // Intra-chapter theme link. The source anchor value (theme_x_y_z)
-                    // is a source-internal bookmark and is discarded; the reliable
-                    // join key is the link's visible text, which equals the theme
-                    // label. Resolve label → opaque theme id via themeIdMap.
-                    if (this._chapterCode && this._themeIdMap) {
-                        const topicId = this._themeIdMap.get(text);
-                        if (topicId) {
-                            marks.push({ type: 'n-ref', attrs: { value: `${this._chapterCode}/${topicId}` } });
-                        }
-                    }
+                    // is a source-internal bookmark and is discarded; the reliable join
+                    // key is the link's visible text, which equals the theme label.
+                    // Resolver maps label → { value: '{chapterCode}/{themeId}', label }.
+                    const r = this._refResolver?.theme?.(text);
+                    if (r) marks.push({ type: 'n-ref', attrs: { value: r.value, label: r.label } });
                     break;
+                }
                 case 'attributes':
                     // Nested attributes object — unpack recursively.
                     // Some source JSON ops wrap formatting as { attributes: { bold: true } }

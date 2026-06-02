@@ -226,3 +226,39 @@
 .rich-text-component--readonly .rich-text-component__editor [data-d-ref]:hover {
     color: var(--link-color-hover, var(--ec-navy, #1F3864));
 }
+/* ── Reference picker (toolbar → insert reference) ─────────────────────────── */
+/* Reuses .search-popup-overlay / .search-popup from reference-list-manager.css */
+
+.rich-text-ref-popup .search-popup-header {
+    align-items: center;
+}
+
+.rich-text-ref-types {
+    display: flex;
+    gap: var(--space-1, 0.25rem);
+    flex: 1;
+}
+
+.rich-text-ref-type {
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--text-secondary, #6b7280);
+}
+
+.rich-text-ref-type--active {
+    background: var(--primary-100, #e0f2fe);
+    color: var(--ec-blue, #185FA5);
+    border-color: var(--ec-blue, #185FA5);
+}
+
+.rich-text-ref-picker-mount {
+    min-height: 120px;
+}
+
+/* Authored references in edit mode — subtle affordance so the author can see
+   which spans carry a reference mark (read-only link styling is unchanged). */
+.rich-text-component__editor .tiptap [data-n-ref],
+.rich-text-component__editor .tiptap [data-o-ref],
+.rich-text-component__editor .tiptap [data-d-ref] {
+    color: var(--link-color, var(--ec-blue, #185FA5));
+    text-decoration: underline dotted;
+}

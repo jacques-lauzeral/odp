@@ -19,6 +19,7 @@
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
 import RichTextComponent from '../../../../components/rich-text-component.js';
+import { buildLinkProvider } from '../../../../components/link-provider.js';
 
 export default class ChapterBody {
     /**
@@ -42,6 +43,7 @@ export default class ChapterBody {
 
         this._requirementDetails = null;
         this._changeDetails      = null;
+        this._linkProvider       = null;
     }
 
     // =========================================================================
@@ -295,6 +297,9 @@ export default class ChapterBody {
             images:      true,
             tables:      true,
             placeholder: 'Write chapter narrative…',
+            linkProvider: editable
+                ? (this._linkProvider ??= buildLinkProvider(this._app))
+                : null,
             onChange: () => {
                 if (!editable) return;
                 this._dirty = true;
@@ -372,17 +377,18 @@ export default class ChapterBody {
     /**
      * Handle internal link clicks from narrative rich text.
      *
-     * n-ref value: {chapter-code}[/{topic-path}]
-     *   Resolves chapter code → itemId, then navigates to
-     *   {base}/narrative/{itemId}[?theme={topic-path}]
+     * n-ref value: {chapterId}[/{topicId}]
+     *   Navigates directly to {base}/narrative/{chapterId}[?theme={topicId}]
+     *   No chapter lookup required — value is already the opaque itemId.
      *
-     * o-ref, d-ref: not yet implemented (Step 8).
+     * o-ref: navigates to {base}/elaborate/{itemId}
+     * d-ref: navigates to {base}/setup/reference-documents/{id}
      *
      * @param {'n-ref'|'o-ref'|'d-ref'} type
      * @param {string} value
      * @private
      */
-    async _handleInternalLink(type, value) {
+    _handleInternalLink(type, value) {
         if (!value) return;
 
         const ctx  = this._app?.getDatasetContext?.();
@@ -391,41 +397,33 @@ export default class ChapterBody {
             : '/elaborate';
 
         if (type === 'n-ref') {
-            const slashIdx    = value.indexOf('/');
-            const chapterCode = slashIdx >= 0 ? value.slice(0, slashIdx) : value;
-            const topicPath   = slashIdx >= 0 ? value.slice(slashIdx + 1) : null;
-
-            let chapters;
-            try {
-                chapters = await this._app.getChapters();
-            } catch {
-                console.warn('[ChapterBody] n-ref: could not load chapters');
-                return;
-            }
-
-            const chapter = chapters.find(c => c.code === chapterCode);
-            if (!chapter) {
-                console.warn('[ChapterBody] n-ref: chapter not found for code', chapterCode);
-                return;
-            }
+            const slashIdx  = value.indexOf('/');
+            const chapterId = slashIdx >= 0 ? value.slice(0, slashIdx) : value;
+            const topicPath = slashIdx >= 0 ? value.slice(slashIdx + 1) : null;
 
             const path = topicPath
-                ? `${base}/narrative/${chapter.itemId}?theme=${encodeURIComponent(topicPath)}`
-                : `${base}/narrative/${chapter.itemId}`;
+                ? `${base}/narrative/${chapterId}?theme=${encodeURIComponent(topicPath)}`
+                : `${base}/narrative/${chapterId}`;
 
             this._app.navigate(path);
             return;
         }
 
         if (type === 'o-ref') {
-            // TODO Step 8: resolve external ID → itemId
-            console.debug('[ChapterBody] o-ref navigation not yet implemented', value);
+            this._app.findOStar(value).then(ostar => {
+                if (!ostar) {
+                    console.warn('[ChapterBody] o-ref: O* not found for itemId', value);
+                    return;
+                }
+                this._app.navigate(`${base}/os/${ostar.type}/${value}`);
+            }).catch(() => {
+                console.warn('[ChapterBody] o-ref: failed to resolve O* for itemId', value);
+            });
             return;
         }
 
         if (type === 'd-ref') {
-            // TODO Step 8: navigate to reference document view
-            console.debug('[ChapterBody] d-ref navigation not yet implemented', value);
+            this._app.navigate(`${base}/setup/reference-documents/${value}`);
         }
     }
 

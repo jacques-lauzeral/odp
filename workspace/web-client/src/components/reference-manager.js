@@ -191,10 +191,11 @@ export default class ReferenceManager {
         // Select result item
         const item = e.target.closest('.reference-manager-result-item');
         if (item) {
-            this.selectedId = this._normalizeValue(item.dataset.value);
+            const rawValue = item.dataset.value;
+            this.selectedId = this._normalizeValue(rawValue);
             this.searchTerm = '';
             this._refresh();
-            this.config.onChange(this.selectedId);
+            this.config.onChange(rawValue);
         }
     }
 

@@ -619,7 +619,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 
 | Mark name | Rendered as | Semantics |
 |---|---|---|
-| `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}">` | Narrative reference: `{chapterCode}[/{topicId}]` |
+| `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}">` | Narrative reference: `{chapterId}[/{topicId}]` |
 | `o-ref` (`OdipORef`) | `<span data-o-ref="{value}">` | O* reference: O* external ID |
 | `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}">` | Strategic document reference: refdoc external ID |
 
@@ -1428,7 +1428,7 @@ Two-pane `MasterDetail` layout (28% / 72% initial ratio):
 
 | Mark type | Resolution | Target URL |
 |---|---|---|
-| `n-ref` | Chapter code → `itemId` via `app.getChapters()`; topic path as `?theme=` | `{base}/narrative/{itemId}[?theme={topicId}]` |
+| `n-ref` | Value is `{chapterId}[/{topicId}]` — navigate directly, no lookup | `{base}/narrative/{chapterId}[?theme={topicId}]` |
 | `o-ref` | Not yet implemented | — |
 | `d-ref` | Not yet implemented | — |
 

@@ -18,7 +18,10 @@
  *   onChange        {Function} — called with TipTap JSON string on every content change
  *   onInternalLink  {Function} — called with (type, value) when an internal link span is clicked
  *                                type: 'n-ref' | 'o-ref' | 'd-ref'
- *                                Navigation implementation deferred to Step 8.
+ *                                Navigation implementation deferred to the caller.
+ *   linkProvider    {object}   — supplies reference targets for the toolbar picker
+ *                                (load(); options(type) → [{value,label}]). When absent,
+ *                                only the external-link button is shown.
  *
  * Storage format: TipTap document JSON, serialised as string.
  * Identical to what is stored in Neo4j richtext fields.
@@ -43,46 +46,75 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import Placeholder from '@tiptap/extension-placeholder';
+import ReferenceManager from './reference-manager.js';
 
 /**
  * Passthrough marks for ODIP internal reference types.
- * Registered so TipTap does not discard text nodes carrying them.
- * Render as plain spans — navigation via onInternalLink callback; styling deferred to Step 8.
+ * Registered so TipTap does not discard text nodes carrying them, and so they
+ * can be authored via set/unset commands.
  *
- * n-ref  — narrative reference (chapter / topic / subtopic), value: {chapter-code}[/{topic-path}]
- * o-ref  — O* reference, value: O* external ID
- * d-ref  — strategic document reference, value: refdoc external ID
+ * Each mark stores:
+ *   value  — the stable target identifier (source of truth)
+ *   label  — cached display text (code/title/name); may be absent on legacy marks
+ *
+ * Rendered as spans carrying data-{type}-ref (value) and data-label.
+ * Navigation via onInternalLink callback; the visible text is the marked text.
+ *
+ * n-ref  — narrative reference (chapter), value: {chapterCode}[/{themeId}]
+ * o-ref  — O* reference, value: opaque O* itemId
+ * d-ref  — strategic document reference, value: refdoc id
  */
+function refMarkAttributes(dataAttr) {
+    return {
+        value: {
+            default: null,
+            parseHTML: el => el.getAttribute(dataAttr),
+            renderHTML: attrs => (attrs.value != null ? { [dataAttr]: attrs.value } : {}),
+        },
+        label: {
+            default: null,
+            parseHTML: el => el.getAttribute('data-label'),
+            renderHTML: attrs => (attrs.label != null ? { 'data-label': attrs.label } : {}),
+        },
+    };
+}
+
 const OdipNRef = Mark.create({
     name: 'n-ref',
-    addAttributes() {
-        return { value: { default: null } };
-    },
+    addAttributes() { return refMarkAttributes('data-n-ref'); },
     parseHTML() { return [{ tag: 'span[data-n-ref]' }]; },
-    renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes({ 'data-n-ref': HTMLAttributes.value }), 0];
+    renderHTML({ HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes), 0]; },
+    addCommands() {
+        return {
+            setNRef: (attributes) => ({ commands }) => commands.setMark('n-ref', attributes),
+            unsetNRef: () => ({ commands }) => commands.unsetMark('n-ref'),
+        };
     },
 });
 
 const OdipORef = Mark.create({
     name: 'o-ref',
-    addAttributes() {
-        return { value: { default: null } };
-    },
+    addAttributes() { return refMarkAttributes('data-o-ref'); },
     parseHTML() { return [{ tag: 'span[data-o-ref]' }]; },
-    renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes({ 'data-o-ref': HTMLAttributes.value }), 0];
+    renderHTML({ HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes), 0]; },
+    addCommands() {
+        return {
+            setORef: (attributes) => ({ commands }) => commands.setMark('o-ref', attributes),
+            unsetORef: () => ({ commands }) => commands.unsetMark('o-ref'),
+        };
     },
 });
 
 const OdipDRef = Mark.create({
     name: 'd-ref',
-    addAttributes() {
-        return { value: { default: null } };
-    },
+    addAttributes() { return refMarkAttributes('data-d-ref'); },
     parseHTML() { return [{ tag: 'span[data-d-ref]' }]; },
-    renderHTML({ HTMLAttributes }) {
-        return ['span', mergeAttributes({ 'data-d-ref': HTMLAttributes.value }), 0];
+    renderHTML({ HTMLAttributes }) { return ['span', mergeAttributes(HTMLAttributes), 0]; },
+    addCommands() {
+        return {
+            setDRef: (attributes) => ({ commands }) => commands.setMark('d-ref', attributes),
+            unsetDRef: () => ({ commands }) => commands.unsetMark('d-ref'),
+        };
     },
 });
 
@@ -105,10 +137,14 @@ export default class RichTextComponent {
         this._placeholder = options.placeholder ?? '';
         this._onChange        = options.onChange        ?? null;
         this._onInternalLink  = options.onInternalLink  ?? null;
+        this._linkProvider    = options.linkProvider    ?? null;
 
         this._editor     = null;
         this._container  = null;
         this._toolbar    = null;
+        this._refPicker  = null;
+        this._refOverlay = null;
+        this._refSel     = null;
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────────
@@ -205,6 +241,15 @@ export default class RichTextComponent {
      * Destroy TipTap instance and remove DOM nodes.
      */
     destroy() {
+        if (this._refPicker) {
+            this._refPicker.destroy();
+            this._refPicker = null;
+        }
+        if (this._refOverlay) {
+            this._refOverlay.remove();
+            this._refOverlay = null;
+        }
+        this._refSel = null;
         if (this._editor) {
             this._editor.destroy();
             this._editor = null;
@@ -324,9 +369,16 @@ export default class RichTextComponent {
         ]));
 
         // ── Link group ──────────────────────────────────────────────────────────
-        toolbar.appendChild(this._createGroup([
-            this._btn('link', '🔗', 'Insert link', () => this._promptLink()),
-        ]));
+        const linkButtons = [
+            this._btn('link', '🔗', 'External link', () => this._promptLink()),
+        ];
+        if (this._linkProvider) {
+            linkButtons.push(
+                this._btn('ref', '#', 'Insert reference (O* / narrative / document)',
+                    () => this._openRefPicker()),
+            );
+        }
+        toolbar.appendChild(this._createGroup(linkButtons));
 
         // ── Image group ─────────────────────────────────────────────────────────
         if (this._images) {
@@ -447,6 +499,122 @@ export default class RichTextComponent {
             this._editor.chain().focus().unsetLink().run();
         } else {
             this._editor.chain().focus().setLink({ href: url.trim() }).run();
+        }
+    }
+
+    // ─── Reference picker (o-ref / n-ref / d-ref) ────────────────────────────────
+
+    /**
+     * Open a modal to insert an internal reference. Presents a type selector
+     * (O* / Narrative / Document) and a typeahead (ReferenceManager) of targets
+     * supplied by the injected linkProvider. On selection, applies the matching
+     * mark to the current selection (or inserts the label when nothing is selected).
+     * @private
+     */
+    _openRefPicker() {
+        if (!this._linkProvider) return;
+
+        // Capture the editor selection now — opening the modal moves DOM focus,
+        // but ProseMirror retains selection state and we restore it on apply.
+        const { from, to } = this._editor.state.selection;
+        this._refSel = { from, to };
+
+        const overlay = document.createElement('div');
+        overlay.className = 'search-popup-overlay';
+        overlay.innerHTML = `
+            <div class="search-popup rich-text-ref-popup">
+                <div class="search-popup-header">
+                    <div class="rich-text-ref-types">
+                        <button type="button" class="odip-btn rich-text-ref-type rich-text-ref-type--active" data-type="o-ref">O*</button>
+                        <button type="button" class="odip-btn rich-text-ref-type" data-type="n-ref">Narrative</button>
+                        <button type="button" class="odip-btn rich-text-ref-type" data-type="d-ref">Document</button>
+                    </div>
+                    <button type="button" class="odip-btn btn-cancel-search">Cancel</button>
+                </div>
+                <div class="search-popup-results">
+                    <div class="rich-text-ref-picker-mount"></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        this._refOverlay = overlay;
+
+        const mountEl = overlay.querySelector('.rich-text-ref-picker-mount');
+        let currentType = 'o-ref';
+
+        const close = () => {
+            if (this._refPicker) { this._refPicker.destroy(); this._refPicker = null; }
+            overlay.remove();
+            this._refOverlay = null;
+            this._refSel = null;
+        };
+
+        const mountPicker = (type) => {
+            if (this._refPicker) { this._refPicker.destroy(); this._refPicker = null; }
+            mountEl.innerHTML = '';
+            this._refPicker = new ReferenceManager({
+                fieldId: 'rt-ref-picker',
+                options: this._linkProvider.options(type),
+                initialValue: null,
+                placeholder: 'Type to search…',
+                onChange: (id) => {
+                    if (id == null) return;
+                    const opt = this._linkProvider.options(type)
+                        .find(o => String(o.value) === String(id));
+                    this._applyRef(type, String(id), opt ? opt.label : String(id));
+                    close();
+                },
+            });
+            this._refPicker.render(mountEl);
+            mountEl.querySelector('.reference-manager-input')?.focus();
+        };
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay || e.target.classList.contains('btn-cancel-search')) {
+                close();
+                return;
+            }
+            const typeBtn = e.target.closest('.rich-text-ref-type');
+            if (typeBtn) {
+                currentType = typeBtn.dataset.type;
+                overlay.querySelectorAll('.rich-text-ref-type').forEach(b =>
+                    b.classList.toggle('rich-text-ref-type--active', b === typeBtn));
+                mountPicker(currentType);
+            }
+        });
+
+        // Preload targets (no-op if already loaded), then mount the typeahead.
+        Promise.resolve(this._linkProvider.load?.())
+            .then(() => { if (this._refOverlay === overlay) mountPicker(currentType); })
+            .catch(() => { if (this._refOverlay === overlay) mountPicker(currentType); });
+    }
+
+    /**
+     * Apply a reference mark to the current selection. When the selection is
+     * empty, the label is inserted as text and marked.
+     * @param {'o-ref'|'n-ref'|'d-ref'} type
+     * @param {string} value — stable target id (or chapter code for n-ref)
+     * @param {string} label — display text
+     * @private
+     */
+    _applyRef(type, value, label) {
+        const cmd = type === 'o-ref' ? 'setORef'
+            : type === 'n-ref' ? 'setNRef'
+                : 'setDRef';
+
+        const sel = this._refSel ?? this._editor.state.selection;
+        const from = sel.from;
+        const to   = sel.to;
+
+        if (from === to) {
+            this._editor.chain().focus()
+                .insertContentAt(from, label)
+                .setTextSelection({ from, to: from + label.length })[cmd]({ value, label })
+                .run();
+        } else {
+            this._editor.chain().focus()
+                .setTextSelection({ from, to })[cmd]({ value, label })
+                .run();
         }
     }
 

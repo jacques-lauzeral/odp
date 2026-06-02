@@ -57,9 +57,9 @@ class DistributedEditionImporter {
             // narrative converter (n-ref resolution) and _patchChapterOsHierarchy.
             context.themeIdMap = this._buildThemeIdMap(sourceData.requirements ?? []);
 
-            // Phase 0b: Patch chapter narrative from blocks[]/chapterIntro[] if present
-            console.log('Phase 0b: Patching chapter narrative...');
-            await this._patchChapterNarrative(sourceData, userId, context, summary);
+            // Phase 0b-pre done above (themeIdMap). Chapter narrative is now patched
+            // in Phase 4 — after reference maps and same-file requirements exist, so
+            // o-ref/d-ref marks in the narrative resolve to opaque ids.
 
             // Phase 1: Build reference maps from existing DB
             console.log('Phase 1: Building reference maps...');
@@ -75,9 +75,14 @@ class DistributedEditionImporter {
                 await this._resolveRequirementReferences(requirements, userId, context);
             }
 
-            // Phase 4: Patch chapter osHierarchy from path[] grouping
+            // Phase 4: Patch chapter narrative, then osHierarchy. Both patch the
+            // chapter; each re-fetches the current versionId immediately before
+            // patching, so sequential ordering is optimistic-concurrency safe.
+            console.log('Phase 4a: Patching chapter narrative...');
+            await this._patchChapterNarrative(sourceData, userId, context, summary);
+
             if (requirements.length > 0) {
-                console.log('Phase 4: Patching chapter osHierarchy...');
+                console.log('Phase 4b: Patching chapter osHierarchy...');
                 await this._patchChapterOsHierarchy(sourceData, requirements, userId, context, summary);
             }
 
@@ -99,14 +104,75 @@ class DistributedEditionImporter {
     _createContext() {
         return {
             chapterCodeMap: new Map(),   // code (lowercase) → itemId
+            chapterTitleByCode: new Map(),// code (lowercase) → chapter title (n-ref label)
             chapterDomain: null,         // domain from chapter config — overrides drg for iDL sub-chapters
             chapterItemId: null,         // itemId of the chapter being imported
+            chapterTitle: null,          // title of the chapter being imported
             globalRefMap: new Map(),     // externalId (lowercase) → requirement itemId
+            refLabelMap: new Map(),      // O* externalId (lowercase) → display label ("code — title")
+            refTypeMap: new Map(),       // O* externalId (lowercase) → type lowercase ("on"|"or"|"oc")
             documentIdMap: new Map(),    // refdoc externalId (lowercase) → referenceDocument id
+            documentLabelMap: new Map(), // refdoc externalId (lowercase) → refdoc name (d-ref label)
             waveIdMap: new Map(),        // wave externalId (lowercase) → wave id
             errors: [],
             warnings: []
         };
+    }
+
+    /**
+     * Build the reference resolver consumed by both converters
+     * (BlocksToTipTapConverter for chapter narrative, _deltaToTipTap for bodies).
+     * Closes over the live context maps, so it reflects entries added later
+     * (e.g. requirements created in phase 2). Resolves inline ref marks to the
+     * id+label convention:
+     *   oRef/dRef → opaque id + label, or null when unresolvable (mark dropped)
+     *              oRef value = "{type}/{itemId}" (e.g. "or/231")
+     *   nRef      → { value: chapterItemId, label: title }, or null when unresolvable (mark dropped)
+     *   theme     → { value: '{chapterId}/{themeId}', label }, or null
+     * @private
+     */
+    _buildRefResolver(context) {
+        return {
+            oRef: (externalId) => {
+                if (!externalId) return null;
+                const key = String(externalId).toLowerCase();
+                const id = context.globalRefMap.get(key);
+                if (id == null) return null;
+                const type = context.refTypeMap.get(key);
+                if (!type) return null;
+                return { value: `${type}/${id}`, label: context.refLabelMap.get(key) ?? String(externalId) };
+            },
+            dRef: (externalId) => {
+                if (!externalId) return null;
+                const key = String(externalId).toLowerCase();
+                const id = context.documentIdMap.get(key);
+                if (id == null) return null;
+                return { value: String(id), label: context.documentLabelMap.get(key) ?? String(externalId) };
+            },
+            nRef: (chapterCode) => {
+                if (!chapterCode) return null;
+                const key = String(chapterCode).toLowerCase();
+                const itemId = context.chapterCodeMap.get(key);
+                if (itemId == null) return null;
+                const label = context.chapterTitleByCode.get(key) ?? chapterCode;
+                return { value: String(itemId), label };
+            },
+            theme: (themeLabel) => {
+                if (!themeLabel || !context.themeIdMap || !context.chapterItemId) return null;
+                const themeId = context.themeIdMap.get(themeLabel);
+                if (themeId == null) return null;
+                return { value: `${context.chapterItemId}/${themeId}`, label: themeLabel };
+            },
+        };
+    }
+
+    /**
+     * Build an O* display label from code and title.
+     * @private
+     */
+    _oStarLabel(code, title) {
+        if (code && title) return `${code} — ${title}`;
+        return code || title || '';
     }
 
     // ─── Phase 0: Chapter narrative ─────────────────────────────────────────────
@@ -148,8 +214,9 @@ class DistributedEditionImporter {
         if (chapter.domain) {
             context.chapterDomain = chapter.domain;
         }
-        // Store chapter code for BlocksToTipTapConverter anchor → n-ref resolution
+        // Store chapter code for theme anchor → n-ref resolution, and title for label
         context.chapterCode = chapter.code ?? normalised;
+        context.chapterTitle = chapter.title ?? context.chapterCode;
 
         console.log(`Resolved chapter '${chapterFolder}' → itemId=${chapterItemId}, domain=${context.chapterDomain || '(none)'}`);
     }
@@ -202,7 +269,7 @@ class DistributedEditionImporter {
             return;
         }
 
-        const narrative = BlocksToTipTapConverter.convert(blocks, context.chapterCode, context.themeIdMap);
+        const narrative = BlocksToTipTapConverter.convert(blocks, this._buildRefResolver(context));
         if (!narrative) {
             console.log('Empty narrative after conversion — skipping patch.');
             return;
@@ -231,6 +298,7 @@ class DistributedEditionImporter {
         const chapters = await ChapterService.getAll(userId);
         chapters.forEach(ch => {
             context.chapterCodeMap.set(ch.code.toLowerCase(), ch.itemId);
+            context.chapterTitleByCode.set(ch.code.toLowerCase(), ch.title ?? ch.code);
         });
         console.log(`Loaded ${chapters.length} chapters into code map.`);
     }
@@ -343,6 +411,7 @@ class DistributedEditionImporter {
             referenceDocuments.forEach(doc => {
                 const externalId = ExternalIdBuilder.buildExternalId(doc, 'refdoc');
                 context.documentIdMap.set(externalId.toLowerCase(), doc.id);
+                context.documentLabelMap.set(externalId.toLowerCase(), doc.name ?? externalId);
             });
 
             // Waves
@@ -426,6 +495,8 @@ class DistributedEditionImporter {
             allRequirements.forEach(req => {
                 const externalId = this._resolveRequirementExternalId(req.itemId, reqById, cache);
                 context.globalRefMap.set(externalId.toLowerCase(), req.itemId);
+                context.refLabelMap.set(externalId.toLowerCase(), this._oStarLabel(req.code, req.title));
+                context.refTypeMap.set(externalId.toLowerCase(), req.type.toLowerCase());
             });
 
             console.log(`Loaded ${allRequirements.length} existing requirements into reference map.`);
@@ -473,19 +544,20 @@ class DistributedEditionImporter {
      */
     async _createRequirementsWithoutReferences(requirements, userId, context, summary) {
         let createdCount = 0;
+        const refResolver = this._buildRefResolver(context);
 
         for (const reqData of requirements) {
             try {
                 const maturity = this._resolveCreateMaturity(reqData);
-                const privateNotes = this._buildPrivateNotes(reqData);
+                const privateNotes = this._buildPrivateNotes(reqData, refResolver);
 
                 const createRequest = {
                     title: reqData.title,
                     type: reqData.type,
-                    statement:    this._deltaToTipTap(reqData.statement)    || null,
-                    rationale:    this._deltaToTipTap(reqData.rationale)    || null,
-                    flows:        this._deltaToTipTap(reqData.flows)        || null,
-                    nfrs:         this._deltaToTipTap(reqData.nfrs)         || null,
+                    statement:    this._deltaToTipTap(reqData.statement, refResolver)    || null,
+                    rationale:    this._deltaToTipTap(reqData.rationale, refResolver)    || null,
+                    flows:        this._deltaToTipTap(reqData.flows, refResolver)        || null,
+                    nfrs:         this._deltaToTipTap(reqData.nfrs, refResolver)         || null,
                     privateNotes: privateNotes || null,
                     // DRAFT-first: real maturity applied in phase 3 after references resolve,
                     // except NO_SHOW which is final and requires no reference validation
@@ -501,6 +573,11 @@ class DistributedEditionImporter {
                 const created = await OperationalRequirementService.create(createRequest, userId);
 
                 context.globalRefMap.set(reqData.externalId.toLowerCase(), created.itemId);
+                context.refLabelMap.set(
+                    reqData.externalId.toLowerCase(),
+                    this._oStarLabel(created.code, reqData.title)
+                );
+                context.refTypeMap.set(reqData.externalId.toLowerCase(), reqData.type.toLowerCase());
                 createdCount++;
 
                 console.log(`Created: ${reqData.externalId}`);
@@ -543,7 +620,7 @@ class DistributedEditionImporter {
      * @returns {string|null} TipTap document JSON string, or null
      * @private
      */
-    _deltaToTipTap(deltaJsonString) {
+    _deltaToTipTap(deltaJsonString, refResolver = null) {
         if (!deltaJsonString) return null;
 
         let delta;
@@ -649,7 +726,7 @@ class DistributedEditionImporter {
             } else {
                 // Text node
                 const textNode = { type: 'text', text: op.insert };
-                const marks = this._deltaAttrsToMarks(op.attributes || {});
+                const marks = this._deltaAttrsToMarks(op.attributes || {}, refResolver);
                 if (marks.length > 0) textNode.marks = marks;
                 currentInline.push(textNode);
             }
@@ -667,7 +744,7 @@ class DistributedEditionImporter {
      * Convert Quill inline attributes to TipTap marks array.
      * @private
      */
-    _deltaAttrsToMarks(attributes) {
+    _deltaAttrsToMarks(attributes, refResolver = null) {
         const marks = [];
         for (const [key, value] of Object.entries(attributes)) {
             if (!value) continue;
@@ -684,24 +761,33 @@ class DistributedEditionImporter {
                 case 'color':
                     marks.push({ type: 'textStyle', attrs: { color: value } });
                     break;
-                case 'ref':
-                    marks.push({ type: 'n-ref', attrs: { value } });
+                case 'ref': {
+                    // Cross-chapter narrative reference — value stays the chapter code.
+                    const label = refResolver?.nRefLabel?.(value);
+                    marks.push({ type: 'n-ref', attrs: label ? { value, label } : { value } });
                     break;
-                case 'xref':
-                    marks.push({ type: 'o-ref', attrs: { value } });
+                }
+                case 'xref': {
+                    // O* reference — resolve externalId → opaque itemId + label, or drop.
+                    const r = refResolver?.oRef?.(value);
+                    if (r) marks.push({ type: 'o-ref', attrs: { value: r.value, label: r.label } });
                     break;
-                case 'refdoc':
-                    marks.push({ type: 'd-ref', attrs: { value } });
+                }
+                case 'refdoc': {
+                    // Strategic document reference — resolve externalId → refdoc id + label, or drop.
+                    const r = refResolver?.dRef?.(value);
+                    if (r) marks.push({ type: 'd-ref', attrs: { value: r.value, label: r.label } });
                     break;
+                }
                 case 'anchor':
-                    // Dropped — publication-only marker, not stored in rich text
+                    // Dropped — publication-only marker, not stored in rich text bodies.
                     break;
                 case 'attributes':
                     // Nested attributes object — unpack recursively.
                     // Some source JSON ops wrap formatting as { attributes: { bold: true } }
                     // instead of the flat Quill convention { bold: true }.
                     if (value && typeof value === 'object') {
-                        marks.push(...this._deltaAttrsToMarks(value));
+                        marks.push(...this._deltaAttrsToMarks(value, refResolver));
                     }
                     break;
                 default:
@@ -719,12 +805,12 @@ class DistributedEditionImporter {
      * tentativeImplTime shape: null | integer | [start, end]
      * @private
      */
-    _buildPrivateNotes(reqData) {
+    _buildPrivateNotes(reqData, refResolver = null) {
         const sourceTit = reqData.tentativeImplTime;
         const existingNotes = reqData.privateNotes || reqData.privateNote || null;
 
         if (sourceTit == null) {
-            return existingNotes ? this._deltaToTipTap(existingNotes) : null;
+            return existingNotes ? this._deltaToTipTap(existingNotes, refResolver) : null;
         }
 
         const titDisplay = Array.isArray(sourceTit)
@@ -739,7 +825,7 @@ class DistributedEditionImporter {
         }
 
         // Convert existing notes and prepend the prefix paragraph
-        const existingTipTap = this._deltaToTipTap(existingNotes);
+        const existingTipTap = this._deltaToTipTap(existingNotes, refResolver);
         if (!existingTipTap) {
             return JSON.stringify({ type: 'doc', content: [prefixNode] });
         }
@@ -762,9 +848,10 @@ class DistributedEditionImporter {
      * @private
      */
     async _resolveRequirementReferences(requirements, userId, context) {
+        const refResolver = this._buildRefResolver(context);
         for (const reqData of requirements) {
             try {
-                await this._resolveEntityReferences(reqData, userId, context);
+                await this._resolveEntityReferences(reqData, userId, context, refResolver);
             } catch (error) {
                 context.errors.push(`Failed to resolve references for ${reqData.externalId}: ${error.message}`);
             }
@@ -776,7 +863,7 @@ class DistributedEditionImporter {
      * NO_SHOW requirements are skipped — they were fully created in phase 2.
      * @private
      */
-    async _resolveEntityReferences(reqData, userId, context) {
+    async _resolveEntityReferences(reqData, userId, context, refResolver) {
         // NO_SHOW requirements need no reference resolution
         if (reqData.noShow === true) return;
 
@@ -829,11 +916,11 @@ class DistributedEditionImporter {
         const updateRequest = {
             title: current.title,
             type: current.type,
-            statement:    this._deltaToTipTap(reqData.statement)    || current.statement    || null,
-            rationale:    this._deltaToTipTap(reqData.rationale)    || current.rationale   || null,
-            flows:        this._deltaToTipTap(reqData.flows)        || current.flows       || null,
-            nfrs:         this._deltaToTipTap(reqData.nfrs != null ? reqData.nfrs : null)  || current.nfrs || null,
-            privateNotes: current.privateNotes || null,
+            statement:    this._deltaToTipTap(reqData.statement, refResolver)    || current.statement    || null,
+            rationale:    this._deltaToTipTap(reqData.rationale, refResolver)    || current.rationale   || null,
+            flows:        this._deltaToTipTap(reqData.flows, refResolver)        || current.flows       || null,
+            nfrs:         this._deltaToTipTap(reqData.nfrs != null ? reqData.nfrs : null, refResolver)  || current.nfrs || null,
+            privateNotes: this._buildPrivateNotes(reqData, refResolver) || current.privateNotes || null,
             maturity: finalMaturity,
             // XOR: path is nulled when refinesParents resolves non-empty
             path: refinesParents.length > 0 ? null : current.path,

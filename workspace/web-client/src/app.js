@@ -44,6 +44,9 @@ export class App {
         this._domainsPromise = null;   // in-flight guard
         this._chapters = null;         // config-driven chapter list, cached permanently
         this._chaptersPromise = null;  // in-flight guard
+        this._ostars = null;           // O* summary list, TTL-refreshed
+        this._ostarsLoadedAt = null;   // timestamp of last successful fetch
+        this._ostarsPromise = null;    // in-flight guard
         this.header = null;
         this.router = null;
         this.connectionCheckInterval = null;
@@ -291,6 +294,72 @@ export class App {
         });
 
         return this._chaptersPromise;
+    }
+
+    // -------------------------------------------------------------------------
+    // O* summary list (public — TTL-refreshed, 5 minutes)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns all O* as summary objects { itemId, type, code, title }, fetching
+     * on first call. Serves stale data while re-fetching in the background after
+     * the TTL (5 minutes). Parallel calls share one in-flight fetch.
+     *
+     * @returns {Promise<Array<{itemId: number, type: string, code: string, title: string}>>}
+     */
+    async getOStars() {
+        const TTL = 5 * 60 * 1000;
+        const stale = this._ostarsLoadedAt && (Date.now() - this._ostarsLoadedAt) > TTL;
+
+        if (this._ostars && !stale) return this._ostars;
+
+        if (this._ostars && stale && !this._ostarsPromise) {
+            // Stale-while-revalidate: serve existing data, refresh in background
+            this._fetchOStars().catch(err => console.warn('[App] background O* refresh failed:', err));
+            return this._ostars;
+        }
+
+        if (this._ostarsPromise) return this._ostarsPromise;
+
+        return this._fetchOStars();
+    }
+
+    /** @private */
+    async _fetchOStars() {
+        this._ostarsPromise = apiClient.listOStars().then(ostars => {
+            this._ostars = (ostars ?? []).map(o => ({
+                itemId: o.itemId ?? o.id,
+                type:   o.type?.toLowerCase(),
+                code:   o.code,
+                title:  o.title,
+            }));
+            this._ostarsLoadedAt = Date.now();
+            this._ostarsPromise  = null;
+            return this._ostars;
+        }).catch(error => {
+            this._ostarsPromise = null;
+            throw error;
+        });
+        return this._ostarsPromise;
+    }
+
+    /**
+     * Find a single O* summary by itemId. Returns null if not found.
+     * @param {number|string} itemId
+     * @returns {Promise<{itemId: number, type: string, code: string, title: string}|null>}
+     */
+    async findOStar(itemId) {
+        const ostars = await this.getOStars();
+        return ostars.find(o => o.itemId === Number(itemId)) ?? null;
+    }
+
+    /**
+     * Invalidate the O* cache. Call after any O* create/update/delete operation.
+     */
+    invalidateOStars() {
+        this._ostars        = null;
+        this._ostarsLoadedAt = null;
+        this._ostarsPromise  = null;
     }
 
     // -------------------------------------------------------------------------
