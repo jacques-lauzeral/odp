@@ -37,6 +37,7 @@ export default class ChapterToc {
      * @param {Function} options.onChapterSelect       — (entry) chapter scope node click
      * @param {Function} options.buildOrderedChapters  — () → { chapter, depth }[]
      * @param {Function} options.onHierarchyChange     — (hierarchy) fired after each DnD mutation (Elaborate only)
+     * @param {Function} options.onUnclassifiedChange  — (hierarchy) fired when an O* moves into/out of unclassified
      */
     constructor(container, options = {}) {
         this.container             = container;
@@ -49,6 +50,7 @@ export default class ChapterToc {
         this._onChapterSelect      = options.onChapterSelect      ?? (() => {});
         this._buildOrderedChapters = options.buildOrderedChapters ?? (() => []);
         this._onHierarchyChange    = options.onHierarchyChange    ?? (() => {});
+        this._onUnclassifiedChange = options.onUnclassifiedChange ?? (() => {});
 
         // ODIP scope state — all ids stored as normalizeId() integers
         this._collapsedIds  = new Set();
@@ -248,10 +250,10 @@ export default class ChapterToc {
     // Chapter scope
     // =========================================================================
 
-    async renderChapter(chapter) {
+    async renderChapter(chapter, unassignedOStars = []) {
         this._chapter          = chapter;
         this._activeKey        = null;
-        this._unassignedOStars = [];
+        this._unassignedOStars = unassignedOStars;
         this._collapsedTopics  = new Set();
         this._hierarchy        = [];
 
@@ -296,8 +298,7 @@ export default class ChapterToc {
         if (!treeEl) return;
         const hierarchy = this._hierarchy;
 
-        const hasTopics     = hierarchy.length > 0;
-        const hasUnassigned = this._unassignedOStars.length > 0;
+        const hasTopics = hierarchy.length > 0;
 
         // Chapter-root drop strip (Elaborate only) — drop a topic here to make it
         // a top-level topic (reparent to chapter root).
@@ -305,11 +306,17 @@ export default class ChapterToc {
             ? '<div class="chapter-toc__root-drop" data-drop-path="root" data-drop-node-type="root"></div>'
             : '';
 
+        // <unclassified> bucket — always present at top when chapter has a domain;
+        // visibility is gated by NarrativeActivity (only injected for domain chapters).
+        const unclassifiedBucket = this._renderUnassignedBucket();
+
         treeEl.innerHTML = [
+            unclassifiedBucket,
             rootStrip,
             ...hierarchy.map((topic, ti) => this._renderTopic(topic, ti, 0)),
-            hasUnassigned ? this._renderUnassignedBucket() : '',
-            (!hasTopics && !hasUnassigned) ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>' : '',
+            (!hasTopics && !this._unassignedOStars.length)
+                ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>'
+                : '',
         ].join('');
     }
 
@@ -434,31 +441,56 @@ export default class ChapterToc {
     }
 
     _renderUnassignedBucket() {
-        const items = this._unassignedOStars;
+        const items     = this._unassignedOStars;
+        const key       = '_unassigned';
+        const collapsed = this._collapsedTopics.has(key);
+        const hasItems  = items.length > 0;
+        const toggle    = hasItems
+            ? `<span class="chapter-toc__topic-toggle" data-toggle-key="${key}">${collapsed ? '▶' : '▼'}</span>`
+            : `<span class="chapter-toc__topic-toggle-placeholder"></span>`;
+
+        // Drop-zone attrs: topics and hierarchy O*s can be dropped onto the bucket header
+        const dropAttrs = this._isEditable
+            ? `data-drop-path="_unclassified" data-drop-node-type="unclassified"`
+            : '';
+
+        const indent = this._tocIndent(0, false);
+
+        const itemsHtml = (hasItems && !collapsed)
+            ? items.map((item, ii) => {
+                const type  = (item.type ?? 'ON').toUpperCase();
+                const code  = item.code  ?? '';
+                const title = item.title ?? String(item.itemId ?? item.id ?? '');
+                const label = code ? `${code} — ${title}` : title;
+                const ikey  = `unassigned-${ii}`;
+                const dragAttrs = this._isEditable
+                    ? `draggable="true" data-drag-path="u:${ii}" data-drag-node-type="unclassified"`
+                    : '';
+                return `
+                    <button class="chapter-toc__entry chapter-toc__entry--ostar"
+                            data-key="${ikey}" data-type="ostar"
+                            data-item-id="${this._esc(String(item.itemId ?? item.id ?? ''))}"
+                            data-item-type="${type}"
+                            data-unassigned-index="${ii}"
+                            style="padding-left:${this._tocIndent(0, true)}px"
+                            ${dragAttrs}>
+                        ${this._typeBadge(type)}
+                        <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar"
+                              title="${this._esc(label)}">${this._esc(label)}</span>
+                    </button>`;
+            }).join('')
+            : '';
+
         return `
-            <div class="chapter-toc__topic-group">
-                <button class="chapter-toc__entry chapter-toc__entry--topic chapter-toc__entry--unassigned"
-                        data-key="_unassigned" data-type="unassigned">
-                    <span class="chapter-toc__topic-toggle-placeholder"></span>
-                    <span class="chapter-toc__entry-label">⚠ Unassigned (${items.length})</span>
+            <div class="chapter-toc__topic-group chapter-toc__unclassified-group">
+                <button class="chapter-toc__entry chapter-toc__entry--topic chapter-toc__entry--unassigned chapter-toc__drop-zone"
+                        data-key="${key}" data-type="unassigned"
+                        style="padding-left:${indent}px"
+                        ${dropAttrs}>
+                    ${toggle}
+                    <span class="chapter-toc__entry-label">&lt;unclassified&gt;${hasItems ? ` (${items.length})` : ''}</span>
                 </button>
-                ${items.map((item, ii) => {
-            const type  = (item.type ?? 'OC').toUpperCase();
-            const code  = item.code  ?? '';
-            const title = item.title ?? String(item.itemId ?? '');
-            const label = code ? `${code} — ${title}` : title;
-            const key   = `unassigned-${ii}`;
-            return `
-                        <button class="chapter-toc__entry chapter-toc__entry--ostar"
-                                data-key="${key}" data-type="ostar"
-                                data-item-id="${this._esc(String(item.itemId ?? item.id ?? ''))}"
-                                data-item-type="${type}"
-                                data-unassigned-index="${ii}">
-                            ${this._typeBadge(type)}
-                            <span class="chapter-toc__entry-label chapter-toc__entry-label--ostar"
-                                  title="${this._esc(label)}">${this._esc(label)}</span>
-                        </button>`;
-        }).join('')}
+                ${itemsHtml}
             </div>`;
     }
 
@@ -538,9 +570,10 @@ export default class ChapterToc {
 
     /**
      * Parse a full drag-path attribute value.
-     * Topic:  "t:2"      → { nodeType: 'topic', topicIndex: 2, subPath: [] }
-     * Topic:  "t:2.1.0"  → { nodeType: 'topic', topicIndex: 2, subPath: [1, 0] }
-     * O*:     "o:2.1:3"  → { nodeType: 'ostar', topicIndex: 2, subPath: [1], itemIndex: 3 }
+     * Topic:         "t:2"      → { nodeType: 'topic',       topicIndex: 2, subPath: [] }
+     * Topic:         "t:2.1.0"  → { nodeType: 'topic',       topicIndex: 2, subPath: [1,0] }
+     * Hierarchy O*:  "o:2.1:3"  → { nodeType: 'ostar',       topicIndex: 2, subPath: [1], itemIndex: 3 }
+     * Unclassified:  "u:5"      → { nodeType: 'unclassified', itemIndex: 5 }
      * @param {string} path
      * @returns {object|null}
      */
@@ -557,6 +590,9 @@ export default class ChapterToc {
             const ii    = parseInt(rest.slice(last + 1), 10);
             const { topicIndex, subPath } = this._decodeTPath(tpath);
             return { nodeType: 'ostar', topicIndex, subPath, itemIndex: ii };
+        }
+        if (path.startsWith('u:')) {
+            return { nodeType: 'unclassified', itemIndex: parseInt(path.slice(2), 10) };
         }
         return null;
     }
@@ -575,58 +611,67 @@ export default class ChapterToc {
     _handleDragOver(e) {
         if (!this._drag) return;
 
-        const dragIsOStar = this._drag.nodeType === 'ostar';
+        const dragIsOStar        = this._drag.nodeType === 'ostar';
+        const dragIsUnclassified = this._drag.nodeType === 'unclassified';
+        const dragIsTopicMove    = !dragIsOStar && !dragIsUnclassified;
 
         // Valid drop targets:
-        //   - topic buttons (.chapter-toc__drop-zone)
-        //   - O* entries (.chapter-toc__entry--ostar)  [O* drags only]
-        //   - chapter-root strip (.chapter-toc__root-drop)  [topic drags only]
+        //   - topic buttons (.chapter-toc__drop-zone)       — for topics, hierarchy O*s, unclassified O*s
+        //   - hierarchy O* entries (.chapter-toc__entry--ostar)  — for hierarchy O* before/after
+        //   - chapter-root strip (.chapter-toc__root-drop)  — topic drags only
         const zone = e.target.closest(
             '.chapter-toc__drop-zone, .chapter-toc__entry--ostar, .chapter-toc__root-drop'
         );
         if (!zone) return;
 
-        const zoneIsOStar = zone.classList.contains('chapter-toc__entry--ostar');
-        const zoneIsRoot  = zone.classList.contains('chapter-toc__root-drop');
+        const zoneIsOStar         = zone.classList.contains('chapter-toc__entry--ostar');
+        const zoneIsRoot          = zone.classList.contains('chapter-toc__root-drop');
+        const zoneIsUnclassified  = zone.dataset.dropPath === '_unclassified';
+        const zoneIsHierarchyTopic = zone.classList.contains('chapter-toc__drop-zone') && !zoneIsUnclassified;
 
-        // O* drags cannot target the root strip; topic drags cannot target O* entries.
-        if (dragIsOStar && zoneIsRoot) return;
-        if (!dragIsOStar && zoneIsOStar) return;
+        // Routing rules:
+        // - Topic drags: only to topic drop-zones or root strip; not to O* entries or unclassified bucket
+        // - Hierarchy O*: to other hierarchy O* entries (before/after) or any hierarchy topic drop-zone (append);
+        //   unclassified O* child entries are not independent drop targets — skip them
+        // - Unclassified O*: to hierarchy topic drop-zones only; not to root strip, O* entries, or the bucket itself
+        const zoneIsUnclassifiedChild = zoneIsOStar && zone.dataset.dragPath?.startsWith('u:');
+        if (dragIsTopicMove   && (zoneIsOStar || zoneIsUnclassified)) return;
+        if (dragIsOStar       && zoneIsRoot) return;
+        if (dragIsOStar       && zoneIsUnclassifiedChild) return;  // skip unclassified O* children
+        if (dragIsUnclassified && (zoneIsRoot || zoneIsOStar || zoneIsUnclassified)) return;
 
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
 
         let position;
-        if (dragIsOStar) {
+        if (dragIsTopicMove) {
+            if (zoneIsRoot) {
+                position = 'root';
+            } else {
+                const rect  = zone.getBoundingClientRect();
+                const relY  = e.clientY - rect.top;
+                const third = rect.height / 3;
+                position = relY < third       ? 'before'
+                    : relY > third * 2   ? 'after'
+                        :                      'into';
+            }
+        } else if (dragIsOStar) {
             if (zoneIsOStar) {
-                // Before/after within the owning topic's item list
                 const rect = zone.getBoundingClientRect();
                 position = (e.clientY - rect.top) < rect.height / 2 ? 'before' : 'after';
             } else {
-                // Dropping O* on a topic row → append into topic
                 position = 'into';
             }
-        } else if (zoneIsRoot) {
-            // Root strip → reparent to chapter root
-            position = 'root';
         } else {
-            // Topic onto topic: three-zone split.
-            //   top third    → insert as sibling before target
-            //   middle third → reparent as last child of target
-            //   bottom third → insert as sibling after target
-            const rect  = zone.getBoundingClientRect();
-            const relY  = e.clientY - rect.top;
-            const third = rect.height / 3;
-            position = relY < third       ? 'before'
-                : relY > third * 2   ? 'after'
-                    :                      'into';
+            // Unclassified O* dragged onto a topic drop-zone → assign to that topic
+            position = zoneIsUnclassified ? 'into' : 'into';
         }
 
         this._clearDropIndicators();
-        if (position === 'before')      zone.classList.add('chapter-toc__drop--before');
-        else if (position === 'after')  zone.classList.add('chapter-toc__drop--after');
-        else if (position === 'root')   zone.classList.add('chapter-toc__drop--root');
-        else                            zone.classList.add('chapter-toc__drop--into');
+        if (position === 'before')     zone.classList.add('chapter-toc__drop--before');
+        else if (position === 'after') zone.classList.add('chapter-toc__drop--after');
+        else if (position === 'root')  zone.classList.add('chapter-toc__drop--root');
+        else                           zone.classList.add('chapter-toc__drop--into');
         zone.dataset.dropPosition = position;
     }
 
@@ -653,16 +698,48 @@ export default class ChapterToc {
         if (!zone) { this._cancelDrag(); return; }
 
         const dropPosition = zone.dataset.dropPosition ?? 'into';
-
-        // Topic drop-zones carry data-drop-path; O* entries carry data-drag-path;
-        // the root strip carries data-drop-path="root".
-        const dropPath = zone.dataset.dropPath ?? zone.dataset.dragPath ?? null;
+        const dropPath     = zone.dataset.dropPath ?? zone.dataset.dragPath ?? null;
         if (!dropPath || dropPath === this._drag.path) { this._cancelDrag(); return; }
 
         const src = this._parseDragPath(this._drag.path);
         if (!src) { this._cancelDrag(); return; }
 
-        // Root strip: reparent a topic to chapter root (append). Only valid for topic drags.
+        // ── Unclassified O* dragged onto a hierarchy topic → assign to theme ──
+        if (src.nodeType === 'unclassified') {
+            if (dropPath === '_unclassified') { this._cancelDrag(); return; }
+            const dst = this._parseDragPath(dropPath);
+            if (!dst || dst.nodeType !== 'topic') { this._cancelDrag(); return; }
+            const item = this._unassignedOStars[src.itemIndex];
+            if (!item) { this._cancelDrag(); return; }
+            // Insert into hierarchy — append to dst topic's items, then sort
+            const h = this._cloneHierarchy(this._hierarchy);
+            const dstNode = this._resolveTopicNode(h, dst);
+            if (!dstNode) { this._cancelDrag(); return; }
+            if (!Array.isArray(dstNode.items)) dstNode.items = [];
+            dstNode.items.push({ id: item.id ?? item.itemId, type: item.type, code: item.code, title: item.title });
+            dstNode.items = this._sortItemsByType(dstNode.items);
+            this._clearDropIndicators();
+            this._drag = null;
+            this._onUnclassifiedChange(h);
+            return;
+        }
+
+        // ── Hierarchy O* dragged onto <unclassified> bucket (header or child entry) ──
+        if (src.nodeType === 'ostar') {
+            const dst = this._parseDragPath(dropPath);
+            if (dropPath === '_unclassified' || dst?.nodeType === 'unclassified') {
+                const h = this._cloneHierarchy(this._hierarchy);
+                const srcNode = this._resolveTopicNode(h, { topicIndex: src.topicIndex, subPath: src.subPath });
+                if (!srcNode) { this._cancelDrag(); return; }
+                srcNode.items.splice(src.itemIndex, 1);
+                this._clearDropIndicators();
+                this._drag = null;
+                this._onUnclassifiedChange(h);
+                return;
+            }
+        }
+
+        // ── Root strip ──
         if (dropPath === 'root') {
             if (src.nodeType !== 'topic') { this._cancelDrag(); return; }
             const mutated = this._applyTopicToRoot(this._cloneHierarchy(this._hierarchy), src);
@@ -670,10 +747,10 @@ export default class ChapterToc {
             return;
         }
 
+        // ── Normal hierarchy moves ──
         const dst = this._parseDragPath(dropPath);
         if (!dst) { this._cancelDrag(); return; }
 
-        // Prevent dropping a topic into one of its own descendants (or onto itself)
         if (src.nodeType === 'topic' &&
             (this._isAncestorPath(src, dst) || this._isSamePath(src, dst))) {
             this._cancelDrag();

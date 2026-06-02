@@ -301,11 +301,11 @@ export class App {
     // -------------------------------------------------------------------------
 
     /**
-     * Returns all O* as summary objects { itemId, type, code, title }, fetching
+     * Returns all O* as summary objects { itemId, type, code, title, domain }, fetching
      * on first call. Serves stale data while re-fetching in the background after
      * the TTL (5 minutes). Parallel calls share one in-flight fetch.
      *
-     * @returns {Promise<Array<{itemId: number, type: string, code: string, title: string}>>}
+     * @returns {Promise<Array<{itemId: number, type: string, code: string, title: string, domain: string|null}>>}
      */
     async getOStars() {
         const TTL = 5 * 60 * 1000;
@@ -332,6 +332,7 @@ export class App {
                 type:   o.type?.toLowerCase(),
                 code:   o.code,
                 title:  o.title,
+                domain: o.domain ?? null,
             }));
             this._ostarsLoadedAt = Date.now();
             this._ostarsPromise  = null;

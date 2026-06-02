@@ -179,11 +179,11 @@ export default class ChapterBody {
             <div class="chapter-body chapter-body--padded">
                 <div class="chapter-body__header">
                     <h3 class="chapter-body__title chapter-body__title--topic">
-                        ⚠ Unassigned O*s (${items.length})
+                        &lt;unclassified&gt; (${items.length})
                     </h3>
                 </div>
                 <p class="chapter-body__unassigned-hint">
-                    These O*s belong to this chapter's domain but are not assigned to any topic.
+                    These O*s belong to this chapter's domain but are not yet assigned to any theme.
                 </p>
                 <div class="chapter-body__ostar-list">
                     ${items.length === 0

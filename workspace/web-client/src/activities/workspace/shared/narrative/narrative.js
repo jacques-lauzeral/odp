@@ -189,6 +189,7 @@ export default class NarrativeActivity {
             onChapterSelect:      (entry)   => this._handleChapterTocSelect(entry),
             buildOrderedChapters: ()        => this._buildOrderedChapters(),
             onHierarchyChange:    (hier)    => this._handleHierarchyChange(hier),
+            onUnclassifiedChange: (hier)    => this._handleUnclassifiedChange(hier),
         });
 
         this._body = new ChapterBody(this._masterDetail.detailContainer, {
@@ -242,7 +243,8 @@ export default class NarrativeActivity {
             window.history.pushState({}, '', `${this._basePath()}/${chapterId}`);
         }
 
-        await this._toc.renderChapter(full);
+        const unassigned = await this._computeUnassignedOStars(full);
+        await this._toc.renderChapter(full, unassigned);
         this._body.renderSelectionRead({ type: 'chapter' }, full);
     }
 
@@ -360,6 +362,46 @@ export default class NarrativeActivity {
     }
 
     /**
+     * Called by ChapterToc when an O* moves into or out of the <unclassified> bucket.
+     * The mutated hierarchy (without the unclassified O*) is already applied client-side.
+     * We PATCH the chapter, then recompute unassigned O*s and re-render the TOC so the
+     * bucket reflects the new state without a full chapter reload.
+     * @param {object[]} hierarchy — mutated render-shape hierarchy
+     */
+    async _handleUnclassifiedChange(hierarchy) {
+        const chapter = this._selectedChapter;
+        if (!chapter) return;
+
+        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+
+        try {
+            const updated = await apiClient.patchChapter(chapter.itemId, {
+                osHierarchy:       { topics: writeTopics },
+                expectedVersionId: chapter.versionId,
+            });
+            if (updated?.versionId) chapter.versionId = updated.versionId;
+            if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
+        } catch (error) {
+            errorHandler.handle(error, 'narrative-unclassified-save');
+            return;
+        }
+
+        // Use the render-shape hierarchy passed by ChapterToc directly.
+        // Re-parsing from chapter.osHierarchy would lose code/title if the PATCH
+        // response contains write-shape (integer) arrays instead of enriched objects.
+        this._toc._hierarchy = hierarchy;
+
+        // Mark chapter as needing a fresh server fetch on next dive so the
+        // in-memory osHierarchy is re-enriched from the server projection.
+        chapter._fullyLoaded = false;
+
+        // Recompute unclassified from the updated O* cache and re-render.
+        const unassigned = await this._computeUnassignedOStars(chapter);
+        this._toc._unassignedOStars = unassigned;
+        this._toc._renderChapterTree();
+    }
+
+    /**
      * Convert a single render-shape topic node back to the write shape.
      * Render shape:  { topic, items: [{ id, type, ... }], subTopics: [...], narrative? }
      * Write shape:   { id, topic, narrative, ons: [int], ors: [int], ocs: [int], subtopics: [...] }
@@ -403,6 +445,51 @@ export default class NarrativeActivity {
 
     // -------------------------------------------------------------------------
     // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // Unclassified O* computation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Collect all O* item IDs already referenced in the osHierarchy tree.
+     * @param {object[]} topics
+     * @returns {Set<number>}
+     */
+    _collectHierarchyIds(topics) {
+        const ids = new Set();
+        const walk = (nodes) => {
+            for (const t of nodes ?? []) {
+                for (const item of [...(t.ons ?? []), ...(t.ors ?? []), ...(t.ocs ?? [])]) {
+                    const id = item?.id ?? item?.itemId ?? item;
+                    if (id != null) ids.add(Number(id));
+                }
+                walk(t.subtopics ?? []);
+            }
+        };
+        walk(topics);
+        return ids;
+    }
+
+    /**
+     * Compute O*s in the chapter's domain not referenced in any hierarchy topic.
+     * Returns [] for pure narrative chapters (no domain).
+     * @param {object} chapter
+     * @returns {Promise<Array>}
+     */
+    async _computeUnassignedOStars(chapter) {
+        if (!chapter.domain) return [];
+        const allOStars   = await this.app.getOStars();
+        const assignedIds = this._collectHierarchyIds(chapter.osHierarchy?.topics ?? []);
+        return allOStars
+            .filter(o => o.domain === chapter.domain && !assignedIds.has(Number(o.itemId)))
+            .map(o => ({
+                id:     Number(o.itemId),
+                itemId: Number(o.itemId),
+                type:   (o.type ?? 'on').toUpperCase(),
+                code:   o.code  ?? null,
+                title:  o.title ?? null,
+            }));
+    }
 
     /**
      * Ensures full chapter data is loaded (osHierarchy, narrative).
