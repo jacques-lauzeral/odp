@@ -52,6 +52,11 @@ class DistributedEditionImporter {
             console.log('Phase 0a: Resolving chapter identity...');
             await this._resolveChapter(sourceData, userId, context);
 
+            // Phase 0b-pre: Build anchor → topic ID map from source requirements path[].
+            // Mirrors the ID assignment order of _patchChapterOsHierarchy so that
+            // BlocksToTipTapConverter can emit n-ref marks with numeric topic IDs.
+            context.anchorToId = this._buildAnchorToIdMap(sourceData.requirements ?? []);
+
             // Phase 0b: Patch chapter narrative from blocks[]/chapterIntro[] if present
             console.log('Phase 0b: Patching chapter narrative...');
             await this._patchChapterNarrative(sourceData, userId, context, summary);
@@ -154,6 +159,37 @@ class DistributedEditionImporter {
      * Skipped silently if no content present.
      * @private
      */
+    /**
+     * Build a map from anchor suffix strings to numeric topic IDs.
+     *
+     * Source anchor format: theme_{chapterPos}_{seq} where seq starts at 2 for the first topic.
+     * Topic IDs are assigned as sequential strings starting at "1" in source requirements order,
+     * mirroring the ID assignment in _patchChapterOsHierarchy.
+     * Map: anchor suffix string (e.g. "2", "3") → topic id string (e.g. "1", "2").
+     *
+     * @param {object[]} requirements — sourceData.requirements array
+     * @returns {Map<string, string>} anchorSuffix → topicId
+     * @private
+     */
+    _buildAnchorToIdMap(requirements) {
+        const anchorToId = new Map();
+        let nextId = 1;
+        let seq    = 2;
+        const seen = new Set();
+
+        for (const req of requirements) {
+            const path = req.path;
+            if (!Array.isArray(path) || path.length === 0) continue;
+            const topicLabel = path[0];
+            if (!seen.has(topicLabel)) {
+                seen.add(topicLabel);
+                anchorToId.set(String(seq++), String(nextId++));
+            }
+        }
+
+        return anchorToId;
+    }
+
     async _patchChapterNarrative(sourceData, userId, context, summary) {
         const blocks = sourceData.blocks || sourceData.chapterIntro;
         if (!blocks || blocks.length === 0) {
@@ -166,7 +202,7 @@ class DistributedEditionImporter {
             return;
         }
 
-        const narrative = BlocksToTipTapConverter.convert(blocks, context.chapterCode);
+        const narrative = BlocksToTipTapConverter.convert(blocks, context.chapterCode, context.anchorToId);
         if (!narrative) {
             console.log('Empty narrative after conversion — skipping patch.');
             return;
@@ -225,12 +261,16 @@ class DistributedEditionImporter {
          * @param {number} itemId - Requirement itemId
          * @param {string} type - 'ON' | 'OR'
          */
+            // Chapter-scoped ID counter — first free positive integer assigned to each new topic node.
+            // Shared across the full hierarchy tree via a single-element array (pass-by-reference).
+        const nextId = [1];
+
         const insertAtLeaf = (topics, path, itemId, type) => {
             const [head, ...tail] = path;
 
             let node = topics.find(t => t.topic === head);
             if (!node) {
-                node = { topic: head, ons: [], ors: [], ocs: [], subtopics: [] };
+                node = { id: String(nextId[0]++), topic: head, narrative: null, ons: [], ors: [], ocs: [], subtopics: [] };
                 topics.push(node);
             }
 

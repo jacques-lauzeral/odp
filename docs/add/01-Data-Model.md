@@ -287,11 +287,13 @@ Chapters are **config-owned** (domain, position declared in `edition.json`) but 
 ```
 OsHierarchy
 └── topics: OsHierarchyTopic[]
+    ├── id: string               — chapter-scoped unique identifier (first free positive integer as string)
     ├── topic: string            — topic label
+    ├── narrative: string|null   — optional theme narrative (TipTap JSON string)
     ├── ons: number[]            — ON item IDs in this topic
     ├── ors: number[]            — OR item IDs in this topic
     ├── ocs: number[]            — OC item IDs in this topic
-    └── subtopics: OsHierarchyTopic[]   — recursive
+    └── subtopics: OsHierarchyTopic[]   — recursive (same shape)
 ```
 
 ---

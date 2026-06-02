@@ -478,6 +478,26 @@ export default class ChapterToc {
         });
     }
 
+    /**
+     * Programmatically select a top-level topic by its zero-based index.
+     * Equivalent to the user clicking the topic button in the TOC.
+     * Used by NarrativeActivity._selectTopic() after n-ref navigation.
+     * @param {number} idx — zero-based index into osHierarchy.topics
+     */
+    selectTopicByIndex(idx) {
+        const key = `topic-${idx}`;
+        const btn = this.container?.querySelector(`.chapter-toc__entry[data-key="${key}"]`);
+        if (btn) {
+            this._handleChapterEntryClick(btn);
+        } else {
+            // TOC not yet rendered or collapsed — resolve directly and fire callback
+            const topic = this._resolveTopicByPath(idx, []);
+            if (!topic) return;
+            this.setActiveKey(key);
+            this._onChapterSelect({ type: 'topic', topic, chapter: this._chapter });
+        }
+    }
+
     scrollToKey(key) {
         const btn = this.container?.querySelector(`[data-key="${CSS.escape(key)}"]`);
         btn?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });

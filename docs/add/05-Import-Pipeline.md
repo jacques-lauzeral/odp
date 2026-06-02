@@ -218,12 +218,13 @@ Used for importing ODIP distributed edition source JSON files directly — one f
 
 | Phase | Action |
 |---|---|
-| 0a | Resolve chapter identity from `chapterFolder` / `documentId` → chapter `itemId` and `domain` |
-| 0b | Convert `blocks[]` or `chapterIntro[]` to Quill Delta; patch chapter narrative |
+| 0a | Resolve chapter identity from `chapterFolder` / `documentId` → chapter `itemId`, `code`, and `domain` |
+| 0b-pre | Build `anchorToId` map from `requirements[].path[]` (anchor suffix → topic ID) |
+| 0b | Convert `blocks[]` or `chapterIntro[]` to TipTap JSON; patch chapter narrative |
 | 1 | Build reference maps from existing DB (stakeholders, reference documents, waves, requirements) |
 | 2 | Create requirements as DRAFT without references |
 | 3 | Resolve references; apply final maturity |
-| 4 | Build `osHierarchy` from `path[0]` groupings; patch chapter |
+| 4 | Build `osHierarchy` from `path[0]` groupings; assign topic IDs; patch chapter |
 
 **Source field mapping:**
 
@@ -241,6 +242,10 @@ Used for importing ODIP distributed edition source JSON files directly — one f
 
 **`osHierarchy` construction:** requirements grouped by `path[0]` (topic), preserving source order. ONs listed before ORs within each topic. Requirements with empty `path[]` (sub-entities via `refinesParents`) are excluded from topic placement. `ocs: []` always.
 
+Each topic node is assigned a **chapter-scoped numeric string ID** (`id: "1"`, `"2"`, …) — the first free positive integer across the full hierarchy tree, in source order. Topic nodes also carry `narrative: null` at import time (editable post-import via the ODIP editor). The ID is the stable reference used in `n-ref` marks.
+
+**`_buildAnchorToIdMap(requirements)`** — called before Phase 0b. Iterates `requirements[]` in source order, identifies unique top-level topic labels (first appearances of `path[0]`), and maps anchor suffix strings (e.g. `"2"`, `"3"`) to the topic IDs that will be assigned in Phase 4. The counter logic mirrors `insertAtLeaf` exactly (seq starts at 2, ID starts at 1). The resulting `Map<string, string>` is stored on `context.anchorToId` and passed to `BlocksToTipTapConverter.convert()`.
+
 **`DistributedImportSummary`** returned:
 
 ```json
@@ -256,12 +261,19 @@ Used for importing ODIP distributed edition source JSON files directly — one f
 
 ---
 
-## 4.4 BlocksToQuillDeltaConverter
+## 4.4 BlocksToTipTapConverter
 
-**Class**: `BlocksToQuillDeltaConverter` (singleton export)
-**Location**: `services/import/BlocksToQuillDeltaConverter.js`
+**Class**: `BlocksToTipTapConverter` (singleton export)
+**Location**: `services/import/BlocksToTipTapConverter.js`
 
-Converts a `blocks[]` array from a distributed edition source JSON file into a Quill Delta JSON string, suitable for storage in Neo4j rich-text fields.
+Converts a `blocks[]` array from a distributed edition source JSON file into a **TipTap JSON document string**, suitable for storage in Neo4j rich-text fields.
+
+**Signature:** `convert(blocks, chapterCode = null, anchorToId = null)`
+
+- `chapterCode` — chapter code string (e.g. `'nmui'`); required for resolving `anchor` attributes to `n-ref` marks.
+- `anchorToId` — `Map<anchorSuffix, topicId>` built by `_buildAnchorToIdMap`; required for converting intra-chapter anchor links to stable numeric topic IDs.
+
+Converts a `blocks[]` array from a distributed edition source JSON file into a TipTap JSON document string, suitable for storage in Neo4j rich-text fields.
 
 **Handled block types:**
 
@@ -276,7 +288,21 @@ Converts a `blocks[]` array from a distributed edition source JSON file into a Q
 | `table` | `headers[]` (Delta ops arrays), `rows[][]` (plain strings) | Code-block lines (see below) |
 | `placeholder_section`, `page_break` | — | Silently skipped |
 
-**Inline attributes** (`bold`, `italic`, `underline`, `color`, `link`, `ref`, `anchor`, …) are preserved as-is from source ops. Unknown attributes pass through — Quill ignores unrecognised attributes, and `DeltaToAsciidocConverter` forwards them.
+**Inline attribute mapping (Quill → TipTap marks):**
+
+| Source attribute | TipTap mark | Notes |
+|---|---|---|
+| `bold`, `italic`, `underline`, `strike` | `{ type: key }` | Standard marks |
+| `link` | `{ type: 'link', attrs: { href, target: '_blank' } }` | External URL |
+| `color` | `{ type: 'textStyle', attrs: { color } }` | |
+| `ref` | `{ type: 'n-ref', attrs: { value } }` | Cross-chapter narrative reference (value = chapter code) |
+| `xref` | `{ type: 'o-ref', attrs: { value } }` | O* reference (value = O* external ID) |
+| `refdoc` | `{ type: 'd-ref', attrs: { value } }` | Strategic document reference (value = refdoc external ID) |
+| `anchor` | `{ type: 'n-ref', attrs: { value: '{chapterCode}/{topicId}' } }` | Intra-chapter topic link; suffix resolved via `anchorToId` map |
+| `attributes` (nested) | unpacked recursively | Some source ops wrap attrs as `{ attributes: { bold: true } }` |
+| unknown | `{ type: key, attrs: { value } }` | Pass-through |
+
+Unknown attributes pass through — the publication pipeline may consume them.
 
 **Table rendering (interim format):**
 

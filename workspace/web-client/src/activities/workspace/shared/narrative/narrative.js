@@ -28,6 +28,9 @@
  *   []               → ODIP scope (chapter tree)
  *   ['{chapterId}']  → chapter scope (dive directly into chapter)
  *
+ * Query parameters:
+ *   ?theme={topicPath}  → after diving, select matching topic in chapter TOC
+ *
  * URL updates:
  *   Dive into chapter → pushState /{base}/narrative/{chapterId}
  *   Climb via button  → pushState /{base}/narrative
@@ -102,6 +105,9 @@ export default class NarrativeActivity {
                 ?? null;
             if (chapter) {
                 await this._diveIntoChapter(chapter, /* pushState */ false);
+                // Select topic if ?theme= query param is present
+                const topic = new URLSearchParams(window.location.search).get('theme');
+                if (topic) this._selectTopic(topic);
                 return;
             }
         }
@@ -138,6 +144,9 @@ export default class NarrativeActivity {
         }
 
         await this._diveIntoChapter(chapter, /* pushState */ false);
+        // Select topic if ?theme= query param is present
+        const topic = new URLSearchParams(window.location.search).get('theme');
+        if (topic) this._selectTopic(topic);
     }
 
     async cleanup() {
@@ -239,6 +248,39 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
     // Chapter scope — climb back to ODIP
     // -------------------------------------------------------------------------
+
+    /**
+     * Select a topic entry in the chapter TOC by its anchor path value.
+     * Called after diving into a chapter via an n-ref link with a topic segment.
+     *
+     * Anchor format from source JSON: theme_{chapterPos}_{topicSeq}
+     * where topicSeq is a 1-based counter starting at 2 for the first topic.
+     * Zero-based index into osHierarchy.topics = last numeric suffix − 2.
+     *
+     * Silently ignores unresolvable topic paths.
+     * @param {string} topicPath — anchor value from the n-ref (e.g. 'theme_2_2_2')
+     * @private
+     */
+    /**
+     * Select a topic in the chapter TOC by its numeric ID.
+     * Called after n-ref navigation with a topic segment.
+     * @param {string} topicId — numeric topic ID (e.g. '1', '2')
+     * @private
+     */
+    _selectTopic(topicId) {
+        if (!this._selectedChapter || !topicId) return;
+
+        const topics = this._selectedChapter.osHierarchy?.topics;
+        if (!topics?.length) return;
+
+        const idx = topics.findIndex(t => t.id === topicId);
+        if (idx < 0) {
+            console.debug('[NarrativeActivity] _selectTopic: no topic with id', topicId);
+            return;
+        }
+
+        this._toc.selectTopicByIndex(idx);
+    }
 
     _climbToOdip(viaButton = false) {
         this._selectedChapter = null;

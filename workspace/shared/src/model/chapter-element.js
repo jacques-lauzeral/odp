@@ -31,14 +31,18 @@ export const OsHierarchyItem = {
  * ons/ors/ocs are OsHierarchyItem[] on read, integer[] on write.
  *
  * @typedef {object} OsHierarchyTopic
- * @property {string}             topic
+ * @property {string}             id        — chapter-scoped unique identifier (first free positive integer as string)
+ * @property {string}             topic     — topic label
+ * @property {string|null}        narrative — optional theme narrative (TipTap JSON string)
  * @property {OsHierarchyItem[]}  ons
  * @property {OsHierarchyItem[]}  ors
  * @property {OsHierarchyItem[]}  ocs
  * @property {OsHierarchyTopic[]} subtopics
  */
 export const OsHierarchyTopic = {
+    id:        '',
     topic:     '',
+    narrative: null,
     ons:       [],
     ors:       [],
     ocs:       [],

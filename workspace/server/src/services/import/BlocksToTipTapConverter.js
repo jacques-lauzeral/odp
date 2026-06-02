@@ -38,13 +38,14 @@ class BlocksToTipTapConverter {
      * @param {Array|null|undefined} blocks - Source file blocks array
      * @returns {string|null} TipTap document JSON string, or null if no content
      */
-    convert(blocks, chapterCode = null) {
+    convert(blocks, chapterCode = null, anchorToId = null) {
         if (!blocks || blocks.length === 0) {
             return null;
         }
 
-        // Store chapter code for anchor → n-ref resolution
+        // Store chapter code and anchor→id map for n-ref resolution
         this._chapterCode = chapterCode;
+        this._anchorToId  = anchorToId;
 
         const content = [];
 
@@ -319,11 +320,15 @@ class BlocksToTipTapConverter {
                     marks.push({ type: 'd-ref', attrs: { value } });
                     break;
                 case 'anchor':
-                    // Intra-chapter topic link: anchor value is a topic identifier
-                    // within the current chapter. Converted to n-ref using the
-                    // chapter code stored by convert(blocks, chapterCode).
-                    if (value && this._chapterCode) {
-                        marks.push({ type: 'n-ref', attrs: { value: `${this._chapterCode}/${value}` } });
+                    // Intra-chapter topic link — resolve anchor suffix to numeric topic ID
+                    // via anchorToId map (suffix → id, built from source requirements path[]).
+                    // Anchor format: theme_{chapterPos}_{seq} — last numeric suffix is the key.
+                    if (value && this._chapterCode && this._anchorToId) {
+                        const m = /(\d+)$/.exec(value);
+                        const topicId = m ? this._anchorToId.get(m[1]) : null;
+                        if (topicId) {
+                            marks.push({ type: 'n-ref', attrs: { value: `${this._chapterCode}/${topicId}` } });
+                        }
                     }
                     break;
                 case 'attributes':

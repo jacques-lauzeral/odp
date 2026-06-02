@@ -600,6 +600,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `tables` | boolean | `true` | Enable table toolbar buttons |
 | `placeholder` | string | `''` | Placeholder text for empty edit fields |
 | `onChange` | Function | `null` | Called with TipTap JSON string on every content change |
+| `onInternalLink` | Function | `null` | Called with `(type, value)` on internal link click in read-only mode. `type`: `'n-ref'` \| `'o-ref'` \| `'d-ref'`; `value`: the mark's value attribute. Navigation implemented by the caller. |
 
 **Public API:**
 
@@ -614,7 +615,15 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 
 **Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipRef`, `OdipAnchor`.
 
-`OdipRef` and `OdipAnchor` are passthrough marks — registered so TipTap does not discard text nodes carrying these custom attributes. Rendered as `<span data-ref>` / `<span data-anchor>`; actual semantics handled by the publication pipeline.
+**Internal reference marks** — three passthrough mark extensions registered so TipTap does not discard text nodes carrying them:
+
+| Mark name | Rendered as | Semantics |
+|---|---|---|
+| `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}">` | Narrative reference: `{chapterCode}[/{topicId}]` |
+| `o-ref` (`OdipORef`) | `<span data-o-ref="{value}">` | O* reference: O* external ID |
+| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}">` | Strategic document reference: refdoc external ID |
+
+In read-only mode, these spans are styled as clickable links (`.rich-text-component--readonly [data-n-ref]` etc.) and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic.
 
 **Read-only mode** — `editable: false` is set on the TipTap instance; the toolbar is omitted; `blur()` is called immediately after mount to prevent focus theft.
 
@@ -1361,5 +1370,82 @@ The `@odp/shared` source is copied into `web-client/src/shared/src/` as a build 
 | Container | `CMD ["npm", "run", "dev"]` in Dockerfile | Vite dev server inside the container |
 
 The container always runs the Vite dev server — there is no separate production serving step in the current deployment model.
+
+## 18. Narrative Activity
+
+The Narrative sub-activity (`activities/workspace/shared/narrative/`) provides editorial access to chapter narratives and O* organisation within ODIP editions.
+
+### 18.1 Layout
+
+Two-pane `MasterDetail` layout (28% / 72% initial ratio):
+
+- **Left panel** — `ChapterToc`: chapter tree (ODIP scope) or topic/O* tree (chapter scope)
+- **Right panel** — `ChapterBody`: chapter narrative, topic card list, or O* detail view
+
+### 18.2 Scope State Machine
+
+| Scope | TOC | Body default |
+|---|---|---|
+| `odip` | Full chapter tree; expand/collapse; select / dive → | Chapter narrative (read-only) |
+| `chapter` | ← back · chapter title · topic → O*s | Chapter narrative (editable in Elaborate) |
+
+### 18.3 Sub-Path and Query Parameter Routing
+
+| URL pattern | Behaviour |
+|---|---|
+| `{base}/narrative` | ODIP scope — chapter tree |
+| `{base}/narrative/{chapterId}` | Chapter scope — dive into chapter by numeric `itemId` |
+| `{base}/narrative/{chapterId}?theme={topicId}` | Chapter scope + select topic by numeric string ID |
+
+`{base}` is `/elaborate` (live dataset) or `/explore/{editionId}` (edition context).
+
+`NarrativeActivity._selectTopic(topicId)` — called after diving when `?theme=` is present. Finds the topic by `id` field in `osHierarchy.topics`, then delegates to `ChapterToc.selectTopicByIndex(idx)`.
+
+### 18.4 ChapterToc External API
+
+| Method | Description |
+|---|---|
+| `renderOdip(chapters, selectedId)` | Render full chapter tree (ODIP scope) |
+| `renderChapter(chapter)` | Render topic/O* tree for a single chapter |
+| `setActiveKey(key)` | Highlight a TOC entry by its `data-key` |
+| `setActiveByItemId(id)` | Highlight the O* entry matching `id` |
+| `selectTopicByIndex(idx)` | Programmatically select a top-level topic by zero-based index; equivalent to user click; fires `onChapterSelect` callback |
+
+### 18.5 ChapterBody Renderers
+
+| Entry type | Renderer | Notes |
+|---|---|---|
+| `chapter` | `_renderChapterNarrative` | Full narrative; editable in Elaborate |
+| `topic` | `_renderTopic` | Topic narrative (if present) above O* card list |
+| `unassigned` | `_renderUnassigned` | O*s with no topic placement |
+| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel |
+
+**Topic narrative** — `_renderTopic` renders a read-only `RichTextComponent` above the O* card list when `topic.narrative` is non-null.
+
+### 18.6 Internal Link Navigation
+
+`ChapterBody._handleInternalLink(type, value)` — called via `onInternalLink` from `RichTextComponent`. Resolves the link and calls `app.navigate()`:
+
+| Mark type | Resolution | Target URL |
+|---|---|---|
+| `n-ref` | Chapter code → `itemId` via `app.getChapters()`; topic path as `?theme=` | `{base}/narrative/{itemId}[?theme={topicId}]` |
+| `o-ref` | Not yet implemented | — |
+| `d-ref` | Not yet implemented | — |
+
+### 18.7 OsHierarchy Theme Model
+
+Each topic in `osHierarchy.topics` carries:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Chapter-scoped unique ID; first free positive integer as string (`"1"`, `"2"`, …) |
+| `topic` | string | Display label |
+| `narrative` | string\|null | Optional TipTap JSON string; rendered above O* list |
+| `ons`, `ors`, `ocs` | `OsHierarchyItem[]` | Enriched O* references (read path) |
+| `subtopics` | `OsHierarchyTopic[]` | Recursive sub-themes |
+
+IDs are assigned at import time by `DistributedEditionImporter._patchChapterOsHierarchy` using a chapter-scoped counter (DFS order, starting at 1). The same ID is used in `n-ref` mark values for intra-chapter navigation.
+
+---
 
 [← 07 CLI](07-CLI.md) | [09 Deployment →](09-Deployment.md)

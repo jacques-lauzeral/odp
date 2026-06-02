@@ -748,11 +748,21 @@ components:
 
     OsHierarchyTopic:
       type: object
-      required: [topic, ons, ors, ocs]
+      required: [id, topic, ons, ors, ocs]
       properties:
+        id:
+          type: string
+          description: >
+            Unique identifier within the chapter osHierarchy scope.
+            Assigned as the first free positive integer (as string) across the full hierarchy tree.
+          example: "1"
         topic:
           type: string
           description: "Topic label"
+        narrative:
+          type: string
+          nullable: true
+          description: "Optional theme narrative (TipTap JSON string) — displayed above the O* list"
         ons:
           type: array
           items:
@@ -835,10 +845,20 @@ components:
         Write-path topic shape — ons/ors/ocs are integer arrays.
         Used in ChapterUpdateRequest and ChapterPatchRequest.
       type: object
-      required: [topic, ons, ors, ocs]
+      required: [id, topic, ons, ors, ocs]
       properties:
+        id:
+          type: string
+          description: >
+            Unique identifier within the chapter osHierarchy scope.
+            Assigned as the first free positive integer (as string) across the full hierarchy tree.
+          example: "1"
         topic:
           type: string
+        narrative:
+          type: string
+          nullable: true
+          description: "Optional theme narrative (TipTap JSON string)"
         ons:
           type: array
           items:

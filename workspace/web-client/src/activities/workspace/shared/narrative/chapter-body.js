@@ -140,14 +140,19 @@ export default class ChapterBody {
     }
 
     _renderTopic(topic) {
-        const items = topic?.items ?? [];
-        const title = this._esc(topic?.topic ?? '');
+        const items    = topic?.items ?? [];
+        const title    = this._esc(topic?.topic ?? '');
+        const narrative = topic?.narrative ?? null;
 
         this.container.innerHTML = `
             <div class="chapter-body chapter-body--padded">
                 <div class="chapter-body__header">
                     <h3 class="chapter-body__title chapter-body__title--topic">${title}</h3>
                 </div>
+                ${narrative ? `
+                <div class="chapter-body__topic-narrative">
+                    <div id="topicNarrativeEditor" class="chapter-body__editor"></div>
+                </div>` : ''}
                 <div class="chapter-body__ostar-list">
                     ${items.length === 0
             ? '<p class="chapter-body__empty">No O*s assigned to this topic.</p>'
@@ -155,6 +160,15 @@ export default class ChapterBody {
                 </div>
             </div>
         `;
+
+        if (narrative) {
+            const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
+            const rt = new RichTextComponent({ readOnly: true });
+            rt.mount(narrativeEl);
+            rt.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
+            rt.blur();
+        }
+
         this._attachOStarCardListeners();
     }
 
@@ -287,7 +301,6 @@ export default class ChapterBody {
                 const saveBtn = this.container?.querySelector('.chapter-body__save');
                 if (saveBtn) saveBtn.disabled = false;
             },
-            // Internal link navigation — Step 8 will implement full URL construction.
             onInternalLink: (type, value) => this._handleInternalLink(type, value),
         });
 
@@ -358,17 +371,62 @@ export default class ChapterBody {
 
     /**
      * Handle internal link clicks from narrative rich text.
-     * Navigation URL construction deferred to Step 8 (Narrative sub-activity routing).
+     *
+     * n-ref value: {chapter-code}[/{topic-path}]
+     *   Resolves chapter code → itemId, then navigates to
+     *   {base}/narrative/{itemId}[?theme={topic-path}]
+     *
+     * o-ref, d-ref: not yet implemented (Step 8).
+     *
      * @param {'n-ref'|'o-ref'|'d-ref'} type
      * @param {string} value
      * @private
      */
-    _handleInternalLink(type, value) {
-        // TODO Step 8: construct canonical URL based on type and app dataset context.
-        // n-ref: {base}/narrative/{chapter-code}[?topic={topic-path}]
-        // o-ref: {base}/os/{type-segment}/{id}  (requires external-ID → id resolution)
-        // d-ref: {base}/setup/reference-documents?id={refdoc-external-id}
-        console.debug('[ChapterBody] internal link clicked', { type, value });
+    async _handleInternalLink(type, value) {
+        if (!value) return;
+
+        const ctx  = this._app?.getDatasetContext?.();
+        const base = ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}`
+            : '/elaborate';
+
+        if (type === 'n-ref') {
+            const slashIdx    = value.indexOf('/');
+            const chapterCode = slashIdx >= 0 ? value.slice(0, slashIdx) : value;
+            const topicPath   = slashIdx >= 0 ? value.slice(slashIdx + 1) : null;
+
+            let chapters;
+            try {
+                chapters = await this._app.getChapters();
+            } catch {
+                console.warn('[ChapterBody] n-ref: could not load chapters');
+                return;
+            }
+
+            const chapter = chapters.find(c => c.code === chapterCode);
+            if (!chapter) {
+                console.warn('[ChapterBody] n-ref: chapter not found for code', chapterCode);
+                return;
+            }
+
+            const path = topicPath
+                ? `${base}/narrative/${chapter.itemId}?theme=${encodeURIComponent(topicPath)}`
+                : `${base}/narrative/${chapter.itemId}`;
+
+            this._app.navigate(path);
+            return;
+        }
+
+        if (type === 'o-ref') {
+            // TODO Step 8: resolve external ID → itemId
+            console.debug('[ChapterBody] o-ref navigation not yet implemented', value);
+            return;
+        }
+
+        if (type === 'd-ref') {
+            // TODO Step 8: navigate to reference document view
+            console.debug('[ChapterBody] d-ref navigation not yet implemented', value);
+        }
     }
 
     _esc(str) {
