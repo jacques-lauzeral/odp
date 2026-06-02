@@ -282,7 +282,7 @@ export default class NarrativeActivity {
         this._toc.selectTopicByIndex(idx);
     }
 
-    _climbToOdip(viaButton = false) {
+    async _climbToOdip(viaButton = false) {
         this._selectedChapter = null;
         this._scope           = 'odip';
 
@@ -291,6 +291,21 @@ export default class NarrativeActivity {
         }
 
         this._toc.renderOdip(this._chapters, this._odipSelection);
+
+        // Restore the body for the previously selected chapter, if any —
+        // matching the TOC highlight. Read-only: ODIP scope never edits.
+        if (this._odipSelection != null) {
+            const selId  = normalizeId(this._odipSelection);
+            const chapter = this._chapterMap.get(selId)
+                ?? this._chapters.find(c => normalizeId(c.itemId) === selId)
+                ?? null;
+            const full = chapter ? await this._loadChapter(chapter) : null;
+            if (full) {
+                this._body.renderSelectionRead({ type: 'chapter' }, full, true);
+                return;
+            }
+        }
+
         this._body.renderOdipPlaceholder();
     }
 
