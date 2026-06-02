@@ -611,6 +611,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `placeholder` | string | `''` | Placeholder text for empty edit fields |
 | `onChange` | Function | `null` | Called with TipTap JSON string on every content change |
 | `onInternalLink` | Function | `null` | Called with `(type, value)` on internal link click in read-only mode. `type`: `'n-ref'` \| `'o-ref'` \| `'d-ref'`; `value`: the mark's value attribute. Navigation implemented by the caller. |
+| `linkProvider` | object | `null` | Supplies reference targets for the toolbar `#` picker (see §12.6). When absent, only the external-link button is shown. |
 
 **Public API:**
 
@@ -623,17 +624,19 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `focus()` | Focus the editor (edit mode only) |
 | `blur()` | Blur the editor |
 
-**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipRef`, `OdipAnchor`.
+**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`.
 
-**Internal reference marks** — three passthrough mark extensions registered so TipTap does not discard text nodes carrying them:
+**Internal reference marks** — three mark extensions (`OdipNRef`, `OdipORef`, `OdipDRef`) that both preserve round-tripped content and support authoring via set/unset commands:
 
-| Mark name | Rendered as | Semantics |
-|---|---|---|
-| `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}">` | Narrative reference: `{chapterId}[/{topicId}]` |
-| `o-ref` (`OdipORef`) | `<span data-o-ref="{value}">` | O* reference: opaque O* itemId |
-| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}">` | Strategic document reference: refdoc id |
+| Mark name | Rendered as | Attributes | Semantics |
+|---|---|---|---|
+| `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}" data-label="{label}">` | `value`, `label` | Narrative reference: `{chapterId}[/{topicId}]` |
+| `o-ref` (`OdipORef`) | `<span data-o-ref="{value}" data-label="{label}">` | `value`, `label` | O* reference: opaque O* itemId |
+| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}" data-label="{label}">` | `value`, `label` | Strategic document reference: refdoc id |
 
-In read-only mode, these spans are styled as clickable links (`.rich-text-component--readonly [data-n-ref]` etc.) and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic.
+Each mark stores two attributes: `value` (the stable target identifier) and `label` (cached display text — code/title/name — may be absent on legacy imported marks). Each mark exposes `set{X}({ value, label })` / `unset{X}()` TipTap commands for programmatic authoring.
+
+In read-only mode, spans are styled as clickable links and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic.
 
 **Read-only mode** — `editable: false` is set on the TipTap instance; the toolbar is omitted; `blur()` is called immediately after mount to prevent focus theft.
 
@@ -664,6 +667,61 @@ Used by `OperationalRequirementService` and `OperationalChangeService` in `_vali
 ### 12.5 Images
 
 Images are embedded as base64-encoded data URLs directly in the TipTap JSON (`type: 'image'`, `attrs.src`). The toolbar image button opens a hidden file input; the selected file is read via `FileReader.readAsDataURL` and inserted via `editor.chain().setImage({ src })`.
+
+### 12.6 Reference Authoring — `linkProvider` and `link-provider.js`
+
+`RichTextComponent` supports authoring of `o-ref`, `n-ref`, and `d-ref` marks in edit mode when a `linkProvider` is injected by the owner. The provider is built via the factory `buildLinkProvider(app)` exported from `components/link-provider.js`.
+
+**`buildLinkProvider(app)` — factory**
+
+Accepts an `App` instance and returns a provider object with three methods:
+
+| Method | Description |
+|---|---|
+| `load()` | Preload all target options (chapters, refdocs, O\*s) from the app cache. Returns a `Promise`; no-op if already loaded. |
+| `options(type)` | Return `Array<{ value: string, label: string }>` for `'o-ref'`, `'n-ref'`, or `'d-ref'`. Synchronous after `load()`. |
+| `isLoaded()` | Returns `true` once `load()` has completed. |
+
+**Target preloading** — one `Promise.all` on first `load()` call, parallel to the three app caches:
+
+| Mark type | Source | `value` | `label` |
+|---|---|---|---|
+| `n-ref` | `app.getChapters()` | chapter `itemId` (string) | `"{code} — {title}"` |
+| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | refdoc `name` |
+| `o-ref` | `app.getOStars()` | O\* `itemId` (string) | `"{code} — {title}"` |
+
+O\* volumes are bounded (hundreds); preloading is cheap and avoids per-keystroke API calls. If volume demands it, the interface supports swapping to async search behind the same `options(type)` contract without touching consumers.
+
+**Owner responsibility** — `ChapterBody` is the reference implementation. It lazily creates a single `linkProvider` instance (stored as `this._linkProvider`) and passes it to `RichTextComponent` only in edit mode:
+
+```js
+linkProvider: editable
+    ? (this._linkProvider ??= buildLinkProvider(this._app))
+    : null,
+```
+
+`RequirementDetails` and `ChangeDetails` follow the same pattern when O\* rich-text fields are opened in edit mode.
+
+### 12.7 Toolbar Structure
+
+The toolbar is organised in groups (`.rich-text-component__toolbar-group`), rendered left to right:
+
+| Group | Buttons | Condition |
+|---|---|---|
+| Text formatting | Bold · Italic · Underline · Strikethrough | always |
+| Headings | H1 · H2 · H3 | `headings: true` only |
+| Lists | Bullet list · Ordered list | always |
+| Links | 🔗 External link · `#` Insert reference | `#` button only when `linkProvider` present |
+| Images | 🖼 Insert image | `images: true` only |
+| Tables | ⊞ Insert · +row · -row · +col · -col · ✕tbl | `tables: true` only |
+
+The toolbar is `position: sticky; top: 0` so it remains visible when the ancestor container scrolls.
+
+**Reference picker (`#` button)** — opens a modal overlay (`.rich-text-ref-popup`) with:
+- A type selector row: **O\*** (`o-ref`) · **Narrative** (`n-ref`) · **Document** (`d-ref`)
+- A `ReferenceManager` typeahead mounted below, preloaded from the `linkProvider`
+
+On selection, `_applyRef(type, value, label)` applies the matching mark to the current selection. When the selection is empty, the label is inserted as text first, then marked. The editor selection is captured before the overlay opens (DOM focus shift) and restored on apply via `setTextSelection`.
 
 ---
 
