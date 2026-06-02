@@ -583,3 +583,28 @@
 .chapter-toc__odip-topic-group {
     /* no extra styles — rows already indented via padding-left */
 }
+/* =========================================================================
+   Drag-and-drop — chapter scope (Elaborate only)
+   ========================================================================= */
+
+/* Dragged element — reduce opacity to indicate it is being moved */
+.chapter-toc__entry--dragging {
+    opacity: 0.4;
+}
+
+/* Insert before — horizontal line above the row (topics and O* entries) */
+.chapter-toc__drop--before {
+    border-top: 2px solid var(--ec-blue, #2E75B6);
+}
+
+/* Insert after — horizontal line below the row (topics and O* entries) */
+.chapter-toc__drop--after {
+    border-bottom: 2px solid var(--ec-blue, #2E75B6);
+}
+
+/* Reparent into — subtle background on the target topic button itself */
+.chapter-toc__entry--topic.chapter-toc__drop--into,
+.chapter-toc__entry--subtopic.chapter-toc__drop--into {
+    background: var(--ec-light, #EBF3FB);
+    border-left-color: var(--ec-blue, #2E75B6);
+}

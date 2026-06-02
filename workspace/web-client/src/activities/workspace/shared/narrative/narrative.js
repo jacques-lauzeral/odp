@@ -188,6 +188,7 @@ export default class NarrativeActivity {
             onClimb:              ()        => this._climbToOdip(true),
             onChapterSelect:      (entry)   => this._handleChapterTocSelect(entry),
             buildOrderedChapters: ()        => this._buildOrderedChapters(),
+            onHierarchyChange:    (hier)    => this._handleHierarchyChange(hier),
         });
 
         this._body = new ChapterBody(this._masterDetail.detailContainer, {
@@ -326,7 +327,81 @@ export default class NarrativeActivity {
     }
 
     // -------------------------------------------------------------------------
-    // Chapter data loading
+    // Hierarchy DnD save
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called by ChapterToc after each successful drag-and-drop mutation.
+     * Serializes the render-shape hierarchy to the write shape and PATCHes the chapter.
+     * Updates _selectedChapter.osHierarchy in place on success.
+     * @param {object[]} hierarchy — render-shape topic array from ChapterToc._hierarchy
+     */
+    async _handleHierarchyChange(hierarchy) {
+        const chapter = this._selectedChapter;
+        if (!chapter) return;
+
+        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+
+        try {
+            const updated = await apiClient.patchChapter(chapter.itemId, {
+                osHierarchy:       { topics: writeTopics },
+                expectedVersionId: chapter.versionId,
+            });
+            if (updated?.versionId) chapter.versionId = updated.versionId;
+            // Persist the enriched read-shape so subsequent dives don't reload stale data.
+            // Server returns enriched topics; if absent fall back to write shape so at least
+            // ids are consistent.
+            if (updated?.osHierarchy) {
+                chapter.osHierarchy = updated.osHierarchy;
+            }
+        } catch (error) {
+            errorHandler.handle(error, 'narrative-hierarchy-save');
+        }
+    }
+
+    /**
+     * Convert a single render-shape topic node back to the write shape.
+     * Render shape:  { topic, items: [{ id, type, ... }], subTopics: [...], narrative? }
+     * Write shape:   { id, topic, narrative, ons: [int], ors: [int], ocs: [int], subtopics: [...] }
+     *
+     * The topic `id` is preserved from the original osHierarchy so that n-ref
+     * marks that reference topic IDs remain valid after reordering.
+     * If a topic node has no id (e.g. freshly created client-side), it is omitted
+     * and the server will assign one on the next full load.
+     *
+     * @param {object} node — render-shape topic node
+     * @returns {object}    — write-shape topic node
+     */
+    _hierarchyToWrite(node) {
+        const ons = [];
+        const ors = [];
+        const ocs = [];
+
+        for (const item of node.items ?? []) {
+            const id   = parseInt(item.id ?? item.itemId, 10);
+            const type = (item.type ?? 'OR').toUpperCase();
+            if (!Number.isFinite(id)) continue;
+            if (type === 'ON')      ons.push(id);
+            else if (type === 'OC') ocs.push(id);
+            else                    ors.push(id);
+        }
+
+        const result = {
+            topic:     node.topic ?? '',
+            narrative: node.narrative ?? null,
+            ons,
+            ors,
+            ocs,
+            subtopics: (node.subTopics ?? []).map(s => this._hierarchyToWrite(s)),
+        };
+
+        // Preserve the stable topic id if present
+        if (node.id != null) result.id = node.id;
+
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
     // -------------------------------------------------------------------------
 
     /**
