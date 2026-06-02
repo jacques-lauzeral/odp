@@ -531,6 +531,25 @@ export default class RequirementForm extends CollectionEntityForm {
     }
 
     // ====================
+    // FORM DATA COLLECTION
+    // ====================
+
+    /**
+     * Override to inject _forcedType when the type radio field is hidden.
+     * When +ON / +OR is clicked, visibleWhen hides the radio (data.type is already set),
+     * so FormData contains no 'type' entry — causing required-field validation to block save.
+     * @param {HTMLFormElement} form
+     * @returns {object}
+     */
+    collectFormData(form) {
+        const data = super.collectFormData(form);
+        if (!data.type && this._forcedType) {
+            data.type = this._forcedType;
+        }
+        return data;
+    }
+
+    // ====================
     // CONDITIONAL FIELD VISIBILITY
     // ====================
 
