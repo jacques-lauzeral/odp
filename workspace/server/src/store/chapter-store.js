@@ -166,10 +166,11 @@ export class ChapterStore extends VersionedItemStore {
      * @returns {Promise<object|null>}
      */
     async findById(itemId, transaction, baselineId = null, editionId = null, projection = 'extended') {
-        // super.findById calls this._prepareOutput (polymorphic) defaulting to 'extended',
-        // so narrative and osHierarchy are always deserialized on the returned object.
-        // For 'standard' projection, strip them from the result.
-        const result = await super.findById(itemId, transaction, baselineId, editionId);
+        // Chapters are implicitly present in all editions — HAS_ITEMS relationships are never
+        // marked with edition IDs by _computeEditionVersionIds (only O* items are marked).
+        // Pass null for editionId to suppress the edition membership filter; baselineId alone
+        // gives the correct baseline snapshot when edition context is provided.
+        const result = await super.findById(itemId, transaction, baselineId, null);
         if (!result) return null;
         if (projection === 'standard') {
             const { narrative, osHierarchy, ...rest } = result;

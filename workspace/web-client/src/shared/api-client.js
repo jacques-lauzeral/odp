@@ -296,10 +296,13 @@ export class ApiClient {
     /**
      * Get a single chapter by item ID (includes osHierarchy and narrative).
      * @param {number|string} id
+     * @param {object}        [params] — optional query params, e.g. { edition: editionId }
      * @returns {Promise<object>}
      */
-    async getChapter(id) {
-        return this.get('/chapters', { id });
+    async getChapter(id, params = {}) {
+        const options = { id };
+        if (Object.keys(params).length) options.params = params;
+        return this.get('/chapters', options);
     }
 
     /**

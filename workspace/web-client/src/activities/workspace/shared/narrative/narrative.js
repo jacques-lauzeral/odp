@@ -986,16 +986,23 @@ export default class NarrativeActivity {
      * @returns {Promise<object|null>}
      */
     async _loadChapter(chapter) {
-        if (chapter._fullyLoaded) return chapter;
+        const ctx       = this.app.getDatasetContext();
+        const editionId = ctx?.type === 'edition' ? ctx.editionId : null;
+
+        // Cache hit: already fully loaded for the same context (live or specific edition)
+        if (chapter._fullyLoaded && chapter._fullyLoadedEditionId === editionId) return chapter;
+
         try {
-            const fetched = await apiClient.getChapter(chapter.itemId);
+            const params  = editionId != null ? { edition: editionId } : {};
+            const fetched = await apiClient.getChapter(chapter.itemId, params);
             // Preserve config-owned fields (title, domain, position) from the list
             const { title, domain, position } = chapter;
             Object.assign(chapter, fetched);
             if (title    != null) chapter.title    = title;
             if (domain   != null) chapter.domain   = domain;
             if (position != null) chapter.position = position;
-            chapter._fullyLoaded = true;
+            chapter._fullyLoaded          = true;
+            chapter._fullyLoadedEditionId = editionId;   // null for live
             return chapter;
         } catch (error) {
             errorHandler.handle(error, 'narrative-chapter-load');

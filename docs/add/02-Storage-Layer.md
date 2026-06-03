@@ -220,7 +220,7 @@ Inherits `VersionedItemStore → BaseStore`. Chapters have no graph relationship
 
 **`findAll(tx, projection?)`** → all chapters ordered by item ID. Defaults to `'standard'` projection — `narrative` and `osHierarchy` are excluded. Config-owned fields are merged by `ChapterService`.
 
-**`findById(itemId, tx, baselineId?, editionId?, projection?)`** → single chapter; defaults to `'extended'` projection. Delegates to `super.findById` for ID normalisation and query execution, then strips `narrative`/`osHierarchy` if `'standard'` is requested. Returns `null` if not found.
+**`findById(itemId, tx, baselineId?, editionId?, projection?)`** → single chapter; defaults to `'extended'` projection. Accepts `editionId` for API symmetry but **drops it** before delegating to `super.findById` — only `baselineId` is forwarded. Chapters are implicitly present in every edition; their `HAS_ITEMS` relationships are never marked with edition IDs by `_computeEditionVersionIds`, so applying the `$editionId IN r.editions` filter would always return no results. The baseline context alone gives the correct snapshot. Strips `narrative`/`osHierarchy` from the result if `'standard'` projection is requested. Returns `null` if not found.
 
 Config fields absent in `edition-config` (e.g. after a config drift) are set to `null` rather than throwing — drift is visible at read time rather than fatal.
 
@@ -564,6 +564,8 @@ WHERE id(baseline) = $baselineId
 ```
 
 `HAS_ITEMS` relationships with no `editions` property (created before any edition referenced the baseline) are treated as not belonging to any edition. Multiple editions per baseline are supported — each appends its own ID to the relevant subset of `HAS_ITEMS` relationships.
+
+**Chapter exception:** the edition membership filter applies only to O* entities (ONs, ORs, OCs). All chapters are implicitly present in every edition — `_computeEditionVersionIds` does not mark chapter `HAS_ITEMS` relationships. `ChapterStore.findById` therefore drops the `editionId` before calling `super.findById`, using the baseline context alone to retrieve the snapshot version.
 
 ### 7.4 Edition Context Resolution
 
