@@ -36,7 +36,7 @@ web-client/src/
 │   │   └── shared/
 │   │       ├── os/
 │   │       │   ├── os.js                   O* workspace orchestrator
-│   │       │   ├── o-star-entity.js        Unified ON/OR/OC list — Collection + Tree perspectives
+│   │       │   ├── o-star-entity.js        Unified ON/OR/OC list — Collection perspective
 │   │       │   ├── requirement-details.js  ON/OR read-only detail view
 │   │       │   ├── change-details.js       OC read-only detail view
 │   │       │   ├── requirement-form.js     ON/OR create/edit form
@@ -326,10 +326,7 @@ Requirements and changes support multiple simultaneous perspectives (collection 
 - **Perspective switching**: tab-driven by entity component, preserves selection and filter state
 - **Injected callbacks**: `onItemSelect`, `getViewControlsEl`, `isReadOnly` — no back-references to parent activity
 
-**Cross-perspective selection sync** (O\* workspace): when switching between Collection and Tree perspectives with an item selected, `OStarEntity._switchPerspective` synchronises state:
-
-- **Collection → Tree**: `_expandToItem(itemId)` expands all ancestor nodes to make the selected item visible; the tree re-renders, marks the row selected, and `tree.scrollToItem(itemId)` centres it in the viewport.
-- **Tree → Collection**: the collection re-renders with the selected row marked, then `scrollIntoView` brings it into view.
+**Cross-perspective selection sync** (`ChangesEntity`): when switching between Collection and Tree perspectives with an item selected, the entity synchronises state — the tree re-renders with ancestors expanded and the selected row visible; the collection re-renders with the selected row scrolled into view.
 
 **Tree scroll preservation**: `TreeTableEntity.renderContent()` saves and restores `scrollTop` on `.tree-table-container` around every `innerHTML` replacement — ensuring expand/collapse and row selection do not scroll the tree back to the top.
 
@@ -488,8 +485,8 @@ Responsibilities:
 | Count summary (ONs · ORs · OCs) | `OsActivity` |
 | Breadcrumb trail | `OsActivity` |
 | Two-column layout + resizable divider | `MasterDetail` component |
-| List rendering — Collection + Tree perspectives | `OStarEntity` |
-| Perspective toggle, grouping selector, create buttons | `OStarEntity` |
+| List rendering — Collection perspective | `OStarEntity` |
+| Grouping selector | `OStarEntity` |
 | Virtual `implements` field pre-computation | `OStarEntity` |
 | Detail panel content | `RequirementDetails` / `ChangeDetails` |
 
@@ -800,7 +797,7 @@ styles/
 ├── feedback-components.css           Toasts, error notifications, loading/skeleton states
 ├── layout-components.css             Top header (two-row: nav tabs + breadcrumb), connect popup, cards, modals
 │   ├── activities/workspace/shared/os/
-│   │   └── os-additions.css              O* toolbar, search input, type badges, view controls, perspective toggle
+│   │   └── os-additions.css              O* toolbar, search input, type badges, view controls
 ├── components/
 │   ├── filter-bar.css                FilterBar chip component
 │   ├── form-components.css           Form tabs, tag selector, multi-select, rich text integration
@@ -1116,7 +1113,7 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 **Layout:**
 ```
 [ Filter bar ]  [ 🔍 search ]        ← single toolbar row
-[ Collection | Tree ]  [ counts ]    ← view controls row
+[ grouping | counts ]                ← view controls row
 [ MasterDetail: list | detail ]
 ```
 
@@ -1124,32 +1121,25 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 
 **Filter bar:** Type · Domain · Maturity · Stakeholder · Implements · Strategic Document.
 
-**Perspectives:** Collection (flat + grouping) and Tree (REFINES hierarchy). Toggle persists across data reloads.
-
-**Grouping** (Collection only): Type · Domain · Maturity.
+**Grouping:** Type · Domain · Maturity.
 
 **Column set:**
 
-| Column | Perspective | Applies to | Sortable |
-|---|---|---|---|
-| Type | both | all | Yes |
-| Code | both | all | Yes |
-| Title | both | all | Yes |
-| Maturity | both | all | Yes |
-| Domain | collection | all | Yes |
-| Implements | both | OR, OC | No |
-| Refines | collection | ON, OR | No |
-| Strategic Documents | both | ON only | No |
-| Impacted Stakeholders | both | OR, OC | No |
+| Column | Applies to | Sortable |
+|---|---|---|
+| Type | all | Yes |
+| Code | all | Yes |
+| Title | all | Yes |
+| Maturity | all | Yes |
+| Domain | all | Yes |
+| Implements | OR, OC | No |
+| Refines | ON, OR | No |
+| Strategic Documents | ON only | No |
+| Impacted Stakeholders | OR, OC | No |
 
 **Virtual field:** `item.implements` is pre-computed in `OStarEntity.onDataUpdated()` — merges `implementedONs` (OR) and `implementedORs` (OC) into a single array for the Implements column renderer.
 
 **OC type normalisation:** OCs from `/operational-changes` have no `type` field — normalised to `'OC'` in `_loadData()` after merge.
-
-**Tree path builder priority:**
-1. `refinesParents` — if present, nest under parent node (graph-based)
-2. ONs/ORs without `refinesParents` — flat under their domain group node
-3. OCs — always flat under their domain group node
 
 ---
 
@@ -1175,7 +1165,6 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 
 - Filter bar: `drg` and `impactedDomain` filters replaced by single `domain` string key filter
 - Grouping: `drg` grouping replaced by `domain` grouping
-- Tree perspective: root group nodes are now domain groups (`domain:KEY`) instead of DrG groups
 - `on-planning.js`: TemporalGrid separator rows now show domain labels (via `getDomainLabel()`)
 
 ### 19.4 Known Limitations (Phase 2)
@@ -1332,7 +1321,7 @@ The O* workspace toolbar row has been restructured:
 
 ```
 [ filter bar · · · · · · · · · · 🔍 search  +ON  +OR  +OC ]
-[ perspective | grouping | counts                           ]
+[ grouping | counts                                        ]
 [ list panel                    ‖ detail panel              ]
 ```
 
@@ -1346,34 +1335,37 @@ The detail panel (`RequirementDetails` / `ChangeDetails`) uses a single toolbar 
 
 ```
 [ title (fills available space) · · · · Edit  Full page ]   ← panel mode
-[ title (fills available space) · · · In collection  In tree ]  ← page mode
+[ title (fills available space) · · · In collection  In narrative ]  ← page mode
 ```
 
 `os-detail__title` takes `flex: 1` and truncates with ellipsis. Action buttons are right-aligned, compact (`odip-btn`).
 
 ### 21.3 Plain Page ↔ Master Detail Navigation
 
-Two new action buttons per detail view, mode-dependent:
+Two action buttons per detail view, mode-dependent:
 
 | Mode | Button | Action |
 |---|---|---|
 | Panel | **Full page** | Pushes `/{base}/os/{type}/{id}` to browser history |
 | Page | **In collection** | Navigates to `/{base}/os?perspective=coll&selected={id}` |
-| Page | **In tree** | Navigates to `/{base}/os?perspective=tree&selected={id}` |
+| Page | **In narrative** | Navigates to `/{base}/narrative/{chapterId}?o-star={id}` |
+
+**`In narrative` navigation** — `OsActivity._navigateToNarrative(item)` resolves the chapter by matching `item.domain` against `app.getChapters()` (cached). On match, pushes `/{base}/narrative/{chapterId}?o-star={item.itemId}`; falls back to `/{base}/narrative` if no chapter is found. `normalizeId` is used to serialise the chapter `itemId` in the URL.
 
 **Callback injection** — callbacks are passed into `render()` on every call (not at construction), ensuring cached instances always receive correct wiring:
 
 ```js
 await this._requirementDetails.render(container, id, 'panel', {
-    onFullPage:     (item) => this._navigateToFullPage(item),
-    onInCollection: null,
-    onInTree:       null,
+    onFullPage: (item) => this._navigateToFullPage(item),
+});
+
+await this._requirementDetails.render(container, id, 'page', {
+    onInCollection: (item) => this._navigateToList(item),
+    onInNarrative:  (item) => this._navigateToNarrative(item),
 });
 ```
 
-**Search param restore** — `_restoreFromSearchParams()` is called once after `_renderList()` completes. It reads `?perspective` and `?selected`, sets `sharedState.selectedItem` before calling `setPerspective()` (ensuring tree expansion fires with the item already known), then calls `_handleItemSelect()` for panel render. Params are cleaned via `replaceState` after consumption.
-
-**`OStarEntity.setPerspective(perspective)`** — public method added for programmatic perspective switching. Accepts `'collection'` or `'tree'`. Thin wrapper around `_switchPerspective`.
+**Search param restore** — `_restoreFromSearchParams()` is called once after `_renderList()` completes. It reads `?selected`, sets `sharedState.selectedItem`, then calls `_handleItemSelect()` for panel render. `?perspective` is accepted in the URL for compatibility but ignored — only the collection perspective exists. Params are cleaned via `replaceState` after consumption.
 
 
 ## 22. CollectionEntity — Keyboard Navigation & Focus Management
@@ -1468,12 +1460,16 @@ Two-pane `MasterDetail` layout (28% / 72% initial ratio):
 - **Left panel** — `ChapterToc`: chapter tree (ODIP scope) or topic/O* tree (chapter scope)
 - **Right panel** — `ChapterBody`: chapter narrative, topic card list, or O* detail view
 
+In Elaborate, a toolbar row sits above the `MasterDetail` with four create actions — **+ Theme · + ON · + OR · + OC** (`odip-btn odip-btn--create`, right-aligned). The toolbar is absent in Explore (read-only) and its buttons are disabled until a chapter is dived into. See §18.8.
+
 ### 18.2 Scope State Machine
 
 | Scope | TOC | Body default |
 |---|---|---|
 | `odip` | Full chapter tree; expand/collapse; select / dive → | Chapter narrative (read-only) |
 | `chapter` | ← back · chapter title · topic → O*s | Chapter narrative (editable in Elaborate) |
+
+In chapter scope, selecting the chapter node makes the **chapter narrative** editable; selecting a topic node makes that **topic narrative** editable (Elaborate only). The toolbar create actions are enabled on dive and disabled on climb (`NarrativeActivity._setToolbarEnabled`).
 
 ### 18.3 Sub-Path and Query Parameter Routing
 
@@ -1482,10 +1478,13 @@ Two-pane `MasterDetail` layout (28% / 72% initial ratio):
 | `{base}/narrative` | ODIP scope — chapter tree |
 | `{base}/narrative/{chapterId}` | Chapter scope — dive into chapter by numeric `itemId` |
 | `{base}/narrative/{chapterId}?theme={topicId}` | Chapter scope + select topic by numeric string ID |
+| `{base}/narrative/{chapterId}?o-star={itemId}` | Chapter scope + select and render a specific O* |
 
 `{base}` is `/elaborate` (live dataset) or `/explore/{editionId}` (edition context).
 
 `NarrativeActivity._selectTopic(topicId)` — called after diving when `?theme=` is present. Finds the topic by `id` field in `osHierarchy.topics`, then delegates to `ChapterToc.selectTopicByIndex(idx)`.
+
+`NarrativeActivity._selectOStar(ostarId)` — called after diving when `?o-star=` is present. Calls `ChapterToc.setActiveByItemId(id)` to expand ancestors and highlight the O* in the TOC, resolves the type via `app.findOStar()`, then calls `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and `?o-star` are mutually exclusive; if both are present, `?o-star` takes effect last.
 
 ### 18.4 ChapterToc External API
 
@@ -1496,17 +1495,18 @@ Two-pane `MasterDetail` layout (28% / 72% initial ratio):
 | `setActiveKey(key)` | Highlight a TOC entry by its `data-key` |
 | `setActiveByItemId(id)` | Highlight the O* entry matching `id` |
 | `selectTopicByIndex(idx)` | Programmatically select a top-level topic by zero-based index; equivalent to user click; fires `onChapterSelect` callback |
+| `refreshTree()` | Rebuild the chapter-scope tree from the current `_hierarchy` while preserving the active selection highlight and scroll position. Used after out-of-band hierarchy changes (theme create, O* create/edit) |
 
 ### 18.5 ChapterBody Renderers
 
 | Entry type | Renderer | Notes |
 |---|---|---|
 | `chapter` | `_renderChapterNarrative` | Full narrative; editable in Elaborate |
-| `topic` | `_renderTopic` | Topic narrative (if present) above O* card list |
+| `topic` | `_renderTopic` | Topic narrative above O* card list; editable in Elaborate |
 | `unassigned` | `_renderUnassigned` | O*s with no topic placement |
-| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel |
+| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button available (navigates to `{base}/os/{type}/{id}`) |
 
-**Topic narrative** — `_renderTopic` renders a read-only `RichTextComponent` above the O* card list when `topic.narrative` is non-null.
+**Topic narrative** — `_renderTopic` renders the topic narrative above the O* card list. In Explore it is read-only (shown only when non-null). In Elaborate it is always an editable `RichTextComponent` with a Save button; saving delegates to `onTopicNarrativeSave(topicId, narrative)` (see §18.8).
 
 ### 18.6 Internal Link Navigation
 
@@ -1530,7 +1530,41 @@ Each topic in `osHierarchy.topics` carries:
 | `ons`, `ors`, `ocs` | `OsHierarchyItem[]` | Enriched O* references (read path) |
 | `subtopics` | `OsHierarchyTopic[]` | Recursive sub-themes |
 
-IDs are assigned at import time by `DistributedEditionImporter._patchChapterOsHierarchy` using a chapter-scoped counter (DFS order, starting at 1). The same ID is used in `n-ref` mark values for intra-chapter navigation.
+IDs are first assigned at import time by `DistributedEditionImporter._patchChapterOsHierarchy` using a chapter-scoped counter (DFS order, starting at 1). The same ID is used in `n-ref` mark values for intra-chapter navigation. When a theme is created from the web client, `ChapterToc._nextFreeTopicId(hierarchy)` mirrors this counter (DFS max + 1) so client-assigned IDs stay consistent with the import scheme.
+
+### 18.8 Editorial Actions (Elaborate)
+
+The toolbar create actions and topic-narrative editing all mutate the chapter `osHierarchy` and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`, which returns `{ topicIndex, subPath }` for the selected topic/subtopic, or `null` when the chapter node or an O* is active.
+
+| Action | Flow |
+|---|---|
+| **+ Theme** | `NarrativeActivity._handleAddTheme(activePath)` — minimal title modal (`modal-overlay` classes) → fetch-fresh chapter → insert new topic as child of the active topic (or at root if none) → PATCH → re-fetch (enriched) → `ChapterToc.refreshTree()` |
+| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open `RequirementForm`/`ChangeForm` create modal pre-populated with the chapter `domain` (and `type` for OR/ON) → on save, the form's `onSaved` callback runs `_insertOStarIntoHierarchy`: fetch-fresh → insert the new O* into the active topic's items (sorted ON→OR→OC), or leave unclassified if no topic is active → PATCH → re-fetch (enriched) → `refreshTree()` → `app.invalidateOStars()` |
+| **Topic narrative** | `ChapterBody._saveTopicNarrative` → `onTopicNarrativeSave(topicId, narrative)` → `NarrativeActivity._handleTopicNarrativeSave`: fetch-fresh → DFS-locate topic by `id` → mutate `narrative` → PATCH → sync into the live `_toc._hierarchy` |
+
+**Concurrency model:**
+
+- **Non-DnD writes** (theme create, O* insert, topic narrative) use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`. This avoids conflicts from background chapter edits.
+- **DnD reorder** (`_handleHierarchyChange`, `_handleUnclassifiedChange`) uses the **optimistic** client `versionId`. On `409`, `_handleDndConflict` reloads the chapter, re-renders the TOC, resets the body, and informs the user that the change was not applied.
+
+`_mergeChapterConfig(cached, fresh)` reconciles a freshly fetched chapter with config-owned fields (`title`, `domain`, `position`) held in memory, and syncs `versionId`/`osHierarchy` back to the cached object.
+
+### 18.9 Save Propagation
+
+`CollectionEntityForm` fires an optional `onSaved(result, mode)` callback after any successful create or edit (`mode` is `'create'` | `'edit'`), in addition to the legacy `entitySaved` DOM event. Callers opt in by passing `onSaved` in the form `context`.
+
+The detail views forward it with a self-refresh:
+
+- `RequirementDetails` / `ChangeDetails` capture `callbacks.onSaved` on every `render()` and route the form's `onSaved` through `_handleSaved(result, mode)`, which **re-renders its own panel** from the server (so edited fields show immediately) and then forwards to the caller's `onSaved`.
+
+Consumers of the forwarded callback:
+
+| Consumer | Wiring | Effect on save |
+|---|---|---|
+| `NarrativeActivity` | `ChapterBody` `onOStarSaved` → `_handleOStarSaved` | Re-fetch chapter (enriched hierarchy) → `ChapterToc.refreshTree()` so a changed O* title updates in the tree without losing selection or scroll |
+| `OsActivity` | `onSaved` on the panel-mode detail render | `_loadData()` re-fetches the collection so the master list row reflects the edit |
+
+This single mechanism replaces ad-hoc reload logic and works identically in both the OS and Narrative perspectives.
 
 ---
 
