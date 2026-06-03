@@ -428,6 +428,7 @@ export default class OsActivity {
             onFullPage:      (item) => this._navigateToFullPage(item),
             onInCollection:  null,
             onInTree:        null,
+            onSaved:         () => this._loadData(),
         });
     }
 
@@ -440,6 +441,7 @@ export default class OsActivity {
             onFullPage:      (item) => this._navigateToFullPage(item, 'oc'),
             onInCollection:  null,
             onInTree:        null,
+            onSaved:         () => this._loadData(),
         });
     }
 

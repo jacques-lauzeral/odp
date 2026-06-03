@@ -33,8 +33,10 @@ export default class ChapterBody {
         this.container        = container;
         this._app             = options.app;
         this._isEditable      = options.isEditable ?? false;
-        this._onSaved         = options.onSaved         ?? (() => {});
-        this._onChapterSelect = options.onChapterSelect ?? (() => {});
+        this._onSaved                = options.onSaved                ?? (() => {});
+        this._onChapterSelect        = options.onChapterSelect        ?? (() => {});
+        this._onTopicNarrativeSave   = options.onTopicNarrativeSave   ?? (() => {});
+        this._onOStarSaved           = options.onOStarSaved           ?? (() => {});
 
         this._richText       = null;
         this._currentChapter = null;
@@ -142,19 +144,26 @@ export default class ChapterBody {
     }
 
     _renderTopic(topic) {
-        const items    = topic?.items ?? [];
-        const title    = this._esc(topic?.topic ?? '');
+        const items     = topic?.items ?? [];
+        const title     = this._esc(topic?.topic ?? '');
         const narrative = topic?.narrative ?? null;
+        const editable  = this._isEditable;
+        const topicId   = topic?.id ?? null;
 
         this.container.innerHTML = `
             <div class="chapter-body chapter-body--padded">
                 <div class="chapter-body__header">
                     <h3 class="chapter-body__title chapter-body__title--topic">${title}</h3>
+                    ${editable ? `
+                        <div class="chapter-body__actions">
+                            <button class="odip-btn odip-btn--primary chapter-body__topic-save" disabled>Save</button>
+                            <span class="chapter-body__status"></span>
+                        </div>
+                    ` : ''}
                 </div>
-                ${narrative ? `
                 <div class="chapter-body__topic-narrative">
                     <div id="topicNarrativeEditor" class="chapter-body__editor"></div>
-                </div>` : ''}
+                </div>
                 <div class="chapter-body__ostar-list">
                     ${items.length === 0
             ? '<p class="chapter-body__empty">No O*s assigned to this topic.</p>'
@@ -163,12 +172,40 @@ export default class ChapterBody {
             </div>
         `;
 
-        if (narrative) {
-            const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
-            const rt = new RichTextComponent({ readOnly: true });
-            rt.mount(narrativeEl);
-            rt.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
-            rt.blur();
+        const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
+
+        if (editable) {
+            this._richText = new RichTextComponent({
+                readOnly:    false,
+                headings:    true,
+                images:      true,
+                tables:      true,
+                placeholder: 'Write theme narrative…',
+                linkProvider: (this._linkProvider ??= buildLinkProvider(this._app)),
+                onChange: () => {
+                    this._dirty = true;
+                    const saveBtn = this.container?.querySelector('.chapter-body__topic-save');
+                    if (saveBtn) saveBtn.disabled = false;
+                },
+                onInternalLink: (type, value) => this._handleInternalLink(type, value),
+            });
+            this._richText.mount(narrativeEl);
+            narrativeEl.classList.add('rich-text-component--fill');
+            if (narrative) {
+                this._richText.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
+            }
+
+            this.container.querySelector('.chapter-body__topic-save')
+                ?.addEventListener('click', () => this._saveTopicNarrative(topic, topicId));
+        } else {
+            if (narrative) {
+                const rt = new RichTextComponent({ readOnly: true });
+                rt.mount(narrativeEl);
+                rt.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
+                rt.blur();
+            } else {
+                narrativeEl.classList.add('chapter-body__editor--empty');
+            }
         }
 
         this._attachOStarCardListeners();
@@ -208,12 +245,16 @@ export default class ChapterBody {
         const detailEl = this.container.querySelector('#chapterOStarDetail');
         const config   = this._buildOStarConfig();
 
+        const callbacks = {
+            onSaved: (result, mode) => this._onOStarSaved(result, mode),
+        };
+
         if (type === 'OC') {
             await this._ensureChangeDetails(config);
-            await this._changeDetails.render(detailEl, ostar.id, 'panel', {});
+            await this._changeDetails.render(detailEl, ostar.id, 'panel', callbacks);
         } else {
             await this._ensureRequirementDetails(config);
-            await this._requirementDetails.render(detailEl, ostar.id, 'panel', {});
+            await this._requirementDetails.render(detailEl, ostar.id, 'panel', callbacks);
         }
     }
 
@@ -350,6 +391,41 @@ export default class ChapterBody {
             errorHandler.handle(error, 'chapter-body-save');
             const statusEl2 = this.container?.querySelector('.chapter-body__status');
             const saveBtn2  = this.container?.querySelector('.chapter-body__save');
+            if (statusEl2) statusEl2.textContent = '⚠ Save failed';
+            if (saveBtn2)  saveBtn2.disabled = false;
+        }
+    }
+
+    /**
+     * Save the current rich text value as the narrative for a theme topic.
+     * Delegates to NarrativeActivity via onTopicNarrativeSave — the activity
+     * owns the chapter version and full hierarchy needed for the PATCH.
+     * @param {object} topic   — render-shape topic node (for label/fallback)
+     * @param {string} topicId — stable topic id used to locate the node in hierarchy
+     */
+    async _saveTopicNarrative(topic, topicId) {
+        if (!this._richText || this._saving) return;
+        this._saving = true;
+
+        const saveBtn  = this.container?.querySelector('.chapter-body__topic-save');
+        const statusEl = this.container?.querySelector('.chapter-body__status');
+        if (saveBtn)  saveBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Saving…';
+
+        try {
+            const narrative = this._richText.getValue() ?? '';
+            await this._onTopicNarrativeSave(topicId, narrative);
+            this._dirty  = false;
+            this._saving = false;
+            if (statusEl) {
+                statusEl.textContent = '✓ Saved';
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+            }
+        } catch (error) {
+            this._saving = false;
+            errorHandler.handle(error, 'chapter-body-topic-save');
+            const statusEl2 = this.container?.querySelector('.chapter-body__status');
+            const saveBtn2  = this.container?.querySelector('.chapter-body__topic-save');
             if (statusEl2) statusEl2.textContent = '⚠ Save failed';
             if (saveBtn2)  saveBtn2.disabled = false;
         }

@@ -24,6 +24,17 @@
  *
  * Edit (Elaborate only): always as popup, consistent with elaborate/os.
  *
+ * Elaborate-only actions (chapter scope):
+ *   + Theme  — prompts for title, creates new topic in hierarchy (child of active topic or root)
+ *   + ON/OR/OC — opens create modal; on save inserts new O* into active topic (or unclassified)
+ *   Topic narrative — editable inline when topic is selected; saved via onTopicNarrativeSave
+ *
+ * Write paths:
+ *   DnD reorder     — PATCH with current versionId; 409 → reload + user message
+ *   Theme create    — fetch-fresh → insert → PATCH
+ *   O* insert       — fetch-fresh → insert → PATCH (after O* created server-side)
+ *   Topic narrative — fetch-fresh → mutate narrative → PATCH
+ *
  * SubPath routing:
  *   []               → ODIP scope (chapter tree)
  *   ['{chapterId}']  → chapter scope (dive directly into chapter)
@@ -64,6 +75,10 @@ export default class NarrativeActivity {
         this._scope           = 'odip';   // 'odip' | 'chapter'
         this._selectedChapter = null;     // chapter currently dived into
         this._odipSelection   = null;     // last ODIP-scope selection (chapter itemId)
+
+        // Cached setup data and domains — loaded once, used for O* create forms
+        this._setupData       = null;
+        this._domains         = [];
     }
 
     // -------------------------------------------------------------------------
@@ -167,12 +182,41 @@ export default class NarrativeActivity {
     // Shell
     // -------------------------------------------------------------------------
 
+    /**
+     * Enable or disable the narrative toolbar action buttons.
+     * Buttons only exist in Elaborate (isEditable) context.
+     * @param {boolean} enabled
+     */
+    _setToolbarEnabled(enabled) {
+        this.container?.querySelectorAll('.narrative-activity__action').forEach(btn => {
+            btn.disabled = !enabled;
+        });
+    }
+
     _renderShell() {
         this.container.innerHTML = `
             <div class="narrative-activity">
+                ${this._isEditable ? `
+                <div class="narrative-activity__toolbar">
+                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddTheme" disabled>+ Theme</button>
+                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOn"    disabled>+ ON</button>
+                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOr"    disabled>+ OR</button>
+                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOc"    disabled>+ OC</button>
+                </div>` : ''}
                 <div class="narrative-content" id="narrativeContent"></div>
             </div>
         `;
+
+        if (this._isEditable) {
+            this.container.querySelector('#narrativeAddTheme')
+                ?.addEventListener('click', () => this._handleAddTheme(this._toc._getActiveTopicPath()));
+            this.container.querySelector('#narrativeAddOn')
+                ?.addEventListener('click', () => this._handleAddOStar('ON', this._toc._getActiveTopicPath()));
+            this.container.querySelector('#narrativeAddOr')
+                ?.addEventListener('click', () => this._handleAddOStar('OR', this._toc._getActiveTopicPath()));
+            this.container.querySelector('#narrativeAddOc')
+                ?.addEventListener('click', () => this._handleAddOStar('OC', this._toc._getActiveTopicPath()));
+        }
 
         const contentEl = dom.find('#narrativeContent', this.container);
 
@@ -190,13 +234,17 @@ export default class NarrativeActivity {
             buildOrderedChapters: ()        => this._buildOrderedChapters(),
             onHierarchyChange:    (hier)    => this._handleHierarchyChange(hier),
             onUnclassifiedChange: (hier)    => this._handleUnclassifiedChange(hier),
+            onAddTheme:           (path)    => this._handleAddTheme(path),
+            onAddOStar:           (type, path) => this._handleAddOStar(type, path),
         });
 
         this._body = new ChapterBody(this._masterDetail.detailContainer, {
-            app:              this.app,
-            isEditable:       this._isEditable,
-            onSaved:          (_id) => { /* versionId updated in place */ },
-            onChapterSelect:  (entry) => this._handleChapterTocSelect(entry),
+            app:                    this.app,
+            isEditable:             this._isEditable,
+            onSaved:                (_id) => { /* versionId updated in place */ },
+            onChapterSelect:        (entry) => this._handleChapterTocSelect(entry),
+            onTopicNarrativeSave:   (topicId, narrative) => this._handleTopicNarrativeSave(topicId, narrative),
+            onOStarSaved:           (result, mode) => this._handleOStarSaved(result, mode),
         });
     }
 
@@ -243,6 +291,8 @@ export default class NarrativeActivity {
             window.history.pushState({}, '', `${this._basePath()}/${chapterId}`);
         }
 
+        this._setToolbarEnabled(true);
+
         const unassigned = await this._computeUnassignedOStars(full);
         await this._toc.renderChapter(full, unassigned);
         this._body.renderSelectionRead({ type: 'chapter' }, full);
@@ -288,6 +338,8 @@ export default class NarrativeActivity {
     async _climbToOdip(viaButton = false) {
         this._selectedChapter = null;
         this._scope           = 'odip';
+
+        this._setToolbarEnabled(false);
 
         if (viaButton) {
             window.history.pushState({}, '', this._basePath());
@@ -350,14 +402,15 @@ export default class NarrativeActivity {
                 expectedVersionId: chapter.versionId,
             });
             if (updated?.versionId) chapter.versionId = updated.versionId;
-            // Persist the enriched read-shape so subsequent dives don't reload stale data.
-            // Server returns enriched topics; if absent fall back to write shape so at least
-            // ids are consistent.
             if (updated?.osHierarchy) {
                 chapter.osHierarchy = updated.osHierarchy;
             }
         } catch (error) {
-            errorHandler.handle(error, 'narrative-hierarchy-save');
+            if (error?.status === 409 || error?.response?.status === 409) {
+                await this._handleDndConflict(chapter);
+            } else {
+                errorHandler.handle(error, 'narrative-hierarchy-save');
+            }
         }
     }
 
@@ -382,6 +435,10 @@ export default class NarrativeActivity {
             if (updated?.versionId) chapter.versionId = updated.versionId;
             if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
         } catch (error) {
+            if (error?.status === 409 || error?.response?.status === 409) {
+                await this._handleDndConflict(chapter);
+                return;
+            }
             errorHandler.handle(error, 'narrative-unclassified-save');
             return;
         }
@@ -399,6 +456,402 @@ export default class NarrativeActivity {
         const unassigned = await this._computeUnassignedOStars(chapter);
         this._toc._unassignedOStars = unassigned;
         this._toc._renderChapterTree();
+    }
+
+    // -------------------------------------------------------------------------
+    // DnD conflict handling
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called when a PATCH returns 409 (concurrent edit detected during DnD).
+     * Reloads the chapter from server, resets client state, re-renders TOC,
+     * and informs the user that their change was not applied.
+     * @param {object} chapter
+     */
+    async _handleDndConflict(chapter) {
+        chapter._fullyLoaded = false;
+        const fresh = await this._loadChapter(chapter);
+        if (!fresh) return;
+
+        const unassigned = await this._computeUnassignedOStars(fresh);
+        await this._toc.renderChapter(fresh, unassigned);
+
+        // Restore body to chapter narrative to reset any stale topic view
+        this._body.renderSelectionRead({ type: 'chapter' }, fresh);
+
+        // Notify user — use a simple banner approach consistent with errorHandler
+        errorHandler.handle(
+            { message: 'The chapter was modified by someone else — your change was not applied.' },
+            'narrative-dnd-conflict'
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // + Theme
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called when user clicks + Theme in the chapter TOC.
+     * Shows a minimal title modal, then on confirm:
+     *   1. Fetches fresh chapter version
+     *   2. Inserts new topic into hierarchy (child of active topic or root)
+     *   3. PATCHes chapter
+     *   4. Re-renders TOC
+     * @param {{ topicIndex: number, subPath: number[] } | null} activePath
+     */
+    async _handleAddTheme(activePath) {
+        const chapter = this._selectedChapter;
+        if (!chapter) return;
+
+        const title = await this._promptThemeTitle();
+        if (!title) return;  // user cancelled
+
+        try {
+            const fresh = await apiClient.getChapter(chapter.itemId);
+            this._mergeChapterConfig(chapter, fresh);
+
+            const hierarchy = this._toc._parseHierarchy(fresh);
+            const newId     = this._toc._nextFreeTopicId(hierarchy);
+            const newTopic  = { id: newId, topic: title, narrative: null, items: [], subTopics: [] };
+
+            if (activePath != null) {
+                const parent = this._resolveHierarchyNode(hierarchy, activePath);
+                if (parent) {
+                    parent.subTopics = parent.subTopics ?? [];
+                    parent.subTopics.push(newTopic);
+                } else {
+                    hierarchy.push(newTopic);
+                }
+            } else {
+                hierarchy.push(newTopic);
+            }
+
+            const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+            const updated = await apiClient.patchChapter(fresh.itemId, {
+                osHierarchy:       { topics: writeTopics },
+                expectedVersionId: fresh.versionId,
+            });
+
+            if (updated?.versionId) chapter.versionId = updated.versionId;
+
+            // Re-fetch to get guaranteed enriched osHierarchy
+            const enriched = await apiClient.getChapter(chapter.itemId);
+            this._mergeChapterConfig(chapter, enriched);
+            chapter._fullyLoaded = true;
+
+            const unassigned = await this._computeUnassignedOStars(chapter);
+            this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+            this._toc._unassignedOStars = unassigned;
+            this._toc.refreshTree();
+        } catch (error) {
+            errorHandler.handle(error, 'narrative-add-theme');
+        }
+    }
+
+    /**
+     * Show a minimal modal prompting for a theme title.
+     * Reuses the existing modal-overlay / modal CSS from layout-components.css.
+     * Resolves to the trimmed title string, or null if cancelled.
+     * @returns {Promise<string|null>}
+     */
+    _promptThemeTitle() {
+        return new Promise((resolve) => {
+            document.querySelector('.narrative-theme-prompt')?.remove();
+
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay narrative-theme-prompt';
+            overlay.style.zIndex = '2000';
+            overlay.innerHTML = `
+                <div class="modal" style="max-width:420px;width:100%">
+                    <div class="modal-header">
+                        <h3 class="modal-title">New Theme</h3>
+                        <button class="modal-close" id="themePromptClose">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="odip-form__label" for="themePromptInput"
+                               style="display:block;margin-bottom:var(--space-2);font-size:var(--font-size-sm)">
+                            Theme title
+                        </label>
+                        <input id="themePromptInput"
+                               class="odip-input odip-input--standard"
+                               style="width:100%"
+                               type="text"
+                               placeholder="Enter theme title…"
+                               maxlength="200" />
+                    </div>
+                    <div class="modal-footer">
+                        <button class="odip-btn odip-btn--standard" id="themePromptCancel">Cancel</button>
+                        <button class="odip-btn odip-btn--primary odip-btn--standard" id="themePromptSave">Save</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+
+            const input     = overlay.querySelector('#themePromptInput');
+            const saveBtn   = overlay.querySelector('#themePromptSave');
+            const cancelBtn = overlay.querySelector('#themePromptCancel');
+            const closeBtn  = overlay.querySelector('#themePromptClose');
+
+            const confirm = () => {
+                const val = input.value.trim();
+                overlay.remove();
+                resolve(val || null);
+            };
+            const cancel = () => {
+                overlay.remove();
+                resolve(null);
+            };
+
+            saveBtn.addEventListener('click', confirm);
+            cancelBtn.addEventListener('click', cancel);
+            closeBtn.addEventListener('click', cancel);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter')  { e.preventDefault(); confirm(); }
+                if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            });
+
+            requestAnimationFrame(() => input.focus());
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // + O* (ON / OR / OC)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called when user clicks + ON / + OR / + OC in the chapter TOC.
+     * Opens the appropriate create modal. On successful save:
+     *   1. Fetches fresh chapter version
+     *   2. Inserts new O* itemId into active topic items (or leaves unclassified if no topic)
+     *   3. PATCHes chapter osHierarchy
+     *   4. Refreshes unassigned list and re-renders TOC
+     * @param {'ON'|'OR'|'OC'} type
+     * @param {{ topicIndex: number, subPath: number[] } | null} activePath
+     */
+    async _handleAddOStar(type, activePath) {
+        const chapter = this._selectedChapter;
+        if (!chapter) return;
+
+        // Ensure setup data loaded
+        if (!this._setupData) {
+            try {
+                [this._setupData, this._domains] = await Promise.all([
+                    this.app.getSetupData(),
+                    this.app.getDomains(),
+                ]);
+            } catch (error) {
+                errorHandler.handle(error, 'narrative-add-ostar-setup');
+                return;
+            }
+        }
+
+        const onSaved = async (result) => {
+            await this._insertOStarIntoHierarchy(chapter, result, activePath);
+        };
+
+        if (type === 'OC') {
+            const { default: ChangeForm } = await import('../os/change-form.js');
+            const form = new ChangeForm(
+                { endpoint: '/operational-changes' },
+                {
+                    setupData:       this._setupData,
+                    domains:         this._domains,
+                    getSetupData:    () => this._setupData,
+                    getRequirements: () => [],
+                    onSaved,
+                }
+            );
+            form.showCreateModal({ domain: chapter.domain });
+        } else {
+            const { default: RequirementForm } = await import('../os/requirement-form.js');
+            const form = new RequirementForm(
+                { endpoint: '/operational-requirements' },
+                {
+                    setupData:       this._setupData,
+                    domains:         this._domains,
+                    getSetupData:    () => this._setupData,
+                    getRequirements: () => [],
+                    onSaved,
+                }
+            );
+            form.showCreateModal({ defaultType: type, domain: chapter.domain });
+        }
+    }
+
+    /**
+     * Insert a newly created O* into the chapter osHierarchy.
+     * Uses fetch-fresh pattern to avoid version conflicts.
+     * If activePath resolves to a topic, inserts into that topic's items.
+     * Otherwise leaves the O* unclassified (hierarchy unchanged, unassigned refreshed).
+     * @param {object} chapter
+     * @param {object} result   — created O* entity from server
+     * @param {{ topicIndex: number, subPath: number[] } | null} activePath
+     */
+    async _insertOStarIntoHierarchy(chapter, result, activePath) {
+        const newId   = Number(result.itemId ?? result.id);
+        const newType = (result.type ?? 'OR').toUpperCase();
+
+        try {
+            const fresh = await apiClient.getChapter(chapter.itemId);
+            this._mergeChapterConfig(chapter, fresh);
+
+            const hierarchy = this._toc._parseHierarchy(fresh);
+
+            if (activePath != null) {
+                const node = this._resolveHierarchyNode(hierarchy, activePath);
+                if (node) {
+                    node.items = node.items ?? [];
+                    node.items.push({ id: newId, type: newType, code: result.code ?? null, title: result.title ?? null });
+                    // Enforce ON → OR → OC order
+                    node.items = this._toc._sortItemsByType(node.items);
+                }
+            }
+            // If no activePath — O* left unclassified, hierarchy unchanged
+
+            const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+            const updated = await apiClient.patchChapter(fresh.itemId, {
+                osHierarchy:       { topics: writeTopics },
+                expectedVersionId: fresh.versionId,
+            });
+
+            if (updated?.versionId) chapter.versionId = updated.versionId;
+
+            // Re-fetch to get guaranteed enriched osHierarchy (PATCH response may return write-shape)
+            const enriched = await apiClient.getChapter(chapter.itemId);
+            this._mergeChapterConfig(chapter, enriched);
+            chapter._fullyLoaded = true;
+
+            // Invalidate O* cache so new entity appears
+            this.app.invalidateOStars?.();
+
+            const unassigned = await this._computeUnassignedOStars(chapter);
+            this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+            this._toc._unassignedOStars = unassigned;
+            this._toc.refreshTree();
+        } catch (error) {
+            errorHandler.handle(error, 'narrative-insert-ostar');
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // O* edit/save — refresh TOC label without losing selection or scroll
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called by ChapterBody after an O* is saved from its detail view (edit or create).
+     * Re-fetches the chapter to pick up the enriched hierarchy (so a changed title
+     * shows in the tree), then refreshes the TOC tree while preserving the active
+     * selection and scroll position.
+     * @param {object} _result — saved O* entity (unused; chapter re-fetch is authoritative)
+     * @param {string} _mode   — 'create' | 'edit'
+     */
+    async _handleOStarSaved(_result, _mode) {
+        const chapter = this._selectedChapter;
+        if (!chapter) return;
+
+        try {
+            const enriched = await apiClient.getChapter(chapter.itemId);
+            this._mergeChapterConfig(chapter, enriched);
+            chapter._fullyLoaded = true;
+
+            this.app.invalidateOStars?.();
+
+            const unassigned = await this._computeUnassignedOStars(chapter);
+            this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+            this._toc._unassignedOStars = unassigned;
+            this._toc.refreshTree();
+        } catch (error) {
+            errorHandler.handle(error, 'narrative-ostar-saved');
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Topic narrative save
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called by ChapterBody when user saves a theme narrative.
+     * Uses fetch-fresh pattern: GET latest chapter, mutate target topic narrative, PATCH.
+     * @param {string} topicId  — stable topic id (from osHierarchy topic node)
+     * @param {string} narrative — serialised TipTap/Quill JSON string
+     */
+    async _handleTopicNarrativeSave(topicId, narrative) {
+        const chapter = this._selectedChapter;
+        if (!chapter) throw new Error('No chapter selected');
+
+        const fresh = await apiClient.getChapter(chapter.itemId);
+        this._mergeChapterConfig(chapter, fresh);
+
+        const hierarchy = this._toc._parseHierarchy(fresh);
+
+        // DFS to find topic by id and mutate narrative
+        const found = this._findTopicById(hierarchy, topicId);
+        if (!found) throw new Error(`Topic ${topicId} not found in hierarchy`);
+        found.narrative = narrative;
+
+        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+        const updated = await apiClient.patchChapter(fresh.itemId, {
+            osHierarchy:       { topics: writeTopics },
+            expectedVersionId: fresh.versionId,
+        });
+
+        if (updated?.versionId) chapter.versionId = updated.versionId;
+        if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
+        chapter._fullyLoaded = true;
+
+        // Sync narrative into live _hierarchy so TOC re-renders reflect it
+        const liveNode = this._findTopicById(this._toc._hierarchy, topicId);
+        if (liveNode) liveNode.narrative = narrative;
+    }
+
+    // -------------------------------------------------------------------------
+    // Hierarchy utilities
+    // -------------------------------------------------------------------------
+
+    /**
+     * Merge config-owned fields (title, domain, position) from the cached chapter
+     * into a freshly fetched chapter object, then sync itemId / versionId back.
+     * @param {object} cached — the in-memory chapter (config fields authoritative)
+     * @param {object} fresh  — just fetched from server
+     */
+    _mergeChapterConfig(cached, fresh) {
+        if (cached.title    != null) fresh.title    = cached.title;
+        if (cached.domain   != null) fresh.domain   = cached.domain;
+        if (cached.position != null) fresh.position = cached.position;
+        // Sync version back to cached so subsequent writes use the right versionId
+        cached.versionId    = fresh.versionId;
+        cached.osHierarchy  = fresh.osHierarchy;
+        cached._fullyLoaded = true;
+    }
+
+    /**
+     * Resolve a render-shape topic node by { topicIndex, subPath }.
+     * @param {object[]} hierarchy
+     * @param {{ topicIndex: number, subPath: number[] }} path
+     * @returns {object|null}
+     */
+    _resolveHierarchyNode(hierarchy, { topicIndex, subPath }) {
+        let node = hierarchy[topicIndex] ?? null;
+        for (const si of subPath) {
+            node = node?.subTopics?.[si] ?? null;
+        }
+        return node;
+    }
+
+    /**
+     * DFS search for a topic node by its stable id string.
+     * @param {object[]} nodes
+     * @param {string}   topicId
+     * @returns {object|null}
+     */
+    _findTopicById(nodes, topicId) {
+        for (const n of nodes ?? []) {
+            if (String(n.id) === String(topicId)) return n;
+            const found = this._findTopicById(n.subTopics ?? [], topicId);
+            if (found) return found;
+        }
+        return null;
     }
 
     /**

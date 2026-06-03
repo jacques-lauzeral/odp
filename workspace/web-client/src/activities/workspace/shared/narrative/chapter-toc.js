@@ -51,6 +51,8 @@ export default class ChapterToc {
         this._buildOrderedChapters = options.buildOrderedChapters ?? (() => []);
         this._onHierarchyChange    = options.onHierarchyChange    ?? (() => {});
         this._onUnclassifiedChange = options.onUnclassifiedChange ?? (() => {});
+        this._onAddTheme           = options.onAddTheme           ?? (() => {});
+        this._onAddOStar           = options.onAddOStar           ?? (() => {});
 
         // ODIP scope state — all ids stored as normalizeId() integers
         this._collapsedIds  = new Set();
@@ -318,6 +320,29 @@ export default class ChapterToc {
                 ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>'
                 : '',
         ].join('');
+    }
+
+    /**
+     * Rebuild the chapter tree while preserving the active selection highlight
+     * and the scroll position. Used after out-of-band hierarchy updates
+     * (O* create/edit, theme create) so the user's place in the tree is kept.
+     */
+    refreshTree() {
+        // Scroll lives on the scrollable ancestor (.chapter-toc, overflow-y:auto)
+        const scroller = this.container?.querySelector('.chapter-toc--chapter')
+            ?? this.container?.querySelector('#chapterTocTree');
+        const scrollTop = scroller?.scrollTop ?? 0;
+
+        this._renderChapterTree();
+
+        if (scroller) scroller.scrollTop = scrollTop;
+
+        // Build-time entry markup does not carry the active class — re-apply it.
+        if (this._activeKey) {
+            this.container
+                ?.querySelector(`.chapter-toc__entry[data-key="${CSS.escape(this._activeKey)}"]`)
+                ?.classList.add('chapter-toc__entry--active');
+        }
     }
 
     _handleChapterClick(e) {
@@ -1117,8 +1142,58 @@ export default class ChapterToc {
     }
 
     // =========================================================================
-    // Shared helpers
+    // Action helpers (chapter scope, Elaborate only)
     // =========================================================================
+
+    /**
+     * Returns the topic path { topicIndex, subPath } of the currently active
+     * topic or subtopic entry, or null if no topic is selected (e.g. chapter
+     * narrative or O* entry is active).
+     * Used to determine the insertion point for +Theme and +O* actions.
+     * @returns {{ topicIndex: number, subPath: number[] } | null}
+     */
+    _getActiveTopicPath() {
+        if (!this._activeKey) return null;
+
+        // Top-level topic: "topic-{n}"
+        const topicMatch = this._activeKey.match(/^topic-(\d+)$/);
+        if (topicMatch) {
+            return { topicIndex: parseInt(topicMatch[1], 10), subPath: [] };
+        }
+
+        // Subtopic: "subtopic-{topicIndex}-{sub1}-{sub2}-…"
+        const subMatch = this._activeKey.match(/^subtopic-(\d+)-(.+)$/);
+        if (subMatch) {
+            const topicIndex = parseInt(subMatch[1], 10);
+            const subPath    = subMatch[2].split('-').map(Number);
+            return { topicIndex, subPath };
+        }
+
+        return null;
+    }
+
+    /**
+     * Compute the next free topic id across the full hierarchy tree.
+     * IDs are positive integers assigned as strings ("1", "2", …).
+     * Mirrors the server-side DFS counter from DistributedEditionImporter.
+     * @param {object[]} hierarchy — render-shape topic array
+     * @returns {string}
+     */
+    _nextFreeTopicId(hierarchy) {
+        let max = 0;
+        const walk = (nodes) => {
+            for (const n of nodes ?? []) {
+                const id = parseInt(n.id, 10);
+                if (Number.isFinite(id) && id > max) max = id;
+                walk(n.subTopics ?? []);
+            }
+        };
+        walk(hierarchy);
+        return String(max + 1);
+    }
+
+    // =========================================================================
+
 
     cleanup() {
         this.container         = null;
@@ -1152,8 +1227,9 @@ export default class ChapterToc {
                 ? { id: raw.id, type: raw.type ?? impliedType, code: raw.code ?? null, title: raw.title ?? null }
                 : { id: raw,    type: impliedType,             code: null,             title: null };
         const node = {
-            id:       t.id ?? null,
-            topic:    t.topic,
+            id:        t.id ?? null,
+            topic:     t.topic,
+            narrative: t.narrative ?? null,
             items:    [
                 ...(t.ons ?? []).map(o => mapItem(o, 'ON')),
                 ...(t.ors ?? []).map(o => mapItem(o, 'OR')),

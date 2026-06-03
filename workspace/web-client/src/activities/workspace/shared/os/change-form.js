@@ -506,8 +506,9 @@ export default class ChangeForm extends CollectionEntityForm {
     // PUBLIC API
     // ====================
 
-    async showCreateModal() {
-        await super.showCreateModal();
+    async showCreateModal({ domain } = {}) {
+        const initialData = domain ? { domain } : null;
+        await super.showCreateModal(initialData);
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {

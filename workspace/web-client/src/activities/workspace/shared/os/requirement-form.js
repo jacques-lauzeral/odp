@@ -612,14 +612,18 @@ export default class RequirementForm extends CollectionEntityForm {
     // ENHANCED MODAL METHODS
     // ====================
 
-    async showCreateModal({ defaultType } = {}) {
+    async showCreateModal({ defaultType, domain } = {}) {
         this._forcedType = defaultType ?? null;
-        const initialData = this._forcedType ? { type: this._forcedType } : null;
+        const initialData = {
+            ...(this._forcedType ? { type: this._forcedType } : {}),
+            ...(domain           ? { domain }               : {}),
+        };
+
         this.context.onModalReady = () => {
             this.bindTypeChangeEvents();
             this.updateFieldVisibility({ type: this._forcedType ?? requirementDefaults.type });
         };
-        await super.showCreateModal(initialData);
+        await super.showCreateModal(Object.keys(initialData).length ? initialData : null);
     }
 
     async showEditModal(item) {

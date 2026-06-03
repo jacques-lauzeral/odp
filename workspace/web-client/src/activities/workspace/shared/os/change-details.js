@@ -50,12 +50,15 @@ export default class ChangeDetails {
     async render(container, id, mode = 'page', callbacks = {}) {
         this.container = container;
         this._mode     = mode;
+        this._id       = id;
+        this._callbacks = callbacks;
 
         // Re-inject callbacks on every render — ensures correct wiring
         // regardless of whether the instance is newly created or cached.
         this._onFullPage     = callbacks.onFullPage     ?? null;
         this._onInCollection = callbacks.onInCollection ?? null;
         this._onInTree       = callbacks.onInTree       ?? null;
+        this._onSaved        = callbacks.onSaved        ?? null;
 
         this.container.innerHTML = this._buildLoadingHtml();
 
@@ -123,6 +126,7 @@ export default class ChangeDetails {
             getRequirements: () => [],
             onNavigate:        (ref)         => this._navigateToRef(ref),
             onInternalLink:    (type, value) => this._handleInternalLink(type, value),
+            onSaved:           (result, mode) => this._handleSaved(result, mode),
         });
     }
 
@@ -151,6 +155,21 @@ export default class ChangeDetails {
     async _openEditPopup() {
         await this._ensureForm(this._setupData ?? await this.app.getSetupData());
         await this._form.showEditModal(this.item);
+    }
+
+    /**
+     * Called after the edit modal saves. Re-renders this panel with fresh data
+     * so the displayed fields reflect the edit, then forwards the save upward
+     * (e.g. to NarrativeActivity for TOC label refresh).
+     * @param {object} result — saved entity
+     * @param {string} mode   — 'create' | 'edit'
+     */
+    async _handleSaved(result, mode) {
+        const forward = this._onSaved;
+        if (this.container && this._id != null) {
+            await this.render(this.container, this._id, this._mode, this._callbacks);
+        }
+        forward?.(result, mode);
     }
 
     // -------------------------------------------------------------------------

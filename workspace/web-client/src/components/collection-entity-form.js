@@ -52,6 +52,11 @@ export class CollectionEntityForm {
         // Provided by RequirementDetails / ChangeDetails via context.onInternalLink.
         this._onInternalLink = context.onInternalLink || null;
 
+        // Optional post-save callback — called after successful create or edit.
+        // Signature: (result, mode) where mode is 'create' | 'edit'.
+        // Provided by callers that need to react to the saved entity (e.g. NarrativeActivity).
+        this._onSaved = context.onSaved ?? null;
+
         // Link provider for reference authoring in edit mode — lazily built from context.app.
         this._linkProvider = null;
 
@@ -355,7 +360,7 @@ export class CollectionEntityForm {
         // Create mode
         if (mode === 'create') {
             if (field.computed || field.readOnly) return '';
-            return await this.renderEditableField(field, null);
+            return await this.renderEditableField(field, value);
         }
 
         // Edit mode
@@ -1631,6 +1636,9 @@ export class CollectionEntityForm {
                 }
             });
             document.dispatchEvent(event);
+
+            // Notify caller if a post-save callback was provided
+            this._onSaved?.(result, this.currentMode);
 
             // Close modal on success
             this.closeModal();
