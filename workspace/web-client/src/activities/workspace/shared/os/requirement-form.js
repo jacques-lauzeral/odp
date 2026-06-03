@@ -10,12 +10,13 @@ import {
 } from '/shared/src/index.js';
 import { parseYearPeriod, formatYearPeriod } from '/shared/src/model/year-period.js';
 import {
-    requirementFieldDefinitions,
     requirementFormTitles,
     requiredIdentifierArrayFields,
     requiredAnnotatedReferenceArrayFields,
     requiredTextFields,
-    requirementDefaults
+    requirementDefaults,
+    requirementReadConfig,
+    requirementEditConfig,
 } from './requirement-form-fields.js';
 
 /**
@@ -47,12 +48,8 @@ export default class RequirementForm extends CollectionEntityForm {
     // OVERRIDE VIRTUAL METHODS
     // ====================
 
-    getFieldDefinitions() {
-        return requirementFieldDefinitions.map(section => ({
-            ...section,
-            fields: section.fields.map(field => this.hydrateField(field))
-        }));
-    }
+    getReadConfig() { return requirementReadConfig; }
+    getEditConfig() { return requirementEditConfig; }
 
     hydrateField(field) {
         const hydrated = { ...field };
@@ -622,6 +619,7 @@ export default class RequirementForm extends CollectionEntityForm {
         this.context.onModalReady = () => {
             this.bindTypeChangeEvents();
             this.updateFieldVisibility({ type: this._forcedType ?? requirementDefaults.type });
+            this._attachConfirmOnChangeListeners(this.getEditConfig());
         };
         await super.showCreateModal(Object.keys(initialData).length ? initialData : null);
     }
@@ -631,6 +629,7 @@ export default class RequirementForm extends CollectionEntityForm {
         this.context.onModalReady = () => {
             this.bindTypeChangeEvents();
             this.updateFieldVisibility({ type: item?.type || requirementDefaults.type });
+            this._attachConfirmOnChangeListeners(this.getEditConfig());
         };
         await super.showEditModal(item);
         this.attachHistory('operational-requirements', item.itemId);

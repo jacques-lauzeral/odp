@@ -55,17 +55,17 @@
 
 /* ── Detail fields (read-only view) ── */
 .detail-field {
-    padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+    padding: var(--space-1, 0.25rem) var(--space-4, 1rem);
 }
 
 .detail-field label {
     display: block;
     font-size: var(--font-size-xs, 0.75rem);
     font-weight: var(--font-weight-semibold, 600);
-    color: var(--text-secondary, #6b7280);
+    color: var(--text-tertiary, #9ca3af);
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    margin-bottom: var(--space-1, 0.25rem);
+    margin-bottom: 1px;
 }
 
 .detail-value {
@@ -864,3 +864,32 @@
 }
 
 /* Override detail-value padding for richtext in read mode */
+
+/* Multi-column field row -- layout config { row: [...] } entries */
+.form-row {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+}
+
+.form-row__col {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Opt-in inline label | value layout (config: valueInline: true on the row) */
+.form-row--inline .detail-field {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+}
+
+.form-row--inline .detail-field > label {
+    flex-shrink: 0;
+    margin: 0;
+}
+
+.form-row--inline .detail-field > .detail-value {
+    flex: 1;
+    min-width: 0;
+}

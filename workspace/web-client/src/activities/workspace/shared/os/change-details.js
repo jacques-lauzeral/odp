@@ -237,7 +237,7 @@ export default class ChangeDetails {
         return `
             <div class="os-detail">
                 <div class="os-detail__toolbar">
-                    <span class="os-detail__title">${this._esc(item.title ?? item.code ?? '')}</span>
+                    <span class="os-detail__title">${this._esc(item.code ? `${item.code} — ${item.title ?? ''}` : (item.title ?? ''))}</span>
                     <div class="os-detail__actions">
                         ${isEditable
             ? '<button class="odip-btn odip-btn--primary os-detail__edit">Edit</button>'

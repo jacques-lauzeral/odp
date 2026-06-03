@@ -106,8 +106,47 @@ export class CollectionEntityForm {
     // ====================
 
     getFieldDefinitions() {
-        // Override in subclasses to provide field definitions
+        // Retained for backward compatibility with any subclass that has not yet
+        // adopted the edit-config pattern. Returns empty array by default.
         return [];
+    }
+
+    /**
+     * Hydrate a raw field entry from the edit config with bound runtime functions.
+     * Converts optionsKey / formatKey / computeKey / renderKey string references
+     * into actual bound methods on the form instance.
+     * Override in subclasses (RequirementForm, ChangeForm).
+     * @param {object} field
+     * @returns {object} hydrated field
+     */
+    hydrateField(field) {
+        return field;
+    }
+
+    /**
+     * Return a cached flat Map<key, hydratedFieldDef> built from the edit config.
+     * All consumers (validateForm, collectFormData, manager init, restoreVersionToForm)
+     * call this instead of getFieldDefinitions().
+     */
+    _getFieldMap() {
+        if (!this._fieldMapCache) {
+            this._fieldMapCache = this._buildFieldMap();
+        }
+        return this._fieldMapCache;
+    }
+
+    getReadConfig() {
+        // Override in subclasses to provide a layout config for read mode.
+        // When non-null, _generateFormFromConfig() is used instead of the legacy path.
+        // Shape: { sections: Array }
+        return null;
+    }
+
+    getEditConfig() {
+        // Override in subclasses to provide a layout config for edit/create mode.
+        // When non-null, _generateFormFromConfig() is used instead of the legacy path.
+        // Shape: { sections: Array }
+        return null;
     }
 
     getFormTitle(mode) {
@@ -248,6 +287,12 @@ export class CollectionEntityForm {
     // ====================
 
     async generateForm(mode, item = null, preserveTabIndex = false) {
+        const layoutConfig = mode === 'read' ? this.getReadConfig() : this.getEditConfig();
+        if (layoutConfig) {
+            return await this._generateFormFromConfig(layoutConfig, mode, item, preserveTabIndex);
+        }
+
+        // ── Legacy path ───────────────────────────────────────────────────────
         const fields = this.getFieldDefinitions();
         const sections = this.groupFieldsIntoSections(fields);
 
@@ -664,49 +709,31 @@ export class CollectionEntityForm {
     initializeReferenceListManagers() {
         if (!this.currentModal) return;
 
-        // Find all reference-list placeholders
         const placeholders = this.currentModal.querySelectorAll('.reference-list-placeholder');
 
         placeholders.forEach(placeholder => {
             const fieldKey = placeholder.dataset.fieldKey;
-            const fieldId = placeholder.dataset.fieldId;
+            const fieldId  = placeholder.dataset.fieldId;
 
-            // Find field definition
-            const fields = this.getFieldDefinitions();
-            const allFields = [];
-            for (const section of fields) {
-                if (section.fields) {
-                    allFields.push(...section.fields);
-                } else {
-                    allFields.push(section);
-                }
-            }
-
-            const field = allFields.find(f => f.key === fieldKey);
+            const field = this._getFieldMap().get(fieldKey);
             if (!field || field.type !== 'reference-list') return;
 
-            // Get current value — use compute function for computed fields,
-            // otherwise read directly from currentItem
             const value = field.compute
                 ? field.compute(this.currentItem)
                 : this.getFieldValue(this.currentItem, field);
 
-            // Get options (resolve async if needed)
             this.getFieldOptions(field).then(options => {
-                // Create manager
-                const isReadMode = this.currentMode === 'read';
+                const isReadOnly = this.currentMode === 'read' || field.readOnly === true;
                 const onNavigate = this.onNavigate;
                 const manager = new ReferenceListManager({
                     fieldId: fieldId,
                     options: options,
                     initialValue: value || [],
                     placeholder: field.placeholder || 'Search items...',
-                    emptyMessage: isReadMode ? 'None' : (field.emptyMessage || 'No items selected'),
-                    readOnly: isReadMode,
-                    onItemClick: (isReadMode && onNavigate)
+                    emptyMessage: isReadOnly ? 'None' : (field.emptyMessage || 'No items selected'),
+                    readOnly: isReadOnly,
+                    onItemClick: (isReadOnly && onNavigate)
                         ? (id, option) => {
-                            // entityType derived from field.formatArgs[0]
-                            // Maps any legacy or current value to canonical URL segment: on | or | oc
                             const rawType = (field.formatArgs && field.formatArgs[0]) || 'OR';
                             const entityType = rawType === 'OC' || rawType === 'change' ? 'oc'
                                 : rawType === 'ON' || rawType === 'on'      ? 'on'
@@ -722,10 +749,7 @@ export class CollectionEntityForm {
                     }
                 });
 
-                // Render manager into placeholder
                 manager.render(placeholder);
-
-                // Store manager instance
                 this.referenceListManagers[fieldKey] = manager;
             });
         });
@@ -766,29 +790,24 @@ export class CollectionEntityForm {
             const fieldKey = placeholder.dataset.fieldKey;
             const fieldId  = placeholder.dataset.fieldId;
 
-            const allFields = [];
-            for (const section of this.getFieldDefinitions()) {
-                allFields.push(...(section.fields || [section]));
-            }
-            const field = allFields.find(f => f.key === fieldKey);
+            const field = this._getFieldMap().get(fieldKey);
             if (!field || field.type !== 'reference') return;
 
-            // value is an array (refinesParents) — take first element as single id
-            const rawValue = this.getFieldValue(this.currentItem, field);
+            const rawValue  = this.getFieldValue(this.currentItem, field);
             const initialId = Array.isArray(rawValue) && rawValue.length > 0
                 ? rawValue[0]?.id ?? rawValue[0]
                 : null;
 
-            const isReadMode  = this.currentMode === 'read';
-            const onNavigate  = this.onNavigate;
+            const isReadOnly = this.currentMode === 'read' || field.readOnly === true;
+            const onNavigate = this.onNavigate;
             this.getFieldOptions(field).then(options => {
                 const manager = new ReferenceManager({
                     fieldId,
                     options,
                     initialValue: initialId,
                     placeholder: field.placeholder || 'Type to search...',
-                    readOnly: isReadMode,
-                    onItemClick: (isReadMode && onNavigate)
+                    readOnly: isReadOnly,
+                    onItemClick: (isReadOnly && onNavigate)
                         ? (id, option) => {
                             const rawType = (field.formatArgs && field.formatArgs[0]) || 'OR';
                             const entityType = rawType === 'OC' || rawType === 'change' ? 'oc'
@@ -942,33 +961,19 @@ export class CollectionEntityForm {
     initializeAnnotatedMultiselects() {
         if (!this.currentModal) return;
 
-        // Find all annotated-reference-list placeholders
         const placeholders = this.currentModal.querySelectorAll('.annotated-reference-list-placeholder');
 
         placeholders.forEach(placeholder => {
             const fieldKey = placeholder.dataset.fieldKey;
-            const fieldId = placeholder.dataset.fieldId;
+            const fieldId  = placeholder.dataset.fieldId;
 
-            // Find field definition
-            const fields = this.getFieldDefinitions();
-            const allFields = [];
-            for (const section of fields) {
-                if (section.fields) {
-                    allFields.push(...section.fields);
-                } else {
-                    allFields.push(section);
-                }
-            }
-
-            const field = allFields.find(f => f.key === fieldKey);
+            const field = this._getFieldMap().get(fieldKey);
             if (!field || field.type !== 'annotated-reference-list') return;
 
-            // Get current value
-            const value = this.getFieldValue(this.currentItem, field);
+            const value    = this.getFieldValue(this.currentItem, field);
+            const isReadOnly = this.currentMode === 'read' || field.readOnly === true;
 
-            // Get options (resolve async if needed)
             this.getFieldOptions(field).then(options => {
-                // Create manager
                 const manager = new AnnotatedMultiselectManager({
                     fieldId: fieldId,
                     options: options,
@@ -977,7 +982,7 @@ export class CollectionEntityForm {
                     placeholder: field.placeholder || 'Select items...',
                     noteLabel: field.noteLabel || 'Note (optional)',
                     helpText: field.helpText || '',
-                    readOnly: this.currentMode === 'read',
+                    readOnly: isReadOnly,
                     onChange: (newValue) => {
                         console.log(`${fieldKey} changed:`, newValue);
                         if (this.currentMode === 'edit' || this.currentMode === 'create') {
@@ -986,10 +991,7 @@ export class CollectionEntityForm {
                     }
                 });
 
-                // Render manager into placeholder
                 manager.render(placeholder);
-
-                // Store manager instance
                 this.annotatedMultiselectManagers[fieldKey] = manager;
             });
         });
@@ -1017,15 +1019,11 @@ export class CollectionEntityForm {
         const placeholders = this.currentModal.querySelectorAll('.richtext-edit-placeholder');
 
         placeholders.forEach(placeholder => {
-            const fieldKey  = placeholder.dataset.fieldKey;
-            const initialValue = placeholder.dataset.initialValue || '';
+            const fieldKey       = placeholder.dataset.fieldKey;
+            const initialValue   = placeholder.dataset.initialValue || '';
             const placeholderText = placeholder.dataset.placeholder || '';
 
-            const allFields = [];
-            for (const section of this.getFieldDefinitions()) {
-                allFields.push(...(section.fields || [section]));
-            }
-            const field = allFields.find(f => f.key === fieldKey);
+            const field = this._getFieldMap().get(fieldKey);
             if (!field) return;
 
             const hiddenInput = this.currentModal.querySelector(`#${placeholder.id}-data`);
@@ -1156,20 +1154,10 @@ export class CollectionEntityForm {
             itemId:     this.currentItem.itemId,     // restore stable identity
         };
 
-        // transformedItem is used for plain inputs/selects (strips objects to IDs, normalises arrays).
-        // Managers (multiselect, annotated-reference-list) must receive the raw API objects from
-        // this.currentItem — exactly as initializeReferenceListManagers / initializeAnnotatedMultiselects
-        // do on initial load — because their normalizeInitialValue expects {id, ...} objects, not plain numbers.
         const transformedItem = this.transformDataForEdit(this.currentItem);
-        const fields = this.getFieldDefinitions();
-        const allFields = [];
-        for (const section of fields) {
-            if (section.fields) allFields.push(...section.fields);
-            else allFields.push(section);
-        }
 
-        for (const field of allFields) {
-            if (field.computed || field.readOnly || field.editableOnlyOnCreate || field.type === 'history' || field.type === 'static-label') continue;
+        for (const [, field] of this._getFieldMap()) {
+            if (field.readOnly || field.type === 'history' || field.type === 'static-label') continue;
 
             // Managers need raw objects; plain inputs/richtext need the transformed (ID-normalised) value
             const rawValue         = this.getFieldValue(this.currentItem, field);
@@ -1666,24 +1654,9 @@ export class CollectionEntityForm {
 
         const formData = new FormData(form);
         const data = {};
-        const fields = this.getFieldDefinitions();
 
-        // Flatten fields from sections
-        const allFields = [];
-        for (const section of fields) {
-            if (section.fields) {
-                allFields.push(...section.fields);
-            } else {
-                allFields.push(section);
-            }
-        }
-
-        for (const field of allFields) {
-            // Skip computed and read-only fields
-            if (field.computed) continue;
-            if (this.currentMode === 'edit' && field.editableOnlyOnCreate) continue;
-
-            // static-label has no input — nothing to collect
+        for (const [, field] of this._getFieldMap()) {
+            if (field.readOnly) continue;
             if (field.type === 'static-label') continue;
 
             // Special handling for annotated-reference-list
@@ -1764,47 +1737,26 @@ export class CollectionEntityForm {
     async validateForm(data, mode) {
         console.log('CollectionEntityForm.validateForm ', mode);
         const errors = [];
-        const fields = this.getFieldDefinitions();
 
-        // Flatten fields from sections
-        const allFields = [];
-        for (const section of fields) {
-            if (section.fields) {
-                allFields.push(...section.fields);
-            } else {
-                allFields.push(section);
-            }
-        }
-
-        // Field-level validation
-        for (const field of allFields) {
-            if (field.computed) continue;
+        for (const [, field] of this._getFieldMap()) {
+            if (field.readOnly) continue;
             if (field.type === 'static-label') continue;
 
             const value = data[field.key];
 
-            // Required validation
-            if (field.required && (this.currentMode === 'create' || !field.editableOnlyOnCreate) && !value) {
-                errors.push({
-                    field: field.key,
-                    message: `${field.label} is required`
-                });
+            if (field.required && !value) {
+                errors.push({ field: field.key, message: `${field.label} is required` });
             }
 
-            // Custom validation
             if (field.validate) {
                 const validation = await field.validate(value, data, this.context);
                 if (!validation.valid) {
-                    errors.push({
-                        field: field.key,
-                        message: validation.message || `${field.label} is invalid`
-                    });
+                    errors.push({ field: field.key, message: validation.message || `${field.label} is invalid` });
                 }
             }
         }
         console.log('CollectionEntityForm.validateForm field-error-count: ', errors.length);
 
-        // Form-level validation
         const customValidation = await this.onValidate(data, this.currentMode, this.currentItem);
         console.log('CollectionEntityForm.validateForm customValidation: ', customValidation.valid);
         if (!customValidation.valid) {
@@ -1815,10 +1767,7 @@ export class CollectionEntityForm {
             }
         }
 
-        return {
-            valid: errors.length === 0,
-            errors
-        };
+        return { valid: errors.length === 0, errors };
     }
 
     showValidationErrors(errors) {
@@ -1895,6 +1844,214 @@ export class CollectionEntityForm {
             </div>
         `;
         form.insertBefore(errorDiv, form.firstChild);
+    }
+
+    // ====================
+    // CONFIG-DRIVEN RENDERING
+    // ====================
+
+    /**
+     * Main renderer for layout-config-driven forms.
+     * Called by generateForm() when getReadConfig() / getEditConfig() returns non-null.
+     */
+    async _generateFormFromConfig(config, mode, item, preserveTabIndex = false) {
+        const fieldMap = this._getFieldMap();
+
+        const activeTabIndex = preserveTabIndex
+            ? (this.context?.currentTabIndex ?? this.currentTabIndex)
+            : 0;
+
+        // Visible sections for this mode
+        const visibleSections = config.sections.filter(s =>
+            this._isSectionVisibleFromConfig(s, item, mode)
+        );
+
+        // Tab headers
+        let html = `<div class="form-tabs"><div class="tab-headers">`;
+        visibleSections.forEach((section, idx) => {
+            const isActive = idx === activeTabIndex;
+            html += `<button type="button" class="tab-header ${isActive ? 'active' : ''}"
+                             data-tab="${idx}">
+                ${this.escapeHtml(section.title)}
+            </button>`;
+        });
+        html += `</div><div class="tab-contents">`;
+
+        // Tab panels
+        for (let idx = 0; idx < visibleSections.length; idx++) {
+            const section  = visibleSections[idx];
+            const isActive = idx === activeTabIndex;
+            html += `<div class="tab-panel ${isActive ? 'active' : ''}" data-tab="${idx}">`;
+            for (const entry of section.fields) {
+                html += await this._renderConfigEntry(entry, item, fieldMap, mode);
+            }
+            html += `</div>`;
+        }
+
+        html += `</div></div>`;
+        return html;
+    }
+
+    /**
+     * Build a flat Map<key, hydratedFieldDef> from the edit config.
+     * Iterates all sections and row entries; calls hydrateField() on each.
+     * Result is cached by _getFieldMap() — do not call directly.
+     */
+    _buildFieldMap() {
+        const map = new Map();
+        const editConfig = this.getEditConfig();
+        if (!editConfig) return map;
+
+        for (const section of editConfig.sections) {
+            for (const entry of section.fields) {
+                const entries = entry.row ? entry.row : [entry];
+                for (const e of entries) {
+                    if (e.key && !map.has(e.key)) {
+                        map.set(e.key, this.hydrateField(e));
+                    }
+                }
+            }
+        }
+        return map;
+    }
+
+    /**
+     * Render a single layout entry — either a bare field or a { row: [...] } wrapper.
+     */
+    async _renderConfigEntry(entry, item, fieldMap, mode) {
+        if (entry.row) {
+            return await this._renderConfigRow(entry, item, fieldMap, mode);
+        }
+        if (!this._resolveEntryVisible(entry, item)) return '';
+        const fieldDef = this._resolveFieldDef(entry, fieldMap);
+        if (!fieldDef) return '';
+        const value = this.getFieldValue(item, fieldDef);
+        if (entry.hideIfNullOrEmpty && this._isNullOrEmpty(value)) return '';
+        return await this.renderField(fieldDef, value, mode);
+    }
+
+    /**
+     * True when a field value should count as "empty" for hideIfNullOrEmpty:
+     * null/undefined, empty string, or empty array.
+     */
+    _isNullOrEmpty(value) {
+        if (value == null) return true;
+        if (Array.isArray(value)) return value.length === 0;
+        if (typeof value === 'string') return value.trim() === '';
+        return false;
+    }
+
+    /**
+     * Render a { row: [...] } layout entry.
+     * Single visible child → collapses to full-width. No visible children → emits nothing.
+     */
+    async _renderConfigRow(rowEntry, item, fieldMap, mode) {
+        const rowEntries = rowEntry.row;
+        const inline     = rowEntry.valueInline === true;
+
+        const visibleEntries = rowEntries.filter(e => {
+            if (!this._resolveEntryVisible(e, item)) return false;
+            if (e.hideIfNullOrEmpty) {
+                const fieldDef = fieldMap.get(e.key);
+                if (fieldDef && this._isNullOrEmpty(this.getFieldValue(item, fieldDef))) return false;
+            }
+            return true;
+        });
+        if (visibleEntries.length === 0) return '';
+
+        const rowClass = inline ? 'form-row form-row--inline' : 'form-row';
+
+        // Single visible field: still wrap so inline styling applies, but no need for columns
+        if (visibleEntries.length === 1 && !inline) {
+            const fieldDef = this._resolveFieldDef(visibleEntries[0], fieldMap);
+            if (!fieldDef) return '';
+            return await this.renderField(fieldDef, this.getFieldValue(item, fieldDef), mode);
+        }
+
+        let html = `<div class="${rowClass}">`;
+        for (const entry of visibleEntries) {
+            const fieldDef = this._resolveFieldDef(entry, fieldMap);
+            if (!fieldDef) continue;
+            html += `<div class="form-row__col">`;
+            html += await this.renderField(fieldDef, this.getFieldValue(item, fieldDef), mode);
+            html += `</div>`;
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    /**
+     * Merge a layout entry's overrides into the field def from the catalog.
+     * Only readOnly is overridable from the layout.
+     */
+    _resolveFieldDef(entry, fieldMap) {
+        const base = fieldMap.get(entry.key);
+        if (!base) {
+            console.warn(`[CollectionEntityForm] No field definition for key '${entry.key}'`);
+            return null;
+        }
+        if (entry.readOnly === undefined) return base;
+        return { ...base, readOnly: entry.readOnly };
+    }
+
+    /**
+     * Evaluate a layout entry's visibleWhen against the current item.
+     * Accepts: undefined (always visible), 'ON', 'OR', or a function (item) => bool.
+     */
+    _resolveEntryVisible(entry, item) {
+        if (!entry.visibleWhen) return true;
+        if (!item) return true;
+        if (typeof entry.visibleWhen === 'function') return entry.visibleWhen(item);
+        if (entry.visibleWhen === 'ON') return item.type === 'ON';
+        if (entry.visibleWhen === 'OR') return item.type === 'OR';
+        return true;
+    }
+
+    /**
+     * A section is visible if:
+     *  - its optional modes[] includes the current mode (or modes is absent), AND
+     *  - at least one of its field entries is visible for the current item.
+     */
+    _isSectionVisibleFromConfig(section, item, mode) {
+        if (section.modes && !section.modes.includes(mode)) return false;
+        return section.fields.some(entry => {
+            if (entry.row) return entry.row.some(e => this._resolveEntryVisible(e, item));
+            return this._resolveEntryVisible(entry, item);
+        });
+    }
+
+    /**
+     * Attach confirmation-dialog interceptors to fields marked confirmOnChange: true
+     * in the edit config. Call once the modal DOM is ready (from onModalReady or
+     * immediately after super.showEditModal / super.showCreateModal resolves).
+     *
+     * @param {{ sections: Array } | null} editConfig
+     */
+    _attachConfirmOnChangeListeners(editConfig) {
+        if (!this.currentModal || !editConfig) return;
+        for (const section of editConfig.sections) {
+            for (const entry of section.fields) {
+                const entries = entry.row ? entry.row : [entry];
+                for (const e of entries) {
+                    if (!e.confirmOnChange) continue;
+                    const input = this.currentModal.querySelector(`[name="${e.key}"]`);
+                    if (!input) continue;
+                    let prevValue = input.value;
+                    input.addEventListener('focus', () => { prevValue = input.value; });
+                    input.addEventListener('change', (evt) => {
+                        const confirmed = window.confirm(
+                            `Changing this field may have significant consequences on related entities.\n\nDo you want to continue?`
+                        );
+                        if (!confirmed) {
+                            input.value = prevValue;
+                            evt.stopImmediatePropagation();
+                        } else {
+                            prevValue = input.value;
+                        }
+                    });
+                }
+            }
+        }
     }
 
     // ====================

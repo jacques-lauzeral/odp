@@ -8,12 +8,13 @@ import {
 } from '/shared/src/index.js';
 import { MilestoneManager } from './change-form-milestone.js';
 import {
-    changeFieldDefinitions,
     changeFormTitles,
     requiredIdentifierArrayFields,
     requiredTextFields,
     optionalTextFields,
-    changeDefaults
+    changeDefaults,
+    changeReadConfig,
+    changeEditConfig,
 } from './change-form-fields.js';
 
 /**
@@ -60,13 +61,8 @@ export default class ChangeForm extends CollectionEntityForm {
     // OVERRIDE VIRTUAL METHODS
     // ====================
 
-    getFieldDefinitions() {
-        // Hydrate configuration with runtime logic
-        return changeFieldDefinitions.map(section => ({
-            ...section,
-            fields: section.fields.map(field => this.hydrateField(field))
-        }));
-    }
+    getReadConfig() { return changeReadConfig; }
+    getEditConfig() { return changeEditConfig; }
 
     /**
      * Hydrate a field configuration with runtime functions
@@ -435,6 +431,7 @@ export default class ChangeForm extends CollectionEntityForm {
         console.log('ChangeForm.showEditModal - item:', item?.itemId);
         await super.showEditModal(item);
         this.attachHistory('operational-changes', item.itemId);
+        this._attachConfirmOnChangeListeners(this.getEditConfig());
 
         // Load milestones after modal is shown
         if (item && (item.itemId || item.id)) {
@@ -509,6 +506,7 @@ export default class ChangeForm extends CollectionEntityForm {
     async showCreateModal({ domain } = {}) {
         const initialData = domain ? { domain } : null;
         await super.showCreateModal(initialData);
+        this._attachConfirmOnChangeListeners(this.getEditConfig());
     }
 
     async generateReadOnlyView(item, preserveTabIndex = false) {

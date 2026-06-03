@@ -29,6 +29,7 @@
 .rich-text-component--readonly {
     border: none;
     background: transparent;
+    max-height: none;
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────────────── */
@@ -268,6 +269,8 @@
 .rich-text-component--readonly .rich-text-component__editor {
     padding: 0;
     min-height: unset;
+    overflow-y: visible;
+    flex: none;
 }
 
 .rich-text-component--readonly .rich-text-component__editor .tiptap {
