@@ -409,3 +409,14 @@
         flex-direction: column;
     }
 }
+
+/* --- Reference manager picker popup ---------------------------------------- */
+/* The single-select tree is shown inside a search-popup overlay (opened by the
+   Select/Change button). Let the popup results area own the scroll so the tree
+   itself is not double-capped. */
+
+.rm-picker-popup .reference-manager-tree {
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+}

@@ -107,6 +107,7 @@ export default class ReferenceManager {
             this.container.removeEventListener('click',   this._handlers.click);
             this.container.removeEventListener('input',   this._handlers.input);
             this.container.removeEventListener('keydown', this._handlers.keydown);
+            this.container.querySelector(`#${this._eid('popup')}`)?.remove();
             this.container = null;
         }
         this.selectedId  = null;
@@ -139,33 +140,28 @@ export default class ReferenceManager {
     }
 
     _rerenderTree() {
-        const rm = this._rm();
-        if (!rm) return;
-        // Replace only the tree div — input element is left untouched to preserve focus.
-        const treeEl = rm.querySelector('.reference-manager-tree');
+        const treeEl = this.container?.querySelector(`#${this._eid('popup')} .reference-manager-tree`);
         if (treeEl) {
-            const nodes = this._filterTerm.trim()
-                ? this._filterNodes(this._roots, this._filterTerm.toLowerCase())
-                : this._roots;
-            treeEl.innerHTML = nodes.length > 0
-                ? this._renderNodes(nodes, '', 0)
-                : this._filterTerm
-                    ? '<div class="reference-manager-no-results">No matching items</div>'
-                    : '';
-        } else {
-            this._rerender();
+            treeEl.innerHTML = this._renderTreeBody();
         }
-        this._syncHidden();
     }
 
     // ─── Inner content ───────────────────────────────────────────────────────
 
     _renderInner() {
-        if (this.selectedId != null) return this._renderChip();
         if (this._readOnly) {
-            return `<span class="reference-manager-none">${this._esc(this._noneLabel)}</span>`;
+            return this.selectedId != null
+                ? this._renderChip()
+                : `<span class="reference-manager-none">${this._esc(this._noneLabel)}</span>`;
         }
-        return this._renderBrowse();
+        // Edit mode: compact selection (if any) + a button that opens the picker popup.
+        // The multi-root tree lives in the popup, not inline.
+        if (this.selectedId != null) {
+            return `${this._renderChip()}
+                    <button type="button" class="odip-btn odip-btn--primary rm-pick-btn">Change</button>`;
+        }
+        return `<span class="empty-state-inline">${this._esc(this._noneLabel)}</span>
+                <button type="button" class="odip-btn odip-btn--primary rm-pick-btn">Select</button>`;
     }
 
     // ─── Chip ─────────────────────────────────────────────────────────────────
@@ -191,29 +187,49 @@ export default class ReferenceManager {
                 </span>`;
     }
 
-    // ─── Browse area (filter + tree) ─────────────────────────────────────────
+    // ─── Picker popup (filter + multi-root tree) ────────────────────────────
 
-    _renderBrowse() {
+    _renderTreeBody() {
         const nodes = this._filterTerm.trim()
             ? this._filterNodes(this._roots, this._filterTerm.toLowerCase())
             : this._roots;
-
-        return `
-            <div class="reference-manager-browse">
-                <input type="text"
-                       id="${this._eid('search')}"
-                       class="odip-input reference-manager-input"
-                       placeholder="${this._esc(this._placeholder)}"
-                       value="${this._esc(this._filterTerm)}"
-                       autocomplete="off">
-                <div class="reference-manager-tree">
-                    ${nodes.length > 0
+        return nodes.length > 0
             ? this._renderNodes(nodes, '', 0)
             : this._filterTerm
                 ? '<div class="reference-manager-no-results">No matching items</div>'
-                : ''}
+                : '';
+    }
+
+    _showPopup() {
+        this._filterTerm = '';
+
+        const popup = document.createElement('div');
+        popup.className = 'search-popup-overlay';
+        popup.id = this._eid('popup');
+        popup.innerHTML = `
+            <div class="search-popup rm-picker-popup">
+                <div class="search-popup-header">
+                    <input type="text"
+                           id="${this._eid('search')}"
+                           class="odip-input search-input reference-manager-input"
+                           placeholder="${this._esc(this._placeholder)}"
+                           autocomplete="off">
+                    <button type="button" class="odip-btn btn-cancel-search">Cancel</button>
+                </div>
+                <div class="search-popup-results">
+                    <div class="reference-manager-tree">
+                        ${this._renderTreeBody()}
+                    </div>
                 </div>
             </div>`;
+        this.container.appendChild(popup);
+
+        popup.querySelector(`#${this._eid('search')}`)?.focus();
+    }
+
+    _hidePopup() {
+        this._filterTerm = '';
+        this.container?.querySelector(`#${this._eid('popup')}`)?.remove();
     }
 
     /**
@@ -327,6 +343,19 @@ export default class ReferenceManager {
     }
 
     _handleClick(e) {
+        // ── Open picker popup ─────────────────────────────────────────────────
+        if (e.target.closest('.rm-pick-btn')) {
+            this._showPopup();
+            return;
+        }
+
+        // ── Cancel button or backdrop click ───────────────────────────────────
+        if (e.target.classList.contains('btn-cancel-search') ||
+            e.target.classList.contains('search-popup-overlay')) {
+            this._hidePopup();
+            return;
+        }
+
         // ── Chip remove ──────────────────────────────────────────────────────
         if (e.target.classList.contains('chip-remove')) {
             this.selectedId    = null;
@@ -334,11 +363,10 @@ export default class ReferenceManager {
             this._filterTerm   = '';
             this._rerender();
             this._onChange(null);
-            this.container.querySelector('.reference-manager-input')?.focus();
             return;
         }
 
-        // ── Expand/collapse toggle ────────────────────────────────────────────
+        // ── Expand/collapse toggle (inside popup) ─────────────────────────────
         const expandBtn = e.target.closest('.rm-expand-btn');
         if (expandBtn) {
             e.stopPropagation();
@@ -347,7 +375,7 @@ export default class ReferenceManager {
             return;
         }
 
-        // ── Node label selection ──────────────────────────────────────────────
+        // ── Node label selection (inside popup) ───────────────────────────────
         const labelBtn = e.target.closest('.rm-node-label[data-value]');
         if (labelBtn) {
             const raw  = labelBtn.dataset.value;
@@ -355,6 +383,7 @@ export default class ReferenceManager {
             this.selectedId    = this._normalizeValue(raw);
             this._selectedNode = node ?? null;
             this._filterTerm   = '';
+            this._hidePopup();
             this._rerender();
             this._onChange(raw, node);
             return;
@@ -370,8 +399,7 @@ export default class ReferenceManager {
 
     _handleKeydown(e) {
         if (e.key === 'Escape' && e.target.classList.contains('reference-manager-input')) {
-            this._filterTerm = '';
-            this._rerenderTree();
+            this._hidePopup();
         }
     }
 

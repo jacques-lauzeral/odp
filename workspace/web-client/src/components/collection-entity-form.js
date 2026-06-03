@@ -538,7 +538,7 @@ export class CollectionEntityForm {
                 return `<input type="${field.type}" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     value="${this.escapeHtml(value || '')}" 
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -551,7 +551,7 @@ export class CollectionEntityForm {
                 return `<textarea 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard odip-input--textarea" 
                     rows="${rows}" 
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -572,7 +572,7 @@ export class CollectionEntityForm {
                     name="${field.key}"
                     id="${fieldId}-data">`;
             case 'select':
-                let html = `<select id="${fieldId}" name="${field.key}" class="form-control" ${required}>`;
+                let html = `<select id="${fieldId}" name="${field.key}" class="odip-input odip-input--standard" ${required}>`;
 
                 // Add empty option if not required or specified
                 if (!field.required || field.includeEmpty) {
@@ -639,7 +639,7 @@ export class CollectionEntityForm {
                 return `<input type="date" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     value="${value || ''}" 
                     ${required}
                     ${field.min ? `min="${field.min}"` : ''}
@@ -666,7 +666,7 @@ export class CollectionEntityForm {
                 return `<input type="text"
                     id="${fieldId}"
                     name="${field.key}"
-                    class="form-control"
+                    class="odip-input odip-input--standard"
                     value="${this.escapeHtml(value || '')}"
                     ${required}
                     ${field.placeholder ? `placeholder="${this.escapeHtml(field.placeholder)}"` : ''}
@@ -684,7 +684,7 @@ export class CollectionEntityForm {
                 return `<input type="text" 
                     id="${fieldId}" 
                     name="${field.key}" 
-                    class="form-control" 
+                    class="odip-input odip-input--standard" 
                     value="${this.escapeHtml(value || '')}" 
                     ${required}>`;
         }
