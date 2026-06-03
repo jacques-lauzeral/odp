@@ -120,9 +120,12 @@ export default class NarrativeActivity {
                 ?? null;
             if (chapter) {
                 await this._diveIntoChapter(chapter, /* pushState */ false);
-                // Select topic if ?theme= query param is present
-                const topic = new URLSearchParams(window.location.search).get('theme');
-                if (topic) this._selectTopic(topic);
+                // Consume one-shot query params — ?theme and ?o-star are mutually exclusive
+                const sp      = new URLSearchParams(window.location.search);
+                const topic   = sp.get('theme');
+                const ostarId = sp.get('o-star');
+                if (topic)   this._selectTopic(topic);
+                if (ostarId) await this._selectOStar(ostarId);
                 return;
             }
         }
@@ -159,9 +162,12 @@ export default class NarrativeActivity {
         }
 
         await this._diveIntoChapter(chapter, /* pushState */ false);
-        // Select topic if ?theme= query param is present
-        const topic = new URLSearchParams(window.location.search).get('theme');
-        if (topic) this._selectTopic(topic);
+        // Consume one-shot query params — ?theme and ?o-star are mutually exclusive
+        const sp      = new URLSearchParams(window.location.search);
+        const topic   = sp.get('theme');
+        const ostarId = sp.get('o-star');
+        if (topic)   this._selectTopic(topic);
+        if (ostarId) await this._selectOStar(ostarId);
     }
 
     async cleanup() {
@@ -333,6 +339,35 @@ export default class NarrativeActivity {
         }
 
         this._toc.selectTopicByIndex(idx);
+    }
+
+    /**
+     * Select an O* in the chapter TOC by its itemId and render it in the body.
+     * Called after diving into a chapter via an ?o-star= query param.
+     * Expands ancestor topics in the TOC via setActiveByItemId(), then renders
+     * the O* detail view in the body panel.
+     * @param {string|number} ostarId
+     * @private
+     */
+    async _selectOStar(ostarId) {
+        if (!this._selectedChapter || !ostarId) return;
+        const id = parseInt(ostarId, 10);
+        if (!Number.isFinite(id)) return;
+
+        // Expand ancestors and highlight the O* entry in the TOC
+        this._toc.setActiveByItemId(id);
+
+        // Resolve type from the O* summary cache; fall back to 'OR'
+        let type = 'OR';
+        try {
+            const summary = await this.app.findOStar(String(id));
+            if (summary?.type) type = summary.type.toUpperCase();
+        } catch { /* keep default */ }
+
+        this._body.renderSelectionRead(
+            { type: 'ostar', ostar: { id, type } },
+            this._selectedChapter,
+        );
     }
 
     async _climbToOdip(viaButton = false) {

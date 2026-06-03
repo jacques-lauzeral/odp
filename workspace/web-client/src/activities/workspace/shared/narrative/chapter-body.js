@@ -246,7 +246,8 @@ export default class ChapterBody {
         const config   = this._buildOStarConfig();
 
         const callbacks = {
-            onSaved: (result, mode) => this._onOStarSaved(result, mode),
+            onFullPage: (item) => this._navigateToFullPage(item),
+            onSaved:    (result, mode) => this._onOStarSaved(result, mode),
         };
 
         if (type === 'OC') {
@@ -501,6 +502,23 @@ export default class ChapterBody {
         if (type === 'd-ref') {
             this._app.navigate(`${base}/setup/reference-documents/${value}`);
         }
+    }
+
+    /**
+     * Navigate from the Narrative panel to the full-page O* detail view in the
+     * O* workspace — mirrors the 'Full page' button behaviour in os.js.
+     * @param {object} item — full O* entity from RequirementDetails / ChangeDetails
+     */
+    _navigateToFullPage(item) {
+        const id      = item.itemId ?? item.id;
+        const segment = item.type === 'OC' || item.code?.startsWith('OC-') ? 'oc'
+            : item.type === 'ON' ? 'on'
+                : 'or';
+        const ctx  = this._app?.getDatasetContext?.();
+        const base = ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}/os`
+            : '/elaborate/os';
+        this._app.navigate(`${base}/${segment}/${id}`);
     }
 
     _esc(str) {

@@ -114,42 +114,6 @@
     flex-shrink: 0;
 }
 
-/* ── Perspective toggle ── */
-.ostar-controls__perspective {
-    display: flex;
-    border: 1px solid var(--border-secondary);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    flex-shrink: 0;
-}
-
-.ostar-perspective-btn {
-    background: white;
-    border: none;
-    border-right: 1px solid var(--border-secondary);
-    color: var(--text-secondary);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    padding: var(--space-1) var(--space-3);
-    cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast);
-    white-space: nowrap;
-}
-
-.ostar-perspective-btn:last-child {
-    border-right: none;
-}
-
-.ostar-perspective-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-.ostar-perspective-btn--active {
-    background: var(--ec-navy);
-    color: white;
-}
-
 /* ── Group by ── */
 .ostar-controls__grouping {
     display: flex;

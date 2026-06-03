@@ -11,8 +11,8 @@
  *             outer breadcrumb owned by os.js; inter-O* links navigate full page.
  *             'Full page' action available — calls onFullPage(item).
  *   'page'  — rendered into full container; back button + standalone breadcrumb.
- *             'In collection' and 'In tree' actions available — call onInCollection(item)
- *             and onInTree(item) respectively.
+ *             'In collection' and 'In narrative' actions available — call onInCollection(item)
+ *             and onInNarrative(item) respectively.
  *
  * API call:
  *   GET /operational-changes/{id}?projection=extended
@@ -32,7 +32,7 @@ export default class ChangeDetails {
 
         this._onFullPage     = null;
         this._onInCollection = null;
-        this._onInTree       = null;
+        this._onInNarrative  = null;
 
         this.container = null;
         this.item      = null;
@@ -57,7 +57,7 @@ export default class ChangeDetails {
         // regardless of whether the instance is newly created or cached.
         this._onFullPage     = callbacks.onFullPage     ?? null;
         this._onInCollection = callbacks.onInCollection ?? null;
-        this._onInTree       = callbacks.onInTree       ?? null;
+        this._onInNarrative  = callbacks.onInNarrative  ?? null;
         this._onSaved        = callbacks.onSaved        ?? null;
 
         this.container.innerHTML = this._buildLoadingHtml();
@@ -144,8 +144,8 @@ export default class ChangeDetails {
         this.container.querySelector('.os-detail__in-collection')
             ?.addEventListener('click', () => this._onInCollection?.(this.item));
 
-        this.container.querySelector('.os-detail__in-tree')
-            ?.addEventListener('click', () => this._onInTree?.(this.item));
+        this.container.querySelector('.os-detail__in-narrative')
+            ?.addEventListener('click', () => this._onInNarrative?.(this.item));
     }
 
     // -------------------------------------------------------------------------
@@ -176,10 +176,8 @@ export default class ChangeDetails {
     // Reference navigation
     // -------------------------------------------------------------------------
 
-
     /**
      * Handle internal link clicks from rich text fields.
-     * Navigation URL construction deferred to Step 8 (Narrative sub-activity routing).
      * @param {'n-ref'|'o-ref'|'d-ref'} type
      * @param {string} value
      * @private
@@ -216,6 +214,7 @@ export default class ChangeDetails {
             this.app.navigate(`${ctxBase}/setup/reference-documents/${value}`);
         }
     }
+
     _navigateToRef(ref) {
         const raw = ref.entityType ?? 'or';
         const segment = raw === 'OC' || raw === 'change' || raw === 'oc' ? 'oc'
@@ -233,7 +232,7 @@ export default class ChangeDetails {
         const isEditable       = this.config.mode === 'edit';
         const showFullPage     = this._mode === 'panel' && this._onFullPage     != null;
         const showInCollection = this._mode === 'page'  && this._onInCollection != null;
-        const showInTree       = this._mode === 'page'  && this._onInTree       != null;
+        const showInNarrative  = this._mode === 'page'  && this._onInNarrative  != null;
 
         return `
             <div class="os-detail">
@@ -249,8 +248,8 @@ export default class ChangeDetails {
                         ${showInCollection
             ? '<button class="odip-btn os-detail__in-collection">In collection</button>'
             : ''}
-                        ${showInTree
-            ? '<button class="odip-btn os-detail__in-tree">In tree</button>'
+                        ${showInNarrative
+            ? '<button class="odip-btn os-detail__in-narrative">In narrative</button>'
             : ''}
                     </div>
                 </div>

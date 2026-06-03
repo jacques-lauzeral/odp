@@ -2,7 +2,7 @@
  * @file os.js
  * @description O* workspace orchestrator. Unified list of ONs, ORs, and OCs.
  * Routes between list view and detail pages, owns search box, filter bar,
- * perspective/grouping controls, data loading, and entity component lifecycle.
+ * grouping controls, data loading, and entity component lifecycle.
  *
  * SubPath routing:
  *   []                      → list view
@@ -19,13 +19,14 @@
  *   ┌──────────────────────────────────────────────────────┐
  *   │ Search box (full width)                              │
  *   │ Filter bar (full width)                              │
- *   │ View controls (perspective, grouping, create)        │
+ *   │ View controls (grouping, counts)                     │
  *   │ MasterDetail: list column | detail panel             │
  *   └──────────────────────────────────────────────────────┘
  *
  * Plain page ↔ master detail navigation:
  *   'Full page' button (panel mode)  — pushes /{base}/os/{type}/{id}
- *   'In context' button (page mode)  — navigates to /{base}/os?perspective=coll|tree&selected={id}
+ *   'In collection' button (page mode) — navigates to /{base}/os?perspective=coll&selected={id}
+ *   'In narrative' button (page mode)  — navigates to /{base}/narrative/{chapterId}?o-star={id}
  *   On list render, ?perspective and ?selected are consumed once to restore state.
  */
 import { apiClient } from '../../../../shared/api-client.js';
@@ -36,6 +37,7 @@ import FilterBar from '../../../../components/filter-bar.js';
 import {
     MaturityLevel,
     getMaturityLevelDisplay,
+    normalizeId,
 } from '/shared/src/index.js';
 
 export default class OsActivity {
@@ -313,41 +315,29 @@ export default class OsActivity {
     // -------------------------------------------------------------------------
 
     /**
-     * Read ?perspective and ?selected from the current URL and restore list state.
+     * Read ?selected from the current URL and restore list state.
      * Called once after _renderList() + _loadData() complete.
      * Cleans the params from the URL via replaceState after consuming them.
+     * ?perspective is accepted for URL compatibility but ignored — only collection exists.
      */
     _restoreFromSearchParams() {
-        const sp          = new URLSearchParams(window.location.search);
-        const perspective = sp.get('perspective');
-        const selectedId  = sp.has('selected') ? parseInt(sp.get('selected'), 10) : null;
+        const sp         = new URLSearchParams(window.location.search);
+        const selectedId = sp.has('selected') ? parseInt(sp.get('selected'), 10) : null;
 
-        if (!perspective && selectedId == null) return;
+        if (selectedId == null) return;
 
-        // URL param uses 'coll'|'tree'; OStarEntity uses 'collection'|'tree'
-        const normalised = perspective === 'tree' ? 'tree' : 'collection';
+        // Resolve selected item and trigger panel render
+        const item = !isNaN(selectedId)
+            ? (this._ostarEntity.data.find(i => (i.itemId ?? i.id) === selectedId) ?? null)
+            : null;
 
-        // Resolve selected item first so that setPerspective() sees it in
-        // sharedState and can run _expandToItem correctly for tree mode.
-        let item = null;
-        if (!isNaN(selectedId) && selectedId != null) {
-            item = this._ostarEntity.data.find(
-                i => (i.itemId ?? i.id) === selectedId
-            ) ?? null;
-            if (item) this._ostarEntity.sharedState.selectedItem = item;
+        if (item) {
+            this._ostarEntity.sharedState.selectedItem = item;
+            this._handleItemSelect(item);
         }
-
-        // Switch perspective — if tree, _switchPerspective will expand to item
-        if (perspective && normalised !== this._ostarEntity.currentPerspective) {
-            this._ostarEntity.setPerspective(normalised);
-        }
-
-        // Trigger panel render and breadcrumb update
-        if (item) this._handleItemSelect(item);
 
         // Clean search params from URL without adding a history entry
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState(null, '', cleanUrl);
+        window.history.replaceState(null, '', window.location.pathname);
     }
 
     // -------------------------------------------------------------------------
@@ -405,8 +395,8 @@ export default class OsActivity {
     // -------------------------------------------------------------------------
 
     async _handleItemSelect(item) {
-        const id         = item.itemId ?? item.id;
-        const isOC       = item.type === 'OC' || (!item.type && item.code?.startsWith('OC-'));
+        const id   = item.itemId ?? item.id;
+        const isOC = item.type === 'OC' || (!item.type && item.code?.startsWith('OC-'));
 
         if (isOC) {
             await this._renderChangeDetailInPanel(id);
@@ -425,10 +415,8 @@ export default class OsActivity {
             this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
         }
         await this._requirementDetails.render(this.masterDetail.detailContainer, id, 'panel', {
-            onFullPage:      (item) => this._navigateToFullPage(item),
-            onInCollection:  null,
-            onInTree:        null,
-            onSaved:         () => this._loadData(),
+            onFullPage:     (item) => this._navigateToFullPage(item),
+            onSaved:        () => this._loadData(),
         });
     }
 
@@ -438,10 +426,8 @@ export default class OsActivity {
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
         await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel', {
-            onFullPage:      (item) => this._navigateToFullPage(item, 'oc'),
-            onInCollection:  null,
-            onInTree:        null,
-            onSaved:         () => this._loadData(),
+            onFullPage:     (item) => this._navigateToFullPage(item, 'oc'),
+            onSaved:        () => this._loadData(),
         });
     }
 
@@ -457,8 +443,8 @@ export default class OsActivity {
         this._inPageMode = true;
         await this._requirementDetails.render(this.container, id, 'page', {
             onFullPage:      null,
-            onInCollection:  (item) => this._navigateToList(item, 'coll'),
-            onInTree:        (item) => this._navigateToList(item, 'tree'),
+            onInCollection:  (item) => this._navigateToList(item),
+            onInNarrative:   (item) => this._navigateToNarrative(item),
         });
     }
 
@@ -470,8 +456,8 @@ export default class OsActivity {
         this._inPageMode = true;
         await this._changeDetails.render(this.container, id, 'page', {
             onFullPage:      null,
-            onInCollection:  (item) => this._navigateToList(item, 'coll'),
-            onInTree:        (item) => this._navigateToList(item, 'tree'),
+            onInCollection:  (item) => this._navigateToList(item),
+            onInNarrative:   (item) => this._navigateToNarrative(item),
         });
     }
 
@@ -483,6 +469,7 @@ export default class OsActivity {
      * Navigate from panel detail to full-page detail.
      * Pushes /{base}/os/{type}/{id} to browser history.
      * @param {object} item
+     * @param {string} [segment]
      */
     _navigateToFullPage(item, segment) {
         const id = item.itemId ?? item.id;
@@ -493,15 +480,41 @@ export default class OsActivity {
     }
 
     /**
-     * Navigate from full-page detail back to master detail list,
-     * restoring the given perspective and selection via one-shot search params.
+     * Navigate from full-page detail back to the master detail list,
+     * restoring the selection via one-shot search params.
      * @param {object} item
-     * @param {'coll'|'tree'} perspective
      */
-    _navigateToList(item, perspective) {
+    _navigateToList(item) {
         const id = item.itemId ?? item.id;
-        const p  = perspective === 'tree' ? 'tree' : 'coll';
-        this.app.navigate(`${this._basePath()}?perspective=${p}&selected=${id}`);
+        this.app.navigate(`${this._basePath()}?perspective=coll&selected=${id}`);
+    }
+
+    /**
+     * Navigate from full-page detail to the Narrative activity, landing on the
+     * chapter that owns the O*'s domain and selecting the O* in the TOC.
+     * Falls back to the Narrative root if no matching chapter is found.
+     * @param {object} item — full O* entity (must have domain field)
+     */
+    async _navigateToNarrative(item) {
+        const itemId  = item.itemId ?? item.id;
+        const ctx     = this.app.getDatasetContext();
+        const base    = ctx?.type === 'edition'
+            ? `/explore/${ctx.editionId}/narrative`
+            : '/elaborate/narrative';
+
+        try {
+            const chapters = await this.app.getChapters();
+            const chapter  = item.domain
+                ? (chapters.find(c => c.domain === item.domain) ?? null)
+                : null;
+            if (chapter) {
+                this.app.navigate(`${base}/${normalizeId(chapter.itemId)}?o-star=${itemId}`);
+            } else {
+                this.app.navigate(base);
+            }
+        } catch {
+            this.app.navigate(base);
+        }
     }
 
     // -------------------------------------------------------------------------
