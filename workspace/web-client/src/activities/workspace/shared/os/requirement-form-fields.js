@@ -90,26 +90,37 @@ export const requirementEditConfig = {
             title: 'Main',
             fields: [
                 {
-                    key: 'title',
-                    label: 'Title',
-                    type: 'text',
-                    required: true,
-                    placeholder: 'Enter a clear, concise title for this requirement',
-                    validate: (value) => {
-                        if (!value || value.length < 4)  return { valid: false, message: 'Title must be at least 4 characters long' };
-                        if (value.length > 200)          return { valid: false, message: 'Title must be less than 200 characters' };
-                        return { valid: true };
-                    },
-                },
-                {
-                    key: 'domain',
-                    label: 'Domain',
-                    type: 'select',
-                    required: true,
-                    optionsKey: 'getDomainOptions',
-                    helpText: 'Select the domain for this requirement',
-                    formatKey: 'formatDomain',
-                    confirmOnChange: true,
+                    row: [
+                        {
+                            key: 'domain',
+                            label: 'Domain',
+                            type: 'select',
+                            required: true,
+                            optionsKey: 'getDomainOptions',
+                            helpText: 'Select the domain for this requirement',
+                            formatKey: 'formatDomain',
+                            confirmOnChange: true,
+                        },
+                        {
+                            key: 'title',
+                            label: 'Title',
+                            type: 'text',
+                            required: true,
+                            placeholder: 'Enter a clear, concise title for this requirement',
+                            validate: (value) => {
+                                if (!value || value.length < 4) return {
+                                    valid: false,
+                                    message: 'Title must be at least 4 characters long'
+                                };
+                                if (value.length > 200) return {
+                                    valid: false,
+                                    message: 'Title must be less than 200 characters'
+                                };
+                                return {valid: true};
+                            },
+                        }
+                    ],
+                    valueInline: true
                 },
                 {
                     key: 'refinesParents',
@@ -152,7 +163,8 @@ export const requirementEditConfig = {
                             helpText: 'Year or year range (YYYY or YYYY-ZZZZ). A single year means start = end.',
                             formatKey: 'formatTentative',
                         },
-                    ]},
+                    ],
+                    valueInline: true },
                 {
                     key: 'statement',
                     label: 'Statement',
@@ -240,37 +252,6 @@ export const requirementEditConfig = {
                     rows: 3,
                     placeholder: 'Internal notes (not for publication)...',
                     helpText: 'Private notes for internal use only',
-                },
-            ],
-        },
-        {
-            title: 'Derived',
-            modes: ['edit'],
-            fields: [
-                {
-                    key: 'refinedBy',
-                    label: 'Refined By',
-                    type: 'reference-list',
-                    required: false,
-                    readOnly: true,
-                    optionsKey: 'getAllRequirementOptions',
-                    computeKey: '_computeRefinedByIds',
-                    helpText: 'Requirements that refine this one',
-                    formatKey: 'formatEntityReferences',
-                },
-                {
-                    key: 'implementedBy',
-                    label: 'Implemented By (ORs)',
-                    type: 'reference-list',
-                    required: false,
-                    readOnly: true,
-                    visibleWhen: 'ON',
-                    size: 5,
-                    optionsKey: 'getImplementedByOptions',
-                    computeKey: '_computeImplementedByIds',
-                    helpText: 'ORs that implement this ON',
-                    formatKey: 'formatEntityReferences',
-                    formatArgs: ['OR'],
                 },
             ],
         },

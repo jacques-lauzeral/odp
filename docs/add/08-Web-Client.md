@@ -290,9 +290,13 @@ Filter matchers are injected as `options.filterMatchers`, enabling consistent fi
 
 ### 6.5 CollectionEntityForm
 
-Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement: `getFieldDefinitions()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
+Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement: `getReadConfig()`, `getEditConfig()`, `hydrateField()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
 
-**Field visibility (`visibleWhen`)** is evaluated in all modes including read. Section-level visibility is determined solely by whether any field in that section is included by `modes` — `visibleWhen` is not evaluated at section level.
+**Layout configs drive rendering.** Forms expose two layout configs (see §24): `getReadConfig()` for read mode and `getEditConfig()` for edit/create. When either is non-null, `generateForm()` delegates to `_generateFormFromConfig()`. The edit config additionally carries full field metadata (type, label, options, validation, placeholder) and is the single source of truth consumed by `validateForm`, `collectFormData`, the manager initialisers, and `restoreVersionToForm` via a flat `Map<key, fieldDef>` built by `_buildFieldMap()` / cached by `_getFieldMap()`. The legacy `getFieldDefinitions()` virtual is retained only as an empty-returning fallback for forms that have not adopted the config pattern.
+
+**hydrateField** — each form binds string references (`optionsKey`, `formatKey`, `computeKey`, `renderKey`) on its edit-config field entries to actual bound methods. `_buildFieldMap()` calls `this.hydrateField(entry)` on every field as it builds the map.
+
+**Field visibility (`visibleWhen`)** on a config entry is `'ON'` | `'OR'` (matched against `item.type`) or a function `(item) => bool`. Section visibility is determined by section `modes` (which modes the section appears in) plus whether any field entry is visible for the current item.
 
 **Computed reference fields** (`type: 'reference-list'` with `computeKey`) derive their value at initialisation time by calling a named method on the form instance. `initializeReferenceListManagers` calls `field.compute(this.currentItem)` when present.
 
@@ -1565,6 +1569,59 @@ Consumers of the forwarded callback:
 | `OsActivity` | `onSaved` on the panel-mode detail render | `_loadData()` re-fetches the collection so the master list row reflects the edit |
 
 This single mechanism replaces ad-hoc reload logic and works identically in both the OS and Narrative perspectives.
+
+---
+
+## 24. O* Form Layout Configs
+
+The ON/OR/OC forms (`RequirementForm`, `ChangeForm`) are driven by two declarative layout configs exported from `requirement-form-fields.js` / `change-form-fields.js`. The configs replace the former single `getFieldDefinitions()` section catalogue: layout and field metadata now live together, and the edit config is the single source of truth for validation, data collection, and manager initialisation.
+
+### 24.1 Two Configs
+
+| Config | Returned by | Role |
+|---|---|---|
+| `*ReadConfig` | `getReadConfig()` | Read-mode layout only — keys plus layout hints. Field metadata is resolved from the edit config field map at render time. |
+| `*EditConfig` | `getEditConfig()` | Edit/create layout **and** full field metadata (type, label, required, options, validation, placeholder, helpText). Source of truth for `validateForm`, `collectFormData`, manager init, and `restoreVersionToForm`. |
+
+Both share a common shape: `{ sections: [ { title, modes?, fields: [...] } ] }`. Field `key` is the contract linking read entries to their metadata in the edit config.
+
+### 24.2 Section Properties
+
+| Property | Meaning |
+|---|---|
+| `title` | Tab label. |
+| `modes` | Optional `['create' \| 'edit']`. Restricts the section to the listed modes; absent means both. Used to hide `Derived` and `Metadata` sections in create mode. |
+| `fields` | Ordered list of field entries and row wrappers. |
+
+### 24.3 Field Entry Properties
+
+A `fields` entry is either a bare field (`{ key, ... }`) or a row wrapper (`{ row: [ ...fields ], valueInline? }`).
+
+| Property | Applies | Meaning |
+|---|---|---|
+| `key` | field | Field identifier; in the edit config the entry also carries full metadata. |
+| `visibleWhen` | field | `'ON'` \| `'OR'` (matched against `item.type`) or `(item) => bool`. Absent = always visible. |
+| `readOnly` | field (edit) | Renders as display value in edit mode; suppressed entirely in create mode. Used for `itemId`, `version`, `_history`, and the derived `refinedBy` / `implementedBy`. |
+| `confirmOnChange` | field (edit) | Intercepts the field's change event; the user must confirm before the new value is accepted. Applied to `domain`. |
+| `hideIfNullOrEmpty` | field (read) | When the value is null, empty string, or empty array, the field is not rendered. Default false. Applied to forward-reference fields (`refinesParents`, `implementedONs`, `dependencies`, `implementedORs`, `decommissionedORs`) so empty relations vanish in read mode. Derived fields deliberately omit it and always render. |
+| `row` | wrapper | Array of field entries rendered side-by-side. A single visible child collapses to full width (unless `valueInline`). No visible children → the row emits nothing. |
+| `valueInline` | row | When true, the row's fields render label and value on one line (`label \| value`) via the `form-row--inline` class, and even a single visible field stays wrapped so the inline styling applies. Used for compact metadata pairs (`maturity`/`tentative`, `itemId`/`version`). |
+
+### 24.4 Renderer
+
+`CollectionEntityForm._generateFormFromConfig()` consumes the active config:
+
+- `_buildFieldMap()` flattens the **edit** config (including row children) into `Map<key, hydratedFieldDef>`, calling `hydrateField()` per entry; cached by `_getFieldMap()`.
+- `_isSectionVisibleFromConfig()` applies section `modes` and per-field `visibleWhen`.
+- `_renderConfigEntry()` / `_renderConfigRow()` handle bare fields and `row` wrappers, applying `hideIfNullOrEmpty` and `valueInline`.
+- `_resolveFieldDef()` looks up metadata by key from the field map; `_resolveEntryVisible()` evaluates `visibleWhen`.
+- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook).
+
+There is no header/strip concept: `code` and `title` are shown in the detail toolbar (`requirement-details.js` / `change-details.js` render `code — title`, matching the TOC), not repeated inside the form body.
+
+### 24.5 Ancillary Exports
+
+The `*-form-fields.js` modules also export the save-path helpers consumed by `transformDataForSave`: `requiredIdentifierArrayFields`, `requiredAnnotatedReferenceArrayFields` (requirement only), `requiredTextFields`, `optionalTextFields` (change only), the `*FormTitles` map, and `*Defaults`.
 
 ---
 
