@@ -256,6 +256,37 @@ export const requirementEditConfig = {
             ],
         },
         {
+            title: 'Derived',
+            modes: ['edit'],
+            fields: [
+                {
+                    key: 'refinedBy',
+                    label: 'Refined By',
+                    type: 'reference-list',
+                    required: false,
+                    readOnly: true,
+                    optionsKey: 'getAllRequirementOptions',
+                    computeKey: '_computeRefinedByIds',
+                    helpText: 'Requirements that refine this one',
+                    formatKey: 'formatEntityReferences',
+                },
+                {
+                    key: 'implementedBy',
+                    label: 'Implemented By (ORs)',
+                    type: 'reference-list',
+                    required: false,
+                    readOnly: true,
+                    visibleWhen: 'ON',
+                    size: 5,
+                    optionsKey: 'getImplementedByOptions',
+                    computeKey: '_computeImplementedByIds',
+                    helpText: 'ORs that implement this ON',
+                    formatKey: 'formatEntityReferences',
+                    formatArgs: ['OR'],
+                },
+            ],
+        },
+        {
             title: 'Metadata',
             modes: ['edit'],
             fields: [
