@@ -32,13 +32,82 @@
 /* ── Elaborate toolbar — create buttons row ── */
 .narrative-activity__toolbar {
     display: flex;
-    justify-content: flex-end;
     align-items: center;
-    padding: var(--space-2) var(--space-4);
+    padding: var(--space-1) var(--space-3);
     border-bottom: 1px solid var(--border-primary);
     background: var(--bg-secondary);
     flex-shrink: 0;
+    gap: var(--space-2);
+    min-height: 36px;
+}
+
+/* Left slot — back link + chapter name (chapter scope) or empty (ODIP scope) */
+.narrative-activity__toolbar-nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Right slot — create action buttons */
+.narrative-activity__toolbar-actions {
+    display: flex;
+    align-items: center;
     gap: 4px;
+    flex-shrink: 0;
+}
+
+/* Back button in toolbar */
+.narrative-activity__back-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    color: var(--ec-blue, #2E75B6);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    transition: background var(--transition-fast);
+}
+
+.narrative-activity__back-btn:hover {
+    background: var(--ec-light, #EBF3FB);
+}
+
+/* Separator between back and chapter name */
+.narrative-activity__toolbar-sep {
+    flex-shrink: 0;
+    width: 1px;
+    height: 14px;
+    background: var(--border-primary);
+    display: inline-block;
+}
+
+/* Current chapter name button */
+.narrative-activity__chapter-name {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--ec-navy, #1F3864);
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast);
+}
+
+.narrative-activity__chapter-name:hover {
+    color: var(--ec-blue, #2E75B6);
+    text-decoration: underline;
 }
 
 /* ── Chapter TOC ── */
@@ -355,21 +424,6 @@
    ODIP scope — chapter tree
    ========================================================================= */
 
-.chapter-toc--odip .chapter-toc__odip-header {
-    flex-shrink: 0;
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border-primary);
-    background: var(--bg-secondary);
-}
-
-.chapter-toc__odip-title {
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
 /* Chapter row (ODIP scope) */
 .chapter-toc__chapter-row {
     display: flex;
@@ -434,18 +488,19 @@
     line-height: 1.4;
 }
 
-/* Dive button — visible on row hover */
+/* Dive button — always visible, subdued until row hover */
 .chapter-toc__dive-btn {
     flex-shrink: 0;
     background: none;
-    border: none;
+    border: 0.5px solid transparent;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-tertiary);
-    padding: 2px 4px;
+    padding: 2px 6px;
     border-radius: var(--radius-sm);
-    opacity: 0;
-    transition: opacity var(--transition-fast), color var(--transition-fast);
+    opacity: 0.45;
+    transition: opacity var(--transition-fast), color var(--transition-fast),
+    background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .chapter-toc__chapter-row:hover .chapter-toc__dive-btn {
@@ -455,6 +510,7 @@
 .chapter-toc__dive-btn:hover {
     color: var(--ec-blue, #2E75B6);
     background: var(--ec-light, #EBF3FB);
+    border-color: var(--ec-sky, #BDD7EE);
 }
 
 /* Children container */
@@ -465,64 +521,6 @@
 /* =========================================================================
    Chapter scope — back control and header
    ========================================================================= */
-
-.chapter-toc--chapter .chapter-toc__chapter-header {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-2) var(--space-1);
-    border-bottom: 1px solid var(--border-primary);
-    background: var(--bg-secondary);
-    min-height: 0;
-}
-
-.chapter-toc__back-btn {
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: var(--font-size-xs);
-    color: var(--ec-blue, #2E75B6);
-    padding: 2px 4px;
-    border-radius: var(--radius-sm);
-    white-space: nowrap;
-    transition: background var(--transition-fast);
-}
-
-.chapter-toc__back-btn:hover {
-    background: var(--ec-light, #EBF3FB);
-}
-
-.chapter-toc__back-label {
-    /* inline inside button */
-}
-
-.chapter-toc__chapter-name {
-    flex: 1;
-    min-width: 0;
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    color: var(--ec-navy, #1F3864);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.chapter-toc__chapter-name--btn {
-    background: none;
-    border: none;
-    padding: 0;
-    text-align: left;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: color var(--transition-fast);
-}
-
-.chapter-toc__chapter-name--btn:hover {
-    color: var(--ec-blue, #2E75B6);
-    text-decoration: underline;
-}
 
 /* ── Chapter scope topic toggle ── */
 .chapter-toc__topic-toggle {

@@ -83,9 +83,6 @@ export default class ChapterToc {
 
         this.container.innerHTML = `
             <div class="chapter-toc chapter-toc--odip" id="chapterTocOdip">
-                <div class="chapter-toc__odip-header">
-                    <span class="chapter-toc__odip-title">ODIP Chapters</span>
-                </div>
                 <div class="chapter-toc__tree" id="chapterTocTree"></div>
             </div>
         `;
@@ -263,19 +260,9 @@ export default class ChapterToc {
 
         this.container.innerHTML = `
             <div class="chapter-toc chapter-toc--chapter" id="chapterTocChapter">
-                <div class="chapter-toc__chapter-header">
-                    <button class="chapter-toc__back-btn" id="chapterTocBack">← Chapters</button>
-                    <button class="chapter-toc__chapter-name chapter-toc__chapter-name--btn" id="chapterTocNarrative" title="${title}">${title}</button>
-                </div>
                 <div class="chapter-toc__tree" id="chapterTocTree"></div>
             </div>
         `;
-
-        this.container.querySelector('#chapterTocBack')
-            ?.addEventListener('click', () => this._onClimb());
-
-        this.container.querySelector('#chapterTocNarrative')
-            ?.addEventListener('click', () => this._onChapterSelect({ type: 'chapter', chapter }));
 
         // Attach once on the stable shell — survives treeEl re-renders
         const shell = this.container.querySelector('#chapterTocChapter');

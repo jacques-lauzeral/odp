@@ -207,34 +207,63 @@ export default class NarrativeActivity {
         });
     }
 
+    /**
+     * Render (or clear) the left nav slot of the toolbar to reflect the current scope.
+     * Chapter scope: ← Chapters | <chapter title>
+     * ODIP scope:    empty
+     */
+    _updateToolbarNav() {
+        const navEl = this.container?.querySelector('#narrativeToolbarNav');
+        if (!navEl) return;
+
+        if (this._scope === 'chapter' && this._selectedChapter) {
+            const title = this._selectedChapter.title ?? this._selectedChapter.code ?? '';
+            const esc   = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            navEl.innerHTML = `
+                <button class="narrative-activity__back-btn" id="narrativeBackBtn">← Chapters</button>
+                <span class="narrative-activity__toolbar-sep" aria-hidden="true"></span>
+                <button class="narrative-activity__chapter-name" id="narrativeChapterName"
+                        title="${esc(title)}">${esc(title)}</button>
+            `;
+            navEl.querySelector('#narrativeBackBtn')
+                ?.addEventListener('click', () => this._climbToOdip(true));
+            navEl.querySelector('#narrativeChapterName')
+                ?.addEventListener('click', () => this._handleChapterTocSelect({ type: 'chapter', chapter: this._selectedChapter }));
+        } else {
+            navEl.innerHTML = '';
+        }
+    }
+
     _renderShell() {
         this.container.innerHTML = `
             <div class="narrative-activity">
-                ${this._isEditable ? `
                 <div class="narrative-activity__toolbar">
-                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddTheme" disabled>+ Theme</button>
-                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOn"    disabled>+ ON</button>
-                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOr"    disabled>+ OR</button>
-                    <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOc"    disabled>+ OC</button>
-                </div>` : ''}
+                    <div class="narrative-activity__toolbar-nav" id="narrativeToolbarNav"></div>
+                    <div class="narrative-activity__toolbar-actions">
+                        ${this._isEditable ? `
+                        <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddTheme" disabled>+ Theme</button>
+                        <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOn"    disabled>+ ON</button>
+                        <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOr"    disabled>+ OR</button>
+                        <button class="odip-btn odip-btn--create narrative-activity__action" id="narrativeAddOc"    disabled>+ OC</button>
+                        ` : ''}
+                    </div>
+                </div>
                 <div class="narrative-content" id="narrativeContent"></div>
             </div>
         `;
 
-        if (this._isEditable) {
-            this.container.querySelector('#narrativeAddTheme')
-                ?.addEventListener('click', () => this._handleAddTheme(this._toc._getActiveTopicPath()));
-            this.container.querySelector('#narrativeAddOn')
-                ?.addEventListener('click', () => this._handleAddOStar('ON', this._toc._getActiveTopicPath()));
-            this.container.querySelector('#narrativeAddOr')
-                ?.addEventListener('click', () => this._handleAddOStar('OR', this._toc._getActiveTopicPath()));
-            this.container.querySelector('#narrativeAddOc')
-                ?.addEventListener('click', () => this._handleAddOStar('OC', this._toc._getActiveTopicPath()));
-        }
+        this.container.querySelector('#narrativeAddTheme')
+            ?.addEventListener('click', () => this._handleAddTheme(this._toc._getActiveTopicPath()));
+        this.container.querySelector('#narrativeAddOn')
+            ?.addEventListener('click', () => this._handleAddOStar('ON', this._toc._getActiveTopicPath()));
+        this.container.querySelector('#narrativeAddOr')
+            ?.addEventListener('click', () => this._handleAddOStar('OR', this._toc._getActiveTopicPath()));
+        this.container.querySelector('#narrativeAddOc')
+            ?.addEventListener('click', () => this._handleAddOStar('OC', this._toc._getActiveTopicPath()));
 
         const contentEl = dom.find('#narrativeContent', this.container);
 
-        this._masterDetail = new MasterDetail(contentEl, { initialRatio: 0.28 });
+        this._masterDetail = new MasterDetail(contentEl, { initialRatio: 0.20 });
         this._masterDetail.render();
 
         this._toc = new ChapterToc(this._masterDetail.listContainer, {
@@ -306,6 +335,7 @@ export default class NarrativeActivity {
         }
 
         this._setToolbarEnabled(true);
+        this._updateToolbarNav();
 
         const unassigned = await this._computeUnassignedOStars(full);
         await this._toc.renderChapter(full, unassigned);
@@ -375,6 +405,7 @@ export default class NarrativeActivity {
         this._scope           = 'odip';
 
         this._setToolbarEnabled(false);
+        this._updateToolbarNav();
 
         if (viaButton) {
             window.history.pushState({}, '', this._basePath());
