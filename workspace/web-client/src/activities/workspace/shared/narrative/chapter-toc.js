@@ -363,6 +363,7 @@ export default class ChapterToc {
             <div class="chapter-toc__topic-group">
                 <button class="chapter-toc__entry chapter-toc__entry--topic chapter-toc__drop-zone"
                         data-key="${key}" data-type="topic" data-topic-index="${topicIndex}"
+                        data-topic-id="${this._esc(String(topic.id ?? ''))}"
                         data-sub-path="" data-drop-path="t:${topicIndex}" data-drop-node-type="topic"
                         style="padding-left:${indent}px"
                         ${draggable} ${dragPath}>
@@ -400,6 +401,7 @@ export default class ChapterToc {
                 <button class="chapter-toc__entry chapter-toc__entry--subtopic chapter-toc__drop-zone"
                         data-key="${key}" data-type="topic"
                         data-topic-index="${topicIndex}" data-sub-path="${subPathStr}"
+                        data-topic-id="${this._esc(String(node.id ?? ''))}"
                         data-drop-path="${dragPath}" data-drop-node-type="topic"
                         style="padding-left:${indent}px"
                         ${draggable} ${dragAttrs}>
@@ -1125,6 +1127,59 @@ export default class ChapterToc {
         if (key) {
             this.setActiveKey(key);
             this.scrollToKey(key);
+        }
+    }
+
+    /**
+     * Set active state by topic id — used when navigation originates from a
+     * subtheme card in the body panel.
+     * Expands any collapsed ancestors, re-renders if needed, highlights the
+     * matching entry, and fires onChapterSelect.
+     * @param {string} topicId — stable topic id string (e.g. '2', '5')
+     */
+    setActiveByTopicId(topicId) {
+        const targetId = String(topicId);
+
+        // DFS: find the key path to the matching topic node.
+        const findAncestors = (nodes, topicIdx, subPath) => {
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                const ti   = topicIdx ?? i;
+                const sp   = subPath.length === 0 ? [i] : [...subPath, i];
+                const key  = subPath.length === 0
+                    ? `topic-${i}`
+                    : `subtopic-${ti}-${sp.slice(1).join('-')}`;
+
+                if (String(node.id ?? '') === targetId) return { ancestors: [], key, node };
+
+                const found = findAncestors(node.subTopics ?? [], ti, sp);
+                if (found) return { ancestors: [key, ...found.ancestors], key: found.key, node: found.node };
+            }
+            return null;
+        };
+
+        const result = findAncestors(this._hierarchy, null, []);
+        if (!result) return;
+
+        // Expand collapsed ancestors
+        let expanded = false;
+        for (const key of result.ancestors) {
+            if (this._collapsedTopics.has(key)) {
+                this._collapsedTopics.delete(key);
+                expanded = true;
+            }
+        }
+        if (expanded) this._renderChapterTree();
+
+        // Highlight and scroll
+        const btn = this.container?.querySelector(
+            `.chapter-toc__entry[data-topic-id="${CSS.escape(targetId)}"]`
+        );
+        if (btn) {
+            this.setActiveKey(result.key);
+            this.scrollToKey(result.key);
+            // Fire select callback with the resolved topic node
+            this._onChapterSelect({ type: 'topic', topic: result.node, chapter: this._chapter });
         }
     }
 

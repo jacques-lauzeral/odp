@@ -180,10 +180,13 @@ export default class ChapterBody {
                     <div id="topicNarrativeEditor" class="chapter-body__editor"></div>
                 </div>
                 <div class="chapter-body__ostar-list">
-                    ${items.length === 0
-            ? '<p class="chapter-body__empty">No O*s assigned to this topic.</p>'
-            : items.map(item => this._renderOStarCard(item)).join('')}
+                    ${items.map(item => this._renderOStarCard(item)).join('')}
                 </div>
+                ${subTopics.length > 0 ? `
+                <div class="chapter-body__subtopic-list">
+                    ${subTopics.map(sub => this._renderSubthemeCard(sub)).join('')}
+                </div>
+                ` : ''}
             </div>
         `;
 
@@ -253,6 +256,7 @@ export default class ChapterBody {
         }
 
         this._attachOStarCardListeners();
+        this._attachSubthemeCardListeners();
     }
 
     _renderUnassigned(items) {
@@ -331,6 +335,32 @@ export default class ChapterBody {
                 const id   = card.dataset.itemId;
                 const type = card.dataset.itemType;
                 this._onChapterSelect({ type: 'ostar', ostar: { id, type }, chapter: this._currentChapter });
+            };
+            card.addEventListener('click', select);
+            card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); } });
+        });
+    }
+
+    _renderSubthemeCard(subTopic) {
+        const id    = this._esc(String(subTopic?.id ?? ''));
+        const label = this._esc(subTopic?.topic ?? '');
+        const count = (subTopic?.items?.length ?? 0) + (subTopic?.subTopics?.length ?? 0);
+        const hint  = count > 0 ? ` (${count})` : '';
+        return `
+            <div class="chapter-body__subtopic-card chapter-body__subtopic-card--link"
+                 data-topic-id="${id}"
+                 role="button" tabindex="0">
+                <span class="chapter-body__subtopic-icon">▸</span>
+                <span class="chapter-body__subtopic-label">${label}${hint}</span>
+            </div>
+        `;
+    }
+
+    _attachSubthemeCardListeners() {
+        this.container.querySelectorAll('.chapter-body__subtopic-card--link').forEach(card => {
+            const select = () => {
+                const topicId = card.dataset.topicId;
+                this._onChapterSelect({ type: 'subtopic-by-id', topicId, chapter: this._currentChapter });
             };
             card.addEventListener('click', select);
             card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); } });

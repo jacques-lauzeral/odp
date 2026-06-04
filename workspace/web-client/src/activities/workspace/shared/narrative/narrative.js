@@ -444,6 +444,11 @@ export default class NarrativeActivity {
     _handleChapterTocSelect(entry) {
         if (entry.type === 'ostar' && entry.ostar?.id != null) {
             this._toc.setActiveByItemId(entry.ostar.id);
+        } else if (entry.type === 'subtopic-by-id' && entry.topicId != null) {
+            // Navigation from a subtheme card in the body — delegate to TOC which
+            // resolves the node, expands ancestors, highlights, and re-fires as 'topic'.
+            this._toc.setActiveByTopicId(entry.topicId);
+            return;  // setActiveByTopicId fires onChapterSelect which re-enters here as 'topic'
         }
         this._body.renderSelectionRead(entry, this._selectedChapter);
     }

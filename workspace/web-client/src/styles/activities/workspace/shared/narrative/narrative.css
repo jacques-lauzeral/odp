@@ -429,6 +429,55 @@
 .chapter-body__ostar-card--link:hover .chapter-body__ostar-label {
     color: var(--ec-navy, #1F3864);
 }
+
+/* ── Subtheme card list ── */
+.chapter-body__subtopic-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+
+.chapter-body__subtopic-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 0.5px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: white;
+    font-size: var(--font-size-xs);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.chapter-body__subtopic-icon {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--ec-navy, #1F3864);
+}
+
+.chapter-body__subtopic-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-weight: var(--font-weight-medium);
+}
+
+.chapter-body__subtopic-card--link {
+    cursor: pointer;
+}
+
+.chapter-body__subtopic-card--link:hover {
+    border-color: var(--ec-blue, #2E75B6);
+    background: var(--ec-light, #EBF3FB);
+}
+
+.chapter-body__subtopic-card--link:hover .chapter-body__subtopic-label {
+    color: var(--ec-navy, #1F3864);
+}
 /* =========================================================================
    ODIP scope — chapter tree
    ========================================================================= */
