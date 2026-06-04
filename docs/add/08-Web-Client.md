@@ -78,7 +78,8 @@ web-client/src/
 │   ├── reference-manager.js
 │   ├── annotated-multiselect-manager.js
 │   ├── diff-popup.js
-│   └── odp-column-types.js
+│   ├── odp-column-types.js
+│   └── user-dialogs.js                     ODIP-styled interactive dialogs: odipConfirm (Yes/No) and odipUnsavedChanges (Save/Discard/Cancel)
 │
 └── shared/
     ├── router.js
@@ -142,6 +143,8 @@ Route table:
 
 Context difference (live vs edition, R/W vs R/O) flows transparently through `app.getDatasetContext()` — sub-activities do not need to know which shell they are mounted in.
 
+**Unsaved-changes guard — sub-activity tab switch:** `ElaborateActivity._route()` calls `canDeactivate()` on the current sub-activity before switching to a different tab. If the method returns `false` (user chose Cancel), the active tab highlight is restored and the switch is aborted. `canDeactivate()` is implemented by `NarrativeActivity`; all other sub-activities omit it and are always safe to leave.
+
 ### 3.4 O* Sub-Path Routing
 
 `OsActivity` handles a unified ON/OR/OC list. Sub-path routing:
@@ -167,7 +170,7 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 
 `App` (`app.js`) is the singleton application class. It owns:
 
-- Activity lifecycle (`_loadActivity`, lazy instantiation, cleanup)
+- Activity lifecycle (`_loadActivity`, lazy instantiation, cleanup, `canDeactivate` guard)
 - Router instantiation and delegation
 - User state (`setUser` / `getUser`) — persisted to localStorage by Header
 - Dataset context (`setDatasetContext` / `getDatasetContext`) — set by Home on selection
@@ -198,6 +201,8 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 ```
 
 `getOStars()` returns the full summary array. `findOStar(itemId)` returns a single summary or `null`. `invalidateOStars()` must be called after any O* create/update/delete operation.
+
+**Unsaved-changes guard — top-level activity switch:** `App._loadActivity()` calls `canDeactivate()` on the current activity before mounting a new one. If `false` is returned, `router._activeSegment` is restored to the current activity name (so the Header tab reverts) and the load is aborted. `ElaborateActivity.canDeactivate()` forwards to the current sub-activity's `canDeactivate()` if present, enabling the guard to reach `NarrativeActivity` through the shell layer.
 
 ---
 
@@ -309,6 +314,14 @@ Abstract base class for entity forms. Concrete forms (`RequirementForm`, `Change
 | `onNavigate(ref)` | — | Enables navigable reference chips in read mode |
 
 **`onNavigate` option** — when provided at construction, `CollectionEntityForm` passes `onItemClick` to `ReferenceListManager` and `ReferenceManager` in read mode, enabling reference chips to navigate on click. Entity type is derived from `field.formatArgs[0]` and mapped to URL segment (`'requirement'` or `'change'`).
+
+**Modal title** — `getFormTitle(mode, item = null)` is called by `showModal` with `this.currentItem`. Subclasses override it. In edit mode, `RequirementForm` and `ChangeForm` return `Edit {code} — {title}` using the item's `code` and `title` fields. Create mode returns `Create {type}` / `Create OC` as before.
+
+**Edit mode field layout** — `renderEditableField` applies `.form-group--inline` to scalar field types (`text`, `number`, `select`, `tentative`, `reference`), rendering the label left of the input on a single line. Spatially extended types (`richtext`, `reference-list`, `annotated-reference-list`, `custom`) keep the label-above-value layout. `helpText` is suppressed for inline scalar fields — the placeholder carries the hint.
+
+**Read mode field rendering** — non-scalar field wrappers (`reference-list`, `reference`, `richtext`, `annotated-reference-list`) receive the `.detail-field--block` modifier, which indents the value area. Read mode labels match edit mode style (no uppercase, `font-size-sm`, `font-weight-medium`).
+
+**Confirm on change** — `_attachConfirmOnChangeListeners` is async and uses `odipConfirm` from `components/user-dialogs.js` instead of `window.confirm`. The message is `Do you really want to re-assign this ${type} to another domain?` using `this.currentItem?.type`.
 
 Key methods used by detail views:
 
@@ -640,6 +653,8 @@ Each mark stores two attributes: `value` (the stable target identifier) and `lab
 In read-only mode, spans are styled as clickable links and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic.
 
 **Read-only mode** — `editable: false` is set on the TipTap instance; the toolbar is omitted; `blur()` is called immediately after mount to prevent focus theft.
+
+**Toolbar keyboard accessibility** — all toolbar buttons, the heading select, and dropdown menu items are created with `tabIndex = -1`. Tab therefore skips the entire toolbar and lands directly on the editor's content area. Toolbar controls remain accessible via mouse/click.
 
 ### 12.3 Integration with CollectionEntityForm
 
@@ -1352,9 +1367,9 @@ Two action buttons per detail view, mode-dependent:
 |---|---|---|
 | Panel | **Full page** | Pushes `/{base}/os/{type}/{id}` to browser history |
 | Page | **In collection** | Navigates to `/{base}/os?perspective=coll&selected={id}` |
-| Page | **In narrative** | Navigates to `/{base}/narrative/{chapterId}?o-star={id}` |
+| Page | **In narrative** | Navigates to `/{base}/narrative/{chapterId}?on={id}`, `?or={id}`, or `?oc={id}` |
 
-**`In narrative` navigation** — `OsActivity._navigateToNarrative(item)` resolves the chapter by matching `item.domain` against `app.getChapters()` (cached). On match, pushes `/{base}/narrative/{chapterId}?o-star={item.itemId}`; falls back to `/{base}/narrative` if no chapter is found. `normalizeId` is used to serialise the chapter `itemId` in the URL.
+**`In narrative` navigation** — `OsActivity._navigateToNarrative(item)` resolves the chapter by matching `item.domain` against `app.getChapters()` (cached). On match, pushes a typed URL: `?on=` for ONs, `?or=` for ORs, `?oc=` for OCs (absence of `item.type` implies OC). Falls back to `/{base}/narrative` if no chapter is found. `normalizeId` is used to serialise the chapter `itemId` in the URL.
 
 **Callback injection** — callbacks are passed into `render()` on every call (not at construction), ensuring cached instances always receive correct wiring:
 
@@ -1459,21 +1474,26 @@ The Narrative sub-activity (`activities/workspace/shared/narrative/`) provides e
 
 ### 18.1 Layout
 
-Two-pane `MasterDetail` layout (28% / 72% initial ratio):
+Two-pane `MasterDetail` layout (20% / 80% initial ratio):
 
 - **Left panel** — `ChapterToc`: chapter tree (ODIP scope) or topic/O* tree (chapter scope)
 - **Right panel** — `ChapterBody`: chapter narrative, topic card list, or O* detail view
 
-In Elaborate, a toolbar row sits above the `MasterDetail` with four create actions — **+ Theme · + ON · + OR · + OC** (`odip-btn odip-btn--create`, right-aligned). The toolbar is absent in Explore (read-only) and its buttons are disabled until a chapter is dived into. See §18.8.
+A toolbar row is always rendered above the `MasterDetail`, in both Elaborate and Explore. It has two slots:
+
+- **Left slot** (`narrative-activity__toolbar-nav`) — in chapter scope, shows **← Chapters** (climbs to ODIP scope) and the current chapter name (selects chapter narrative); empty in ODIP scope.
+- **Right slot** (`narrative-activity__toolbar-actions`) — in Elaborate, shows **+ Theme · + ON · + OR · + OC** (`odip-btn odip-btn--create`); absent in Explore.
+
+Create buttons are disabled until a chapter is dived into (`NarrativeActivity._setToolbarEnabled`). Back/chapter nav is injected by `NarrativeActivity._updateToolbarNav()` on scope transitions. See §18.8.
 
 ### 18.2 Scope State Machine
 
 | Scope | TOC | Body default |
 |---|---|---|
 | `odip` | Full chapter tree; expand/collapse; select / dive → | Chapter narrative (read-only) |
-| `chapter` | ← back · chapter title · topic → O*s | Chapter narrative (editable in Elaborate) |
+| `chapter` | topic/O* tree | Chapter narrative (editable in Elaborate) |
 
-In chapter scope, selecting the chapter node makes the **chapter narrative** editable; selecting a topic node makes that **topic narrative** editable (Elaborate only). The toolbar create actions are enabled on dive and disabled on climb (`NarrativeActivity._setToolbarEnabled`).
+Navigation between scopes (← Chapters, current chapter name) lives in the toolbar left slot, not the TOC. In chapter scope, selecting the chapter node makes the **chapter narrative** editable; selecting a topic node makes that **topic narrative** editable (Elaborate only). The toolbar create actions are enabled on dive and disabled on climb (`NarrativeActivity._setToolbarEnabled`).
 
 ### 18.3 Sub-Path and Query Parameter Routing
 
@@ -1482,35 +1502,66 @@ In chapter scope, selecting the chapter node makes the **chapter narrative** edi
 | `{base}/narrative` | ODIP scope — chapter tree |
 | `{base}/narrative/{chapterId}` | Chapter scope — dive into chapter by numeric `itemId` |
 | `{base}/narrative/{chapterId}?theme={topicId}` | Chapter scope + select topic by numeric string ID |
-| `{base}/narrative/{chapterId}?o-star={itemId}` | Chapter scope + select and render a specific O* |
+| `{base}/narrative/{chapterId}?on={itemId}` | Chapter scope + select and render a specific ON |
+| `{base}/narrative/{chapterId}?or={itemId}` | Chapter scope + select and render a specific OR |
+| `{base}/narrative/{chapterId}?oc={itemId}` | Chapter scope + select and render a specific OC |
 
 `{base}` is `/elaborate` (live dataset) or `/explore/{editionId}` (edition context).
 
 `NarrativeActivity._selectTopic(topicId)` — called after diving when `?theme=` is present. Finds the topic by `id` field in `osHierarchy.topics`, then delegates to `ChapterToc.selectTopicByIndex(idx)`.
 
-`NarrativeActivity._selectOStar(ostarId)` — called after diving when `?o-star=` is present. Calls `ChapterToc.setActiveByItemId(id)` to expand ancestors and highlight the O* in the TOC, resolves the type via `app.findOStar()`, then calls `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and `?o-star` are mutually exclusive; if both are present, `?o-star` takes effect last.
+`NarrativeActivity._selectOStar(ostarId, type)` — called after diving when `?on=`, `?or=`, or `?oc=` is present. The type is derived directly from the param name — no `app.findOStar()` call needed. Calls `ChapterToc.setActiveByItemId(id)` then `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and the typed O* params are mutually exclusive.
 
 ### 18.4 ChapterToc External API
 
 | Method | Description |
 |---|---|
-| `renderOdip(chapters, selectedId)` | Render full chapter tree (ODIP scope) |
-| `renderChapter(chapter)` | Render topic/O* tree for a single chapter |
+| `renderOdip(chapters, selectedId)` | Render full chapter tree (ODIP scope). No title header — TOC content is self-evident. |
+| `renderChapter(chapter)` | Render topic/O* tree for a single chapter. No back/chapter-name header — navigation lives in the toolbar. |
 | `setActiveKey(key)` | Highlight a TOC entry by its `data-key` |
-| `setActiveByItemId(id)` | Highlight the O* entry matching `id` |
+| `setActiveByItemId(id)` | Highlight the O* entry matching `id`; expands ancestors |
+| `setActiveByTopicId(id)` | Highlight the topic/subtopic entry matching the stable string `id`; expands collapsed ancestors; fires `onChapterSelect`. Used when navigation originates from a subtheme card in the body panel. |
 | `selectTopicByIndex(idx)` | Programmatically select a top-level topic by zero-based index; equivalent to user click; fires `onChapterSelect` callback |
-| `refreshTree()` | Rebuild the chapter-scope tree from the current `_hierarchy` while preserving the active selection highlight and scroll position. Used after out-of-band hierarchy changes (theme create, O* create/edit) |
+| `refreshTree()` | Rebuild the chapter-scope tree from the current `_hierarchy` while preserving the active selection highlight and scroll position. Used after out-of-band hierarchy changes (theme create, rename, delete, O* create/edit) |
+
+**Constructor callbacks:**
+
+| Callback | Signature | Description |
+|---|---|---|
+| `onOdipSelect` | `(chapter)` | ODIP scope label click — selection + body render |
+| `onDive` | `(chapter)` | Dive into chapter scope |
+| `onClimb` | `()` | Climb back to ODIP scope |
+| `onFocusOdip` | `()` | Transfer keyboard focus to ODIP TOC shell — called by chapter TOC on ← at top level |
+| `onChapterSelect` | `(entry)` | Chapter scope node click |
+| `onHierarchyChange` | `(hierarchy)` | Fired after each DnD mutation (Elaborate only) |
+| `onUnclassifiedChange` | `(hierarchy)` | Fired when an O* moves into/out of unclassified |
+
+**Keyboard navigation** — both TOC shells (`#chapterTocOdip`, `#chapterTocChapter`) have `tabindex="0"` and handle `keydown`. Navigation moves the **selection** directly (identical to a click — fires the same callbacks and renders the body):
+
+| Key | ODIP TOC | Chapter TOC |
+|---|---|---|
+| ↑ / ↓ | Move selection to prev/next visible chapter node | Move selection to prev/next visible entry; scrolls into view |
+| → | Expand collapsed node; if already expanded → dive into chapter | Expand collapsed topic; if expanded → move to first child |
+| ← | Collapse expanded node | Collapse expanded topic; if collapsed → move to parent; at top level → transfer focus to ODIP TOC via `onFocusOdip` |
+| Enter / Space | Activate selected node (same as click) | Activate selected entry (same as click) |
 
 ### 18.5 ChapterBody Renderers
 
 | Entry type | Renderer | Notes |
 |---|---|---|
 | `chapter` | `_renderChapterNarrative` | Full narrative; editable in Elaborate |
-| `topic` | `_renderTopic` | Topic narrative above O* card list; editable in Elaborate |
+| `topic` | `_renderTopic` | Title input · narrative · O* cards · subtheme cards; editable in Elaborate |
+| `subtopic-by-id` | — | Synthetic entry fired by subtheme card click; intercepted by `NarrativeActivity._handleChapterTocSelect` which delegates to `ChapterToc.setActiveByTopicId` and returns — re-enters as `topic` |
 | `unassigned` | `_renderUnassigned` | O*s with no topic placement |
 | `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button available (navigates to `{base}/os/{type}/{id}`) |
 
-**Topic narrative** — `_renderTopic` renders the topic narrative above the O* card list. In Explore it is read-only (shown only when non-null). In Elaborate it is always an editable `RichTextComponent` with a Save button; saving delegates to `onTopicNarrativeSave(topicId, narrative)` (see §18.8).
+**Topic body layout** — `_renderTopic` renders in this order:
+1. **Title** — in Elaborate: `odip-input.chapter-body__topic-title` (saves on blur or Enter; reverts on Escape). In Explore: plain `<h3>`.
+2. **Narrative** — editable `RichTextComponent` in Elaborate; read-only when non-null in Explore.
+3. **O* card list** — direct O*s of the theme (ONs, ORs, OCs); no empty message.
+4. **Subtheme card list** — rendered after O*s when `subTopics.length > 0`; each card shows a `▸` icon and the subtheme label with a count hint `(n)`. Clicking navigates to the subtheme via `subtopic-by-id` entry type.
+
+**Delete theme** — in Elaborate, a **Delete theme** `odip-btn--danger` button is shown in the body header actions when the theme has no O*s and no subtopics (`items.length === 0 && subTopics.length === 0`). Clicking opens an `odipConfirm` dialog (`components/user-dialogs.js`) before delegating to `onThemeDelete(topicId)` → `NarrativeActivity._handleThemeDelete`.
 
 ### 18.6 Internal Link Navigation
 
@@ -1538,20 +1589,43 @@ IDs are first assigned at import time by `DistributedEditionImporter._patchChapt
 
 ### 18.8 Editorial Actions (Elaborate)
 
-The toolbar create actions and topic-narrative editing all mutate the chapter `osHierarchy` and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`, which returns `{ topicIndex, subPath }` for the selected topic/subtopic, or `null` when the chapter node or an O* is active.
+The toolbar create actions and topic-editing all mutate the chapter `osHierarchy` and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`, which returns `{ topicIndex, subPath }` for the selected topic/subtopic, or `null` when the chapter node or an O* is active.
 
 | Action | Flow |
 |---|---|
-| **+ Theme** | `NarrativeActivity._handleAddTheme(activePath)` — minimal title modal (`modal-overlay` classes) → fetch-fresh chapter → insert new topic as child of the active topic (or at root if none) → PATCH → re-fetch (enriched) → `ChapterToc.refreshTree()` |
-| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open `RequirementForm`/`ChangeForm` create modal pre-populated with the chapter `domain` (and `type` for OR/ON) → on save, the form's `onSaved` callback runs `_insertOStarIntoHierarchy`: fetch-fresh → insert the new O* into the active topic's items (sorted ON→OR→OC), or leave unclassified if no topic is active → PATCH → re-fetch (enriched) → `refreshTree()` → `app.invalidateOStars()` |
-| **Topic narrative** | `ChapterBody._saveTopicNarrative` → `onTopicNarrativeSave(topicId, narrative)` → `NarrativeActivity._handleTopicNarrativeSave`: fetch-fresh → DFS-locate topic by `id` → mutate `narrative` → PATCH → sync into the live `_toc._hierarchy` |
+| **+ Theme** | `NarrativeActivity._handleAddTheme(activePath)` — minimal title modal → fetch-fresh chapter → insert new topic as child of the active topic (or at root if none) → PATCH → `ChapterToc.refreshTree()` |
+| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open `RequirementForm`/`ChangeForm` create modal pre-populated with the chapter `domain` (and `type` for OR/ON) → on save, `_insertOStarIntoHierarchy`: fetch-fresh → insert the new O* into the active topic's items (sorted ON→OR→OC), or leave unclassified if no topic is active → PATCH → `refreshTree()` → `app.invalidateOStars()` |
+| **Theme title / narrative** | `ChapterBody._saveTopicFull(topic, topicId)` (Save button, or from guard dialog) → `onTopicFullSave(topicId, title, narrative)` → `NarrativeActivity._handleTopicFullSave`: fetch-fresh → DFS-locate topic by `id` → mutate both `topic` label and `narrative` in one pass → PATCH → sync both into live `_toc._hierarchy` → `refreshTree()` only when title changed. A single PATCH is always used regardless of which fields changed, to avoid `versionId` conflicts from sequential patches. |
+| **Delete theme** | `ChapterBody._deleteTheme(topicId)` (button visible only when `items.length === 0 && subTopics.length === 0`) → `onThemeDelete(topicId)` → `NarrativeActivity._handleThemeDelete`: fetch-fresh → defensive non-empty guard → `_removeTopicById` → PATCH → `refreshTree()` → body falls back to chapter narrative |
 
 **Concurrency model:**
 
-- **Non-DnD writes** (theme create, O* insert, topic narrative) use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`. This avoids conflicts from background chapter edits.
+- **Non-DnD writes** (theme create/rename/delete, O* insert, topic narrative) use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`. This avoids conflicts from background chapter edits.
 - **DnD reorder** (`_handleHierarchyChange`, `_handleUnclassifiedChange`) uses the **optimistic** client `versionId`. On `409`, `_handleDndConflict` reloads the chapter, re-renders the TOC, resets the body, and informs the user that the change was not applied.
 
 `_mergeChapterConfig(cached, fresh)` reconciles a freshly fetched chapter with config-owned fields (`title`, `domain`, `position`) held in memory, and syncs `versionId`/`osHierarchy` back to the cached object.
+
+**Unsaved-changes guard (Elaborate only):**
+
+`ChapterBody` tracks a `_dirty` flag (set by `RichTextComponent.onChange` and the title input's `input` event) and a `_currentEntry` field (the last `entry` passed to `renderSelectionRead`). Before any navigation that would replace the body content, `_guardNavigation()` is called:
+
+- If not dirty → proceed immediately.
+- If dirty → show `odipUnsavedChanges()` (§25.2):
+    - **Cancel** → return false; navigation aborted, user stays in editor.
+    - **Discard** → clear dirty flag, return true; navigation proceeds.
+    - **Save** → call `_saveCurrentEntry()` (routes to `_saveNarrative` or `_saveTopicFull` based on `_currentEntry.type`); on success return true; on error surface the error and return false.
+
+Navigation paths guarded:
+
+| Trigger | Guard location |
+|---|---|
+| TOC click / O* card / subtheme card | `ChapterBody.renderSelectionRead()` |
+| Ctrl+Click on internal ref (edit mode) | `ChapterBody._handleInternalLink()` |
+| Elaborate tab switch (O*s, Plan, Setup…) | `ElaborateActivity._route()` via `canDeactivate()` |
+| Top-level activity switch (Home, Manage…) | `App._loadActivity()` via `canDeactivate()` chain |
+| Browser Back / F5 / tab close | `beforeunload` listener (generic browser warning; registered on `window` in `_renderShell`, removed in `cleanup`) |
+
+`NarrativeActivity.canDeactivate()` delegates to `this._body._guardNavigation()`. `ElaborateActivity.canDeactivate()` forwards to the current sub-activity's `canDeactivate()` if present.
 
 ### 18.9 Save Propagation
 
@@ -1569,6 +1643,19 @@ Consumers of the forwarded callback:
 | `OsActivity` | `onSaved` on the panel-mode detail render | `_loadData()` re-fetches the collection so the master list row reflects the edit |
 
 This single mechanism replaces ad-hoc reload logic and works identically in both the OS and Narrative perspectives.
+
+### 18.10 Service Layer Enrichment Contract
+
+`ChapterService` overrides both `update()` and `patch()` from `VersionedItemService`:
+
+```
+async update(itemId, payload, expectedVersionId, userId)
+async patch(itemId, patchPayload, expectedVersionId, userId)
+```
+
+Both call `super.update/patch` (which commits the write transaction) then immediately call `this.getById(itemId, userId)` (enriched `GET`) and return its result. This guarantees that **every write to a chapter returns the same enriched read-shape as `GET /chapters/{id}`** — `osHierarchy` items are always `{ id, type, code, title }` objects, never bare integer ids.
+
+**Invariant:** client code must never use `updated.osHierarchy` from a PATCH response to rebuild the render-side hierarchy via a second `getChapter()` call. The PATCH response is already enriched. Workaround patterns (`_fullyLoaded = false`, redundant re-fetches) are prohibited.
 
 ---
 
@@ -1615,13 +1702,51 @@ A `fields` entry is either a bare field (`{ key, ... }`) or a row wrapper (`{ ro
 - `_isSectionVisibleFromConfig()` applies section `modes` and per-field `visibleWhen`.
 - `_renderConfigEntry()` / `_renderConfigRow()` handle bare fields and `row` wrappers, applying `hideIfNullOrEmpty` and `valueInline`.
 - `_resolveFieldDef()` looks up metadata by key from the field map; `_resolveEntryVisible()` evaluates `visibleWhen`.
-- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook).
+- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook). The handler is async and uses `odipConfirm` from `components/user-dialogs.js` with the message `Do you really want to re-assign this ${type} to another domain?` — replacing `window.confirm`.
 
 There is no header/strip concept: `code` and `title` are shown in the detail toolbar (`requirement-details.js` / `change-details.js` render `code — title`, matching the TOC), not repeated inside the form body.
 
 ### 24.5 Ancillary Exports
 
 The `*-form-fields.js` modules also export the save-path helpers consumed by `transformDataForSave`: `requiredIdentifierArrayFields`, `requiredAnnotatedReferenceArrayFields` (requirement only), `requiredTextFields`, `optionalTextFields` (change only), the `*FormTitles` map, and `*Defaults`.
+
+---
+
+## 25. User Dialogs — `components/user-dialogs.js`
+
+Shared module for ODIP-styled interactive dialogs. Replaces browser-native `window.confirm` / `window.alert` with modal overlays that use existing `.modal-overlay`, `.modal`, `.modal-body`, `.modal-footer`, and `odip-btn` CSS classes — no new CSS required.
+
+### 25.1 `odipConfirm(message)`
+
+```js
+import { odipConfirm } from '../../../../components/user-dialogs.js';
+const confirmed = await odipConfirm('Are you sure?');
+```
+
+Returns `Promise<boolean>`. Renders a small modal (z-index 2000, above edit modals at 1000) with the message, a **No** button (`odip-btn--standard`) and a **Yes** button (`odip-btn--primary odip-btn--standard`). The Yes button is auto-focused for keyboard accessibility. Resolves `true`/`false` on button click; the overlay removes itself.
+
+**Current callers:**
+
+| Caller | Message |
+|---|---|
+| `CollectionEntityForm._attachConfirmOnChangeListeners` | `Do you really want to re-assign this ${type} to another domain?` |
+| `ChapterBody._deleteTheme` | `Do you really want to delete this theme?` |
+
+### 25.2 `odipUnsavedChanges(message?)`
+
+```js
+import { odipUnsavedChanges } from '../../../../components/user-dialogs.js';
+const answer = await odipUnsavedChanges('You have unsaved changes. What would you like to do?');
+// answer: 'save' | 'discard' | 'cancel'
+```
+
+Returns `Promise<'save' | 'discard' | 'cancel'>`. Renders a modal with three buttons (left to right): **Cancel** (`odip-btn--standard`), **Discard** (`odip-btn--danger odip-btn--standard`), **Save** (`odip-btn--primary odip-btn--standard`). The Save button is auto-focused. Pressing Escape resolves to `'cancel'`. The `message` parameter defaults to `'You have unsaved changes.'`.
+
+**Current callers:**
+
+| Caller | Context |
+|---|---|
+| `ChapterBody._guardNavigation` | Shown when leaving an unsaved chapter narrative or topic (title/narrative) in Elaborate |
 
 ---
 

@@ -60,6 +60,19 @@ export default class ElaborateActivity {
         return this._route(subPath);
     }
 
+    /**
+     * Called by App._loadActivity before switching away from this workspace.
+     * Forwards to the current sub-activity's canDeactivate() if present.
+     * @returns {Promise<boolean>}
+     */
+    async canDeactivate() {
+        const currentSub = this._subActivities[this._currentSubName];
+        if (currentSub?.canDeactivate) {
+            return currentSub.canDeactivate();
+        }
+        return true;
+    }
+
     async cleanup() {
         for (const sub of Object.values(this._subActivities)) {
             await sub.cleanup?.();
@@ -123,6 +136,21 @@ export default class ElaborateActivity {
         }
 
         this._updateActiveTab(subName);
+
+        // Guard: if the current sub-activity has unsaved changes, ask before leaving.
+        // canDeactivate() is implemented by NarrativeActivity; other sub-activities
+        // don't define it and are always safe to leave.
+        if (this._currentSubName !== subName) {
+            const currentSub = this._subActivities[this._currentSubName];
+            if (currentSub?.canDeactivate) {
+                const allowed = await currentSub.canDeactivate();
+                if (!allowed) {
+                    // Restore the active tab highlight to the current sub-activity
+                    this._updateActiveTab(this._currentSubName);
+                    return;
+                }
+            }
+        }
 
         try {
             const sub = await this._getSub(subName);

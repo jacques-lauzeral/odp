@@ -27,7 +27,7 @@
  * Elaborate-only actions (chapter scope):
  *   + Theme  — prompts for title, creates new topic in hierarchy (child of active topic or root)
  *   + ON/OR/OC — opens create modal; on save inserts new O* into active topic (or unclassified)
- *   Topic narrative — editable inline when topic is selected; saved via onTopicNarrativeSave
+ *   Topic narrative — editable inline when topic is selected; saved via onTopicFullSave
  *
  * Write paths:
  *   DnD reorder     — PATCH with current versionId; 409 → reload + user message
@@ -79,6 +79,9 @@ export default class NarrativeActivity {
         // Cached setup data and domains — loaded once, used for O* create forms
         this._setupData       = null;
         this._domains         = [];
+
+        // beforeunload guard — registered when Elaborate shell is active
+        this._beforeUnloadHandler = null;
     }
 
     // -------------------------------------------------------------------------
@@ -178,7 +181,22 @@ export default class NarrativeActivity {
         else if (ocId)   await this._selectOStar(ocId, 'OC');
     }
 
+    /**
+     * Called by App._loadActivity before switching away from this activity.
+     * Returns false (and shows the unsaved-changes dialog) when there are pending
+     * edits in ChapterBody, so the user can save or discard before leaving.
+     * @returns {Promise<boolean>}
+     */
+    async canDeactivate() {
+        if (!this._body) return true;
+        return this._body._guardNavigation();
+    }
+
     async cleanup() {
+        if (this._beforeUnloadHandler) {
+            window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+            this._beforeUnloadHandler = null;
+        }
         this._toc?.cleanup?.();
         this._body?.cleanup?.();
         this._masterDetail?.cleanup();
@@ -287,11 +305,22 @@ export default class NarrativeActivity {
             isEditable:             this._isEditable,
             onSaved:                (_id) => { /* versionId updated in place */ },
             onChapterSelect:        (entry) => this._handleChapterTocSelect(entry),
-            onTopicNarrativeSave:   (topicId, narrative) => this._handleTopicNarrativeSave(topicId, narrative),
-            onTopicTitleSave:       (topicId, title)     => this._handleTopicTitleSave(topicId, title),
+            onTopicFullSave:        (topicId, title, narrative) => this._handleTopicFullSave(topicId, title, narrative),
             onThemeDelete:          (topicId)             => this._handleThemeDelete(topicId),
             onOStarSaved:           (result, mode) => this._handleOStarSaved(result, mode),
         });
+
+        // Safety net: warn on browser-level navigation (F5, tab close, address bar)
+        // when unsaved changes exist. Only registered in Elaborate (editable) mode.
+        if (this._isEditable) {
+            this._beforeUnloadHandler = (e) => {
+                if (this._body?._dirty) {
+                    e.preventDefault();
+                    e.returnValue = '';  // required for Chrome
+                }
+            };
+            window.addEventListener('beforeunload', this._beforeUnloadHandler);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -831,16 +860,24 @@ export default class NarrativeActivity {
     }
 
     // -------------------------------------------------------------------------
-    // Topic narrative save
+    // Topic save (title + narrative combined)
     // -------------------------------------------------------------------------
 
     /**
-     * Called by ChapterBody when user saves a theme narrative.
-     * Uses fetch-fresh pattern: GET latest chapter, mutate target topic narrative, PATCH.
-     * @param {string} topicId  — stable topic id (from osHierarchy topic node)
-     * @param {string} narrative — serialised TipTap/Quill JSON string
+     * Called by ChapterBody when user saves a topic (title and/or narrative).
+     * Always a single fetch-fresh → mutate both fields → PATCH to avoid
+     * version conflicts that would arise from two sequential patches.
+     *
+     * Post-save:
+     *   - Syncs both fields into the live _hierarchy so subsequent re-renders
+     *     reflect the saved state without a full chapter reload.
+     *   - Calls refreshTree() only when the title changed (label update needed).
+     *
+     * @param {string}      topicId   — stable topic id (from osHierarchy topic node)
+     * @param {string}      title     — new topic title
+     * @param {string|null} narrative — serialised TipTap JSON string, or null
      */
-    async _handleTopicNarrativeSave(topicId, narrative) {
+    async _handleTopicFullSave(topicId, title, narrative) {
         const chapter = this._selectedChapter;
         if (!chapter) throw new Error('No chapter selected');
 
@@ -849,9 +886,11 @@ export default class NarrativeActivity {
 
         const hierarchy = this._toc._parseHierarchy(fresh);
 
-        // DFS to find topic by id and mutate narrative
         const found = this._findTopicById(hierarchy, topicId);
         if (!found) throw new Error(`Topic ${topicId} not found in hierarchy`);
+
+        const titleChanged = found.topic !== title;
+        found.topic     = title;
         found.narrative = narrative;
 
         const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
@@ -864,45 +903,15 @@ export default class NarrativeActivity {
         if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
         chapter._fullyLoaded = true;
 
-        // Sync narrative into live _hierarchy so TOC re-renders reflect it
+        // Sync into live _hierarchy
         const liveNode = this._findTopicById(this._toc._hierarchy, topicId);
-        if (liveNode) liveNode.narrative = narrative;
-    }
+        if (liveNode) {
+            liveNode.topic     = title;
+            liveNode.narrative = narrative;
+        }
 
-    /**
-     * Called by ChapterBody when user commits an edited topic title (blur / Enter).
-     * Uses fetch-fresh pattern: GET latest chapter, mutate topic label, PATCH.
-     * Also syncs the label in the live TOC hierarchy and calls refreshTree().
-     * @param {string} topicId
-     * @param {string} title
-     */
-    async _handleTopicTitleSave(topicId, title) {
-        const chapter = this._selectedChapter;
-        if (!chapter) throw new Error('No chapter selected');
-
-        const fresh = await apiClient.getChapter(chapter.itemId);
-        this._mergeChapterConfig(chapter, fresh);
-
-        const hierarchy = this._toc._parseHierarchy(fresh);
-
-        const found = this._findTopicById(hierarchy, topicId);
-        if (!found) throw new Error(`Topic ${topicId} not found in hierarchy`);
-        found.topic = title;
-
-        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
-        const updated = await apiClient.patchChapter(fresh.itemId, {
-            osHierarchy:       { topics: writeTopics },
-            expectedVersionId: fresh.versionId,
-        });
-
-        if (updated?.versionId) chapter.versionId = updated.versionId;
-        if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
-        chapter._fullyLoaded = true;
-
-        // Sync title into live _hierarchy and refresh TOC label
-        const liveNode = this._findTopicById(this._toc._hierarchy, topicId);
-        if (liveNode) liveNode.topic = title;
-        this._toc.refreshTree();
+        // Refresh TOC label only when the title actually changed
+        if (titleChanged) this._toc.refreshTree();
     }
 
     /**

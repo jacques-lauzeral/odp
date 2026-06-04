@@ -15,12 +15,18 @@
  *         entry.type === 'ostar'      → O* detail view (RequirementDetails / ChangeDetails)
  *
  * Edit (Elaborate only): always as popup, consistent with elaborate/os.
+ *
+ * Unsaved-changes guard:
+ *   In Elaborate mode, navigating away from an edited chapter narrative or topic
+ *   (title and/or narrative) triggers a Save / Discard / Cancel dialog.
+ *   _guardNavigation() returns true if navigation may proceed, false to stay.
+ *   All navigation paths (TOC select, internal link, cleanup) go through this guard.
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
 import RichTextComponent from '../../../../components/rich-text-component.js';
 import { buildLinkProvider } from '../../../../components/link-provider.js';
-import { odipConfirm } from '../../../../components/user-dialogs.js';
+import { odipConfirm, odipUnsavedChanges } from '../../../../components/user-dialogs.js';
 
 export default class ChapterBody {
     /**
@@ -29,6 +35,7 @@ export default class ChapterBody {
      * @param {object}   options.app
      * @param {boolean}  options.isEditable
      * @param {Function} options.onSaved             — (chapterId) after successful narrative patch
+     * @param {Function} options.onTopicFullSave     — (topicId, title, narrative) single PATCH for topic title+narrative
      */
     constructor(container, options = {}) {
         this.container        = container;
@@ -36,13 +43,13 @@ export default class ChapterBody {
         this._isEditable      = options.isEditable ?? false;
         this._onSaved                = options.onSaved                ?? (() => {});
         this._onChapterSelect        = options.onChapterSelect        ?? (() => {});
-        this._onTopicNarrativeSave   = options.onTopicNarrativeSave   ?? (() => {});
-        this._onTopicTitleSave       = options.onTopicTitleSave       ?? (() => {});
+        this._onTopicFullSave        = options.onTopicFullSave        ?? (() => {});
         this._onThemeDelete          = options.onThemeDelete          ?? (() => {});
         this._onOStarSaved           = options.onOStarSaved           ?? (() => {});
 
         this._richText       = null;
         this._currentChapter = null;
+        this._currentEntry   = null;   // last entry passed to renderSelectionRead
         this._dirty          = false;
         this._saving         = false;
 
@@ -61,6 +68,7 @@ export default class ChapterBody {
     renderOdipPlaceholder() {
         this._destroyRichText();
         this._currentChapter = null;
+        this._currentEntry   = null;
         this.container.innerHTML = `
             <div class="master-detail__placeholder">
                 <p class="master-detail__placeholder-text">Select a chapter or dive in to read</p>
@@ -70,14 +78,16 @@ export default class ChapterBody {
 
     /**
      * Render a single TOC entry.
+     * Guards unsaved changes before switching view.
      * @param {object}  entry
      * @param {object}  chapter
      * @param {boolean} [forceReadOnly=false] — true when called from ODIP scope
      */
     async renderSelectionRead(entry, chapter, forceReadOnly = false) {
-        await this._autoSaveIfDirty();
+        if (!await this._guardNavigation()) return;
         this._destroyRichText();
         this._currentChapter = chapter;
+        this._currentEntry   = entry;
 
         const editable = this._isEditable && !forceReadOnly;
 
@@ -93,17 +103,21 @@ export default class ChapterBody {
     }
 
     clear() {
-        this._autoSaveIfDirty();
-        this._destroyRichText();
-        this._currentChapter = null;
-        this.container.innerHTML = `
-            <div class="master-detail__placeholder">
-                <p class="master-detail__placeholder-text">Select an entry in the TOC</p>
-            </div>
-        `;
+        this._guardNavigation().then(proceed => {
+            if (!proceed) return;
+            this._destroyRichText();
+            this._currentChapter = null;
+            this._currentEntry   = null;
+            this.container.innerHTML = `
+                <div class="master-detail__placeholder">
+                    <p class="master-detail__placeholder-text">Select an entry in the TOC</p>
+                </div>
+            `;
+        });
     }
 
     cleanup() {
+        // Silent discard on teardown — beforeunload covers browser-level navigation
         this._destroyRichText();
         this._requirementDetails?.cleanup?.();
         this._changeDetails?.cleanup?.();
@@ -111,6 +125,7 @@ export default class ChapterBody {
         this._requirementDetails    = null;
         this._changeDetails         = null;
         this._currentChapter        = null;
+        this._currentEntry          = null;
     }
 
     // =========================================================================
@@ -191,7 +206,7 @@ export default class ChapterBody {
             </div>
         `;
 
-        // Title input — save on blur or Enter
+        // Title input — mark dirty on input; save on blur or Enter
         if (editable) {
             const titleInput = this.container.querySelector('#topicTitleInput');
             if (titleInput) {
@@ -201,9 +216,6 @@ export default class ChapterBody {
                     if (saveBtn) saveBtn.disabled = false;
                 };
                 titleInput.addEventListener('input', markDirty);
-                titleInput.addEventListener('blur', () => {
-                    if (this._dirty) this._saveTopicTitle(topicId, titleInput);
-                });
                 titleInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') { e.preventDefault(); titleInput.blur(); }
                     if (e.key === 'Escape') {
@@ -220,7 +232,7 @@ export default class ChapterBody {
                 ?.addEventListener('click', () => this._deleteTheme(topicId));
 
             this.container.querySelector('.chapter-body__topic-save')
-                ?.addEventListener('click', () => this._saveTopicNarrative(topic, topicId));
+                ?.addEventListener('click', () => this._saveTopicFull(topic, topicId));
         }
 
         const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
@@ -404,6 +416,62 @@ export default class ChapterBody {
     }
 
     // =========================================================================
+    // Unsaved-changes guard
+    // =========================================================================
+
+    /**
+     * If there are unsaved changes, show the Save / Discard / Cancel dialog.
+     * Returns true if navigation may proceed, false if the user cancelled.
+     *
+     * Save path:
+     *   - chapter entry → _saveNarrative()
+     *   - topic entry   → _saveTopicFull() (title + narrative in one PATCH)
+     * On save error the error is surfaced by the existing save methods and
+     * navigation is blocked (returns false).
+     *
+     * @returns {Promise<boolean>}
+     */
+    async _guardNavigation() {
+        if (!this._dirty) return true;
+
+        const answer = await odipUnsavedChanges('You have unsaved changes. What would you like to do?');
+
+        if (answer === 'cancel') return false;
+
+        if (answer === 'discard') {
+            this._dirty = false;
+            return true;
+        }
+
+        // answer === 'save'
+        try {
+            await this._saveCurrentEntry();
+            return true;
+        } catch {
+            // Error already surfaced by the save method
+            return false;
+        }
+    }
+
+    /**
+     * Save whatever is currently rendered (chapter narrative or topic full).
+     * Throws on failure so _guardNavigation can return false.
+     * @returns {Promise<void>}
+     */
+    async _saveCurrentEntry() {
+        const entry   = this._currentEntry;
+        const chapter = this._currentChapter;
+        if (!entry || !chapter) return;
+
+        if (entry.type === 'chapter') {
+            await this._saveNarrative(chapter);
+        } else if (entry.type === 'topic') {
+            const topicId = entry.topic?.id ?? null;
+            await this._saveTopicFull(entry.topic, topicId);
+        }
+    }
+
+    // =========================================================================
     // Narrative save
     // =========================================================================
 
@@ -469,35 +537,32 @@ export default class ChapterBody {
             const saveBtn2  = this.container?.querySelector('.chapter-body__save');
             if (statusEl2) statusEl2.textContent = '⚠ Save failed';
             if (saveBtn2)  saveBtn2.disabled = false;
+            throw error;  // re-throw so _guardNavigation can block navigation
         }
     }
 
     /**
-     * Save an edited topic title on blur/Enter.
-     * Delegates to NarrativeActivity via onTopicTitleSave.
-     * @param {string} topicId
-     * @param {HTMLInputElement} inputEl
+     * Save both topic title and narrative in a single PATCH via onTopicFullSave.
+     * Reads the current title input value and rich text value from the DOM.
+     * @param {object} topic   — render-shape topic node
+     * @param {string} topicId — stable topic id
      */
-    async _saveTopicTitle(topicId, inputEl) {
+    async _saveTopicFull(topic, topicId) {
         if (this._saving) return;
-        const newTitle = inputEl.value.trim();
-        if (!newTitle) {
-            // Revert to original value if left empty
-            inputEl.value = inputEl.defaultValue;
-            this._dirty = false;
-            const saveBtn = this.container?.querySelector('.chapter-body__topic-save');
-            if (saveBtn) saveBtn.disabled = true;
-            return;
-        }
-
         this._saving = true;
+
+        const saveBtn  = this.container?.querySelector('.chapter-body__topic-save');
         const statusEl = this.container?.querySelector('.chapter-body__status');
+        if (saveBtn)  saveBtn.disabled = true;
         if (statusEl) statusEl.textContent = 'Saving…';
 
+        const titleInput = this.container?.querySelector('#topicTitleInput');
+        const newTitle   = titleInput?.value.trim() || topic?.topic || '';
+        const narrative  = this._richText?.getValue() ?? null;
+
         try {
-            await this._onTopicTitleSave(topicId, newTitle);
-            // Update the input's baseline value so a subsequent blur doesn't re-save
-            inputEl.defaultValue = newTitle;
+            await this._onTopicFullSave(topicId, newTitle, narrative);
+            if (titleInput) titleInput.defaultValue = newTitle;
             this._dirty  = false;
             this._saving = false;
             if (statusEl) {
@@ -506,9 +571,12 @@ export default class ChapterBody {
             }
         } catch (error) {
             this._saving = false;
-            errorHandler.handle(error, 'chapter-body-topic-title-save');
+            errorHandler.handle(error, 'chapter-body-topic-save');
             const statusEl2 = this.container?.querySelector('.chapter-body__status');
+            const saveBtn2  = this.container?.querySelector('.chapter-body__topic-save');
             if (statusEl2) statusEl2.textContent = '⚠ Save failed';
+            if (saveBtn2)  saveBtn2.disabled = false;
+            throw error;  // re-throw so _guardNavigation can block navigation
         }
     }
 
@@ -524,76 +592,28 @@ export default class ChapterBody {
         await this._onThemeDelete(topicId);
     }
 
-    /**
-     * Save the current rich text value as the narrative for a theme topic.
-     * Delegates to NarrativeActivity via onTopicNarrativeSave — the activity
-     * owns the chapter version and full hierarchy needed for the PATCH.
-     * @param {object} topic   — render-shape topic node (for label/fallback)
-     * @param {string} topicId — stable topic id used to locate the node in hierarchy
-     */
-    async _saveTopicNarrative(topic, topicId) {
-        if (!this._richText || this._saving) return;
-        this._saving = true;
-
-        const saveBtn  = this.container?.querySelector('.chapter-body__topic-save');
-        const statusEl = this.container?.querySelector('.chapter-body__status');
-        if (saveBtn)  saveBtn.disabled = true;
-        if (statusEl) statusEl.textContent = 'Saving…';
-
-        try {
-            const narrative = this._richText.getValue() ?? '';
-            await this._onTopicNarrativeSave(topicId, narrative);
-            this._dirty  = false;
-            this._saving = false;
-            if (statusEl) {
-                statusEl.textContent = '✓ Saved';
-                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
-            }
-        } catch (error) {
-            this._saving = false;
-            errorHandler.handle(error, 'chapter-body-topic-save');
-            const statusEl2 = this.container?.querySelector('.chapter-body__status');
-            const saveBtn2  = this.container?.querySelector('.chapter-body__topic-save');
-            if (statusEl2) statusEl2.textContent = '⚠ Save failed';
-            if (saveBtn2)  saveBtn2.disabled = false;
-        }
-    }
-
-    async _autoSaveIfDirty() {
-        if (this._dirty && this._currentChapter) {
-            await this._saveNarrative(this._currentChapter);
-        }
-    }
-
     // =========================================================================
-    // Internal helpers
+    // Internal link navigation
     // =========================================================================
-
-    _destroyRichText() {
-        if (this._richText) {
-            this._richText.destroy();
-            this._richText = null;
-        }
-        this._dirty  = false;
-        this._saving = false;
-    }
 
     /**
      * Handle internal link clicks from narrative rich text.
+     * Ctrl+Click in edit mode triggers navigation through the unsaved-changes guard.
      *
      * n-ref value: {chapterId}[/{topicId}]
      *   Navigates directly to {base}/narrative/{chapterId}[?theme={topicId}]
-     *   No chapter lookup required — value is already the opaque itemId.
      *
-     * o-ref: navigates to {base}/elaborate/{itemId}
+     * o-ref: navigates to {base}/os/{type}/{itemId}
      * d-ref: navigates to {base}/setup/reference-documents/{id}
      *
      * @param {'n-ref'|'o-ref'|'d-ref'} type
      * @param {string} value
      * @private
      */
-    _handleInternalLink(type, value) {
+    async _handleInternalLink(type, value) {
         if (!value) return;
+
+        if (!await this._guardNavigation()) return;
 
         const ctx  = this._app?.getDatasetContext?.();
         const base = ctx?.type === 'edition'
@@ -646,6 +666,19 @@ export default class ChapterBody {
             ? `/explore/${ctx.editionId}/os`
             : '/elaborate/os';
         this._app.navigate(`${base}/${segment}/${id}`);
+    }
+
+    // =========================================================================
+    // Internal helpers
+    // =========================================================================
+
+    _destroyRichText() {
+        if (this._richText) {
+            this._richText.destroy();
+            this._richText = null;
+        }
+        this._dirty  = false;
+        this._saving = false;
     }
 
     _esc(str) {

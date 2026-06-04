@@ -116,6 +116,20 @@ export class App {
             return;
         }
 
+        // Guard: ask the current activity whether it is safe to leave.
+        // canDeactivate() returns false when the activity has unsaved changes and
+        // the user chose Cancel in the dialog. Only activities that implement it
+        // (currently ElaborateActivity, which forwards to NarrativeActivity).
+        // On block: restore _activeSegment so the Header tab reverts correctly.
+        if (this.currentActivity?.canDeactivate) {
+            const allowed = await this.currentActivity.canDeactivate();
+            if (!allowed) {
+                // Revert the segment the router already set before calling us
+                this.router._activeSegment = this.currentActivity.name ?? '';
+                return;
+            }
+        }
+
         try {
             let activity = this.activities.get(activityKey);
 
