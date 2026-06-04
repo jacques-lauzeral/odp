@@ -24,6 +24,17 @@
 import { errorHandler } from '../../../../shared/error-handler.js';
 import { normalizeId } from '../../../../shared/src/index.js';
 
+/**
+ * Extract the top-level topic key from a subtopic key.
+ * e.g. 'subtopic-2-1-0' → 'topic-2'
+ * @param {string} key
+ * @returns {string}
+ */
+function _topicKeyOf(key) {
+    const m = key.match(/^subtopic-(\d+)/);
+    return m ? `topic-${m[1]}` : key;
+}
+
 export default class ChapterToc {
     /**
      * @param {HTMLElement} container
@@ -34,6 +45,7 @@ export default class ChapterToc {
      * @param {Function} options.onOdipSelect          — (chapter) ODIP scope label click
      * @param {Function} options.onDive                — (chapter) dive into chapter
      * @param {Function} options.onClimb               — () climb back to ODIP scope
+     * @param {Function} options.onFocusOdip           — () transfer keyboard focus back to ODIP TOC
      * @param {Function} options.onChapterSelect       — (entry) chapter scope node click
      * @param {Function} options.buildOrderedChapters  — () → { chapter, depth }[]
      * @param {Function} options.onHierarchyChange     — (hierarchy) fired after each DnD mutation (Elaborate only)
@@ -53,6 +65,7 @@ export default class ChapterToc {
         this._onUnclassifiedChange = options.onUnclassifiedChange ?? (() => {});
         this._onAddTheme           = options.onAddTheme           ?? (() => {});
         this._onAddOStar           = options.onAddOStar           ?? (() => {});
+        this._onFocusOdip          = options.onFocusOdip          ?? (() => {});
 
         // ODIP scope state — all ids stored as normalizeId() integers
         this._collapsedIds  = new Set();
@@ -82,14 +95,15 @@ export default class ChapterToc {
         this._odipActiveId = selectedId != null ? normalizeId(selectedId) : null;
 
         this.container.innerHTML = `
-            <div class="chapter-toc chapter-toc--odip" id="chapterTocOdip">
+            <div class="chapter-toc chapter-toc--odip" id="chapterTocOdip" tabindex="0">
                 <div class="chapter-toc__tree" id="chapterTocTree"></div>
             </div>
         `;
 
         // Attach once on the stable shell — survives treeEl re-renders
-        this.container.querySelector('#chapterTocOdip')
-            .addEventListener('click', (e) => this._handleOdipClick(e));
+        const odipShell = this.container.querySelector('#chapterTocOdip');
+        odipShell.addEventListener('click',   (e) => this._handleOdipClick(e));
+        odipShell.addEventListener('keydown', (e) => this._handleOdipKeydown(e));
 
         this._renderOdipTree();
     }
@@ -150,8 +164,78 @@ export default class ChapterToc {
     }
 
     /**
-     * Find an O* item by id across all topics/subtopics in the hierarchy.
+     * Keyboard navigation for the ODIP TOC.
+     * ↑/↓  — move selection to prev/next visible chapter node
+     * →    — expand collapsed node; if already expanded, dive into chapter
+     * ←    — collapse expanded node
+     * Enter/Space — activate selected node (same as click)
      */
+    _handleOdipKeydown(e) {
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(e.key)) return;
+        e.preventDefault();
+
+        const treeEl   = this.container?.querySelector('#chapterTocTree');
+        if (!treeEl) return;
+
+        // Visible select buttons in DOM order
+        const nodes = Array.from(treeEl.querySelectorAll('button[data-action="select"]'));
+        if (nodes.length === 0) return;
+
+        const currentIdx = nodes.findIndex(n => parseInt(n.dataset.nid, 10) === this._odipActiveId);
+
+        if (e.key === 'ArrowDown') {
+            const next = nodes[currentIdx + 1] ?? nodes[0];
+            next.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return;
+        }
+
+        if (e.key === 'ArrowUp') {
+            const prev = nodes[currentIdx - 1] ?? nodes[nodes.length - 1];
+            prev.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return;
+        }
+
+        if (e.key === 'ArrowRight') {
+            if (currentIdx < 0) return;
+            const activeNode  = nodes[currentIdx];
+            const nid         = parseInt(activeNode.dataset.nid, 10);
+            const chapter     = this._resolveChapter(nid);
+            if (!chapter) return;
+            const code        = chapter.code;
+            const hasChildren = this._odipByParent?.has(code);
+            if (hasChildren && this._collapsedIds.has(code)) {
+                // Expand
+                this._collapsedIds.delete(code);
+                this._renderOdipTree();
+            } else {
+                // Dive into chapter
+                this._onDive(chapter);
+            }
+            return;
+        }
+
+        if (e.key === 'ArrowLeft') {
+            if (currentIdx < 0) return;
+            const activeNode = nodes[currentIdx];
+            const nid        = parseInt(activeNode.dataset.nid, 10);
+            const chapter    = this._resolveChapter(nid);
+            if (!chapter) return;
+            const code = chapter.code;
+            if (!this._collapsedIds.has(code)) {
+                this._collapsedIds.add(code);
+                if (this._odipActiveId != null &&
+                    this._isDescendant(this._odipActiveId, code, this._odipByParent)) {
+                    this._odipActiveId = nid;
+                }
+                this._renderOdipTree();
+            }
+            return;
+        }
+
+        if ((e.key === 'Enter' || e.key === ' ') && currentIdx >= 0) {
+            nodes[currentIdx].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+    }
     _findOStarById(itemId, hierarchy) {
         const search = (topics) => {
             for (const t of topics ?? []) {
@@ -259,14 +343,15 @@ export default class ChapterToc {
         const title = this._esc(chapter.title ?? chapter.code ?? '');
 
         this.container.innerHTML = `
-            <div class="chapter-toc chapter-toc--chapter" id="chapterTocChapter">
+            <div class="chapter-toc chapter-toc--chapter" id="chapterTocChapter" tabindex="0">
                 <div class="chapter-toc__tree" id="chapterTocTree"></div>
             </div>
         `;
 
         // Attach once on the stable shell — survives treeEl re-renders
         const shell = this.container.querySelector('#chapterTocChapter');
-        shell.addEventListener('click', (e) => this._handleChapterClick(e));
+        shell.addEventListener('click',   (e) => this._handleChapterClick(e));
+        shell.addEventListener('keydown', (e) => this._handleChapterKeydown(e));
 
         if (this._isEditable) {
             shell.addEventListener('dragstart',  (e) => this._handleDragStart(e));
@@ -349,6 +434,97 @@ export default class ChapterToc {
         }
         const btn = e.target.closest('.chapter-toc__entry');
         if (btn) this._handleChapterEntryClick(btn);
+    }
+
+    /**
+     * Keyboard navigation for the chapter TOC.
+     * ↑/↓  — move selection to prev/next visible entry
+     * →    — expand collapsed topic; if already expanded move to first child
+     * ←    — collapse expanded topic; if collapsed move to parent;
+     *         at top-level with nothing to do, transfer focus back to ODIP TOC
+     * Enter/Space — activate selected entry (same as click)
+     */
+    _handleChapterKeydown(e) {
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(e.key)) return;
+        e.preventDefault();
+
+        const treeEl = this.container?.querySelector('#chapterTocTree');
+        if (!treeEl) return;
+
+        // All visible entry buttons in DOM order
+        const nodes = Array.from(treeEl.querySelectorAll('button.chapter-toc__entry'));
+        if (nodes.length === 0) return;
+
+        const currentIdx = nodes.findIndex(n => n.dataset.key === this._activeKey);
+
+        if (e.key === 'ArrowDown') {
+            const next = nodes[currentIdx + 1] ?? nodes[0];
+            this._handleChapterEntryClick(next);
+            next.scrollIntoView({ block: 'nearest' });
+            return;
+        }
+
+        if (e.key === 'ArrowUp') {
+            const prev = nodes[currentIdx - 1] ?? nodes[nodes.length - 1];
+            this._handleChapterEntryClick(prev);
+            prev.scrollIntoView({ block: 'nearest' });
+            return;
+        }
+
+        if (e.key === 'ArrowRight') {
+            if (currentIdx < 0) return;
+            const key         = nodes[currentIdx].dataset.key;
+            const hasChildren = treeEl.querySelector(`[data-toggle-key="${CSS.escape(key)}"]`) != null;
+            if (hasChildren && this._collapsedTopics.has(key)) {
+                // Expand
+                this._collapsedTopics.delete(key);
+                this._renderChapterTree();
+                // Re-focus shell so arrow keys keep working after re-render
+                this.container?.querySelector('#chapterTocChapter')?.focus({ preventScroll: true });
+            } else if (hasChildren) {
+                // Move to first child
+                const firstChild = nodes[currentIdx + 1];
+                if (firstChild) {
+                    this._handleChapterEntryClick(firstChild);
+                    firstChild.scrollIntoView({ block: 'nearest' });
+                }
+            }
+            return;
+        }
+
+        if (e.key === 'ArrowLeft') {
+            if (currentIdx < 0) {
+                // Nothing selected — transfer focus to ODIP TOC
+                this._onFocusOdip();
+                return;
+            }
+            const key         = nodes[currentIdx].dataset.key;
+            const hasChildren = treeEl.querySelector(`[data-toggle-key="${CSS.escape(key)}"]`) != null;
+
+            if (hasChildren && !this._collapsedTopics.has(key)) {
+                // Collapse
+                this._collapsedTopics.add(key);
+                this._renderChapterTree();
+                this.container?.querySelector('#chapterTocChapter')?.focus({ preventScroll: true });
+            } else {
+                // Move to parent — find the entry whose key is a prefix of current key
+                const parent = nodes.slice(0, currentIdx).reverse()
+                    .find(n => key.startsWith(n.dataset.key + '-') ||
+                        (key.startsWith('subtopic-') && n.dataset.key === _topicKeyOf(key)));
+                if (parent) {
+                    this._handleChapterEntryClick(parent);
+                    parent.scrollIntoView({ block: 'nearest' });
+                } else {
+                    // At top level — transfer focus to ODIP TOC
+                    this._onFocusOdip();
+                }
+            }
+            return;
+        }
+
+        if ((e.key === 'Enter' || e.key === ' ') && currentIdx >= 0) {
+            this._handleChapterEntryClick(nodes[currentIdx]);
+        }
     }
 
     _renderTopic(topic, topicIndex, depth = 0) {

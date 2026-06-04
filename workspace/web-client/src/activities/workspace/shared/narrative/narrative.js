@@ -273,6 +273,7 @@ export default class NarrativeActivity {
             onOdipSelect:         (entry)   => this._handleOdipSelect(entry),
             onDive:               (chapter) => this._diveIntoChapter(chapter),
             onClimb:              ()        => this._climbToOdip(true),
+            onFocusOdip:          ()        => this.container?.querySelector('#chapterTocOdip')?.focus({ preventScroll: true }),
             onChapterSelect:      (entry)   => this._handleChapterTocSelect(entry),
             buildOrderedChapters: ()        => this._buildOrderedChapters(),
             onHierarchyChange:    (hier)    => this._handleHierarchyChange(hier),
