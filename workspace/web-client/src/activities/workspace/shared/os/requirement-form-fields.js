@@ -61,11 +61,8 @@ export const requirementReadConfig = {
         {
             title: 'Metadata',
             fields: [
-                { row: [
-                        { key: 'itemId'  },
-                        { key: 'version' },
-                    ],
-                    valueInline: true },
+                { key: 'itemId'  },
+                { key: 'version' },
                 { key: '_history' },
             ],
         },

@@ -437,7 +437,7 @@ export class CollectionEntityForm {
         if (field.type === 'reference-list') {
             const fieldId = `field-${field.key.replace(/\./g, '-')}`;
             return `
-                <div class="detail-field">
+                <div class="detail-field detail-field--block">
                     <label>${this.escapeHtml(field.label)}</label>
                     ${this.renderReferenceListField(field, fieldId, value, false)}
                 </div>
@@ -448,7 +448,7 @@ export class CollectionEntityForm {
         if (field.type === 'reference') {
             const fieldId = `field-${field.key.replace(/\./g, '-')}`;
             return `
-                <div class="detail-field">
+                <div class="detail-field detail-field--block">
                     <label>${this.escapeHtml(field.label)}</label>
                     ${this.renderReferenceField(field, fieldId, value, false)}
                 </div>
@@ -890,7 +890,7 @@ export class CollectionEntityForm {
     renderAnnotatedMultiselectReadOnly(field, value) {
         if (!value || !Array.isArray(value) || value.length === 0) {
             return `
-                <div class="detail-field">
+                <div class="detail-field detail-field--block">
                     <label>${this.escapeHtml(field.label)}</label>
                     <div class="detail-value">None</div>
                 </div>
@@ -922,7 +922,7 @@ export class CollectionEntityForm {
         }).join('');
 
         return `
-            <div class="detail-field">
+            <div class="detail-field detail-field--block">
                 <label>${this.escapeHtml(field.label)}</label>
                 <div class="detail-value annotated-ref-list">${formatted}</div>
             </div>
@@ -937,7 +937,7 @@ export class CollectionEntityForm {
         } catch (e) {
             console.warn(`Failed to parse richtext value for ${field.key}:`, e);
             return `
-                <div class="detail-field">
+                <div class="detail-field detail-field--block">
                     <label>${this.escapeHtml(field.label)}</label>
                     <div class="detail-value">${this.escapeHtml(value)}</div>
                 </div>
@@ -956,7 +956,7 @@ export class CollectionEntityForm {
         if (isEmpty) {
             if (!field.required) return '';
             return `
-                <div class="detail-field">
+                <div class="detail-field detail-field--block">
                     <label>${this.escapeHtml(field.label)}</label>
                     <div class="detail-value">-</div>
                 </div>
@@ -966,7 +966,7 @@ export class CollectionEntityForm {
         // Return placeholder that will be mounted with read-only RichTextComponent after DOM insertion
         const escapedJson = this.escapeHtml(JSON.stringify(docValue));
         return `
-            <div class="detail-field">
+            <div class="detail-field detail-field--block">
                 <label>${this.escapeHtml(field.label)}</label>
                 <div class="detail-value richtext-content">
                     <div class="richtext-readonly-placeholder" data-tiptap-json="${escapedJson}" data-field-key="${field.key}"></div>

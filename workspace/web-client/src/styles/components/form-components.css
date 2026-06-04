@@ -65,11 +65,9 @@
 
 .detail-field label {
     display: block;
-    font-size: var(--font-size-xs, 0.75rem);
-    font-weight: var(--font-weight-semibold, 600);
+    font-size: var(--font-size-sm, 0.875rem);
+    font-weight: var(--font-weight-medium, 500);
     color: var(--text-secondary, #4b5563);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     margin-bottom: 2px;
 }
 
@@ -77,6 +75,12 @@
     font-size: var(--font-size-sm, 0.875rem);
     color: var(--text-primary, #111827);
     line-height: 1.5;
+}
+
+/* Block fields (richtext, reference lists, milestones) — indent content */
+.detail-field--block .detail-value {
+    margin-top: var(--space-1, 0.25rem);
+    padding-left: var(--space-3, 0.75rem);
 }
 
 /* Tag Selector Component */
@@ -845,27 +849,6 @@
 
 .detail-field.richtext-field label {
     margin-bottom: var(--space-2);
-}
-
-/* Also target the parent detail-value container for richtext */
-/* Compact richtext in read-only mode */
-.detail-value.richtext-content {
-    padding: 0 !important;
-    margin: 0 !important;
-    line-height: normal !important;
-    min-height: 0 !important;
-    height: auto !important;
-    white-space: normal !important;
-}
-
-.detail-value.richtext-content > * {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-.detail-value.richtext-content.richtext-placeholder {
-    margin: 0;
-    padding: 0;
 }
 
 /* Override detail-value padding for richtext in read mode */
