@@ -508,7 +508,8 @@ export default class OsActivity {
                 ? (chapters.find(c => c.domain === item.domain) ?? null)
                 : null;
             if (chapter) {
-                this.app.navigate(`${base}/${normalizeId(chapter.itemId)}?o-star=${itemId}`);
+                const param  = item.type === 'ON' ? 'on' : item.type === 'OR' ? 'or' : 'oc';
+                this.app.navigate(`${base}/${normalizeId(chapter.itemId)}?${param}=${itemId}`);
             } else {
                 this.app.navigate(base);
             }

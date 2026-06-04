@@ -120,12 +120,16 @@ export default class NarrativeActivity {
                 ?? null;
             if (chapter) {
                 await this._diveIntoChapter(chapter, /* pushState */ false);
-                // Consume one-shot query params — ?theme and ?o-star are mutually exclusive
+                // Consume one-shot query params — ?theme and ?on/?or/?oc are mutually exclusive
                 const sp      = new URLSearchParams(window.location.search);
                 const topic   = sp.get('theme');
-                const ostarId = sp.get('o-star');
-                if (topic)   this._selectTopic(topic);
-                if (ostarId) await this._selectOStar(ostarId);
+                const onId    = sp.get('on');
+                const orId    = sp.get('or');
+                const ocId    = sp.get('oc');
+                if (topic)       this._selectTopic(topic);
+                else if (onId)   await this._selectOStar(onId, 'ON');
+                else if (orId)   await this._selectOStar(orId, 'OR');
+                else if (ocId)   await this._selectOStar(ocId, 'OC');
                 return;
             }
         }
@@ -162,12 +166,16 @@ export default class NarrativeActivity {
         }
 
         await this._diveIntoChapter(chapter, /* pushState */ false);
-        // Consume one-shot query params — ?theme and ?o-star are mutually exclusive
+        // Consume one-shot query params — ?theme and ?on/?or/?oc are mutually exclusive
         const sp      = new URLSearchParams(window.location.search);
         const topic   = sp.get('theme');
-        const ostarId = sp.get('o-star');
-        if (topic)   this._selectTopic(topic);
-        if (ostarId) await this._selectOStar(ostarId);
+        const onId    = sp.get('on');
+        const orId    = sp.get('or');
+        const ocId    = sp.get('oc');
+        if (topic)       this._selectTopic(topic);
+        else if (onId)   await this._selectOStar(onId, 'ON');
+        else if (orId)   await this._selectOStar(orId, 'OR');
+        else if (ocId)   await this._selectOStar(ocId, 'OC');
     }
 
     async cleanup() {
@@ -343,29 +351,21 @@ export default class NarrativeActivity {
 
     /**
      * Select an O* in the chapter TOC by its itemId and render it in the body.
-     * Called after diving into a chapter via an ?o-star= query param.
+     * Called after diving into a chapter via a typed query param (?on=, ?or=, ?oc=).
      * Expands ancestor topics in the TOC via setActiveByItemId(), then renders
      * the O* detail view in the body panel.
      * @param {string|number} ostarId
      * @private
      */
-    async _selectOStar(ostarId) {
+    async _selectOStar(ostarId, type) {
         if (!this._selectedChapter || !ostarId) return;
         const id = parseInt(ostarId, 10);
         if (!Number.isFinite(id)) return;
 
-        // Expand ancestors and highlight the O* entry in the TOC
         this._toc.setActiveByItemId(id);
 
-        // Resolve type from the O* summary cache; fall back to 'OR'
-        let type = 'OR';
-        try {
-            const summary = await this.app.findOStar(String(id));
-            if (summary?.type) type = summary.type.toUpperCase();
-        } catch { /* keep default */ }
-
         this._body.renderSelectionRead(
-            { type: 'ostar', ostar: { id, type } },
+            { type: 'ostar', ostar: { id, type: type.toUpperCase() } },
             this._selectedChapter,
         );
     }

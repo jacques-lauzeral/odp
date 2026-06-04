@@ -722,8 +722,20 @@ export class CollectionEntityForm {
                 ? field.compute(this.currentItem)
                 : this.getFieldValue(this.currentItem, field);
 
-            this.getFieldOptions(field).then(options => {
-                const isReadOnly = this.currentMode === 'read' || field.readOnly === true;
+            const isReadOnly = this.currentMode === 'read' || field.readOnly === true;
+
+            // For read-only derived fields (refinedBy, implementedByORs, implementedByOCs, etc.)
+            // the extended projection already returns full objects {id, title, code, type}.
+            // Synthesise options directly from the value rather than fetching a full catalog —
+            // no separate options method is needed and there is no ID-without-label mismatch.
+            const optionsPromise = (isReadOnly && Array.isArray(value) && value.length > 0 && value[0]?.title != null)
+                ? Promise.resolve(value.map(r => ({
+                    value: r.id ?? r.itemId,
+                    label: r.code ? `${r.code} \u2014 ${r.title}` : (r.title ?? String(r.id ?? r.itemId)),
+                })))
+                : this.getFieldOptions(field);
+
+            optionsPromise.then(options => {
                 const onNavigate = this.onNavigate;
                 const manager = new ReferenceListManager({
                     fieldId: fieldId,
