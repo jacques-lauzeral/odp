@@ -287,6 +287,8 @@ export default class NarrativeActivity {
             onSaved:                (_id) => { /* versionId updated in place */ },
             onChapterSelect:        (entry) => this._handleChapterTocSelect(entry),
             onTopicNarrativeSave:   (topicId, narrative) => this._handleTopicNarrativeSave(topicId, narrative),
+            onTopicTitleSave:       (topicId, title)     => this._handleTopicTitleSave(topicId, title),
+            onThemeDelete:          (topicId)             => this._handleThemeDelete(topicId),
             onOStarSaved:           (result, mode) => this._handleOStarSaved(result, mode),
         });
     }
@@ -509,14 +511,10 @@ export default class NarrativeActivity {
             return;
         }
 
-        // Use the render-shape hierarchy passed by ChapterToc directly.
-        // Re-parsing from chapter.osHierarchy would lose code/title if the PATCH
-        // response contains write-shape (integer) arrays instead of enriched objects.
+        // DnD reorder uses the render-shape hierarchy passed by ChapterToc directly —
+        // the TOC already holds the mutated state; no re-parse needed.
         this._toc._hierarchy = hierarchy;
-
-        // Mark chapter as needing a fresh server fetch on next dive so the
-        // in-memory osHierarchy is re-enriched from the server projection.
-        chapter._fullyLoaded = false;
+        chapter._fullyLoaded = true;
 
         // Recompute unclassified from the updated O* cache and re-render.
         const unassigned = await this._computeUnassignedOStars(chapter);
@@ -599,10 +597,7 @@ export default class NarrativeActivity {
             });
 
             if (updated?.versionId) chapter.versionId = updated.versionId;
-
-            // Re-fetch to get guaranteed enriched osHierarchy
-            const enriched = await apiClient.getChapter(chapter.itemId);
-            this._mergeChapterConfig(chapter, enriched);
+            if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
             chapter._fullyLoaded = true;
 
             const unassigned = await this._computeUnassignedOStars(chapter);
@@ -782,10 +777,7 @@ export default class NarrativeActivity {
             });
 
             if (updated?.versionId) chapter.versionId = updated.versionId;
-
-            // Re-fetch to get guaranteed enriched osHierarchy (PATCH response may return write-shape)
-            const enriched = await apiClient.getChapter(chapter.itemId);
-            this._mergeChapterConfig(chapter, enriched);
+            if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
             chapter._fullyLoaded = true;
 
             // Invalidate O* cache so new entity appears
@@ -871,6 +863,93 @@ export default class NarrativeActivity {
         if (liveNode) liveNode.narrative = narrative;
     }
 
+    /**
+     * Called by ChapterBody when user commits an edited topic title (blur / Enter).
+     * Uses fetch-fresh pattern: GET latest chapter, mutate topic label, PATCH.
+     * Also syncs the label in the live TOC hierarchy and calls refreshTree().
+     * @param {string} topicId
+     * @param {string} title
+     */
+    async _handleTopicTitleSave(topicId, title) {
+        const chapter = this._selectedChapter;
+        if (!chapter) throw new Error('No chapter selected');
+
+        const fresh = await apiClient.getChapter(chapter.itemId);
+        this._mergeChapterConfig(chapter, fresh);
+
+        const hierarchy = this._toc._parseHierarchy(fresh);
+
+        const found = this._findTopicById(hierarchy, topicId);
+        if (!found) throw new Error(`Topic ${topicId} not found in hierarchy`);
+        found.topic = title;
+
+        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+        const updated = await apiClient.patchChapter(fresh.itemId, {
+            osHierarchy:       { topics: writeTopics },
+            expectedVersionId: fresh.versionId,
+        });
+
+        if (updated?.versionId) chapter.versionId = updated.versionId;
+        if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
+        chapter._fullyLoaded = true;
+
+        // Sync title into live _hierarchy and refresh TOC label
+        const liveNode = this._findTopicById(this._toc._hierarchy, topicId);
+        if (liveNode) liveNode.topic = title;
+        this._toc.refreshTree();
+    }
+
+    /**
+     * Called by ChapterBody when user clicks "Delete theme" on an empty topic.
+     * Uses fetch-fresh pattern: GET latest chapter, remove topic node, PATCH.
+     * Falls back to chapter narrative view after deletion.
+     * Guard: refuses to delete if the topic still has items or subtopics (defensive,
+     * the button should not appear in that case).
+     * @param {string} topicId
+     */
+    async _handleThemeDelete(topicId) {
+        const chapter = this._selectedChapter;
+        if (!chapter) return;
+
+        try {
+            const fresh = await apiClient.getChapter(chapter.itemId);
+            this._mergeChapterConfig(chapter, fresh);
+
+            const hierarchy = this._toc._parseHierarchy(fresh);
+
+            // Defensive guard — refuse to delete a non-empty topic
+            const target = this._findTopicById(hierarchy, topicId);
+            if (!target) return;
+            if ((target.items?.length ?? 0) > 0 || (target.subTopics?.length ?? 0) > 0) {
+                console.warn('[NarrativeActivity] _handleThemeDelete: topic is not empty, aborting');
+                return;
+            }
+
+            const removed = this._removeTopicById(hierarchy, topicId);
+            if (!removed) return;
+
+            const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+            const updated = await apiClient.patchChapter(fresh.itemId, {
+                osHierarchy:       { topics: writeTopics },
+                expectedVersionId: fresh.versionId,
+            });
+
+            if (updated?.versionId) chapter.versionId = updated.versionId;
+            if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
+            chapter._fullyLoaded = true;
+
+            // Rebuild TOC and navigate body back to chapter narrative
+            const unassigned = await this._computeUnassignedOStars(chapter);
+            this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+            this._toc._unassignedOStars = unassigned;
+            this._toc.refreshTree();
+            this._toc.setActiveKey(null);
+            this._body.renderSelectionRead({ type: 'chapter' }, chapter);
+        } catch (error) {
+            errorHandler.handle(error, 'narrative-theme-delete');
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Hierarchy utilities
     // -------------------------------------------------------------------------
@@ -918,6 +997,24 @@ export default class NarrativeActivity {
             if (found) return found;
         }
         return null;
+    }
+
+    /**
+     * DFS removal of a topic node by its stable id string.
+     * Mutates the array in place. Returns true if the node was found and removed.
+     * @param {object[]} nodes
+     * @param {string}   topicId
+     * @returns {boolean}
+     */
+    _removeTopicById(nodes, topicId) {
+        for (let i = 0; i < (nodes?.length ?? 0); i++) {
+            if (String(nodes[i].id) === String(topicId)) {
+                nodes.splice(i, 1);
+                return true;
+            }
+            if (this._removeTopicById(nodes[i].subTopics ?? [], topicId)) return true;
+        }
+        return false;
     }
 
     /**

@@ -62,6 +62,24 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
+     * @override — enriches the response after the base write so PUT returns
+     * the same read-shape as GET (osHierarchy items as {id, type, code, title}).
+     */
+    async update(itemId, payload, expectedVersionId, userId) {
+        await super.update(itemId, payload, expectedVersionId, userId);
+        return this.getById(itemId, userId);
+    }
+
+    /**
+     * @override — enriches the response after the base write so PATCH returns
+     * the same read-shape as GET (osHierarchy items as {id, type, code, title}).
+     */
+    async patch(itemId, patchPayload, expectedVersionId, userId) {
+        await super.patch(itemId, patchPayload, expectedVersionId, userId);
+        return this.getById(itemId, userId);
+    }
+
+    /**
      * @override — merges config fields and enriches osHierarchy after store read.
      */
     async getById(itemId, userId, editionId = null, projection = 'extended') {

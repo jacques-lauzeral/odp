@@ -257,6 +257,15 @@
     overflow-y: auto;
 }
 
+/* ── Topic title input (Elaborate — replaces h3 heading) ── */
+.chapter-body__topic-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: var(--font-weight-medium);
+    color: var(--ec-navy, #1F3864);
+}
+
 /* ── Body header ── */
 .chapter-body__header {
     display: flex;

@@ -36,6 +36,8 @@ export default class ChapterBody {
         this._onSaved                = options.onSaved                ?? (() => {});
         this._onChapterSelect        = options.onChapterSelect        ?? (() => {});
         this._onTopicNarrativeSave   = options.onTopicNarrativeSave   ?? (() => {});
+        this._onTopicTitleSave       = options.onTopicTitleSave       ?? (() => {});
+        this._onThemeDelete          = options.onThemeDelete          ?? (() => {});
         this._onOStarSaved           = options.onOStarSaved           ?? (() => {});
 
         this._richText       = null;
@@ -144,22 +146,35 @@ export default class ChapterBody {
     }
 
     _renderTopic(topic) {
-        const items     = topic?.items ?? [];
-        const title     = this._esc(topic?.topic ?? '');
-        const narrative = topic?.narrative ?? null;
-        const editable  = this._isEditable;
-        const topicId   = topic?.id ?? null;
+        const items      = topic?.items     ?? [];
+        const subTopics  = topic?.subTopics ?? [];
+        const title      = topic?.topic     ?? '';
+        const narrative  = topic?.narrative ?? null;
+        const editable   = this._isEditable;
+        const topicId    = topic?.id        ?? null;
+        const isEmpty    = items.length === 0 && subTopics.length === 0;
 
         this.container.innerHTML = `
             <div class="chapter-body chapter-body--padded">
                 <div class="chapter-body__header">
-                    <h3 class="chapter-body__title chapter-body__title--topic">${title}</h3>
                     ${editable ? `
+                        <input class="odip-input chapter-body__topic-title"
+                               id="topicTitleInput"
+                               type="text"
+                               value="${this._esc(title)}"
+                               placeholder="Theme title…"
+                               maxlength="200" />
                         <div class="chapter-body__actions">
+                            ${isEmpty ? `
+                                <button class="odip-btn odip-btn--danger chapter-body__topic-delete"
+                                        title="Delete this theme">Delete theme</button>
+                            ` : ''}
                             <button class="odip-btn odip-btn--primary chapter-body__topic-save" disabled>Save</button>
                             <span class="chapter-body__status"></span>
                         </div>
-                    ` : ''}
+                    ` : `
+                        <h3 class="chapter-body__title chapter-body__title--topic">${this._esc(title)}</h3>
+                    `}
                 </div>
                 <div class="chapter-body__topic-narrative">
                     <div id="topicNarrativeEditor" class="chapter-body__editor"></div>
@@ -171,6 +186,38 @@ export default class ChapterBody {
                 </div>
             </div>
         `;
+
+        // Title input — save on blur or Enter
+        if (editable) {
+            const titleInput = this.container.querySelector('#topicTitleInput');
+            if (titleInput) {
+                const markDirty = () => {
+                    this._dirty = true;
+                    const saveBtn = this.container?.querySelector('.chapter-body__topic-save');
+                    if (saveBtn) saveBtn.disabled = false;
+                };
+                titleInput.addEventListener('input', markDirty);
+                titleInput.addEventListener('blur', () => {
+                    if (this._dirty) this._saveTopicTitle(topicId, titleInput);
+                });
+                titleInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); titleInput.blur(); }
+                    if (e.key === 'Escape') {
+                        titleInput.value = title;  // revert
+                        this._dirty = false;
+                        const saveBtn = this.container?.querySelector('.chapter-body__topic-save');
+                        if (saveBtn) saveBtn.disabled = true;
+                        titleInput.blur();
+                    }
+                });
+            }
+
+            this.container.querySelector('.chapter-body__topic-delete')
+                ?.addEventListener('click', () => this._deleteTheme(topicId));
+
+            this.container.querySelector('.chapter-body__topic-save')
+                ?.addEventListener('click', () => this._saveTopicNarrative(topic, topicId));
+        }
 
         const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
 
@@ -194,9 +241,6 @@ export default class ChapterBody {
             if (narrative) {
                 this._richText.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
             }
-
-            this.container.querySelector('.chapter-body__topic-save')
-                ?.addEventListener('click', () => this._saveTopicNarrative(topic, topicId));
         } else {
             if (narrative) {
                 const rt = new RichTextComponent({ readOnly: true });
@@ -395,6 +439,56 @@ export default class ChapterBody {
             if (statusEl2) statusEl2.textContent = '⚠ Save failed';
             if (saveBtn2)  saveBtn2.disabled = false;
         }
+    }
+
+    /**
+     * Save an edited topic title on blur/Enter.
+     * Delegates to NarrativeActivity via onTopicTitleSave.
+     * @param {string} topicId
+     * @param {HTMLInputElement} inputEl
+     */
+    async _saveTopicTitle(topicId, inputEl) {
+        if (this._saving) return;
+        const newTitle = inputEl.value.trim();
+        if (!newTitle) {
+            // Revert to original value if left empty
+            inputEl.value = inputEl.defaultValue;
+            this._dirty = false;
+            const saveBtn = this.container?.querySelector('.chapter-body__topic-save');
+            if (saveBtn) saveBtn.disabled = true;
+            return;
+        }
+
+        this._saving = true;
+        const statusEl = this.container?.querySelector('.chapter-body__status');
+        if (statusEl) statusEl.textContent = 'Saving…';
+
+        try {
+            await this._onTopicTitleSave(topicId, newTitle);
+            // Update the input's baseline value so a subsequent blur doesn't re-save
+            inputEl.defaultValue = newTitle;
+            this._dirty  = false;
+            this._saving = false;
+            if (statusEl) {
+                statusEl.textContent = '✓ Saved';
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+            }
+        } catch (error) {
+            this._saving = false;
+            errorHandler.handle(error, 'chapter-body-topic-title-save');
+            const statusEl2 = this.container?.querySelector('.chapter-body__status');
+            if (statusEl2) statusEl2.textContent = '⚠ Save failed';
+        }
+    }
+
+    /**
+     * Delete the current empty theme topic.
+     * Delegates to NarrativeActivity via onThemeDelete.
+     * @param {string} topicId
+     */
+    async _deleteTheme(topicId) {
+        if (this._saving) return;
+        await this._onThemeDelete(topicId);
     }
 
     /**
