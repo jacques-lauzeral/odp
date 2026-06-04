@@ -298,7 +298,7 @@ export default class ChapterToc {
                         <button class="chapter-toc__chapter-label" data-action="select" data-nid="${nid}"
                                 title="${title}">${title}</button>
                         <button class="chapter-toc__dive-btn" data-action="dive" data-nid="${nid}"
-                                title="Open chapter">→</button>
+                                title="Open chapter">»</button>
                     </div>
                     ${subtree}
                 </div>`;

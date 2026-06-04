@@ -550,25 +550,21 @@
 .chapter-toc__dive-btn {
     flex-shrink: 0;
     background: none;
-    border: 0.5px solid transparent;
+    border: none;
     cursor: pointer;
-    font-size: 11px;
-    color: var(--text-tertiary);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    opacity: 0.45;
-    transition: opacity var(--transition-fast), color var(--transition-fast),
-    background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.chapter-toc__chapter-row:hover .chapter-toc__dive-btn {
-    opacity: 1;
-}
-
-.chapter-toc__dive-btn:hover {
+    font-size: 13px;
+    font-weight: var(--font-weight-bold, 700);
     color: var(--ec-blue, #2E75B6);
-    background: var(--ec-light, #EBF3FB);
-    border-color: var(--ec-sky, #BDD7EE);
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    opacity: 0.55;
+    transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.chapter-toc__chapter-row:hover .chapter-toc__dive-btn,
+.chapter-toc__dive-btn:hover {
+    opacity: 1;
+    color: var(--ec-navy, #1F3864);
 }
 
 /* Children container */
