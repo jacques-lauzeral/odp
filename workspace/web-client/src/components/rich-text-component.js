@@ -419,6 +419,7 @@ export default class RichTextComponent {
     _createHeadingGroup() {
         const select = document.createElement('select');
         select.className = 'rich-text-component__toolbar-select';
+        select.tabIndex = -1;
         select.title = 'Block style';
         [
             { value: 'normal', label: 'Normal' },
@@ -511,6 +512,7 @@ export default class RichTextComponent {
 
         const btn = document.createElement('button');
         btn.type = 'button';
+        btn.tabIndex = -1;
         btn.className = 'odip-btn rich-text-component__toolbar-btn rich-text-component__menu-trigger';
         btn.title = label;
         btn.textContent = `${label} ▾`;
@@ -528,6 +530,7 @@ export default class RichTextComponent {
             }
             const itemEl = document.createElement('button');
             itemEl.type = 'button';
+            itemEl.tabIndex = -1;
             itemEl.className = 'rich-text-component__dropdown-item';
             itemEl.textContent = item.label;
             itemEl.addEventListener('mousedown', (e) => {
@@ -582,6 +585,7 @@ export default class RichTextComponent {
     _btn(name, label, title, onClick) {
         const btn = document.createElement('button');
         btn.type = 'button';
+        btn.tabIndex = -1;
         btn.className = 'odip-btn rich-text-component__toolbar-btn';
         btn.dataset.action = name;
         btn.title = title;
