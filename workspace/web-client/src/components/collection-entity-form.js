@@ -4,6 +4,7 @@ import ReferenceListManager from './reference-list-manager.js';
 import ReferenceManager from './reference-manager.js';
 import RichTextComponent from './rich-text-component.js';
 import { buildLinkProvider } from './link-provider.js';
+import { odipConfirm } from './user-dialogs.js';
 
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
@@ -149,7 +150,7 @@ export class CollectionEntityForm {
         return null;
     }
 
-    getFormTitle(mode) {
+    getFormTitle(mode, item = null) {
         // Override in subclasses for custom titles
         switch (mode) {
             case 'create':
@@ -502,23 +503,27 @@ export class CollectionEntityForm {
         const fieldId = `field-${field.key.replace(/\./g, '-')}`;
         const required = field.required ? 'required' : '';
 
-        let html = `<div class="form-group" data-field="${field.key}">`;
+        // Scalar types render label left-of-input; spatially extended types render label above.
+        const SCALAR_TYPES = new Set(['text', 'number', 'select', 'tentative', 'reference']);
+        const isInline = SCALAR_TYPES.has(field.type);
+
+        let html = `<div class="form-group${isInline ? ' form-group--inline' : ''}" data-field="${field.key}">`;
 
         // Label
         html += `<label for="${fieldId}">${this.escapeHtml(field.label)}`;
         if (field.required) html += ' <span class="required">*</span>';
         html += `</label>`;
 
-        // Help text above field
-        if (field.helpTextAbove) {
+        // Help text above field (not shown for inline scalar fields — placeholder carries the hint)
+        if (field.helpTextAbove && !isInline) {
             html += `<small class="form-text">${this.escapeHtml(field.helpTextAbove)}</small>`;
         }
 
         // Render input based on type
         html += await this.renderInput(field, fieldId, value, required);
 
-        // Help text below field
-        if (field.helpText) {
+        // Help text below field (suppressed for inline scalar fields)
+        if (field.helpText && !isInline) {
             html += `<small class="form-text">${this.escapeHtml(field.helpText)}</small>`;
         }
 
@@ -1359,7 +1364,7 @@ export class CollectionEntityForm {
 
     showModal(formContent, mode, isNested = false) {
         console.log("CollectionEntityForm.showModal - mode:", mode, "isNested:", isNested);
-        const title = this.getFormTitle(mode);
+        const title = this.getFormTitle(mode, this.currentItem);
         const showFooter = mode !== 'read';
         const modalId = `${mode}-modal-${Date.now()}`;
 
@@ -2050,9 +2055,10 @@ export class CollectionEntityForm {
                     if (!input) continue;
                     let prevValue = input.value;
                     input.addEventListener('focus', () => { prevValue = input.value; });
-                    input.addEventListener('change', (evt) => {
-                        const confirmed = window.confirm(
-                            `Changing this field may have significant consequences on related entities.\n\nDo you want to continue?`
+                    input.addEventListener('change', async (evt) => {
+                        const type = this.currentItem?.type ?? 'item';
+                        const confirmed = await odipConfirm(
+                            `Do you really want to re-assign this ${type} to another domain?`
                         );
                         if (!confirmed) {
                             input.value = prevValue;

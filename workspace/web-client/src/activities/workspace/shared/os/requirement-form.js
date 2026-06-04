@@ -73,10 +73,12 @@ export default class RequirementForm extends CollectionEntityForm {
         return hydrated;
     }
 
-    getFormTitle(mode) {
-        const type = mode === 'create' ? this._forcedType : this.currentItem?.type;
-        if (type && (mode === 'create' || mode === 'edit')) {
-            return `${mode === 'create' ? 'Create' : 'Edit'} ${type}`;
+    getFormTitle(mode, item = null) {
+        const type = mode === 'create' ? this._forcedType : item?.type;
+        if (mode === 'create' && type) return `Create ${type}`;
+        if (mode === 'edit' && item) {
+            const label = item.code && item.title ? `${item.code} — ${item.title}` : (item.title ?? item.code ?? '');
+            return label ? `Edit ${label}` : `Edit ${type ?? 'O*'}`;
         }
         return requirementFormTitles[mode] || requirementFormTitles.default;
     }
@@ -557,19 +559,19 @@ export default class RequirementForm extends CollectionEntityForm {
         const orOnlyFields = ['implementedONs', 'dependencies', 'impactedStakeholders', 'nfrs'];
         orOnlyFields.forEach(fieldKey => {
             const el = this.currentModal?.querySelector(`[data-field="${fieldKey}"]`);
-            if (el) el.style.display = type === 'OR' ? 'block' : 'none';
+            if (el) el.classList.toggle('hidden', type !== 'OR');
         });
 
         // Fields that are ON-only (strategicDocuments excluded: data-driven via visibleWhen)
         const onOnlyFields = ['tentative'];
         onOnlyFields.forEach(fieldKey => {
             const el = this.currentModal?.querySelector(`[data-field="${fieldKey}"]`);
-            if (el) el.style.display = type === 'ON' ? 'block' : 'none';
+            if (el) el.classList.toggle('hidden', type !== 'ON');
         });
 
         // Section-level visibility for "Operational Need" section
         const onSection = this.currentModal?.querySelector('[data-section="Operational Need"]');
-        if (onSection) onSection.style.display = type === 'ON' ? 'block' : 'none';
+        if (onSection) onSection.classList.toggle('hidden', type !== 'ON');
 
         // Clear OR-only fields when switching to ON
         if (type === 'ON') {

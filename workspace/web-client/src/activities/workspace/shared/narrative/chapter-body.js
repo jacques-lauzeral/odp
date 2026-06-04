@@ -20,6 +20,7 @@ import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
 import RichTextComponent from '../../../../components/rich-text-component.js';
 import { buildLinkProvider } from '../../../../components/link-provider.js';
+import { odipConfirm } from '../../../../components/user-dialogs.js';
 
 export default class ChapterBody {
     /**
@@ -518,6 +519,8 @@ export default class ChapterBody {
      */
     async _deleteTheme(topicId) {
         if (this._saving) return;
+        const confirmed = await odipConfirm('Do you really want to delete this theme?');
+        if (!confirmed) return;
         await this._onThemeDelete(topicId);
     }
 

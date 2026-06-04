@@ -91,37 +91,32 @@ export const requirementEditConfig = {
             title: 'Main',
             fields: [
                 {
-                    row: [
-                        {
-                            key: 'domain',
-                            label: 'Domain',
-                            type: 'select',
-                            required: true,
-                            optionsKey: 'getDomainOptions',
-                            helpText: 'Select the domain for this requirement',
-                            formatKey: 'formatDomain',
-                            confirmOnChange: true,
-                        },
-                        {
-                            key: 'title',
-                            label: 'Title',
-                            type: 'text',
-                            required: true,
-                            placeholder: 'Enter a clear, concise title for this requirement',
-                            validate: (value) => {
-                                if (!value || value.length < 4) return {
-                                    valid: false,
-                                    message: 'Title must be at least 4 characters long'
-                                };
-                                if (value.length > 200) return {
-                                    valid: false,
-                                    message: 'Title must be less than 200 characters'
-                                };
-                                return {valid: true};
-                            },
-                        }
-                    ],
-                    valueInline: true
+                    key: 'domain',
+                    label: 'Domain',
+                    type: 'select',
+                    required: true,
+                    optionsKey: 'getDomainOptions',
+                    helpText: 'Select the domain for this requirement',
+                    formatKey: 'formatDomain',
+                    confirmOnChange: true,
+                },
+                {
+                    key: 'title',
+                    label: 'Title',
+                    type: 'text',
+                    required: true,
+                    placeholder: 'Enter a clear, concise title for this requirement',
+                    validate: (value) => {
+                        if (!value || value.length < 4) return {
+                            valid: false,
+                            message: 'Title must be at least 4 characters long'
+                        };
+                        if (value.length > 200) return {
+                            valid: false,
+                            message: 'Title must be less than 200 characters'
+                        };
+                        return {valid: true};
+                    },
                 },
                 {
                     key: 'refinesParents',
@@ -145,27 +140,24 @@ export const requirementEditConfig = {
                     formatKey: 'formatEntityReferences',
                     formatArgs: ['ON'],
                 },
-                { row: [
-                        {
-                            key: 'maturity',
-                            label: 'Maturity',
-                            type: 'select',
-                            required: true,
-                            optionsKey: 'getMaturityOptions',
-                            helpText: 'Maturity level of this requirement',
-                        },
-                        {
-                            key: 'tentative',
-                            label: 'Tentative Implementation Time',
-                            type: 'tentative',
-                            required: false,
-                            visibleWhen: 'ON',
-                            placeholder: 'e.g. 2026 or 2026-2028',
-                            helpText: 'Year or year range (YYYY or YYYY-ZZZZ). A single year means start = end.',
-                            formatKey: 'formatTentative',
-                        },
-                    ],
-                    valueInline: true },
+                {
+                    key: 'maturity',
+                    label: 'Maturity',
+                    type: 'select',
+                    required: true,
+                    optionsKey: 'getMaturityOptions',
+                    helpText: 'Maturity level of this requirement',
+                },
+                {
+                    key: 'tentative',
+                    label: 'Tentative Implementation Time',
+                    type: 'tentative',
+                    required: false,
+                    visibleWhen: 'ON',
+                    placeholder: 'e.g. 2026 or 2026-2028',
+                    helpText: 'Year or year range (YYYY or YYYY-ZZZZ). A single year means start = end.',
+                    formatKey: 'formatTentative',
+                },
                 {
                     key: 'statement',
                     label: 'Statement',
@@ -305,10 +297,8 @@ export const requirementEditConfig = {
             title: 'Metadata',
             modes: ['edit'],
             fields: [
-                { row: [
-                        { key: 'itemId',  label: 'ID',      type: 'text', readOnly: true },
-                        { key: 'version', label: 'Version', type: 'text', readOnly: true },
-                    ]},
+                { key: 'itemId',  label: 'ID',      type: 'text', readOnly: true },
+                { key: 'version', label: 'Version', type: 'text', readOnly: true },
                 { key: '_history', label: 'Version History', type: 'history', readOnly: true },
             ],
         },

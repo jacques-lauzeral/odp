@@ -95,9 +95,12 @@ export default class ChangeForm extends CollectionEntityForm {
         return hydrated;
     }
 
-    getFormTitle(mode) {
+    getFormTitle(mode, item = null) {
         if (mode === 'create') return 'Create OC';
-        if (mode === 'edit')   return 'Edit OC';
+        if (mode === 'edit' && item) {
+            const label = item.code && item.title ? `${item.code} — ${item.title}` : (item.title ?? item.code ?? '');
+            return label ? `Edit ${label}` : 'Edit OC';
+        }
         return changeFormTitles[mode] || changeFormTitles.default;
     }
 
