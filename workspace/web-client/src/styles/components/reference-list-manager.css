@@ -252,13 +252,6 @@
     text-align: left;
 }
 
-.detail-field .reference-manager .selected-chip::before {
-    content: "•";
-    color: var(--text-secondary);
-    flex-shrink: 0;
-    text-decoration: none;
-}
-
 .detail-field .reference-manager .selected-chip--link {
     color: var(--link-color);
     cursor: pointer;
