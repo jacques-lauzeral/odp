@@ -171,3 +171,10 @@
 
 /* ── Detail action buttons ── */
 /* Use: <button class="odip-btn"> / <button class="odip-btn odip-btn--primary"> */
+/* ── FilterBar nested inside os-toolbar — strip standalone bar chrome ── */
+.os-toolbar .filter-bar {
+    padding: 0;
+    border-bottom: none;
+    background: transparent;
+    min-height: 0;
+}

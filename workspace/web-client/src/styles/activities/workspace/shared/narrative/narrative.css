@@ -231,6 +231,14 @@
     padding: var(--space-5) var(--space-6);
 }
 
+/* Read-only presentation (ODIP scope, Explore):
+   let master-detail__detail own the scroll — body grows naturally */
+.chapter-body--readonly {
+    height: auto;
+    overflow: visible;
+    min-height: 0;
+}
+
 .chapter-body--padded {
     padding: var(--space-5) var(--space-6);
 }

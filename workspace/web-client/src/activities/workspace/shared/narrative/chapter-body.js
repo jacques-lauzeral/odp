@@ -136,7 +136,7 @@ export default class ChapterBody {
         const title = this._esc(chapter.title ?? chapter.code ?? '');
 
         this.container.innerHTML = `
-            <div class="chapter-body chapter-body--padded">
+            <div class="chapter-body chapter-body--padded${editable ? '' : ' chapter-body--readonly'}">
                 <div class="chapter-body__header">
                     <h2 class="chapter-body__title">${title}</h2>
                     ${editable ? `
@@ -171,7 +171,7 @@ export default class ChapterBody {
         const isEmpty    = items.length === 0 && subTopics.length === 0;
 
         this.container.innerHTML = `
-            <div class="chapter-body chapter-body--padded">
+            <div class="chapter-body chapter-body--padded${editable ? '' : ' chapter-body--readonly'}">
                 <div class="chapter-body__header">
                     ${editable ? `
                         <input class="odip-input chapter-body__topic-title"

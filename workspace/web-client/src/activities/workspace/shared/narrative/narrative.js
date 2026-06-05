@@ -386,8 +386,10 @@ export default class NarrativeActivity {
             this._body.renderSelectionRead({ type: 'ostar', ostar: entry.ostar }, full, true);
         }
 
-        // Reset scroll on each ODIP-scope selection — body may be a long chapter narrative
-        this._masterDetail.detailContainer.scrollTop = 0;
+        // Reset scroll after render — rAF ensures TipTap has mounted before resetting
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            this._masterDetail.detailContainer.scrollTop = 0;
+        }));
     }
 
     /**
@@ -525,6 +527,9 @@ export default class NarrativeActivity {
             return;  // setActiveByTopicId fires onChapterSelect which re-enters here as 'topic'
         }
         this._body.renderSelectionRead(entry, this._selectedChapter);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            this._masterDetail.detailContainer.scrollTop = 0;
+        }));
     }
 
     // -------------------------------------------------------------------------
