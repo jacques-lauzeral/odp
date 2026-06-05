@@ -719,7 +719,7 @@ export default class ChapterToc {
         if (type === 'ostar') {
             if (btn.dataset.unassignedIndex !== undefined) {
                 const ii = parseInt(btn.dataset.unassignedIndex, 10);
-                return { type: 'ostar', ostar: this._normaliseOStar(this._unassignedOStars[ii]), topic: null, chapter: this._chapter };
+                return { type: 'ostar', ostar: this._unassignedOStars[ii], topic: null, chapter: this._chapter };
             }
             const ti      = parseInt(btn.dataset.topicIndex, 10);
             const subPath = btn.dataset.subPath ? btn.dataset.subPath.split('-').map(Number) : [];
