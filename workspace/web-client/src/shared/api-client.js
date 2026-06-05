@@ -314,6 +314,20 @@ export class ApiClient {
     async patchChapter(id, data) {
         return this.patch('/chapters', data, { id });
     }
+
+    /**
+     * Run all quality checks and return a QualityReport.
+     * @param {object} [options]
+     * @param {string[]} [options.domains]   - Domain keys to scope; omit for all domains
+     * @param {number}   [options.editionId] - Edition ID for Explore context; null for live dataset
+     * @returns {Promise<QualityReport>}
+     */
+    async runQualityChecks({ domains = [], editionId = null } = {}) {
+        const params = {};
+        if (domains.length > 0) params.domain = domains.join(',');
+        if (editionId !== null)  params.edition = editionId;
+        return this.get('/quality/checks', { params });
+    }
 }
 
 // Export singleton instance (will be initialized with app in index.js)

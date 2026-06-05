@@ -1,0 +1,149 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Quality Checks
+  description: Dataset quality checks — structural integrity and traceability rules
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  /quality/checks:
+    get:
+      summary: Run all quality checks and return a domain-organised report
+      tags: [Quality]
+      description: |
+        Executes all registered quality rules against the live dataset and returns
+        a QualityReport organised by domain.
+
+        Each domain entry is always present and always contains all rule arrays —
+        arrays are empty when no findings exist for that rule in that domain.
+        NO_SHOW O*s are excluded from all checks.
+
+        Results are not persisted — each call runs fresh against the current dataset.
+      parameters:
+        - name: domain
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Optional comma-separated list of domain keys to scope the report.
+            When absent, all domains are included.
+          example: "ASM_ATFCM,IDL"
+        - name: edition
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: |
+            Optional edition ID. When provided, checks run against the edition snapshot
+            (Explore context). When absent, checks run against the live dataset (Elaborate context).
+      responses:
+        '200':
+          description: Quality report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityReport'
+        '400':
+          description: Bad request — invalid domain key
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+components:
+  schemas:
+
+    # ── Rule metadata ──────────────────────────────────────────────────────────
+
+    QualityRule:
+      type: object
+      description: "Static descriptor for a quality rule — drives section rendering on the client"
+      required: [id, label, description]
+      properties:
+        id:
+          type: string
+          description: "Stable rule identifier"
+          example: "on-traceability"
+        label:
+          type: string
+          description: "Short display label"
+          example: "ON traceability"
+        description:
+          type: string
+          description: "Longer description shown in UI tooltip or detail panel header"
+          example: "ONs with no strategic document reference and no parent ON"
+
+    # ── Finding types ──────────────────────────────────────────────────────────
+
+    BrokenONTraceability:
+      type: object
+      description: "An ON with no strategic document reference and no parent ON"
+      required: [onId, onCode, onTitle]
+      properties:
+        onId:
+          type: string
+          description: "ON item ID (opaque) — used to build navigation link"
+        onCode:
+          type: string
+          description: "ON code"
+          example: "ON-ASM_ATFCM-0012"
+        onTitle:
+          type: string
+          description: "ON title"
+
+    # Future finding types added here as new rules are implemented:
+    # BrokenORTraceability, BrokenONImplementation, BrokenMandatoryFields, TraceCycle, ...
+
+    # ── Domain report ──────────────────────────────────────────────────────────
+
+    DomainQualityReport:
+      type: object
+      description: |
+        Quality findings for a single domain.
+        All rule arrays are always present — empty when no findings for that rule in this domain.
+      required: [domain, brokenONTraceability]
+      properties:
+        domain:
+          type: string
+          description: "Domain key from domains.json"
+        brokenONTraceability:
+          type: array
+          description: "Findings for rule 'on-traceability'"
+          items:
+            $ref: '#/components/schemas/BrokenONTraceability'
+        # Future rule arrays added here as rules are implemented
+
+    # ── Quality report ─────────────────────────────────────────────────────────
+
+    QualityReport:
+      type: object
+      description: "Top-level response for GET /quality/checks"
+      required: [runAt, rules, domainReports]
+      properties:
+        runAt:
+          type: string
+          format: date-time
+          description: "Timestamp when the checks were executed"
+        rules:
+          type: array
+          description: "Ordered list of registered rules"
+          items:
+            $ref: '#/components/schemas/QualityRule'
+        domainReports:
+          type: array
+          description: "One entry per domain in scope — always present, even when no findings"
+          items:
+            $ref: '#/components/schemas/DomainQualityReport'
+
+tags:
+  - name: Quality
+    description: Dataset quality checks — structural integrity and traceability rules

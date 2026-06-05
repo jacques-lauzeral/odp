@@ -14,6 +14,7 @@ import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import docxExportRoutes from './routes/docx-export.js';
+import qualityRoutes from './routes/quality.js';
 import MapperRegistry from './services/import/MapperRegistry.js';
 import { loadConfig, getDomainChapterSlugs } from './config/loader.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
@@ -95,6 +96,9 @@ app.use('/operational-changes', operationalChangeRoutes);
 // Management Entity API Routes
 app.use('/baselines', baselineRoutes);
 app.use('/odp-editions', odpEditionRoutes);
+
+// Quality API Routes
+app.use('/quality', qualityRoutes);
 
 // Serve web client static files
 const webClientPath = nodePath.join(new URL('../web-client/src', import.meta.url).pathname);
@@ -254,6 +258,9 @@ async function startServer() {
             console.log(`Management Entities:`);
             console.log(`  - http://localhost:${PORT}/baselines`);
             console.log(`  - http://localhost:${PORT}/odp-editions`);
+            console.log(`Quality:`);
+            console.log(`  - GET  http://localhost:${PORT}/quality/checks`);
+            console.log(`  - GET  http://localhost:${PORT}/quality/checks/:ruleId`);
             console.log(`Publication Operations:`);
             console.log(`  - POST http://localhost:${PORT}/publications/antora?editionId=<id>`);
             console.log(`  - POST http://localhost:${PORT}/publications/pdf?editionId=<id>`);

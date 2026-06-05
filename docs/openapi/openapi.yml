@@ -103,6 +103,12 @@ paths:
   /odp-editions/export:
     $ref: 'openapi-odp.yml#/paths/~1odp-editions~1export'
 
+  # Quality check endpoints
+  /quality/checks:
+    $ref: 'openapi-quality.yml#/paths/~1quality~1checks'
+  /quality/checks/{ruleId}:
+    $ref: 'openapi-quality.yml#/paths/~1quality~1checks~1{ruleId}'
+
 
 tags:
   - name: Stakeholder Categories
@@ -129,3 +135,5 @@ tags:
     description: ODP Edition management
   - name: Publications
     description: Edition publication operations for generating ODIP documents
+  - name: Quality
+    description: Dataset quality checks — structural integrity and traceability rules

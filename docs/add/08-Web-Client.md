@@ -51,7 +51,7 @@ web-client/src/
 │   │       │   ├── prioritisation.js       OC wave assignment
 │   │       │   └── prioritisation-grid.js
 │   │       ├── quality/
-│   │       │   └── quality.js              Placeholder
+│   │       │   └── quality.js              Dataset quality checks — on-demand report, context-aware
 │   │       └── notes/
 │   │           └── notes.js                Placeholder
 │   │
@@ -131,7 +131,7 @@ Route table:
 |---|---|---|
 | O*s | `os` (default) | `OsActivity` |
 | Plan | `plan` | `PlanActivity` |
-| Quality | `quality` | `QualityActivity` (placeholder) |
+| Quality | `quality` | `QualityActivity` |
 | Notes | `notes` | `NotesActivity` (placeholder) |
 | Setup | `setup` | `SetupActivity` |
 
@@ -208,10 +208,9 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 
 ## 5. Header and User Identification
 
-`Header` (`components/header.js`) owns a two-row layout:
+`Header` (`components/header.js`) owns a single-row layout:
 
-- **Row 1** — logo (spans both rows) · brand · nav tabs · right cluster (Connect/username button · server status dot)
-- **Row 2** — breadcrumb trail
+- **Row 1** — logo · brand · nav tabs · right cluster (Connect/username button · server status dot)
 
 **Nav tabs** (row 1):
 
@@ -223,16 +222,7 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 | Converse | Always |
 | Manage | Always (access enforced by router — protected route) |
 
-**Breadcrumb trail** (row 2):
 
-Activities set the breadcrumb via `app.header.setBreadcrumb(crumbs)` where crumbs start at sub-level — Home and the workspace root are omitted since the active nav tab already conveys that context. Empty array clears the trail (used on Home).
-
-```js
-// Crumb shape
-{ label: string, path?: string }  // no path = current page, non-clickable
-```
-
-`Header.setBreadcrumb()` is the public API called by activities. `buildBreadcrumb()` and `attachBreadcrumbListeners()` from `components/breadcrumb.js` handle the rendering.
 
 **User identification:**
 
@@ -539,9 +529,7 @@ Two rendering modes:
 | Mode | Context | Back button |
 |---|---|---|
 | `'panel'` | MasterDetail right column | None |
-| `'page'` | Full page (inter-O\* navigation) | None (breadcrumb provides navigation) |
-
-Detail views call `app.header.setBreadcrumb(crumbs)` after render — crumbs follow the pattern `O*s (clickable) > {code — title} (current, non-clickable)`.
+| `'page'` | Full page (inter-O\* navigation) | None |
 
 ### 10.4 Navigable References
 
@@ -561,13 +549,7 @@ Entity type mapping in `_navigateToRef` is defensive — accepts both legacy val
 
 `breadcrumb.js` (`components/breadcrumb.js`) provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`.
 
-All activities call `app.header.setBreadcrumb(crumbs)`. Crumbs start at sub-level — Home and workspace root are omitted since the active nav tab already conveys that context:
-
-```
-O*s > OR-AIRSPACE-0033 — AIS reference baseline management
-```
-
-`O*s` is clickable and navigates to `/{base}/os`. The O* code and title is non-clickable (current page).
+This utility is used exclusively by `NarrativeActivity` for intra-narrative back-navigation (← Chapters, current chapter name). It is not a general-purpose header mechanism — `app.header.setBreadcrumb()` does not exist and must not be called by other activities.
 
 ### 10.6 API Client — listOStars
 
@@ -1754,6 +1736,83 @@ Returns `Promise<'save' | 'discard' | 'cancel'>`. Renders a modal with three but
 | Caller | Context |
 |---|---|
 | `ChapterBody._guardNavigation` | Shown when leaving an unsaved chapter narrative or topic (title/narrative) in Elaborate |
+
+---
+
+## 20. Quality Activity
+
+`QualityActivity` (`activities/workspace/shared/quality/quality.js`) provides on-demand dataset quality checks. It operates in both Elaborate (live dataset) and Explore (edition snapshot) contexts — context is read transparently from `app.getDatasetContext()`.
+
+### 20.1 Layout
+
+Full-width scrollable page. No `MasterDetail` layout — the report is self-contained.
+
+- **Toolbar** — **Run checks** button + last-run timestamp (session-only, cleared on page refresh)
+- **Report area** — summary banner + one collapsible domain section per domain in scope
+
+### 20.2 Context Awareness
+
+On **Run checks**, `QualityActivity` reads `app.getDatasetContext()`:
+
+| Context | API call |
+|---|---|
+| `{ type: 'live' }` | `GET /quality/checks` (live dataset) |
+| `{ type: 'edition', editionId }` | `GET /quality/checks?edition={editionId}` (edition snapshot) |
+
+This is the same transparent context pattern used by all other sub-activities — `QualityActivity` does not know which shell (Elaborate or Explore) it is mounted in.
+
+### 20.3 Report Structure
+
+The response is a `QualityReport` (defined in `@odp/shared` `quality-elements.js`):
+
+```js
+{
+  runAt:         string,           // ISO timestamp
+  rules:         QualityRule[],    // registered rules — drives section headers
+  domainReports: DomainQualityReport[]  // one entry per domain, always present
+}
+```
+
+Each `DomainQualityReport` contains one array per rule — always present, empty when no findings:
+
+```js
+{
+  domain:               string,
+  brokenONTraceability: BrokenONTraceability[]
+}
+```
+
+Each `BrokenONTraceability` entry carries `{ onId, onCode, onTitle }` — sufficient to render a navigable link.
+
+### 20.4 Finding Navigation
+
+Clicking an ON code link navigates to the O* detail page in the correct workspace:
+
+| Context | Target URL |
+|---|---|
+| Elaborate | `/elaborate/os/on/{onId}` |
+| Explore | `/explore/{editionId}/os/on/{onId}` |
+
+### 20.5 Session-Only Results
+
+Results are held in `QualityActivity._report` (instance memory). They are not cached in `App` and not persisted. Re-mounting the activity (tab switch away and back) resets the report — the user must re-run checks.
+
+### 20.6 API Client
+
+`apiClient.runQualityChecks({ domains?, editionId? })` — added to `shared/api-client.js`:
+
+```js
+async runQualityChecks({ domains = [], editionId = null } = {}) {
+    const params = {};
+    if (domains.length > 0) params.domain = domains.join(',');
+    if (editionId !== null)  params.edition = editionId;
+    return this.get('/quality/checks', { params });
+}
+```
+
+### 20.7 Extensibility
+
+Adding a new quality rule requires no web client code change — `QualityActivity` renders rule sections dynamically from `report.rules`. The only client change needed when a new rule is implemented is adding a renderer for the new finding array in `_renderDomainReport()`.
 
 ---
 

@@ -15,6 +15,12 @@ export * from './model/setup-elements.js';
 // Export ODIP elements
 export * from './model/odp-elements.js';
 
+// Export chapter elements
+export * from './model/chapter-elements.js';
+
+// Export quality elements
+export * from './model/quality-elements.js';
+
 // Export projections
 export * from './model/projections.js';
 
