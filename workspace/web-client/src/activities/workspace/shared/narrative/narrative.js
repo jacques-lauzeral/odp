@@ -433,6 +433,8 @@ export default class NarrativeActivity {
     }
 
     async _climbToOdip(viaButton = false) {
+        if (!await this._body?._guardNavigation()) return;
+
         this._selectedChapter = null;
         this._scope           = 'odip';
 
