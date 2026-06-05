@@ -342,6 +342,7 @@ export default class OsActivity {
 
         if (item) {
             this._ostarEntity.sharedState.selectedItem = item;
+            this._ostarEntity.renderFromCache();
             this._handleItemSelect(item);
         }
 
