@@ -152,6 +152,7 @@ export default class RichTextComponent {
         this._refPicker  = null;
         this._refOverlay = null;
         this._refSel     = null;
+        this._ctrlListeners = null;
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────────
@@ -194,11 +195,16 @@ export default class RichTextComponent {
             this._editor.view.dom.blur();
         }
 
-        // Internal link click handler — delegated from rendered span elements
+        // Internal link click handler — delegated from rendered span elements.
+        // Read-only mode : any click fires onInternalLink.
+        // Edit mode      : only Ctrl+Click (or Cmd+Click on Mac) fires onInternalLink;
+        //                  plain clicks are left to TipTap for cursor placement.
         if (this._onInternalLink) {
             editorEl.addEventListener('click', (e) => {
+                console.log('click fired', editorEl.isConnected, e.target);
                 const span = e.target.closest('[data-n-ref],[data-o-ref],[data-d-ref]');
                 if (!span) return;
+                if (!this._readOnly && !e.ctrlKey && !e.metaKey) return;
                 e.preventDefault();
                 e.stopPropagation();
                 if (span.hasAttribute('data-n-ref')) {
@@ -209,6 +215,30 @@ export default class RichTextComponent {
                     this._onInternalLink('d-ref', span.getAttribute('data-d-ref'));
                 }
             });
+
+            // Ctrl/Cmd held — show pointer cursor over internal ref spans in edit mode.
+            // A CSS class on the editor root drives the :has() or descendant rule in narrative.css.
+            if (!this._readOnly) {
+                const onKeydown = (e) => {
+                    if (e.key === 'Control' || e.key === 'Meta') {
+                        editorEl.classList.add('rich-text-component__editor--ctrl');
+                    }
+                };
+                const onKeyup = (e) => {
+                    if (e.key === 'Control' || e.key === 'Meta') {
+                        editorEl.classList.remove('rich-text-component__editor--ctrl');
+                    }
+                };
+                // Also remove on window blur so the class doesn't get stuck
+                // when the user Alt-Tabs while holding Ctrl.
+                const onBlur = () => editorEl.classList.remove('rich-text-component__editor--ctrl');
+                document.addEventListener('keydown', onKeydown);
+                document.addEventListener('keyup',   onKeyup);
+                window.addEventListener('blur',      onBlur);
+
+                // Store for cleanup
+                this._ctrlListeners = { onKeydown, onKeyup, onBlur };
+            }
         }
     }
 
@@ -248,6 +278,12 @@ export default class RichTextComponent {
      * Destroy TipTap instance and remove DOM nodes.
      */
     destroy() {
+        if (this._ctrlListeners) {
+            document.removeEventListener('keydown', this._ctrlListeners.onKeydown);
+            document.removeEventListener('keyup',   this._ctrlListeners.onKeyup);
+            window.removeEventListener('blur',      this._ctrlListeners.onBlur);
+            this._ctrlListeners = null;
+        }
         if (this._refPicker) {
             this._refPicker.destroy();
             this._refPicker = null;

@@ -98,6 +98,24 @@ export default class NarrativeActivity {
         const ctx = this.app.getDatasetContext();
         this._isEditable = ctx?.type === 'live';
 
+        // Tear down any previously mounted shell before re-rendering.
+        // NarrativeActivity instances are cached by ElaborateActivity — render()
+        // may be called again on the same instance when the user returns to the
+        // Narrative tab. Without this, a second ChapterBody + RichTextComponent
+        // is created alongside the old one, producing duplicate click listeners.
+        if (this._body || this._toc) {
+            if (this._beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+                this._beforeUnloadHandler = null;
+            }
+            this._toc?.cleanup?.();
+            this._masterDetail?.cleanup();
+            this._body?.cleanup?.();
+            this._toc          = null;
+            this._body         = null;
+            this._masterDetail = null;
+        }
+
         this.container.innerHTML = '<div class="narrative-loading"><p>Loading…</p></div>';
 
         try {
@@ -164,7 +182,16 @@ export default class NarrativeActivity {
         if (this._scope === 'chapter' &&
             this._selectedChapter &&
             normalizeId(this._selectedChapter.itemId) === chapterId) {
-            // Already in this chapter — nothing to do
+            // Already in this chapter — consume query params and select topic/O* if present.
+            const sp    = new URLSearchParams(window.location.search);
+            const topic = sp.get('theme');
+            const onId  = sp.get('on');
+            const orId  = sp.get('or');
+            const ocId  = sp.get('oc');
+            if (topic)       this._selectTopic(topic);
+            else if (onId)   await this._selectOStar(onId, 'ON');
+            else if (orId)   await this._selectOStar(orId, 'OR');
+            else if (ocId)   await this._selectOStar(ocId, 'OC');
             return;
         }
 

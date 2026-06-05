@@ -1512,6 +1512,8 @@ Navigation between scopes (← Chapters, current chapter name) lives in the tool
 
 `NarrativeActivity._selectOStar(ostarId, type)` — called after diving when `?on=`, `?or=`, or `?oc=` is present. The type is derived directly from the param name — no `app.findOStar()` call needed. Calls `ChapterToc.setActiveByItemId(id)` then `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and the typed O* params are mutually exclusive.
 
+**Same-chapter navigation:** `handleSubPath` short-circuits when the incoming `chapterId` matches `_selectedChapter` — but still consumes `?theme`/`?on`/`?or`/`?oc` query params before returning. This ensures that Ctrl+Click on an `n-ref` within the currently open chapter correctly selects the target topic or O* without a full chapter reload.
+
 ### 18.4 ChapterToc External API
 
 | Method | Description |
@@ -1565,13 +1567,15 @@ Navigation between scopes (← Chapters, current chapter name) lives in the tool
 
 ### 18.6 Internal Link Navigation
 
-`ChapterBody._handleInternalLink(type, value)` — called via `onInternalLink` from `RichTextComponent`. Resolves the link and calls `app.navigate()`:
+`ChapterBody._handleInternalLink(type, value)` — called via `onInternalLink` from `RichTextComponent`. Resolves the link, passes through `_guardNavigation()`, then calls `app.navigate()`:
 
 | Mark type | Resolution | Target URL |
 |---|---|---|
 | `n-ref` | Value is `{chapterId}[/{topicId}]` — navigate directly, no lookup | `{base}/narrative/{chapterId}[?theme={topicId}]` |
 | `o-ref` | `app.findOStar(itemId)` resolves type; stale-while-revalidate via `app.getOStars()` | `{base}/os/{type}/{itemId}` |
 | `d-ref` | Direct — value is refdoc id | `{base}/setup/reference-documents/{id}` |
+
+**Edit mode — Ctrl+Click:** In read-only mode, any click on an internal ref span fires `onInternalLink`. In edit mode, only `Ctrl+Click` (or `Cmd+Click` on Mac) fires it — plain clicks are passed through to TipTap for normal cursor placement. While Ctrl/Cmd is held, the class `rich-text-component__editor--ctrl` is toggled on the editor element, triggering a `cursor: pointer` CSS rule on ref spans as a visual affordance. The class is removed on `keyup` and on `window blur` (to prevent it getting stuck when the user Alt-Tabs while holding Ctrl). The `keydown`/`keyup` listeners are registered once per `RichTextComponent` instance and removed in `destroy()`.
 
 ### 18.7 OsHierarchy Theme Model
 
@@ -1621,11 +1625,14 @@ Navigation paths guarded:
 |---|---|
 | TOC click / O* card / subtheme card | `ChapterBody.renderSelectionRead()` |
 | Ctrl+Click on internal ref (edit mode) | `ChapterBody._handleInternalLink()` |
+| ← Chapters toolbar button | `NarrativeActivity._climbToOdip()` |
 | Elaborate tab switch (O*s, Plan, Setup…) | `ElaborateActivity._route()` via `canDeactivate()` |
 | Top-level activity switch (Home, Manage…) | `App._loadActivity()` via `canDeactivate()` chain |
 | Browser Back / F5 / tab close | `beforeunload` listener (generic browser warning; registered on `window` in `_renderShell`, removed in `cleanup`) |
 
 `NarrativeActivity.canDeactivate()` delegates to `this._body._guardNavigation()`. `ElaborateActivity.canDeactivate()` forwards to the current sub-activity's `canDeactivate()` if present.
+
+**Duplicate instance prevention:** `NarrativeActivity` instances are cached by `ElaborateActivity` — `render()` may be called again on the same instance when the user returns to the Narrative tab. `render()` tears down any existing `_toc`, `_body`, and `_masterDetail` (including removing the `beforeunload` listener) before calling `_renderShell()`, preventing duplicate `RichTextComponent` instances with stale click listeners from accumulating.
 
 ### 18.9 Save Propagation
 

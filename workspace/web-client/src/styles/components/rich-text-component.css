@@ -357,3 +357,10 @@
     color: var(--link-color, var(--ec-blue, #185FA5));
     text-decoration: underline dotted;
 }
+
+/* Ctrl/Cmd held in edit mode — show pointer cursor to signal Ctrl+Click navigation. */
+.rich-text-component__editor--ctrl [data-n-ref],
+.rich-text-component__editor--ctrl [data-o-ref],
+.rich-text-component__editor--ctrl [data-d-ref] {
+    cursor: pointer;
+}
