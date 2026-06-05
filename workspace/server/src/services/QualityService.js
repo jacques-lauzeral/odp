@@ -138,9 +138,10 @@ export class QualityService {
                 )
                 .map(on => ({
                     ...BrokenONTraceability,
-                    onId:    String(on.itemId),
-                    onCode:  on.code,
-                    onTitle: on.title
+                    onId:        String(on.itemId),
+                    onCode:      on.code,
+                    onTitle:     on.title,
+                    onVersionId: String(on.versionId)
                 }));
         } catch (error) {
             await rollbackTransaction(tx);

@@ -319,7 +319,7 @@ export class App {
      * on first call. Serves stale data while re-fetching in the background after
      * the TTL (5 minutes). Parallel calls share one in-flight fetch.
      *
-     * @returns {Promise<Array<{itemId: number, type: string, code: string, title: string, domain: string|null}>>}
+     * @returns {Promise<Array<{itemId: number, type: string, code: string, title: string, domain: string|null, versionId: string|null}>>}
      */
     async getOStars() {
         const TTL = 5 * 60 * 1000;
@@ -342,11 +342,12 @@ export class App {
     async _fetchOStars() {
         this._ostarsPromise = apiClient.listOStars().then(ostars => {
             this._ostars = (ostars ?? []).map(o => ({
-                itemId: o.itemId ?? o.id,
-                type:   o.type?.toLowerCase(),
-                code:   o.code,
-                title:  o.title,
-                domain: o.domain ?? null,
+                itemId:    o.itemId ?? o.id,
+                type:      o.type?.toLowerCase(),
+                code:      o.code,
+                title:     o.title,
+                domain:    o.domain ?? null,
+                versionId: o.versionId ?? null,
             }));
             this._ostarsLoadedAt = Date.now();
             this._ostarsPromise  = null;

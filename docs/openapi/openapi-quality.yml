@@ -87,7 +87,7 @@ components:
     BrokenONTraceability:
       type: object
       description: "An ON with no strategic document reference and no parent ON"
-      required: [onId, onCode, onTitle]
+      required: [onId, onCode, onTitle, onVersionId]
       properties:
         onId:
           type: string
@@ -99,6 +99,9 @@ components:
         onTitle:
           type: string
           description: "ON title"
+        onVersionId:
+          type: string
+          description: "ON version ID at report build time — compared against O* summary cache on tab return to detect possible fixes"
 
     # Future finding types added here as new rules are implemented:
     # BrokenORTraceability, BrokenONImplementation, BrokenMandatoryFields, TraceCycle, ...

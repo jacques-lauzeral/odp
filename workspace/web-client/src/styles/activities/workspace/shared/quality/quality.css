@@ -149,3 +149,26 @@
 .quality-table__title {
     color: var(--text-secondary);
 }
+
+/* ── Staleness indicator ── */
+.quality-table__status {
+    width: 120px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.quality-badge--maybe-fixed {
+    display: inline-block;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    padding: 2px 7px;
+    border-radius: var(--radius-md);
+    background: #fefce8;
+    color: #854d0e;
+    border: 1px solid #fde68a;
+    cursor: default;
+}
+
+.quality-table__row--maybe-fixed td {
+    opacity: 0.6;
+}

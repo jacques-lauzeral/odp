@@ -40,14 +40,18 @@ export const QualityRule = {
  * no strategic document reference AND no parent ON.
  *
  * @typedef {object} BrokenONTraceability
- * @property {string} onId    — ON item ID (opaque)
- * @property {string} onCode  — ON code (e.g. ON-ASM_ATFCM-0012)
- * @property {string} onTitle — ON title
+ * @property {string} onId        — ON item ID (opaque)
+ * @property {string} onCode      — ON code (e.g. ON-ASM_ATFCM-0012)
+ * @property {string} onTitle     — ON title
+ * @property {string} onVersionId — ON version ID at report build time — used by the
+ *                                  web client to detect whether the ON was updated
+ *                                  since the report was run (compare against O* summary cache)
  */
 export const BrokenONTraceability = {
-    onId:    '',
-    onCode:  '',
-    onTitle: ''
+    onId:        '',
+    onCode:      '',
+    onTitle:     '',
+    onVersionId: ''
 };
 
 // Future finding types added here as new rules are implemented:

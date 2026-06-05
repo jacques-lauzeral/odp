@@ -197,7 +197,7 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 **O* summary shape** (TTL-cached, 5 minutes, stale-while-revalidate):
 
 ```js
-{ itemId: number, type: string, code: string, title: string }
+{ itemId: number, type: string, code: string, title: string, domain: string|null, versionId: string|null }
 ```
 
 `getOStars()` returns the full summary array. `findOStar(itemId)` returns a single summary or `null`. `invalidateOStars()` must be called after any O* create/update/delete operation.
@@ -1782,7 +1782,7 @@ Each `DomainQualityReport` contains one array per rule — always present, empty
 }
 ```
 
-Each `BrokenONTraceability` entry carries `{ onId, onCode, onTitle }` — sufficient to render a navigable link.
+Each `BrokenONTraceability` entry carries `{ onId, onCode, onTitle, onVersionId }` — sufficient to render a navigable link and detect staleness on tab return.
 
 ### 20.4 Finding Navigation
 
@@ -1793,9 +1793,15 @@ Clicking an ON code link navigates to the O* detail page in the correct workspac
 | Elaborate | `/elaborate/os/on/{onId}` |
 | Explore | `/explore/{editionId}/os/on/{onId}` |
 
-### 20.5 Session-Only Results
+### 20.5 Report Persistence Across Tab Switches
 
-Results are held in `QualityActivity._report` (instance memory). They are not cached in `App` and not persisted. Re-mounting the activity (tab switch away and back) resets the report — the user must re-run checks.
+Results are held in `QualityActivity._report` (instance memory). They are not cached in `App` and not persisted to the server.
+
+`ElaborateActivity` and `ExploreActivity` cache sub-activity instances — `QualityActivity` is not destroyed on tab switch. `cleanup()` intentionally preserves `_report` and `_runAt`, clearing only `container` and `_running`. When the user returns to the Quality tab, `render()` detects an existing report and restores it immediately — no re-run required.
+
+The report is discarded only when the top-level workspace shell is torn down (top-level activity switch). The "Last run" timestamp tells the user when the report was generated; they can re-run explicitly at any time.
+
+**Staleness detection on tab return:** when `render()` is called on an existing report, `_renderReportWithStaleness()` calls `app.getOStars()` (which will be fresh if the user just edited an ON via `invalidateOStars()`) and compares each flagged ON's stored `onVersionId` against the current cache value. ONs whose `versionId` has changed are marked "possibly fixed" (amber badge, dimmed row) — a non-definitive hint that the issue may have been resolved. Re-running confirms. If the cache is unavailable the report renders without indicators.
 
 ### 20.6 API Client
 

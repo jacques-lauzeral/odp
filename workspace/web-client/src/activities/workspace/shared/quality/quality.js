@@ -10,7 +10,10 @@
  *   - Toolbar: "Run checks" button + last run timestamp + optional domain filter
  *   - Report: one section per domain, one table per rule with findings
  *
- * Results are session-only — not persisted. Re-running replaces the previous report.
+ * Results are preserved on the activity instance across tab switches — the report
+ * survives navigation away and back within the same workspace session. The timestamp
+ * tells the user when it was last run; they can re-run explicitly at any time.
+ * Results are cleared only when the top-level workspace shell is torn down.
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { dom } from '../../../../shared/utils.js';
@@ -32,6 +35,14 @@ export default class QualityActivity {
     async render(container, subPath = []) {
         this.container = container;
         this._renderShell();
+        // Restore previous report if the user navigated away and came back.
+        // Compare stored versionIds against the O* cache to detect possible fixes.
+        if (this._report) {
+            const content   = dom.find('#quality-content', this.container);
+            const timestamp = dom.find('#quality-timestamp', this.container);
+            timestamp.textContent = `Last run: ${this._runAt.toLocaleString()}`;
+            this._renderReportWithStaleness(content);
+        }
     }
 
     async handleSubPath(subPath) {
@@ -40,9 +51,10 @@ export default class QualityActivity {
 
     async cleanup() {
         this.container = null;
-        this._report   = null;
-        this._runAt    = null;
         this._running  = false;
+        // _report and _runAt are intentionally preserved — the shell caches this
+        // instance and may re-mount it (render() called again on tab return).
+        // Report is cleared only when the instance itself is discarded.
     }
 
     // -------------------------------------------------------------------------
@@ -92,7 +104,7 @@ export default class QualityActivity {
             this._runAt  = new Date(this._report.runAt);
 
             timestamp.textContent = `Last run: ${this._runAt.toLocaleString()}`;
-            this._renderReport(content);
+            this._renderReport(content, new Map());
             this._attachLinkListeners(content);
         } catch (error) {
             errorHandler.handle(error, 'quality-run');
@@ -108,7 +120,7 @@ export default class QualityActivity {
     // Report rendering
     // -------------------------------------------------------------------------
 
-    _renderReport(content) {
+    _renderReport(content, staleIds = new Map()) {
         const report = this._report;
         const totalIssues = report.domainReports.reduce(
             (sum, dr) => sum + dr.brokenONTraceability.length, 0
@@ -137,21 +149,26 @@ export default class QualityActivity {
                         ${issueCount === 0 ? '✓ No issues' : `${issueCount} issue${issueCount > 1 ? 's' : ''}`}
                     </span>
                 </div>
-                ${issueCount > 0 ? this._renderONTraceabilityTable(domainReport.brokenONTraceability) : ''}
+                ${issueCount > 0 ? this._renderONTraceabilityTable(domainReport.brokenONTraceability, staleIds) : ''}
             `;
             domainsEl.appendChild(sectionEl);
         }
     }
 
-    _renderONTraceabilityTable(entries) {
-        const rows = entries.map(e => `
-            <tr>
+    _renderONTraceabilityTable(entries, staleIds = new Map()) {
+        const rows = entries.map(e => {
+            const maybeFixed = staleIds.has(e.onId);
+            return `
+            <tr class="${maybeFixed ? 'quality-table__row--maybe-fixed' : ''}">
                 <td class="quality-table__code">
                     <a class="odip-link" data-on-id="${e.onId}">${e.onCode}</a>
                 </td>
                 <td class="quality-table__title">${e.onTitle}</td>
-            </tr>
-        `).join('');
+                <td class="quality-table__status">
+                    ${maybeFixed ? '<span class="quality-badge--maybe-fixed" title="This ON was updated since the report was run — re-run to confirm">possibly fixed</span>' : ''}
+                </td>
+            </tr>`;
+        }).join('');
 
         return `
             <div class="quality-rule">
@@ -161,12 +178,42 @@ export default class QualityActivity {
                         <tr>
                             <th class="quality-table__code">Code</th>
                             <th class="quality-table__title">Title</th>
+                            <th class="quality-table__status"></th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>
         `;
+    }
+
+    // -------------------------------------------------------------------------
+    // Staleness detection
+    // -------------------------------------------------------------------------
+
+    /**
+     * On tab return: fetch the O* cache, build a staleIds set of ONs whose
+     * versionId has changed since the report was built, then render with indicators.
+     * @private
+     */
+    async _renderReportWithStaleness(content) {
+        let staleIds = new Map(); // itemId → true when possibly fixed
+        try {
+            const ostars = await this.app.getOStars();
+            const currentVersions = new Map(ostars.map(o => [String(o.itemId), String(o.versionId)]));
+            for (const dr of this._report.domainReports) {
+                for (const entry of dr.brokenONTraceability) {
+                    const current = currentVersions.get(entry.onId);
+                    if (current && current !== entry.onVersionId) {
+                        staleIds.set(entry.onId, true);
+                    }
+                }
+            }
+        } catch {
+            // Cache unavailable — render without staleness indicators
+        }
+        this._renderReport(content, staleIds);
+        this._attachLinkListeners(content);
     }
 
     // -------------------------------------------------------------------------
