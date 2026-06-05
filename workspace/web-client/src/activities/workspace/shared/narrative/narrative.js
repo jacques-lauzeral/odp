@@ -133,6 +133,7 @@ export default class NarrativeActivity {
         this._odipSelection   = null;
 
         this._renderShell();
+        this._updateToolbarNav();
 
         const chapterId = this._parseChapterId(subPath);
         if (chapterId != null) {
@@ -156,6 +157,7 @@ export default class NarrativeActivity {
         }
 
         // Default: ODIP scope
+        this._updateToolbarNav();
         this._toc.renderOdip(this._chapters, null);
         this._body.renderOdipPlaceholder();
     }
@@ -253,29 +255,39 @@ export default class NarrativeActivity {
     }
 
     /**
-     * Render (or clear) the left nav slot of the toolbar to reflect the current scope.
-     * Chapter scope: ← Chapters | <chapter title>
-     * ODIP scope:    empty
+     * Render the breadcrumb trail in the left nav slot of the toolbar.
+     * ODIP scope:    ODIP  (non-clickable)
+     * Chapter scope: ODIP (clickable → climb) › Chapter Title (clickable → chapter narrative)
      */
     _updateToolbarNav() {
         const navEl = this.container?.querySelector('#narrativeToolbarNav');
         if (!navEl) return;
 
+        const basePath = this._basePath();
+
         if (this._scope === 'chapter' && this._selectedChapter) {
             const title = this._selectedChapter.title ?? this._selectedChapter.code ?? '';
-            const esc   = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            // Use <button> elements — avoids the router's global <a href> click interceptor
+            // which would trigger a second canDeactivate/unsaved-changes dialog.
             navEl.innerHTML = `
-                <button class="narrative-activity__back-btn" id="narrativeBackBtn">← Chapters</button>
-                <span class="narrative-activity__toolbar-sep" aria-hidden="true"></span>
-                <button class="narrative-activity__chapter-name" id="narrativeChapterName"
-                        title="${esc(title)}">${esc(title)}</button>
-            `;
-            navEl.querySelector('#narrativeBackBtn')
+                <nav class="breadcrumb" aria-label="Breadcrumb">
+                    <button class="breadcrumb__item breadcrumb__item--link" id="narrativeCrumbOdip">ODIP</button>
+                    <span class="breadcrumb__separator">›</span>
+                    <button class="breadcrumb__item breadcrumb__item--current" id="narrativeCrumbChapter"
+                            title="${title.replace(/"/g, '&quot;')}">${title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</button>
+                </nav>`;
+            navEl.querySelector('#narrativeCrumbOdip')
                 ?.addEventListener('click', () => this._climbToOdip(true));
-            navEl.querySelector('#narrativeChapterName')
-                ?.addEventListener('click', () => this._handleChapterTocSelect({ type: 'chapter', chapter: this._selectedChapter }));
+            navEl.querySelector('#narrativeCrumbChapter')
+                ?.addEventListener('click', () =>
+                    this._handleChapterTocSelect({ type: 'chapter', chapter: this._selectedChapter })
+                );
         } else {
-            navEl.innerHTML = '';
+            // ODIP scope — single non-clickable root crumb
+            navEl.innerHTML = `
+                <nav class="breadcrumb" aria-label="Breadcrumb">
+                    <span class="breadcrumb__item breadcrumb__item--current">ODIP</span>
+                </nav>`;
         }
     }
 
@@ -373,6 +385,9 @@ export default class NarrativeActivity {
         } else if (entry.type === 'ostar') {
             this._body.renderSelectionRead({ type: 'ostar', ostar: entry.ostar }, full, true);
         }
+
+        // Reset scroll on each ODIP-scope selection — body may be a long chapter narrative
+        this._masterDetail.detailContainer.scrollTop = 0;
     }
 
     /**

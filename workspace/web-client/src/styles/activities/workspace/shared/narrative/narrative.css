@@ -59,55 +59,43 @@
     flex-shrink: 0;
 }
 
-/* Back button in toolbar */
-.narrative-activity__back-btn {
-    flex-shrink: 0;
+/* Breadcrumb buttons — reset browser defaults */
+.narrative-activity__toolbar-nav button.breadcrumb__item {
     background: none;
     border: none;
+    padding: 0;
     cursor: pointer;
-    font-size: var(--font-size-xs);
+}
+
+/* Breadcrumb in toolbar nav slot — override header (white-on-dark) colours for light toolbar */
+.narrative-activity__toolbar-nav .breadcrumb__item {
+    color: var(--text-secondary);
+}
+
+.narrative-activity__toolbar-nav .breadcrumb__item--link {
     color: var(--ec-blue, #2E75B6);
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
-    white-space: nowrap;
-    transition: background var(--transition-fast);
-}
-
-.narrative-activity__back-btn:hover {
-    background: var(--ec-light, #EBF3FB);
-}
-
-/* Separator between back and chapter name */
-.narrative-activity__toolbar-sep {
-    flex-shrink: 0;
-    width: 1px;
-    height: 14px;
-    background: var(--border-primary);
-    display: inline-block;
-}
-
-/* Current chapter name button */
-.narrative-activity__chapter-name {
-    flex: 1;
-    min-width: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
     font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    color: var(--ec-navy, #1F3864);
-    text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 2px 4px;
-    border-radius: var(--radius-sm);
-    transition: color var(--transition-fast);
 }
 
-.narrative-activity__chapter-name:hover {
+.narrative-activity__toolbar-nav .breadcrumb__item--link:hover {
+    color: var(--ec-navy, #1F3864);
+    text-decoration: underline;
+}
+
+.narrative-activity__toolbar-nav .breadcrumb__item--current {
+    color: var(--ec-navy, #1F3864);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+}
+
+.narrative-activity__toolbar-nav .breadcrumb__item--current:hover {
     color: var(--ec-blue, #2E75B6);
     text-decoration: underline;
+}
+
+.narrative-activity__toolbar-nav .breadcrumb__separator {
+    color: var(--text-tertiary);
+    padding: 0 var(--space-1);
 }
 
 /* ── Chapter TOC ── */
