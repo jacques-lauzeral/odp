@@ -236,9 +236,13 @@ export default class OStarEntity {
         const selectedId = this._getItemId(selected);
         if (selectedId == null) return;
         this.collection.selectedItem = selected;
+        let selectedRow = null;
         this.container?.querySelectorAll('.collection-row').forEach(row => {
-            row.classList.toggle('collection-row--selected', row.dataset.itemId === String(selectedId));
+            const isSelected = row.dataset.itemId === String(selectedId);
+            row.classList.toggle('collection-row--selected', isSelected);
+            if (isSelected) selectedRow = row;
         });
+        selectedRow?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
     // -------------------------------------------------------------------------

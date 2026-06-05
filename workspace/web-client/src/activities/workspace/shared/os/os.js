@@ -61,6 +61,11 @@ export default class OsActivity {
         this._searchDebounce = null;
         this._counts = { ON: 0, OR: 0, OC: 0 };
         this._domains = [];
+
+        // Listen for saves from any O* form — covers toolbar create buttons
+        // where the form is instantiated directly without going through a detail view.
+        this._entitySavedHandler = (e) => this._handlePanelSaved(e.detail?.entity, e.detail?.mode);
+        document.addEventListener('entitySaved', this._entitySavedHandler);
     }
 
     // -------------------------------------------------------------------------
@@ -105,6 +110,10 @@ export default class OsActivity {
     }
 
     cleanup() {
+        if (this._entitySavedHandler) {
+            document.removeEventListener('entitySaved', this._entitySavedHandler);
+            this._entitySavedHandler = null;
+        }
         this.filterBar?.destroy?.();
         this.masterDetail?.cleanup();
         this._ostarEntity?.cleanup?.();
@@ -415,8 +424,7 @@ export default class OsActivity {
             this._requirementDetails = new RequirementDetails(this.app, this._buildConfig());
         }
         await this._requirementDetails.render(this.masterDetail.detailContainer, id, 'panel', {
-            onFullPage:     (item) => this._navigateToFullPage(item),
-            onSaved:        () => this._loadData(),
+            onFullPage: (item) => this._navigateToFullPage(item),
         });
     }
 
@@ -426,9 +434,38 @@ export default class OsActivity {
             this._changeDetails = new ChangeDetails(this.app, this._buildConfig());
         }
         await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel', {
-            onFullPage:     (item) => this._navigateToFullPage(item, 'oc'),
-            onSaved:        () => this._loadData(),
+            onFullPage: (item) => this._navigateToFullPage(item, 'oc'),
         });
+    }
+
+    /**
+     * Called after any save from the detail panel (edit or create).
+     * Re-fetches the list, then — on create — selects the new item if it
+     * survives the current filters, or clears the panel if it is hidden.
+     * @param {object} result — saved entity returned by the API
+     * @param {string} mode   — 'create' | 'edit'
+     */
+    async _handlePanelSaved(result, mode) {
+        await this._loadData();
+
+        if (mode !== 'create') return;
+
+        const id = result?.itemId ?? result?.id ?? null;
+        if (id == null) return;
+
+        const found = this._ostarEntity?.data.find(
+            item => (item.itemId ?? item.id) === id
+        ) ?? null;
+
+        if (found) {
+            this._ostarEntity.sharedState.selectedItem = found;
+            this._ostarEntity.renderFromCache();   // re-render list with selection highlighted
+            await this._handleItemSelect(found);
+        } else {
+            // New item is hidden by current filters — clear panel
+            this._ostarEntity.sharedState.selectedItem = null;
+            this.masterDetail.clearDetail();
+        }
     }
 
     // -------------------------------------------------------------------------
