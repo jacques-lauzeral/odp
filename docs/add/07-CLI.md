@@ -182,6 +182,17 @@ The `--folder` option is passed to the mapper as a path prefix (used for IDL sub
 
 **`import distributed`** accepts glob patterns. Processes source JSON files conforming to `source.schema.json` — one file per chapter — directly into the database with no extract or map stage. Setup entities must already exist. Use `--continue-on-error` to process remaining files after a failure. Summary reports `chapters` (narrative patches) and `requirements` (entities created) per file.
 
+### Quality Checks
+
+| Command | Action |
+|---|---|
+| `quality run` | Run all quality checks against the live dataset and display the report |
+| `quality run --domain <keys>` | Scope the report to a comma-separated list of domain keys |
+| `quality run --edition <id>` | Run checks against an edition snapshot (Explore context) |
+| `quality run --json` | Output the raw `QualityReport` JSON instead of formatted tables |
+
+Results are displayed as domain sections, each showing a table of findings per rule. Domains with no findings are listed with a ✓ status. The report is always re-run on demand — no caching.
+
 ### Publication
 
 | Command | Action |

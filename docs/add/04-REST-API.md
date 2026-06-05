@@ -70,6 +70,18 @@ All GET routes allow anonymous access (`getUserIdOptional`). PUT and PATCH requi
 
 `baseline.js` and `odp-edition.js` are hand-written. They expose create and read operations only. Any `PUT` or `DELETE` returns `405 METHOD_NOT_ALLOWED`. `odp-edition.js` additionally handles the AsciiDoc ZIP export endpoint and the `POST /:id/publish` endpoint, which accepts an optional JSON request body (`PublishOptions`) — absent or empty body defaults to `{ pdf: { flat: true } }`.
 
+### 2.5 QualityRouter
+
+`quality.js` is a hand-written router. A single endpoint — no base router applies:
+
+```
+GET /quality/checks[?domain=<keys>][&edition=<id>]  → qualityService.runChecks(domains, editionId, userId)
+```
+
+`domain` is an optional comma-separated list of domain keys validated against `domains.json` before the service call. `edition` is an optional edition ID — when present the route passes it directly to `QualityService`, which resolves it to `{baselineId, editionId}` internally via `odpEditionStore().resolveContext()`. When absent, checks run against the live dataset (latest versions).
+
+The route requires `x-user-id` — quality checks are not available to anonymous users.
+
 ---
 
 ## 3. Edition Context Resolution
@@ -118,6 +130,7 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-import.yml` | Import endpoints |
 | `openapi-docx.yml` | DOCX export endpoint |
 | `openapi-publication.yml` | Publication endpoint |
+| `openapi-quality.yml` | Quality check endpoints and schemas (`QualityReport`, `DomainQualityReport`, `BrokenONTraceability`, …) |
 
 Refer to these files for all endpoint signatures, query parameters, request/response schemas, and status code contracts.
 

@@ -46,6 +46,7 @@ shared/src/
     ├── milestone-events.js   # Milestone event types
     ├── odp-edition-types.js  # Edition type enum (DRAFT, OFFICIAL)
     ├── odp-elements.js       # Operational and management entity models
+    ├── quality-elements.js   # Quality check model (QualityReport, DomainQualityReport, BrokenONTraceability, …)
     ├── or-types.js           # OR type enum (ON, OR)
     ├── projections.js        # Projection definitions and field set mappings
     ├── setup-elements.js     # Setup entity models (Domain removed)

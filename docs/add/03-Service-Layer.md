@@ -59,6 +59,9 @@ VersionedItemService       (versioned CRUD + patch + multi-context)
 (standalone management services:)
 BaselineService
 ODIPEditionService
+
+(quality orchestration — read-only, no base class:)
+QualityService
 ```
 
 ### 3.1 SimpleItemService
@@ -300,6 +303,40 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | `OperationalChangeService` | `VersionedItemService` | `OperationalChangeStore` |
 | `BaselineService` | — | `BaselineStore` |
 | `ODIPEditionService` | — | `ODPEditionStore`, `BaselineStore`, `WaveStore` |
+| `QualityService` | — | none (delegates to `OperationalRequirementStore` via internal service methods) |
+
+---
+
+## 7. Quality Service Pattern
+
+### 7.1 Role
+
+`QualityService` is a **pure orchestrator** — it has no base class, performs no CRUD, and exposes no REST endpoints on behalf of other services. It is the sole consumer of quality-specific query methods on `OperationalRequirementService` and `OperationalChangeService`.
+
+### 7.2 Internal Quality Methods
+
+Quality query methods are added directly to `OperationalRequirementService` and `OperationalChangeService` as needed, but are **not exposed via their respective REST routes** (`/operational-requirements`, `/operational-changes`). They are called exclusively by `QualityService`.
+
+This pattern keeps the quality concern encapsulated: the operational entity routes are unchanged, and `QualityService` accesses the store through the service that owns the entity type.
+
+### 7.3 Direct Store Access
+
+For efficiency, `QualityService` calls `operationalRequirementStore().findAll()` directly with appropriate filters rather than going through `OperationalRequirementService.getAll()`. This is the one sanctioned exception to the "services call services, not stores" rule — justified because quality checks are read-only, carry no business validation, and the `findAll` call is already the lowest-level abstraction needed.
+
+### 7.4 Edition Context
+
+`QualityService.runChecks(domains, editionId, userId)` resolves the edition context once at the start of the call via `odpEditionStore().resolveContext()`, then passes `baselineId` and `editionId` to each rule implementation. This mirrors the pattern used by `VersionedItemService.getAll()`.
+
+### 7.5 Rule Registry
+
+Rules are declared as a static array in `QualityService`. Each rule descriptor carries `{ id, label, description }`. Adding a new rule requires:
+1. Adding a descriptor to the `RULES` array
+2. Implementing a `_check<RuleName>()` method
+3. Adding the result array to `_buildDomainReport()`
+4. Adding the corresponding field to `DomainQualityReport` in `@odp/shared`
+5. Adding the schema to `openapi-quality.yml`
+
+No route, CLI, or web client changes are required when adding a rule — the client renders sections dynamically from `report.rules`.
 
 ---
 
