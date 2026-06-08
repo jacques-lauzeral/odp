@@ -190,14 +190,16 @@ export default class ReferenceManager {
     // ─── Picker popup (filter + multi-root tree) ────────────────────────────
 
     _renderTreeBody() {
-        const nodes = this._filterTerm.trim()
-            ? this._filterNodes(this._roots, this._filterTerm.toLowerCase())
-            : this._roots;
-        return nodes.length > 0
-            ? this._renderNodes(nodes, '', 0)
-            : this._filterTerm
-                ? '<div class="reference-manager-no-results">No matching items</div>'
-                : '';
+        const term = this._filterTerm.trim().toLowerCase();
+        if (term) {
+            const nodes = this._filterNodesWithPath(this._roots, term, []);
+            return nodes.length > 0
+                ? this._renderNodes(nodes, '', 0, true)
+                : '<div class="reference-manager-no-results">No matching items</div>';
+        }
+        return this._roots.length > 0
+            ? this._renderNodes(this._roots, '', 0, false)
+            : '';
     }
 
     _showPopup() {
@@ -237,26 +239,30 @@ export default class ReferenceManager {
      * @param {object[]} nodes
      * @param {string}   pathPrefix   dot-separated index path of parent, '' for root
      * @param {number}   depth
+     * @param {boolean}  forceExpand  when true (filter active), always render children expanded
      * @returns {string}
      */
-    _renderNodes(nodes, pathPrefix, depth) {
+    _renderNodes(nodes, pathPrefix, depth, forceExpand = false) {
         return nodes.map((node, idx) => {
             const path     = pathPrefix ? `${pathPrefix}.${idx}` : String(idx);
             const hasKids  = this._nodeHasChildren(node);
-            const expanded = this._expandedPaths.has(path);
-            const loading  = this._loadingPaths.has(path);
+            const expanded = forceExpand || this._expandedPaths.has(path);
+            const loading  = !forceExpand && this._loadingPaths.has(path);
             const selectable = node.value != null;
             const isSelected = selectable && idsEqual(node.value, this.selectedId);
 
             const indent = depth * 16; // px per level
 
-            const expandBtn = hasKids
-                ? `<button type="button"
-                           class="rm-expand-btn${loading ? ' rm-expand-btn--loading' : ''}"
-                           data-path="${this._esc(path)}"
-                           title="${expanded ? 'Collapse' : 'Expand'}"
-                   >${loading ? '…' : expanded ? '▾' : '▸'}</button>`
-                : `<span class="rm-expand-spacer"></span>`;
+            // In filter mode: no expand toggle — all matched nodes render fully expanded
+            const expandBtn = forceExpand
+                ? `<span class="rm-expand-spacer"></span>`
+                : hasKids
+                    ? `<button type="button"
+                               class="rm-expand-btn${loading ? ' rm-expand-btn--loading' : ''}"
+                               data-path="${this._esc(path)}"
+                               title="${expanded ? 'Collapse' : 'Expand'}"
+                       >${loading ? '…' : expanded ? '▾' : '▸'}</button>`
+                    : `<span class="rm-expand-spacer"></span>`;
 
             const displayLabel = node.displayLabel ?? node.label;
 
@@ -269,7 +275,7 @@ export default class ReferenceManager {
                 : `<span class="rm-node-label rm-node-label--header">${this._esc(displayLabel)}</span>`;
 
             const children = (expanded && !loading)
-                ? this._renderExpandedChildren(node, path, depth)
+                ? this._renderExpandedChildren(node, path, depth, forceExpand)
                 : '';
 
             return `<div class="rm-node" style="padding-left:${indent}px" data-node-path="${this._esc(path)}">
@@ -282,32 +288,54 @@ export default class ReferenceManager {
         }).join('');
     }
 
-    _renderExpandedChildren(node, path, depth) {
+    _renderExpandedChildren(node, path, depth, forceExpand = false) {
         const kids = node._children ?? node.children ?? [];
         if (!kids.length) return '';
         return `<div class="rm-node-children">
-                    ${this._renderNodes(kids, path, depth + 1)}
+                    ${this._renderNodes(kids, path, depth + 1, forceExpand)}
                 </div>`;
     }
 
     // ─── Filtering ───────────────────────────────────────────────────────────
 
     /**
-     * Return a filtered subset of nodes whose label (or any descendant label)
-     * matches the term. Matched nodes are returned with matching children only.
-     * Lazy nodes that haven't been expanded are included if their own label matches.
+     * Path-aware filter: a node is included if the term matches any segment
+     * of its full ancestor path (including itself).
+     *
+     * Examples for term "NM":
+     *   Network / NM / FMP  → included (NM matches ancestor)
+     *   Network / NM        → included (self match)
+     *   NSP / SO1           → excluded (no path segment matches)
+     *
+     * Ancestors that don't match themselves are kept as non-selectable context
+     * headers so the hierarchy remains readable.
+     *
      * @param {object[]} nodes
-     * @param {string}   term  lowercase
+     * @param {string}   term        lowercase search term
+     * @param {string[]} ancestorLabels  labels of all ancestors (empty at root)
      * @returns {object[]}
      */
-    _filterNodes(nodes, term) {
+    _filterNodesWithPath(nodes, term, ancestorLabels) {
         const result = [];
         for (const node of nodes) {
-            const selfMatch = node.label.toLowerCase().includes(term);
             const kids = node._children ?? node.children ?? [];
-            const filteredKids = kids.length ? this._filterNodes(kids, term) : [];
-            if (selfMatch || filteredKids.length) {
-                result.push({ ...node, _children: filteredKids.length ? filteredKids : (node._children ?? node.children) });
+            const pathLabels = [...ancestorLabels, node.label.toLowerCase()];
+
+            // A node matches if any segment in its full path contains the term
+            const pathMatch = pathLabels.some(seg => seg.includes(term));
+
+            if (pathMatch) {
+                // Include this node with all its descendants (fully expanded)
+                result.push({ ...node, _children: kids.length ? kids : undefined });
+            } else {
+                // This node itself doesn't match — but recurse into children in
+                // case a descendant matches; keep this node as a context header
+                const matchedKids = kids.length
+                    ? this._filterNodesWithPath(kids, term, pathLabels)
+                    : [];
+                if (matchedKids.length) {
+                    result.push({ ...node, value: null, _children: matchedKids });
+                }
             }
         }
         return result;

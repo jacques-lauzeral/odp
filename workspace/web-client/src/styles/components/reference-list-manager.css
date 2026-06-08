@@ -125,6 +125,8 @@
     overflow-y: auto;
     padding: var(--space-2);
     height: 280px;
+    min-height: 280px;
+    max-height: 280px;
 }
 
 /* --- Search results --------------------------------------------------------- */
@@ -406,11 +408,10 @@
 
 /* --- Reference manager picker popup ---------------------------------------- */
 /* The single-select tree is shown inside a search-popup overlay (opened by the
-   Select/Change button). Let the popup results area own the scroll so the tree
-   itself is not double-capped. */
+   Select/Change button). The results area owns the scroll — the tree must not
+   override overflow so the fixed height on .search-popup-results is respected. */
 
 .rm-picker-popup .reference-manager-tree {
     max-height: none;
-    overflow: visible;
     padding: 0;
 }
