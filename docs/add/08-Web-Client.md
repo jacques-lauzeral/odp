@@ -27,12 +27,6 @@ web-client/src/
 │   │   │   └── elaborate.js                Workspace shell — live dataset + R/W — owns level-2 tab strip
 │   │   ├── explore/
 │   │   │   └── explore.js                  Workspace shell — edition context + R/O — owns level-2 tab strip
-│   │   ├── setup/
-│   │   │   ├── setup.js
-│   │   │   ├── stakeholder-categories.js
-│   │   │   ├── reference-documents.js
-│   │   │   ├── waves.js
-│   │   │   └── bandwidth.js
 │   │   └── shared/
 │   │       ├── os/
 │   │       │   ├── os.js                   O* workspace orchestrator
@@ -49,11 +43,15 @@ web-client/src/
 │   │       │   ├── planning.js             ON planning view
 │   │       │   ├── on-planning.js          ON plan + Gantt
 │   │       │   ├── prioritisation.js       OC wave assignment
-│   │       │   └── prioritisation-grid.js
+│   │       │   ├── prioritisation-grid.js
+│   │       │   ├── waves.js                Wave management
+│   │       │   └── bandwidths.js           Bandwidth grid management
 │   │       ├── quality/
 │   │       │   └── quality.js              Dataset quality checks — on-demand report, context-aware
-│   │       └── notes/
-│   │           └── notes.js                Placeholder
+│   │       └── setup/
+│   │           ├── setup.js                Setup sub-activity shell — shared Elaborate/Explore
+│   │           ├── stakeholder-categories.js
+│   │           └── reference-documents.js
 │   │
 │   ├── converse/
 │   │   └── converse.js                     Converse activity — placeholder
@@ -68,6 +66,8 @@ web-client/src/
 │   ├── header.js                           Global header — two-row layout, breadcrumb trail, connect popup
 │   ├── breadcrumb.js                       Breadcrumb trail utility (moved from activities/workspace/shared/os/)
 │   ├── master-detail.js                    Reusable two-column resizable layout
+│   ├── tree-entity.js                      Base class for hierarchical entity management (MasterDetail layout)
+│   ├── list-entity.js                      Base class for flat entity management (table layout)
 │   ├── collection-entity.js
 │   ├── collection-entity-form.js           Base form class with tab rendering
 │   ├── rich-text-component.js              TipTap-backed rich text editor/viewer component
@@ -130,9 +130,9 @@ Route table:
 | Tab | Sub-path segment | Sub-activity |
 |---|---|---|
 | O*s | `os` (default) | `OsActivity` |
+| Narrative | `narrative` | `NarrativeActivity` |
 | Plan | `plan` | `PlanActivity` |
 | Quality | `quality` | `QualityActivity` |
-| Notes | `notes` | `NotesActivity` (placeholder) |
 | Setup | `setup` | `SetupActivity` |
 
 **Manage tab strip:**
@@ -162,7 +162,7 @@ Bare `/elaborate` and `/explore` paths redirect to `/elaborate/os` and `/explore
 
 ### 3.5 Browser History
 
-Every inter-O\* navigation pushes a URL history entry via `window.history.pushState`. Panel row selection does not affect browser history. Tab switches between workspace sub-activities (O\*s, Plan, Notes, Setup) push history entries via the router. All canonical O\* URLs are deep-linkable and reconstructable from the URL alone.
+Every inter-O\* navigation pushes a URL history entry via `window.history.pushState`. Panel row selection does not affect browser history. Tab switches between workspace sub-activities (O\*s, Narrative, Plan, Quality, Setup) push history entries via the router. All canonical O\* URLs are deep-linkable and reconstructable from the URL alone.
 
 ---
 
@@ -245,7 +245,7 @@ Four base component classes cover all entity management needs.
 
 ### 6.1 TreeEntity
 
-Used for hierarchical setup entities (`StakeholderCategory`, `ReferenceDocument`). Located in `activities/workspace/setup/tree-entity.js`. Manages real parent–child relationships stored in the database as `REFINES` edges — `parentId` is never stored as a node property. Three-pane layout: tree navigation / item details / action buttons. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child, Delete restricted to leaves).
+Used for hierarchical setup entities (`StakeholderCategory`, `ReferenceDocument`). Located in `components/tree-entity.js`. Renders a `MasterDetail` layout: tree navigation on the left, item details and action buttons on the right. Supports expand/collapse, parent reassignment, and context-sensitive actions (Add Child restricted by `parentScope`, Delete restricted to leaves).
 
 Concrete subclasses declare only three things — no methods required:
 
@@ -257,13 +257,13 @@ Concrete subclasses declare only three things — no methods required:
 
 `TreeEntity` declares `baseFields = [{ name: 'description', label: 'Description', type: 'textarea', required: false }]` — rendered before subclass `fields` in all forms and detail views.
 
-The parent field uses `ReferenceManager` (inline single-select typeahead, `components/odp/reference-manager.js`) instead of a native `<select>`. The manager is wired after modal DOM insertion via `_initParentRM(modal)` and destroyed on `closeModal`.
+The parent field uses `ReferenceManager` (`components/reference-manager.js`) instead of a native `<select>`. The manager is wired after modal DOM insertion via `_initParentRM(modal)` and destroyed on `_closeModal`.
 
 `ReferenceDocument` additionally overrides `getDisplayName()` to append the version. Its `parentScope` is `'all'`, supporting up to three levels (root / child / grandchild).
 
 ### 6.2 ListEntity
 
-Used for flat setup entities (`Wave`, `Bandwidth`). Located in `activities/workspace/setup/list-entity.js`. Single-pane table with sortable columns, inline filtering, and direct CRUD operations.
+Used for flat planning entities (`Wave`, `Bandwidth`). Located in `components/list-entity.js`. Single-pane table with sortable columns and direct CRUD operations. Concrete subclasses (`waves.js`, `bandwidths.js`) live in `activities/workspace/shared/plan/`.
 
 ### 6.3 CollectionEntity
 
@@ -563,7 +563,7 @@ This utility is used exclusively by `NarrativeActivity` for intra-narrative back
 
 ## 11. MasterDetail Component
 
-`MasterDetail` (`components/master-detail.js`) is a reusable two-column resizable layout used by `OsActivity`. Will be reused by Plan, Setup, and Manage sub-activities.
+`MasterDetail` (`components/master-detail.js`) is a reusable two-column resizable layout used by `OsActivity`, `NarrativeActivity`, `TreeEntity` (Setup), and `ManageActivity` (Editions).
 
 Public API:
 
