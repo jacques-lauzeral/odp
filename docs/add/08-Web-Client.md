@@ -1767,9 +1767,9 @@ The response is a `QualityReport` (defined in `@odp/shared` `quality-elements.js
 
 ```js
 {
-  runAt:         string,           // ISO timestamp
-  rules:         QualityRule[],    // registered rules — drives section headers
-  domainReports: DomainQualityReport[]  // one entry per domain, always present
+    runAt:         string,           // ISO timestamp
+        rules:         QualityRule[],    // registered rules — drives section headers
+        domainReports: DomainQualityReport[]  // one entry per domain, always present
 }
 ```
 
@@ -1777,21 +1777,34 @@ Each `DomainQualityReport` contains one array per rule — always present, empty
 
 ```js
 {
-  domain:               string,
-  brokenONTraceability: BrokenONTraceability[]
+    domain:               string,
+        brokenONTraceability: BrokenONTraceability[],  // rule 'on-traceability'
+        untraceableORs:       UntraceableOR[],          // rule 'or-traceability'
+        orphanONs:            OrphanON[],               // rule 'orphan-on'
+        noShowOStars:         NoShowOStar[]             // rule 'no-show'
 }
 ```
 
-Each `BrokenONTraceability` entry carries `{ onId, onCode, onTitle, onVersionId }` — sufficient to render a navigable link and detect staleness on tab return.
+Finding shapes and their navigable ID fields:
+
+| Finding type | ID field | Version field | Navigation |
+|---|---|---|---|
+| `BrokenONTraceability` | `onId` | `onVersionId` | `data-on-id` |
+| `UntraceableOR` | `orId` | `orVersionId` | `data-or-id` |
+| `OrphanON` | `onId` | `onVersionId` | `data-on-id` |
+| `NoShowOStar` | `oStarId` | `oStarVersionId` | `data-ostar-id` + `data-ostar-type` |
 
 ### 20.4 Finding Navigation
 
-Clicking an ON code link navigates to the O* detail page in the correct workspace:
+Clicking a code link navigates to the O* detail page in the correct workspace. Link attributes drive navigation:
 
-| Context | Target URL |
-|---|---|
-| Elaborate | `/elaborate/os/on/{onId}` |
-| Explore | `/explore/{editionId}/os/on/{onId}` |
+| Attribute | Handler | Target URL pattern |
+|---|---|---|
+| `data-on-id` | ON findings | `{base}/os/on/{id}` |
+| `data-or-id` | OR findings | `{base}/os/or/{id}` |
+| `data-ostar-id` + `data-ostar-type` | NO SHOW findings | `{base}/os/{type}/{id}` |
+
+Where `base` is `/elaborate` (live) or `/explore/{editionId}` (edition snapshot).
 
 ### 20.5 Report Persistence Across Tab Switches
 
@@ -1801,7 +1814,7 @@ Results are held in `QualityActivity._report` (instance memory). They are not ca
 
 The report is discarded only when the top-level workspace shell is torn down (top-level activity switch). The "Last run" timestamp tells the user when the report was generated; they can re-run explicitly at any time.
 
-**Staleness detection on tab return:** when `render()` is called on an existing report, `_renderReportWithStaleness()` calls `app.getOStars()` (which will be fresh if the user just edited an ON via `invalidateOStars()`) and compares each flagged ON's stored `onVersionId` against the current cache value. ONs whose `versionId` has changed are marked "possibly fixed" (amber badge, dimmed row) — a non-definitive hint that the issue may have been resolved. Re-running confirms. If the cache is unavailable the report renders without indicators.
+**Staleness detection on tab return:** when `render()` is called on an existing report, `_renderReportWithStaleness()` calls `app.getOStars()` and compares each finding's stored `versionId` against the current cache value. O*s whose `versionId` has changed are marked "possibly fixed" (amber badge, dimmed row). Staleness detection covers `brokenONTraceability`, `untraceableORs`, and `orphanONs`. `noShowOStars` are excluded — NO SHOW status is structural, not version-sensitive. Re-running confirms. If the cache is unavailable the report renders without indicators.
 
 ### 20.6 API Client
 
@@ -1818,7 +1831,9 @@ async runQualityChecks({ domains = [], editionId = null } = {}) {
 
 ### 20.7 Extensibility
 
-Adding a new quality rule requires no web client code change — `QualityActivity` renders rule sections dynamically from `report.rules`. The only client change needed when a new rule is implemented is adding a renderer for the new finding array in `_renderDomainReport()`.
+Adding a new quality rule requires one client change: a new block in `_renderDomainReport()` calling `_renderFindingTable()` with the appropriate `rowFn`. The generic `_renderFindingTable()` handles column headers, row rendering, and badge columns — only the rule-specific field mapping is needed per rule.
+
+Staleness detection is opt-in per rule: add the finding array's iteration to `_renderReportWithStaleness()` using `_isStale()`. `noShowOStars` intentionally omits staleness — it is a structural finding not version-sensitive.
 
 ---
 

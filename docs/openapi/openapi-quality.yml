@@ -18,7 +18,7 @@ paths:
 
         Each domain entry is always present and always contains all rule arrays —
         arrays are empty when no findings exist for that rule in that domain.
-        NO_SHOW O*s are excluded from all checks.
+        NO_SHOW O*s are excluded from all checks except the 'no-show' rule itself.
 
         Results are not persisted — each call runs fresh against the current dataset.
       parameters:
@@ -103,8 +103,66 @@ components:
           type: string
           description: "ON version ID at report build time — compared against O* summary cache on tab return to detect possible fixes"
 
-    # Future finding types added here as new rules are implemented:
-    # BrokenORTraceability, BrokenONImplementation, BrokenMandatoryFields, TraceCycle, ...
+    UntraceableOR:
+      type: object
+      description: "An OR that neither implements any ON nor refines any parent OR"
+      required: [orId, orCode, orTitle, orVersionId]
+      properties:
+        orId:
+          type: string
+          description: "OR item ID (opaque) — used to build navigation link"
+        orCode:
+          type: string
+          description: "OR code"
+          example: "OR-ASM_ATFCM-0042"
+        orTitle:
+          type: string
+          description: "OR title"
+        orVersionId:
+          type: string
+          description: "OR version ID at report build time — compared against O* summary cache on tab return to detect possible fixes"
+
+    OrphanON:
+      type: object
+      description: "An ON implemented by no OR and not refined by any child ON"
+      required: [onId, onCode, onTitle, onVersionId]
+      properties:
+        onId:
+          type: string
+          description: "ON item ID (opaque) — used to build navigation link"
+        onCode:
+          type: string
+          description: "ON code"
+          example: "ON-ASM_ATFCM-0012"
+        onTitle:
+          type: string
+          description: "ON title"
+        onVersionId:
+          type: string
+          description: "ON version ID at report build time — compared against O* summary cache on tab return to detect possible fixes"
+
+    NoShowOStar:
+      type: object
+      description: "An ON or OR with maturity = NO_SHOW"
+      required: [oStarId, oStarCode, oStarTitle, oStarType, oStarVersionId]
+      properties:
+        oStarId:
+          type: string
+          description: "O* item ID (opaque) — used to build navigation link"
+        oStarCode:
+          type: string
+          description: "O* code"
+          example: "ON-ASM_ATFCM-0005"
+        oStarTitle:
+          type: string
+          description: "O* title"
+        oStarType:
+          type: string
+          enum: [ON, OR]
+          description: "O* type"
+        oStarVersionId:
+          type: string
+          description: "O* version ID at report build time — compared against O* summary cache on tab return to detect possible fixes"
 
     # ── Domain report ──────────────────────────────────────────────────────────
 
@@ -113,7 +171,7 @@ components:
       description: |
         Quality findings for a single domain.
         All rule arrays are always present — empty when no findings for that rule in this domain.
-      required: [domain, brokenONTraceability]
+      required: [domain, brokenONTraceability, untraceableORs, orphanONs, noShowOStars]
       properties:
         domain:
           type: string
@@ -123,7 +181,21 @@ components:
           description: "Findings for rule 'on-traceability'"
           items:
             $ref: '#/components/schemas/BrokenONTraceability'
-        # Future rule arrays added here as rules are implemented
+        untraceableORs:
+          type: array
+          description: "Findings for rule 'or-traceability'"
+          items:
+            $ref: '#/components/schemas/UntraceableOR'
+        orphanONs:
+          type: array
+          description: "Findings for rule 'orphan-on'"
+          items:
+            $ref: '#/components/schemas/OrphanON'
+        noShowOStars:
+          type: array
+          description: "Findings for rule 'no-show'"
+          items:
+            $ref: '#/components/schemas/NoShowOStar'
 
     # ── Quality report ─────────────────────────────────────────────────────────
 

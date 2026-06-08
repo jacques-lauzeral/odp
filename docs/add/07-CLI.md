@@ -193,6 +193,15 @@ The `--folder` option is passed to the mapper as a path prefix (used for IDL sub
 
 Results are displayed as domain sections, each showing a table of findings per rule. Domains with no findings are listed with a ✓ status. The report is always re-run on demand — no caching.
 
+Each rule renders as a labelled table when findings are present. Column layout:
+
+| Rule | Columns |
+|---|---|
+| ON traceability | ON ID, Code, Title |
+| OR traceability | OR ID, Code, Title |
+| Orphan ON | ON ID, Code, Title |
+| NO SHOW O\* | ID, Code, Type, Title |
+
 ### Publication
 
 | Command | Action |

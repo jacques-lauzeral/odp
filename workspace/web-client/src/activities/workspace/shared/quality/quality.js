@@ -120,10 +120,17 @@ export default class QualityActivity {
     // Report rendering
     // -------------------------------------------------------------------------
 
+    _countDomainIssues(domainReport) {
+        return (domainReport.brokenONTraceability?.length ?? 0)
+            + (domainReport.untraceableORs?.length       ?? 0)
+            + (domainReport.orphanONs?.length            ?? 0)
+            + (domainReport.noShowOStars?.length         ?? 0);
+    }
+
     _renderReport(content, staleIds = new Map()) {
         const report = this._report;
         const totalIssues = report.domainReports.reduce(
-            (sum, dr) => sum + dr.brokenONTraceability.length, 0
+            (sum, dr) => sum + this._countDomainIssues(dr), 0
         );
 
         const summaryClass = totalIssues === 0 ? 'quality-activity__summary--ok' : 'quality-activity__summary--issues';
@@ -139,7 +146,7 @@ export default class QualityActivity {
         const domainsEl = dom.find('#quality-domains', content);
 
         for (const domainReport of report.domainReports) {
-            const issueCount = domainReport.brokenONTraceability.length;
+            const issueCount = this._countDomainIssues(domainReport);
             const sectionEl = document.createElement('div');
             sectionEl.className = 'quality-domain';
             sectionEl.innerHTML = `
@@ -149,38 +156,125 @@ export default class QualityActivity {
                         ${issueCount === 0 ? '✓ No issues' : `${issueCount} issue${issueCount > 1 ? 's' : ''}`}
                     </span>
                 </div>
-                ${issueCount > 0 ? this._renderONTraceabilityTable(domainReport.brokenONTraceability, staleIds) : ''}
+                ${this._renderDomainReport(domainReport, staleIds)}
             `;
             domainsEl.appendChild(sectionEl);
         }
     }
 
-    _renderONTraceabilityTable(entries, staleIds = new Map()) {
+    /**
+     * Render all rule tables for a single domain.
+     * Each rule is rendered only when it has findings.
+     * @private
+     */
+    _renderDomainReport(domainReport, staleIds = new Map()) {
+        const parts = [];
+
+        if (domainReport.brokenONTraceability?.length > 0) {
+            parts.push(this._renderFindingTable({
+                label:   'ON traceability — ONs with no strategic document and no parent ON',
+                entries: domainReport.brokenONTraceability,
+                columns: ['Code', 'Title'],
+                rowFn:   (e) => {
+                    const maybeFixed = staleIds.has(e.onId);
+                    return {
+                        rowClass: maybeFixed ? 'quality-table__row--maybe-fixed' : '',
+                        cells: [
+                            `<a class="odip-link" data-on-id="${e.onId}">${e.onCode}</a>`,
+                            e.onTitle
+                        ],
+                        badge: maybeFixed
+                            ? '<span class="quality-badge--maybe-fixed" title="This ON was updated since the report was run — re-run to confirm">possibly fixed</span>'
+                            : ''
+                    };
+                }
+            }));
+        }
+
+        if (domainReport.untraceableORs?.length > 0) {
+            parts.push(this._renderFindingTable({
+                label:   'OR traceability — ORs that neither implement any ON nor refine any parent OR',
+                entries: domainReport.untraceableORs,
+                columns: ['Code', 'Title'],
+                rowFn:   (e) => {
+                    const maybeFixed = staleIds.has(e.orId);
+                    return {
+                        rowClass: maybeFixed ? 'quality-table__row--maybe-fixed' : '',
+                        cells: [
+                            `<a class="odip-link" data-or-id="${e.orId}">${e.orCode}</a>`,
+                            e.orTitle
+                        ],
+                        badge: maybeFixed
+                            ? '<span class="quality-badge--maybe-fixed" title="This OR was updated since the report was run — re-run to confirm">possibly fixed</span>'
+                            : ''
+                    };
+                }
+            }));
+        }
+
+        if (domainReport.orphanONs?.length > 0) {
+            parts.push(this._renderFindingTable({
+                label:   'Orphan ON — ONs implemented by no OR and not refined by any child ON',
+                entries: domainReport.orphanONs,
+                columns: ['Code', 'Title'],
+                rowFn:   (e) => {
+                    const maybeFixed = staleIds.has(e.onId);
+                    return {
+                        rowClass: maybeFixed ? 'quality-table__row--maybe-fixed' : '',
+                        cells: [
+                            `<a class="odip-link" data-on-id="${e.onId}">${e.onCode}</a>`,
+                            e.onTitle
+                        ],
+                        badge: maybeFixed
+                            ? '<span class="quality-badge--maybe-fixed" title="This ON was updated since the report was run — re-run to confirm">possibly fixed</span>'
+                            : ''
+                    };
+                }
+            }));
+        }
+
+        if (domainReport.noShowOStars?.length > 0) {
+            parts.push(this._renderFindingTable({
+                label:   'NO SHOW O* — ONs and ORs with status NO SHOW',
+                entries: domainReport.noShowOStars,
+                columns: ['Code', 'Type', 'Title'],
+                rowFn:   (e) => ({
+                    rowClass: '',
+                    cells: [
+                        `<a class="odip-link" data-ostar-id="${e.oStarId}" data-ostar-type="${e.oStarType}">${e.oStarCode}</a>`,
+                        e.oStarType,
+                        e.oStarTitle
+                    ],
+                    badge: ''
+                })
+            }));
+        }
+
+        return parts.join('');
+    }
+
+    /**
+     * Generic finding table renderer.
+     * @param {object} opts
+     * @param {string}   opts.label   - Rule label shown above the table
+     * @param {object[]} opts.entries - Finding array
+     * @param {string[]} opts.columns - Column header labels (badge column always appended)
+     * @param {Function} opts.rowFn   - (entry) → { rowClass, cells[], badge }
+     * @private
+     */
+    _renderFindingTable({ label, entries, columns, rowFn }) {
+        const headerCells = columns.map(c => `<th>${c}</th>`).join('') + '<th></th>';
         const rows = entries.map(e => {
-            const maybeFixed = staleIds.has(e.onId);
-            return `
-            <tr class="${maybeFixed ? 'quality-table__row--maybe-fixed' : ''}">
-                <td class="quality-table__code">
-                    <a class="odip-link" data-on-id="${e.onId}">${e.onCode}</a>
-                </td>
-                <td class="quality-table__title">${e.onTitle}</td>
-                <td class="quality-table__status">
-                    ${maybeFixed ? '<span class="quality-badge--maybe-fixed" title="This ON was updated since the report was run — re-run to confirm">possibly fixed</span>' : ''}
-                </td>
-            </tr>`;
+            const { rowClass, cells, badge } = rowFn(e);
+            const dataCells = cells.map(c => `<td>${c}</td>`).join('');
+            return `<tr class="${rowClass}">${dataCells}<td>${badge}</td></tr>`;
         }).join('');
 
         return `
             <div class="quality-rule">
-                <div class="quality-rule__label">ON traceability — ONs with no strategic document and no parent ON</div>
+                <div class="quality-rule__label">${label}</div>
                 <table class="quality-table">
-                    <thead>
-                        <tr>
-                            <th class="quality-table__code">Code</th>
-                            <th class="quality-table__title">Title</th>
-                            <th class="quality-table__status"></th>
-                        </tr>
-                    </thead>
+                    <thead><tr>${headerCells}</tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
             </div>
@@ -192,8 +286,15 @@ export default class QualityActivity {
     // -------------------------------------------------------------------------
 
     /**
-     * On tab return: fetch the O* cache, build a staleIds set of ONs whose
+     * On tab return: fetch the O* cache, build a staleIds map of O*s whose
      * versionId has changed since the report was built, then render with indicators.
+     *
+     * Covers all finding arrays that carry a versionId:
+     *   brokenONTraceability (onId / onVersionId)
+     *   untraceableORs       (orId / orVersionId)
+     *   orphanONs            (onId / onVersionId)
+     *
+     * noShowOStars are excluded — NO SHOW status is structural, not version-dependent.
      * @private
      */
     async _renderReportWithStaleness(content) {
@@ -201,13 +302,21 @@ export default class QualityActivity {
         try {
             const ostars = await this.app.getOStars();
             const currentVersions = new Map(ostars.map(o => [String(o.itemId), String(o.versionId)]));
+
             for (const dr of this._report.domainReports) {
-                for (const entry of dr.brokenONTraceability) {
-                    const current = currentVersions.get(entry.onId);
-                    if (current && current !== entry.onVersionId) {
+                for (const entry of dr.brokenONTraceability ?? []) {
+                    if (this._isStale(currentVersions, entry.onId, entry.onVersionId))
                         staleIds.set(entry.onId, true);
-                    }
                 }
+                for (const entry of dr.untraceableORs ?? []) {
+                    if (this._isStale(currentVersions, entry.orId, entry.orVersionId))
+                        staleIds.set(entry.orId, true);
+                }
+                for (const entry of dr.orphanONs ?? []) {
+                    if (this._isStale(currentVersions, entry.onId, entry.onVersionId))
+                        staleIds.set(entry.onId, true);
+                }
+                // noShowOStars intentionally excluded — structural finding, not version-sensitive
             }
         } catch {
             // Cache unavailable — render without staleness indicators
@@ -216,16 +325,36 @@ export default class QualityActivity {
         this._attachLinkListeners(content);
     }
 
+    /** @private */
+    _isStale(currentVersions, itemId, reportedVersionId) {
+        const current = currentVersions.get(String(itemId));
+        return current !== undefined && current !== String(reportedVersionId);
+    }
+
     // -------------------------------------------------------------------------
     // Navigation from findings
     // -------------------------------------------------------------------------
 
     _attachLinkListeners(content) {
+        const ctx  = this.app.getDatasetContext();
+        const base = ctx?.type === 'edition' ? `/explore/${ctx.editionId}` : '/elaborate';
+
         dom.findAll('[data-on-id]', content).forEach(link => {
             link.addEventListener('click', () => {
-                const ctx = this.app.getDatasetContext();
-                const base = ctx?.type === 'edition' ? `/explore/${ctx.editionId}` : '/elaborate';
                 this.app.navigate(`${base}/os/on/${link.dataset.onId}`);
+            });
+        });
+
+        dom.findAll('[data-or-id]', content).forEach(link => {
+            link.addEventListener('click', () => {
+                this.app.navigate(`${base}/os/or/${link.dataset.orId}`);
+            });
+        });
+
+        dom.findAll('[data-ostar-id]', content).forEach(link => {
+            link.addEventListener('click', () => {
+                const type = link.dataset.ostarType.toLowerCase();
+                this.app.navigate(`${base}/os/${type}/${link.dataset.ostarId}`);
             });
         });
     }

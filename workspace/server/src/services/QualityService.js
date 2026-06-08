@@ -2,7 +2,10 @@ import { getDomainKeys } from '../config/loader.js';
 import {
     QualityReport,
     DomainQualityReport,
-    BrokenONTraceability
+    BrokenONTraceability,
+    OrphanON,
+    UntraceableOR,
+    NoShowOStar
 } from '../../../shared/src/index.js';
 import {
     operationalRequirementStore,
@@ -31,8 +34,22 @@ const RULES = [
         id:          'on-traceability',
         label:       'ON traceability',
         description: 'ONs with no strategic document reference and no parent ON'
+    },
+    {
+        id:          'or-traceability',
+        label:       'OR traceability',
+        description: 'ORs that neither implement any ON nor refine any parent OR'
+    },
+    {
+        id:          'orphan-on',
+        label:       'Orphan ON',
+        description: 'ONs implemented by no OR and not refined by any child ON'
+    },
+    {
+        id:          'no-show',
+        label:       'NO SHOW O*',
+        description: 'ONs and ORs with status NO SHOW'
     }
-    // Future rules registered here
 ];
 
 // ---------------------------------------------------------------------------
@@ -43,7 +60,7 @@ export class QualityService {
 
     /**
      * Run all quality rules for the requested domains and return a QualityReport.
-     * NO_SHOW O*s are excluded from all checks.
+     * NO_SHOW O*s are excluded from all checks except the no-show rule itself.
      *
      * @param {string[]} domains  - Domain keys to scope the report; empty = all domains
      * @param {number|null} editionId - Edition context; null = live dataset
@@ -96,12 +113,23 @@ export class QualityService {
         const brokenONTraceability = await this._checkONTraceability(
             domain, baselineId, editionId, userId
         );
+        const untraceableORs = await this._checkORTraceability(
+            domain, baselineId, editionId, userId
+        );
+        const orphanONs = await this._checkOrphanON(
+            domain, baselineId, editionId, userId
+        );
+        const noShowOStars = await this._checkNoShow(
+            domain, baselineId, editionId, userId
+        );
 
         return {
             ...DomainQualityReport,
             domain,
-            brokenONTraceability
-            // Future rule arrays added here as rules are implemented
+            brokenONTraceability,
+            untraceableORs,
+            orphanONs,
+            noShowOStars
         };
     }
 
@@ -112,7 +140,6 @@ export class QualityService {
     /**
      * on-traceability — ONs with no strategic document reference AND no parent ON.
      * Excludes NO_SHOW.
-     * Supports live dataset (baselineId = null) and edition context.
      * @private
      * @returns {Promise<BrokenONTraceability[]>}
      */
@@ -124,7 +151,7 @@ export class QualityService {
 
             const allONs = await operationalRequirementStore().findAll(
                 tx,
-                baselineId,     // null = latest versions; set = baseline/edition context
+                baselineId,
                 filters,
                 'summary'
             );
@@ -143,6 +170,94 @@ export class QualityService {
                     onTitle:     on.title,
                     onVersionId: String(on.versionId)
                 }));
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * or-traceability — ORs that neither implement any ON nor refine any parent OR.
+     * Excludes NO_SHOW.
+     * @private
+     * @returns {Promise<UntraceableOR[]>}
+     */
+    async _checkORTraceability(domain, baselineId, editionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const findings = await operationalRequirementStore().findUntraceableORs(
+                tx, baselineId, editionId, domain
+            );
+            await commitTransaction(tx);
+
+            return findings.map(or => ({
+                ...UntraceableOR,
+                orId:        String(or.itemId),
+                orCode:      or.code,
+                orTitle:     or.title,
+                orVersionId: String(or.versionId)
+            }));
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * orphan-on — ONs implemented by no OR and not refined by any child ON.
+     * Excludes NO_SHOW.
+     * @private
+     * @returns {Promise<OrphanON[]>}
+     */
+    async _checkOrphanON(domain, baselineId, editionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const findings = await operationalRequirementStore().findOrphanONs(
+                tx, baselineId, editionId, domain
+            );
+            await commitTransaction(tx);
+
+            return findings.map(on => ({
+                ...OrphanON,
+                onId:        String(on.itemId),
+                onCode:      on.code,
+                onTitle:     on.title,
+                onVersionId: String(on.versionId)
+            }));
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * no-show — ONs and ORs with maturity = NO_SHOW.
+     * This is the only rule that intentionally includes NO_SHOW O*s.
+     * @private
+     * @returns {Promise<NoShowOStar[]>}
+     */
+    async _checkNoShow(domain, baselineId, editionId, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const filters = { maturity: 'NO_SHOW', domain };
+            if (editionId !== null) filters.editionId = editionId;
+
+            const findings = await operationalRequirementStore().findAll(
+                tx,
+                baselineId,
+                filters,
+                'summary'
+            );
+            await commitTransaction(tx);
+
+            return findings.map(ostar => ({
+                ...NoShowOStar,
+                oStarId:        String(ostar.itemId),
+                oStarCode:      ostar.code,
+                oStarTitle:     ostar.title,
+                oStarType:      ostar.type,
+                oStarVersionId: String(ostar.versionId)
+            }));
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;

@@ -5,7 +5,7 @@
  * Exchange model for GET /quality/checks.
  *
  * Extensibility pattern:
- *   - Adding a rule = add a new BrokenXxx entry type + add the array to DomainQualityReport
+ *   - Adding a rule = add a new finding entry type + add the array to DomainQualityReport
  *   - QualityService is the sole producer of these shapes
  *   - Quality query methods are internal to QualityService — not exposed on
  *     OperationalRequirementService or OperationalChangeService
@@ -54,8 +54,56 @@ export const BrokenONTraceability = {
     onVersionId: ''
 };
 
-// Future finding types added here as new rules are implemented:
-// BrokenORTraceability, BrokenONImplementation, BrokenMandatoryFields, TraceCycle, ...
+/**
+ * An OR that violates the traceability rule:
+ * neither implements any ON nor refines any parent OR.
+ *
+ * @typedef {object} UntraceableOR
+ * @property {string} orId        — OR item ID (opaque)
+ * @property {string} orCode      — OR code (e.g. OR-ASM_ATFCM-0042)
+ * @property {string} orTitle     — OR title
+ * @property {string} orVersionId — OR version ID at report build time
+ */
+export const UntraceableOR = {
+    orId:        '',
+    orCode:      '',
+    orTitle:     '',
+    orVersionId: ''
+};
+
+/**
+ * An ON that is not implemented by any OR and not refined by any child ON.
+ *
+ * @typedef {object} OrphanON
+ * @property {string} onId        — ON item ID (opaque)
+ * @property {string} onCode      — ON code (e.g. ON-ASM_ATFCM-0012)
+ * @property {string} onTitle     — ON title
+ * @property {string} onVersionId — ON version ID at report build time
+ */
+export const OrphanON = {
+    onId:        '',
+    onCode:      '',
+    onTitle:     '',
+    onVersionId: ''
+};
+
+/**
+ * An ON or OR with maturity = NO_SHOW.
+ *
+ * @typedef {object} NoShowOStar
+ * @property {string} oStarId        — O* item ID (opaque)
+ * @property {string} oStarCode      — O* code
+ * @property {string} oStarTitle     — O* title
+ * @property {string} oStarType      — 'ON' | 'OR'
+ * @property {string} oStarVersionId — O* version ID at report build time
+ */
+export const NoShowOStar = {
+    oStarId:        '',
+    oStarCode:      '',
+    oStarTitle:     '',
+    oStarType:      '',
+    oStarVersionId: ''
+};
 
 // ---------------------------------------------------------------------------
 // Domain report
@@ -68,11 +116,16 @@ export const BrokenONTraceability = {
  * @typedef {object} DomainQualityReport
  * @property {string}                  domain               — domain key from domains.json
  * @property {BrokenONTraceability[]}  brokenONTraceability — findings for rule 'on-traceability'
+ * @property {UntraceableOR[]}         untraceableORs       — findings for rule 'or-traceability'
+ * @property {OrphanON[]}              orphanONs            — findings for rule 'orphan-on'
+ * @property {NoShowOStar[]}           noShowOStars         — findings for rule 'no-show'
  */
 export const DomainQualityReport = {
     domain:               '',
-    brokenONTraceability: []
-    // Future rule arrays added here as rules are implemented
+    brokenONTraceability: [],
+    untraceableORs:       [],
+    orphanONs:            [],
+    noShowOStars:         []
 };
 
 // ---------------------------------------------------------------------------

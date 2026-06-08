@@ -130,7 +130,7 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-import.yml` | Import endpoints |
 | `openapi-docx.yml` | DOCX export endpoint |
 | `openapi-publication.yml` | Publication endpoint |
-| `openapi-quality.yml` | Quality check endpoints and schemas (`QualityReport`, `DomainQualityReport`, `BrokenONTraceability`, …) |
+| `openapi-quality.yml` | Quality check endpoints and schemas (`QualityReport`, `DomainQualityReport`, `BrokenONTraceability`, `UntraceableOR`, `OrphanON`, `NoShowOStar`) |
 
 Refer to these files for all endpoint signatures, query parameters, request/response schemas, and status code contracts.
 

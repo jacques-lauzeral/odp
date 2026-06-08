@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import fetch from 'node-fetch';
 import Table from 'cli-table3';
-import { getDomainKeys, isDomainValid } from '../../../shared/src/index.js';
+
 
 export class QualityCommands {
     constructor(config) {
@@ -36,13 +36,6 @@ export class QualityCommands {
                     const domains = options.domain
                         ? options.domain.split(',').map(d => d.trim())
                         : [];
-
-                    const invalid = domains.filter(d => !isDomainValid(d));
-                    if (invalid.length > 0) {
-                        console.error(`Invalid domain key(s): ${invalid.join(', ')}`);
-                        console.error(`Valid keys: ${getDomainKeys().join(', ')}`);
-                        process.exit(1);
-                    }
 
                     const params = [];
                     if (domains.length > 0) params.push(`domain=${domains.join(',')}`);
@@ -102,7 +95,41 @@ export class QualityCommands {
                 console.log(table.toString());
             }
 
-            // Future rule arrays displayed here as rules are implemented
+            if (domainReport.untraceableORs.length > 0) {
+                console.log(`  OR traceability (${domainReport.untraceableORs.length}):`);
+                const table = new Table({
+                    head: ['OR ID', 'Code', 'Title'],
+                    colWidths: [10, 25, 55]
+                });
+                domainReport.untraceableORs.forEach(entry => {
+                    table.push([entry.orId, entry.orCode, entry.orTitle]);
+                });
+                console.log(table.toString());
+            }
+
+            if (domainReport.orphanONs.length > 0) {
+                console.log(`  Orphan ON (${domainReport.orphanONs.length}):`);
+                const table = new Table({
+                    head: ['ON ID', 'Code', 'Title'],
+                    colWidths: [10, 25, 55]
+                });
+                domainReport.orphanONs.forEach(entry => {
+                    table.push([entry.onId, entry.onCode, entry.onTitle]);
+                });
+                console.log(table.toString());
+            }
+
+            if (domainReport.noShowOStars.length > 0) {
+                console.log(`  NO SHOW O* (${domainReport.noShowOStars.length}):`);
+                const table = new Table({
+                    head: ['ID', 'Code', 'Type', 'Title'],
+                    colWidths: [10, 25, 8, 47]
+                });
+                domainReport.noShowOStars.forEach(entry => {
+                    table.push([entry.oStarId, entry.oStarCode, entry.oStarType, entry.oStarTitle]);
+                });
+                console.log(table.toString());
+            }
         }
 
         console.log(`\nTotal issues: ${totalIssues}`);
@@ -112,8 +139,10 @@ export class QualityCommands {
     }
 
     _countIssues(domainReport) {
-        return domainReport.brokenONTraceability.length;
-        // Future rule arrays added here
+        return domainReport.brokenONTraceability.length
+            + domainReport.untraceableORs.length
+            + domainReport.orphanONs.length
+            + domainReport.noShowOStars.length;
     }
 }
 

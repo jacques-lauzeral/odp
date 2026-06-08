@@ -829,4 +829,138 @@ export class OperationalRequirementStore extends VersionedItemStore {
             throw new StoreError(`Failed to check DEPENDS_ON cycle: ${error.message}`, error);
         }
     }
+
+    // =========================================================================
+    // Quality check methods — called exclusively by QualityService
+    // =========================================================================
+
+    /**
+     * Find ONs that have no implementing OR and are not refined by any child ON.
+     * NO_SHOW ONs are excluded.
+     *
+     * Supports three query contexts (latest / baseline / edition) via the same
+     * pattern used by findRoots().
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId - When set, baselineId must also be set
+     * @param {string|null} domain    - Optional domain key filter
+     * @returns {Promise<Array<{itemId, code, title, versionId}>>}
+     */
+    async findOrphanONs(transaction, baselineId = null, editionId = null, domain = null) {
+        try {
+            let cypher, params = {};
+
+            if (baselineId === null) {
+                cypher = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    WHERE version.type = 'ON'
+                      AND version.maturity <> 'NO_SHOW'
+                      AND NOT EXISTS { MATCH (:${this.versionLabel})-[:IMPLEMENTS]->(item) }
+                      AND NOT EXISTS { MATCH (version)-[:REFINES]->(:${this.nodeLabel}) }
+                `;
+            } else {
+                const numericBaselineId = this.normalizeId(baselineId);
+                params.baselineId = numericBaselineId;
+                cypher = `
+                    MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                      AND version.type = 'ON'
+                      AND version.maturity <> 'NO_SHOW'
+                      AND NOT EXISTS { MATCH (:${this.versionLabel})-[:IMPLEMENTS]->(item) }
+                      AND NOT EXISTS { MATCH (version)-[:REFINES]->(:${this.nodeLabel}) }
+                `;
+                if (editionId !== null) {
+                    cypher += `  AND $editionId IN r.editions\n`;
+                    params.editionId = this.normalizeId(editionId);
+                }
+            }
+
+            if (domain !== null) {
+                cypher += `  AND version.domain = $domain\n`;
+                params.domain = domain;
+            }
+
+            cypher += `
+                    RETURN id(item) AS itemId, item.code AS code, item.title AS title,
+                           id(version) AS versionId
+                    ORDER BY item.title
+            `;
+
+            const result = await transaction.run(cypher, params);
+            return result.records.map(r => ({
+                itemId:    this.normalizeId(r.get('itemId')),
+                code:      r.get('code'),
+                title:     r.get('title'),
+                versionId: this.normalizeId(r.get('versionId')),
+            }));
+        } catch (error) {
+            throw new StoreError(`Failed to find orphan ONs: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find ORs that neither implement any ON nor refine any parent OR.
+     * NO_SHOW ORs are excluded.
+     *
+     * Supports three query contexts (latest / baseline / edition) via the same
+     * pattern used by findRoots().
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId - When set, baselineId must also be set
+     * @param {string|null} domain    - Optional domain key filter
+     * @returns {Promise<Array<{itemId, code, title, versionId}>>}
+     */
+    async findUntraceableORs(transaction, baselineId = null, editionId = null, domain = null) {
+        try {
+            let cypher, params = {};
+
+            if (baselineId === null) {
+                cypher = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    WHERE version.type = 'OR'
+                      AND version.maturity <> 'NO_SHOW'
+                      AND NOT EXISTS { MATCH (version)-[:IMPLEMENTS]->(:${this.nodeLabel}) }
+                      AND NOT EXISTS { MATCH (version)-[:REFINES]->(:${this.nodeLabel}) }
+                `;
+            } else {
+                const numericBaselineId = this.normalizeId(baselineId);
+                params.baselineId = numericBaselineId;
+                cypher = `
+                    MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                      AND version.type = 'OR'
+                      AND version.maturity <> 'NO_SHOW'
+                      AND NOT EXISTS { MATCH (version)-[:IMPLEMENTS]->(:${this.nodeLabel}) }
+                      AND NOT EXISTS { MATCH (version)-[:REFINES]->(:${this.nodeLabel}) }
+                `;
+                if (editionId !== null) {
+                    cypher += `  AND $editionId IN r.editions\n`;
+                    params.editionId = this.normalizeId(editionId);
+                }
+            }
+
+            if (domain !== null) {
+                cypher += `  AND version.domain = $domain\n`;
+                params.domain = domain;
+            }
+
+            cypher += `
+                    RETURN id(item) AS itemId, item.code AS code, item.title AS title,
+                           id(version) AS versionId
+                    ORDER BY item.title
+            `;
+
+            const result = await transaction.run(cypher, params);
+            return result.records.map(r => ({
+                itemId:    this.normalizeId(r.get('itemId')),
+                code:      r.get('code'),
+                title:     r.get('title'),
+                versionId: this.normalizeId(r.get('versionId')),
+            }));
+        } catch (error) {
+            throw new StoreError(`Failed to find untraceable ORs: ${error.message}`, error);
+        }
+    }
 }

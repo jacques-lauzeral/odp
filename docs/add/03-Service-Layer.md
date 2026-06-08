@@ -311,17 +311,17 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 
 ### 7.1 Role
 
-`QualityService` is a **pure orchestrator** — it has no base class, performs no CRUD, and exposes no REST endpoints on behalf of other services. It is the sole consumer of quality-specific query methods on `OperationalRequirementService` and `OperationalChangeService`.
+`QualityService` is a **pure orchestrator** — it has no base class, performs no CRUD, and exposes no REST endpoints on behalf of other services. It is the sole consumer of quality-specific query methods on `OperationalRequirementStore`.
 
 ### 7.2 Internal Quality Methods
 
-Quality query methods are added directly to `OperationalRequirementService` and `OperationalChangeService` as needed, but are **not exposed via their respective REST routes** (`/operational-requirements`, `/operational-changes`). They are called exclusively by `QualityService`.
+Quality query methods (`findOrphanONs`, `findUntraceableORs`) are added directly to `OperationalRequirementStore` but are **not exposed via the operational entity REST routes**. They are called exclusively by `QualityService`.
 
-This pattern keeps the quality concern encapsulated: the operational entity routes are unchanged, and `QualityService` accesses the store through the service that owns the entity type.
+This pattern keeps the quality concern encapsulated: the operational entity routes are unchanged, and `QualityService` accesses the store directly for read-only quality queries.
 
 ### 7.3 Direct Store Access
 
-For efficiency, `QualityService` calls `operationalRequirementStore().findAll()` directly with appropriate filters rather than going through `OperationalRequirementService.getAll()`. This is the one sanctioned exception to the "services call services, not stores" rule — justified because quality checks are read-only, carry no business validation, and the `findAll` call is already the lowest-level abstraction needed.
+`QualityService` calls `operationalRequirementStore()` directly — both `findAll()` (for `on-traceability` and `no-show` rules) and the dedicated quality methods (`findOrphanONs`, `findUntraceableORs`). This is the one sanctioned exception to the "services call services, not stores" rule — justified because quality checks are read-only, carry no business validation, and the store calls are already the lowest-level abstraction needed.
 
 ### 7.4 Edition Context
 
@@ -329,7 +329,16 @@ For efficiency, `QualityService` calls `operationalRequirementStore().findAll()`
 
 ### 7.5 Rule Registry
 
-Rules are declared as a static array in `QualityService`. Each rule descriptor carries `{ id, label, description }`. Adding a new rule requires:
+Rules are declared as a static array in `QualityService`. Each rule descriptor carries `{ id, label, description }`. The registered rules are:
+
+| Rule ID | Method | Store call | NO_SHOW excluded |
+|---|---|---|---|
+| `on-traceability` | `_checkONTraceability()` | `findAll({ type: 'ON', domain })` | yes (post-filter) |
+| `or-traceability` | `_checkORTraceability()` | `findUntraceableORs()` | yes (in query) |
+| `orphan-on` | `_checkOrphanON()` | `findOrphanONs()` | yes (in query) |
+| `no-show` | `_checkNoShow()` | `findAll({ maturity: 'NO_SHOW', domain })` | **included** (this is the rule) |
+
+Adding a new rule requires:
 1. Adding a descriptor to the `RULES` array
 2. Implementing a `_check<RuleName>()` method
 3. Adding the result array to `_buildDomainReport()`
@@ -337,6 +346,17 @@ Rules are declared as a static array in `QualityService`. Each rule descriptor c
 5. Adding the schema to `openapi-quality.yml`
 
 No route, CLI, or web client changes are required when adding a rule — the client renders sections dynamically from `report.rules`.
+
+### 7.6 Finding Shapes
+
+| Rule | Finding type | Key fields |
+|---|---|---|
+| `on-traceability` | `BrokenONTraceability` | `onId`, `onCode`, `onTitle`, `onVersionId` |
+| `or-traceability` | `UntraceableOR` | `orId`, `orCode`, `orTitle`, `orVersionId` |
+| `orphan-on` | `OrphanON` | `onId`, `onCode`, `onTitle`, `onVersionId` |
+| `no-show` | `NoShowOStar` | `oStarId`, `oStarCode`, `oStarTitle`, `oStarType`, `oStarVersionId` |
+
+All ID fields are strings. `oStarType` is `'ON'` or `'OR'`.
 
 ---
 

@@ -266,6 +266,10 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findRequirementsThatImplement(onItemId, tx, baselineId?, startDate?)`** → `Array<{id, title, code, type}>` — OR requirements that IMPLEMENT a given ON
 
+**`findOrphanONs(tx, baselineId?, editionId?, domain?)`** → `Array<{itemId, code, title, versionId}>` — ONs with no incoming `IMPLEMENTS` and no incoming `REFINES`; NO_SHOW ONs excluded. Called exclusively by `QualityService`.
+
+**`findUntraceableORs(tx, baselineId?, editionId?, domain?)`** → `Array<{itemId, code, title, versionId}>` — ORs with no outgoing `IMPLEMENTS` and no outgoing `REFINES`; NO_SHOW ORs excluded. Called exclusively by `QualityService`.
+
 **`findById` — `extended` projection**: performs the standard load then appends derived fields via additional reverse-traversal queries:
 
 | Derived field | Query |
