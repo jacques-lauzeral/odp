@@ -378,6 +378,22 @@
     color: var(--text-secondary);
 }
 
+/* Filter-mode context ancestor — selectable node demoted to non-selectable
+   because it doesn't match the search term but has matching descendants.
+   Retains original case and size; no text-transform. */
+.rm-node-label--context {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+    font-size: var(--font-size-sm);
+    cursor: default;
+    padding: 3px var(--space-2);
+}
+
+.rm-node-label--context:hover {
+    background: none;
+    color: var(--text-secondary);
+}
+
 /* Children container — no extra indent (indent is on the node itself) */
 .rm-node-children {
     display: block;

@@ -270,9 +270,10 @@ export default class ReferenceManager {
                 ? `<button type="button"
                            class="rm-node-label${isSelected ? ' rm-node-label--selected' : ''}"
                            data-value="${this._esc(String(node.value))}"
+                           data-label="${this._esc(node.label)}"
                            data-path="${this._esc(path)}"
                    >${this._esc(displayLabel)}</button>`
-                : `<span class="rm-node-label rm-node-label--header">${this._esc(displayLabel)}</span>`;
+                : `<span class="rm-node-label ${node._contextOnly ? 'rm-node-label--context' : 'rm-node-label--header'}">${this._esc(displayLabel)}</span>`;
 
             const children = (expanded && !loading)
                 ? this._renderExpandedChildren(node, path, depth, forceExpand)
@@ -334,7 +335,7 @@ export default class ReferenceManager {
                     ? this._filterNodesWithPath(kids, term, pathLabels)
                     : [];
                 if (matchedKids.length) {
-                    result.push({ ...node, value: null, _children: matchedKids });
+                    result.push({ ...node, value: null, _contextOnly: true, _children: matchedKids });
                 }
             }
         }
@@ -407,7 +408,9 @@ export default class ReferenceManager {
         const labelBtn = e.target.closest('.rm-node-label[data-value]');
         if (labelBtn) {
             const raw  = labelBtn.dataset.value;
-            const node = this._nodeAtPath(labelBtn.dataset.path);
+            const node = this._findNode(this._normalizeValue(raw), this._roots)
+                ?? this._nodeAtPath(labelBtn.dataset.path)
+                ?? { label: labelBtn.dataset.label ?? raw };
             this.selectedId    = this._normalizeValue(raw);
             this._selectedNode = node ?? null;
             this._filterTerm   = '';
