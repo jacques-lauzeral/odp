@@ -1,5 +1,8 @@
 import { normalizeId, idsEqual } from '/shared/src/index.js';
 
+/** Returns true if value can be treated as a plain integer id. */
+const _isIntegerId = (v) => v !== null && v !== undefined && /^\d+$/.test(String(v));
+
 /**
  * @file reference-manager.js
  * @description Inline single-select component supporting both flat option lists
@@ -249,7 +252,11 @@ export default class ReferenceManager {
             const expanded = forceExpand || this._expandedPaths.has(path);
             const loading  = !forceExpand && this._loadingPaths.has(path);
             const selectable = node.value != null;
-            const isSelected = selectable && idsEqual(node.value, this.selectedId);
+            const isSelected = selectable && (
+                _isIntegerId(node.value) && _isIntegerId(this.selectedId)
+                    ? idsEqual(node.value, this.selectedId)
+                    : String(node.value) === String(this.selectedId)
+            );
 
             const indent = depth * 16; // px per level
 
@@ -326,8 +333,10 @@ export default class ReferenceManager {
             const pathMatch = pathLabels.some(seg => seg.includes(term));
 
             if (pathMatch) {
-                // Include this node with all its descendants (fully expanded)
-                result.push({ ...node, _children: kids.length ? kids : undefined });
+                // Include this node with all its descendants (fully expanded).
+                // _origin points to the real root-tree node so that _toggleExpand
+                // populates _children on the correct object.
+                result.push({ ...node, _origin: node, _children: kids.length ? kids : undefined });
             } else {
                 // This node itself doesn't match — recurse into children;
                 // keep this node as a non-selectable context header if kids match
@@ -335,7 +344,7 @@ export default class ReferenceManager {
                     ? this._filterNodesWithPath(kids, term, pathLabels)
                     : [];
                 if (matchedKids.length) {
-                    result.push({ ...node, value: null, _contextOnly: true, _children: matchedKids });
+                    result.push({ ...node, _origin: node, value: null, _contextOnly: true, _children: matchedKids });
                 }
             }
         }
@@ -460,10 +469,13 @@ export default class ReferenceManager {
 
         // Lazy load via onExpand
         if (typeof node.onExpand === 'function') {
+            // node may be a filtered copy — always write _children back to the
+            // original root-tree node so _findNode can locate descendants.
+            const target = node._origin ?? node;
             this._loadingPaths.add(path);
             this._rerenderTree();
             Promise.resolve(node.onExpand(node)).then(children => {
-                node._children = children ?? [];
+                target._children = children ?? [];
                 this._loadingPaths.delete(path);
                 this._expandedPaths.add(path);
                 this._rerenderTree();
@@ -510,7 +522,12 @@ export default class ReferenceManager {
      */
     _findNode(value, nodes) {
         for (const node of nodes) {
-            if (node.value != null && idsEqual(node.value, value)) return node;
+            if (node.value != null) {
+                const match = _isIntegerId(value) && _isIntegerId(node.value)
+                    ? idsEqual(node.value, value)
+                    : String(node.value) === String(value);
+                if (match) return node;
+            }
             const kids = node._children ?? node.children ?? [];
             if (kids.length) {
                 const found = this._findNode(value, kids);
@@ -547,6 +564,7 @@ export default class ReferenceManager {
 
     _normalizeValue(value) {
         if (value === null || value === undefined || value === '') return null;
+        if (!_isIntegerId(value)) return String(value); // composite / non-integer values pass through
         return normalizeId(value);
     }
 

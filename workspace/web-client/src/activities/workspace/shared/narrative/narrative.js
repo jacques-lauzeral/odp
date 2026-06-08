@@ -442,19 +442,8 @@ export default class NarrativeActivity {
      */
     _selectTopic(topicId) {
         if (!this._selectedChapter || !topicId) return;
-
-        const topics = this._selectedChapter.osHierarchy?.topics;
-        if (!topics?.length) return;
-
-        const idx = topics.findIndex(t => t.id === topicId);
-        if (idx < 0) {
-            console.debug('[NarrativeActivity] _selectTopic: no topic with id', topicId);
-            return;
-        }
-
-        this._toc.selectTopicByIndex(idx);
+        this._toc.setActiveByTopicId(topicId);
     }
-
     /**
      * Select an O* in the chapter TOC by its itemId and render it in the body.
      * Called after diving into a chapter via a typed query param (?on=, ?or=, ?oc=).

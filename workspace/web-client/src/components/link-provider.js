@@ -32,6 +32,7 @@
  * }}
  */
 import ReferenceManager from './reference-manager.js';
+import { apiClient } from '../shared/api-client.js';
 
 export function buildLinkProvider(app) {
     let loaded      = false;
@@ -91,27 +92,24 @@ export function buildLinkProvider(app) {
         function chapterNode(c) {
             const itemId      = String(c.itemId);
             const subChapters = chapters.filter(ch => ch.parentCode === c.code);
-            const hasTopics   = c.osHierarchy?.topics?.length > 0;
-            const hasKids     = subChapters.length > 0 || hasTopics;
 
             const node = {
                 value: itemId,
                 label: c.title ?? c.code,
-                leaf:  !hasKids,
+                // Never mark as leaf — topics are only known after fetching the
+                // extended projection. onExpand fetches and returns [] for truly
+                // empty chapters, which collapses the toggle on first expand.
+                leaf:  false,
             };
 
-            if (hasKids) {
-                // Sub-chapters are built statically (available at t=0).
-                // Topics are returned from the same onExpand so the tree mixes
-                // both in a single expansion — no extra API call needed.
-                node.onExpand = async () => {
-                    const subNodes   = subChapters.map(chapterNode);
-                    const topicNodes = hasTopics
-                        ? buildTopicNodes(itemId, c.osHierarchy.topics, c.title ?? c.code)
-                        : [];
-                    return [...subNodes, ...topicNodes];
-                };
-            }
+            node.onExpand = async () => {
+                const subNodes = subChapters.map(chapterNode);
+                const full       = await apiClient.getChapter(itemId);
+                const topicNodes = full?.osHierarchy?.topics?.length
+                    ? buildTopicNodes(itemId, full.osHierarchy.topics, c.title ?? c.code)
+                    : [];
+                return [...subNodes, ...topicNodes];
+            };
 
             return node;
         }
