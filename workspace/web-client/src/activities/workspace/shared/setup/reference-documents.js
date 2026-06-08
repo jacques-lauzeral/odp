@@ -1,4 +1,4 @@
-import TreeEntity from './tree-entity.js';
+import TreeEntity from '../../../../components/tree-entity.js';
 
 export default class ReferenceDocuments extends TreeEntity {
     entityLabel = 'Reference Document';

@@ -1,4 +1,4 @@
-import TreeEntity from './tree-entity.js';
+import TreeEntity from '../../../../components/tree-entity.js';
 
 export default class StakeholderCategories extends TreeEntity {
     entityLabel = 'Stakeholder Category';

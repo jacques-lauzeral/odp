@@ -1,6 +1,6 @@
-import { dom } from '../../../shared/utils.js';
-import { apiClient } from '../../../shared/api-client.js';
-import { errorHandler } from '../../../shared/error-handler.js';
+import { dom } from '../shared/utils.js';
+import { apiClient } from '../shared/api-client.js';
+import { errorHandler } from '../shared/error-handler.js';
 
 export default class ListEntity {
     constructor(app, entityConfig) {

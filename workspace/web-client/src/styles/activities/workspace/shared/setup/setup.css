@@ -1,0 +1,221 @@
+/* setup.css
+   Styles for the Setup sub-activity: entity tab strip and tree-entity layout.
+   ------------------------------------------------------------------ */
+
+/* ── Entity tab strip ───────────────────────────────────────────────────── */
+
+.setup-activity {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.entity-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-primary);
+    flex-shrink: 0;
+}
+
+.entity-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+    white-space: nowrap;
+}
+
+.entity-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+.entity-tab--active {
+    color: var(--ec-navy);
+    background: var(--ec-light);
+}
+
+.entity-tab__count {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    background: var(--bg-tertiary);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: var(--font-weight-normal);
+}
+
+.entity-tab--active .entity-tab__count {
+    background: var(--ec-sky);
+    color: var(--ec-navy);
+}
+
+.entity-workspace {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── Tree entity shell ──────────────────────────────────────────────────── */
+
+.tree-entity {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.tree-entity__toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    justify-content: flex-end;
+}
+
+.tree-entity__toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.tree-entity__body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── Tree (left pane of MasterDetail) ───────────────────────────────────── */
+
+.tree-entity__tree {
+    height: 100%;
+    overflow-y: auto;
+    padding: var(--space-2) 0;
+}
+
+.tree-entity__empty {
+    padding: var(--space-4) var(--space-4);
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+}
+
+.tree-item {
+    user-select: none;
+}
+
+.tree-item-content {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-4);
+    cursor: pointer;
+    border-radius: var(--radius-md);
+    transition: background var(--transition-fast);
+    font-size: var(--font-size-sm);
+}
+
+.tree-item-content:hover {
+    background: var(--bg-secondary);
+}
+
+.tree-item--selected > .tree-item-content {
+    background: var(--ec-light);
+    color: var(--ec-navy);
+    font-weight: var(--font-weight-medium);
+}
+
+.tree-toggle {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    width: 12px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: color var(--transition-fast);
+}
+
+.tree-toggle:hover {
+    color: var(--text-primary);
+}
+
+.tree-spacer {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    width: 12px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.tree-item-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.tree-item--selected > .tree-item-content .tree-item-name {
+    color: var(--ec-navy);
+}
+
+.tree-item-count {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+/* ── Detail pane ────────────────────────────────────────────────────────── */
+
+.tree-entity__detail {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.tree-entity__detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-primary);
+    flex-shrink: 0;
+}
+
+.tree-entity__detail-title {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tree-entity__detail-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}
+
+.tree-entity__detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}

@@ -1,5 +1,5 @@
-import ListEntity from './list-entity.js';
-import { apiClient } from '../../../shared/api-client.js';
+import ListEntity from '../../../../components/list-entity.js';
+import { apiClient } from '../../../../shared/api-client.js';
 
 export default class Waves extends ListEntity {
     constructor(app, entityConfig) {

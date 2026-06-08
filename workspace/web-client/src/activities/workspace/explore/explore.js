@@ -33,7 +33,7 @@ const SUB_ACTIVITIES = {
     plan:      () => import('../shared/plan/plan.js'),
     quality:   () => import('../shared/quality/quality.js'),
     narrative: () => import('../shared/narrative/narrative.js'),
-    setup:     () => import('../setup/setup.js'),
+    setup:     () => import('../shared/setup/setup.js'),
 };
 
 const TABS = [
