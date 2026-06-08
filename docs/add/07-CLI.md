@@ -28,7 +28,7 @@ Commands that write data (create, update, patch, delete, import) require a `--us
 
 - **List operations**: ASCII tables via `cli-table3`
 - **Single item**: formatted key-value plain text
-- **Import/export results**: summary statistics printed to stdout
+- **Import results**: summary statistics printed to stdout
 - **Errors**: printed to stderr with a non-zero exit code
 
 ---
@@ -160,27 +160,21 @@ odp-cli edition publish 42 --website
 odp-cli edition publish 42 --website
 ```
 
-### Import / Export
+### Import
 
 | Command | Action |
 |---|---|
-| `import extract-word --file <path\|glob...> [-o <dir>]` | Extract raw JSON from `.docx` file(s); output dir created if needed |
-| `import extract-excel --file <path>` | Extract raw JSON from `.xlsx` |
-| `import map --file <path> --drg <DRG> [--mapper standard\|registry\|bootstrap] [--folder <name>]` | Map raw JSON to structured JSON |
-| `import structured --file <path\|glob...> [--specific]` | Import structured JSON into database |
 | `import distributed --file <path\|glob...>` | Import distributed edition source JSON file(s) directly into database |
-| `docx export --drg <DRG> --output <path>` | Export entities to `.docx` by DRG |
 
-**`import extract-word`** accepts glob patterns (quote to prevent shell expansion): `--file "bootstrap/*.docx" -o raw/`. Multiple patterns are supported. Output filenames are derived from input basenames (`crisis.docx` → `crisis.json`). Use `--continue-on-error` to process remaining files after a failure.
+**`import distributed`** accepts glob patterns (quote to prevent shell expansion). Processes source JSON files conforming to `source.schema.json` — one file per chapter — directly into the database with no extract or map stage. Setup entities must already exist. Use `--continue-on-error` to process remaining files after a failure. Summary reports `chapters` (narrative patches) and `requirements` (entities created) per file.
 
-**`import map --mapper`** selects the mapping strategy:
-- `standard` (default): `StandardMapper` for round-trip re-import of exported `.docx` files
-- `registry`: DrG-specific mapper from `MapperRegistry` for original DrG source documents
-- `bootstrap`: `BootstrapMapper` for iCDM DrG Word documents in the standard bootstrap format
+```bash
+# Single file
+odp import distributed --file sources/rerouting_source.json
 
-The `--folder` option is passed to the mapper as a path prefix (used for IDL sub-domain files, e.g. `--folder "Letters of Agreement"`).
-
-**`import distributed`** accepts glob patterns. Processes source JSON files conforming to `source.schema.json` — one file per chapter — directly into the database with no extract or map stage. Setup entities must already exist. Use `--continue-on-error` to process remaining files after a failure. Summary reports `chapters` (narrative patches) and `requirements` (entities created) per file.
+# Bulk import with error tolerance
+odp import distributed --file "sources/*.json" --continue-on-error
+```
 
 ### Quality Checks
 
@@ -217,14 +211,20 @@ Each rule renders as a labelled table when findings are present. Column layout:
 
 ## 4. Deleted Commands
 
-The following command files were removed in the Edition 4 model update:
+The following command files or subcommands were removed:
 
-| File | Reason |
+| File / Command | Reason |
 |---|---|
 | `data-category.js` | `DataCategory` entity removed from model |
 | `service.js` | `Service` entity removed from model |
 | `document.js` | `Document` renamed to `ReferenceDocument`; replaced by `reference-document.js` |
 | `domain.js` | `Domain` setup entity retired — replaced by `chapter.js` and config-driven domain keys |
+| `import extract-word` | Three-stage Office import pipeline removed |
+| `import extract-word-hierarchy` | Three-stage Office import pipeline removed |
+| `import extract-excel` | Three-stage Office import pipeline removed |
+| `import map` | Three-stage Office import pipeline removed |
+| `import structured` | Three-stage Office import pipeline removed |
+| `docx export` | Round-trip docx export/re-import workflow removed |
 
 ---
 

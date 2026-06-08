@@ -106,8 +106,6 @@ paths:
   # Quality check endpoints
   /quality/checks:
     $ref: 'openapi-quality.yml#/paths/~1quality~1checks'
-  /quality/checks/{ruleId}:
-    $ref: 'openapi-quality.yml#/paths/~1quality~1checks~1{ruleId}'
 
 
 tags:

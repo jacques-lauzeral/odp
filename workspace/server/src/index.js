@@ -13,9 +13,7 @@ import operationalChangeRoutes from './routes/operational-change.js';
 import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
-import docxExportRoutes from './routes/docx-export.js';
 import qualityRoutes from './routes/quality.js';
-import MapperRegistry from './services/import/MapperRegistry.js';
 import { loadConfig, getDomainChapterSlugs } from './config/loader.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
 
@@ -80,7 +78,6 @@ app.get('/ping', (req, res) => {
 
 // Import API Routes (before other routes for proper middleware precedence)
 app.use('/import', importRoutes);
-app.use('/docx', docxExportRoutes);
 
 // Setup Entity API Routes
 app.use('/stakeholder-categories', stakeholderCategoryRoutes);
@@ -227,9 +224,6 @@ async function startServer() {
         console.log('Initializing database...');
         await initializeDatabase();
         console.log('Database initialized successfully');
-
-        console.log('Registering import mappers...');
-        MapperRegistry.registerImportMappers();
 
         console.log('Initializing publication workspace...');
         await initializePublicationWorkspace();

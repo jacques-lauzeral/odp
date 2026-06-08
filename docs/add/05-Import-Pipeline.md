@@ -2,27 +2,7 @@
 
 ## 1. Overview
 
-The import pipeline ingests operational content from heterogeneous Office documents (Word / Excel) produced by Drafting Groups and loads it into the ODIP database. It operates in two distinct modes:
-
-**Three-stage pipeline** (Office documents):
-
-```
-Office Document (.docx / .xlsx)
-        ↓
-  [1. Extraction]   — generic document parser, no business logic
-        ↓
-  Raw JSON
-        ↓
-  [2. Mapping]      — DrG-specific or standard mapper
-        ↓
-  Structured JSON
-        ↓
-  [3. Import]       — validate, resolve references, persist
-        ↓
-  Database (Neo4j)
-```
-
-**Distributed edition import** (source JSON files):
+The import pipeline ingests operational content from distributed edition source JSON files produced by Drafting Groups and loads it into the ODIP database.
 
 ```
 Source JSON (source.schema.json)
@@ -32,187 +12,18 @@ Source JSON (source.schema.json)
   Database (Neo4j)
 ```
 
-Each stage of the three-stage pipeline is independently testable and independently replaceable. Adding support for a new DrG requires only a new mapper — extraction and import are unchanged.
+The `DistributedEditionImporter` is the sole importer. It consumes one source JSON file per chapter directly — no extraction or mapping stage is involved. Setup entities (reference documents, waves, stakeholder categories) must already exist in the database before import; failed resolution emits warnings rather than errors.
+
+**API endpoint**: `POST /import/distributed`  
+**CLI command**: `import distributed --file <path|glob...>`
 
 ---
 
-## 2. Stage 1 — Extraction
-
-**Classes**: `DocxExtractor`, `HierarchicalDocxExtractor`, `XlsxExtractor`  
-**Library**: mammoth.js (Word), xlsx (Excel)
-
-Parses document binary into a generic intermediate JSON representation. No business logic — the extractor does not know about ODIP entities, DrGs, or field names.
-
-**Output structure** (`RawExtractedData`):
-- `documentType`: `word` | `excel` | `hierarchical-word`
-- `metadata`: filename, parsedAt
-- `sections[]`: hierarchical sections with `level`, `title`, `path`, `content.paragraphs`, `content.tables` — for Word documents
-- `sheets[]`: named sheets with `rows[]` — for Excel documents
-
-**Rich text handling**: paragraph text is output as AsciiDoc. Images are extracted and converted from EMF → PNG, then embedded inline as `image::data:image/png;base64,...[]` syntax. Image conversion failures are non-blocking — a warning is added to the summary and the paragraph continues without the image.
-
-**`HierarchicalDocxExtractor`** handles a ZIP file containing a folder structure of `.docx` files (used by some DrGs that organise requirements across multiple documents in a folder hierarchy). Output carries a `zipEntryCount` metadata field.
-
-**API endpoints**:
-- `POST /import/extract/word` — single `.docx`
-- `POST /import/extract/word-hierarchy` — ZIP of `.docx` files
-- `POST /import/extract/excel` — single `.xlsx`
-
----
-
-## 3. Stage 2 — Mapping
-
-**Classes**: `Mapper` (abstract), `MapperRegistry`, DrG-specific mappers, `StandardMapper`, `BootstrapMapper`  
-**Location**: `services/import/mappers/`
-
-Takes `RawExtractedData` and produces `StructuredImportData` — a JSON payload shaped to match the ODIP import schema (correct field names, Quill Delta rich text, resolved cross-references).
-
-### 3.1 Three Mapping Modes
-
-The `/import/map/{drg}` endpoint accepts a `?mapper=` parameter selecting between three modes:
-
-| Mode | `?mapper=` | Mapper used | Identity field | Use case |
-|---|---|---|---|---|
-| Standard | `standard` (default) | `StandardMapper` | `code` | Round-trip: re-importing exported `.docx` |
-| Registry | `registry` | DrG mapper from `MapperRegistry` | `externalId` | Original DrG source documents (legacy format) |
-| Bootstrap | `bootstrap` | `BootstrapMapper` | `externalId` | iCDM DrG Word documents in bootstrap format |
-
-### 3.2 DrG Mapper Registry
-
-`MapperRegistry` holds one registered mapper per DrG code (and optional folder). All DrG mappers extend the abstract `Mapper` base class. Implemented mappers cover all DrG enum values: `4DT`, `AIRPORT`, `AIRSPACE`, `ASM_ATFCM`, `CRISIS`, `FAAS`, `FLOW`, `RRT`, `TCF`, `TRANSVERSAL`.
-
-Each mapper is responsible for: entity identification, field extraction, AsciiDoc → Quill Delta conversion for rich text fields, and cross-reference resolution.
-
-**Output normalisation (all DrG mappers)**: The `cleanEntity` helper in `_buildOutput` strips null/empty fields and translates the internal `parent: { externalId }` field to `refinesParents: [externalId]` (array format expected by `JSONImporter`). The `parent` field is never emitted in the structured output.
-
-### 3.3 BootstrapMapper
-
-`BootstrapMapper` is a single shared mapper for all DrGs whose Word documents follow the iCDM bootstrap format. Unlike registry mappers (one per DrG), `BootstrapMapper` is DrG-agnostic and registered independently. It receives the `drg` as a constructor argument (passed from the route) and the optional `folder` via `map(rawData, { folder })`.
-
-**Document structure**: each entity occupies a level-4 section whose title begins with `ON ` or `OR `. Fields are encoded as bold-prefixed paragraphs:
-
-| Marker | Field |
-|---|---|
-| `**External ID: **` | `externalId` |
-| `**Maturity: **` | `maturity` (input value used as-is; defaults to `DRAFT`) |
-| `**Tentative implementation: **` | `tentative` ([start, end] year array) |
-| `**Statement**` | `statement` (rich text accumulation) |
-| `**Rationale**` | `rationale` (rich text accumulation) |
-| `**Flow Descriptions and Examples**` | `flows` (rich text accumulation; also recognised without bold) |
-| `**Implements: **` | `implementedONs` (OR → ON, single ref) |
-| `**Implemented By**` | inverses — not emitted |
-| `**Refines: **` | `refinesParents` (single ref) |
-| `**Refined By**` | inverses — not emitted |
-| `**Strategic Documents**` | `strategicDocuments` (ONs only) |
-| `**[Team: ...]**` | `privateNotes` if before first field marker; otherwise appended to current field body |
-
-`Fit Criteria` and `Opportunities / Risks` paragraphs are absorbed as prose into the preceding rich-text field.
-
-**Cross-reference resolution**: short IDs (e.g. `OR-RRT-0001 (OR label)`) are resolved to `externalId` via a post-pass that matches parenthetical labels against extracted entity titles. All cross-references are within-file only.
-
-**Strategic document names**: plain text names (e.g. `NSP SO 4/3`) are converted to `externalId` via `ExternalIdBuilder`. Pre-formed `refdoc:` IDs are passed through as-is. A normalization step handles systemic naming variants (e.g. `NSP SO 5.2` → `NSP SO 5/2`). Named aliases cover one-off mismatches (e.g. `Network 4DT CONOPS` → `Network 4D Trajectory CONOPS`).
-
-**Path derivation**: built from the section `path` array by stripping section numbers and dropping `Operational Needs` / `Operational Requirements` segments. If a `folder` option is provided, it is prepended as the first path segment (used for AIRSPACE sub-domain files). Path is set to `null` when `refinesParents` resolves non-empty (XOR rule).
-
-**Abstract ONs**: sections annotated with `*[Abstract — not directly implemented]*` emit `abstract: true`.
-
-### 3.4 StandardMapper
-
-Used for the round-trip (docx-loop) workflow. Processes exported ODIP `.docx` files which use a standardised table-based format with a `Code` field. Entities are identified by their ODIP code rather than an `externalId`, enabling CREATE / UPDATE / SKIP comparison logic in the import stage.
-
-### 3.4 Output Structure (`StructuredImportData`)
-
-```
-referenceDocuments[]      — {externalId, name, description (optional), version (optional), url, parentExternalId (optional)}
-stakeholderCategories[]   — {externalId|code, name, description}
-domains[]
-bandwidths[]
-waves[]
-requirements[]            — {externalId|code, title, type, statement (Quill Delta),
-                             rationale, flows, drg, path, refinesParents,
-                             implementedONs, impactedStakeholders,
-                             impactedDomains, dependencies, maturity, nfrs,
-                             tentative, strategicDocuments (ONs only),
-                             additionalDocumentation}
-                             — legacy aliases accepted by JSONImporter:
-                               refinesON (scalar) → refinesParents: [value]
-                               refinesORs (array) → refinesParents
-changes[]                 — {externalId|code, title, drg,
-                             implementedORs, decommissionedORs,
-                             milestones[{name, wave, eventTypes[]}],
-                             maturity, cost, orCosts, additionalDocumentation}
-```
-
-Note: setup entities use `name` (not `title`); requirements and changes use `title`.
-
-**API endpoint**: `POST /import/map/{drg}?mapper=standard|registry|bootstrap`
-
----
-
-## 4. Stage 3 — Import
-
-**Classes**: `JSONImporter` (DrG-specific mode), `StandardImporter` (round-trip mode)  
-**Selected by**: `POST /import/structured?specific=false|true`
-
-### 4.1 JSONImporter
-
-Used for initial DrG material import. Entities are identified by `externalId`. All entities are created as new entries. Processing order:
-
-1. Setup entities (stakeholderCategories, domains, bandwidths, waves, referenceDocuments) — no dependencies, imported first
-2. Requirements — topological sort by `refinesParents` to resolve REFINES hierarchy before persisting
-3. Changes — imported after requirements so `implementedORs` / `decommissionedORs` references can be resolved
-
-External ID → internal Neo4j ID mapping is built incrementally as entities are persisted and used to resolve cross-references at import time.
-
-**Error handling**: greedy — errors on individual entities are collected and reported in the `ImportSummary` without aborting the entire import. Each entity is imported in its own transaction; a failure rolls back only that entity.
-
-**DRAFT-first creation pattern**: All requirements are created in phase 2 with `maturity: 'DRAFT'`, regardless of the target maturity in the structured data. The real maturity is applied in phase 3 alongside resolved references. This is necessary because the service layer enforces maturity-gated validation rules — for example, ADVANCED and MATURE requirements must have `strategicDocuments` or `refinesParents` (ONs) and `implementedONs` or `refinesParents` (ORs) — which cannot be satisfied until references are resolved. Creating with DRAFT bypasses these gates at creation time; phase 3 sets the final maturity after all references are in place.
-
-**Reference document resolution**: Reference documents are resolved via a dedicated `_resolveDocumentReferences` helper that looks up entries in `documentIdMap` (keyed by `ExternalIdBuilder.buildExternalId(doc, 'refdoc')`). This is distinct from `_resolveExternalIds`, which uses `globalRefMap` (stakeholders, domains, requirements). The separation is necessary because reference documents are stored in a different map and use the `refdoc:` prefix rather than the entity-type prefixes used by other entities.
-
-**`tentative` field**: Passed through in the phase 3 update request from `reqData.tentative`, falling back to `current.tentative` if not provided by the mapper. Required for MATURE ON requirements.
-
-**`path` / `refinesParents` XOR enforcement**: In phase 3, if `refinesParents` resolves to a non-empty array, `path` is set to `null` in the update request. This enforces the business rule that a requirement cannot have both a path and a parent simultaneously. The phase 2 create request uses `reqData.path ?? []` — preserving `null` (child requirements) as-is rather than defaulting to `[]`.
-
-### 4.2 StandardImporter
-
-Used for round-trip (docx-loop) re-import. Entities are identified by their ODIP `code`. For each entity the importer compares the incoming payload against the current database state and applies one of three outcomes:
-
-| Outcome | Condition |
-|---|---|
-| `CREATE` | Code not found in database |
-| `UPDATE` | Code found, content differs — creates new version |
-| `SKIP` | Code found, content identical |
-
-Version conflict detection uses `expectedVersionId` from the current state. The importer reports per-entity outcomes in the `ImportSummary`.
-
-### 4.3 ImportSummary
-
-Returned by both importers:
-
-```json
-{
-  "referenceDocuments": 0,
-  "stakeholderCategories": 3,
-  "domains": 5,
-  "bandwidths": 2,
-  "waves": 4,
-  "requirements": 47,
-  "changes": 12,
-  "errors": ["Requirement X: invalid parent reference"],
-  "warnings": ["Image conversion failed for figure_3.emf"]
-}
-```
-
----
-
-## 4.3 DistributedEditionImporter
+## 2. DistributedEditionImporter
 
 **Class**: `DistributedEditionImporter`  
-**Selected by**: `POST /import/distributed`  
+**Location**: `services/import/DistributedEditionImporter.js`  
 **API endpoint**: `POST /import/distributed`
-
-Used for importing ODIP distributed edition source JSON files directly — one file per chapter, conforming to `source.schema.json`. No extraction or mapping stage — the source JSON is consumed directly. Setup entities (reference documents, waves, stakeholder categories) must already exist in the database; failed resolution emits warnings rather than errors.
 
 **Processing phases per file:**
 
@@ -246,6 +57,12 @@ Each topic node is assigned a **chapter-scoped numeric string ID** (`id: "1"`, `
 
 **`_buildAnchorToIdMap(requirements)`** — called before Phase 0b. Iterates `requirements[]` in source order, identifies unique top-level topic labels (first appearances of `path[0]`), and maps anchor suffix strings (e.g. `"2"`, `"3"`) to the topic IDs that will be assigned in Phase 4. The counter logic mirrors `insertAtLeaf` exactly (seq starts at 2, ID starts at 1). The resulting `Map<string, string>` is stored on `context.anchorToId` and passed to `BlocksToTipTapConverter.convert()`.
 
+**DRAFT-first creation pattern**: All requirements are created in Phase 2 with `maturity: 'DRAFT'`, regardless of the target maturity in the source data. The real maturity is applied in Phase 3 alongside resolved references. This is necessary because the service layer enforces maturity-gated validation rules — ADVANCED and MATURE requirements must have `strategicDocuments` or `refinesParents` (ONs) and `implementedONs` or `refinesParents` (ORs) — which cannot be satisfied until references are resolved.
+
+**`path` / `refinesParents` XOR enforcement**: In Phase 3, if `refinesParents` resolves to a non-empty array, `path` is set to `null` in the update request. This enforces the business rule that a requirement cannot have both a path and a parent simultaneously.
+
+**Error handling**: greedy — errors on individual requirements are collected and do not abort the import. Unresolved cross-references (entities in other not-yet-imported files) are emitted as warnings, not errors.
+
 **`DistributedImportSummary`** returned:
 
 ```json
@@ -257,13 +74,11 @@ Each topic node is assigned a **chapter-scoped numeric string ID** (`id: "1"`, `
 }
 ```
 
-**Error handling**: greedy — errors on individual requirements are collected and do not abort the import. Unresolved cross-references (entities in other not-yet-imported files) are emitted as warnings, not errors.
-
 ---
 
-## 4.4 BlocksToTipTapConverter
+## 3. BlocksToTipTapConverter
 
-**Class**: `BlocksToTipTapConverter` (singleton export)
+**Class**: `BlocksToTipTapConverter` (singleton export)  
 **Location**: `services/import/BlocksToTipTapConverter.js`
 
 Converts a `blocks[]` array from a distributed edition source JSON file into a **TipTap JSON document string**, suitable for storage in Neo4j rich-text fields.
@@ -273,22 +88,20 @@ Converts a `blocks[]` array from a distributed edition source JSON file into a *
 - `chapterCode` — chapter code string (e.g. `'nmui'`); required for resolving `anchor` attributes to `n-ref` marks.
 - `anchorToId` — `Map<anchorSuffix, topicId>` built by `_buildAnchorToIdMap`; required for converting intra-chapter anchor links to stable numeric topic IDs.
 
-Converts a `blocks[]` array from a distributed edition source JSON file into a TipTap JSON document string, suitable for storage in Neo4j rich-text fields.
-
 **Handled block types:**
 
-| Block type | Source structure | Quill Delta output |
+| Block type | Source structure | TipTap output |
 |---|---|---|
-| `heading` | `level` (1–6), `text` or `ops[]` | Inline ops + `\n` with `{ header: level }` attribute |
-| `paragraph` | `ops[]` or `text` | Inline ops + `\n` |
-| `bullet` | `ops[]` or `text` | Inline ops + `\n` with `{ list: 'bullet' }` attribute |
-| `numbered` | `ops[]` or `text` | Inline ops + `\n` with `{ list: 'ordered' }` attribute |
-| `figure` | `image.data` (base64), `image.media_type` | `{ insert: { image: 'data:<type>;base64,...' } }` + `\n` |
-| `caption` | `text` (plain string) | Italic text op + `\n` |
-| `table` | `headers[]` (Delta ops arrays), `rows[][]` (plain strings) | Code-block lines (see below) |
+| `heading` | `level` (1–6), `text` or `ops[]` | Heading node at given level |
+| `paragraph` | `ops[]` or `text` | Paragraph node with inline marks |
+| `bullet` | `ops[]` or `text` | BulletList → listItem node |
+| `numbered` | `ops[]` or `text` | OrderedList → listItem node |
+| `figure` | `image.data` (base64), `image.media_type` | Image node with base64 src |
+| `caption` | `text` (plain string) | Paragraph node with italic mark |
+| `table` | `headers[]` (ops arrays), `rows[][]` (plain strings) | Table node with header row |
 | `placeholder_section`, `page_break` | — | Silently skipped |
 
-**Inline attribute mapping (Quill → TipTap marks):**
+**Inline attribute mapping (source ops → TipTap marks):**
 
 | Source attribute | TipTap mark | Notes |
 |---|---|---|
@@ -302,144 +115,34 @@ Converts a `blocks[]` array from a distributed edition source JSON file into a T
 | `attributes` (nested) | unpacked recursively | Some source ops wrap attrs as `{ attributes: { bold: true } }` |
 | unknown | `{ type: key, attrs: { value } }` | Pass-through |
 
-Unknown attributes pass through — the publication pipeline may consume them.
+---
 
-**Table rendering (interim format):**
+## 4. TipTapToAsciidocConverter
 
-Tables are stored as contiguous `code-block` lines — an interim format pending a proper Quill table blot in `RichTextComponent`:
+**Class**: `TipTapToAsciidocConverter`  
+**Location**: `services/export/TipTapAsciidocConverter.js`  
+**Consumer**: `DetailsModuleGenerator` (publication pipeline)
 
-```
-** <header cell> | <header cell>     ← one line per header row, prefixed "** "
----                                   ← separator (omitted if no body rows)
-<cell> | <cell>                       ← one line per body row, cells joined with " | "
-```
+Converts TipTap JSON document format to AsciiDoc text for use in Antora-based publication output. Replaces the former `DeltaToAsciidocConverter` (Quill Delta).
 
-Header cell text is extracted as plain text from their Delta ops arrays (formatting stripped — irrelevant in a code-block context). Body cells are plain strings in the source format.
+**Supported node types**: `paragraph`, `heading` (levels 1–6), `bulletList`, `orderedList`, `listItem`, `image`, `table` (with header row), `hardBreak`.
 
-**Output**: JSON string `'{"ops":[...]}'`, or `null` if the blocks array is empty or produces no ops. The Delta always ends with a plain `\n` insert as required by Quill.
+**Supported inline marks**: `bold`, `italic`, `underline`, `strike`, `link`, `textStyle` (color), `n-ref`, `o-ref`, `d-ref`.
 
 ---
 
-## 5. Docx Export (Round-Trip Pathway)
-
-**Classes**: `DocxExportService`, `DocxGenerator`, `DocxEntityRenderer`, `DocxStyles`  
-**Located in**: `services/export/`
-
-The export half of the round-trip workflow. Queries entities by DRG from the database, builds a hierarchical structure, and generates a `.docx` file with:
-- Standardised table-based entity format (one table per OR/OC)
-- ODIP entity codes embedded as identifiers
-- Rich text rendered from Quill Delta
-- Cross-references between entities
-
-**API endpoint**: `POST /docx-export` (see `openapi-docx.yml`)
-
-The exported `.docx` can be edited manually in Word and re-imported via the standard pipeline (`extract/word` → `map/{drg}` → `structured`) to create new versions of the edited entities.
-
----
-
-## 6. File Inventory
+## 5. File Inventory
 
 ```
 services/import/
-├── DocxExtractor.js              Word document extractor
-├── HierarchicalDocxExtractor.js  ZIP of Word documents extractor
-├── XlsxExtractor.js              Excel extractor
-├── Mapper.js                     Abstract mapper base class
-├── MapperRegistry.js             DrG → mapper lookup
-├── StandardImporter.js           Round-trip importer (code-based)
-├── JSONImporter.js               DrG-specific importer (externalId-based)
-├── DistributedEditionImporter.js Distributed source JSON importer (direct, no mapper)
-├── BlocksToQuillDeltaConverter.js blocks[]/chapterIntro[] → Quill Delta converter (see §4.4)
-└── mappers/                      One file per DrG + shared bootstrap mapper
-    ├── BootstrapMapper.js        Shared mapper for iCDM bootstrap-format Word docs
-    ├── NM_B2B_Mapper.js          TRANSVERSAL/NM-B2B folder mapper
-    ├── iDL_Mapper_sections.js    AIRSPACE section-based folders (ADP, ADMM)
-    ├── iDL_Mapper_tables.js      AIRSPACE table-based folders
-    ├── iDL_Mapper_new_format.js  AIRSPACE new-format folders (TCF, LoA)
-    └── ...
+├── DistributedEditionImporter.js   Distributed source JSON importer (direct, no mapper)
+└── BlocksToTipTapConverter.js      blocks[]/chapterIntro[] → TipTap JSON converter
 
 services/export/
-├── DocxExportService.js
-├── DocxGenerator.js
-├── DocxEntityRenderer.js
-├── DocxStyles.js
-├── ODPEditionAggregator.js       Data aggregation for AsciiDoc export
-├── ODPEditionTemplateRenderer.js
-├── DeltaToAsciidocConverter.js   Quill Delta → AsciiDoc
-├── DeltaToDocxConverter.js       Quill Delta → docx content
-└── templates/                    Mustache templates for AsciiDoc output
+├── TipTapAsciidocConverter.js      TipTap JSON → AsciiDoc (used by DetailsModuleGenerator)
+├── DetailsModuleGenerator.js       Publication generator (Mustache templates)
+└── templates/                      Mustache templates for AsciiDoc output
 ```
-
----
-
-## 7. Docx Round-Trip — Detail
-
-### 7.1 Entity Identity in Exported Documents
-
-`DocxGenerator` embeds a structured ODP ID in every exported entity table:
-
-```
-ODP ID: on:idl/145[7]
-        │   │    │ └─ current versionId at export time
-        │   │    └─── entity path segment
-        │   └──────── drg
-        └──────────── type (on / or / oc)
-```
-
-`ODPMapper` (the round-trip mapper) parses this ID on re-import to recover `type`, `drg`, `itemId` path, and the `expectedVersionId`. The version component is what enables conflict detection.
-
-### 7.2 Version Conflict Detection
-
-When the `StandardImporter` processes an UPDATE, it compares the `expectedVersionId` parsed from the document against the current version in the database:
-
-| Situation | Outcome |
-|---|---|
-| `expectedVersionId` matches current database version | UPDATE proceeds — new version created |
-| `expectedVersionId` is behind current database version | `VERSION_CONFLICT` — import of that entity is rejected |
-| Entity code not found in database | `CREATE` — new entity inserted |
-| Incoming content identical to current version | `SKIP` — no write |
-
-A `VERSION_CONFLICT` means someone else updated the entity in the system after the document was exported. The default behaviour is to reject and report the conflict; the CLI `--force` flag overrides the check and forces the update at the risk of overwriting the intervening changes.
-
-Conflicts are reported per-entity in the `ImportSummary` — a conflict on one entity does not abort processing of the rest.
-
-### 7.3 Rich Text Round-Trip Fidelity
-
-The export path converts Quill Delta → Word formatting via `DeltaToDocxConverter`. The import path goes Word content → AsciiDoc (extractor) → Quill Delta (ODPMapper). This double conversion is lossy for some Quill features.
-
-**Supported with full fidelity:**
-
-- Plain text
-- Bold, italic, underline
-- Simple hyperlinks
-- Single-level bullet lists
-- Embedded images (PNG — exported as PNG, re-imported as PNG)
-
-**Partially supported / formatting loss accepted:**
-
-- Multi-level nested lists — Quill uses flat `ql-indent-N` structure; Word uses semantic nesting. Round-trip collapses nesting to a single level.
-- Complex inline formatting combinations — may simplify on re-import.
-
-**Not supported:**
-
-- Tables within rich text fields — exported as plain text, structure lost on re-import.
-- Quill-specific features with no Word equivalent (e.g. custom blots).
-
-### 7.4 Image Round-Trip
-
-```
-Export:  Neo4j Quill Delta {insert: {image: "data:image/png;base64,..."}}
-             ↓ DeltaToDocxConverter
-         Word .docx (PNG image element)
-
-Import:  Word .docx (PNG or EMF image)
-             ↓ DocxExtractor (EMF → PNG via LibreOffice if needed)
-         AsciiDoc inline: image::data:image/png;base64,...[]
-             ↓ ODPMapper
-         Neo4j Quill Delta {insert: {image: "data:image/png;base64,..."}}
-```
-
-EMF images introduced in Word (e.g. by the editor) are converted to PNG by LibreOffice during extraction. Conversion failures are non-blocking — a warning is emitted and the image is omitted from the re-imported Delta.
 
 ---
 
