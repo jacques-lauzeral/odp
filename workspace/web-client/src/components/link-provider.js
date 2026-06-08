@@ -31,6 +31,8 @@
  *   isLoaded: () => boolean
  * }}
  */
+import ReferenceManager from './reference-manager.js';
+
 export function buildLinkProvider(app) {
     let loaded      = false;
     let loadPromise = null;
@@ -117,7 +119,6 @@ export function buildLinkProvider(app) {
         return roots.map(chapterNode);
     }
 
-    // ── Load ─────────────────────────────────────────────────────────────────
 
     async function load() {
         if (loaded) return;
@@ -138,12 +139,16 @@ export function buildLinkProvider(app) {
                 .filter(c => c.itemId != null)
                 .map(c => ({ value: String(c.itemId), label: c.title ?? String(c.itemId) }));
 
-            // d-ref — flat leaf nodes
-            const drefFlat = (setup?.referenceDocuments ?? [])
-                .filter(d => d.id != null)
-                .map(d => ({ value: String(d.id), label: d.name ?? String(d.id) }));
-            flatCache['d-ref'] = drefFlat;
-            nodeCache['d-ref'] = drefFlat.map(o => ({ ...o, leaf: true }));
+            // d-ref — tree nodes (parentId-aware hierarchy) + flat for options() compat
+            const drefDocs = (setup?.referenceDocuments ?? []).filter(d => d.id != null);
+            flatCache['d-ref'] = drefDocs.map(d => ({
+                value: String(d.id),
+                label: d.version ? `${d.name} (${d.version})` : (d.name ?? String(d.id)),
+            }));
+            nodeCache['d-ref'] = ReferenceManager.buildTreeNodes(
+                drefDocs,
+                d => d.version ? `${d.name} (${d.version})` : (d.name ?? String(d.id))
+            );
 
             // o-ref — flat leaf nodes
             const orefFlat = (ostars ?? [])

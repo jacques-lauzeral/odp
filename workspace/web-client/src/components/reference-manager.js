@@ -328,8 +328,8 @@ export default class ReferenceManager {
                 // Include this node with all its descendants (fully expanded)
                 result.push({ ...node, _children: kids.length ? kids : undefined });
             } else {
-                // This node itself doesn't match — but recurse into children in
-                // case a descendant matches; keep this node as a context header
+                // This node itself doesn't match — recurse into children;
+                // keep this node as a non-selectable context header if kids match
                 const matchedKids = kids.length
                     ? this._filterNodesWithPath(kids, term, pathLabels)
                     : [];
@@ -552,5 +552,64 @@ export default class ReferenceManager {
         const d = document.createElement('div');
         d.textContent = String(text);
         return d.innerHTML;
+    }
+
+    // ─── Static utilities ─────────────────────────────────────────────────────
+
+    /**
+     * Convert a flat array of items carrying `parentId` into a
+     * ReferenceManager-compatible node tree.
+     *
+     * All nodes are selectable (value = item id). Children are sorted
+     * alphabetically. Items whose parentId references an unknown id are
+     * promoted to root. Falls back to flat leaf nodes when no item carries
+     * a parentId (safe for unstructured datasets).
+     *
+     * @param {object[]} items      — flat array; each item must have `id`
+     * @param {function} [getLabel] — optional (item) => string label;
+     *                               defaults to item.name ?? item.title ?? String(item.id)
+     * @returns {object[]}  root nodes with nested `children[]` (pruned on leaves)
+     */
+    static buildTreeNodes(items, getLabel) {
+        if (!items?.length) return [];
+
+        const labelOf = getLabel ?? (item => item.name ?? item.title ?? String(item.id));
+        const hasHierarchy = items.some(item => item.parentId != null);
+
+        if (!hasHierarchy) {
+            return items.map(item => ({
+                value: normalizeId(item.id),
+                label: labelOf(item),
+                leaf:  true,
+            }));
+        }
+
+        const byId  = new Map(items.map(item => [String(item.id), item]));
+        const nodes = new Map(items.map(item => [String(item.id), {
+            value:    normalizeId(item.id),
+            label:    labelOf(item),
+            children: [],
+        }]));
+
+        const roots = [];
+        for (const item of items) {
+            const node = nodes.get(String(item.id));
+            if (item.parentId != null && byId.has(String(item.parentId))) {
+                nodes.get(String(item.parentId)).children.push(node);
+            } else {
+                roots.push(node);
+            }
+        }
+
+        const sortAndPrune = (list) => {
+            list.sort((a, b) => a.label.localeCompare(b.label));
+            list.forEach(n => {
+                if (n.children.length) sortAndPrune(n.children);
+                else delete n.children;
+            });
+        };
+        sortAndPrune(roots);
+
+        return roots;
     }
 }

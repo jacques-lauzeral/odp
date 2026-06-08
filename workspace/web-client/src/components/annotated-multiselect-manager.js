@@ -23,7 +23,7 @@ export default class AnnotatedMultiselectManager {
 
         this.config = {
             fieldId: config.fieldId,
-            nodes: config.nodes || this._flatToNodes(config.options || []),
+            nodes: config.nodes || ReferenceManager.buildTreeNodes(config.options || []),
             initialValue: config.initialValue || [],
             maxNoteLength: config.maxNoteLength || 200,
             placeholder: config.placeholder || 'Select items...',
@@ -37,16 +37,6 @@ export default class AnnotatedMultiselectManager {
         this.editingRowId = null;
         this._pickerRM = null;   // ReferenceManager instance for tree picker
         this.boundHandlers = {};
-    }
-
-    // ─── Tree helpers ─────────────────────────────────────────────────────────
-
-    /**
-     * Convert flat [{value, label}] options to root-only leaf nodes —
-     * mirrors ReferenceManager._flatToNodes for backward compatibility.
-     */
-    _flatToNodes(options) {
-        return options.map(o => ({ value: o.value, label: o.label, leaf: true }));
     }
 
     normalizeInitialValue(value) {

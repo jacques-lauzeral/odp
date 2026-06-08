@@ -100,7 +100,7 @@
     box-shadow: var(--shadow-lg);
     width: 90%;
     max-width: 500px;
-    max-height: 80vh;
+    height: 360px;
     display: flex;
     flex-direction: column;
 }
@@ -124,6 +124,7 @@
     flex: 1;
     overflow-y: auto;
     padding: var(--space-2);
+    min-height: 0;
 }
 
 /* --- Search results --------------------------------------------------------- */
@@ -395,6 +396,7 @@
 @media (max-width: 768px) {
     .search-popup {
         width: 95%;
+        height: 90vw;
         max-height: 90vh;
     }
 

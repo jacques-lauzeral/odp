@@ -1,5 +1,4 @@
 import { async as asyncUtils } from '../shared/utils.js';
-import { normalizeId } from '/shared/src/index.js';
 import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 import ReferenceListManager from './reference-list-manager.js';
 import ReferenceManager from './reference-manager.js';
@@ -988,42 +987,7 @@ export class CollectionEntityForm {
      * @returns {object[]}  root nodes with nested children[]
      */
     _buildTreeNodes(items, getLabel) {
-        const labelOf = getLabel ?? (item => item.name || item.title || String(item.id));
-        const byId    = new Map(items.map(item => [String(item.id), item]));
-
-        const nodeOf = (item) => ({
-            value:    normalizeId(item.id),
-            label:    labelOf(item),
-            children: [],
-        });
-
-        const nodes  = new Map(items.map(item => [String(item.id), nodeOf(item)]));
-        const roots  = [];
-
-        for (const item of items) {
-            const node = nodes.get(String(item.id));
-            if (item.parentId != null && byId.has(String(item.parentId))) {
-                nodes.get(String(item.parentId)).children.push(node);
-            } else {
-                roots.push(node);
-            }
-        }
-
-        // Sort children alphabetically at every level
-        const sortKids = (nodeList) => {
-            nodeList.sort((a, b) => a.label.localeCompare(b.label));
-            nodeList.forEach(n => { if (n.children.length) sortKids(n.children); });
-        };
-        sortKids(roots);
-
-        // Remove empty children arrays (leaf nodes)
-        const prune = (nodeList) => nodeList.forEach(n => {
-            if (!n.children.length) delete n.children;
-            else prune(n.children);
-        });
-        prune(roots);
-
-        return roots;
+        return ReferenceManager.buildTreeNodes(items, getLabel);
     }
 
     initializeAnnotatedMultiselects() {
