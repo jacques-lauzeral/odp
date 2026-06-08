@@ -143,6 +143,8 @@ Route table:
 
 Context difference (live vs edition, R/W vs R/O) flows transparently through `app.getDatasetContext()` — sub-activities do not need to know which shell they are mounted in.
 
+**Setup sub-path routing:** `SetupActivity` accepts a two-segment sub-path: `[entityKey, itemId?]`. `entityKey` selects the tab (`stakeholder-categories` or `reference-documents`); the optional `itemId` is forwarded to `TreeEntity.selectItem(itemId)` after render, enabling direct deep-links to a specific item (e.g. `/elaborate/setup/reference-documents/66`).
+
 **Unsaved-changes guard — sub-activity tab switch:** `ElaborateActivity._route()` calls `canDeactivate()` on the current sub-activity before switching to a different tab. If the method returns `false` (user chose Cancel), the active tab highlight is restored and the switch is aborted. `canDeactivate()` is implemented by `NarrativeActivity`; all other sub-activities omit it and are always safe to leave.
 
 ### 3.4 O* Sub-Path Routing
@@ -694,19 +696,20 @@ Accepts an `App` instance and returns a provider object with three methods:
 
 | Method | Description |
 |---|---|
-| `load()` | Preload all target options (chapters, refdocs, O\*s) from the app cache. Returns a `Promise`; no-op if already loaded. |
-| `options(type)` | Return `Array<{ value: string, label: string }>` for `'o-ref'`, `'n-ref'`, or `'d-ref'`. Synchronous after `load()`. |
+| `load()` | Preload all target nodes (chapters, refdocs, O\*s) from the app cache. Returns a `Promise`; no-op if already loaded. |
+| `nodes(type)` | Return `ReferenceManager`-compatible node tree for `'o-ref'`, `'n-ref'`, or `'d-ref'`. Synchronous after `load()`. Used by `RichTextComponent` reference picker. |
+| `options(type)` | Return flat `Array<{ value: string, label: string }>` — backward-compat for flat-list consumers. |
 | `isLoaded()` | Returns `true` once `load()` has completed. |
 
 **Target preloading** — one `Promise.all` on first `load()` call, parallel to the three app caches:
 
-| Mark type | Source | `value` | `label` |
-|---|---|---|---|
-| `n-ref` | `app.getChapters()` | chapter `itemId` (string) | `"{code} — {title}"` |
-| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | refdoc `name` |
-| `o-ref` | `app.getOStars()` | O\* `itemId` (string) | `"{code} — {title}"` |
+| Mark type | Source | `value` | `label` | Node shape |
+|---|---|---|---|---|
+| `n-ref` | `app.getChapters()` | chapter `itemId` (string) | chapter title | Chapter hierarchy tree; topics/subtopics lazy via `onExpand` — fetches `apiClient.getChapter(itemId)` (extended projection) on first expand since `app.getChapters()` returns standard projection without `osHierarchy` |
+| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | `name (version)` or `name` | Hierarchy tree built via `ReferenceManager.buildTreeNodes()` when `parentId` present; flat leaf nodes otherwise |
+| `o-ref` | `app.getOStars()` | O\* `itemId` (string) | `"{code} — {title}"` | Flat leaf nodes sorted by code |
 
-O\* volumes are bounded (hundreds); preloading is cheap and avoids per-keystroke API calls. If volume demands it, the interface supports swapping to async search behind the same `options(type)` contract without touching consumers.
+O\* volumes are bounded (hundreds); preloading is cheap and avoids per-keystroke API calls. If volume demands it, the interface supports swapping to async search behind the same `nodes(type)` contract without touching consumers.
 
 **Owner responsibility** — `ChapterBody` is the reference implementation. It lazily creates a single `linkProvider` instance (stored as `this._linkProvider`) and passes it to `RichTextComponent` only in edit mode:
 
@@ -1031,6 +1034,8 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 
 **Edit / create mode** — each selected item in an editable table row; note field is `<textarea>`; line breaks stored as `\n`, rendered with `white-space: pre-line`.
 
+The add control uses a `ReferenceManager` tree picker (embedded inline in the footer, not a flat `<select>`). When the setup entity carries `parentId` on any item, `CollectionEntityForm.initializeAnnotatedMultiselects()` calls `ReferenceManager.buildTreeNodes()` and passes the resulting `nodes` tree to `AnnotatedMultiselectManager`. When no hierarchy exists, flat `options` are passed instead and `ReferenceManager.buildTreeNodes()` produces root-only leaf nodes (backward-compatible). All nodes — leaf and non-leaf — are selectable.
+
 **Read-only mode** — items rendered as structured block list sorted alphabetically. Each item: `• Title (link if url available) / note text`.
 
 **Metadata resolution (`_resolveAnnotatedRefMeta`)** — fields declare `setupEntity` referencing a `setupData` collection key. Returns `{ description, url }`: description as native `title` tooltip; url renders title as `<a>` for strategic documents.
@@ -1065,7 +1070,7 @@ Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 |---|---|---|
 | `nfrs` | `richtext` | Optional operational NFRs |
 | `impactedStakeholders` | `annotated-reference-list` | Options from `stakeholderCategories` |
-| `refinesParents` | `reference` | Single-select typeahead; wraps id in `[id]` array on save |
+| `refinesParents` | `reference` | Single-select typeahead; wraps id in `[id]` array on save. Options are type-filtered: ON items propose ONs only; OR items propose ORs only. |
 | `refinedBy` | `reference-list` | Computed, read-only. Uses `computeKey: '_computeRefinedByIds'` |
 | `implementedBy` | `reference-list` | Computed, read-only, ON only. Uses `computeKey: '_computeImplementedByIds'` |
 
@@ -1144,7 +1149,85 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 
 ---
 
+## 18.7 ReferenceManager Component
+
+`ReferenceManager` (`components/reference-manager.js`) is the canonical tree-picker component used throughout the client for single-value selection from a hierarchical list. It is used in:
+
+- `TreeEntity` — parent field for `StakeholderCategory` and `ReferenceDocument`
+- `CollectionEntityForm` — `reference` field type (single-select typeahead)
+- `AnnotatedMultiselectManager` — embedded inline picker (replaces the former flat `<select>`)
+- `RichTextComponent` — reference mark picker (`o-ref` / `n-ref` / `d-ref`)
+
+### Node shape
+
+```js
+{
+    value:        string | number | null,  // null = non-selectable header
+    label:        string,                  // display text; used for filtering
+    displayLabel: string?,                 // override label for rendering only
+    leaf:         boolean?,                // hint; children absence is authoritative
+    children:     node[]?,                 // static children (absent on leaves)
+    onExpand:     () => Promise<node[]>?,  // lazy children loader
+}
+```
+
+### Static utility — `ReferenceManager.buildTreeNodes(items, getLabel?)`
+
+Converts a flat array of setup entities carrying `parentId` into a node tree. This is the **single source of truth** for tree construction — used by `link-provider.js` (d-ref), `collection-entity-form.js` (annotated-reference-list), and `annotated-multiselect-manager.js` (flat options fallback).
+
+- When no item carries `parentId`, returns flat leaf nodes (backward-compatible)
+- All nodes are selectable (`value = item id`)
+- Children sorted alphabetically at every level
+- `getLabel` defaults to `item.name ?? item.title ?? String(item.id)`
+
+### Filtering — path-aware
+
+When a search term is typed, `_filterNodesWithPath` is used instead of label-only matching. A node is included if **any segment of its full ancestor path** (including itself) contains the term:
+
+- `FMP` → matches the node whose label is `FMP`; its ancestors appear as greyed context headers
+- `NM` → matches the `NM` node **and** all its descendants (NM is in the path of all children)
+- `Network` → matches the `Network` root and its entire subtree
+
+While a filter term is active, results are rendered **fully expanded** (no expand/collapse toggle). Clearing the term restores normal expand/collapse state.
+
+**Two non-selectable node styles:**
+
+| Class | Used for | `text-transform` |
+|---|---|---|
+| `rm-node-label--header` | True non-selectable group nodes (never had a value) | `uppercase` |
+| `rm-node-label--context` | Ancestors demoted during filtering (originally selectable, `value` nulled to provide hierarchy context) | none — original case preserved |
+
+Filtered nodes carry `_contextOnly: true` to distinguish them from true headers.
+
+**`_origin` reference** — every filtered copy carries `_origin` pointing to the original `_roots` node. `_toggleExpand` writes lazy-loaded `_children` to `node._origin ?? node`, ensuring `_findNode` can locate descendants even when expand was triggered from a filtered view.
+
+### Composite node values
+
+`ReferenceManager` supports non-integer node values (e.g. n-ref topic values `"{chapterItemId}/{topicId}"`). A module-level `_isIntegerId` helper (`/^\d+$/.test(String(v))`) replaces the unavailable `isValidId` from `@odp/shared`:
+
+- `_normalizeValue` — passes composite strings through as-is; integer strings are normalised via `normalizeId`
+- `_findNode` and `isSelected` — use `idsEqual` for integer pairs; fall back to `String(a) === String(b)` otherwise
+
+### Fixed-height popup
+
+The search popup (`.search-popup`) has a fixed `height: 360px`. This prevents expand/collapse of tree nodes from resizing the popup frame. The results area (`.search-popup-results`) uses `flex: 1; min-height: 0; overflow-y: auto` to scroll within the fixed frame.
+
+### Filter-mode selection — `_findNode` first
+
+`_handleClick` resolves the selected node with priority order:
+
+```js
+const node = this._findNode(this._normalizeValue(raw), this._roots)
+          ?? this._nodeAtPath(labelBtn.dataset.path)
+          ?? { label: labelBtn.dataset.label ?? raw };
+```
+
+`_findNode` by value is tried first — it works correctly for both integer and composite values once `_children` are populated. `_nodeAtPath` is a fallback only; it is unreliable in filter mode since filtered-tree path indices don't map to `_roots` positions.
+
+---
+
 ## 19. Phase 2 — Domain/Chapter Model Evolution
+
 
 ### 19.1 Setup Layer
 
@@ -1490,7 +1573,7 @@ Navigation between scopes (← Chapters, current chapter name) lives in the tool
 
 `{base}` is `/elaborate` (live dataset) or `/explore/{editionId}` (edition context).
 
-`NarrativeActivity._selectTopic(topicId)` — called after diving when `?theme=` is present. Finds the topic by `id` field in `osHierarchy.topics`, then delegates to `ChapterToc.selectTopicByIndex(idx)`.
+`NarrativeActivity._selectTopic(topicId)` — called after diving when `?theme=` is present. Delegates directly to `ChapterToc.setActiveByTopicId(topicId)`, which performs a DFS search across topics and sub-topics, expands collapsed ancestors, scrolls the entry into view, and fires `onChapterSelect`. The former index-based lookup via `selectTopicByIndex` was replaced because it only worked for top-level topics and ignored sub-topics.
 
 `NarrativeActivity._selectOStar(ostarId, type)` — called after diving when `?on=`, `?or=`, or `?oc=` is present. The type is derived directly from the param name — no `app.findOStar()` call needed. Calls `ChapterToc.setActiveByItemId(id)` then `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and the typed O* params are mutually exclusive.
 
