@@ -366,15 +366,21 @@ export default class RequirementForm extends CollectionEntityForm {
         }));
     }
 
-    async getParentRequirementOptions() {
+    async getParentRequirementOptions(context, item) {
         try {
             const now = Date.now();
-            if (this.parentRequirementsCache && (now - this.parentRequirementsCacheTime) < this.cacheTimeout) {
-                return this.parentRequirementsCache;
+            const cacheKey = item?.type ?? 'ALL';
+            const cache = this.parentRequirementsCache?.[cacheKey];
+            if (cache && (now - this.parentRequirementsCacheTime) < this.cacheTimeout) {
+                return cache;
             }
 
             const requirements = await apiClient.get(this.entityConfig.endpoint);
-            const options = requirements
+
+            // ON refines ONs only; OR refines ORs only
+            const filtered = requirements.filter(req => req.type === (item?.type ?? 'ON'));
+
+            const options = filtered
                 .map(req => ({
                     value: normalizeId(req.itemId || req.id),
                     label: `${req.code}: ${req.title}`,
@@ -385,7 +391,8 @@ export default class RequirementForm extends CollectionEntityForm {
                     return a.label.localeCompare(b.label);
                 });
 
-            this.parentRequirementsCache = options;
+            if (!this.parentRequirementsCache) this.parentRequirementsCache = {};
+            this.parentRequirementsCache[cacheKey] = options;
             this.parentRequirementsCacheTime = now;
             return options;
         } catch (error) {
