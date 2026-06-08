@@ -52,6 +52,7 @@ export default class SetupActivity {
         if (subPath.length > 0 && ENTITIES[subPath[0]]) {
             this.currentEntity = subPath[0];
         }
+        this._pendingItemId = subPath[1] ?? null;
 
         await this._loadEntityCounts();
         this._renderUI();
@@ -145,6 +146,10 @@ export default class SetupActivity {
                 ENTITIES[this.currentEntity]
             );
             await this.currentEntityComponent.render(workspace);
+            if (this._pendingItemId != null) {
+                this.currentEntityComponent.selectItem(this._pendingItemId);
+                this._pendingItemId = null;
+            }
         } catch (error) {
             errorHandler.handle(error, `setup-${this.currentEntity}`);
         }
