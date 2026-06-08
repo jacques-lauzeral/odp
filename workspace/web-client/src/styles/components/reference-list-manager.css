@@ -124,9 +124,6 @@
     flex: 1;
     overflow-y: auto;
     padding: var(--space-2);
-    height: 280px;
-    min-height: 280px;
-    max-height: 280px;
 }
 
 /* --- Search results --------------------------------------------------------- */
@@ -303,13 +300,13 @@
 /* Expand / collapse toggle */
 .rm-expand-btn {
     flex-shrink: 0;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     padding: 0;
     border: none;
     background: none;
-    color: var(--text-tertiary);
-    font-size: 10px;
+    color: var(--text-secondary);
+    font-size: 14px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -331,7 +328,7 @@
 /* Spacer — same width as expand button, for leaf nodes */
 .rm-expand-spacer {
     flex-shrink: 0;
-    width: 18px;
+    width: 20px;
 }
 
 /* Selectable node label */
@@ -408,10 +405,11 @@
 
 /* --- Reference manager picker popup ---------------------------------------- */
 /* The single-select tree is shown inside a search-popup overlay (opened by the
-   Select/Change button). The results area owns the scroll — the tree must not
-   override overflow so the fixed height on .search-popup-results is respected. */
+   Select/Change button). Let the popup results area own the scroll so the tree
+   itself is not double-capped. */
 
 .rm-picker-popup .reference-manager-tree {
     max-height: none;
+    overflow: visible;
     padding: 0;
 }
