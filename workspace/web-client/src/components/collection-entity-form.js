@@ -1,4 +1,5 @@
 import { async as asyncUtils } from '../shared/utils.js';
+import { normalizeId } from '/shared/src/index.js';
 import AnnotatedMultiselectManager from './annotated-multiselect-manager.js';
 import ReferenceListManager from './reference-list-manager.js';
 import ReferenceManager from './reference-manager.js';
@@ -975,6 +976,56 @@ export class CollectionEntityForm {
         `;
     }
 
+    /**
+     * Convert a flat array of setup entities (carrying parentId from the store)
+     * into a ReferenceManager-compatible node tree.
+     *
+     * All nodes are selectable (value = entity id). Children are sorted by name.
+     * Entities whose parentId references an unknown id are promoted to root.
+     *
+     * @param {object[]} items  — e.g. setupData.referenceDocuments or .stakeholderCategories
+     * @param {function} [getLabel]  — optional (item) => string; defaults to item.name
+     * @returns {object[]}  root nodes with nested children[]
+     */
+    _buildTreeNodes(items, getLabel) {
+        const labelOf = getLabel ?? (item => item.name || item.title || String(item.id));
+        const byId    = new Map(items.map(item => [String(item.id), item]));
+
+        const nodeOf = (item) => ({
+            value:    normalizeId(item.id),
+            label:    labelOf(item),
+            children: [],
+        });
+
+        const nodes  = new Map(items.map(item => [String(item.id), nodeOf(item)]));
+        const roots  = [];
+
+        for (const item of items) {
+            const node = nodes.get(String(item.id));
+            if (item.parentId != null && byId.has(String(item.parentId))) {
+                nodes.get(String(item.parentId)).children.push(node);
+            } else {
+                roots.push(node);
+            }
+        }
+
+        // Sort children alphabetically at every level
+        const sortKids = (nodeList) => {
+            nodeList.sort((a, b) => a.label.localeCompare(b.label));
+            nodeList.forEach(n => { if (n.children.length) sortKids(n.children); });
+        };
+        sortKids(roots);
+
+        // Remove empty children arrays (leaf nodes)
+        const prune = (nodeList) => nodeList.forEach(n => {
+            if (!n.children.length) delete n.children;
+            else prune(n.children);
+        });
+        prune(roots);
+
+        return roots;
+    }
+
     initializeAnnotatedMultiselects() {
         if (!this.currentModal) return;
 
@@ -991,22 +1042,39 @@ export class CollectionEntityForm {
             const isReadOnly = this.currentMode === 'read' || field.readOnly === true;
 
             this.getFieldOptions(field).then(options => {
-                const manager = new AnnotatedMultiselectManager({
-                    fieldId: fieldId,
-                    options: options,
+                // If the setup entity carries parentId, build a proper node tree
+                // instead of a flat options list — AnnotatedMultiselectManager
+                // accepts both; nodes take precedence.
+                const setupData  = this.context?.setupData;
+                const collection = field.setupEntity && setupData?.[field.setupEntity];
+                const useTree    = Array.isArray(collection) && collection.some(e => e.parentId != null);
+
+                const managerConfig = {
+                    fieldId:      fieldId,
                     initialValue: value || [],
                     maxNoteLength: field.maxNoteLength || 200,
-                    placeholder: field.placeholder || 'Select items...',
-                    noteLabel: field.noteLabel || 'Note (optional)',
-                    helpText: field.helpText || '',
-                    readOnly: isReadOnly,
+                    placeholder:  field.placeholder || 'Select items...',
+                    noteLabel:    field.noteLabel || 'Note (optional)',
+                    helpText:     field.helpText || '',
+                    readOnly:     isReadOnly,
                     onChange: (newValue) => {
                         console.log(`${fieldKey} changed:`, newValue);
                         if (this.currentMode === 'edit' || this.currentMode === 'create') {
                             this.markDirty();
                         }
                     }
-                });
+                };
+
+                if (useTree) {
+                    const getLabel = field.setupEntity === 'referenceDocuments'
+                        ? (item) => item.version ? `${item.name} (${item.version})` : item.name
+                        : undefined;
+                    managerConfig.nodes = this._buildTreeNodes(collection, getLabel);
+                } else {
+                    managerConfig.options = options;
+                }
+
+                const manager = new AnnotatedMultiselectManager(managerConfig);
 
                 manager.render(placeholder);
                 this.annotatedMultiselectManagers[fieldKey] = manager;

@@ -1,4 +1,5 @@
 import { normalizeId, idsEqual } from '/shared/src/index.js';
+import ReferenceManager from './reference-manager.js';
 
 /**
  * AnnotatedMultiselectManager
@@ -22,7 +23,7 @@ export default class AnnotatedMultiselectManager {
 
         this.config = {
             fieldId: config.fieldId,
-            options: config.options || [],
+            nodes: config.nodes || this._flatToNodes(config.options || []),
             initialValue: config.initialValue || [],
             maxNoteLength: config.maxNoteLength || 200,
             placeholder: config.placeholder || 'Select items...',
@@ -34,7 +35,18 @@ export default class AnnotatedMultiselectManager {
         this.selectedItems = this.normalizeInitialValue(config.initialValue);
         this.container = null;
         this.editingRowId = null;
+        this._pickerRM = null;   // ReferenceManager instance for tree picker
         this.boundHandlers = {};
+    }
+
+    // ─── Tree helpers ─────────────────────────────────────────────────────────
+
+    /**
+     * Convert flat [{value, label}] options to root-only leaf nodes —
+     * mirrors ReferenceManager._flatToNodes for backward compatibility.
+     */
+    _flatToNodes(options) {
+        return options.map(o => ({ value: o.value, label: o.label, leaf: true }));
     }
 
     normalizeInitialValue(value) {
@@ -167,20 +179,10 @@ export default class AnnotatedMultiselectManager {
     renderFooter() {
         if (this.config.readOnly) return '';
 
-        const availableOptions = this.getAvailableOptions();
-
         return `
             <div class="annotated-footer">
-                <div class="footer-selector">
-                    <select 
-                        class="odip-input" 
-                        id="${this.config.fieldId}-dropdown"
-                        ${availableOptions.length === 0 ? 'disabled' : ''}>
-                        <option value="">${this.config.placeholder}</option>
-                        ${availableOptions.map(opt => `
-                            <option value="${opt.value}"${opt.description ? ` title="${this.escapeHtml(opt.description)}"` : ''}>${this.escapeHtml(opt.label)}</option>
-                        `).join('')}
-                    </select>
+                <div class="footer-picker" id="${this.config.fieldId}-picker-host">
+                    <!-- ReferenceManager tree picker mounted here -->
                 </div>
                 <div class="footer-note">
                     <input 
@@ -216,6 +218,9 @@ export default class AnnotatedMultiselectManager {
     bindEvents() {
         if (this.config.readOnly) return;
 
+        // Mount ReferenceManager tree picker into footer picker host
+        this._mountPicker();
+
         // Footer add button
         const addBtn = this.container.querySelector(`#${this.config.fieldId}-add`);
         if (addBtn) {
@@ -229,6 +234,30 @@ export default class AnnotatedMultiselectManager {
             this.boundHandlers.tableClick = (e) => this.handleTableClick(e);
             tbody.addEventListener('click', this.boundHandlers.tableClick);
         }
+    }
+
+    _mountPicker() {
+        const host = this.container.querySelector(`#${this.config.fieldId}-picker-host`);
+        if (!host) return;
+
+        // Destroy previous instance if re-mounting
+        this._pickerRM?.destroy();
+
+        const availableNodes = this._getAvailableNodes();
+
+        this._pickerRM = new ReferenceManager({
+            fieldId:     `${this.config.fieldId}-picker`,
+            nodes:       availableNodes,
+            placeholder: this.config.placeholder,
+            noneLabel:   'Nothing selected',
+            readOnly:    false,
+        });
+        this._pickerRM.render(host);
+    }
+
+    _remountPicker() {
+        // Rebuild available nodes (excludes already-selected items) and re-mount picker
+        this._mountPicker();
     }
 
     handleTableClick(e) {
@@ -252,32 +281,30 @@ export default class AnnotatedMultiselectManager {
     }
 
     handleAdd() {
-        const dropdown = this.container.querySelector(`#${this.config.fieldId}-dropdown`);
         const noteInput = this.container.querySelector(`#${this.config.fieldId}-note`);
+        if (!noteInput) return;
 
-        if (!dropdown || !noteInput) return;
-
-        const selectedValue = dropdown.value;
-        if (!selectedValue) {
-            alert('Please select a document');
+        const selectedValue = this._pickerRM?.getValue();
+        if (!selectedValue && selectedValue !== 0) {
+            alert('Please select an item');
             return;
         }
-
-        const option = this.config.options.find(opt => opt.value == selectedValue);
-        if (!option) return;
 
         if (this.selectedItems.some(item => idsEqual(item.id, selectedValue))) {
-            alert('This document is already selected');
+            alert('This item is already selected');
             return;
         }
 
+        // Find label by walking the nodes tree
+        const node = this._findNodeByValue(selectedValue, this.config.nodes);
+        const label = node ? node.label : String(selectedValue);
+
         this.selectedItems.push({
-            id: option.value,
-            title: option.label,
+            id: selectedValue,
+            title: label,
             note: this.normalizeNote(noteInput.value)
         });
 
-        dropdown.value = '';
         noteInput.value = '';
 
         this.refresh();
@@ -331,18 +358,8 @@ export default class AnnotatedMultiselectManager {
     refresh() {
         this.refreshTable();
 
-        // Update footer dropdown
-        const dropdown = this.container.querySelector(`#${this.config.fieldId}-dropdown`);
-        if (dropdown) {
-            const availableOptions = this.getAvailableOptions();
-            dropdown.innerHTML = `
-                <option value="">${this.config.placeholder}</option>
-                ${availableOptions.map(opt => `
-                    <option value="${opt.value}"${opt.description ? ` title="${this.escapeHtml(opt.description)}"` : ''}>${this.escapeHtml(opt.label)}</option>
-                `).join('')}
-            `;
-            dropdown.disabled = availableOptions.length === 0;
-        }
+        // Remount picker with updated available nodes (excludes newly added items)
+        this._remountPicker();
 
         // Update hidden input
         const hiddenInput = this.container.querySelector(`#${this.config.fieldId}-data`);
@@ -370,9 +387,52 @@ export default class AnnotatedMultiselectManager {
         this.refresh();
     }
 
+    /**
+     * Return a copy of the node tree with already-selected items removed.
+     * Non-selectable parent nodes are preserved even when all their children
+     * are selected, so the hierarchy remains navigable.
+     */
+    _getAvailableNodes() {
+        const selectedIds = new Set(this.selectedItems.map(item => normalizeId(item.id)));
+        return this._filterAvailableNodes(this.config.nodes, selectedIds);
+    }
+
+    _filterAvailableNodes(nodes, selectedIds) {
+        return nodes.map(node => {
+            const kids = node.children ?? node._children ?? [];
+            const filteredKids = kids.length ? this._filterAvailableNodes(kids, selectedIds) : [];
+            // Selectable and already selected — suppress this node
+            if (node.value != null && selectedIds.has(normalizeId(node.value))) {
+                // Keep as non-selectable header if it has remaining children
+                if (filteredKids.length) {
+                    return { ...node, value: null, children: filteredKids, _children: undefined };
+                }
+                return null;
+            }
+            return { ...node, children: filteredKids.length ? filteredKids : (kids.length ? kids : undefined), _children: undefined };
+        }).filter(Boolean);
+    }
+
+    /**
+     * Walk the full node tree to find a node by value.
+     */
+    _findNodeByValue(value, nodes) {
+        for (const node of nodes) {
+            if (node.value != null && idsEqual(node.value, value)) return node;
+            const kids = node.children ?? node._children ?? [];
+            if (kids.length) {
+                const found = this._findNodeByValue(value, kids);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    // Kept for backward compatibility — callers that pass options still work
     getAvailableOptions() {
-        const selectedIds = new Set(this.selectedItems.map(item => item.id));
-        return this.config.options.filter(opt => !selectedIds.has(opt.value));
+        return this._getAvailableNodes()
+            .filter(n => n.value != null)
+            .map(n => ({ value: n.value, label: n.label }));
     }
 
     escapeHtml(text) {
@@ -392,6 +452,9 @@ export default class AnnotatedMultiselectManager {
         if (tbody && this.boundHandlers.tableClick) {
             tbody.removeEventListener('click', this.boundHandlers.tableClick);
         }
+
+        this._pickerRM?.destroy();
+        this._pickerRM = null;
 
         this.container = null;
         this.selectedItems = [];
