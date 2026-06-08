@@ -857,7 +857,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     WHERE version.type = 'ON'
                       AND version.maturity <> 'NO_SHOW'
                       AND NOT EXISTS { MATCH (:${this.versionLabel})-[:IMPLEMENTS]->(item) }
-                      AND NOT EXISTS { MATCH (version)-[:REFINES]->(:${this.nodeLabel}) }
+                      AND NOT EXISTS { MATCH (:${this.versionLabel})-[:REFINES]->(item) }
                 `;
             } else {
                 const numericBaselineId = this.normalizeId(baselineId);
@@ -868,7 +868,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                       AND version.type = 'ON'
                       AND version.maturity <> 'NO_SHOW'
                       AND NOT EXISTS { MATCH (:${this.versionLabel})-[:IMPLEMENTS]->(item) }
-                      AND NOT EXISTS { MATCH (version)-[:REFINES]->(:${this.nodeLabel}) }
+                      AND NOT EXISTS { MATCH (:${this.versionLabel})-[:REFINES]->(item) }
                 `;
                 if (editionId !== null) {
                     cypher += `  AND $editionId IN r.editions\n`;
