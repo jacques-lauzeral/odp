@@ -2,262 +2,152 @@ import { CollectionEntityForm } from '../../../components/collection-entity-form
 import { apiClient } from '../../../shared/api-client.js';
 
 /**
- * ODPEditionForm - ODIP Edition form configuration and handling
- * Extends CollectionEntityForm using inheritance pattern
- * Matches the API schema for ODPEditionRequest
+ * ODPEditionForm — ODIP Edition create form.
+ * Uses the config-based pattern (getEditConfig / getReadConfig).
+ * Editions are immutable once created — no edit mode.
  */
 export default class ODPEditionForm extends CollectionEntityForm {
+
     constructor(entityConfig, supportData) {
         super(entityConfig, { supportData });
         this.supportData = supportData;
     }
 
-    // ====================
-    // OVERRIDE VIRTUAL METHODS
-    // ====================
+    // -------------------------------------------------------------------------
+    // Config pattern — required overrides
+    // -------------------------------------------------------------------------
 
-    getFieldDefinitions() {
-        return [
-            // Basic Information Section
-            {
-                title: 'Edition Information',
-                fields: [
-                    {
-                        key: 'id',
-                        label: 'ID',
-                        type: 'text',
-                        modes: ['read'],
-                        readOnly: true
-                    },
-                    {
-                        key: 'title',
-                        label: 'Title',
-                        type: 'text',
-                        modes: ['create', 'read'],
-                        required: true,
-                        placeholder: 'Enter a descriptive title for this edition',
-                        validate: (value) => {
-                            if (!value || value.length < 3) {
-                                return { valid: false, message: 'Title must be at least 3 characters long' };
-                            }
-                            if (value.length > 100) {
-                                return { valid: false, message: 'Title must be less than 100 characters' };
-                            }
-                            return { valid: true };
-                        }
-                    },
-                    {
-                        key: 'type',
-                        label: 'Type',
-                        type: 'radio',
-                        modes: ['create', 'read'],
-                        required: true,
-                        options: [
-                            { value: 'DRAFT', label: 'DRAFT - Work in progress' },
-                            { value: 'OFFICIAL', label: 'OFFICIAL - Published version' }
-                        ],
-                        helpTextAbove: 'Select the edition type based on maturity and intended use'
-                    }
-                ]
-            },
-
-            // Configuration Section
-            {
-                title: 'Edition Configuration',
-                fields: [
-                    {
-                        key: 'baselineId',
-                        label: 'Baseline',
-                        type: 'select',
-                        modes: ['create', 'read'],
-                        required: false,
-                        options: () => this.getBaselineOptions(),
-                        helpText: 'Optional: Select an existing baseline or leave empty to create a new one automatically',
-                        format: (value) => this.formatBaseline(value)
-                    },
-                    {
-                        key: 'startDate',
-                        label: 'Start Date',
-                        type: 'date',
-                        modes: ['create', 'read'],
-                        required: false,
-                        helpText: 'Optional: lower bound date for OC milestone filtering and ON tentative period filtering (yyyy-mm-dd)',
-                        validate: (value) => {
-                            if (!value) return { valid: true };
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-                                return { valid: false, message: 'Date must be in yyyy-mm-dd format' };
-                            }
-                            return { valid: true };
-                        }
-                    },
-                    {
-                        key: 'minONMaturity',
-                        label: 'Min ON Maturity',
-                        type: 'radio',
-                        modes: ['create', 'read'],
-                        required: false,
-                        defaultValue: 'DRAFT',
-                        options: [
-                            { value: 'DRAFT', label: 'DRAFT' },
-                            { value: 'ADVANCED', label: 'ADVANCED' },
-                            { value: 'MATURE', label: 'MATURE' }
-                        ],
-                        helpText: 'Minimum ON maturity level for edition content selection'
-                    }
-                ]
-            },
-
-            // Metadata Section (read-only)
-            {
-                title: 'Metadata',
-                fields: [
-                    {
-                        key: 'createdBy',
-                        label: 'Created By',
-                        type: 'text',
-                        modes: ['read'],
-                        readOnly: true
-                    },
-                    {
-                        key: 'createdAt',
-                        label: 'Created',
-                        type: 'date',
-                        modes: ['read'],
-                        readOnly: true,
-                        format: (value) => {
-                            if (!value) return '-';
-                            return new Date(value).toLocaleString();
-                        }
-                    }
-                ]
-            }
-        ];
+    hydrateField(field) {
+        // No string-ref bindings needed — options are inline arrays or functions
+        return field;
     }
+
+    getEditConfig() {
+        return {
+            sections: [
+                {
+                    title: 'Edition',
+                    fields: [
+                        {
+                            key: 'title',
+                            label: 'Title',
+                            type: 'text',
+                            required: true,
+                            placeholder: 'Enter a descriptive title for this edition',
+                            validate: (value) => {
+                                if (!value || value.trim().length < 3)
+                                    return { valid: false, message: 'Title must be at least 3 characters' };
+                                if (value.length > 100)
+                                    return { valid: false, message: 'Title must be less than 100 characters' };
+                                return { valid: true };
+                            }
+                        },
+                        {
+                            key: 'type',
+                            label: 'Type',
+                            type: 'radio',
+                            required: true,
+                            options: [
+                                { value: 'DRAFT',    label: 'DRAFT — Work in progress' },
+                                { value: 'OFFICIAL', label: 'OFFICIAL — Published version' },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    title: 'Content rules',
+                    fields: [
+                        {
+                            key: 'baselineId',
+                            label: 'Baseline',
+                            type: 'select',
+                            required: false,
+                            options: () => this._getBaselineOptions(),
+                            helpText: 'Leave empty to create a new baseline automatically',
+                        },
+                        {
+                            key: 'startDate',
+                            label: 'Start date',
+                            type: 'date',
+                            required: false,
+                            helpText: 'Optional lower bound (yyyy-mm-dd) for OC milestone and ON tentative filtering',
+                            validate: (value) => {
+                                if (!value) return { valid: true };
+                                if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+                                    return { valid: false, message: 'Date must be in yyyy-mm-dd format' };
+                                return { valid: true };
+                            },
+                        },
+                        {
+                            key: 'minONMaturity',
+                            label: 'Min ON maturity',
+                            type: 'radio',
+                            required: false,
+                            options: [
+                                { value: 'DRAFT',    label: 'DRAFT' },
+                                { value: 'ADVANCED', label: 'ADVANCED' },
+                                { value: 'MATURE',   label: 'MATURE' },
+                            ],
+                            helpText: 'Minimum ON maturity gate for edition content selection',
+                        },
+                    ],
+                },
+            ],
+        };
+    }
+
+    getReadConfig() {
+        // Not used — detail view is rendered directly in EditionsActivity
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Form lifecycle overrides
+    // -------------------------------------------------------------------------
 
     getFormTitle(mode) {
-        switch (mode) {
-            case 'create':
-                return 'Create ODIP Edition';
-            case 'read':
-                return 'ODIP Edition Details';
-            default:
-                return 'ODIP Edition';
-        }
+        return 'Create ODIP Edition';
     }
 
-    transformDataForSave(data, mode, item) {
-        const transformed = { ...data };
-
-        if (!transformed.title) transformed.title = '';
-        if (!transformed.type) transformed.type = 'DRAFT';
-
-        if (transformed.baselineId) {
-            transformed.baselineId = parseInt(transformed.baselineId, 10);
-        }
-
-        if (!transformed.minONMaturity) {
-            transformed.minONMaturity = 'DRAFT';
-        }
-
-        return transformed;
+    transformDataForSave(data) {
+        const out = { ...data };
+        if (!out.type)          out.type = 'DRAFT';
+        if (!out.minONMaturity) out.minONMaturity = 'DRAFT';
+        if (out.baselineId)     out.baselineId = parseInt(out.baselineId, 10);
+        else                    delete out.baselineId;
+        if (!out.startDate)     delete out.startDate;
+        return out;
     }
 
-    transformDataForEdit(item) {
-        if (!item) return {};
-
-        const transformed = { ...item };
-
-        // Extract baseline ID from reference for form value binding
-        if (transformed.baseline && typeof transformed.baseline === 'object') {
-            transformed.baselineId = transformed.baseline.id;
-        }
-
-        // Default minONMaturity to DRAFT if not set
-        if (!transformed.minONMaturity) {
-            transformed.minONMaturity = 'DRAFT';
-        }
-
-        return transformed;
-    }
-
-    async onSave(data, mode, item) {
+    async onSave(data, mode) {
         if (mode === 'create') {
             return await apiClient.post(this.entityConfig.endpoint, data);
-        } else {
-            throw new Error('ODIP Editions cannot be updated once created');
         }
+        throw new Error('ODIP Editions cannot be updated once created');
     }
 
-    async onValidate(data, mode, item) {
+    async onValidate(data) {
         const errors = [];
-
         if (data.baselineId) {
-            const baselineId = parseInt(data.baselineId, 10);
-            const baseline = this.supportData?.baselines?.find(b => parseInt(b.id, 10) === baselineId);
-            if (!baseline) {
-                errors.push({ field: 'baselineId', message: 'Selected baseline not found' });
-            }
+            const id = parseInt(data.baselineId, 10);
+            const found = this.supportData?.baselines?.find(b => parseInt(b.id, 10) === id);
+            if (!found) errors.push({ field: 'baselineId', message: 'Selected baseline not found' });
         }
-
         return { valid: errors.length === 0, errors };
     }
 
-    onCancel() {
-        console.log('Edition form cancelled');
-    }
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
-    // ====================
-    // DATA OPTIONS HELPERS
-    // ====================
-
-    getBaselineOptions() {
-        const baseOptions = [{ value: '', label: 'Create new baseline automatically' }];
-
-        if (!this.supportData?.baselines) {
-            return baseOptions;
-        }
-
-        const baselineOptions = this.supportData.baselines.map(baseline => ({
-            value: parseInt(baseline.id, 10),
-            label: `${baseline.title || `Baseline ${baseline.id}`} (${new Date(baseline.createdAt).toLocaleDateString()})`
-        }));
-
-        return baseOptions.concat(baselineOptions);
-    }
-
-    // ====================
-    // FORMAT HELPERS
-    // ====================
-
-    formatBaseline(value) {
-        if (!value) return 'No baseline';
-
-        if (typeof value === 'object' && value !== null) {
-            const title = value.title || `Baseline ${value.id}`;
-            const date = value.createdAt ? new Date(value.createdAt).toLocaleDateString() : '';
-            return date ? `${title} (${date})` : title;
-        }
-
-        // Look up in support data
-        if (this.supportData?.baselines) {
-            const baseline = this.supportData.baselines.find(b => b.id === value);
-            if (baseline) {
-                return this.formatBaseline(baseline);
-            }
-        }
-
-        return `Baseline ${value}`;
-    }
-
-    // ====================
-    // PUBLIC API
-    // ====================
-
-    async showCreateModal() {
-        await super.showCreateModal();
-    }
-
-    async generateReadOnlyView(item) {
-        return await super.generateReadOnlyView(item);
+    _getBaselineOptions() {
+        const base = [{ value: '', label: 'Create new baseline automatically' }];
+        if (!this.supportData?.baselines) return base;
+        return base.concat(
+            this.supportData.baselines.map(b => ({
+                value: parseInt(b.id, 10),
+                label: `${b.title || `Baseline ${b.id}`} (${new Date(b.createdAt).toLocaleDateString()})`,
+            }))
+        );
     }
 }

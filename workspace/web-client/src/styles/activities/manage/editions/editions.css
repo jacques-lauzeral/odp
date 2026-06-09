@@ -1,1 +1,192 @@
-/* editions — placeholder */
+/* ==========================================================================
+   Manage / Editions activity
+   Depends on: primitives.css, activity.css, master-detail.css, os.css
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Activity shell — reuses .os-toolbar from os.css
+   -------------------------------------------------------------------------- */
+
+.editions-activity {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.editions-toolbar {
+    flex-shrink: 0;
+}
+
+.editions-master-detail {
+    flex: 1;
+    min-height: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Left panel — edition list
+   -------------------------------------------------------------------------- */
+
+.editions-list-loading,
+.editions-empty {
+    padding: var(--space-4);
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.edition-card {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-color-light);
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.edition-card:hover {
+    background-color: var(--bg-hover);
+}
+
+.edition-card--selected {
+    background-color: var(--bg-selected);
+    border-left: 3px solid var(--ec-blue);
+}
+
+.edition-card__header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.edition-card__title {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edition-card__meta {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Edition type badge
+   -------------------------------------------------------------------------- */
+
+.edition-badge {
+    display: inline-block;
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.edition-badge--draft {
+    background-color: var(--color-draft-bg, #f3f4f6);
+    color: var(--color-draft-text, #6b7280);
+}
+
+.edition-badge--official {
+    background-color: var(--color-official-bg, #d1fae5);
+    color: var(--color-official-text, #065f46);
+}
+
+/* --------------------------------------------------------------------------
+   Right panel — detail (extends os-detail)
+   -------------------------------------------------------------------------- */
+
+.edition-detail__body {
+    padding: var(--space-4);
+    overflow-y: auto;
+}
+
+.edition-detail__dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-4);
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+.edition-detail__dl dt {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+}
+
+.edition-detail__dl dd {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Export modal — compact size override
+   -------------------------------------------------------------------------- */
+
+.edition-export-overlay .modal {
+    width: 390px;
+    min-width: 0;
+    max-width: 390px;
+    height: auto;
+    min-height: 0;
+    align-self: center;
+}
+
+.edition-export-overlay .modal-header {
+    padding: var(--space-2) var(--space-3);
+}
+
+.edition-export-overlay .modal-title {
+    font-size: var(--font-size-sm);
+}
+
+.edition-export-overlay .modal-body {
+    padding: var(--space-2) var(--space-3);
+}
+
+.edition-export-overlay .modal-footer {
+    padding: var(--space-2) var(--space-3);
+}
+
+.edition-export-modal__hint {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-3) 0;
+}
+
+.edition-export-modal__formats {
+    display: flex;
+    gap: var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.edition-export-modal__format {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+}
+
+.edition-export-modal__results {
+    margin-top: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.edition-export-modal__result {
+    font-size: var(--font-size-sm);
+}
+
+.edition-export-modal__result--ok {
+    color: var(--color-success, #065f46);
+}
+
+.edition-export-modal__result--error {
+    color: var(--color-error, #991b1b);
+}
