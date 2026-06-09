@@ -48,24 +48,27 @@ export class ChapterGenerator {
      * @param {{ editionId?, referenceDocuments?, allOnsSummary?, allOrsSummary? }} options
      *   allOnsSummary/allOrsSummary: full O* set at summary projection for cross-domain xref resolution
      */
-    constructor(userId, chapter, oStars, { editionId = null, referenceDocuments = null, allOnsSummary = null, allOrsSummary = null } = {}) {
+    constructor(userId, chapter, oStars, { editionId = null, referenceDocuments = null, allOnsSummary = null, allOrsSummary = null, globalOStarIndex = null, converter = null } = {}) {
         this.userId = userId;
         this.chapter = chapter;
-        this.oStars = oStars;                           // domain-filtered, standard — page generation
-        this.allOnsSummary = allOnsSummary ?? oStars.ons; // full set, summary — xref resolution fallback
+        this.oStars = oStars;
+        this.allOnsSummary = allOnsSummary ?? oStars.ons;
         this.allOrsSummary = allOrsSummary ?? oStars.ors;
+        this.globalOStarIndex = globalOStarIndex ?? new Map();
         this.editionId = editionId;
         this.externalReferenceDocuments = referenceDocuments;
 
         this.templatesDir = path.join(__dirname, '../templates');
         this.templates = {};
-        this.converter = new TipTapAsciidocConverter();
+        // Use shared converter if provided — global image counter ensures unique filenames
+        // across all chapters. Fall back to a new instance for standalone use.
+        this.converter = converter ?? new TipTapAsciidocConverter();
 
-        // Accumulated images across all generated pages — never reset mid-chapter
+        // Images extracted by this generator instance (slice of converter's global list)
+        this._imageCountBefore = this.converter.getExtractedImages().length;
         this.allImages = [];
 
-        // Built during generate() for xref resolution across O* pages
-        this.onLookup = new Map();  // itemId -> { path: string[] }  (theme slug path)
+        this.onLookup = new Map();
         this.orLookup = new Map();
     }
 
@@ -95,7 +98,7 @@ export class ChapterGenerator {
 
         // Build xref lookup maps from osHierarchy so O* pages can cross-reference
         if (chapter.osHierarchy?.topics) {
-            this._buildLookups(chapter.osHierarchy.topics, chapterSlug, []);
+            this._buildLookups(chapter.osHierarchy.topics, chapterSlug, [chapterSlug]);
         }
 
         // Build reverse relationship maps (refinedBy, implementedBy) from O* data
@@ -542,11 +545,23 @@ export class ChapterGenerator {
     // CROSS-REFERENCE RESOLUTION
     // =============================================================================
 
+    /**
+     * Resolve an itemId to xref path info, checking local lookup first then global index.
+     * @param {number|string} id
+     * @param {'on'|'or'} type
+     * @returns {{ slugPath: string[] }|null}
+     * @private
+     */
+    _resolveXrefInfo(id, type) {
+        const nid = normalizeId(id);
+        const lookup = type === 'on' ? this.onLookup : this.orLookup;
+        return lookup.get(nid) ?? this.globalOStarIndex.get(nid) ?? null;
+    }
+
     _resolveRefinesParent(entity, type) {
         if (!entity.refinesParents?.length) return null;
         const parent = entity.refinesParents[0];
-        const lookup = type === 'on' ? this.onLookup : this.orLookup;
-        const info = lookup.get(normalizeId(parent.id));
+        const info = this._resolveXrefInfo(parent.id, type);
         if (!info) {
             console.warn(`[ChapterGenerator] ${type.toUpperCase()} ${entity.itemId} refines ${parent.id} — not found in lookup`);
             return null;
@@ -560,18 +575,17 @@ export class ChapterGenerator {
     _resolveRefinedBy(entity) {
         if (!entity.refinedBy?.length) return null;
         const items = entity.refinedBy.map(child => {
-            const lookup = child.type === 'ON' ? this.onLookup : this.orLookup;
-            const info = lookup.get(normalizeId(child.id));
+            const type = child.type.toLowerCase();
+            const info = this._resolveXrefInfo(child.id, type);
             if (!info) {
                 console.warn(`[ChapterGenerator] refinedBy ${child.type} ${child.id} — not found in lookup`);
                 return null;
             }
-            const entityType = child.type.toLowerCase();
             return {
                 id: child.id,
                 title: child.title,
                 type: child.type,
-                xref: this._buildXrefPath(info.slugPath.join('/'), `${entityType}-${child.id}.adoc`)
+                xref: this._buildXrefPath(info.slugPath.join('/'), `${type}-${child.id}.adoc`)
             };
         }).filter(Boolean);
         return items.length > 0 ? { items } : null;
@@ -580,7 +594,7 @@ export class ChapterGenerator {
     _resolveImplementedBy(on) {
         if (!on.implementedBy?.length) return null;
         const items = on.implementedBy.map(or => {
-            const info = this.orLookup.get(normalizeId(or.id));
+            const info = this._resolveXrefInfo(or.id, 'or');
             if (!info) {
                 console.warn(`[ChapterGenerator] implementedBy OR ${or.id} — not found in lookup`);
                 return null;
@@ -597,7 +611,7 @@ export class ChapterGenerator {
     _resolveImplementedONs(or) {
         if (!or.implementedONs?.length) return null;
         const ons = or.implementedONs.map((on, idx) => {
-            const info = this.onLookup.get(normalizeId(on.id));
+            const info = this._resolveXrefInfo(on.id, 'on');
             if (!info) {
                 console.warn(`[ChapterGenerator] OR ${or.itemId} implementedONs ON ${on.id} — not found in lookup`);
                 return null;
@@ -704,13 +718,27 @@ export class ChapterGenerator {
     _convertNarrative(tiptapJson, context) {
         try {
             const imagesBefore = this.converter.getExtractedImages().length;
-            const result = this.converter.toAsciidoc(tiptapJson);
+            const raw = this.converter.toAsciidoc(tiptapJson);
+            const result = this._fixAntoraImagePaths(this._offsetHeadingLevels(raw));
             const allConverterImages = this.converter.getExtractedImages();
             this.allImages.push(...allConverterImages.slice(imagesBefore));
             return result;
         } catch (err) {
             throw new Error(`Failed to convert narrative for ${context}: ${err.message}`);
         }
+    }
+
+    /**
+     * Offset AsciiDoc heading levels by +1 so level-1 headings (=) become level-2 (==).
+     * Antora pages cannot use level-0 (= Title) headings outside book doctype.
+     * TipTapAsciidocConverter emits heading level N as N '=' characters.
+     * After offset: h1→==, h2→===, h3→====, etc.
+     * @private
+     */
+    _offsetHeadingLevels(asciidoc) {
+        if (!asciidoc) return asciidoc;
+        // Match lines starting with one or more '=' followed by a space
+        return asciidoc.replace(/^(=+) /gm, '$1= ');
     }
 
     /**

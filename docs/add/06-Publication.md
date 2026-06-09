@@ -46,15 +46,21 @@ REST API  POST /odp-editions/{id}/publish  ← PublishOptions body
           │
           ├── generateAntoraZip(editionId, userId, { mode, drgFilter?, selection? })
           │       │
-          │       ├── DetailsModuleGenerator      ← queries Neo4j, generates AsciiDoc pages
-          │       │       ├── operationalRequirementService.getAll()   ← standard projection, edition-scoped
-          │       │       ├── DeltaToAsciidocConverter   ← Quill Delta → AsciiDoc + image extraction
-          │       │       └── Mustache templates         ← on.mustache, or.mustache, etc.
+          │       ├── _generateAllChapterFiles()   ← chapter-driven DB content generation
+          │       │       ├── chapterService.getAll()              ← chapter index (standard)
+          │       │       ├── _buildGlobalOStarIndex()             ← cross-chapter xref map
+          │       │       │       └── chapterService.getById()     ← per chapter (extended)
+          │       │       ├── operationalRequirementService.getAll() ← summary, edition-scoped
+          │       │       ├── operationalRequirementService.getAll() ← standard, per domain
+          │       │       └── ChapterGenerator (one per chapter)
+          │       │               ├── TipTapAsciidocConverter  ← TipTap JSON → AsciiDoc
+          │       │               └── Mustache templates       ← on.mustache, or.mustache,
+          │       │                                               chapter.mustache, theme.mustache
           │       │
-          │       └── _createAntoraZip(configPaths, contentMappings, detailsFiles)
-          │               ├── config files   → works dir root (flat copy)
-          │               ├── content files  → Antora module paths (remapped per build mode)
-          │               └── generated files → modules/details/ or modules/ROOT/ (domain mode)
+          │       └── _createAntoraZip(configPaths, contentMappings, generatedFiles)
+          │               ├── config files    → works dir root (flat copy)
+          │               ├── static content  → Antora module paths (nav.adoc etc.)
+          │               └── generated files → modules/details/ or modules/ROOT/
           │
           ├── _buildFlat(format)
           │       └── works/flat/antora-playbook-{pdf|docx}.yml → _artifacts/index.{pdf|docx}
@@ -62,7 +68,7 @@ REST API  POST /odp-editions/{id}/publish  ← PublishOptions body
           │
           ├── _buildWordMultipart(selection)
           │       ├── intro: works-intro/multipart/antora-playbook-docx.yml → ZIP entry
-          │       └── per DrG: works-{drg}/multipart/antora-playbook-docx.yml → ZIP entry
+          │       └── per domain: works-{domain}/multipart/antora-playbook-docx.yml → ZIP entry
           │       └── assemble → _artifacts/word-multipart.zip
           │           (NODE_PATH=works/node_modules for all multipart builds)
           │
@@ -78,15 +84,15 @@ services/
 ├── ODPEditionService.js          ← edition CRUD + generateAntoraZip() + publishEdition()
 └── publication/
     └── generators/
-        └── DetailsModuleGenerator.js
+        └── ChapterGenerator.js   ← one instance per chapter; DB narrative + O* pages
     └── templates/
         ├── on.mustache
         ├── or.mustache
-        ├── folder-index.mustache
-        └── drg-index.mustache
+        ├── chapter.mustache      ← chapter index page (title + narrative + sitemap)
+        └── theme.mustache        ← theme index page (narrative + O* list)
 
 services/export/
-└── DeltaToAsciidocConverter.js   (shared with docx export)
+└── TipTapAsciidocConverter.js    ← TipTap JSON → AsciiDoc (shared with publication)
 ```
 
 Static publication scaffolding lives under `publication/` in the repository (configurable via `PUBLICATION_PATH` env var, default `/app/publication`):
@@ -102,175 +108,180 @@ publication/
 │       └── antora-docx-extension.js ← AsciiDoc → DocBook → pandoc → docx
 │
 ├── website/
-│   └── config/
-│       ├── antora.yml               ← component descriptor (ROOT + details nav)
-│       └── antora-playbook.yml      ← HTML site build
+│   ├── config/
+│   │   ├── antora.yml               ← component descriptor (ROOT + details nav)
+│   │   └── antora-playbook.yml      ← HTML site build
+│   └── content/
+│       └── nav.adoc                 ← ROOT module nav (website mode)
 │
 ├── flat/
-│   └── config/
-│       ├── antora.yml               ← component descriptor (ROOT + details nav)
-│       ├── antora-playbook-pdf.yml  ← flat PDF build
-│       ├── antora-assembler-pdf.yml ← flat PDF assembler
-│       ├── antora-playbook-docx.yml ← flat Word build
-│       └── antora-assembler-docx.yml← flat Word assembler
-│
-└── multipart/
-    └── config/                      ← Word multipart only (intro + per-domain)
-        ├── antora.yml               ← component descriptor (ROOT only, no details nav)
-        ├── antora-playbook-docx.yml ← multipart Word build
-        └── antora-assembler-docx.yml← multipart Word assembler
-```
-
-Content trees (not config):
-
-```
-publication/
-├── shared/
-│   └── content/
-│       ├── edition-plan.json        ← DrG ordering for website/flat builds
-│       ├── intro/
-│       │   └── index.adoc           ← ODIP Edition introduction page
-│       └── {drg}/                   ← one per DrG
-│           └── index.adoc           ← DrG domain introduction page
-│
-├── website/
-│   └── content/
-│       └── nav.adoc                 ← ROOT module nav (all DrGs, website mode)
-│
-├── flat/
+│   ├── config/
+│   │   ├── antora.yml               ← component descriptor (ROOT + details nav)
+│   │   ├── antora-playbook-pdf.yml  ← flat PDF build
+│   │   ├── antora-assembler-pdf.yml ← flat PDF assembler
+│   │   ├── antora-playbook-docx.yml ← flat Word build
+│   │   └── antora-assembler-docx.yml← flat Word assembler
 │   └── content/
 │       └── intro/
 │           └── nav.adoc             ← ROOT module nav (intro, flat builds)
 │
 └── multipart/
+    ├── config/                      ← Word multipart only (intro + per-domain)
+    │   ├── antora.yml               ← component descriptor (ROOT only, no details nav)
+    │   ├── antora-playbook-docx.yml ← multipart Word build
+    │   └── antora-assembler-docx.yml← multipart Word assembler
     └── content/
         └── intro/
             └── nav.adoc             ← ROOT module nav (intro, multipart builds)
 ```
 
+> **Note:** The former `shared/content/` directory (which contained static `index.adoc` files and `edition-plan.json`) has been removed. All chapter and domain introduction pages are now generated from narratives stored in the database.
+
 ---
 
 ## 3. Generation Pipeline
 
+### Overview
+
+Content generation is **chapter-driven**: `ODPEditionService._generateAllChapterFiles()` walks the `edition.json` chapter list, fetches each chapter from the DB (including narrative and `osHierarchy`), and instantiates one `ChapterGenerator` per chapter. The generator produces all Antora pages for that chapter as a `Map<relativePath, content>`. The caller maps these paths to their Antora module targets before ZIP assembly.
+
 ### Stage 1 — Data Fetch
 
-`DetailsModuleGenerator` delegates to `operationalRequirementService.getAll()` with `projection = 'standard'` and optional `editionId` (null for full-repository mode). The service handles edition context resolution — mapping `editionId` to `{baselineId, editionId}` via `odpEditionStore.resolveContext()` — before calling the store. All ONs and ORs are retrieved and split by type.
+`_generateAllChapterFiles()` performs the following fetches before the chapter loop:
+
+1. **Chapter index** — `chapterService.getAll()` (standard projection) to build a `key → itemId` map.
+2. **Global O\* index** — `_buildGlobalOStarIndex()` fetches every chapter at extended projection and walks its `osHierarchy` to build a global `Map<normalizedItemId, { chapterSlug, slugPath[] }>`. Used by `ChapterGenerator` for cross-chapter xref resolution.
+3. **O\* summary** — `operationalRequirementService.getAll()` at `summary` projection, edition-scoped. Contains all O*s (all domains) for cross-domain relationship resolution. No rich-text fields.
+4. **Reference documents** — `referenceDocumentStore.findAll()`, shared across all chapter generators.
+
+Per chapter, inside the loop:
+
+5. **Chapter extended** — `chapterService.getById()` — narrative (TipTap JSON) + enriched `osHierarchy`.
+6. **Domain O\* standard** — `operationalRequirementService.getAll()` filtered to `{ domain: chapter.domain }`, edition-scoped. Contains rich-text fields needed for O* page generation.
 
 ### Stage 2 — Relationship Resolution
 
-Reverse relationship maps are built in-memory from the fetched data:
+`ChapterGenerator._buildReverseRelationships()` builds in-memory reverse maps on the domain-filtered O* set (`oStars`), using the full summary set for cross-domain lookups:
 
-- `refinedBy[]` — ONs/ORs that refine a given entity (from `refinesParents`)
-- `implementedBy[]` — ORs that implement a given ON (from `implementedONs`)
+- `refinedBy[]` — all O*s (any domain) that refine this entity
+- `implementedBy[]` — all ORs (any domain) that implement this ON
 
-Cross-reference lookups (`onLookup`, `orLookup`) map `itemId → { drg, path }` and are used to generate correct Antora `xref` links between pages.
+### Stage 3 — Xref Lookup
 
-### Stage 3 — Hierarchy Building
+Two lookup levels are maintained per `ChapterGenerator` instance:
 
-Entities are placed into a per-DrG tree structure:
+- **Local lookup** (`onLookup`, `orLookup`) — built from the current chapter's `osHierarchy`. Maps `normalizedItemId → { slugPath[] }` for O*s in this chapter. Fast path.
+- **Global index** (`globalOStarIndex`) — built across all chapters by `_buildGlobalOStarIndex()`. Maps `normalizedItemId → { chapterSlug, slugPath[] }`. Fallback for cross-chapter (cross-domain) xrefs.
 
-- Entities with a `path[]` → placed into nested folder nodes matching their path segments
-- Entities with `refinesParents` → nested as children under their parent entity (same folder)
-- Entities with neither → placed at the DrG root
-
-Refinement children are sorted by `itemId` at each level. Multi-level refinements are resolved iteratively until all children are placed.
+`_resolveXrefInfo(id, type)` checks local lookup first, then global index. If neither resolves, the xref is omitted (warn logged) — this occurs only for stale `osHierarchy` references pointing to O*s excluded from the current edition snapshot.
 
 ### Stage 4 — Content Transformation
 
-`DeltaToAsciidocConverter` converts every rich text field from Quill Delta JSON to AsciiDoc:
+`TipTapAsciidocConverter.toAsciidoc()` converts TipTap JSON to AsciiDoc for:
 
-| Quill feature | AsciiDoc output |
+- Chapter narratives (via `_convertNarrative()`)
+- Theme narratives (via `_convertNarrative()`)
+- O* rich-text fields: `statement`, `rationale`, `flows`, `nfrs`
+
+| TipTap feature | AsciiDoc output |
 |---|---|
-| Bold / italic / underline / strikethrough | `*bold*`, `_italic_`, etc. |
-| Headers levels 1–6 | `= Title`, `== Section`, etc. |
+| Bold / italic / underline / strikethrough | `**bold**`, `*italic*`, etc. |
+| Headings levels 1–6 (offset +1) | `== Section`, `=== Sub-section`, etc. |
 | Ordered / unordered lists (nested) | `. item` / `* item` with indent |
 | External links | `link:url[label]` |
-| Inline code / code blocks | `` `code` `` / `[source]\n----` |
-| Embedded images (base64 PNG) | Extracted to `assets/images/image-NNN.png`, referenced as `image::image-NNN.png[]` |
+| Embedded images (base64) | Extracted to `assets/images/image-NNN.ext`, referenced as `image::image-NNN.ext[]` |
 
-Images are extracted using a global counter (never reset between entities) to guarantee unique filenames across the entire publication. All extracted images are written to `modules/details/assets/images/`.
+**Heading offset:** narrative headings are offset by +1 level (`_offsetHeadingLevels`) so that level-1 TipTap headings (`= Title`) become `==` in AsciiDoc — required by Antora which disallows level-0 sections outside book doctype.
+
+**Image paths:** `_fixAntoraImagePaths()` strips the `./images/` prefix emitted by the converter, leaving `image::filename.ext[]` which Antora resolves via the module's `assets/images/` directory.
+
+Images use a global counter (never reset between fields or chapters within a generator instance) to guarantee unique filenames.
 
 ### Stage 5 — Page Generation
 
-One AsciiDoc page is generated per ON and per OR using Mustache templates. Pages contain:
+`ChapterGenerator.generate()` produces the following files per chapter:
 
-- Metadata block: type, itemId, DrG, path, refines link
-- Statement, Rationale, Flows sections (when present)
-- Refined By section (links to refining child entities)
-- Implemented By section (ON pages: links to implementing ORs)
-- Implements section (OR pages: links to implemented ONs)
+| File | Template | Content |
+|---|---|---|
+| `pages/{chapterSlug}/index.adoc` | `chapter.mustache` | Chapter title + narrative + theme/O* sitemap |
+| `pages/{chapterSlug}/{theme}/index.adoc` | `theme.mustache` | Theme narrative + O* list |
+| `pages/{chapterSlug}/{theme}/on-{id}.adoc` | `on.mustache` | ON metadata + rich-text fields + xrefs |
+| `pages/{chapterSlug}/{theme}/or-{id}.adoc` | `or.mustache` | OR metadata + rich-text fields + xrefs |
+| `assets/images/image-NNN.ext` | — | Extracted images |
+| `nav.adoc` | — | Chapter nav fragment |
 
-**Folder index pages** (`index.adoc`) are generated for each subfolder as `modules/details/partials/{drg}/{folder}/index.adoc` (not as pages). This allows manually authored DrG domain introduction pages (see §Static DrG Introduction Pages below) to `include::partial$` them.
+O*s present in `oStars` but absent from `osHierarchy` (unassigned) are generated under `pages/{chapterSlug}/` directly (chapter root), without a theme subfolder.
 
-**Collapsed folders:** a folder is _collapsed_ if it has at least one direct ON. Collapsed folders do not generate a separate page for their sub-folders. Instead, sub-folder content is absorbed inline into the collapsed folder's own page, with sub-folder names rendered as non-clickable bullet labels. Individual ON/OR entity files inside collapsed sub-folders are still written at their own paths so that xrefs resolve correctly. The nav mirrors this: collapsed sub-folders appear as plain-text labels (no xref) in `nav.adoc`, followed by their entities — ensuring Antora can highlight and expand the correct nav node when navigating to an individual entity page.
+O*s referenced in `osHierarchy` but absent from `oStars` (excluded by edition filter) are silently skipped — their `osHierarchy` entries are stale references from the live dataset not captured in the edition snapshot.
 
-**Export suppression:** folder index content (ON/OR trees, sub-domain lists) is wrapped in `ifndef::env-export[]` in the Mustache templates. The `env-export` attribute is set in the assembler configs (PDF and Word), so these navigation-only sections are silently omitted from PDF and Word exports.
+**Export suppression:** sitemap sections in `chapter.mustache` and `theme.mustache` are wrapped in `ifndef::env-export[]` so they are omitted from PDF and Word exports.
 
-Output structure per DrG:
+Output structure:
 
 ```
 modules/details/
 ├── pages/
-│   ├── {drg}/
-│   │   ├── index.adoc              ← manually authored (static); includes partial below
-│   │   ├── {folder}/
-│   │   │   ├── index.adoc          ← generated (non-collapsed folders only)
+│   ├── {chapterSlug}/
+│   │   ├── index.adoc              ← generated from chapter narrative
+│   │   ├── {theme}/
+│   │   │   ├── index.adoc          ← generated from theme narrative
 │   │   │   ├── on-{itemId}.adoc
 │   │   │   └── or-{itemId}.adoc
-│   │   ├── on-{itemId}.adoc
+│   │   ├── on-{itemId}.adoc        ← unassigned O*s (no theme)
 │   │   └── or-{itemId}.adoc
 │   └── ...
-├── partials/
-│   └── {drg}/
-│       └── index.adoc              ← generated DrG sitemap fragment (included by static page)
 ├── assets/images/
 │   ├── image-001.png
 │   └── ...
-└── nav.adoc                        ← DrG entries at depth *, sub-folders at depth **+
+└── nav.adoc                        ← assembled from per-chapter fragments
+
+modules/ROOT/
+├── pages/
+│   └── index.adoc                  ← intro chapter narrative (site root page)
+└── assets/images/
+    └── ...                         ← images from intro narrative
 ```
 
-Navigation (`nav.adoc`) is generated hierarchically mirroring the folder/entity tree, using Antora `xref` syntax. DrGs are sorted alphabetically by display name. Folders within each DrG are sorted alphabetically by folder name.
+### Stage 6 — Nav Assembly
 
-### Static DrG Introduction Pages
+Each `ChapterGenerator` produces a `nav.adoc` fragment for its chapter (depth 1 for the chapter entry, depth 2+ for themes and O*s). `ODPEditionService._assembleDetailsNav()` combines these fragments into the final `modules/details/nav.adoc`, preserving the `edition.json` chapter hierarchy:
 
-Each DrG has a manually authored introduction page at `modules/details/pages/{drg}/index.adoc` in the static directory. These pages are **not** generated — they are maintained by the ODIP team and committed to the static content directory.
+- **Parent chapters** (e.g. `Transversal Layer`, `Airspace (iDL)`) — clickable xref entry at depth 1 if they have a narrative page; sub-chapter fragments are indented by one bullet level beneath them.
+- **Top-level domain chapters** — fragment used directly at depth 1.
 
-**Template pattern** (mandatory for all DrG pages):
+### Stage 7 — Antora Structure and Packaging
 
-```asciidoc
-= {DrG display name}
-:notitle:
+`ODPEditionService._createAntoraZip()` assembles the final ZIP by combining:
 
-== Introduction
+1. **Shared config** (`shared/config/`) — lands at works dir root
+2. **Mode-specific config** — `antora.yml` → works dir root; other files → build-type subdir
+3. **Shared assets** (ui-bundle.zip, pdf-theme.yml, template.docx, antora-docx-extension.js) → root and mode subdir
+4. **Static content files** — `website/content/nav.adoc` and multipart nav files
+5. **Generated chapter files** — from `_generateAllChapterFiles()`; path mapping:
 
-{Human-authored introduction text describing the DrG scope, CONOPS baseline, etc.}
+| Chapter type | Source path | Target in ZIP |
+|---|---|---|
+| `intro` | `pages/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `intro` | `assets/images/…` | `modules/ROOT/assets/images/…` |
+| domain / parent | `pages/{slug}/…` | `modules/details/pages/{slug}/…` |
+| domain / parent | `assets/images/…` | `modules/details/assets/images/…` |
+| domain mode | all files | `modules/ROOT/…` (remapped) |
 
-== Operational Needs baseline
+The `modules/` directory in the works dir is **cleared before each extraction** to prevent stale files from previous runs accumulating.
 
-{Optional: manually authored summary of top-level ONs with links to their folder pages.}
+### Publish cycle (`publishEdition`)
 
-include::partial${drg}/index.adoc[]
-```
+Each `publishEdition()` call:
+1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
+2. Normalises `PublishOptions` — absent body defaults to `{ website: true }`
+3. If flat builds requested: generate `flat`-mode ZIP → extract into `works/` → git commit
+4. Flat PDF (if `pdfFlat`): `_buildFlat('pdf')` — non-fatal; output to `_artifacts/`
+5. Flat Word (if `wordFlat`): `_buildFlat('word')` — non-fatal; output to `_artifacts/`
+6. Word multipart (if `wordMultipart`): `_buildWordMultipart()` — non-fatal; output to `_artifacts/`
+7. Website (if `website`): generate `website`-mode ZIP → extract into `works/` → git commit → run Antora — fatal on failure; then `_copyArtifactsToSite()`
+8. Releases mutex — returns `{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }`
 
-Key points:
-
-- `= {DrG display name}` — level-0 title, drives the browser tab title (`{title} : ODIP`) and PDF TOC entry. Must match the DrG display name used in nav.adoc.
-- `:notitle:` — suppresses the level-0 title from rendering in HTML (the nav label already provides the heading). Without this, the title appears as an unnumbered heading before the first `==` section.
-- `== Introduction` and subsequent `==` sections — numbered in PDF via `section_merge_strategy: fuse` in the assembler config; rendered as normal sections in HTML.
-- `include::partial${drg}/index.adoc[]` — injects the generated sitemap fragment (ON/OR tree). Wrapped in `ifndef::env-export[]` inside the template, so it is suppressed in PDF/Word exports automatically.
-- The `include::` must be placed **after** the human-authored content, not before, so the intro text precedes the generated listing.
-
-### Stage 6 — Antora Structure and Packaging
-
-`ODPEditionService.generateAntoraZip()` assembles the final ZIP by combining:
-
-1. **Shared config** (`shared/config/`) — lands at works dir root (package.json, ui-bundle, theme, extension)
-2. **Mode-specific config** (`website/`, `flat/`, or `multipart/config/`) — lands in a build-type subdir:
-   - `antora.yml` → works dir **root** (Antora reads component descriptor from the git root)
-   - All other files (playbooks, assemblers) → `website/`, `flat/`, or `multipart/` subdir
-3. **Shared assets** (ui-bundle.zip, pdf-theme.yml, template.docx, antora-docx-extension.js) → also copied into the mode subdir so playbooks can reference them via `./`
-4. **Content files** — remapped to Antora module paths per build mode
-5. **Generated details files** — from `DetailsModuleGenerator`; in domain mode remapped to `modules/ROOT/`
+Domain list for word multipart is derived from `edition.json` domain chapters via `_resolveSelectionDomains()` — no longer reads from `shared/content/` directories.
 
 ---
 
@@ -399,22 +410,20 @@ The server maintains persistent publication workspaces under `$ODIP_HOME/publica
 |---|---|---|
 | `works/` | Website + flat PDF/Word builds | `works/node_modules/.bin/antora` |
 | `works-intro/` | Word multipart intro build | same (absolute path) |
-| `works-{drg}/` × N | Word multipart per-domain builds | same (absolute path) |
+| `works-{domain}/` × N | Word multipart per-domain builds | same (absolute path) |
 | `_artifacts/` | Persistent artifact staging area | — |
 
-**All works dirs share the same `node_modules`** — only `works/` has `node_modules/` installed. Multipart builds reference the antora binary via absolute path and set `NODE_PATH=works/node_modules` so Node resolves shared packages (e.g. `@antora/run-command-helper`) regardless of `cwd`.
+**All works dirs share the same `node_modules`** — only `works/` has `node_modules/` installed. Multipart builds reference the antora binary via absolute path and set `NODE_PATH=works/node_modules`.
 
-`works/` is shared between website and flat builds because only one publication runs at a time. The flat build extracts a `flat`-mode ZIP into `works/` before running; the website build extracts a `website`-mode ZIP.
-
-N is derived from `shared/content/` subdirectories (excluding `intro/`) — no hardcoded DrG list.
+N is derived from `edition.json` domain chapters — no static directory scan.
 
 ### Works dir internal layout
 
 Each works dir contains at publish time:
 - `antora.yml` at root — Antora component descriptor, injected per build
-- `modules/` at root — content, injected per build
+- `modules/` at root — content, injected per build (cleared before each injection)
 - Shared assets at root: `ui-bundle.zip`, `pdf-theme.yml`, `template.docx`, `antora-docx-extension.js`, `package.json`, `Gemfile`
-- Build-type subdir (`website/`, `flat/`, or `multipart/`) containing playbooks, assemblers, and copies of shared assets (so `./` relative paths in playbooks resolve correctly)
+- Build-type subdir (`website/`, `flat/`, or `multipart/`) containing playbooks, assemblers, and copies of shared assets
 
 ### Initialisation (server startup)
 
@@ -422,10 +431,8 @@ Each works dir contains at publish time:
 
 1. `mkdir -p {worksDir}`
 2. `git init` + configure `user.email` / `user.name` — only if `.git` absent
-3. Bootstrap from `sourcePaths[]` — copies config files in order (later overrides earlier) — only if `package.json` absent
+3. Bootstrap from `sourcePaths[]` — copies config files in order — only if `package.json` absent
 4. Warns if `node_modules/` absent (run `odip-admin install` to fix)
-
-Bootstrap source: **`shared/config` only** for all works dirs. Playbooks, assemblers, and `antora.yml` are **not** bootstrapped statically — they are injected via ZIP at publish time into the appropriate build-type subdir.
 
 ### ZIP generation (`generateAntoraZip`)
 
@@ -433,44 +440,30 @@ Bootstrap source: **`shared/config` only** for all works dirs. Playbooks, assemb
 
 | Mode | Config paths | Content |
 |---|---|---|
-| `website` | `shared` + `website` | All domains (or selection), full details module |
-| `flat` | `shared` + `flat` | All domains (or selection), full details module |
-| `intro` | `shared` + `multipart` | ROOT module only (intro content) |
-| `domain` | `shared` + `multipart` | Single DrG, remapped to ROOT module |
+| `website` | `shared` + `website` | All chapters (or selection), full details module |
+| `flat` | `shared` + `flat` | All chapters (or selection), full details module |
+| `intro` | `shared` + `multipart` | ROOT module only (intro chapter narrative) |
+| `domain` | `shared` + `multipart` | Single domain chapter, remapped to ROOT module |
 
 Content path mappings per build mode:
 
 | Mode | Source | Target in ZIP |
 |---|---|---|
-| `website` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| `website` | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
+| `website` / `flat` | intro chapter narrative | `modules/ROOT/pages/index.adoc` |
+| `website` / `flat` | domain chapter pages | `modules/details/pages/{chapterSlug}/…` |
+| `website` / `flat` | assembled details nav | `modules/details/nav.adoc` |
 | `website` | `website/content/nav.adoc` | `modules/ROOT/nav.adoc` |
-| `flat` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| `flat` | `shared/content/{drg}/index.adoc` | `modules/details/pages/{drg}/index.adoc` |
 | `flat` | `flat/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
-| `intro` | `shared/content/intro/index.adoc` | `modules/ROOT/pages/index.adoc` |
+| `intro` | intro chapter narrative | `modules/ROOT/pages/index.adoc` |
 | `intro` | `multipart/content/intro/nav.adoc` | `modules/ROOT/nav.adoc` |
-| `domain` | `shared/content/{drg}/index.adoc` | `modules/ROOT/pages/index.adoc` |
-| `domain` (generated) | `details/{drg}/pages/...` | `modules/ROOT/pages/...` |
-| `domain` (generated) | `details/nav.adoc` | `modules/ROOT/nav.adoc` |
+| `domain` | domain chapter pages | `modules/ROOT/pages/…` |
+| `domain` | chapter nav fragment | `modules/ROOT/nav.adoc` |
 
-### Publish cycle (`publishEdition`)
+---
 
-Each `publishEdition()` call:
-1. Acquires mutex (`_publicationInProgress` flag) — concurrent calls rejected with 409
-2. Normalises `PublishOptions` — absent body defaults to `{ website: true }`
-3. If flat builds requested: generate `flat`-mode ZIP → extract into `works/` → git commit
-4. Flat PDF (if `pdfFlat`): `_buildFlat('pdf')` — runs from `works/flat/`, non-fatal; output written to `_artifacts/` and site exports
-5. Flat Word (if `wordFlat`): `_buildFlat('word')` — runs from `works/flat/`, non-fatal; output written to `_artifacts/` and site exports
-6. Word multipart (if `wordMultipart`): `_buildWordMultipart()` — non-fatal; output written to `_artifacts/` and site exports
-7. Website (if `website`): generate `website`-mode ZIP → extract into `works/` → git commit → run `works/website/antora-playbook.yml` — fatal on failure; then `_copyArtifactsToSite()` copies all available artifacts from `_artifacts/` into site exports
-8. Releases mutex — returns `{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }`
+## 8. UI Bundle Preparation
 
-All shell commands are executed via `_execStreaming()` (async `child_process.exec` with real-time streaming). Non-fatal builds use `_tryExecAsync()`.
-
-### UI Bundle Preparation
-
-The Antora UI bundle (`ui-bundle.zip`) is the stock Antora default UI, **pre-patched with a custom EUROCONTROL header** and committed to the repository. This is a one-time preparation step — the patched bundle is the authoritative source and must not be regenerated from scratch without re-applying the patch.
+The Antora UI bundle (`ui-bundle.zip`) is the stock Antora default UI, **pre-patched with a custom EUROCONTROL header** and committed to the repository. This is a one-time preparation step.
 
 **How it was prepared:**
 
@@ -479,24 +472,21 @@ The Antora UI bundle (`ui-bundle.zip`) is the stock Antora default UI, **pre-pat
    curl -L -o publication/shared/config/ui-bundle.zip \
      "https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable"
    ```
-   On restricted networks (EC), transfer manually from a machine with internet access.
 
-2. Create the custom header partial at `publication/website/config/partials/header-content.hbs` with the EUROCONTROL navbar (title, search field, Download dropdown with PDF and Word links).
+2. Create the custom header partial at `publication/website/config/partials/header-content.hbs`.
 
-3. Inject the custom partial into the bundle, preserving the `partials/` path:
+3. Inject the custom partial into the bundle:
    ```bash
    cd publication/shared/config
    zip ui-bundle.zip partials/header-content.hbs
    ```
-   > **Critical:** use `zip` without `-j` to preserve the `partials/` directory path inside the archive. Using `-j` strips the path and creates a root-level entry that Antora ignores.
+   > **Critical:** use `zip` without `-j` to preserve the `partials/` directory path inside the archive.
 
 4. Commit the patched `ui-bundle.zip` to the repository.
 
-The bundle is included in every publish ZIP and extracted into `works/` on each publish cycle. No runtime patching is performed.
-
 ---
 
-## 8. Server Container (`Dockerfile.odp-server`)
+## 9. Server Container (`Dockerfile.odp-server`)
 
 PDF generation requires `asciidoctor-pdf` to be available as a system gem inside the `odp-server` container. Word generation requires `pandoc`. A custom `Dockerfile.odp-server` extends the `node:20` base image:
 
@@ -529,7 +519,7 @@ Gem installation is controlled by `ODIP_GEM_MODE` — see ch09 §3 and §5.2 for
 
 ---
 
-## 9. Dependencies
+## 10. Dependencies
 
 | Package | Purpose |
 |---|---|

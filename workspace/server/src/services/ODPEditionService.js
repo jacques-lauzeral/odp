@@ -11,8 +11,9 @@ import {
     baselineStore,
     referenceDocumentStore
 } from '../store/index.js';
-import { MaturityLevel, isMaturityLevelValid } from '../../../shared/src/index.js';
+import { MaturityLevel, isMaturityLevelValid, normalizeId } from '../../../shared/src/index.js';
 import { ChapterGenerator } from './publication/generators/ChapterGenerator.js';
+import TipTapAsciidocConverter from './export/TipTapAsciidocConverter.js';
 import chapterService from './ChapterService.js';
 import operationalRequirementService from './OperationalRequirementService.js';
 import { getChapters } from '../config/loader.js';
@@ -547,6 +548,13 @@ export class ODPEditionService {
         const itemIdByKey = new Map(dbChapters.map(c => [c.code, c.itemId]));
         console.log(`[generateAntoraZip] ${dbChapters.length} chapters found in DB`);
 
+        // Build global O* index: itemId → { chapterSlug, slugPath[] }
+        // Fetches all chapters at extended projection to walk osHierarchy across all domains.
+        // Used by ChapterGenerator for cross-domain xref resolution.
+        console.log(`[generateAntoraZip] Building global O* index...`);
+        const globalOStarIndex = await this._buildGlobalOStarIndex(userId, allChapters, itemIdByKey);
+        console.log(`[generateAntoraZip] Global O* index: ${globalOStarIndex.size} entries`);
+
         // Pre-fetch all O*s at summary projection — for xref/lookup resolution across all domains
         console.log(`[generateAntoraZip] Fetching all O*s (summary)...`);
         const allRequirementsSummary = await operationalRequirementService.getAll(
@@ -561,26 +569,30 @@ export class ODPEditionService {
         const referenceDocuments = await this._fetchReferenceDocuments(userId);
         console.log(`[generateAntoraZip] ${referenceDocuments.size} reference documents fetched`);
 
+        // Shared TipTapAsciidocConverter — global image counter ensures unique filenames
+        // across all chapters in this publication run
+        const sharedConverter = new TipTapAsciidocConverter();
+
         // Resolve domain filter set (null = include all)
         const domainFilter = this._resolveDomainFilter(mode, drgFilter, selection);
 
         const generatedFiles = new Map();
-        const detailsNavParts = []; // per-chapter nav.adoc fragments → assembled into details/nav.adoc
+        const navByKey = {}; // chapterKey → nav.adoc fragment
 
         for (const chapter of allChapters) {
             const isIntroChapter = chapter.key === 'intro';
             const hasDomain = !!chapter.domain;
+            const isRootChapter = chapter.position === 1 && !chapter.parentKey;
 
             // Mode-based skip logic
-            if (mode === 'intro' && !isIntroChapter) continue;
+            if (mode === 'intro' && !isRootChapter) continue;
             if (mode === 'domain') {
                 if (!hasDomain || chapter.domain !== drgFilter) continue;
             }
             if (mode === 'flat' || mode === 'website') {
-                if (isIntroChapter && selection.intro === false) continue;
-                if (!isIntroChapter) {
-                    if (!hasDomain) continue; // pure narrative chapters (wayforward, annexes) — no domain O*s
-                    if (domainFilter && !domainFilter.has(chapter.domain)) continue;
+                if (isRootChapter && selection.intro === false) continue;
+                if (!isRootChapter) {
+                    if (hasDomain && domainFilter && !domainFilter.has(chapter.domain)) continue;
                 }
             }
 
@@ -615,7 +627,7 @@ export class ODPEditionService {
                 fullChapter,
                 { ons: chapterOns, ors: chapterOrs },
                 { editionId: editionId ?? null, referenceDocuments,
-                    allOnsSummary, allOrsSummary }
+                    allOnsSummary, allOrsSummary, globalOStarIndex, converter: sharedConverter }
             );
 
             console.log(`[generateAntoraZip] Generating chapter '${chapter.key}' (${chapter.domain ?? 'no domain'}, ${chapterOns.length} ONs, ${chapterOrs.length} ORs)...`);            const chapterFiles = await generator.generate();
@@ -624,17 +636,22 @@ export class ODPEditionService {
             // Map generated relative paths to Antora module paths
             for (const [relPath, content] of chapterFiles) {
                 if (relPath === 'nav.adoc') {
-                    // Collect per-chapter nav fragments; assembled below
-                    if (!isIntroChapter) detailsNavParts.push(content);
+                    if (!isRootChapter) navByKey[chapter.key] = content;
                     continue;
                 }
 
                 let targetPath;
-                if (isIntroChapter || mode === 'domain') {
-                    // intro and domain-mode → ROOT module
+                if (isRootChapter) {
+                    // Root chapter (position 1) → ROOT module; strip chapter slug prefix
+                    // pages/{slug}/index.adoc → modules/ROOT/pages/index.adoc
+                    const chapterSlug = this._slugify(chapter.key);
+                    const stripped = relPath
+                        .replace(new RegExp(`^pages/${chapterSlug}/`), 'pages/')
+                        .replace(/^assets\//, 'assets/');
+                    targetPath = `modules/ROOT/${stripped}`;
+                } else if (mode === 'domain') {
                     targetPath = `modules/ROOT/${relPath}`;
                 } else {
-                    // all other domain chapters → details module
                     targetPath = `modules/details/${relPath}`;
                 }
                 generatedFiles.set(targetPath, content);
@@ -642,12 +659,141 @@ export class ODPEditionService {
         }
 
         // Assemble details nav.adoc from per-chapter fragments
-        if (detailsNavParts.length > 0) {
-            generatedFiles.set('modules/details/nav.adoc', detailsNavParts.join('\n'));
+        // Parent chapters (no domain) get a nav label; sub-chapters nest under them
+        if (Object.keys(navByKey).length > 0) {
+            generatedFiles.set('modules/details/nav.adoc', this._assembleDetailsNav(allChapters, navByKey));
         }
 
         console.log(`[generateAntoraZip] All chapters done — ${generatedFiles.size} total files`);
         return generatedFiles;
+    }
+
+    /**
+     * Assemble the details module nav.adoc from per-chapter nav fragments,
+     * preserving the edition.json chapter hierarchy.
+     *
+     * Top-level chapters with sub-chapters (e.g. transversal, idl) get a
+     * non-clickable label at depth 1. Their sub-chapters are indented at depth 2+.
+     * Top-level domain chapters (no sub-chapters) appear at depth 1.
+     *
+     * @param {object[]} allChapters - flat list from getChapters() incl. parentKey
+     * @param {object} navByKey - chapterKey → nav.adoc fragment string
+     * @returns {string}
+     * @private
+     */
+    _assembleDetailsNav(allChapters, navByKey) {
+        // Build parent → children map from edition config
+        const childrenByParent = {};
+        const topLevel = [];
+
+        for (const chapter of allChapters) {
+            const isRoot = chapter.position === 1 && !chapter.parentKey;
+            if (isRoot) continue; // root chapter goes to ROOT module, not details nav
+            if (chapter.parentKey) {
+                if (!childrenByParent[chapter.parentKey]) childrenByParent[chapter.parentKey] = [];
+                childrenByParent[chapter.parentKey].push(chapter);
+            } else {
+                topLevel.push(chapter);
+            }
+        }
+
+        let nav = '';
+
+        for (const chapter of topLevel) {
+            const children = childrenByParent[chapter.key] ?? [];
+            const hasChildren = children.length > 0;
+
+            if (hasChildren) {
+                // Parent chapter — clickable xref if it has a page, otherwise plain label
+                const fragment = navByKey[chapter.key];
+                if (fragment) {
+                    // Has a page — use its nav fragment directly (depth 1)
+                    nav += fragment;
+                } else {
+                    // No page — non-clickable label
+                    nav += `* ${chapter.title}\n`;
+                }
+                for (const sub of children) {
+                    const subFragment = navByKey[sub.key];
+                    if (!subFragment) continue;
+                    // Indent sub-chapter fragment by one level (prepend extra *)
+                    nav += subFragment.split('\n')
+                        .filter(Boolean)
+                        .map(line => line.replace(/^(\*+)/, '$1*'))
+                        .join('\n') + '\n';
+                }
+            } else {
+                // Top-level domain chapter — use its nav fragment directly
+                const fragment = navByKey[chapter.key];
+                if (fragment) nav += fragment;
+            }
+        }
+
+        return nav;
+    }
+
+    /**
+     * Build a global index of O* itemId → { chapterSlug, slugPath[] } by walking
+     * the osHierarchy of every chapter. Used by ChapterGenerator for cross-domain
+     * xref resolution.
+     *
+     * @param {string} userId
+     * @param {object[]} allChapters - flat list from edition.json
+     * @param {Map} itemIdByKey - chapter key → DB itemId
+     * @returns {Promise<Map<number, { chapterSlug: string, slugPath: string[] }>>}
+     * @private
+     */
+    async _buildGlobalOStarIndex(userId, allChapters, itemIdByKey) {
+        const index = new Map();
+
+        for (const chapter of allChapters) {
+            // Skip root chapter (position 1) — no O*s, mapped to ROOT module
+            if (chapter.position === 1 && !chapter.parentKey) continue;
+
+            const itemId = itemIdByKey.get(chapter.key);
+            if (!itemId) continue;
+
+            const fullChapter = await chapterService.getById(itemId, userId);
+            if (!fullChapter?.osHierarchy?.topics) continue;
+
+            const chapterSlug = this._slugify(chapter.key);
+            this._indexTopics(fullChapter.osHierarchy.topics, chapterSlug, [chapterSlug], index);
+        }
+
+        return index;
+    }
+
+    /**
+     * Recursively walk osHierarchy topics and add each O* to the global index.
+     * @private
+     */
+    _indexTopics(topics, chapterSlug, parentSlugs, index) {
+        for (const topic of topics) {
+            const topicSlug = this._slugify(topic.topic);
+            const slugPath = [...parentSlugs, topicSlug];
+
+            for (const on of topic.ons ?? []) {
+                index.set(normalizeId(on.id), { chapterSlug, slugPath });
+            }
+            for (const or of topic.ors ?? []) {
+                index.set(normalizeId(or.id), { chapterSlug, slugPath });
+            }
+
+            if (topic.subtopics?.length > 0) {
+                this._indexTopics(topic.subtopics, chapterSlug, slugPath, index);
+            }
+        }
+    }
+
+    /**
+     * Slugify a string — mirrors ChapterGenerator._slugify.
+     * @private
+     */
+    _slugify(text) {
+        return (text ?? '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
     }
 
     /**
@@ -686,6 +832,13 @@ export class ODPEditionService {
     async _extractZipToWorks(zipBuffer, worksDir) {
         const uiBundlePath = nodePath.join(worksDir, 'ui-bundle.zip');
         if (fs.existsSync(uiBundlePath)) fs.unlinkSync(uiBundlePath);
+
+        // Remove stale generated content before extraction — prevents old files persisting
+        const modulesDir = nodePath.join(worksDir, 'modules');
+        if (fs.existsSync(modulesDir)) {
+            fs.rmSync(modulesDir, { recursive: true, force: true });
+        }
+
         const zip = new AdmZip(zipBuffer);
         for (const entry of zip.getEntries()) {
             const entryPath = nodePath.join(worksDir, entry.entryName);
