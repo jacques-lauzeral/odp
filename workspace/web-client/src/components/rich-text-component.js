@@ -42,7 +42,8 @@
  *   blur()                   Blur the editor
  */
 
-import { Editor, Mark, mergeAttributes } from '@tiptap/core';
+import { Editor, Mark, mergeAttributes, Extension } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextStyle from '@tiptap/extension-text-style';
@@ -54,6 +55,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import Placeholder from '@tiptap/extension-placeholder';
 import ReferenceManager from './reference-manager.js';
+import { odipPromptLink } from './user-dialogs.js';
 
 /**
  * Passthrough marks for ODIP internal reference types.
@@ -124,6 +126,39 @@ const OdipDRef = Mark.create({
         };
     },
 });
+
+/**
+ * Custom ProseMirror plugin that handles clicks on Link marks.
+ *
+ * Read-only mode : any click opens the href in a new tab.
+ * Edit mode      : only ctrl/meta+click opens the href.
+ *
+ * TipTap's built-in openOnClick handler always opens unconditionally and
+ * only fires when the view is editable, making it unsuitable for both modes.
+ */
+function buildLinkClickPlugin(isReadOnly) {
+    return new Plugin({
+        key: new PluginKey('odipLinkClick'),
+        props: {
+            handleDOMEvents: {
+                click(view, event) {
+                    const target = event.target;
+                    const anchor = target.closest?.('a[href]') ?? (target.nodeName === 'A' ? target : null);
+                    if (!anchor) return false;
+                    const open = isReadOnly() || event.ctrlKey || event.metaKey;
+                    if (open) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        window.open(anchor.getAttribute('href'), '_blank', 'noopener,noreferrer');
+                        return true;
+                    }
+                    // Edit mode, no modifier — let ProseMirror place cursor
+                    return false;
+                },
+            },
+        },
+    });
+}
 
 export default class RichTextComponent {
 
@@ -201,7 +236,6 @@ export default class RichTextComponent {
         //                  plain clicks are left to TipTap for cursor placement.
         if (this._onInternalLink) {
             editorEl.addEventListener('click', (e) => {
-                console.log('click fired', editorEl.isConnected, e.target);
                 const span = e.target.closest('[data-n-ref],[data-o-ref],[data-d-ref]');
                 if (!span) return;
                 if (!this._readOnly && !e.ctrlKey && !e.metaKey) return;
@@ -344,13 +378,18 @@ export default class RichTextComponent {
             OdipORef,    // Passthrough — O* reference
             OdipDRef,    // Passthrough — strategic document reference
             Link.configure({
-                openOnClick: this._readOnly,
+                openOnClick: false,
                 autolink: false,
                 HTMLAttributes: {
                     target: '_blank',
                     rel: 'noopener noreferrer',
                     class: 'odip-link',
                 },
+            }),
+            // Custom link-click handler (read-only: any click; edit: ctrl/meta+click)
+            Extension.create({
+                name: 'odipLinkClick',
+                addProseMirrorPlugins: () => [buildLinkClickPlugin(() => this._readOnly)],
             }),
             Placeholder.configure({
                 placeholder: this._placeholder,
@@ -676,16 +715,46 @@ export default class RichTextComponent {
      * modal when internal O* reference links are implemented.
      * @private
      */
-    _promptLink() {
-        const existing = this._editor.isActive('link')
-            ? this._editor.getAttributes('link').href
+    async _promptLink() {
+        // Capture selection before the dialog opens — await loses ProseMirror focus.
+        const { from, to } = this._editor.state.selection;
+        const existingUrl  = this._editor.isActive('link')
+            ? (this._editor.getAttributes('link').href ?? '')
             : '';
-        const url = window.prompt('Link URL', existing ?? '');
-        if (url === null) return; // cancelled
-        if (url.trim() === '') {
-            this._editor.chain().focus().unsetLink().run();
+        // Pre-fill link text from the current selection (if not empty).
+        const selectedText = from !== to
+            ? this._editor.state.doc.textBetween(from, to)
+            : '';
+
+        const result = await odipPromptLink(existingUrl, selectedText);
+        if (result === null) return; // cancelled
+
+        const { url, text } = result;
+
+        if (url === '') {
+            // Remove link
+            this._editor.chain().focus()
+                .setTextSelection({ from, to })
+                .unsetLink()
+                .run();
+            return;
+        }
+
+        if (from === to) {
+            // No selection — insert text and wrap with link
+            const label = text || url;
+            this._editor.chain().focus()
+                .insertContentAt(from, label)
+                .setTextSelection({ from, to: from + label.length })
+                .setLink({ href: url })
+                .run();
         } else {
-            this._editor.chain().focus().setLink({ href: url.trim() }).run();
+            // Selection exists — apply link; replace text only if user changed it
+            const chain = this._editor.chain().focus().setTextSelection({ from, to });
+            if (text && text !== selectedText) {
+                chain.insertContent(text).setTextSelection({ from, to: from + text.length });
+            }
+            chain.setLink({ href: url }).run();
         }
     }
 
@@ -739,6 +808,7 @@ export default class RichTextComponent {
         const acceptBtn  = overlay.querySelector('.rich-text-ref-footer__accept');
         let currentType  = 'o-ref';
         let pendingId    = null;
+        let pendingUrl   = null;
 
         const close = () => {
             if (this._refPicker) { this._refPicker.destroy(); this._refPicker = null; }
@@ -749,7 +819,8 @@ export default class RichTextComponent {
 
         const onSelect = (id, node) => {
             if (id == null) return;
-            pendingId = String(id);
+            pendingId  = String(id);
+            pendingUrl = node?.url ?? null;
             labelInput.value    = node ? node.label : String(id);
             labelInput.disabled = false;
             acceptBtn.disabled  = false;
@@ -760,7 +831,7 @@ export default class RichTextComponent {
         acceptBtn.addEventListener('mousedown', (e) => {
             e.preventDefault();
             if (!pendingId) return;
-            this._applyRef(currentType, pendingId, labelInput.value.trim() || pendingId);
+            this._applyRef(currentType, pendingId, labelInput.value.trim() || pendingId, pendingUrl);
             close();
         });
 
@@ -805,19 +876,36 @@ export default class RichTextComponent {
     /**
      * Apply a reference mark to the current selection. When the selection is
      * empty, the label is inserted as text and marked.
+     * For d-ref: inserts a standard external link mark pointing to the document URL.
      * @param {'o-ref'|'n-ref'|'d-ref'} type
      * @param {string} value — stable target id (or chapter code for n-ref)
      * @param {string} label — display text
+     * @param {string|null} [url] — only used for d-ref
      * @private
      */
-    _applyRef(type, value, label) {
-        const cmd = type === 'o-ref' ? 'setORef'
-            : type === 'n-ref' ? 'setNRef'
-                : 'setDRef';
-
-        const sel = this._refSel ?? this._editor.state.selection;
+    _applyRef(type, value, label, url = null) {
+        const sel  = this._refSel ?? this._editor.state.selection;
         const from = sel.from;
         const to   = sel.to;
+
+        if (type === 'd-ref') {
+            const href = url ?? '';
+            if (from === to) {
+                this._editor.chain().focus()
+                    .insertContentAt(from, label)
+                    .setTextSelection({ from, to: from + label.length })
+                    .setLink({ href })
+                    .run();
+            } else {
+                this._editor.chain().focus()
+                    .setTextSelection({ from, to })
+                    .setLink({ href })
+                    .run();
+            }
+            return;
+        }
+
+        const cmd = type === 'o-ref' ? 'setORef' : 'setNRef';
 
         if (from === to) {
             this._editor.chain().focus()

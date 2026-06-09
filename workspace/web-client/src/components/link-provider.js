@@ -146,7 +146,14 @@ export function buildLinkProvider(app) {
             nodeCache['d-ref'] = ReferenceManager.buildTreeNodes(
                 drefDocs,
                 d => d.version ? `${d.name} (${d.version})` : (d.name ?? String(d.id))
-            );
+            ).map(function addUrl(node) {
+                const doc = drefDocs.find(d => String(d.id) === String(node.value));
+                return {
+                    ...node,
+                    url:      doc?.url ?? null,
+                    children: node.children?.map(addUrl),
+                };
+            });
 
             // o-ref — flat leaf nodes
             const orefFlat = (ostars ?? [])

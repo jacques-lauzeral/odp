@@ -85,3 +85,72 @@ export function odipUnsavedChanges(message = 'You have unsaved changes.') {
         overlay.querySelector('[data-answer="save"]').focus();
     });
 }
+/**
+ * Show a link-entry dialog with URL and link-text inputs.
+ *
+ * Returns:
+ *   { url: string, text: string }  — url may be empty string (meaning "remove link")
+ *   null                           — user cancelled
+ *
+ * @param {string} [initialUrl='']
+ * @param {string} [initialText='']  — pre-filled link text (current selection)
+ * @returns {Promise<{url:string, text:string}|null>}
+ */
+export function odipPromptLink(initialUrl = '', initialText = '') {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.zIndex = '2000';
+        overlay.innerHTML = `
+            <div class="modal" style="max-width:480px; height:auto; min-height:0; resize:none;">
+                <div class="modal-header" style="padding: var(--space-4) var(--space-6);">
+                    <span style="font-size:var(--font-size-sm); font-weight:600; color:var(--text-primary);">Insert link</span>
+                </div>
+                <div class="modal-body" style="padding: var(--space-4) var(--space-6); display:flex; flex-direction:column; gap:var(--space-3);">
+                    <div>
+                        <label style="display:block; font-size:var(--font-size-xs); color:var(--text-secondary); margin-bottom:var(--space-1);">URL</label>
+                        <input data-field="url" type="url" class="odip-input" style="width:100%;"
+                               placeholder="https://…"
+                               value="${initialUrl.replace(/"/g, '&quot;')}">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:var(--font-size-xs); color:var(--text-secondary); margin-bottom:var(--space-1);">Link text</label>
+                        <input data-field="text" type="text" class="odip-input" style="width:100%;"
+                               placeholder="Display text…"
+                               value="${initialText.replace(/"/g, '&quot;')}">
+                    </div>
+                </div>
+                <div class="modal-footer" style="padding: var(--space-4) var(--space-6);">
+                    <button class="odip-btn odip-btn--standard" data-answer="cancel">Cancel</button>
+                    ${initialUrl ? '<button class="odip-btn odip-btn--danger odip-btn--standard" data-answer="remove">Remove</button>' : ''}
+                    <button class="odip-btn odip-btn--primary odip-btn--standard" data-answer="ok">OK</button>
+                </div>
+            </div>
+        `;
+
+        const urlInput  = overlay.querySelector('[data-field="url"]');
+        const textInput = overlay.querySelector('[data-field="text"]');
+
+        const close = (answer) => {
+            document.removeEventListener('keydown', onKeydown);
+            overlay.remove();
+            if (answer === 'cancel') { resolve(null); return; }
+            if (answer === 'remove') { resolve({ url: '', text: '' }); return; }
+            resolve({ url: urlInput.value.trim(), text: textInput.value.trim() });
+        };
+
+        const onKeydown = (e) => {
+            if (e.key === 'Escape') close('cancel');
+            if (e.key === 'Enter' && document.activeElement !== textInput) close('ok');
+        };
+
+        overlay.querySelectorAll('[data-answer]').forEach(btn => {
+            btn.addEventListener('click', () => close(btn.dataset.answer));
+        });
+
+        document.addEventListener('keydown', onKeydown);
+        document.body.appendChild(overlay);
+        urlInput.focus();
+        urlInput.select();
+    });
+}
