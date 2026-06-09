@@ -79,7 +79,7 @@ web-client/src/
 │   ├── annotated-multiselect-manager.js
 │   ├── diff-popup.js
 │   ├── odp-column-types.js
-│   └── user-dialogs.js                     ODIP-styled interactive dialogs: odipConfirm (Yes/No) and odipUnsavedChanges (Save/Discard/Cancel)
+│   └── user-dialogs.js                     ODIP-styled interactive dialogs: odipConfirm (Yes/No), odipUnsavedChanges (Save/Discard/Cancel), odipPromptLink (URL + link text)
 │
 └── shared/
     ├── router.js
@@ -622,7 +622,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `focus()` | Focus the editor (edit mode only) |
 | `blur()` | Blur the editor |
 
-**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`.
+**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`, `odipLinkClick` (custom ProseMirror plugin — see §12.7).
 
 **Internal reference marks** — three mark extensions (`OdipNRef`, `OdipORef`, `OdipDRef`) that both preserve round-tripped content and support authoring via set/unset commands:
 
@@ -630,11 +630,11 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 |---|---|---|---|
 | `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}" data-label="{label}">` | `value`, `label` | Narrative reference: `{chapterId}[/{topicId}]` |
 | `o-ref` (`OdipORef`) | `<span data-o-ref="{value}" data-label="{label}">` | `value`, `label` | O* reference: opaque O* itemId |
-| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}" data-label="{label}">` | `value`, `label` | Strategic document reference: refdoc id |
+| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}" data-label="{label}">` | `value`, `label` | Strategic document reference: refdoc id — **legacy/imported content only** (see §12.6) |
 
 Each mark stores two attributes: `value` (the stable target identifier) and `label` (cached display text — code/title/name — may be absent on legacy imported marks). Each mark exposes `set{X}({ value, label })` / `unset{X}()` TipTap commands for programmatic authoring.
 
-In read-only mode, spans are styled as clickable links and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic.
+In read-only mode, `n-ref` and `o-ref` spans are styled as clickable links and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic. `d-ref` spans in legacy/imported content follow the same path. Newly authored strategic document references are inserted as standard `link` marks (see §12.6) and open the document URL directly — `onInternalLink` is not involved.
 
 **Read-only mode** — `editable: false` is set on the TipTap instance; the toolbar is omitted; `blur()` is called immediately after mount to prevent focus theft.
 
@@ -664,7 +664,7 @@ In read-only mode, spans are styled as clickable links and a delegated click lis
 |---|---|---|
 | `n-ref` | Direct — value is `{chapterId}[/{topicId}]` | `{ctxBase}/narrative/{chapterId}[?theme={topicId}]` |
 | `o-ref` | `app.findOStar(itemId)` → resolves type | `{base}/os/{type}/{itemId}` |
-| `d-ref` | Direct — value is refdoc id | `{ctxBase}/setup/reference-documents/{id}` |
+| `d-ref` | Direct — value is refdoc id (legacy imported marks only) | `{ctxBase}/setup/reference-documents/{id}` |
 
 ### 12.4 Content Emptiness Check
 
@@ -706,7 +706,7 @@ Accepts an `App` instance and returns a provider object with three methods:
 | Mark type | Source | `value` | `label` | Node shape |
 |---|---|---|---|---|
 | `n-ref` | `app.getChapters()` | chapter `itemId` (string) | chapter title | Chapter hierarchy tree; topics/subtopics lazy via `onExpand` — fetches `apiClient.getChapter(itemId)` (extended projection) on first expand since `app.getChapters()` returns standard projection without `osHierarchy` |
-| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | `name (version)` or `name` | Hierarchy tree built via `ReferenceManager.buildTreeNodes()` when `parentId` present; flat leaf nodes otherwise |
+| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | `name (version)` or `name` | Hierarchy tree built via `ReferenceManager.buildTreeNodes()` when `parentId` present; flat leaf nodes otherwise. Each node carries an additional `url` field (the document's external URL) used at insertion time. |
 | `o-ref` | `app.getOStars()` | O\* `itemId` (string) | `"{code} — {title}"` | Flat leaf nodes sorted by code |
 
 O\* volumes are bounded (hundreds); preloading is cheap and avoids per-keystroke API calls. If volume demands it, the interface supports swapping to async search behind the same `nodes(type)` contract without touching consumers.
@@ -731,6 +731,16 @@ The toolbar is organised in groups (`.rich-text-component__toolbar-group`), rend
 | Headings | H1 · H2 · H3 | `headings: true` only |
 | Lists | Bullet list · Ordered list | always |
 | Links | 🔗 External link · `#` Insert reference | `#` button only when `linkProvider` present |
+
+**External link button (🔗)** — opens `odipPromptLink` dialog (see §25.3) with two fields: URL and link text. Pre-fills link text from the current selection; pre-fills URL when the cursor is inside an existing `link` mark. On confirm, inserts or updates a `link` mark. When the URL field is cleared (empty), the link mark is removed (unset). The dialog also exposes a **Remove** button when editing an existing link. The editor selection (`from`/`to`) is captured synchronously before the dialog opens to survive the `await`.
+
+**Link click behaviour (`odipLinkClick` plugin)** — a custom ProseMirror plugin replaces TipTap's built-in `openOnClick` handling, which is unsuitable for mixed read-only/edit-mode use. The plugin handles `handleDOMEvents.click` on `<a href>` elements:
+
+| Mode | Trigger | Behaviour |
+|---|---|---|
+| Read-only | Any click | Opens `href` in a new tab (`target="_blank"`, `noopener,noreferrer`) |
+| Edit | Ctrl/Cmd+click | Opens `href` in a new tab |
+| Edit | Plain click | Passed through — ProseMirror places the cursor normally |
 | Images | 🖼 Insert image | `images: true` only |
 | Tables | ⊞ Insert · +row · -row · +col · -col · ✕tbl | `tables: true` only |
 
@@ -740,7 +750,7 @@ The toolbar is `position: sticky; top: 0` so it remains visible when the ancesto
 - A type selector row: **O\*** (`o-ref`) · **Narrative** (`n-ref`) · **Document** (`d-ref`)
 - A `ReferenceManager` typeahead mounted below, preloaded from the `linkProvider`
 
-On selection, `_applyRef(type, value, label)` applies the matching mark to the current selection. When the selection is empty, the label is inserted as text first, then marked. The editor selection is captured before the overlay opens (DOM focus shift) and restored on apply via `setTextSelection`.
+On selection, `_applyRef(type, value, label, url?)` applies the mark to the current selection. For `o-ref` and `n-ref`, the corresponding `OdipNRef`/`OdipORef` mark is applied. For `d-ref`, a standard `link` mark is inserted pointing to the document's `url` — no `OdipDRef` mark is used for newly authored references. When the selection is empty, the label is inserted as text first, then marked. The editor selection is captured before the overlay opens (DOM focus shift) and restored on apply via `setTextSelection`.
 
 ---
 
@@ -1163,11 +1173,11 @@ Milestone `title` field renamed to `name` throughout `change-form-milestone.js`.
 ```js
 {
     value:        string | number | null,  // null = non-selectable header
-    label:        string,                  // display text; used for filtering
-    displayLabel: string?,                 // override label for rendering only
-    leaf:         boolean?,                // hint; children absence is authoritative
-    children:     node[]?,                 // static children (absent on leaves)
-    onExpand:     () => Promise<node[]>?,  // lazy children loader
+        label:        string,                  // display text; used for filtering
+        displayLabel: string?,                 // override label for rendering only
+        leaf:         boolean?,                // hint; children absence is authoritative
+        children:     node[]?,                 // static children (absent on leaves)
+        onExpand:     () => Promise<node[]>?,  // lazy children loader
 }
 ```
 
@@ -1218,8 +1228,8 @@ The search popup (`.search-popup`) has a fixed `height: 360px`. This prevents ex
 
 ```js
 const node = this._findNode(this._normalizeValue(raw), this._roots)
-          ?? this._nodeAtPath(labelBtn.dataset.path)
-          ?? { label: labelBtn.dataset.label ?? raw };
+    ?? this._nodeAtPath(labelBtn.dataset.path)
+    ?? { label: labelBtn.dataset.label ?? raw };
 ```
 
 `_findNode` by value is tried first — it works correctly for both integer and composite values once `_children` are populated. `_nodeAtPath` is a fallback only; it is unreliable in filter mode since filtered-tree path indices don't map to `_roots` positions.
@@ -1257,44 +1267,64 @@ const node = this._findNode(this._normalizeValue(raw), this._roots)
 
 ---
 
-## 20. Edition Content Selection — Manage Activity Changes
+## 20. Manage Activity — Editions
 
-### 19.1 ODPEditionForm (`manage/editions/odp-edition-form.js`)
+### 20.1 Architecture
 
-**Type field** — options: `DRAFT` / `OFFICIAL`.
+`EditionsActivity` (`manage/editions/editions.js`) is a self-contained sub-activity. It does not use `CollectionEntity` or the retired `ODPEditionsEntity` wrapper. Layout mirrors the O* workspace:
 
-**`startDate` field** — replaces former `startsFromWave` select. Plain date input (`yyyy-mm-dd`), optional. Dual role: OC milestone lower bound + ON tentative period filter.
+- **Top toolbar** — reuses `.os-toolbar` / `.os-toolbar__create`; `+ Edition` button right-aligned.
+- **`MasterDetail`** (`initialRatio: 0.30`) — left: edition card list; right: edition detail shell.
 
-**`minONMaturity` field** — `radio` with options `DRAFT` (default), `ADVANCED`, `MATURE`.
+`ODPEditionForm` (`manage/editions/odp-edition-form.js`) is used only for the create modal. `ODPEditionsEntity` (`odp-editions.js`) is **retired and deleted**.
 
-**`transformDataForSave()`** — passes `startDate` directly; defaults `minONMaturity` to `'DRAFT'`; default type is `'DRAFT'`.
+### 20.2 Edition List (Left Panel)
 
-**`transformDataForEdit()`** — extracts `baselineId` from baseline reference object; defaults `minONMaturity` to `'DRAFT'`.
+Scrollable card list. Each card shows: title, DRAFT/OFFICIAL badge, creation date. Clicking a card selects it and renders the detail panel. Cards use string comparison (`String(id)`) for selection state to handle Neo4j integer vs DOM string mismatch.
 
-**`onValidate()`** — validates baseline reference only; wave validation removed.
+Data loaded on mount via `Promise.all([GET /odp-editions, GET /baselines])`. Baselines are fetched to support the create form. List reloads after every successful create (via `entitySaved` DOM event).
 
-### 19.2 ODPEditionsEntity (`manage/editions/editions.js`)
+### 20.3 Edition Detail (Right Panel)
 
-**Type column** — `enumLabels` and `enumStyles` updated to `DRAFT` / `OFFICIAL`.
+Uses `.os-detail` shell pattern — `.os-detail__toolbar` with title left and action buttons right, `.os-detail__body` below.
 
-**`startDate` column** — replaces former `startsFromWave`; plain text, renders `'—'` when absent.
+**Toolbar actions:** `Explore` · `Export`
 
-**`minONMaturity` column** — text column; renders `'—'` when absent.
+**Body** — `<dl>` with fields: Created, Created by, Type (badge), Baseline, Start date, Min ON maturity.
 
-**Grouping config** — `startDate` and `minONMaturity` available as grouping options.
+**Explore** navigates to `/explore/{editionId}` — the router and `ExploreActivity` handle context resolution from the URL.
 
-### 19.3 Publish Action
+### 20.4 Export Modal
 
-The edition details panel exposes a **Publish** button (triggers server-side Antora build).
+`Export` opens a compact modal (`.edition-export-overlay`). Content:
 
-**Publish flow:**
-1. Button click calls `apiClient.publishEdition(editionId)` — `POST /odp-editions/{id}/publish` with body `{ pdf: { flat: true } }` (default)
-2. Button disabled and labelled "Publishing…" while in flight (~5–30s)
-3. On success: "✓ Published — Open site · PDF · Word" with absolute links
-4. On 409: "Publication already in progress — please retry later"
-5. On other error: error message displayed
+- Format checkboxes: PDF · Word · Website
+- **Run** button — builds a single `PublishOptions` object from checked formats and calls `apiClient.publishEdition(id, options)` once
+- Results rendered inline per format: `✓ Label — Open` link on success, error message on failure
+- 409 response: "Export already in progress — please retry later"
 
-**`apiClient.publishEdition(id, options)`** — `post('/odp-editions', options, { id, subPath: 'publish' })`. Response: `{ siteUrl, pdf: { flatUrl, setUrl }, word: { flatUrl, setUrl } }` — all nullable. URLs made absolute using `apiClient.baseUrl`.
+**`PublishOptions` mapping:**
+
+| Format | Options key | Value |
+|---|---|---|
+| PDF | `pdfFlat` | `{}` |
+| Word | `wordFlat` | `{}` |
+| Website | `website` | `true` |
+
+Modal size is scoped via `.edition-export-overlay .modal` overrides in `editions.css` (width: 390px, height: auto).
+
+### 20.5 ODPEditionForm
+
+Migrated to config-based pattern (`getEditConfig()` / `getReadConfig()`). `getFieldDefinitions()` removed. `getReadConfig()` returns `null` — detail rendering is owned by `EditionsActivity` directly.
+
+**Edit config sections:**
+
+| Section | Fields |
+|---|---|
+| Edition | `title` (text, required), `type` (radio: DRAFT/OFFICIAL, required) |
+| Content rules | `baselineId` (select, optional), `startDate` (date, optional), `minONMaturity` (radio: DRAFT/ADVANCED/MATURE, optional) |
+
+`transformDataForSave()` — defaults `type` to `'DRAFT'`, `minONMaturity` to `'DRAFT'`; coerces `baselineId` to integer; strips absent optional fields. Editions are create-only — `onSave()` throws on any mode other than `'create'`.
 
 ---
 
@@ -1638,7 +1668,7 @@ Navigation between scopes (← Chapters, current chapter name) lives in the tool
 |---|---|---|
 | `n-ref` | Value is `{chapterId}[/{topicId}]` — navigate directly, no lookup | `{base}/narrative/{chapterId}[?theme={topicId}]` |
 | `o-ref` | `app.findOStar(itemId)` resolves type; stale-while-revalidate via `app.getOStars()` | `{base}/os/{type}/{itemId}` |
-| `d-ref` | Direct — value is refdoc id | `{base}/setup/reference-documents/{id}` |
+| `d-ref` | Direct — value is refdoc id (legacy imported marks only; newly authored d-refs are `link` marks, not handled here) | `{base}/setup/reference-documents/{id}` |
 
 **Edit mode — Ctrl+Click:** In read-only mode, any click on an internal ref span fires `onInternalLink`. In edit mode, only `Ctrl+Click` (or `Cmd+Click` on Mac) fires it — plain clicks are passed through to TipTap for normal cursor placement. While Ctrl/Cmd is held, the class `rich-text-component__editor--ctrl` is toggled on the editor element, triggering a `cursor: pointer` CSS rule on ref spans as a visual affordance. The class is removed on `keyup` and on `window blur` (to prevent it getting stuck when the user Alt-Tabs while holding Ctrl). The `keydown`/`keyup` listeners are registered once per `RichTextComponent` instance and removed in `destroy()`.
 
@@ -1819,6 +1849,22 @@ Returns `Promise<'save' | 'discard' | 'cancel'>`. Renders a modal with three but
 | Caller | Context |
 |---|---|
 | `ChapterBody._guardNavigation` | Shown when leaving an unsaved chapter narrative or topic (title/narrative) in Elaborate |
+
+### 25.3 `odipPromptLink(initialUrl?, initialText?)`
+
+```js
+import { odipPromptLink } from '../../../../components/user-dialogs.js';
+const result = await odipPromptLink(existingUrl, selectedText);
+// result: { url: string, text: string } | null
+```
+
+Returns `Promise<{ url: string, text: string } | null>`. Renders a modal with two inputs: **URL** (type `url`, placeholder `https://…`) and **Link text** (type `text`). Both are pre-filled from the arguments. Resolves `null` on Cancel or Escape. Resolves `{ url: '', text: '' }` when the **Remove** button is clicked (only shown when `initialUrl` is non-empty). Enter in the URL field confirms; Enter in the Link text field is left to allow typing without closing.
+
+**Current callers:**
+
+| Caller | Context |
+|---|---|
+| `RichTextComponent._promptLink` | External link toolbar button — insert or update a `link` mark |
 
 ---
 
