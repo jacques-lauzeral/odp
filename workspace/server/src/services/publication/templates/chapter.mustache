@@ -1,8 +1,15 @@
+= {{title}}
+:notitle:
+
+{{#narrative}}
+{{{narrative}}}
+
+{{/narrative}}
 ifndef::env-export[]
 
+{{#rootFolders}}
 Jump to a theme:
 
-{{#rootFolders}}
 {{#items}}
 * xref:{{{path}}}/index.adoc[{{name}}]
 {{/items}}

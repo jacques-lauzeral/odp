@@ -1,18 +1,18 @@
-= {{folderName}}
+= {{themeName}}
 
-{{#description}}
-{{description}}
+{{#narrative}}
+{{{narrative}}}
 
-{{/description}}
+{{/narrative}}
 ifndef::env-export[]
-{{#subfolders}}
-== Sub-domains
+{{#subthemes}}
+== Sub-themes
 
-{{#folders}}
+{{#items}}
 * xref:{{{path}}}/index.adoc[{{name}}]
-{{/folders}}
+{{/items}}
 
-{{/subfolders}}
+{{/subthemes}}
 {{#ons}}
 == Operational Needs
 

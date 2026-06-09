@@ -8,10 +8,14 @@ import {
     commitTransaction,
     rollbackTransaction,
     odpEditionStore,
-    baselineStore
+    baselineStore,
+    referenceDocumentStore
 } from '../store/index.js';
 import { MaturityLevel, isMaturityLevelValid } from '../../../shared/src/index.js';
-import { DetailsModuleGenerator } from './publication/generators/DetailsModuleGenerator.js';
+import { ChapterGenerator } from './publication/generators/ChapterGenerator.js';
+import chapterService from './ChapterService.js';
+import operationalRequirementService from './OperationalRequirementService.js';
+import { getChapters } from '../config/loader.js';
 
 /**
  * ODPEditionService provides Edition management operations.
@@ -135,11 +139,19 @@ export class ODPEditionService {
     _execStreaming(cmd, opts) {
         return new Promise((resolve, reject) => {
             const child = exec(cmd, opts);
+            const stderrLines = [];
             child.stdout?.pipe(process.stdout);
-            child.stderr?.pipe(process.stderr);
-            child.on('close', (code) => {
+            child.stderr?.on('data', chunk => {
+                process.stderr.write(chunk);
+                stderrLines.push(chunk.toString());
+            });
+            child.on('close', (code, signal) => {
                 if (code === 0) resolve();
-                else reject(new Error(`Command failed with exit code ${code}: ${cmd}`));
+                else {
+                    const detail = stderrLines.join('').trim().split('\n').slice(-5).join(' | ');
+                    const cause = signal ? `signal ${signal}` : `exit code ${code}`;
+                    reject(new Error(`Command failed with ${cause}: ${cmd}${detail ? ` — ${detail}` : ''}`));
+                }
             });
             child.on('error', reject);
         });
@@ -370,7 +382,7 @@ export class ODPEditionService {
         }
 
         // Per-domain documents
-        const domains = await this._resolveSelectionDomains(selection, editionId, userId);
+        const domains = await this._resolveSelectionDomains(selection);
         for (const drg of domains) {
             const drgSlug      = this._drgSlug(drg);
             console.log(`[publish] Building Word multipart — domain: ${drg}...`);
@@ -417,20 +429,20 @@ export class ODPEditionService {
     // =============================================================================
 
     /**
-     * Resolve the list of DrG identifiers from a ContentSelection.
-     * Falls back to all DrGs derived from shared/content/ if domains not specified.
+     * Resolve the list of domain keys for word-multipart per-domain builds.
+     * Derived from edition.json domain chapters (selection.domains overrides).
      * @private
      */
-    async _resolveSelectionDomains(selection, editionId, userId) {
-        if (selection && selection.domains && selection.domains.length > 0) {
-            return selection.domains;
+    async _resolveSelectionDomains(selection) {
+        const allChapters = getChapters();
+        const domainChapters = allChapters.filter(c => !!c.domain);
+        if (selection?.domains?.length > 0) {
+            const requested = new Set(selection.domains);
+            return domainChapters
+                .filter(c => requested.has(c.domain))
+                .map(c => c.domain);
         }
-        const publicationPath   = this._publicationPath();
-        const sharedContentPath = nodePath.join(publicationPath, 'shared', 'content');
-        return fs.readdirSync(sharedContentPath, { withFileTypes: true })
-            .filter(e => e.isDirectory() && e.name !== 'intro')
-            .map(e => e.name.toUpperCase())
-            .sort();
+        return domainChapters.map(c => c.domain);
     }
 
     _publicationPath() {
@@ -449,33 +461,34 @@ export class ODPEditionService {
     /**
      * Generate an Antora source ZIP for a given build mode.
      *
+     * All narrative content is now sourced from the DB via ChapterGenerator.
+     * Static shared/content/ directory is no longer used for chapter pages.
+     *
      * @param {string|number|null} editionId
      * @param {string} userId
      * @param {object} [params]
      * @param {string} params.mode        - 'website' | 'flat' | 'domain' | 'intro'
-     * @param {string} [params.drgFilter] - DrG identifier (domain mode only)
+     * @param {string} [params.drgFilter] - domain key (domain mode only)
      * @param {object} [params.selection] - { intro?, domains? } (website/flat modes)
      * @returns {Promise<Buffer>}
      */
     async generateAntoraZip(editionId, userId, { mode = 'website', drgFilter = null, selection = {} } = {}) {
-        const publicationPath    = this._publicationPath();
+        const publicationPath     = this._publicationPath();
         const websiteConfigPath   = nodePath.join(publicationPath, 'website',   'config');
         const websiteContentPath  = nodePath.join(publicationPath, 'website',   'content');
         const flatConfigPath      = nodePath.join(publicationPath, 'flat',      'config');
         const multipartConfigPath = nodePath.join(publicationPath, 'multipart', 'config');
         const sharedConfigPath    = nodePath.join(publicationPath, 'shared',    'config');
-        const sharedContentPath   = nodePath.join(publicationPath, 'shared',    'content');
 
         console.log(`[generateAntoraZip] editionId=${editionId ?? 'repository'} mode=${mode} drgFilter=${drgFilter ?? 'all'}`);
 
-        const introOnly  = mode === 'intro';
         const domainMode = mode === 'domain';
-        const detailsGenerator = new DetailsModuleGenerator(userId, editionId ?? null, drgFilter, introOnly, sharedContentPath);
-        const detailsFiles     = await detailsGenerator.generate();
-        console.log(`[generateAntoraZip] Generated ${Object.keys(detailsFiles).length} details module files`);
 
-        const drgPrefix       = domainMode ? `details/pages/${drgFilter.toLowerCase()}/` : null;
-        const drgAssetsPrefix = domainMode ? `details/assets/` : null;
+        // Generate all chapter content files from DB
+        const generatedFiles = await this._generateAllChapterFiles(
+            userId, editionId, { mode, drgFilter, selection }
+        );
+        console.log(`[generateAntoraZip] Generated ${generatedFiles.size} files from DB`);
 
         let configPaths;
         let contentMappings;
@@ -484,8 +497,6 @@ export class ODPEditionService {
             case 'intro': {
                 configPaths = [sharedConfigPath, multipartConfigPath];
                 contentMappings = [
-                    { srcPath: nodePath.join(sharedContentPath, 'intro'),
-                        mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` },
                     { srcPath: nodePath.join(publicationPath, 'multipart', 'content', 'intro'),
                         mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
                 ];
@@ -493,58 +504,15 @@ export class ODPEditionService {
             }
 
             case 'domain': {
-                const drgSlug = this._drgSlug(drgFilter);
                 configPaths = [sharedConfigPath, multipartConfigPath];
-                contentMappings = [
-                    { srcPath: nodePath.join(sharedContentPath, drgSlug),
-                        mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}` }
-                ];
+                contentMappings = [];
                 break;
             }
 
             case 'flat':
             case 'website': {
                 configPaths = [sharedConfigPath, mode === 'flat' ? flatConfigPath : websiteConfigPath];
-
-                // Determine DrG directory order from edition-plan.json if present
-                const editionPlanPath = nodePath.join(sharedContentPath, 'edition-plan.json');
-                let drgDirs = fs.readdirSync(sharedContentPath, { withFileTypes: true })
-                    .filter(e => e.isDirectory() && e.name !== 'intro')
-                    .map(e => e.name);
-
-                if (fs.existsSync(editionPlanPath)) {
-                    const editionPlan = JSON.parse(fs.readFileSync(editionPlanPath, 'utf-8'));
-                    const planPaths   = (editionPlan.chapters || []).map(c => (c.path || '').toLowerCase());
-                    const planSet     = new Set(planPaths);
-                    drgDirs = planPaths.filter(p => drgDirs.includes(p));
-                    for (const dir of fs.readdirSync(sharedContentPath, { withFileTypes: true })
-                        .filter(e => e.isDirectory() && e.name !== 'intro')
-                        .map(e => e.name)) {
-                        if (!planSet.has(dir)) {
-                            console.warn(`[edition-plan] DrG directory '${dir}' not in edition-plan.json — excluded from build`);
-                        }
-                    }
-                }
-
-                // Apply domain selection filter if specified
-                if (selection.domains && selection.domains.length > 0) {
-                    const selectedSlugs = new Set(selection.domains.map(d => this._drgSlug(d)));
-                    drgDirs = drgDirs.filter(d => selectedSlugs.has(d));
-                }
-
-                const includeIntro = selection.intro !== false; // default: include
-
                 contentMappings = [
-                    ...(includeIntro ? [{
-                        srcPath: nodePath.join(sharedContentPath, 'intro'),
-                        mapFn: rel => rel.startsWith('assets/') ? `modules/ROOT/${rel}` : `modules/ROOT/pages/${rel}`
-                    }] : []),
-                    ...drgDirs.map(name => ({
-                        srcPath: nodePath.join(sharedContentPath, name),
-                        mapFn: rel => rel.startsWith('assets/') ? `modules/details/${rel}` : `modules/details/pages/${name}/${rel}`,
-                        drgSlug: name,
-                        websiteMode: mode === 'website'
-                    })),
                     { srcPath: websiteContentPath,
                         mapFn: rel => rel === 'nav.adoc' ? 'modules/ROOT/nav.adoc' : `modules/ROOT/${rel}` }
                 ];
@@ -555,7 +523,160 @@ export class ODPEditionService {
                 throw new Error(`Unknown generateAntoraZip mode: ${mode}`);
         }
 
-        return this._createAntoraZip(configPaths, contentMappings, detailsFiles, domainMode, drgPrefix, drgAssetsPrefix, drgFilter);
+        return this._createAntoraZip(configPaths, contentMappings, generatedFiles);
+    }
+
+    /**
+     * Walk edition.json chapters, fetch each from DB, run ChapterGenerator,
+     * and collect all generated files mapped to their Antora module paths.
+     *
+     * Path mapping:
+     *   intro chapter   → modules/ROOT/pages/ and modules/ROOT/assets/
+     *   domain chapters → modules/details/pages/ and modules/details/assets/
+     *   domain mode     → all files remapped to modules/ROOT/
+     *
+     * @private
+     */
+    async _generateAllChapterFiles(userId, editionId, { mode, drgFilter, selection }) {
+        const allChapters = getChapters(); // flat list from edition.json incl. sub-chapters
+        console.log(`[generateAntoraZip] ${allChapters.length} chapters in edition config`);
+
+        // Build key → itemId map from DB (standard projection, no narrative/osHierarchy)
+        console.log(`[generateAntoraZip] Fetching chapter index from DB...`);
+        const dbChapters = await chapterService.getAll(userId);
+        const itemIdByKey = new Map(dbChapters.map(c => [c.code, c.itemId]));
+        console.log(`[generateAntoraZip] ${dbChapters.length} chapters found in DB`);
+
+        // Pre-fetch all O*s at summary projection — for xref/lookup resolution across all domains
+        console.log(`[generateAntoraZip] Fetching all O*s (summary)...`);
+        const allRequirementsSummary = await operationalRequirementService.getAll(
+            userId, editionId ?? null, {}, 'summary'
+        );
+        const allOnsSummary = allRequirementsSummary.filter(r => r.type === 'ON');
+        const allOrsSummary = allRequirementsSummary.filter(r => r.type === 'OR');
+        console.log(`[generateAntoraZip] ${allOnsSummary.length} ONs, ${allOrsSummary.length} ORs (summary)`);
+
+        // Pre-fetch reference documents once — injected into every ChapterGenerator
+        console.log(`[generateAntoraZip] Fetching reference documents...`);
+        const referenceDocuments = await this._fetchReferenceDocuments(userId);
+        console.log(`[generateAntoraZip] ${referenceDocuments.size} reference documents fetched`);
+
+        // Resolve domain filter set (null = include all)
+        const domainFilter = this._resolveDomainFilter(mode, drgFilter, selection);
+
+        const generatedFiles = new Map();
+        const detailsNavParts = []; // per-chapter nav.adoc fragments → assembled into details/nav.adoc
+
+        for (const chapter of allChapters) {
+            const isIntroChapter = chapter.key === 'intro';
+            const hasDomain = !!chapter.domain;
+
+            // Mode-based skip logic
+            if (mode === 'intro' && !isIntroChapter) continue;
+            if (mode === 'domain') {
+                if (!hasDomain || chapter.domain !== drgFilter) continue;
+            }
+            if (mode === 'flat' || mode === 'website') {
+                if (isIntroChapter && selection.intro === false) continue;
+                if (!isIntroChapter) {
+                    if (!hasDomain) continue; // pure narrative chapters (wayforward, annexes) — no domain O*s
+                    if (domainFilter && !domainFilter.has(chapter.domain)) continue;
+                }
+            }
+
+            // Fetch full chapter with narrative + enriched osHierarchy from DB
+            const itemId = itemIdByKey.get(chapter.key);
+            if (!itemId) {
+                console.warn(`[generateAntoraZip] Chapter '${chapter.key}' not found in DB — skipped`);
+                continue;
+            }
+            const fullChapter = await chapterService.getById(itemId, userId);
+            if (!fullChapter) {
+                console.warn(`[generateAntoraZip] Chapter '${chapter.key}' (itemId=${itemId}) returned null from DB — skipped`);
+                continue;
+            }
+
+            // Domain-filtered O*s at standard projection — for page generation (rich-text fields needed)
+            // Full summary set passed separately for cross-domain xref resolution
+            let chapterOns = [];
+            let chapterOrs = [];
+            if (hasDomain) {
+                console.log(`[generateAntoraZip] Fetching O*s for domain '${chapter.domain}' (standard)...`);
+                const domainRequirements = await operationalRequirementService.getAll(
+                    userId, editionId ?? null, { domain: chapter.domain }, 'standard'
+                );
+                chapterOns = domainRequirements.filter(r => r.type === 'ON');
+                chapterOrs = domainRequirements.filter(r => r.type === 'OR');
+                console.log(`[generateAntoraZip] ${chapterOns.length} ONs, ${chapterOrs.length} ORs for '${chapter.domain}'`);
+            }
+
+            const generator = new ChapterGenerator(
+                userId,
+                fullChapter,
+                { ons: chapterOns, ors: chapterOrs },
+                { editionId: editionId ?? null, referenceDocuments,
+                    allOnsSummary, allOrsSummary }
+            );
+
+            console.log(`[generateAntoraZip] Generating chapter '${chapter.key}' (${chapter.domain ?? 'no domain'}, ${chapterOns.length} ONs, ${chapterOrs.length} ORs)...`);            const chapterFiles = await generator.generate();
+            console.log(`[generateAntoraZip] Chapter '${chapter.key}': ${chapterFiles.size} files generated`);
+
+            // Map generated relative paths to Antora module paths
+            for (const [relPath, content] of chapterFiles) {
+                if (relPath === 'nav.adoc') {
+                    // Collect per-chapter nav fragments; assembled below
+                    if (!isIntroChapter) detailsNavParts.push(content);
+                    continue;
+                }
+
+                let targetPath;
+                if (isIntroChapter || mode === 'domain') {
+                    // intro and domain-mode → ROOT module
+                    targetPath = `modules/ROOT/${relPath}`;
+                } else {
+                    // all other domain chapters → details module
+                    targetPath = `modules/details/${relPath}`;
+                }
+                generatedFiles.set(targetPath, content);
+            }
+        }
+
+        // Assemble details nav.adoc from per-chapter fragments
+        if (detailsNavParts.length > 0) {
+            generatedFiles.set('modules/details/nav.adoc', detailsNavParts.join('\n'));
+        }
+
+        console.log(`[generateAntoraZip] All chapters done — ${generatedFiles.size} total files`);
+        return generatedFiles;
+    }
+
+    /**
+     * Resolve the Set of domain keys to include, or null for all.
+     * @private
+     */
+    _resolveDomainFilter(mode, drgFilter, selection) {
+        if (mode === 'domain') return drgFilter ? new Set([drgFilter]) : null;
+        if (selection?.domains?.length > 0) return new Set(selection.domains);
+        return null;
+    }
+
+    /**
+     * Fetch all reference documents and return a Map<id, doc>.
+     * Shared across all ChapterGenerator instances within one generateAntoraZip call.
+     * @private
+     */
+    async _fetchReferenceDocuments(userId) {
+        const tx = createTransaction(userId);
+        try {
+            const docs = await referenceDocumentStore().findAll(tx);
+            await commitTransaction(tx);
+            const lookup = new Map();
+            for (const doc of docs) lookup.set(doc.id, doc);
+            return lookup;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
     }
 
     // =============================================================================
@@ -577,11 +698,10 @@ export class ODPEditionService {
         }
     }
 
-    async _createAntoraZip(configPaths, contentMappings, detailsFiles, domainMode = false, drgPrefix = null, drgAssetsPrefix = null, drgFilter = null) {
-        // configPaths[0] = sharedConfigPath (lands at root)
-        // configPaths[1] = mode-specific config path (lands in subdir: website/, flat/, or multipart/)
-        const modeConfigSubdirs = { website: 'website', flat: 'flat', intro: 'multipart', domain: 'multipart' };
-        // Derive subdir from second config path name
+    async _createAntoraZip(configPaths, contentMappings, generatedFiles) {
+        // configPaths[0] = sharedConfigPath (lands at works dir root)
+        // configPaths[1] = mode-specific config path (lands in subdir: website/, flat/, multipart/)
+        // Derive subdir from second config path parent directory name
         const modeSubdir = configPaths.length > 1
             ? nodePath.basename(nodePath.dirname(configPaths[1])) // e.g. 'flat' from '.../flat/config'
             : null;
@@ -605,7 +725,7 @@ export class ODPEditionService {
                 }
 
                 // Stage 1b — Mode-specific config files:
-                // - antora.yml → works dir root (content source descriptor, read from git root)
+                // - antora.yml → works dir root (component descriptor, read from git root)
                 // - all other files → subdir (website/, flat/, multipart/)
                 if (configPaths.length > 1 && modeSubdir) {
                     const modeConfigPath = configPaths[1];
@@ -614,7 +734,6 @@ export class ODPEditionService {
                         for (const entry of await this._listStaticFiles(modeConfigPath)) {
                             const rel = nodePath.relative(modeConfigPath, entry).replace(/\\/g, '/');
                             if (rel === 'antora.yml') {
-                                // Component descriptor must be at git root, not in playbook subdir
                                 archive.file(entry, { name: 'antora.yml' });
                                 console.log(`[generateAntoraZip]   → antora.yml (root)`);
                             } else {
@@ -627,59 +746,38 @@ export class ODPEditionService {
                     }
                 }
 
-                // Explicit files that archiver may skip (shared assets).
-                // Placed at root AND in the mode subdir — playbooks reference them via relative paths
-                // and run from works/, but Antora resolves relative to the playbook file location.
+                // Stage 1c — Shared assets (ui-bundle, themes, extensions)
+                // Placed at root AND in the mode subdir — playbooks reference them via relative paths.
                 const explicitFiles = [
-                    { src: 'ui-bundle.zip',             warn: 'Antora build will fail' },
-                    { src: 'pdf-theme.yml',              warn: 'PDF build will use default theme' },
-                    { src: 'Gemfile',                    warn: 'PDF build will fail' },
-                    { src: 'word-template.docx',         dest: 'template.docx', warn: 'Word build will use no reference template' },
-                    { src: 'antora-docx-extension.js',   warn: 'Word build will fail' },
+                    { src: 'ui-bundle.zip',           warn: 'Antora build will fail' },
+                    { src: 'pdf-theme.yml',            warn: 'PDF build will use default theme' },
+                    { src: 'Gemfile',                  warn: 'PDF build will fail' },
+                    { src: 'word-template.docx',       dest: 'template.docx', warn: 'Word build will use no reference template' },
+                    { src: 'antora-docx-extension.js', warn: 'Word build will fail' },
                 ];
                 for (const { src, dest, warn } of explicitFiles) {
                     const found = configPaths.map(p => nodePath.join(p, src)).find(p => fs.existsSync(p));
                     if (found) {
                         archive.file(found, { name: dest || src });
-                        if (modeSubdir) {
-                            archive.file(found, { name: `${modeSubdir}/${dest || src}` });
-                        }
+                        if (modeSubdir) archive.file(found, { name: `${modeSubdir}/${dest || src}` });
                     } else {
                         console.warn(`[generateAntoraZip] ${src} not found in any config path — ${warn}`);
                     }
                 }
 
-                // Stage 2 — Content files
-                for (const { srcPath, mapFn, drgSlug: mappingDrgSlug, websiteMode } of contentMappings) {
+                // Stage 2 — Static content files (nav.adoc, website-level config pages)
+                for (const { srcPath, mapFn } of contentMappings) {
                     if (!fs.existsSync(srcPath)) continue;
                     for (const entry of await this._listStaticFiles(srcPath)) {
                         const rel        = nodePath.relative(srcPath, entry).replace(/\\/g, '/');
                         const targetPath = mapFn(rel);
-                        if (websiteMode && rel === 'index.adoc' && mappingDrgSlug) {
-                            const fileContent = fs.readFileSync(entry, 'utf-8');
-                            const appended    = fileContent.trimEnd() + `\n\ninclude::partial$${mappingDrgSlug}/index.adoc[]\n`;
-                            archive.append(appended, { name: targetPath });
-                        } else {
-                            archive.file(entry, { name: targetPath });
-                        }
+                        archive.file(entry, { name: targetPath });
                     }
                 }
 
-                // Stage 3 — Generated details files
-                for (const [filePath, fileContent] of Object.entries(detailsFiles)) {
-                    let targetPath = `modules/${filePath}`;
-                    if (domainMode && drgPrefix && filePath.startsWith(drgPrefix)) {
-                        targetPath = `modules/ROOT/pages/${filePath.slice(drgPrefix.length)}`;
-                    } else if (domainMode && drgAssetsPrefix && filePath.startsWith(drgAssetsPrefix)) {
-                        targetPath = `modules/ROOT/assets/${filePath.slice(drgAssetsPrefix.length)}`;
-                    } else if (domainMode && filePath === 'details/nav.adoc') {
-                        targetPath = 'modules/ROOT/nav.adoc';
-                    } else if (domainMode && filePath.startsWith('details/partials/')) {
-                        targetPath = `modules/ROOT/partials/${filePath.slice('details/partials/'.length)}`;
-                    } else if (domainMode) {
-                        continue;
-                    }
-                    archive.append(fileContent, { name: targetPath });
+                // Stage 3 — Generated chapter files (paths are already fully qualified Antora paths)
+                for (const [targetPath, content] of generatedFiles) {
+                    archive.append(content, { name: targetPath });
                 }
 
                 await archive.finalize();
