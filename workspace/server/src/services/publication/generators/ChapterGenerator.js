@@ -109,8 +109,8 @@ export class ChapterGenerator {
         files.set(`pages/${chapterSlug}/index.adoc`,
             Mustache.render(this.templates['chapter'], chapterIndexData));
 
-        // --- Theme pages + O* pages (only if chapter has a domain) ---
-        if (hasOStars && chapter.osHierarchy?.topics) {
+        // --- Theme pages (always if topics exist — themes may carry only narratives, no O*s) ---
+        if (chapter.osHierarchy?.topics?.length > 0) {
             this._generateThemeFiles(chapter.osHierarchy.topics, chapterSlug, [], files);
         }
 

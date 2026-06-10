@@ -722,13 +722,15 @@ export class ODPEditionService {
 
                 let targetPath;
                 if (isRootChapter) {
-                    // Root chapter (position 1) → ROOT module; strip chapter slug prefix
-                    // pages/{slug}/index.adoc → modules/ROOT/pages/index.adoc
+                    // Root chapter (position 1) → ROOT module.
+                    // Only the chapter's own index page is remapped to the module root (site home).
+                    // Theme pages and assets keep their full path so intra-chapter xrefs resolve.
                     const chapterSlug = this._slugify(chapter.key);
-                    const stripped = relPath
-                        .replace(new RegExp(`^pages/${chapterSlug}/`), 'pages/')
-                        .replace(/^assets\//, 'assets/');
-                    targetPath = `modules/ROOT/${stripped}`;
+                    if (relPath === `pages/${chapterSlug}/index.adoc`) {
+                        targetPath = 'modules/ROOT/pages/index.adoc';
+                    } else {
+                        targetPath = `modules/ROOT/${relPath}`;
+                    }
                 } else if (mode === 'domain') {
                     targetPath = `modules/ROOT/${relPath}`;
                 } else {
