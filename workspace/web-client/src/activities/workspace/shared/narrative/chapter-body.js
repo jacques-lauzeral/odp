@@ -476,18 +476,20 @@ export default class ChapterBody {
     // =========================================================================
 
     _initRichTextNarrative(el, chapter, editable) {
-        const narrative         = chapter.narrative ?? null;
-        const availableBlockIds = chapter.availableBlockIds ?? [];
-        const hasBlocks         = availableBlockIds.length > 0;
+        const narrative          = chapter.narrative          ?? null;
+        const availableBlockIds  = chapter.availableBlockIds  ?? [];
+        const availableStringKeys = chapter.availableStringKeys ?? [];
+        const hasGeneratedContent = availableBlockIds.length > 0 || availableStringKeys.length > 0;
 
         this._richText = new RichTextComponent({
-            readOnly:          !editable,
-            headings:          true,
-            images:            true,
-            tables:            true,
-            placeholder:       'Write chapter narrative…',
-            availableBlockIds: editable ? availableBlockIds : [],
-            linkProvider:      editable
+            readOnly:           !editable,
+            headings:           true,
+            images:             true,
+            tables:             true,
+            placeholder:        'Write chapter narrative…',
+            availableBlockIds:  editable ? availableBlockIds   : [],
+            availableStringKeys: editable ? availableStringKeys : [],
+            linkProvider:       editable
                 ? (this._linkProvider ??= buildLinkProvider(this._app))
                 : null,
             onChange: () => {
@@ -508,39 +510,41 @@ export default class ChapterBody {
 
         if (!editable) {
             this._richText.blur();
-            // In read-only mode, resolve generated-block placeholders on-the-fly
-            // if this chapter declares any block IDs.
-            if (hasBlocks) {
-                this._resolveAndSubstituteBlocks(chapter);
+            // In read-only mode, resolve all generated content (blocks + strings)
+            // on-the-fly if this chapter declares any generated content.
+            if (hasGeneratedContent) {
+                this._resolveAndSubstituteGeneratedContent(chapter);
             }
         }
     }
 
     /**
-     * Resolve generated-block marks by calling the server endpoint, then
-     * substitute placeholders in the rendered narrative.
-     * Always on-the-fly — no stored blocks.
+     * Resolve all generated content (blocks + strings) via a single server call,
+     * then substitute placeholders in the rendered narrative.
+     * Always on-the-fly — no stored content.
      *
      * @param {object} chapter
      */
-    async _resolveAndSubstituteBlocks(chapter) {
+    async _resolveAndSubstituteGeneratedContent(chapter) {
         try {
-            const generatedBlocks = await apiClient.post(
-                `/chapters/${chapter.itemId}/resolve-generated-blocks`
-            );
+            const { blocks, strings } = await apiClient.resolveGeneratedContent(chapter.itemId);
             if (!this._richText) return;  // component was destroyed while resolving
 
             const narrative = this._richText._editor?.getJSON();
             if (!narrative) return;
 
-            const merged = this._substituteGeneratedBlocks(
-                JSON.stringify(narrative), generatedBlocks
-            );
+            let merged = JSON.stringify(narrative);
+            if (Object.keys(blocks).length > 0) {
+                merged = this._substituteGeneratedBlocks(merged, blocks);
+            }
+            if (Object.keys(strings).length > 0) {
+                merged = this._substituteGeneratedStrings(merged, strings);
+            }
             this._richText.setValue(merged);
             this._richText.blur();
         } catch (error) {
             // Resolution failed — chips remain visible; non-fatal
-            console.warn('[ChapterBody] Failed to resolve generated blocks:', error);
+            console.warn('[ChapterBody] Failed to resolve generated content:', error);
         }
     }
 
@@ -585,6 +589,43 @@ export default class ChapterBody {
             };
 
             return JSON.stringify({ ...doc, content: substitute(doc.content) });
+        } catch {
+            return narrativeJson;
+        }
+    }
+
+    /**
+     * Substitute generated-string marks in a TipTap narrative JSON string with
+     * their resolved plain-text values. Walks the document recursively; each
+     * text node carrying a generated-string mark is replaced with a plain text
+     * node containing the resolved value (mark removed).
+     *
+     * @param {string} narrativeJson     — TipTap JSON string
+     * @param {object} generatedStrings  — { [key]: string }
+     * @returns {string} — merged TipTap JSON string
+     */
+    _substituteGeneratedStrings(narrativeJson, generatedStrings) {
+        try {
+            const doc = JSON.parse(narrativeJson);
+            if (doc.type !== 'doc' || !Array.isArray(doc.content)) return narrativeJson;
+
+            const substituteInline = (nodes) => nodes.map(node => {
+                if (node.type === 'text' && Array.isArray(node.marks)) {
+                    const stringMark = node.marks.find(m => m.type === 'generated-string');
+                    if (stringMark) {
+                        const key = stringMark.attrs?.key;
+                        if (key !== undefined && key in generatedStrings) {
+                            return { type: 'text', text: generatedStrings[key] };
+                        }
+                    }
+                }
+                if (Array.isArray(node.content)) {
+                    return { ...node, content: substituteInline(node.content) };
+                }
+                return node;
+            });
+
+            return JSON.stringify({ ...doc, content: substituteInline(doc.content) });
         } catch {
             return narrativeJson;
         }

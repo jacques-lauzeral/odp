@@ -1027,4 +1027,123 @@ export class OperationalRequirementStore extends VersionedItemStore {
             throw new StoreError(`Failed to find ON strategic document refs: ${error.message}`, error);
         }
     }
+
+    /**
+     * Aggregate ON/OR counts grouped by type × maturity for the given context.
+     * NO_SHOW items are excluded — counts reflect published content only.
+     * Supports latest / baseline / edition contexts.
+     *
+     * Called exclusively by OperationalRequirementService.getEditionStats().
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId - When set, baselineId must also be set
+     * @returns {Promise<Array<{ type: string, maturity: string, count: number }>>}
+     */
+    /**
+     * Aggregate ON/OR counts grouped by domain × type × maturity for the given context.
+     * NO_SHOW items are excluded. Returns a richer result than the previous type × maturity
+     * grouping — callers derive both global stats and per-domain stats from this single query.
+     *
+     * Called by OperationalRequirementService.getEditionStats() (sums across domains)
+     * and OperationalRequirementService.getEditionStatsByDomain() (groups by domain).
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId
+     * @returns {Promise<Array<{ domain: string, type: string, maturity: string, count: number }>>}
+     */
+    async getMaturityCounts(transaction, baselineId = null, editionId = null) {
+        try {
+            let cypher, params = {};
+
+            if (baselineId === null) {
+                cypher = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    WHERE version.maturity <> 'NO_SHOW'
+                `;
+            } else {
+                const numericBaselineId = this.normalizeId(baselineId);
+                params.baselineId = numericBaselineId;
+                cypher = `
+                    MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                      AND version.maturity <> 'NO_SHOW'
+                `;
+                if (editionId !== null) {
+                    cypher += `  AND $editionId IN r.editions\n`;
+                    params.editionId = this.normalizeId(editionId);
+                }
+            }
+
+            cypher += `
+                RETURN version.domain AS domain, version.type AS type, version.maturity AS maturity, count(*) AS count
+                ORDER BY domain, type, maturity
+            `;
+
+            const result = await transaction.run(cypher, params);
+            return result.records.map(r => ({
+                domain:  r.get('domain'),
+                type:    r.get('type'),
+                maturity: r.get('maturity'),
+                count:   this.normalizeId(r.get('count')),
+            }));
+        } catch (error) {
+            throw new StoreError(`Failed to get maturity counts: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Aggregate ON/OR counts grouped by domain × type for the given context.
+     * NO_SHOW items are excluded. Used to populate per-chapter counts in the
+     * portfolio table generated block.
+     * Supports latest / baseline / edition contexts.
+     *
+     * Called exclusively by OperationalRequirementService.getEditionStatsByDomain().
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId
+     * @returns {Promise<Array<{ domain: string, type: string, count: number }>>}
+     */
+    async getCountsByDomain(transaction, baselineId = null, editionId = null) {
+        try {
+            let cypher, params = {};
+
+            if (baselineId === null) {
+                cypher = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    WHERE version.maturity <> 'NO_SHOW'
+                `;
+            } else {
+                const numericBaselineId = this.normalizeId(baselineId);
+                params.baselineId = numericBaselineId;
+                cypher = `
+                    MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                      AND version.maturity <> 'NO_SHOW'
+                `;
+                if (editionId !== null) {
+                    cypher += `  AND $editionId IN r.editions
+`;
+                    params.editionId = this.normalizeId(editionId);
+                }
+            }
+
+            cypher += `
+                RETURN version.domain AS domain, version.type AS type, count(*) AS count
+                ORDER BY domain, type
+            `;
+
+            const result = await transaction.run(cypher, params);
+            return result.records.map(r => ({
+                domain: r.get('domain'),
+                type:   r.get('type'),
+                count:  this.normalizeId(r.get('count')),
+            }));
+        } catch (error) {
+            throw new StoreError(`Failed to get counts by domain: ${error.message}`, error);
+        }
+    }
 }
+// Note: appended before closing brace — replace last line

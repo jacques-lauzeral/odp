@@ -206,15 +206,16 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
-  /chapters/{id}/resolve-generated-blocks:
+  /chapters/{id}/resolve-generated-content:
     post:
-      summary: Resolve generated-block marks in the chapter narrative (elaborate mode preview)
+      summary: Resolve all generated content (blocks + strings) for a chapter (elaborate mode preview)
       tags: [Chapters]
       description: |
-        Scans the chapter narrative for generated-block marks, computes the content
-        for each block ID against the live dataset, and returns the resolved map.
-        Ephemeral — result is not persisted. Intended for ODIP-level preview in elaborate mode only.
-        In explore mode, generatedBlocks are already included in GET /chapters/{id}?edition={id}.
+        Resolves all generated content declared for the chapter in a single call.
+        Returns block content (TipTap node arrays) and inline string values in
+        two typed sub-maps. Block and string resolution run in parallel.
+        Ephemeral — result is not persisted. Intended for ODIP-level preview in elaborate mode.
+        In explore mode, generated content is resolved server-side during publication.
       parameters:
         - name: id
           in: path
@@ -222,19 +223,35 @@ paths:
           schema:
             type: string
           description: Chapter Item ID
+        - name: edition
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional edition ID for edition-scoped resolution
       responses:
         '200':
-          description: Success — resolved generated blocks map
+          description: Success — resolved generated content
           content:
             application/json:
               schema:
                 type: object
-                description: Map of block ID to resolved TipTap content fragment
-                additionalProperties:
-                  type: object
-                  description: TipTap document fragment
+                required: [blocks, strings]
+                properties:
+                  blocks:
+                    type: object
+                    description: Map of block ID to resolved TipTap node array
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                  strings:
+                    type: object
+                    description: Map of string key to resolved plain-text value
+                    additionalProperties:
+                      type: string
         '400':
-          description: Bad Request — missing x-user-id or unknown block ID
+          description: Bad Request — missing x-user-id
           content:
             application/json:
               schema:

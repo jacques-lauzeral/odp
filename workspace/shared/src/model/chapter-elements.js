@@ -64,32 +64,36 @@ export const OsHierarchy = {
  *
  * @typedef {object} Chapter
  * @property {number}           itemId
- * @property {string}           code        — stable identifier (= chapter key from edition.json)
- * @property {string}           title       — display title from edition.json
+ * @property {string}           code             — stable identifier (= chapter key from edition.json)
+ * @property {string}           title            — display title from edition.json
  * @property {number}           versionId
  * @property {number}           version
  * @property {string}           createdAt
  * @property {string}           createdBy
- * @property {string|null}      narrative   — Quill Delta JSON string
- * @property {OsHierarchy|null} osHierarchy — enriched on read; bare ids on write
- * @property {string|null}      domain      — config-owned; null on pure narrative chapters
- * @property {number|null}      position    — config-owned; ordering within parent
- * @property {string|null}      parentCode  — config-owned; parent chapter code (null for root chapters)
+ * @property {string|null}      narrative        — TipTap JSON string
+ * @property {OsHierarchy|null} osHierarchy      — enriched on read; bare ids on write
+ * @property {string|null}      domain           — config-owned; null on pure narrative chapters
+ * @property {number|null}      position         — config-owned; ordering within parent
+ * @property {string|null}      parentCode       — config-owned; parent chapter code (null for root chapters)
+ * @property {string[]}         availableBlockIds  — config-owned; block IDs from edition.json generatedBlocks
+ * @property {string[]}         availableStringKeys — config-owned; string keys from edition.json generatedStrings
  */
 export const Chapter = {
-    itemId:          null,
-    code:            null,
-    title:           null,
-    versionId:       null,
-    version:         null,
-    createdAt:       null,
-    createdBy:       null,
-    narrative:       null,
-    osHierarchy:     null,
+    itemId:             null,
+    code:               null,
+    title:              null,
+    versionId:          null,
+    version:            null,
+    createdAt:          null,
+    createdBy:          null,
+    narrative:          null,
+    osHierarchy:        null,
     // config-owned
-    domain:          null,
-    position:        null,
-    parentCode:      null,
+    domain:             null,
+    position:           null,
+    parentCode:         null,
+    availableBlockIds:  [],
+    availableStringKeys: [],
 };
 
 /**

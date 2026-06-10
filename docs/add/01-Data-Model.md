@@ -272,7 +272,7 @@ Chapters are **config-owned** (domain, position declared in `edition.json`) but 
 
 | Field | Type | Cardinality | Notes |
 |---|---|---|---|
-| `narrative` | rich text | optional | Chapter introduction / narrative content. May contain `generated-block` marks (`{ type: 'generated-block', attrs: { id: string } }`); valid block IDs per chapter are declared in `edition.json` under `generatedBlocks`. |
+| `narrative` | rich text | optional | Chapter introduction / narrative content. May contain `generated-block` marks (`{ type: 'generated-block', attrs: { id: string } }`) and `generated-string` marks (`{ type: 'generated-string', attrs: { key: string } }`). Valid block IDs and string keys per chapter are declared in `edition.json` under `generatedBlocks` and `generatedStrings` respectively. |
 | `jsonOsHierarchy` | JSON string | optional | Serialised OsHierarchy — deserialized to `osHierarchy` by store layer |
 
 **Config-owned fields** (not stored on nodes — merged from `edition.json` at read time by service layer):
@@ -282,6 +282,8 @@ Chapters are **config-owned** (domain, position declared in `edition.json`) but 
 | `domain` | string | Domain key — null on pure narrative chapters |
 | `position` | integer | Ordering within parent |
 | `parentKey` | string | Parent chapter code — null for top-level chapters |
+| `availableBlockIds` | string[] | Block IDs from `edition.json` `generatedBlocks` — drives toolbar ⚙ block picker |
+| `availableStringKeys` | string[] | String keys from `edition.json` `generatedStrings` — drives toolbar ⚙ string picker |
 
 **OsHierarchy type:**
 

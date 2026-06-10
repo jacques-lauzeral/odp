@@ -138,6 +138,8 @@ Key validation rules:
 
 **Narrative generator support:**
 - `getONStrategicDocumentRefs(userId, editionId?)` — wraps `OperationalRequirementStore.findONStrategicDocumentRefs()`. Returns `Array<{ itemId, code, title, docId, note }>` — all `(ON, ReferenceDocument, note)` triples in a single query. Called by `ChapterService._buildRefDocMap()` for the strategic-traceability generated block.
+- `getEditionStats(userId, editionId?)` — wraps `OperationalRequirementStore.getMaturityCounts()` and pivots the rows into a flat stats object `{ onTotalCount, onDraftCount, onAdvancedCount, onMatureCount, orTotalCount, orDraftCount, orAdvancedCount, orMatureCount }`. Called by `ChapterService._resolveStringKeys()` for portfolio statistics generated strings.
+- `getEditionStatsByDomain(userId, editionId?)` — wraps `OperationalRequirementStore.getCountsByDomain()` and pivots the rows into `Map<domain, { onTotal, orTotal }>`. Called by `ChapterService._buildPortfolioTableData()` for the portfolio table generated block.
 
 ### 3.5 OperationalChangeService
 
@@ -192,9 +194,13 @@ Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text),
 - `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
 - `_buildOStarMap(userId)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
-- `resolveGeneratedBlocks(itemId, editionId, userId)` — on-demand resolution for ODIP-level preview and explore mode. Scans the chapter narrative for `generated-block` marks, builds the required data map per block ID via `_buildRefDocMap()`, delegates rendering to the appropriate generator, returns `{ [blockId]: node[] }`. Always ephemeral — never persisted.
+- `resolveGeneratedContent(itemId, editionId, userId)` — resolves all generated content (blocks + strings) for a chapter in a single call. Returns `{ blocks: { [blockId]: node[] }, strings: { [key]: string } }`. Block and string resolution run in parallel via `Promise.all`. Always ephemeral — never persisted.
+- `_resolveAllBlocks(narrative, editionId, userId)` — extracts generated-block mark IDs from the narrative and resolves each in parallel; returns `{ [blockId]: node[] }`.
+- `_resolveStringKeys(keys, editionId, userId)` — routes each key to the appropriate source: config keys (`chapter-count`, `sub-chapter-count`) resolved via `_resolveConfigCounts()`; all others resolved from a single `getEditionStats()` call.
+- `_resolveConfigCounts()` — derives `chapterCount` (top-level chapters with a domain and no sub-chapters) and `subChapterCount` (all sub-chapters) from `getChapters()` config. No DB access.
+- `_buildPortfolioTableData(editionId, userId)` — builds the row array for the `portfolio-table` block. Combines edition config (chapter numbers, titles, `primaryScope`) with domain-level stats from `getEditionStatsByDomain()`. Parent containers (no domain) get `null` ON/OR counts. Intro, wayforward, and annex chapters are excluded.
 - `_buildRefDocMap(editionId, userId)` — fetches all reference documents via `ReferenceDocumentService.listItems()` and all `(ON, ReferenceDocument, note)` triples via a single `OperationalRequirementService.getONStrategicDocumentRefs()` call (no N+1). Groups triples in memory into `onsByRefDocId: Map<docId, ON[]>`. Non-leaf documents may be cited directly — all hierarchy levels included.
-- `_mergeConfigFields(item)` — merges `domain`, `position`, `parentCode`, and `availableBlockIds` (from `edition.json` `generatedBlocks` array) from edition config. `availableBlockIds` drives the editor toolbar — empty on domain chapters.
+- `_mergeConfigFields(item)` — merges `domain`, `position`, `parentCode`, `availableBlockIds` (from `generatedBlocks`), and `availableStringKeys` (from `generatedStrings`) from edition config. Both drive the editor toolbar — empty arrays on chapters that declare neither.
 
 ### 3.7 BaselineService
 

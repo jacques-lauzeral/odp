@@ -23,6 +23,8 @@ export const ChapterEntry = {
     position: 0,          // ordering within parent
     domain: '',           // domain key — absent on pure narrative chapters
     generatedBlocks: [],  // string[] — block IDs available for insertion in this chapter's narrative
+    generatedStrings: [], // string[] — inline string keys available for insertion in this chapter's narrative
+    primaryScope: '',     // string   — brief scope description shown in portfolio table
     subChapters: [],      // ChapterEntry[] — optional, max one level
     parentKey: ''         // parent chapter key — set on sub-chapters by getChapters()
 };

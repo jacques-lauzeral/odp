@@ -670,21 +670,31 @@ export class ODPEditionService {
                 continue;
             }
 
-            // Resolve generated-block marks in narrative before publication.
-            // Annex chapters (e.g. annex-traceability) carry generated-block marks
-            // that must be substituted with live content before AsciiDoc generation.
-            if ((chapter.generatedBlocks?.length ?? 0) > 0 && fullChapter.narrative) {
-                console.log(`[generateAntoraZip] Resolving generated blocks for '${chapter.key}'...`);
+            // Resolve generated content (blocks + strings) before publication.
+            // Chapters that declare generatedBlocks or generatedStrings in edition.json
+            // carry placeholder marks that must be substituted before AsciiDoc generation.
+            const hasGeneratedContent = (fullChapter.availableBlockIds?.length ?? 0) > 0
+                || (fullChapter.availableStringKeys?.length ?? 0) > 0;
+
+            if (hasGeneratedContent && fullChapter.narrative) {
+                console.log(`[generateAntoraZip] Resolving generated content for '${chapter.key}'...`);
                 try {
-                    const generatedBlocks = await chapterService.resolveGeneratedBlocks(
+                    const { blocks, strings } = await chapterService.resolveGeneratedContent(
                         itemId, editionId ?? null, userId
                     );
-                    fullChapter.narrative = chapterService._substituteNarrativeBlocks(
-                        fullChapter.narrative, generatedBlocks
-                    );
+                    if (Object.keys(blocks).length > 0) {
+                        fullChapter.narrative = chapterService._substituteNarrativeBlocks(
+                            fullChapter.narrative, blocks
+                        );
+                    }
+                    if (Object.keys(strings).length > 0) {
+                        fullChapter.narrative = chapterService._substituteNarrativeStrings(
+                            fullChapter.narrative, strings
+                        );
+                    }
                     console.log('[generateAntoraZip] narrative after substitution (first 200 chars):', fullChapter.narrative?.substring(0, 200));
                 } catch (err) {
-                    console.warn(`[generateAntoraZip] Failed to resolve generated blocks for '${chapter.key}': ${err.message}`);
+                    console.warn(`[generateAntoraZip] Failed to resolve generated content for '${chapter.key}': ${err.message}`);
                 }
             }
 

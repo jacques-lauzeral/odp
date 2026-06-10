@@ -9,7 +9,8 @@ import OperationalRequirementService from './OperationalRequirementService.js';
 import OperationalChangeService from './OperationalChangeService.js';
 import ReferenceDocumentService from './ReferenceDocumentService.js';
 import { StrategicTraceabilityGenerator } from './narrative/generators/StrategicTraceabilityGenerator.js';
-import { getChapterByCode } from '../config/loader.js';
+import { PortfolioTableGenerator } from './narrative/generators/PortfolioTableGenerator.js';
+import { getChapterByCode, getChapters } from '../config/loader.js';
 import { normalizeId } from '../../../shared/src/index.js';
 
 /**
@@ -32,7 +33,7 @@ import { normalizeId } from '../../../shared/src/index.js';
  * - Serialization to/from jsonOsHierarchy is handled exclusively by ChapterStore.
  * - generatedBlocks is server-owned — never written by clients.
  *   Populated at edition creation via storeGeneratedBlocks(); resolved on demand
- *   for preview via resolveGeneratedBlocks().
+ *   for preview via resolveGeneratedContent().
  * - Config-owned fields (domain, position, parentCode, generatedBlocks IDs) are merged
  *   here from edition-config after every store read, keyed on item.code.
  * - osHierarchy items are enriched on read: bare integer ids replaced with
@@ -270,10 +271,11 @@ export class ChapterService extends VersionedItemService {
         const configEntry = getChapterByCode(item.code);
         return {
             ...item,
-            domain:              configEntry?.domain          ?? null,
-            position:            configEntry?.position        ?? null,
-            parentCode:          configEntry?.parentKey       ?? configEntry?.parentCode ?? null,
-            availableBlockIds:   configEntry?.generatedBlocks ?? [],
+            domain:              configEntry?.domain            ?? null,
+            position:            configEntry?.position          ?? null,
+            parentCode:          configEntry?.parentKey         ?? configEntry?.parentCode ?? null,
+            availableBlockIds:   configEntry?.generatedBlocks   ?? [],
+            availableStringKeys: configEntry?.generatedStrings  ?? [],
         };
     }
 
@@ -343,34 +345,51 @@ export class ChapterService extends VersionedItemService {
     }
 
     // -------------------------------------------------------------------------
-    // Generated blocks
+    // Generated content (blocks + strings)
     // -------------------------------------------------------------------------
 
     /**
-     * Resolve all generated-block marks in a chapter narrative on demand.
-     * Ephemeral — result is NOT persisted. Used for ODIP-level preview in elaborate mode.
+     * Resolve all generated content for a chapter in a single call.
+     * Returns both block content (TipTap node arrays) and inline string values.
+     * Ephemeral — result is NOT persisted. Used for ODIP-level preview in
+     * elaborate mode and by the publication pipeline.
      *
-     * Scans the chapter narrative for generated-block marks, builds the required
-     * data map per block ID, delegates rendering to the appropriate generator,
-     * and returns { [blockId]: content }.
+     * Block and string resolution run in parallel.
      *
      * @param {number} itemId
      * @param {number|null} editionId
      * @param {string} userId
-     * @returns {Promise<object>} { [blockId]: node[] } — node arrays ready for splicing
+     * @returns {Promise<{ blocks: object, strings: object }>}
+     *   blocks:  { [blockId]: node[] }  — TipTap node arrays ready for splicing
+     *   strings: { [key]: string }      — inline string values ready for substitution
      */
-    async resolveGeneratedBlocks(itemId, editionId, userId) {
+    async resolveGeneratedContent(itemId, editionId, userId) {
         const chapter = await this.getById(itemId, userId, editionId, 'extended');
         if (!chapter) throw new Error(`Chapter ${itemId} not found`);
 
-        const blockIds = this._extractGeneratedBlockIds(chapter.narrative);
-        if (blockIds.length === 0) return {};
+        const [blocks, strings] = await Promise.all([
+            this._resolveAllBlocks(chapter.narrative, editionId, userId),
+            this._resolveStringKeys(chapter.availableStringKeys ?? [], editionId, userId),
+        ]);
 
-        const result = {};
-        for (const blockId of blockIds) {
-            result[blockId] = await this._resolveBlock(blockId, editionId, userId);
-        }
-        return result;
+        return { blocks, strings };
+    }
+
+    /**
+     * Resolve all generated-block marks found in a narrative.
+     *
+     * @param {string|null} narrative
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<object>} { [blockId]: node[] }
+     */
+    async _resolveAllBlocks(narrative, editionId, userId) {
+        const blockIds = this._extractGeneratedBlockIds(narrative);
+        if (blockIds.length === 0) return {};
+        const entries = await Promise.all(
+            blockIds.map(async id => [id, await this._resolveBlock(id, editionId, userId)])
+        );
+        return Object.fromEntries(entries);
     }
 
     /**
@@ -418,9 +437,144 @@ export class ChapterService extends VersionedItemService {
                 const { refDocs, onsByRefDocId } = await this._buildRefDocMap(editionId, userId);
                 return StrategicTraceabilityGenerator.generate(refDocs, onsByRefDocId);
             }
+            case 'portfolio-table': {
+                const rows = await this._buildPortfolioTableData(editionId, userId);
+                return PortfolioTableGenerator.generate(rows);
+            }
             default:
                 throw new Error(`Unknown generated block ID: ${blockId}`);
         }
+    }
+
+    /**
+     * Build the portfolio table row data from edition config and DB stats.
+     *
+     * Row order follows edition.json: parent chapters appear before their
+     * sub-chapters. Parent containers (no domain) get null ON/OR counts.
+     * Chapters without domain that have no sub-chapters (intro, wayforward,
+     * annexes) are excluded.
+     *
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<Array<object>>}
+     */
+    async _buildPortfolioTableData(editionId, userId) {
+        const allChapters  = getChapters();
+        const dbChapters   = await this.getAll(userId);
+        const itemIdByCode = new Map(dbChapters.map(c => [c.code, c.itemId]));
+
+        const statsByDomain = await OperationalRequirementService.getEditionStatsByDomain(
+            userId, editionId
+        );
+
+        // Map top-level key → position for building sub-chapter numbers (e.g. "2.1")
+        const topLevelPosition = new Map(
+            allChapters.filter(c => !c.parentKey).map(c => [c.key, c.position])
+        );
+
+        // Set of keys that are parent containers (have at least one sub-chapter)
+        const parentKeys = new Set(
+            allChapters.filter(c => c.parentKey).map(c => c.parentKey)
+        );
+
+        const rows = [];
+        for (const chapter of allChapters) {
+            const isParent = parentKeys.has(chapter.key);
+            // Include: chapters with a domain, or parent containers
+            if (!chapter.domain && !isParent) continue;
+
+            const itemId = itemIdByCode.get(chapter.key);
+            if (!itemId) continue; // not bootstrapped — skip
+
+            const number = chapter.parentKey
+                ? `${topLevelPosition.get(chapter.parentKey)}.${chapter.position}`
+                : String(chapter.position);
+
+            let onCount, orCount;
+            if (chapter.domain) {
+                // Leaf domain chapter — direct stats lookup
+                const stats = statsByDomain.get(chapter.domain);
+                onCount = String(stats?.onTotal ?? 0);
+                orCount = String(stats?.orTotal ?? 0);
+            } else {
+                // Parent container — sum stats across all child domains
+                const children = allChapters.filter(c => c.parentKey === chapter.key && c.domain);
+                const onTotal  = children.reduce((s, c) => s + (statsByDomain.get(c.domain)?.onTotal ?? 0), 0);
+                const orTotal  = children.reduce((s, c) => s + (statsByDomain.get(c.domain)?.orTotal ?? 0), 0);
+                onCount = String(onTotal);
+                orCount = String(orTotal);
+            }
+
+            rows.push({
+                number,
+                title:        chapter.title,
+                itemId,
+                onCount,
+                orCount,
+                primaryScope: chapter.primaryScope ?? '',
+                isAggregate:  isParent,
+            });
+        }
+
+        return rows;
+    }
+
+    /**
+     * Resolve a set of generated-string keys into their string values.
+     * Config-derived keys (chapter-count, sub-chapter-count) are computed
+     * locally; all O* count keys share a single getEditionStats() call.
+     *
+     * @param {string[]} keys
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<object>} { [key]: string }
+     */
+    async _resolveStringKeys(keys, editionId, userId) {
+        const result = {};
+
+        const configKeys = ['chapter-count', 'sub-chapter-count'];
+        const needsConfig = keys.some(k => configKeys.includes(k));
+        if (needsConfig) {
+            const { chapterCount, subChapterCount } = this._resolveConfigCounts();
+            if (keys.includes('chapter-count'))     result['chapter-count']     = String(chapterCount);
+            if (keys.includes('sub-chapter-count')) result['sub-chapter-count'] = String(subChapterCount);
+        }
+
+        const statsKeys = keys.filter(k => !configKeys.includes(k));
+        if (statsKeys.length > 0) {
+            const stats = await OperationalRequirementService.getEditionStats(userId, editionId);
+            const statsMap = {
+                'on-total-count':    String(stats.onTotalCount),
+                'on-draft-count':    String(stats.onDraftCount),
+                'on-advanced-count': String(stats.onAdvancedCount),
+                'on-mature-count':   String(stats.onMatureCount),
+                'or-total-count':    String(stats.orTotalCount),
+                'or-draft-count':    String(stats.orDraftCount),
+                'or-advanced-count': String(stats.orAdvancedCount),
+                'or-mature-count':   String(stats.orMatureCount),
+            };
+            for (const key of statsKeys) {
+                if (key in statsMap) result[key] = statsMap[key];
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Derive chapter and sub-chapter counts from edition config.
+     * - chapterCount    = top-level chapters that carry a domain and have no sub-chapters
+     *                     (i.e. standalone domain chapters, excluding parent containers)
+     * - subChapterCount = all sub-chapters across all parent chapters
+     *
+     * @returns {{ chapterCount: number, subChapterCount: number }}
+     */
+    _resolveConfigCounts() {
+        const allChapters = getChapters();
+        return {
+            chapterCount:    allChapters.filter(c => c.domain && !c.parentKey).length,
+            subChapterCount: allChapters.filter(c => !!c.parentKey).length,
+        };
     }
 
     /**
@@ -503,6 +657,44 @@ export class ChapterService extends VersionedItemService {
             };
 
             return JSON.stringify({ ...doc, content: substitute(doc.content) });
+        } catch {
+            return narrativeJson;
+        }
+    }
+
+    /**
+     * Substitute generated-string marks in a TipTap narrative JSON string with
+     * their resolved plain-text values. Walks the document recursively; each
+     * text node carrying a generated-string mark is replaced with a plain text
+     * node containing the resolved value (mark removed).
+     * Used by ODPEditionService before publication.
+     *
+     * @param {string} narrativeJson    — TipTap JSON string (chapter narrative)
+     * @param {object} generatedStrings — { [key]: string }
+     * @returns {string} — merged TipTap JSON string
+     */
+    _substituteNarrativeStrings(narrativeJson, generatedStrings) {
+        try {
+            const doc = JSON.parse(narrativeJson);
+            if (doc.type !== 'doc' || !Array.isArray(doc.content)) return narrativeJson;
+
+            const substituteInline = (nodes) => nodes.map(node => {
+                if (node.type === 'text' && Array.isArray(node.marks)) {
+                    const stringMark = node.marks.find(m => m.type === 'generated-string');
+                    if (stringMark) {
+                        const key = stringMark.attrs?.key;
+                        if (key !== undefined && key in generatedStrings) {
+                            return { type: 'text', text: generatedStrings[key] };
+                        }
+                    }
+                }
+                if (Array.isArray(node.content)) {
+                    return { ...node, content: substituteInline(node.content) };
+                }
+                return node;
+            });
+
+            return JSON.stringify({ ...doc, content: substituteInline(doc.content) });
         } catch {
             return narrativeJson;
         }

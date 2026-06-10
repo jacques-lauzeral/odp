@@ -429,3 +429,27 @@
     color: var(--text-secondary, #6b7280);
     flex: 1;
 }
+/* ── Generated string chip (edit mode inline placeholder) ────────────────────── */
+
+.rich-text-component__editor .tiptap .generated-string-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px var(--space-2, 0.5rem);
+    background: var(--primary-100, #e0f2fe);
+    border: 1px dashed var(--ec-blue, #185FA5);
+    border-radius: var(--radius-base, 0.25rem);
+    color: var(--ec-blue, #185FA5);
+    font-size: var(--font-size-sm, 0.875rem);
+    font-weight: 500;
+    cursor: default;
+    user-select: none;
+    white-space: nowrap;
+    min-width: 20px;
+    min-height: 1em;
+    opacity: 0.75;  /* slightly lighter than block chips to distinguish inline from block */
+}
+
+.rich-text-component__editor .tiptap .generated-string-chip::before {
+    content: 'Σ ' attr(data-generated-string);
+    pointer-events: none;
+}

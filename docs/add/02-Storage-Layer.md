@@ -272,6 +272,8 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findONStrategicDocumentRefs(tx, baselineId?, editionId?)`** → `Array<{ itemId, code, title, docId, note }>` — fetches all `(ON)-[:REFERENCES]->(ReferenceDocument)` triples in a single query. NO_SHOW ONs excluded. Supports latest / baseline / edition contexts. Called exclusively by `OperationalRequirementService.getONStrategicDocumentRefs()`.
 
+**`getMaturityCounts(tx, baselineId?, editionId?)`** → `Array<{ domain, type, maturity, count }>` — aggregates ON/OR counts grouped by domain × type × maturity in a single query. NO_SHOW items excluded. Supports latest / baseline / edition contexts. Returns a richer result than a simple type × maturity grouping — callers derive both global and per-domain stats from this single query. Called by `OperationalRequirementService.getEditionStats()` (sums across domains) and `OperationalRequirementService.getEditionStatsByDomain()` (groups by domain).
+
 **`findById` — `extended` projection**: performs the standard load then appends derived fields via additional reverse-traversal queries:
 
 | Derived field | Query |

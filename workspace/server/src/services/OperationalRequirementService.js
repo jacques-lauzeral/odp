@@ -386,6 +386,94 @@ export class OperationalRequirementService extends VersionedItemService {
             throw error;
         }
     }
+
+    /**
+     * Aggregate ON/OR counts grouped by type × maturity for the given edition.
+     * Pivots the raw store rows into a flat stats object ready for key resolution.
+     * Called by ChapterService.resolveGeneratedStrings() for portfolio statistics.
+     *
+     * @param {string} userId
+     * @param {number|null} editionId
+     * @returns {Promise<{
+     *   onTotalCount: number, onDraftCount: number, onAdvancedCount: number, onMatureCount: number,
+     *   orTotalCount: number, orDraftCount: number, orAdvancedCount: number, orMatureCount: number
+     * }>}
+     */
+    async getEditionStats(userId, editionId = null) {
+        const tx = createTransaction(userId);
+        try {
+            let resolvedBaselineId = null;
+            let resolvedEditionId  = null;
+            if (editionId !== null) {
+                const context = await odpEditionStore().resolveContext(editionId, tx);
+                resolvedBaselineId = context.baselineId;
+                resolvedEditionId  = context.editionId;
+            }
+            const rows = await operationalRequirementStore().getMaturityCounts(
+                tx, resolvedBaselineId, resolvedEditionId
+            );
+            await commitTransaction(tx);
+
+            // Pivot { domain, type, maturity, count }[] — sum across all domains
+            const counts = { ON: {}, OR: {} };
+            for (const { type, maturity, count } of rows) {
+                if (counts[type]) counts[type][maturity] = (counts[type][maturity] ?? 0) + count;
+            }
+            const sum = (typeMap) => Object.values(typeMap).reduce((a, b) => a + b, 0);
+
+            return {
+                onTotalCount:    sum(counts.ON),
+                onDraftCount:    counts.ON.DRAFT    ?? 0,
+                onAdvancedCount: counts.ON.ADVANCED ?? 0,
+                onMatureCount:   counts.ON.MATURE   ?? 0,
+                orTotalCount:    sum(counts.OR),
+                orDraftCount:    counts.OR.DRAFT    ?? 0,
+                orAdvancedCount: counts.OR.ADVANCED ?? 0,
+                orMatureCount:   counts.OR.MATURE   ?? 0,
+            };
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+    /**
+     * Aggregate ON/OR counts grouped by domain for the given edition.
+     * Returns a Map<domain, { onTotal, orTotal }> used by ChapterService
+     * to build the portfolio table rows.
+     *
+     * @param {string} userId
+     * @param {number|null} editionId
+     * @returns {Promise<Map<string, { onTotal: number, orTotal: number }>>}
+     */
+    async getEditionStatsByDomain(userId, editionId = null) {
+        const tx = createTransaction(userId);
+        try {
+            let resolvedBaselineId = null;
+            let resolvedEditionId  = null;
+            if (editionId !== null) {
+                const context = await odpEditionStore().resolveContext(editionId, tx);
+                resolvedBaselineId = context.baselineId;
+                resolvedEditionId  = context.editionId;
+            }
+            const rows = await operationalRequirementStore().getMaturityCounts(
+                tx, resolvedBaselineId, resolvedEditionId
+            );
+            await commitTransaction(tx);
+
+            // Pivot { domain, type, maturity, count }[] into Map<domain, { onTotal, orTotal }>
+            const map = new Map();
+            for (const { domain, type, count } of rows) {
+                if (!map.has(domain)) map.set(domain, { onTotal: 0, orTotal: 0 });
+                const entry = map.get(domain);
+                if (type === 'ON') entry.onTotal += count;
+                else if (type === 'OR') entry.orTotal += count;
+            }
+            return map;
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
 }
 
 export default new OperationalRequirementService();

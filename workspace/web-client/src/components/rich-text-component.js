@@ -190,6 +190,63 @@ const GeneratedBlockMark = Mark.create({
 });
 
 /**
+ * Generated-string placeholder mark.
+ * Represents a position in a chapter narrative where a computed string value
+ * (e.g. a portfolio statistic) will be substituted. Carries a single `key`
+ * attribute identifying the string type (e.g. 'on-total-count').
+ *
+ * In edit mode: rendered as a non-editable chip (Σ prefix).
+ * In read-only mode: substituted with the resolved plain-text value by ChapterBody.
+ * Always registered so stored narratives round-trip safely.
+ */
+const GeneratedStringMark = Mark.create({
+    name: 'generated-string',
+    spanning: false,
+    inclusive: false,
+    excludes: '_',
+
+    addAttributes() {
+        return {
+            key: {
+                default: null,
+                parseHTML: el => el.getAttribute('data-generated-string'),
+                renderHTML: attrs => (attrs.key != null ? { 'data-generated-string': attrs.key } : {}),
+            },
+        };
+    },
+
+    parseHTML() {
+        return [{ tag: 'span[data-generated-string]' }];
+    },
+
+    renderHTML({ HTMLAttributes }) {
+        return [
+            'span',
+            mergeAttributes(HTMLAttributes, {
+                class: 'generated-string-chip',
+                contenteditable: 'false',
+            }),
+            0,
+        ];
+    },
+
+    addCommands() {
+        return {
+            insertGeneratedString: (attributes) => ({ chain }) => {
+                return chain()
+                    .focus()
+                    .insertContent({
+                        type: 'text',
+                        text: '\u200B',
+                        marks: [{ type: 'generated-string', attrs: attributes }],
+                    })
+                    .run();
+            },
+        };
+    },
+});
+
+/**
  * Custom ProseMirror plugin that handles clicks on Link marks.
  *
  * Read-only mode : any click opens the href in a new tab.
@@ -242,7 +299,8 @@ export default class RichTextComponent {
         this._onChange          = options.onChange          ?? null;
         this._onInternalLink    = options.onInternalLink    ?? null;
         this._linkProvider      = options.linkProvider      ?? null;
-        this._availableBlockIds = options.availableBlockIds ?? [];
+        this._availableBlockIds  = options.availableBlockIds  ?? [];
+        this._availableStringKeys = options.availableStringKeys ?? [];
 
         this._editor     = null;
         this._container  = null;
@@ -444,6 +502,7 @@ export default class RichTextComponent {
             // (even if empty) so stored narratives round-trip without losing the mark.
             // Edit-mode chip rendering and toolbar button are gated on non-empty list.
             GeneratedBlockMark,
+            GeneratedStringMark,
             Link.configure({
                 openOnClick: false,
                 autolink: false,
@@ -544,9 +603,9 @@ export default class RichTextComponent {
             toolbar.appendChild(this._createTableGroup());
         }
 
-        // ── Generated block group (narrative context only) ───────────────────
-        if (this._availableBlockIds.length > 0) {
-            toolbar.appendChild(this._createGeneratedBlockGroup());
+        // ── Generated content group (blocks + strings; narrative context only) ──
+        if (this._availableBlockIds.length > 0 || this._availableStringKeys.length > 0) {
+            toolbar.appendChild(this._createGeneratedContentGroup());
         }
 
         // Update active states on editor selection/transaction
@@ -711,33 +770,45 @@ export default class RichTextComponent {
     }
 
     /**
-     * Create the generated-block insertion toolbar group.
-     * If only one block ID is available, inserts directly on click.
-     * If multiple, shows a small dropdown picker.
+     * Create the generated content insertion toolbar group (blocks + strings).
+     * All available block IDs and string keys are combined into a single ⚙ button.
+     * Single item total → direct insert button; multiple → dropdown with a
+     * separator between blocks and strings when both categories are present.
      * @private
      */
-    _createGeneratedBlockGroup() {
-        const ids = this._availableBlockIds;
+    _createGeneratedContentGroup() {
+        const blockIds   = this._availableBlockIds;
+        const stringKeys = this._availableStringKeys;
+        const total      = blockIds.length + stringKeys.length;
 
-        if (ids.length === 1) {
-            // Single block — direct insert button
-            const btn = this._btn('generated-block', '⚙', `Insert generated block: ${ids[0]}`,
-                () => this._editor.chain().focus().insertGeneratedBlock({ id: ids[0] }).run()
-            );
-            return this._createGroup([btn]);
+        // Single item — direct insert button
+        if (total === 1) {
+            if (blockIds.length === 1) {
+                const btn = this._btn('generated-block', '⚙', `Insert block: ${blockIds[0]}`,
+                    () => this._editor.chain().focus().insertGeneratedBlock({ id: blockIds[0] }).run()
+                );
+                return this._createGroup([btn]);
+            } else {
+                const btn = this._btn('generated-string', '⚙', `Insert value: ${stringKeys[0]}`,
+                    () => this._editor.chain().focus().insertGeneratedString({ key: stringKeys[0] }).run()
+                );
+                return this._createGroup([btn]);
+            }
         }
 
-        // Multiple blocks — dropdown picker
+        // Multiple items — dropdown picker
         const wrapper = document.createElement('div');
         wrapper.className = 'rich-text-component__menu-wrapper rich-text-component__toolbar-group';
 
-        const triggerBtn = this._btn('generated-block', '⚙', 'Insert generated block', () => {
+        const triggerBtn = this._btn('generated-block', '⚙', 'Insert generated content', () => {
             const existing = wrapper.querySelector('.rich-text-component__dropdown-menu');
             if (existing) { existing.remove(); return; }
 
             const menu = document.createElement('div');
             menu.className = 'rich-text-component__dropdown-menu';
-            for (const id of ids) {
+
+            // Block items
+            for (const id of blockIds) {
                 const item = document.createElement('button');
                 item.className = 'rich-text-component__dropdown-item';
                 item.textContent = id;
@@ -747,6 +818,26 @@ export default class RichTextComponent {
                 });
                 menu.appendChild(item);
             }
+
+            // Separator between blocks and strings (when both are present)
+            if (blockIds.length > 0 && stringKeys.length > 0) {
+                const sep = document.createElement('div');
+                sep.className = 'rich-text-component__dropdown-sep';
+                menu.appendChild(sep);
+            }
+
+            // String items
+            for (const key of stringKeys) {
+                const item = document.createElement('button');
+                item.className = 'rich-text-component__dropdown-item';
+                item.textContent = key;
+                item.addEventListener('click', () => {
+                    menu.remove();
+                    this._editor.chain().focus().insertGeneratedString({ key }).run();
+                });
+                menu.appendChild(item);
+            }
+
             wrapper.appendChild(menu);
 
             // Close on outside click

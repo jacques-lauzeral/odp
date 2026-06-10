@@ -316,6 +316,21 @@ export class ApiClient {
     }
 
     /**
+     * Resolve all generated content (blocks + strings) for a chapter.
+     * Returns { blocks: { [blockId]: node[] }, strings: { [key]: string } }.
+     * Ephemeral — result is not persisted. Elaborate mode preview only.
+     *
+     * @param {number|string} chapterId
+     * @param {number|string|null} [editionId]
+     * @returns {Promise<{ blocks: object, strings: object }>}
+     */
+    async resolveGeneratedContent(chapterId, editionId = null) {
+        const options = { id: chapterId, subPath: 'resolve-generated-content' };
+        if (editionId !== null) options.params = { edition: editionId };
+        return this.post('/chapters', null, options);
+    }
+
+    /**
      * Run all quality checks and return a QualityReport.
      * @param {object} [options]
      * @param {string[]} [options.domains]   - Domain keys to scope; omit for all domains

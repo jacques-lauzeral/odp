@@ -56,18 +56,18 @@ DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, mile
 `chapter.js` is a hand-written router (not a `VersionedItemRouter` subclass — chapters have no `create`/`delete` and `getAll` takes no edition context or content filters):
 
 ```
-GET    /                                      → service.getAll(userId)
-GET    /:id                                   → service.getById(id, userId, editionId?)
-GET    /:id/versions                          → service.getVersionHistory(id, userId)
-GET    /:id/versions/:versionNum              → service.getByIdAndVersion(id, versionNum, userId)
-PUT    /:id                                   → service.update(id, body, expectedVersionId, userId)
-PATCH  /:id                                   → service.patch(id, body, expectedVersionId, userId)
-POST   /:id/resolve-generated-blocks         → service.resolveGeneratedBlocks(id, null, userId)
+GET    /                                        → service.getAll(userId)
+GET    /:id                                     → service.getById(id, userId, editionId?)
+GET    /:id/versions                            → service.getVersionHistory(id, userId)
+GET    /:id/versions/:versionNum                → service.getByIdAndVersion(id, versionNum, userId)
+PUT    /:id                                     → service.update(id, body, expectedVersionId, userId)
+PATCH  /:id                                     → service.patch(id, body, expectedVersionId, userId)
+POST   /:id/resolve-generated-content          → service.resolveGeneratedContent(id, editionId?, userId)
 ```
 
 All GET routes allow anonymous access (`getUserIdOptional`). PUT, PATCH, and POST require `x-user-id`.
 
-`POST /:id/resolve-generated-blocks` — elaborate mode only; scans the chapter narrative for `generated-block` marks and returns the resolved `{ [blockId]: content }` map. Ephemeral — result is not persisted. In explore mode, `generatedBlocks` are already present in the `GET /:id?edition=` response.
+`POST /:id/resolve-generated-content` — elaborate mode preview; resolves all generated content declared for the chapter in a single call. Returns `{ blocks: { [blockId]: node[] }, strings: { [key]: string } }`. Block and string resolution run in parallel. Ephemeral — result is not persisted. Accepts optional `?edition=` query parameter for edition-scoped resolution.
 
 ### 2.4 Management Entity Routers
 

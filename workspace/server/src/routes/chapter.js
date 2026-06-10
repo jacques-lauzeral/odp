@@ -147,22 +147,21 @@ router.patch('/:id', async (req, res) => {
     }
 });
 
-// Resolve generated-block marks in the chapter narrative (elaborate mode preview).
-// Ephemeral — result is NOT persisted.
-router.post('/:id/resolve-generated-blocks', async (req, res) => {
+// Resolve all generated content (blocks + strings) for a chapter narrative.
+// Ephemeral — result is NOT persisted. Elaborate mode preview only.
+router.post('/:id/resolve-generated-content', async (req, res) => {
     try {
         const userId = getUserId(req);
-        console.log(`ChapterService.resolveGeneratedBlocks() itemId: ${req.params.id}, userId: ${userId}`);
-        const generatedBlocks = await ChapterService.resolveGeneratedBlocks(req.params.id, null, userId);
-        res.json(generatedBlocks);
+        const editionId = req.query.edition || null;
+        console.log(`ChapterService.resolveGeneratedContent() itemId: ${req.params.id}, userId: ${userId}, editionId: ${editionId}`);
+        const content = await ChapterService.resolveGeneratedContent(req.params.id, editionId, userId);
+        res.json(content);
     } catch (error) {
-        console.error('Error resolving generated blocks:', error);
+        console.error('Error resolving generated content:', error);
         if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else if (error.message.includes('not found')) {
             res.status(404).json({ error: { code: 'NOT_FOUND', message: error.message } });
-        } else if (error.message.includes('Unknown generated block ID')) {
-            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }
