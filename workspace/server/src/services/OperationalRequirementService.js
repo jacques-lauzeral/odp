@@ -460,13 +460,25 @@ export class OperationalRequirementService extends VersionedItemService {
             );
             await commitTransaction(tx);
 
-            // Pivot { domain, type, maturity, count }[] into Map<domain, { onTotal, orTotal }>
+            // Pivot { domain, type, maturity, count }[] into Map<domain, full stats>
             const map = new Map();
-            for (const { domain, type, count } of rows) {
-                if (!map.has(domain)) map.set(domain, { onTotal: 0, orTotal: 0 });
+            for (const { domain, type, maturity, count } of rows) {
+                if (!map.has(domain)) map.set(domain, {
+                    onTotal: 0, onDraft: 0, onAdvanced: 0, onMature: 0,
+                    orTotal: 0, orDraft: 0, orAdvanced: 0, orMature: 0,
+                });
                 const entry = map.get(domain);
-                if (type === 'ON') entry.onTotal += count;
-                else if (type === 'OR') entry.orTotal += count;
+                if (type === 'ON') {
+                    entry.onTotal += count;
+                    if (maturity === 'DRAFT')    entry.onDraft    += count;
+                    if (maturity === 'ADVANCED') entry.onAdvanced += count;
+                    if (maturity === 'MATURE')   entry.onMature   += count;
+                } else if (type === 'OR') {
+                    entry.orTotal += count;
+                    if (maturity === 'DRAFT')    entry.orDraft    += count;
+                    if (maturity === 'ADVANCED') entry.orAdvanced += count;
+                    if (maturity === 'MATURE')   entry.orMature   += count;
+                }
             }
             return map;
         } catch (error) {

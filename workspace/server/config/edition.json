@@ -5,7 +5,8 @@
       "title": "ODIP Edition 1 \u2014 General Introduction",
       "position": 1,
       "generatedBlocks": [
-        "portfolio-table"
+        "portfolio-table",
+        "portfolio-chart"
       ],
       "generatedStrings": [
         "chapter-count",

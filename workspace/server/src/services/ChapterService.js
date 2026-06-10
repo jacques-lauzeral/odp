@@ -10,6 +10,7 @@ import OperationalChangeService from './OperationalChangeService.js';
 import ReferenceDocumentService from './ReferenceDocumentService.js';
 import { StrategicTraceabilityGenerator } from './narrative/generators/StrategicTraceabilityGenerator.js';
 import { PortfolioTableGenerator } from './narrative/generators/PortfolioTableGenerator.js';
+import { PortfolioChartGenerator } from './narrative/generators/PortfolioChartGenerator.js';
 import { getChapterByCode, getChapters } from '../config/loader.js';
 import { normalizeId } from '../../../shared/src/index.js';
 
@@ -441,6 +442,10 @@ export class ChapterService extends VersionedItemService {
                 const rows = await this._buildPortfolioTableData(editionId, userId);
                 return PortfolioTableGenerator.generate(rows);
             }
+            case 'portfolio-chart': {
+                const rows = await this._buildPortfolioChartData(editionId, userId);
+                return PortfolioChartGenerator.generate(rows);
+            }
             default:
                 throw new Error(`Unknown generated block ID: ${blockId}`);
         }
@@ -529,6 +534,48 @@ export class ChapterService extends VersionedItemService {
      * @param {string} userId
      * @returns {Promise<object>} { [key]: string }
      */
+    /**
+     * Build the chart row data from edition config and DB stats.
+     * Only leaf domain chapters are included — no parent containers.
+     *
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<Array<{ number, title, on, or }>>}
+     */
+    async _buildPortfolioChartData(editionId, userId) {
+        const allChapters   = getChapters();
+        const statsByDomain = await OperationalRequirementService.getEditionStatsByDomain(
+            userId, editionId
+        );
+
+        const topLevelPosition = new Map(
+            allChapters.filter(c => !c.parentKey).map(c => [c.key, c.position])
+        );
+
+        const rows = [];
+        for (const chapter of allChapters) {
+            if (!chapter.domain) continue;
+
+            const number = chapter.parentKey
+                ? `${topLevelPosition.get(chapter.parentKey)}.${chapter.position}`
+                : String(chapter.position);
+
+            const stats = statsByDomain.get(chapter.domain) ?? {
+                onDraft: 0, onAdvanced: 0, onMature: 0,
+                orDraft: 0, orAdvanced: 0, orMature: 0,
+            };
+
+            rows.push({
+                number,
+                title: chapter.title,
+                on: { draft: stats.onDraft, advanced: stats.onAdvanced, mature: stats.onMature },
+                or: { draft: stats.orDraft, advanced: stats.orAdvanced, mature: stats.orMature },
+            });
+        }
+
+        return rows;
+    }
+
     async _resolveStringKeys(keys, editionId, userId) {
         const result = {};
 
