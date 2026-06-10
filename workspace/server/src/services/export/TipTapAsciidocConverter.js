@@ -24,7 +24,9 @@
  *   code         → `text`
  *   bold+italic  → ***text***
  *   link         → text (href preserved as AsciiDoc link macro when target available)
- *   ref, anchor  → pass-through (custom ODIP marks, forwarded as plain text for now)
+ *   o-ref        → xref:{chapterSlug}:{slugPath}/on-{id}.adoc[label] (via refResolver)
+ *   n-ref        → xref:{chapterSlug}:index.adoc[label]            (via refResolver)
+ *   d-ref        → link:url[label]                                  (via refResolver)
  *   textStyle    → color attribute ignored (AsciiDoc has no inline color)
  *
  * Input format (TipTap document JSON string):
@@ -58,9 +60,18 @@
  */
 class TipTapToAsciidocConverter {
 
-    constructor() {
+    /**
+     * @param {object|null} refResolver - Optional resolver for internal reference marks.
+     *   Built once per publication run by ODPEditionService and shared across all chapters.
+     *   Shape:
+     *     resolveORef(itemId: string) → string|null  — Antora xref for an O* page
+     *     resolveNRef(chapterId: string) → string|null — Antora xref for a chapter page
+     *     resolveDRef(refdocId: string) → string|null  — URL for a reference document
+     */
+    constructor(refResolver = null) {
         this.imageCounter = 0;
         this.extractedImages = [];
+        this._refResolver = refResolver;
     }
 
     // ─── Public API ──────────────────────────────────────────────────────────────
@@ -396,6 +407,26 @@ class TipTapToAsciidocConverter {
                 const formattedText = this._applyInlineFormatting(text, markTypes);
                 return `link:${href}[${formattedText}]`;
             }
+        }
+
+        // Internal reference marks — resolved to Antora xref / external link when a
+        // refResolver is available; fall back to plain label text if not (e.g. unit tests).
+        const oRefMark = marks.find(m => m.type === 'o-ref');
+        if (oRefMark && this._refResolver) {
+            const xref = this._refResolver.resolveORef(oRefMark.attrs?.value);
+            if (xref) return `xref:${xref}[${text}]`;
+        }
+
+        const nRefMark = marks.find(m => m.type === 'n-ref');
+        if (nRefMark && this._refResolver) {
+            const xref = this._refResolver.resolveNRef(nRefMark.attrs?.value);
+            if (xref) return `xref:${xref}[${text}]`;
+        }
+
+        const dRefMark = marks.find(m => m.type === 'd-ref');
+        if (dRefMark && this._refResolver) {
+            const url = this._refResolver.resolveDRef(dRefMark.attrs?.value);
+            if (url) return `link:${url}[${text}]`;
         }
 
         return this._applyInlineFormatting(text, markTypes);

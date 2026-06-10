@@ -569,9 +569,71 @@ export class ODPEditionService {
         const referenceDocuments = await this._fetchReferenceDocuments(userId);
         console.log(`[generateAntoraZip] ${referenceDocuments.size} reference documents fetched`);
 
+        // Build chapter itemId → { module, slug } for n-ref resolution.
+        // The intro chapter (position 1, no parentKey) lives in the ROOT module;
+        // all other chapters live in the details module.
+        const introKey = allChapters.find(c => c.position === 1 && !c.parentKey)?.key ?? 'intro';
+        const chapterInfoByItemId = new Map(
+            dbChapters.map(c => [
+                String(c.itemId),
+                { module: c.code === introKey ? 'ROOT' : 'details', slug: this._slugify(c.code) },
+            ])
+        );
+
+        // Build O* itemId → type map for o-ref page-file prefix resolution
+        const ostarTypeById = new Map(
+            allRequirementsSummary.map(r => [String(normalizeId(r.itemId)), r.type])
+        );
+
+        // Reference resolver — injected into the shared converter so that o-ref / n-ref /
+        // d-ref marks in narratives and O* rich-text fields are emitted as Antora xrefs.
+        const refResolver = {
+            /**
+             * Resolve an o-ref mark value (O* itemId string) to an Antora xref target.
+             * O*s always live in the details module.
+             * Returns e.g. "details:nmui/nmui_flow/on-42.adoc" or null if unresolvable.
+             */
+            resolveORef(itemId) {
+                const normId = String(normalizeId(itemId));
+                const entry  = globalOStarIndex.get(Number(normId)) ?? globalOStarIndex.get(normId);
+                if (!entry) return null;
+                const type   = ostarTypeById.get(normId);
+                if (!type)  return null;
+                const prefix = type === 'ON' ? 'on' : 'or';
+                const page   = `${prefix}-${normId}.adoc`;
+                const dir    = entry.slugPath.join('/');
+                return `details:${dir}/${page}`;
+            },
+
+            /**
+             * Resolve an n-ref mark value ("{chapterId}" or "{chapterId}/{topicId}") to
+             * an Antora xref target. Topic fragment is ignored in static export (no
+             * per-topic anchor in generated AsciiDoc pages).
+             * Intro chapter → "ROOT:index.adoc"; others → "details:{slug}/index.adoc".
+             */
+            resolveNRef(value) {
+                const chapterId = String(value).split('/')[0];
+                const info      = chapterInfoByItemId.get(chapterId);
+                if (!info) return null;
+                return info.module === 'ROOT'
+                    ? 'ROOT:index.adoc'
+                    : `details:${info.slug}/index.adoc`;
+            },
+
+            /**
+             * Resolve a d-ref mark value (refdoc id) to an external URL.
+             * Returns the document URL string or null if absent.
+             */
+            resolveDRef(refdocId) {
+                const doc = referenceDocuments.get(Number(refdocId)) ?? referenceDocuments.get(refdocId);
+                return doc?.url ?? null;
+            },
+        };
+
         // Shared TipTapAsciidocConverter — global image counter ensures unique filenames
-        // across all chapters in this publication run
-        const sharedConverter = new TipTapAsciidocConverter();
+        // across all chapters in this publication run; refResolver enables xref emission
+        // for o-ref / n-ref / d-ref marks.
+        const sharedConverter = new TipTapAsciidocConverter(refResolver);
 
         // Resolve domain filter set (null = include all)
         const domainFilter = this._resolveDomainFilter(mode, drgFilter, selection);
