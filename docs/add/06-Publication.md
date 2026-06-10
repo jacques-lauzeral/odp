@@ -82,6 +82,10 @@ REST API  POST /odp-editions/{id}/publish  ← PublishOptions body
 ```
 services/
 ├── ODPEditionService.js          ← edition CRUD + generateAntoraZip() + publishEdition()
+├── narrative/
+│   └── generators/               ← pure generated-block renderers (called by ChapterService)
+│       ├── StrategicTraceabilityGenerator.js  ← annex-traceability block
+│       └── PortfolioTableGenerator.js         ← portfolio-table block
 └── publication/
     └── generators/
         └── ChapterGenerator.js   ← one instance per chapter; DB narrative + O* pages
