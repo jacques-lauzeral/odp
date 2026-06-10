@@ -86,7 +86,6 @@ export const Chapter = {
     createdBy:       null,
     narrative:       null,
     osHierarchy:     null,
-    generatedBlocks: null, // { [blockId]: content } | null — server-owned; populated at edition creation
     // config-owned
     domain:          null,
     position:        null,

@@ -10,6 +10,7 @@ import {
     operationalRequirementStore,
     stakeholderCategoryStore,
     referenceDocumentStore,
+    odpEditionStore,
     createTransaction,
     commitTransaction,
     rollbackTransaction
@@ -346,6 +347,40 @@ export class OperationalRequirementService extends VersionedItemService {
                 }
             }
             await commitTransaction(tx);
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    // =========================================================================
+    // Narrative generator support
+    // =========================================================================
+
+    /**
+     * Fetch all (ON, ReferenceDocument, note) triples in a single query.
+     * Used by ChapterService._buildRefDocMap() for the strategic-traceability
+     * generated block — replaces N+1 per-document findAll() calls.
+     *
+     * @param {string} userId
+     * @param {number|null} editionId
+     * @returns {Promise<Array<{ itemId, code, title, docId, note }>>}
+     */
+    async getONStrategicDocumentRefs(userId, editionId = null) {
+        const tx = createTransaction(userId);
+        try {
+            let resolvedBaselineId = null;
+            let resolvedEditionId  = null;
+            if (editionId !== null) {
+                const context = await odpEditionStore().resolveContext(editionId, tx);
+                resolvedBaselineId = context.baselineId;
+                resolvedEditionId  = context.editionId;
+            }
+            const refs = await operationalRequirementStore().findONStrategicDocumentRefs(
+                tx, resolvedBaselineId, resolvedEditionId
+            );
+            await commitTransaction(tx);
+            return refs;
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;

@@ -5,10 +5,8 @@ import { StoreError } from './transaction.js';
  * Store for Chapter items with versioning.
  * Chapters are config-owned (creation via bootstrap only; no delete).
  * User-maintained fields: narrative, osHierarchy.
- * Server-owned fields: generatedBlocks.
- *
  * Item node fields: code (= chapter key), title.
- * Version node fields: narrative, jsonOsHierarchy, jsonGeneratedBlocks.
+ * Version node fields: narrative, jsonOsHierarchy.
  *
  * Config-owned fields (domain, position, parentKey) are merged by ChapterService.
  *
@@ -17,14 +15,10 @@ import { StoreError } from './transaction.js';
  *   - _prepareInput serializes osHierarchy → jsonOsHierarchy before Neo4j writes.
  *   - _prepareOutput deserializes jsonOsHierarchy → osHierarchy after reads.
  *   - jsonOsHierarchy is never visible above the store layer.
- *   - Callers pass and receive generatedBlocks (object or null).
- *   - _prepareInput serializes generatedBlocks → jsonGeneratedBlocks before Neo4j writes.
- *   - _prepareOutput deserializes jsonGeneratedBlocks → generatedBlocks after reads.
- *   - jsonGeneratedBlocks is never visible above the store layer.
  *
  * Projection:
- *   - 'standard' (default for findAll) — all fields except narrative, osHierarchy, and generatedBlocks.
- *   - 'extended' (default for findById) — all fields including narrative, osHierarchy, and generatedBlocks.
+ *   - 'standard' (default for findAll) — all fields except narrative and osHierarchy.
+ *   - 'extended' (default for findById) — all fields including narrative and osHierarchy.
  *   findByCode (bootstrap-only) always returns extended.
  *
  * Relationships: none (Chapter has no graph relationships to other entities).
@@ -67,30 +61,25 @@ export class ChapterStore extends VersionedItemStore {
     }
 
     /**
-     * Serialize osHierarchy → jsonOsHierarchy and generatedBlocks → jsonGeneratedBlocks
-     * before writing to Neo4j.
+     * Serialize osHierarchy → jsonOsHierarchy before writing to Neo4j.
      *
      * @override
      * @param {object} contentData
      * @returns {object}
      */
     _prepareInput(contentData) {
-        const { osHierarchy, generatedBlocks, ...rest } = contentData;
+        const { osHierarchy, ...rest } = contentData;
         return {
             ...rest,
             jsonOsHierarchy: osHierarchy !== undefined
                 ? (osHierarchy !== null ? JSON.stringify(osHierarchy) : null)
                 : (rest.jsonOsHierarchy ?? undefined),
-            jsonGeneratedBlocks: generatedBlocks !== undefined
-                ? (generatedBlocks !== null ? JSON.stringify(generatedBlocks) : null)
-                : (rest.jsonGeneratedBlocks ?? undefined),
         };
     }
 
     /**
-     * Deserialize jsonOsHierarchy → osHierarchy and jsonGeneratedBlocks → generatedBlocks
-     * after reading from Neo4j.
-     * When projection is 'standard', narrative, osHierarchy, and generatedBlocks are omitted.
+     * Deserialize jsonOsHierarchy → osHierarchy after reading from Neo4j.
+     * When projection is 'standard', narrative and osHierarchy are omitted.
      *
      * @override
      * @param {object} item
@@ -98,21 +87,20 @@ export class ChapterStore extends VersionedItemStore {
      * @returns {object}
      */
     _prepareOutput(item, projection = 'extended') {
-        const { jsonOsHierarchy, jsonGeneratedBlocks, narrative, ...rest } = item;
+        const { jsonOsHierarchy, narrative, ...rest } = item;
         if (projection === 'standard') {
             return rest;
         }
         return {
             ...rest,
-            narrative:       narrative ?? '',
-            osHierarchy:     jsonOsHierarchy ? JSON.parse(jsonOsHierarchy) : null,
-            generatedBlocks: jsonGeneratedBlocks ? JSON.parse(jsonGeneratedBlocks) : null,
+            narrative:   narrative ?? '',
+            osHierarchy: jsonOsHierarchy ? JSON.parse(jsonOsHierarchy) : null,
         };
     }
 
     /**
      * Build query for findAll.
-     * 'standard' projection omits narrative, jsonOsHierarchy, and jsonGeneratedBlocks columns.
+     * 'standard' projection omits narrative and jsonOsHierarchy columns.
      * 'extended' projection includes all fields.
      *
      * @param {*} _baselineId
@@ -125,8 +113,7 @@ export class ChapterStore extends VersionedItemStore {
         const extraFields = projection === 'extended'
             ? `,
                        version.narrative as narrative,
-                       version.jsonOsHierarchy as jsonOsHierarchy,
-                       version.jsonGeneratedBlocks as jsonGeneratedBlocks`
+                       version.jsonOsHierarchy as jsonOsHierarchy`
             : '';
         return {
             cypher: `
@@ -146,7 +133,7 @@ export class ChapterStore extends VersionedItemStore {
 
     /**
      * Find all chapters. Config-owned fields are merged by ChapterService.
-     * Defaults to 'standard' projection — narrative, osHierarchy, and generatedBlocks are excluded.
+     * Defaults to 'standard' projection — narrative and osHierarchy are excluded.
      *
      * @param {Transaction} transaction
      * @param {string} [projection='standard']
@@ -165,10 +152,10 @@ export class ChapterStore extends VersionedItemStore {
 
     /**
      * Find a chapter by item ID.
-     * Defaults to 'extended' projection — narrative, osHierarchy, and generatedBlocks are included.
+     * Defaults to 'extended' projection — narrative and osHierarchy are included.
      * Delegates to super for ID normalisation, baseline/edition context, and
      * versionData map projection (which includes all version properties).
-     * _prepareOutput then strips narrative/osHierarchy/generatedBlocks for 'standard' projection.
+     * _prepareOutput then strips narrative/osHierarchy for 'standard' projection.
      *
      * @param {number} itemId
      * @param {Transaction} transaction
@@ -185,7 +172,7 @@ export class ChapterStore extends VersionedItemStore {
         const result = await super.findById(itemId, transaction, baselineId, null);
         if (!result) return null;
         if (projection === 'standard') {
-            const { narrative, osHierarchy, generatedBlocks, ...rest } = result;
+            const { narrative, osHierarchy, ...rest } = result;
             return rest;
         }
         return result;
@@ -194,7 +181,7 @@ export class ChapterStore extends VersionedItemStore {
     /**
      * Find a chapter by its stable code (= chapter key from edition.json).
      * Used by bootstrap to check existence before creating.
-     * Always returns extended projection (narrative, osHierarchy, and generatedBlocks included).
+     * Always returns extended projection (narrative and osHierarchy included).
      *
      * @param {string} code - Stable chapter code/key
      * @param {Transaction} transaction
@@ -212,8 +199,7 @@ export class ChapterStore extends VersionedItemStore {
                        version.createdAt as createdAt,
                        version.createdBy as createdBy,
                        version.narrative as narrative,
-                       version.jsonOsHierarchy as jsonOsHierarchy,
-                       version.jsonGeneratedBlocks as jsonGeneratedBlocks
+                       version.jsonOsHierarchy as jsonOsHierarchy
             `, { code });
 
             if (result.records.length === 0) return null;
@@ -226,7 +212,7 @@ export class ChapterStore extends VersionedItemStore {
     /**
      * Create a chapter item node — bootstrap only.
      * code (= chapter key) and title are stored on the item node.
-     * narrative, jsonOsHierarchy, and jsonGeneratedBlocks are stored on the version node.
+     * narrative and jsonOsHierarchy are stored on the version node.
      *
      * @param {string} code - Stable chapter key from edition.json
      * @param {string} title - Chapter title from edition.json
@@ -258,8 +244,7 @@ export class ChapterStore extends VersionedItemStore {
                     createdAt: $createdAt,
                     createdBy: $createdBy,
                     narrative: '',
-                    jsonOsHierarchy: null,
-                    jsonGeneratedBlocks: null
+                    jsonOsHierarchy: null
                 })
                 RETURN id(version) as versionId
             `, { createdAt, createdBy });
@@ -287,7 +272,7 @@ export class ChapterStore extends VersionedItemStore {
     /**
      * Build a raw chapter item object from a Neo4j record.
      * Does not apply _prepareOutput or config merging — callers handle that.
-     * narrative, jsonOsHierarchy, and jsonGeneratedBlocks may be absent from the record
+     * narrative and jsonOsHierarchy may be absent from the record
      * when the query uses 'standard' projection — defaults are applied defensively.
      *
      * @param {Record} record
@@ -305,7 +290,7 @@ export class ChapterStore extends VersionedItemStore {
             createdBy:       record.get('createdBy'),
             ...(keys.includes('narrative')            ? { narrative:            record.get('narrative') || ''   } : {}),
             ...(keys.includes('jsonOsHierarchy')      ? { jsonOsHierarchy:      record.get('jsonOsHierarchy') || null } : {}),
-            ...(keys.includes('jsonGeneratedBlocks')  ? { jsonGeneratedBlocks:  record.get('jsonGeneratedBlocks') || null } : {}),
+
         };
     }
 }

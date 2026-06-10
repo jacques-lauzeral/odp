@@ -963,4 +963,68 @@ export class OperationalRequirementStore extends VersionedItemStore {
             throw new StoreError(`Failed to find untraceable ORs: ${error.message}`, error);
         }
     }
+
+    // =========================================================================
+    // Narrative generator methods — called exclusively by OperationalRequirementService
+    // =========================================================================
+
+    /**
+     * Fetch all (ON, ReferenceDocument, note) triples in a single query.
+     * Used by the strategic-traceability generated block to build the ref doc → ON map
+     * without N+1 queries.
+     *
+     * NO_SHOW ONs are excluded. Supports latest / baseline / edition contexts.
+     *
+     * @param {Transaction} transaction
+     * @param {number|null} baselineId
+     * @param {number|null} editionId - When set, baselineId must also be set
+     * @returns {Promise<Array<{ itemId, code, title, docId, note }>>}
+     */
+    async findONStrategicDocumentRefs(transaction, baselineId = null, editionId = null) {
+        try {
+            let cypher, params = {};
+
+            if (baselineId === null) {
+                cypher = `
+                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    WHERE version.type = 'ON'
+                      AND version.maturity <> 'NO_SHOW'
+                    MATCH (version)-[ref:REFERENCES]->(doc:ReferenceDocument)
+                `;
+            } else {
+                const numericBaselineId = this.normalizeId(baselineId);
+                params.baselineId = numericBaselineId;
+                cypher = `
+                    MATCH (baseline:Baseline)-[r:HAS_ITEMS]->(version:${this.versionLabel})-[:VERSION_OF]->(item:${this.nodeLabel})
+                    WHERE id(baseline) = $baselineId
+                      AND version.type = 'ON'
+                      AND version.maturity <> 'NO_SHOW'
+                `;
+                if (editionId !== null) {
+                    cypher += `  AND $editionId IN r.editions\n`;
+                    params.editionId = this.normalizeId(editionId);
+                }
+                cypher += `
+                    MATCH (version)-[ref:REFERENCES]->(doc:ReferenceDocument)
+                `;
+            }
+
+            cypher += `
+                RETURN id(item) AS itemId, item.code AS code, item.title AS title,
+                       id(doc) AS docId, ref.note AS note
+                ORDER BY item.title
+            `;
+
+            const result = await transaction.run(cypher, params);
+            return result.records.map(r => ({
+                itemId: this.normalizeId(r.get('itemId')),
+                code:   r.get('code'),
+                title:  r.get('title'),
+                docId:  this.normalizeId(r.get('docId')),
+                note:   r.get('note') ?? null,
+            }));
+        } catch (error) {
+            throw new StoreError(`Failed to find ON strategic document refs: ${error.message}`, error);
+        }
+    }
 }

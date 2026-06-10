@@ -136,6 +136,9 @@ Key validation rules:
 - Annotated reference arrays (`impactedStakeholders`, `strategicDocuments`) must use `{id, note?}` object format
 - Referenced entities (`impactedStakeholders`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 
+**Narrative generator support:**
+- `getONStrategicDocumentRefs(userId, editionId?)` — wraps `OperationalRequirementStore.findONStrategicDocumentRefs()`. Returns `Array<{ itemId, code, title, docId, note }>` — all `(ON, ReferenceDocument, note)` triples in a single query. Called by `ChapterService._buildRefDocMap()` for the strategic-traceability generated block.
+
 ### 3.5 OperationalChangeService
 
 Extends `VersionedItemService`. Required fields: `title`, `purpose`, `initialState`, `finalState`, `domain`, `maturity` (note: `domain` is **required** on OC as on OR).
@@ -189,9 +192,8 @@ Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text),
 - `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
 - `_buildOStarMap(userId)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
-- `resolveGeneratedBlocks(itemId, editionId, userId)` — on-demand resolution for ODIP-level preview. Scans the chapter narrative for `generated-block` marks, builds the required data map per block ID via `_buildRefDocMap()`, delegates rendering to the appropriate generator, returns `{ [blockId]: content }`. Ephemeral — result is not persisted.
-- `storeGeneratedBlocks(itemId, generatedBlocks, userId)` — server-owned write path; persists the resolved `{ [blockId]: content }` map onto the chapter version. Bypasses client validation. Called at edition creation time by `ODIPEditionService`.
-- `_buildRefDocMap(editionId, userId)` — fetches all reference documents via `ReferenceDocumentService.listItems()` and, per document, all citing ONs via `OperationalRequirementService.getAll()` with `{ type: 'ON', strategicDocument: docId }` filter. Returns `{ refDocs, onsByRefDocId: Map<docId, ON[]> }`. Non-leaf documents may be cited directly — all hierarchy levels are included.
+- `resolveGeneratedBlocks(itemId, editionId, userId)` — on-demand resolution for ODIP-level preview and explore mode. Scans the chapter narrative for `generated-block` marks, builds the required data map per block ID via `_buildRefDocMap()`, delegates rendering to the appropriate generator, returns `{ [blockId]: node[] }`. Always ephemeral — never persisted.
+- `_buildRefDocMap(editionId, userId)` — fetches all reference documents via `ReferenceDocumentService.listItems()` and all `(ON, ReferenceDocument, note)` triples via a single `OperationalRequirementService.getONStrategicDocumentRefs()` call (no N+1). Groups triples in memory into `onsByRefDocId: Map<docId, ON[]>`. Non-leaf documents may be cited directly — all hierarchy levels included.
 - `_mergeConfigFields(item)` — merges `domain`, `position`, `parentCode`, and `availableBlockIds` (from `edition.json` `generatedBlocks` array) from edition config. `availableBlockIds` drives the editor toolbar — empty on domain chapters.
 
 ### 3.7 BaselineService
@@ -219,8 +221,6 @@ Standalone management service. Editions are immutable once created.
 | `exportAsAsciiDoc(editionId?, userId)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
 | `publishEdition(editionId, userId, options?)` | Full publication orchestration — see Chapter 06 |
 | `generateAntoraZip(editionId, userId, drgFilter?, introOnly?)` | Generate scoped Antora source ZIP |
-
-**Generated blocks at edition creation:** after baseline creation, `createODPEdition` iterates all chapters whose `edition.json` entry declares a non-empty `generatedBlocks` array, calls `ChapterService.resolveGeneratedBlocks()` per chapter (passing the new `editionId`), then `ChapterService.storeGeneratedBlocks()` to persist the result. This step runs once per edition and is the sole moment where `generatedBlocks` content is written to the DB.
 
 Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`). Optional: `baselineId`, `startDate` (yyyy-mm-dd lower bound for content filtering), `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The optional baseline is validated for existence before the edition is written.
 

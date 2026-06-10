@@ -156,7 +156,8 @@ Content generation is **chapter-driven**: `ODPEditionService._generateAllChapter
 
 Per chapter, inside the loop:
 
-5. **Chapter extended** — `chapterService.getById()` — narrative (TipTap JSON) + enriched `osHierarchy`.
+5. **Chapter extended** — `chapterService.getById(itemId, userId, editionId)` — narrative (TipTap JSON) + enriched `osHierarchy`.
+   5a. **Generated block resolution** — for chapters that declare `generatedBlocks` in `edition.json` (e.g. `annex-traceability`), `chapterService.resolveGeneratedBlocks()` is called immediately after the chapter fetch. The returned node arrays are substituted into the narrative via `chapterService._substituteNarrativeBlocks()` before the chapter is handed to `ChapterGenerator`. The generator receives a plain TipTap narrative with no `generated-block` marks.
 6. **Domain O\* standard** — `operationalRequirementService.getAll()` filtered to `{ domain: chapter.domain }`, edition-scoped. Contains rich-text fields needed for O* page generation.
 
 ### Stage 2 — Relationship Resolution

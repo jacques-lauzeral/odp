@@ -10,7 +10,7 @@ import OperationalChangeService from './OperationalChangeService.js';
 import ReferenceDocumentService from './ReferenceDocumentService.js';
 import { StrategicTraceabilityGenerator } from './narrative/generators/StrategicTraceabilityGenerator.js';
 import { getChapterByCode } from '../config/loader.js';
-import { normalizeId, idsEqual } from '../../../shared/src/index.js';
+import { normalizeId } from '../../../shared/src/index.js';
 
 /**
  * ChapterService provides versioned CRUD operations for Chapter entities.
@@ -374,61 +374,32 @@ export class ChapterService extends VersionedItemService {
     }
 
     /**
-     * Persist resolved generated blocks onto the chapter version.
-     * Server-owned write path — bypasses client validation.
-     * Called at edition creation time by ODIPEditionService.
-     *
-     * @param {number} itemId
-     * @param {object} generatedBlocks  — { [blockId]: content }
-     * @param {string} userId
-     * @returns {Promise<void>}
-     */
-    async storeGeneratedBlocks(itemId, generatedBlocks, userId) {
-        const tx = createTransaction(userId);
-        try {
-            const store = this.getStore();
-            const current = await store.findById(itemId, tx, null, null, 'extended');
-            if (!current) throw new Error(`Chapter ${itemId} not found`);
-            await store.update(itemId, {
-                narrative:       current.narrative,
-                osHierarchy:     current.osHierarchy,
-                generatedBlocks,
-            }, current.versionId, tx);
-            await commitTransaction(tx);
-        } catch (error) {
-            await rollbackTransaction(tx);
-            throw error;
-        }
-    }
-
-    /**
      * Build the { refDoc → [ON] } map used by narrative generators.
-     * Fetches all reference documents (flat list, hierarchy intact via parentId)
-     * and all ONs referencing each document in the given edition context.
-     *
-     * Only reference documents that are actually cited by at least one ON are included.
+     * Uses a single query to fetch all (ON, ReferenceDocument, note) triples,
+     * then groups them in memory. No N+1 queries.
      *
      * @param {number|null} editionId
      * @param {string} userId
      * @returns {Promise<{ refDocs: object[], onsByRefDocId: Map<number, object[]> }>}
      */
     async _buildRefDocMap(editionId, userId) {
-        const refDocs = await ReferenceDocumentService.listItems(userId);
-        const onsByRefDocId = new Map();
+        const [refDocs, refs] = await Promise.all([
+            ReferenceDocumentService.listItems(userId),
+            OperationalRequirementService.getONStrategicDocumentRefs(userId, editionId),
+        ]);
 
-        await Promise.all(refDocs.map(async (doc) => {
-            const ons = await OperationalRequirementService.getAll(
-                userId, editionId, { type: 'ON', strategicDocument: doc.id }, 'summary'
-            );
-            if (ons.length > 0) {
-                // Pair each ON with the note from its REFERENCES relationship to this doc
-                const onsWithNote = ons.map(on => ({
-                    ...on,
-                    _refNote: on.strategicDocuments?.find(sd => idsEqual(sd.id, doc.id))?.note ?? null,
-                }));
-                onsByRefDocId.set(normalizeId(doc.id), onsWithNote);
-            }
-        }));
+        // Group refs by docId — each entry carries itemId, code, title, note
+        const onsByRefDocId = new Map();
+        for (const ref of refs) {
+            const docId = normalizeId(ref.docId);
+            if (!onsByRefDocId.has(docId)) onsByRefDocId.set(docId, []);
+            onsByRefDocId.get(docId).push({
+                itemId:   ref.itemId,
+                code:     ref.code,
+                title:    ref.title,
+                _refNote: ref.note,
+            });
+        }
 
         return { refDocs, onsByRefDocId };
     }
@@ -489,6 +460,51 @@ export class ChapterService extends VersionedItemService {
             for (const child of node.content) {
                 this._walkTipTap(child, ids);
             }
+        }
+    }
+
+    /**
+     * Substitute generated-block marks in a TipTap narrative JSON string with
+     * the resolved node arrays. Server-side equivalent of the client-side
+     * _substituteGeneratedBlocks — used by ODPEditionService before publication.
+     *
+     * @param {string} narrativeJson   — TipTap JSON string (chapter narrative)
+     * @param {object} generatedBlocks — { [blockId]: node[] }
+     * @returns {string} — merged TipTap JSON string
+     */
+    _substituteNarrativeBlocks(narrativeJson, generatedBlocks) {
+        try {
+            const doc = JSON.parse(narrativeJson);
+            if (doc.type !== 'doc' || !Array.isArray(doc.content)) return narrativeJson;
+
+            const substitute = (nodes) => {
+                const result = [];
+                for (const node of nodes) {
+                    // Check if this block node (paragraph etc.) contains only a
+                    // generated-block mark text node — if so replace the whole block.
+                    if (Array.isArray(node.content)) {
+                        const blockMark = node.content.length === 1
+                            ? node.content[0].marks?.find(m => m.type === 'generated-block')
+                            : null;
+                        if (blockMark) {
+                            const blockId = blockMark.attrs?.id;
+                            const resolved = blockId && generatedBlocks[blockId];
+                            if (resolved && Array.isArray(resolved) && resolved.length > 0) {
+                                result.push(...resolved);
+                                continue;
+                            }
+                        }
+                        result.push({ ...node, content: substitute(node.content) });
+                    } else {
+                        result.push(node);
+                    }
+                }
+                return result;
+            };
+
+            return JSON.stringify({ ...doc, content: substitute(doc.content) });
+        } catch {
+            return narrativeJson;
         }
     }
 }

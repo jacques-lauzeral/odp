@@ -610,7 +610,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `onChange` | Function | `null` | Called with TipTap JSON string on every content change |
 | `onInternalLink` | Function | `null` | Called with `(type, value)` on internal link click in read-only mode. `type`: `'n-ref'` \| `'o-ref'` \| `'d-ref'`; `value`: the mark's value attribute. Navigation implemented by the caller. |
 | `linkProvider` | object | `null` | Supplies reference targets for the toolbar `#` picker (see §12.6). When absent, only the external-link button is shown. |
-| `availableBlockIds` | string[] | `[]` | Generated-block IDs valid for insertion in this narrative. When non-empty, registers the `generated-block` mark and adds the Insert block toolbar button (⚙). Always `[]` for O* field editors — only passed by `ChapterBody` in Elaborate mode for chapters that declare `generatedBlocks` in `edition.json`. |
+| `availableBlockIds` | string[] | `[]` | Generated-block IDs valid for insertion in this narrative. When non-empty, registers the `generated-block` mark and adds the Insert block toolbar button (⚙). Always `[]` for O* field editors — only passed by `ChapterBody` in edit mode (Elaborate) for chapters that declare `generatedBlocks` in `edition.json`. Never passed in read-only mode — resolution is handled separately by `_resolveAndSubstituteBlocks()`. |
 
 **Public API:**
 
@@ -1655,13 +1655,14 @@ Navigation between scopes (← Chapters, current chapter name) lives in the tool
 | `unassigned` | `_renderUnassigned` | O*s with no topic placement |
 | `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button available (navigates to `{base}/os/{type}/{id}`) |
 
-**Chapter narrative rendering (`_renderChapterNarrative`)** — delegates to `_initRichTextNarrative(el, chapter, editable)`. The chapter object (not just the narrative string) is passed so the renderer has access to `generatedBlocks` and `availableBlockIds`:
+**Chapter narrative rendering (`_renderChapterNarrative`)** — delegates to `_initRichTextNarrative(el, chapter, editable)`. The chapter object is passed so the renderer has access to `availableBlockIds`:
 
 - **Edit mode** — `availableBlockIds` is passed to `RichTextComponent`; `generated-block` chips are visible and insertable via the toolbar ⚙ button.
-- **Read-only + `generatedBlocks` present** (explore mode / edition context) — `_substituteGeneratedBlocks()` walks the narrative TipTap doc, replaces each `generated-block` mark node with the corresponding node array from `generatedBlocks[id]`, and passes the merged document to `RichTextComponent`. A single editor instance renders the complete resolved content.
-- **Read-only + no `generatedBlocks`** (ODIP-level preview in elaborate mode) — chips remain visible. A resolve bar is rendered above the editor with a **⚙ Resolve** button. On click, `_resolveGeneratedBlocks()` calls `POST /chapters/:id/resolve-generated-blocks`, then re-renders the narrative with the returned map substituted inline. Ephemeral — result is not persisted.
+- **Read-only** (ODIP-level preview in elaborate mode, or explore mode) — narrative is rendered immediately with chips visible as-is. If `availableBlockIds` is non-empty, `_resolveAndSubstituteBlocks()` is called asynchronously after mount: it calls `POST /chapters/:id/resolve-generated-blocks`, then substitutes the returned node arrays into the live TipTap document via `setValue`. Always dynamic — no stored blocks.
 
-`_substituteGeneratedBlocks(narrativeJson, generatedBlocks)` — walks `doc.content` recursively; when a text node carrying a `generated-block` mark is found, splices in the node array for that block ID. Nodes with unknown IDs are left as-is. Returns a merged TipTap JSON string.
+`_resolveAndSubstituteBlocks(chapter)` — async, non-blocking. Calls the resolve endpoint, passes the response to `_substituteGeneratedBlocks()`, updates the editor with `setValue`. Silently no-ops if the component was destroyed before the response arrived.
+
+`_substituteGeneratedBlocks(narrativeJson, generatedBlocks)` — pure utility. Walks `doc.content` recursively; when a text node carrying a `generated-block` mark is found, splices in the node array for that block ID. Nodes with unknown IDs are left as-is. Returns a merged TipTap JSON string.
 
 **Topic body layout** — `_renderTopic` renders in this order:
 1. **Title** — in Elaborate: `odip-input.chapter-body__topic-title` (saves on blur or Enter; reverts on Escape). In Explore: plain `<h3>`.

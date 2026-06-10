@@ -270,6 +270,8 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 **`findUntraceableORs(tx, baselineId?, editionId?, domain?)`** → `Array<{itemId, code, title, versionId}>` — ORs with no outgoing `IMPLEMENTS` and no outgoing `REFINES`; NO_SHOW ORs excluded. Called exclusively by `QualityService`.
 
+**`findONStrategicDocumentRefs(tx, baselineId?, editionId?)`** → `Array<{ itemId, code, title, docId, note }>` — fetches all `(ON)-[:REFERENCES]->(ReferenceDocument)` triples in a single query. NO_SHOW ONs excluded. Supports latest / baseline / edition contexts. Called exclusively by `OperationalRequirementService.getONStrategicDocumentRefs()`.
+
 **`findById` — `extended` projection**: performs the standard load then appends derived fields via additional reverse-traversal queries:
 
 | Derived field | Query |

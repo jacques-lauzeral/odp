@@ -602,10 +602,28 @@ export class ODPEditionService {
                 console.warn(`[generateAntoraZip] Chapter '${chapter.key}' not found in DB — skipped`);
                 continue;
             }
-            const fullChapter = await chapterService.getById(itemId, userId);
+            const fullChapter = await chapterService.getById(itemId, userId, editionId ?? null);
             if (!fullChapter) {
                 console.warn(`[generateAntoraZip] Chapter '${chapter.key}' (itemId=${itemId}) returned null from DB — skipped`);
                 continue;
+            }
+
+            // Resolve generated-block marks in narrative before publication.
+            // Annex chapters (e.g. annex-traceability) carry generated-block marks
+            // that must be substituted with live content before AsciiDoc generation.
+            if ((chapter.generatedBlocks?.length ?? 0) > 0 && fullChapter.narrative) {
+                console.log(`[generateAntoraZip] Resolving generated blocks for '${chapter.key}'...`);
+                try {
+                    const generatedBlocks = await chapterService.resolveGeneratedBlocks(
+                        itemId, editionId ?? null, userId
+                    );
+                    fullChapter.narrative = chapterService._substituteNarrativeBlocks(
+                        fullChapter.narrative, generatedBlocks
+                    );
+                    console.log('[generateAntoraZip] narrative after substitution (first 200 chars):', fullChapter.narrative?.substring(0, 200));
+                } catch (err) {
+                    console.warn(`[generateAntoraZip] Failed to resolve generated blocks for '${chapter.key}': ${err.message}`);
+                }
             }
 
             // Domain-filtered O*s at standard projection — for page generation (rich-text fields needed)
