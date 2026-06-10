@@ -185,10 +185,10 @@ Validation rules:
 
 ### 3.6 ChapterService
 
-Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object). Server-owned field: `generatedBlocks`.
+Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object).
 
 - `create()` and `delete()` are not supported — chapters are managed by server bootstrap (`initializeDatabase()`)
-- `getAll(userId)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative`, `osHierarchy`, and `generatedBlocks` excluded). O* enrichment is not performed on the list path.
+- `getAll(userId)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative` and `osHierarchy` excluded). O* enrichment is not performed on the list path.
 - `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
 - `_buildOStarMap(userId)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
