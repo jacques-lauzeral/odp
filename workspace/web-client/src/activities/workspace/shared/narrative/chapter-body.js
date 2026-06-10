@@ -259,7 +259,7 @@ export default class ChapterBody {
             }
         } else {
             if (narrative) {
-                const rt = new RichTextComponent({ readOnly: true });
+                const rt = new RichTextComponent({ readOnly: true, headings: true, images: true, tables: true });
                 rt.mount(narrativeEl);
                 rt.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
                 rt.blur();
