@@ -31,7 +31,22 @@ export class StrategicTraceabilityGenerator {
         for (const family of tree) {
             // Family root heading (e.g. "CONOPS", "Network Strategy Plan (NSP)")
             nodes.push(this._heading(2, family.name));
-            this._renderFamily(family.children, onsByRefDocId, nodes, 3);
+
+            // Render the root doc itself if it is directly cited
+            const rootCited = onsByRefDocId.has(family.id);
+            if (family.doc.url || family.doc.version) {
+                nodes.push(this._metaParagraph(family.doc));
+            }
+            if (rootCited) {
+                const ons = onsByRefDocId.get(family.id);
+                nodes.push(this._citationCount(ons.length));
+                nodes.push(this._onList(ons));
+            }
+
+            // Render children recursively
+            if (family.children.length > 0) {
+                this._renderFamily(family.children, onsByRefDocId, nodes, 3);
+            }
         }
 
         return nodes;
@@ -199,17 +214,35 @@ export class StrategicTraceabilityGenerator {
     static _onList(ons) {
         return {
             type: 'bulletList',
-            content: ons.map(on => ({
-                type: 'listItem',
-                content: [{
-                    type: 'paragraph',
-                    content: [{
+            content: ons.map(on => {
+                const label = (on.code && on.title)
+                    ? `${on.code} — ${on.title}`
+                    : (on.code ?? on.title ?? String(on.itemId));
+                const note  = on._refNote ?? null;
+
+                const inlineNodes = [
+                    {
                         type: 'text',
-                        text: on.title ?? on.code ?? String(on.itemId),
-                        marks: [{ type: 'o-ref', attrs: { value: on.code } }],
+                        text: label,
+                        marks: [{ type: 'o-ref', attrs: { value: String(on.itemId) } }],
+                    },
+                ];
+
+                if (note) {
+                    inlineNodes.push({
+                        type: 'text',
+                        text: ` (${note})`,
+                    });
+                }
+
+                return {
+                    type: 'listItem',
+                    content: [{
+                        type: 'paragraph',
+                        content: inlineNodes,
                     }],
-                }],
-            })),
+                };
+            }),
         };
     }
 }

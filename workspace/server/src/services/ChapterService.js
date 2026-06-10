@@ -10,7 +10,7 @@ import OperationalChangeService from './OperationalChangeService.js';
 import ReferenceDocumentService from './ReferenceDocumentService.js';
 import { StrategicTraceabilityGenerator } from './narrative/generators/StrategicTraceabilityGenerator.js';
 import { getChapterByCode } from '../config/loader.js';
-import { normalizeId } from '../../../shared/src/index.js';
+import { normalizeId, idsEqual } from '../../../shared/src/index.js';
 
 /**
  * ChapterService provides versioned CRUD operations for Chapter entities.
@@ -421,7 +421,12 @@ export class ChapterService extends VersionedItemService {
                 userId, editionId, { type: 'ON', strategicDocument: doc.id }, 'summary'
             );
             if (ons.length > 0) {
-                onsByRefDocId.set(normalizeId(doc.id), ons);
+                // Pair each ON with the note from its REFERENCES relationship to this doc
+                const onsWithNote = ons.map(on => ({
+                    ...on,
+                    _refNote: on.strategicDocuments?.find(sd => idsEqual(sd.id, doc.id))?.note ?? null,
+                }));
+                onsByRefDocId.set(normalizeId(doc.id), onsWithNote);
             }
         }));
 
