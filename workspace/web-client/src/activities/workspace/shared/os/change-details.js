@@ -235,7 +235,7 @@ export default class ChangeDetails {
         const showInNarrative  = this._mode === 'page'  && this._onInNarrative  != null;
 
         return `
-            <div class="os-detail">
+            <div class="os-detail${this._mode === 'page' ? ' os-detail--page' : ''}">
                 <div class="os-detail__toolbar">
                     <span class="os-detail__title">${this._esc(item.code ? `${item.code} — ${item.title ?? ''}` : (item.title ?? ''))}</span>
                     <div class="os-detail__actions">

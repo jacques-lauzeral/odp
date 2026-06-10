@@ -9,6 +9,18 @@
     flex: 1;
 }
 
+/* Page mode (full-page, mounted into the bounded OsActivity root): bound the
+   shell so .os-detail__body → .tab-panel resolves its height and scrolls.
+   In panel mode the master-detail__detail cell owns the scroll instead. */
+.os-detail--page {
+    height: 100%;
+}
+
+.os-detail--page .os-detail__body {
+    min-height: 0;
+    overflow-y: auto;
+}
+
 /* ── O* activity shell — height propagation ── */
 .os-activity {
     display: flex;

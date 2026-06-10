@@ -16,20 +16,40 @@
     border: 1px solid var(--border-primary, #e5e7eb);
     border-radius: var(--radius-md, 0.375rem);
     background: white;
+    /* O* field default — fixed height (min = max), component owns the scroll.
+       The sticky toolbar pins to the top of this box; the editor grows inside
+       and scrolls. Parent (.tab-panel) scrolls between fields. */
+    min-height: 320px;
     max-height: 320px;
+    overflow-y: auto;
 }
 
-/* Fill mode — narrative context: component fills its wrapper height */
+/* Fill mode — narrative context: component fills its wrapper height and owns
+   the scroll itself, so the parent (.chapter-body) never scrolls. */
 .rich-text-component--fill {
     flex: 1;
     min-height: 0;
     max-height: none;
+    overflow-y: auto;
 }
 
+/* Capped mode — theme narrative: behaves like fill (internal scroll, sticky
+   toolbar) but bounded between 200–800px so it shares the body with the O*
+   and subtopic lists below it. The .chapter-body--topic parent scrolls to
+   reach those lists. */
+.rich-text-component--capped {
+    min-height: 200px;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+/* Read-only — no scroll, natural full height allocated. */
 .rich-text-component--readonly {
     border: none;
     background: transparent;
+    min-height: 0;
     max-height: none;
+    overflow-y: visible;
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────────────── */
@@ -43,6 +63,9 @@
     background: var(--bg-secondary, #f9fafb);
     border-radius: var(--radius-md, 0.375rem) var(--radius-md, 0.375rem) 0 0;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 .rich-text-component__toolbar-group {
@@ -153,7 +176,6 @@
     font-size: var(--font-size-base, 1rem);
     line-height: 1.6;
     color: var(--text-primary, #111827);
-    overflow-y: auto;
 }
 
 .rich-text-component__editor .tiptap {

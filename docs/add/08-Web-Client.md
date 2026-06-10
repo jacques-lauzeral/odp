@@ -755,6 +755,34 @@ The toolbar is `position: sticky; top: 0` so it remains visible when the ancesto
 
 On selection, `_applyRef(type, value, label, url?)` applies the mark to the current selection. For `o-ref` and `n-ref`, the corresponding `OdipNRef`/`OdipORef` mark is applied. For `d-ref`, a standard `link` mark is inserted pointing to the document's `url` — no `OdipDRef` mark is used for newly authored references. When the selection is empty, the label is inserted as text first, then marked. The editor selection is captured before the overlay opens (DOM focus shift) and restored on apply via `setTextSelection`.
 
+### 12.8 Sticky Toolbar & Vertical Scroll Invariant
+
+> ⚠️ **Fragile — read before changing any `overflow` or `height` rule on a rich-text container or its ancestors.** This behaviour has regressed several times. The symptom of a break is either the toolbar scrolling out of view while editing a long narrative, or editor content overflowing onto sibling fields with no scrollbar.
+
+The sticky toolbar (`position: sticky; top: 0`) only works if **exactly one** element in the chain is the scroll container and the toolbar is a direct child of it. Two rules make this fragile:
+
+1. A `position: sticky` element sticks relative to its **nearest ancestor that has `overflow` other than `visible`**. If an intermediate wrapper has `overflow: hidden`/`auto`, the toolbar is trapped inside that wrapper (which does not itself scroll) and never pins.
+2. The scroll container must have a **definite (bounded) height**. A `height: 100%` only resolves if every ancestor up to a viewport-bounded element also has a definite height. Otherwise the element grows to content height and some unexpected outer element scrolls instead.
+
+**The invariant:** in every edit context the **`.rich-text-component` is the sole scroll container**, the toolbar is sticky relative to it, and the editor (`.rich-text-component__editor`) **never** carries its own `overflow-y` (a local scroll context on the editor traps `sticky` inside it). Read-only contexts have no scroll container — content grows naturally and an outer panel (`.master-detail__detail`) owns the scroll.
+
+Per-context sizing (all defined in `rich-text-component.css`; context applied by the owner):
+
+| Context | Modifier | Height | Scroll owner | Applied by |
+|---|---|---|---|---|
+| O* field (edit) | _(base)_ | `min-height: 320px; max-height: 320px` (fixed) | the component | `CollectionEntityForm` |
+| Chapter narrative (edit) | `--fill` | `flex: 1; min-height: 0; max-height: none` | the component | `ChapterBody._renderChapterNarrative` |
+| Theme narrative (edit) | `--capped` | `min-height: 200px; max-height: 50vh` | the component | `ChapterBody._renderTopic` |
+| Any field/narrative (read) | `--readonly` | `min-height: 0; max-height: none; overflow: visible` | outer panel | all read views |
+
+Supporting container rules that must stay consistent (in `narrative.css`):
+
+- `.chapter-body` (editable chapter): `overflow: hidden` — the `--fill` component inside is the sole scroller, so the body must **not** scroll and steal the toolbar.
+- `.chapter-body--topic` (editable theme): `overflow-y: auto` — the body **must** scroll to reach the O\* and subtopic lists below the `--capped` editor.
+- `.chapter-body--readonly`: `overflow: visible` — lets `.master-detail__detail` own the scroll (preserves the read-only scrollbar fix).
+
+For the full-page O\* read view, the equivalent rule lives in `os.css`: `.os-detail--page` is bounded (`height: 100%`) and `.os-detail--page .os-detail__body` scrolls (`min-height: 0; overflow-y: auto`); panel mode is unbounded and lets `.master-detail__detail` scroll instead (see §18 detail-view notes).
+
 ---
 
 ## 13. Edition Context

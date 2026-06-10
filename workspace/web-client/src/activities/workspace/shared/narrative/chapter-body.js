@@ -171,7 +171,7 @@ export default class ChapterBody {
         const isEmpty    = items.length === 0 && subTopics.length === 0;
 
         this.container.innerHTML = `
-            <div class="chapter-body chapter-body--padded${editable ? '' : ' chapter-body--readonly'}">
+            <div class="chapter-body chapter-body--padded${editable ? ' chapter-body--topic' : ' chapter-body--readonly'}">
                 <div class="chapter-body__header">
                     ${editable ? `
                         <input class="odip-input chapter-body__topic-title"
@@ -253,7 +253,7 @@ export default class ChapterBody {
                 onInternalLink: (type, value) => this._handleInternalLink(type, value),
             });
             this._richText.mount(narrativeEl);
-            narrativeEl.classList.add('rich-text-component--fill');
+            narrativeEl.classList.add('rich-text-component--capped');
             if (narrative) {
                 this._richText.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
             }
