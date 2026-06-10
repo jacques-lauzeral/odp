@@ -85,7 +85,8 @@ services/
 ├── narrative/
 │   └── generators/               ← pure generated-block renderers (called by ChapterService)
 │       ├── StrategicTraceabilityGenerator.js  ← annex-traceability block
-│       └── PortfolioTableGenerator.js         ← portfolio-table block
+│       ├── PortfolioTableGenerator.js         ← portfolio-table block
+│       └── PortfolioChartGenerator.js         ← portfolio-chart block (SVG, server-side)
 └── publication/
     └── generators/
         └── ChapterGenerator.js   ← one instance per chapter; DB narrative + O* pages
