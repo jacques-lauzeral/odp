@@ -209,18 +209,18 @@ Inherits `VersionedItemStore → BaseStore`. Chapters have no graph relationship
 
 | Projection | Fields included |
 |---|---|
-| `'standard'` | All identity and scalar fields — excludes `narrative` and `osHierarchy` |
-| `'extended'` | All fields including `narrative` and `osHierarchy` |
+| `'standard'` | All identity and scalar fields — excludes `narrative`, `osHierarchy`, and `generatedBlocks` |
+| `'extended'` | All fields including `narrative`, `osHierarchy`, and `generatedBlocks` |
 
 **Additional public methods:**
 
 **`findByCode(code, tx)`** → `object|null` — find a chapter by its stable config code. Used by `initializeDatabase()` to check existence before creating. Always returns `extended` projection.
 
-**`createChapter(code, title, tx)`** — bootstrap-only creation. Stores `code` and `title` on the item node; initialises version with empty `narrative` and null `jsonOsHierarchy`.
+**`createChapter(code, title, tx)`** — bootstrap-only creation. Stores `code` and `title` on the item node; initialises version with empty `narrative`, null `jsonOsHierarchy`, and null `jsonGeneratedBlocks`.
 
-**`findAll(tx, projection?)`** → all chapters ordered by item ID. Defaults to `'standard'` projection — `narrative` and `osHierarchy` are excluded. Config-owned fields are merged by `ChapterService`.
+**`findAll(tx, projection?)`** → all chapters ordered by item ID. Defaults to `'standard'` projection — `narrative`, `osHierarchy`, and `generatedBlocks` are excluded. Config-owned fields are merged by `ChapterService`.
 
-**`findById(itemId, tx, baselineId?, editionId?, projection?)`** → single chapter; defaults to `'extended'` projection. Accepts `editionId` for API symmetry but **drops it** before delegating to `super.findById` — only `baselineId` is forwarded. Chapters are implicitly present in every edition; their `HAS_ITEMS` relationships are never marked with edition IDs by `_computeEditionVersionIds`, so applying the `$editionId IN r.editions` filter would always return no results. The baseline context alone gives the correct snapshot. Strips `narrative`/`osHierarchy` from the result if `'standard'` projection is requested. Returns `null` if not found.
+**`findById(itemId, tx, baselineId?, editionId?, projection?)`** → single chapter; defaults to `'extended'` projection. Accepts `editionId` for API symmetry but **drops it** before delegating to `super.findById` — only `baselineId` is forwarded. Chapters are implicitly present in every edition; their `HAS_ITEMS` relationships are never marked with edition IDs by `_computeEditionVersionIds`, so applying the `$editionId IN r.editions` filter would always return no results. The baseline context alone gives the correct snapshot. Strips `narrative`/`osHierarchy`/`generatedBlocks` from the result if `'standard'` projection is requested. Returns `null` if not found.
 
 Config fields absent in `edition-config` (e.g. after a config drift) are set to `null` rather than throwing — drift is visible at read time rather than fatal.
 

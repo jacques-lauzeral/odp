@@ -18,13 +18,13 @@ export const DomainsConfig = {
 };
 
 export const ChapterEntry = {
-    key: '',            // stable identifier — used for bootstrap DB matching
-    title: '',          // display title — config-owned, not user-editable
-    position: 0,        // ordering within parent
-    domain: '',         // domain key — absent on pure narrative chapters
-    template: '',       // publication template key — drives renderer for generated sections
-    subChapters: [],    // ChapterEntry[] — optional, max one level
-    parentKey: ''       // parent chapter key — set on sub-chapters by getChapters()
+    key: '',              // stable identifier — used for bootstrap DB matching
+    title: '',            // display title — config-owned, not user-editable
+    position: 0,          // ordering within parent
+    domain: '',           // domain key — absent on pure narrative chapters
+    generatedBlocks: [],  // string[] — block IDs available for insertion in this chapter's narrative
+    subChapters: [],      // ChapterEntry[] — optional, max one level
+    parentKey: ''         // parent chapter key — set on sub-chapters by getChapters()
 };
 
 export const EditionConfig = {

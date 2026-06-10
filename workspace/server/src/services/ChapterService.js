@@ -7,6 +7,8 @@ import {
 } from '../store/index.js';
 import OperationalRequirementService from './OperationalRequirementService.js';
 import OperationalChangeService from './OperationalChangeService.js';
+import ReferenceDocumentService from './ReferenceDocumentService.js';
+import { StrategicTraceabilityGenerator } from './narrative/generators/StrategicTraceabilityGenerator.js';
 import { getChapterByCode } from '../config/loader.js';
 import { normalizeId } from '../../../shared/src/index.js';
 
@@ -28,8 +30,11 @@ import { normalizeId } from '../../../shared/src/index.js';
  * Field contract:
  * - Callers pass and receive osHierarchy (object or null).
  * - Serialization to/from jsonOsHierarchy is handled exclusively by ChapterStore.
- * - Config-owned fields (domain, position, parentCode) are merged here
- *   from edition-config after every store read, keyed on item.code.
+ * - generatedBlocks is server-owned — never written by clients.
+ *   Populated at edition creation via storeGeneratedBlocks(); resolved on demand
+ *   for preview via resolveGeneratedBlocks().
+ * - Config-owned fields (domain, position, parentCode, generatedBlocks IDs) are merged
+ *   here from edition-config after every store read, keyed on item.code.
  * - osHierarchy items are enriched on read: bare integer ids replaced with
  *   { id, type, code, title } objects resolved from O* stores.
  *   On write, callers still send bare integer ids — validation unchanged.
@@ -237,6 +242,8 @@ export class ChapterService extends VersionedItemService {
         return {
             narrative:   patchPayload.narrative   !== undefined ? patchPayload.narrative   : current.narrative,
             osHierarchy: patchPayload.osHierarchy !== undefined ? patchPayload.osHierarchy : current.osHierarchy,
+            // generatedBlocks is server-owned — never inherited from patchPayload
+            generatedBlocks: current.generatedBlocks ?? null,
         };
     }
 
@@ -263,9 +270,10 @@ export class ChapterService extends VersionedItemService {
         const configEntry = getChapterByCode(item.code);
         return {
             ...item,
-            domain:     configEntry?.domain     ?? null,
-            position:   configEntry?.position   ?? null,
-            parentCode: configEntry?.parentKey  ?? configEntry?.parentCode ?? null,
+            domain:              configEntry?.domain          ?? null,
+            position:            configEntry?.position        ?? null,
+            parentCode:          configEntry?.parentKey       ?? configEntry?.parentCode ?? null,
+            availableBlockIds:   configEntry?.generatedBlocks ?? [],
         };
     }
 
@@ -330,6 +338,151 @@ export class ChapterService extends VersionedItemService {
             }
             for (const sub of topic.subtopics) {
                 this._validateOsHierarchyTopic(sub);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Generated blocks
+    // -------------------------------------------------------------------------
+
+    /**
+     * Resolve all generated-block marks in a chapter narrative on demand.
+     * Ephemeral — result is NOT persisted. Used for ODIP-level preview in elaborate mode.
+     *
+     * Scans the chapter narrative for generated-block marks, builds the required
+     * data map per block ID, delegates rendering to the appropriate generator,
+     * and returns { [blockId]: content }.
+     *
+     * @param {number} itemId
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<object>} { [blockId]: node[] } — node arrays ready for splicing
+     */
+    async resolveGeneratedBlocks(itemId, editionId, userId) {
+        const chapter = await this.getById(itemId, userId, editionId, 'extended');
+        if (!chapter) throw new Error(`Chapter ${itemId} not found`);
+
+        const blockIds = this._extractGeneratedBlockIds(chapter.narrative);
+        if (blockIds.length === 0) return {};
+
+        const result = {};
+        for (const blockId of blockIds) {
+            result[blockId] = await this._resolveBlock(blockId, editionId, userId);
+        }
+        return result;
+    }
+
+    /**
+     * Persist resolved generated blocks onto the chapter version.
+     * Server-owned write path — bypasses client validation.
+     * Called at edition creation time by ODIPEditionService.
+     *
+     * @param {number} itemId
+     * @param {object} generatedBlocks  — { [blockId]: content }
+     * @param {string} userId
+     * @returns {Promise<void>}
+     */
+    async storeGeneratedBlocks(itemId, generatedBlocks, userId) {
+        const tx = createTransaction(userId);
+        try {
+            const store = this.getStore();
+            const current = await store.findById(itemId, tx, null, null, 'extended');
+            if (!current) throw new Error(`Chapter ${itemId} not found`);
+            await store.update(itemId, {
+                narrative:       current.narrative,
+                osHierarchy:     current.osHierarchy,
+                generatedBlocks,
+            }, current.versionId, tx);
+            await commitTransaction(tx);
+        } catch (error) {
+            await rollbackTransaction(tx);
+            throw error;
+        }
+    }
+
+    /**
+     * Build the { refDoc → [ON] } map used by narrative generators.
+     * Fetches all reference documents (flat list, hierarchy intact via parentId)
+     * and all ONs referencing each document in the given edition context.
+     *
+     * Only reference documents that are actually cited by at least one ON are included.
+     *
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<{ refDocs: object[], onsByRefDocId: Map<number, object[]> }>}
+     */
+    async _buildRefDocMap(editionId, userId) {
+        const refDocs = await ReferenceDocumentService.listItems(userId);
+        const onsByRefDocId = new Map();
+
+        await Promise.all(refDocs.map(async (doc) => {
+            const ons = await OperationalRequirementService.getAll(
+                userId, editionId, { type: 'ON', strategicDocument: doc.id }, 'summary'
+            );
+            if (ons.length > 0) {
+                onsByRefDocId.set(normalizeId(doc.id), ons);
+            }
+        }));
+
+        return { refDocs, onsByRefDocId };
+    }
+
+    /**
+     * Resolve a single generated block by ID.
+     *
+     * @param {string} blockId
+     * @param {number|null} editionId
+     * @param {string} userId
+     * @returns {Promise<object[]>} TipTap node array — splice into narrative at placeholder position
+     */
+    async _resolveBlock(blockId, editionId, userId) {
+        switch (blockId) {
+            case 'strategic-traceability': {
+                const { refDocs, onsByRefDocId } = await this._buildRefDocMap(editionId, userId);
+                return StrategicTraceabilityGenerator.generate(refDocs, onsByRefDocId);
+            }
+            default:
+                throw new Error(`Unknown generated block ID: ${blockId}`);
+        }
+    }
+
+    /**
+     * Extract all unique generated-block IDs from a TipTap narrative JSON string.
+     *
+     * @param {string|null} narrative
+     * @returns {string[]}
+     */
+    _extractGeneratedBlockIds(narrative) {
+        if (!narrative) return [];
+        try {
+            const doc = typeof narrative === 'string' ? JSON.parse(narrative) : narrative;
+            const ids = new Set();
+            this._walkTipTap(doc, ids);
+            return [...ids];
+        } catch {
+            return [];
+        }
+    }
+
+    /**
+     * Recursively walk a TipTap document collecting generated-block mark IDs.
+     *
+     * @param {object} node
+     * @param {Set<string>} ids
+     */
+    _walkTipTap(node, ids) {
+        if (!node) return;
+        if (node.marks) {
+            for (const mark of node.marks) {
+                if (mark.type === 'generated-block' && mark.attrs?.id) {
+                    ids.add(mark.attrs.id);
+                }
+            }
+        }
+        if (Array.isArray(node.content)) {
+            for (const child of node.content) {
+                this._walkTipTap(child, ids);
             }
         }
     }

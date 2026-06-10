@@ -206,6 +206,52 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
+  /chapters/{id}/resolve-generated-blocks:
+    post:
+      summary: Resolve generated-block marks in the chapter narrative (elaborate mode preview)
+      tags: [Chapters]
+      description: |
+        Scans the chapter narrative for generated-block marks, computes the content
+        for each block ID against the live dataset, and returns the resolved map.
+        Ephemeral — result is not persisted. Intended for ODIP-level preview in elaborate mode only.
+        In explore mode, generatedBlocks are already included in GET /chapters/{id}?edition={id}.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Chapter Item ID
+      responses:
+        '200':
+          description: Success — resolved generated blocks map
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Map of block ID to resolved TipTap content fragment
+                additionalProperties:
+                  type: object
+                  description: TipTap document fragment
+        '400':
+          description: Bad Request — missing x-user-id or unknown block ID
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Chapter not found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
 tags:
   - name: Chapters
     description: Chapter management — narrative and O* presentation hierarchy for ODIP Editions

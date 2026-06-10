@@ -134,7 +134,7 @@ export default class ChapterBody {
 
     _renderChapterNarrative(chapter, editable) {
         const title = this._esc(chapter.title ?? chapter.code ?? '');
-
+        console.log(chapter.availableBlockIds)
         this.container.innerHTML = `
             <div class="chapter-body chapter-body--padded${editable ? '' : ' chapter-body--readonly'}">
                 <div class="chapter-body__header">
@@ -153,11 +153,63 @@ export default class ChapterBody {
         `;
 
         const editorEl = this.container.querySelector('#chapterNarrativeEditor');
-        this._initRichTextNarrative(editorEl, chapter.narrative, editable);
+        this._initRichTextNarrative(editorEl, chapter, editable);
 
         if (editable) {
             this.container.querySelector('.chapter-body__save')
                 ?.addEventListener('click', () => this._saveNarrative(chapter));
+        }
+
+        // ODIP-level read-only: show Resolve button when generated blocks are declared
+        // but not yet computed (elaborate mode — no edition context, no stored generatedBlocks).
+        const hasBlockIds    = (chapter.availableBlockIds?.length ?? 0) > 0;
+        const hasResolved    = chapter.generatedBlocks != null;
+        if (!editable && hasBlockIds && !hasResolved) {
+            const resolveBar = document.createElement('div');
+            resolveBar.className = 'chapter-body__resolve-bar';
+            resolveBar.innerHTML = `
+                <span class="chapter-body__resolve-hint">This chapter contains generated blocks.</span>
+                <button class="odip-btn odip-btn--standard chapter-body__resolve-btn">⚙ Resolve</button>
+            `;
+            this.container.querySelector('.chapter-body__editor-wrap')
+                ?.insertAdjacentElement('beforebegin', resolveBar);
+
+            resolveBar.querySelector('.chapter-body__resolve-btn')
+                ?.addEventListener('click', () => this._resolveGeneratedBlocks(chapter, resolveBar));
+        }
+    }
+
+    /**
+     * On-demand resolution of generated blocks for ODIP-level read-only preview.
+     * Calls POST /chapters/:id/resolve-generated-blocks, then re-renders the
+     * narrative with placeholders substituted.
+     *
+     * @param {object}      chapter
+     * @param {HTMLElement} resolveBar — the bar element to update with status
+     */
+    async _resolveGeneratedBlocks(chapter, resolveBar) {
+        const btn = resolveBar.querySelector('.chapter-body__resolve-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⚙ Resolving…'; }
+
+        try {
+            const generatedBlocks = await apiClient.post(
+                `/chapters/${chapter.itemId}/resolve-generated-blocks`
+            );
+
+            // Re-render narrative with resolved blocks substituted
+            const editorEl = this.container.querySelector('#chapterNarrativeEditor');
+            if (editorEl) {
+                this._destroyRichText();
+                const chapterWithBlocks = { ...chapter, generatedBlocks };
+                this._initRichTextNarrative(editorEl, chapterWithBlocks, false);
+                this._richText.blur();
+            }
+
+            resolveBar.remove();
+        } catch (error) {
+            if (btn) { btn.disabled = false; btn.textContent = '⚙ Resolve'; }
+            const hint = resolveBar.querySelector('.chapter-body__resolve-hint');
+            if (hint) hint.textContent = 'Resolution failed — please try again.';
         }
     }
 
@@ -475,14 +527,19 @@ export default class ChapterBody {
     // Narrative save
     // =========================================================================
 
-    _initRichTextNarrative(el, deltaJson, editable) {
+    _initRichTextNarrative(el, chapter, editable) {
+        const narrative        = chapter.narrative ?? null;
+        const generatedBlocks  = chapter.generatedBlocks ?? null;
+        const availableBlockIds = chapter.availableBlockIds ?? [];
+
         this._richText = new RichTextComponent({
-            readOnly:    !editable,
-            headings:    true,
-            images:      true,
-            tables:      true,
-            placeholder: 'Write chapter narrative…',
-            linkProvider: editable
+            readOnly:         !editable,
+            headings:         true,
+            images:           true,
+            tables:           true,
+            placeholder:      'Write chapter narrative…',
+            availableBlockIds: editable ? availableBlockIds : [],
+            linkProvider:     editable
                 ? (this._linkProvider ??= buildLinkProvider(this._app))
                 : null,
             onChange: () => {
@@ -497,12 +554,63 @@ export default class ChapterBody {
         this._richText.mount(el);
         el.classList.add('rich-text-component--fill');
 
-        if (deltaJson) {
-            this._richText.setValue(typeof deltaJson === 'string' ? deltaJson : JSON.stringify(deltaJson));
+        if (narrative) {
+            // In read-only mode, substitute generated-block placeholders with
+            // resolved content before rendering — produces a single merged doc.
+            const content = (!editable && generatedBlocks)
+                ? this._substituteGeneratedBlocks(narrative, generatedBlocks)
+                : (typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
+            this._richText.setValue(content);
         }
 
         if (!editable) {
             this._richText.blur();
+        }
+    }
+
+    /**
+     * Substitute generated-block marks in a TipTap narrative JSON string with
+     * the resolved node arrays from generatedBlocks.
+     *
+     * Walks the doc content array; when a text node carrying a generated-block
+     * mark is found, it is replaced by the stored node array for that block ID.
+     * Nodes with unknown or missing block IDs are left as-is (chip still visible).
+     *
+     * @param {string} narrativeJson  — TipTap JSON string (chapter narrative)
+     * @param {object} generatedBlocks — { [blockId]: node[] }
+     * @returns {string} — merged TipTap JSON string
+     */
+    _substituteGeneratedBlocks(narrativeJson, generatedBlocks) {
+        try {
+            const doc = JSON.parse(narrativeJson);
+            if (doc.type !== 'doc' || !Array.isArray(doc.content)) return narrativeJson;
+
+            const substitute = (nodes) => {
+                const result = [];
+                for (const node of nodes) {
+                    const blockMark = node.marks?.find(m => m.type === 'generated-block');
+                    if (blockMark) {
+                        const blockId = blockMark.attrs?.id;
+                        const resolved = blockId && generatedBlocks[blockId];
+                        if (resolved && Array.isArray(resolved) && resolved.length > 0) {
+                            result.push(...resolved);
+                            continue;
+                        }
+                        // No resolved content — keep placeholder node as-is
+                    }
+                    // Recurse into block nodes (paragraphs, lists, etc.)
+                    if (Array.isArray(node.content)) {
+                        result.push({ ...node, content: substitute(node.content) });
+                    } else {
+                        result.push(node);
+                    }
+                }
+                return result;
+            };
+
+            return JSON.stringify({ ...doc, content: substitute(doc.content) });
+        } catch {
+            return narrativeJson;
         }
     }
 

@@ -364,3 +364,46 @@
 .rich-text-component__editor--ctrl [data-d-ref] {
     cursor: pointer;
 }
+/* ── Generated block chip (edit mode placeholder) ───────────────────────────── */
+
+.rich-text-component__editor .tiptap .generated-block-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 0.25rem);
+    padding: 1px var(--space-2, 0.5rem);
+    background: var(--primary-100, #e0f2fe);
+    border: 1px dashed var(--ec-blue, #185FA5);
+    border-radius: var(--radius-base, 0.25rem);
+    color: var(--ec-blue, #185FA5);
+    font-size: var(--font-size-sm, 0.875rem);
+    font-weight: 500;
+    cursor: default;
+    user-select: none;
+    white-space: nowrap;
+    min-width: 20px;
+    min-height: 1em;
+}
+
+.rich-text-component__editor .tiptap .generated-block-chip::before {
+    content: '⚙ ' attr(data-generated-block);
+    pointer-events: none;
+}
+
+/* ── Chapter body resolve bar ────────────────────────────────────────────────── */
+
+.chapter-body__resolve-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 0.75rem);
+    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+    background: var(--bg-secondary, #f9fafb);
+    border: 1px solid var(--border-primary, #e5e7eb);
+    border-radius: var(--radius-base, 0.25rem);
+    margin-bottom: var(--space-2, 0.5rem);
+}
+
+.chapter-body__resolve-hint {
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--text-secondary, #6b7280);
+    flex: 1;
+}

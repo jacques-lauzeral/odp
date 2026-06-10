@@ -77,19 +77,20 @@ export const OsHierarchy = {
  * @property {string|null}      parentCode  — config-owned; parent chapter code (null for root chapters)
  */
 export const Chapter = {
-    itemId:      null,
-    code:        null,
-    title:       null,
-    versionId:   null,
-    version:     null,
-    createdAt:   null,
-    createdBy:   null,
-    narrative:   null,
-    osHierarchy: null,
+    itemId:          null,
+    code:            null,
+    title:           null,
+    versionId:       null,
+    version:         null,
+    createdAt:       null,
+    createdBy:       null,
+    narrative:       null,
+    osHierarchy:     null,
+    generatedBlocks: null, // { [blockId]: content } | null — server-owned; populated at edition creation
     // config-owned
-    domain:      null,
-    position:    null,
-    parentCode:  null,
+    domain:          null,
+    position:        null,
+    parentCode:      null,
 };
 
 /**

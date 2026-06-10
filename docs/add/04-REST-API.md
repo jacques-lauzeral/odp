@@ -56,15 +56,18 @@ DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, mile
 `chapter.js` is a hand-written router (not a `VersionedItemRouter` subclass — chapters have no `create`/`delete` and `getAll` takes no edition context or content filters):
 
 ```
-GET    /                          → service.getAll(userId)
-GET    /:id                       → service.getById(id, userId, editionId?)
-GET    /:id/versions              → service.getVersionHistory(id, userId)
-GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, userId)
-PUT    /:id                       → service.update(id, body, expectedVersionId, userId)
-PATCH  /:id                       → service.patch(id, body, expectedVersionId, userId)
+GET    /                                      → service.getAll(userId)
+GET    /:id                                   → service.getById(id, userId, editionId?)
+GET    /:id/versions                          → service.getVersionHistory(id, userId)
+GET    /:id/versions/:versionNum              → service.getByIdAndVersion(id, versionNum, userId)
+PUT    /:id                                   → service.update(id, body, expectedVersionId, userId)
+PATCH  /:id                                   → service.patch(id, body, expectedVersionId, userId)
+POST   /:id/resolve-generated-blocks         → service.resolveGeneratedBlocks(id, null, userId)
 ```
 
-All GET routes allow anonymous access (`getUserIdOptional`). PUT and PATCH require `x-user-id`.
+All GET routes allow anonymous access (`getUserIdOptional`). PUT, PATCH, and POST require `x-user-id`.
+
+`POST /:id/resolve-generated-blocks` — elaborate mode only; scans the chapter narrative for `generated-block` marks and returns the resolved `{ [blockId]: content }` map. Ephemeral — result is not persisted. In explore mode, `generatedBlocks` are already present in the `GET /:id?edition=` response.
 
 ### 2.4 Management Entity Routers
 

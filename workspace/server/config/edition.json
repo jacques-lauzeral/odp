@@ -33,7 +33,7 @@
     { "key": "crisis",        "title": "Crisis", "position": 9, "domain": "CRISIS" },
     { "key": "faas",       "title": "FAAS",                     "position": 10, "domain": "FAAS" },
     { "key": "wayforward","title": "Way Forward",              "position": 11 },
-    { "key": "annex-acronyms",     "title": "Acronyms",              "position": 12, "template": "acronyms" },
-    { "key": "annex-traceability", "title": "Strategic Traceability", "position": 13, "template": "strategic-traceability" }
+    { "key": "annex-acronyms",     "title": "Acronyms",              "position": 12 },
+    { "key": "annex-traceability", "title": "Strategic Traceability", "position": 13, "generatedBlocks": ["strategic-traceability"] }
   ]
 }

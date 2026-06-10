@@ -610,6 +610,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `onChange` | Function | `null` | Called with TipTap JSON string on every content change |
 | `onInternalLink` | Function | `null` | Called with `(type, value)` on internal link click in read-only mode. `type`: `'n-ref'` \| `'o-ref'` \| `'d-ref'`; `value`: the mark's value attribute. Navigation implemented by the caller. |
 | `linkProvider` | object | `null` | Supplies reference targets for the toolbar `#` picker (see §12.6). When absent, only the external-link button is shown. |
+| `availableBlockIds` | string[] | `[]` | Generated-block IDs valid for insertion in this narrative. When non-empty, registers the `generated-block` mark and adds the Insert block toolbar button (⚙). Always `[]` for O* field editors — only passed by `ChapterBody` in Elaborate mode for chapters that declare `generatedBlocks` in `edition.json`. |
 
 **Public API:**
 
@@ -622,7 +623,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `focus()` | Focus the editor (edit mode only) |
 | `blur()` | Blur the editor |
 
-**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`, `odipLinkClick` (custom ProseMirror plugin — see §12.7).
+**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`, `GeneratedBlockMark`, `odipLinkClick` (custom ProseMirror plugin — see §12.7).
 
 **Internal reference marks** — three mark extensions (`OdipNRef`, `OdipORef`, `OdipDRef`) that both preserve round-tripped content and support authoring via set/unset commands:
 
@@ -631,6 +632,7 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}" data-label="{label}">` | `value`, `label` | Narrative reference: `{chapterId}[/{topicId}]` |
 | `o-ref` (`OdipORef`) | `<span data-o-ref="{value}" data-label="{label}">` | `value`, `label` | O* reference: opaque O* itemId |
 | `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}" data-label="{label}">` | `value`, `label` | Strategic document reference: refdoc id — **legacy/imported content only** (see §12.6) |
+| `generated-block` (`GeneratedBlockMark`) | `<span data-generated-block="{id}" class="generated-block-chip">` | `id` | Generated content placeholder — chapter narratives only. In edit mode rendered as a non-editable ⚙ chip. In read-only mode `ChapterBody` substitutes the mark with resolved node arrays before passing the document to `RichTextComponent` (see §18.5). |
 
 Each mark stores two attributes: `value` (the stable target identifier) and `label` (cached display text — code/title/name — may be absent on legacy imported marks). Each mark exposes `set{X}({ value, label })` / `unset{X}()` TipTap commands for programmatic authoring.
 
@@ -743,6 +745,7 @@ The toolbar is organised in groups (`.rich-text-component__toolbar-group`), rend
 | Edit | Plain click | Passed through — ProseMirror places the cursor normally |
 | Images | 🖼 Insert image | `images: true` only |
 | Tables | ⊞ Insert · +row · -row · +col · -col · ✕tbl | `tables: true` only |
+| Generated blocks | ⚙ Insert generated block (single button or dropdown) | `availableBlockIds` non-empty only |
 
 The toolbar is `position: sticky; top: 0` so it remains visible when the ancestor container scrolls.
 
@@ -1651,6 +1654,14 @@ Navigation between scopes (← Chapters, current chapter name) lives in the tool
 | `subtopic-by-id` | — | Synthetic entry fired by subtheme card click; intercepted by `NarrativeActivity._handleChapterTocSelect` which delegates to `ChapterToc.setActiveByTopicId` and returns — re-enters as `topic` |
 | `unassigned` | `_renderUnassigned` | O*s with no topic placement |
 | `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button available (navigates to `{base}/os/{type}/{id}`) |
+
+**Chapter narrative rendering (`_renderChapterNarrative`)** — delegates to `_initRichTextNarrative(el, chapter, editable)`. The chapter object (not just the narrative string) is passed so the renderer has access to `generatedBlocks` and `availableBlockIds`:
+
+- **Edit mode** — `availableBlockIds` is passed to `RichTextComponent`; `generated-block` chips are visible and insertable via the toolbar ⚙ button.
+- **Read-only + `generatedBlocks` present** (explore mode / edition context) — `_substituteGeneratedBlocks()` walks the narrative TipTap doc, replaces each `generated-block` mark node with the corresponding node array from `generatedBlocks[id]`, and passes the merged document to `RichTextComponent`. A single editor instance renders the complete resolved content.
+- **Read-only + no `generatedBlocks`** (ODIP-level preview in elaborate mode) — chips remain visible. A resolve bar is rendered above the editor with a **⚙ Resolve** button. On click, `_resolveGeneratedBlocks()` calls `POST /chapters/:id/resolve-generated-blocks`, then re-renders the narrative with the returned map substituted inline. Ephemeral — result is not persisted.
+
+`_substituteGeneratedBlocks(narrativeJson, generatedBlocks)` — walks `doc.content` recursively; when a text node carrying a `generated-block` mark is found, splices in the node array for that block ID. Nodes with unknown IDs are left as-is. Returns a merged TipTap JSON string.
 
 **Topic body layout** — `_renderTopic` renders in this order:
 1. **Title** — in Elaborate: `odip-input.chapter-body__topic-title` (saves on blur or Enter; reverts on Escape). In Explore: plain `<h3>`.

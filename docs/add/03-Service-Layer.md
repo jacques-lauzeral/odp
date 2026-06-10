@@ -182,13 +182,17 @@ Validation rules:
 
 ### 3.6 ChapterService
 
-Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object).
+Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object). Server-owned field: `generatedBlocks`.
 
 - `create()` and `delete()` are not supported — chapters are managed by server bootstrap (`initializeDatabase()`)
-- `getAll(userId)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative` and `osHierarchy` excluded). O* enrichment is not performed on the list path.
-- `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
+- `getAll(userId)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative`, `osHierarchy`, and `generatedBlocks` excluded). O* enrichment is not performed on the list path.
+- `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
 - `_buildOStarMap(userId)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
+- `resolveGeneratedBlocks(itemId, editionId, userId)` — on-demand resolution for ODIP-level preview. Scans the chapter narrative for `generated-block` marks, builds the required data map per block ID via `_buildRefDocMap()`, delegates rendering to the appropriate generator, returns `{ [blockId]: content }`. Ephemeral — result is not persisted.
+- `storeGeneratedBlocks(itemId, generatedBlocks, userId)` — server-owned write path; persists the resolved `{ [blockId]: content }` map onto the chapter version. Bypasses client validation. Called at edition creation time by `ODIPEditionService`.
+- `_buildRefDocMap(editionId, userId)` — fetches all reference documents via `ReferenceDocumentService.listItems()` and, per document, all citing ONs via `OperationalRequirementService.getAll()` with `{ type: 'ON', strategicDocument: docId }` filter. Returns `{ refDocs, onsByRefDocId: Map<docId, ON[]> }`. Non-leaf documents may be cited directly — all hierarchy levels are included.
+- `_mergeConfigFields(item)` — merges `domain`, `position`, `parentCode`, and `availableBlockIds` (from `edition.json` `generatedBlocks` array) from edition config. `availableBlockIds` drives the editor toolbar — empty on domain chapters.
 
 ### 3.7 BaselineService
 
@@ -215,6 +219,8 @@ Standalone management service. Editions are immutable once created.
 | `exportAsAsciiDoc(editionId?, userId)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
 | `publishEdition(editionId, userId, options?)` | Full publication orchestration — see Chapter 06 |
 | `generateAntoraZip(editionId, userId, drgFilter?, introOnly?)` | Generate scoped Antora source ZIP |
+
+**Generated blocks at edition creation:** after baseline creation, `createODPEdition` iterates all chapters whose `edition.json` entry declares a non-empty `generatedBlocks` array, calls `ChapterService.resolveGeneratedBlocks()` per chapter (passing the new `editionId`), then `ChapterService.storeGeneratedBlocks()` to persist the result. This step runs once per edition and is the sole moment where `generatedBlocks` content is written to the DB.
 
 Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`). Optional: `baselineId`, `startDate` (yyyy-mm-dd lower bound for content filtering), `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The optional baseline is validated for existence before the edition is written.
 
