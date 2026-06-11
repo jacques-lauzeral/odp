@@ -72,7 +72,7 @@ all.filter(c => c.domain)
    .forEach(slug => process.stdout.write('${ODIP_HOME}/publication/works-' + slug + '\n'));
 " "$edition_json"
     else
-        echo "Warning: edition.json not found — per-domain works dirs will not be created" >&2
+        echo "Warning: edition.json not found  per-domain works dirs will not be created" >&2
     fi
 }
 
@@ -98,7 +98,7 @@ deploy_config_files() {
             cp "${config_src}/${f}" "${config_dst}/${f}"
             log "Deployed config: ${config_dst}/${f}"
         else
-            log "Warning: config file not found — skipping: ${config_src}/${f}"
+            log "Warning: config file not found  skipping: ${config_src}/${f}"
         fi
     done
 }
@@ -153,10 +153,7 @@ neo4j_start() {
 
 install_host_dependencies() {
     log "Installing host dependencies (server, web-client, cli)"
-    for workspace in server web-client cli; do
-        log "npm install: workspace/$workspace"
-        (cd "${ODIP_REPO}/workspace/$workspace" && npm install)
-    done
+    (cd "${ODIP_REPO}" && npm install)
 }
 
 build_web_client() {
@@ -167,6 +164,10 @@ build_web_client() {
     if [[ "${ODIP_NPM_MODE:-podman}" == "host" ]]; then
         npm_arg="false"
         build_arg="false"
+        # Mirror Dockerfile: copy shared src so Vite can resolve /shared/src/index.js
+        mkdir -p "${ODIP_REPO}/workspace/web-client/src/shared/src"
+        cp -r "${ODIP_REPO}/workspace/shared/src/." \
+              "${ODIP_REPO}/workspace/web-client/src/shared/src/"
         # Run Vite build on the host (proxy-aware npm environment)
         log "Building web client on host (Vite)"
         (cd "${ODIP_REPO}/workspace/web-client" && npm run build)
@@ -230,7 +231,7 @@ Options:
   -h, --help          Show this help
 
 Gem install modes (ODIP_GEM_MODE):
-  podman   gem install from rubygems.org during image build (default — personal env)
+  podman   gem install from rubygems.org during image build (default  personal env)
   host     gem install via proxy URL extracted from ~/.gemrc http-proxy or https-proxy (EC env)
 
 Notes:
@@ -281,12 +282,12 @@ EOF
             exit 1
         fi
     else
-        log "Antora UI bundle already present — skipping download"
+        log "Antora UI bundle already present  skipping download"
     fi
 
     # Bootstrap and install dependencies for all publication works dirs.
-    # Only works/ needs npm install — per-DrG dirs share works/node_modules via absolute path + NODE_PATH.
-    # Playbooks/assemblers/antora.yml are NOT bootstrapped here — they are injected via ZIP at publish time.
+    # Only works/ needs npm install  per-DrG dirs share works/node_modules via absolute path + NODE_PATH.
+    # Playbooks/assemblers/antora.yml are NOT bootstrapped here  they are injected via ZIP at publish time.
     local pub_repo="${ODIP_REPO}/publication"
     local shared_config="${pub_repo}/shared/config"
     local shared_content="${pub_repo}/shared/content"
@@ -306,7 +307,7 @@ EOF
             log "npm install: $label"
             (cd "$works_dir" && npm install)
         else
-            log "npm install: $label — already installed"
+            log "npm install: $label  already installed"
         fi
     }
 
@@ -314,10 +315,10 @@ EOF
     bootstrap_works_dir "${ODIP_HOME}/publication/works"
     install_works_deps "${ODIP_HOME}/publication/works" "works (main)"
 
-    # Intro works dir: shared config only (no npm install — uses works/node_modules)
+    # Intro works dir: shared config only (no npm install  uses works/node_modules)
     bootstrap_works_dir "${ODIP_HOME}/publication/works-intro"
 
-    # Per-DrG works dirs: shared config only (no npm install — uses works/node_modules)
+    # Per-DrG works dirs: shared config only (no npm install  uses works/node_modules)
     if [[ -d "$shared_content" ]]; then
         for d in "$shared_content"/*/; do
             local drg_slug

@@ -11,8 +11,5 @@
   },
   "scripts": {
     "generate": "openapi-generator-cli generate -i ../../openapi.yaml -g javascript -o generated-src"
-  },
-  "devDependencies": {
-    "@openapitools/openapi-generator-cli": "^2.7.0"
   }
 }
