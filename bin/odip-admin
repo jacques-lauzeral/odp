@@ -77,6 +77,8 @@ all.filter(c => c.domain)
 }
 
 ensure_runtime_dirs() {
+    mkdir -p "${ODIP_HOME}/data"
+    [[ "$(stat -c '%u' "${ODIP_HOME}/data")" == "$(id -u)" ]] && chmod 777 "${ODIP_HOME}/data"
     mkdir -p "${ODIP_HOME}/backups/auto"
     mkdir -p "${ODIP_HOME}/backups/adhoc"
     mkdir -p "${ODIP_HOME}/backups/reset"
