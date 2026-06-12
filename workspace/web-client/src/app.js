@@ -144,6 +144,12 @@ export class App {
                 await this.currentActivity.cleanup();
             }
 
+            // Clear dataset context when leaving the elaborate/explore workspaces.
+            // Keeps Header nav tabs (Elaborate / Explore) hidden in Home, Converse, Manage.
+            if (activityKey !== 'elaborate' && activityKey !== 'explore') {
+                this.setDatasetContext(null);
+            }
+
             this.currentActivity = activity;
             this.currentActivity.name = activityKey;
 
