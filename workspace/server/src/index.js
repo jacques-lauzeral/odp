@@ -97,18 +97,9 @@ app.use('/odp-editions', odpEditionRoutes);
 // Quality API Routes
 app.use('/quality', qualityRoutes);
 
-// Serve web client static files
-const webClientPath = nodePath.join(new URL('../web-client/src', import.meta.url).pathname);
-app.use(express.static(webClientPath));
-
-// Serve built publication site — must be before SPA catch-all
+// Serve built publication site
 const siteDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works', 'build', 'site');
 app.use('/publication/site', express.static(siteDir));
-
-// SPA catch-all — return index.html for any unmatched GET (client-side routing)
-app.get('*', (req, res) => {
-    res.sendFile(nodePath.join(webClientPath, 'index.html'));
-});
 
 // Error handling
 app.use((err, req, res, next) => {

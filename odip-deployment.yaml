@@ -67,7 +67,7 @@ spec:
     - name: neo4j-data
       hostPath:
         path: $ODIP_HOME/data
-        type: Directory
+        type: DirectoryOrCreate
     - name: odp-code
       hostPath:
         path: $ODIP_REPO

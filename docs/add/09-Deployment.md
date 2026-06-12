@@ -14,7 +14,7 @@ Three containers share a single pod and communicate over localhost:
 |---|---|---|---|
 | `neo4j` | `$ODIP_DOCKER_REGISTRY/neo4j:5.15` + APOC | 7474 (HTTP), 7687 (Bolt) | Graph database |
 | `odp-server` | `$ODIP_DOCKER_REGISTRY/odp-server:latest` (custom image) | 8080 (host) → 80 (container) | Express API + import/export + publication services |
-| `web-client` | `odp-web-client:latest` (local build) | 3000 | Vite dev server — serves the SPA with deep-link routing support |
+| `web-client` | `odp-web-client:latest` (local build) | 3000 | Vite preview server — serves pre-built SPA `dist/` with deep-link routing support |
 
 The server container receives `ODIP_HOME=/odip` as an env var (injected in `odip-deployment.yaml`). The `$ODIP_HOME` host path is mounted into the container at `/odip` via the `odip-runtime` volume, making the publication workspace at `$ODIP_HOME/publication/works/` accessible inside the container as `/odip/publication/works/`.
 
@@ -73,9 +73,12 @@ The EC environment has no direct internet access. npm requires a corporate proxy
 ```
 http-proxy=http://<user>:<password>@pac.eurocontrol.int:9512
 https-proxy=http://<user>:<password>@pac.eurocontrol.int:9512
+fetch-timeout=300000
+fetch-retry-mintimeout=20000
+fetch-retry-maxtimeout=120000
 ```
 
-Special characters in the password must be URL-encoded (e.g. `@` → `%40`).
+Special characters in the password must be URL-encoded (e.g. `@` → `%40`). The fetch timeout settings prevent npm from aborting the full-workspace install prematurely when the Nexus proxy (`yagi:8081`) has a short idle timeout.
 
 ### gem proxy (EC only)
 
@@ -90,6 +93,12 @@ https-proxy: http://<user>:<password>@pac.eurocontrol.int:9512
 Special characters in the password must be URL-encoded. `odip-admin` extracts the proxy URL from `~/.gemrc` and passes it as a Podman build secret — credentials are never stored in the image or its history.
 
 > **Note:** `apt-get` during image build also requires proxy access. `odip-admin` passes `http_proxy`/`https_proxy` as build args automatically when `ODIP_GEM_MODE=host`. No additional configuration is required for `apt-get`.
+
+### EC compatibility fixes (one-time)
+
+The following changes are required in the repository before `odip-admin install` will succeed on EC with npm 11 / Node 24:
+
+**Remove `@openapitools/openapi-generator-cli`** from `devDependencies` in both `package.json` (root) and `workspace/shared/package.json`. This package pulls in `@nuxtjs/opencollective` which carries an empty version string that npm 11's stricter semver validation rejects with `TypeError: Invalid Version`. The generator is a one-time code generation tool already executed — it is not needed for installation or runtime.
 
 ### Full `.bashrc` example
 
@@ -146,9 +155,10 @@ odip-proto/
 ### 5.1 Web Client (`Dockerfile.web-client`)
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:20
 
 ARG NPM_INSTALL=true
+ARG BUILD_WEB_CLIENT=true
 
 WORKDIR /app
 COPY . .
@@ -156,26 +166,31 @@ RUN mkdir -p workspace/web-client/src/shared/src && \
     cp -r workspace/shared/src/* workspace/web-client/src/shared/src/
 WORKDIR /app/workspace/web-client
 RUN if [ "$NPM_INSTALL" = "true" ]; then npm install; fi
+RUN if [ "$BUILD_WEB_CLIENT" = "true" ]; then npm run build; fi
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "preview"]
 ```
 
-The `NPM_INSTALL` build arg controls whether `npm install` runs inside the container:
+Two build args control the install and build steps:
 
-- `podman` mode (local): container installs via `npm install` (internet access required)
-- `host` mode (EC): `npm install` is run on the host first by `odip-admin` using the user's proxy-configured npm; `node_modules` is copied in via `COPY . .`; container skips install
+- `NPM_INSTALL` — whether `npm install` runs inside the container
+- `BUILD_WEB_CLIENT` — whether `vite build` runs inside the container
 
-`odip-admin` passes the correct `--build-arg` automatically based on `ODIP_NPM_MODE`.
+In `podman` mode (local), both are `true` — the container installs and builds with direct internet access. In `host` mode (EC), both are `false` — `odip-admin` runs `npm install` and `vite build` on the host first (proxy-aware), and the resulting `node_modules/` and `dist/` are copied into the image via `COPY . .`.
 
-**Dev server:** Vite (replaces the former `sirv-cli` / `http-server` approach). Vite serves the SPA on port 3000 with native ES module support and live reload. All unmatched paths return `index.html` via Vite's SPA fallback, allowing the client-side router to handle deep-linked URLs.
+`odip-admin` passes the correct `--build-arg` values automatically based on `ODIP_NPM_MODE`.
+
+> **EC note:** The base image is `node:20` (glibc) rather than `node:20-alpine` (musl). This is required because `npm install` runs on the host (glibc) in EC mode — the native Rollup binary installed on the host must match the container libc. Alpine's musl libc would cause `vite preview` to crash with a missing `@rollup/rollup-linux-x64-musl` error.
+
+**Preview server:** The container runs `vite preview` to serve the pre-built `dist/` bundle on port 3000. `vite preview` provides SPA fallback routing (all unmatched paths return `index.html`) without requiring a full dev server.
 
 ```json
-"dev": "vite --host --port 3000"
+"preview": "vite preview --host --port 3000"
 ```
 
-The `--host` flag exposes the server on all network interfaces (required for container port binding and remote browser access).
+> **EC note:** `vite preview` blocks requests from hostnames not in its allowlist by default. Set `preview.allowedHosts: true` in `vite.config.js` to allow EC workstation hostnames (e.g. `dhws222`).
 
-After any change to `devDependencies` (e.g. adding a new TipTap extension), run `odip-admin start --install --rebuild` to reinstall and rebuild the web client image.
+After any change to source or dependencies, run `odip-admin restart --rebuild=web-client` to rebuild the image.
 
 ### 5.2 Server (`Dockerfile.odp-server`)
 

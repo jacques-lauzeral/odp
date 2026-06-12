@@ -1592,9 +1592,9 @@ The `@odp/shared` source is copied into `web-client/src/shared/src/` as a build 
 |---|---|---|
 | Development | `npm run dev` | Vite dev server on port 3000; live reload |
 | Production build | `npm run build` | Hashed bundle in `dist/` |
-| Container | `CMD ["npm", "run", "dev"]` in Dockerfile | Vite dev server inside the container |
+| Container | `CMD ["npm", "run", "preview"]` in Dockerfile | Vite preview server serving pre-built `dist/` |
 
-The container always runs the Vite dev server — there is no separate production serving step in the current deployment model.
+The container runs `vite preview` to serve the pre-built `dist/` bundle. The build step runs on the host (EC) or inside the container (local) before the image is committed. This avoids running a full dev server in the deployed container while retaining Vite's SPA fallback routing.
 
 ## 18. Narrative Activity
 
