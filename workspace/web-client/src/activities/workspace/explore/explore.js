@@ -27,6 +27,8 @@
  */
 import { errorHandler } from '../../../shared/error-handler.js';
 import { dom } from '../../../shared/utils.js';
+import { apiClient } from '../../../shared/api-client.js';
+import { endpoints } from '../../../config/api.js';
 
 const SUB_ACTIVITIES = {
     os:        () => import('../shared/os/os.js'),
@@ -55,6 +57,7 @@ export default class ExploreActivity {
         this._subActivities  = {};
         this._currentSubName = null;
         this._currentEditionId = null;
+        this._currentEdition   = null;
     }
 
     // -------------------------------------------------------------------------
@@ -67,6 +70,12 @@ export default class ExploreActivity {
 
         this._currentEditionId = editionId;
         this.app.setDatasetContext({ type: 'edition', editionId });
+
+        try {
+            this._currentEdition = await apiClient.getEntity(endpoints.odpEditions, editionId);
+        } catch {
+            this._currentEdition = null;
+        }
 
         this.container = container;
         this._renderShell();
@@ -93,6 +102,7 @@ export default class ExploreActivity {
         this._subActivities    = {};
         this._currentSubName   = null;
         this._currentEditionId = null;
+        this._currentEdition   = null;
         this.container         = null;
         this.subContainer      = null;
     }
@@ -114,7 +124,7 @@ export default class ExploreActivity {
                             data-path="${basePath}/${t.key}"
                         ><span class="interaction-tab__name">${t.label}</span></button>
                     `).join('')}
-                    <span class="workspace-shell__mode-badge workspace-shell__mode-badge--ro">Edition ${this._currentEditionId} · Read only</span>
+                    <span class="workspace-shell__mode-badge workspace-shell__mode-badge--ro">${this._currentEdition?.title ?? `Edition ${this._currentEditionId}`} · Read only</span>
                 </nav>
                 <div class="workspace-shell__content" id="workspace-content"></div>
             </div>
