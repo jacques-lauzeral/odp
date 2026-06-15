@@ -14,6 +14,7 @@ import { operationalRequirementCommands } from './commands/operational-requireme
 import { operationalChangeCommands } from './commands/operational-change.js';
 import { importCommands } from './commands/import.js';
 import { qualityCommands } from './commands/quality.js';
+import { changeSetCommands } from './commands/change-set.js';
 
 const program = new Command();
 
@@ -54,6 +55,7 @@ operationalRequirementCommands(program, config);
 operationalChangeCommands(program, config);
 importCommands(program, config);
 qualityCommands(program, config);
+changeSetCommands(program, config);
 
 // Parse command line arguments
 program.parse();

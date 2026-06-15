@@ -38,7 +38,7 @@ class DistributedEditionImporter {
      * @param {string} userId - User performing the import
      * @returns {Object} ImportSummary with counts and errors
      */
-    async importSourceFile(sourceData, userId) {
+    async importSourceFile(sourceData, userId, changeSetId) {
         const context = this._createContext();
         const summary = {
             chapters: 0,
@@ -69,21 +69,21 @@ class DistributedEditionImporter {
             const requirements = sourceData.requirements || [];
             if (requirements.length > 0) {
                 console.log(`Phase 2: Creating ${requirements.length} requirements as DRAFT...`);
-                await this._createRequirementsWithoutReferences(requirements, userId, context, summary);
+                await this._createRequirementsWithoutReferences(requirements, userId, context, summary, changeSetId);
 
                 console.log('Phase 3: Resolving references and applying final maturity...');
-                await this._resolveRequirementReferences(requirements, userId, context);
+                await this._resolveRequirementReferences(requirements, userId, context, changeSetId);
             }
 
             // Phase 4: Patch chapter narrative, then osHierarchy. Both patch the
             // chapter; each re-fetches the current versionId immediately before
             // patching, so sequential ordering is optimistic-concurrency safe.
             console.log('Phase 4a: Patching chapter narrative...');
-            await this._patchChapterNarrative(sourceData, userId, context, summary);
+            await this._patchChapterNarrative(sourceData, userId, context, summary, changeSetId);
 
             if (requirements.length > 0) {
                 console.log('Phase 4b: Patching chapter osHierarchy...');
-                await this._patchChapterOsHierarchy(sourceData, requirements, userId, context, summary);
+                await this._patchChapterOsHierarchy(sourceData, requirements, userId, context, summary, changeSetId);
             }
 
         } catch (error) {
@@ -257,7 +257,7 @@ class DistributedEditionImporter {
         return labelToId;
     }
 
-    async _patchChapterNarrative(sourceData, userId, context, summary) {
+    async _patchChapterNarrative(sourceData, userId, context, summary, changeSetId) {
         const blocks = sourceData.blocks || sourceData.chapterIntro;
         if (!blocks || blocks.length === 0) {
             console.log('No blocks[]/chapterIntro[] — skipping chapter narrative patch.');
@@ -279,7 +279,7 @@ class DistributedEditionImporter {
             const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
             await ChapterService.patch(
                 context.chapterItemId,
-                { narrative },
+                { narrative, changeSetId, note: '' },
                 current.versionId,
                 userId
             );
@@ -314,7 +314,7 @@ class DistributedEditionImporter {
      * Per node: ONs listed before ORs, each in source order.
      * @private
      */
-    async _patchChapterOsHierarchy(sourceData, requirements, userId, context, summary) {
+    async _patchChapterOsHierarchy(sourceData, requirements, userId, context, summary, changeSetId) {
         if (!context.chapterItemId) {
             context.warnings.push('Chapter identity unresolved — skipping osHierarchy patch.');
             return;
@@ -370,7 +370,7 @@ class DistributedEditionImporter {
             const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
             await ChapterService.patch(
                 context.chapterItemId,
-                { osHierarchy: { topics } },
+                { osHierarchy: { topics }, changeSetId, note: '' },
                 current.versionId,
                 userId
             );
@@ -542,7 +542,7 @@ class DistributedEditionImporter {
      * Populates globalRefMap with newly created itemIds.
      * @private
      */
-    async _createRequirementsWithoutReferences(requirements, userId, context, summary) {
+    async _createRequirementsWithoutReferences(requirements, userId, context, summary, changeSetId) {
         let createdCount = 0;
         const refResolver = this._buildRefResolver(context);
 
@@ -567,7 +567,10 @@ class DistributedEditionImporter {
                     refinesParents: [],
                     impactedStakeholders: [],
                     implementedONs: [],
-                    dependencies: []
+                    dependencies: [],
+                    // LCM — every imported version commits under the supplied change set
+                    changeSetId,
+                    note: ''
                 };
 
                 const created = await OperationalRequirementService.create(createRequest, userId);
@@ -847,11 +850,11 @@ class DistributedEditionImporter {
      * Resolve all references for each requirement and apply final maturity.
      * @private
      */
-    async _resolveRequirementReferences(requirements, userId, context) {
+    async _resolveRequirementReferences(requirements, userId, context, changeSetId) {
         const refResolver = this._buildRefResolver(context);
         for (const reqData of requirements) {
             try {
-                await this._resolveEntityReferences(reqData, userId, context, refResolver);
+                await this._resolveEntityReferences(reqData, userId, context, refResolver, changeSetId);
             } catch (error) {
                 context.errors.push(`Failed to resolve references for ${reqData.externalId}: ${error.message}`);
             }
@@ -863,7 +866,7 @@ class DistributedEditionImporter {
      * NO_SHOW requirements are skipped — they were fully created in phase 2.
      * @private
      */
-    async _resolveEntityReferences(reqData, userId, context, refResolver) {
+    async _resolveEntityReferences(reqData, userId, context, refResolver, changeSetId) {
         // NO_SHOW requirements need no reference resolution
         if (reqData.noShow === true) return;
 
@@ -929,7 +932,10 @@ class DistributedEditionImporter {
             implementedONs,
             impactedStakeholders,
             dependencies,
-            strategicDocuments
+            strategicDocuments,
+            // LCM — every imported version commits under the supplied change set
+            changeSetId,
+            note: ''
         };
 
         await OperationalRequirementService.update(

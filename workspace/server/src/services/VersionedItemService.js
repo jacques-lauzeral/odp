@@ -4,6 +4,7 @@ import {
     rollbackTransaction,
     odpEditionStore
 } from '../store/index.js';
+import changeSetService from './ChangeSetService.js';
 
 /**
  * VersionedItemService provides versioned CRUD operations with transaction management and user context.
@@ -34,12 +35,14 @@ export class VersionedItemService {
      * Create new versioned entity (creates Item + ItemVersion v1)
      */
     async create(payload, userId) {
-        await this._validateCreatePayload(payload);
+        const { data, changeSetCommit } = this._extractChangeSetCommit(payload);
+        await this._validateCreatePayload(data);
 
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
-            const entity = await store.create(payload, tx);
+            const entity = await store.create(data, tx, changeSetCommit);
+            await changeSetService.hydrateInto(entity, tx);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -62,9 +65,11 @@ export class VersionedItemService {
     }
 
     async _doUpdate(itemId, payload, expectedVersionId, tx) {
-        await this._validateUpdatePayload(payload, itemId);
+        const { data, changeSetCommit } = this._extractChangeSetCommit(payload);
+        await this._validateUpdatePayload(data, itemId);
         const store = this.getStore();
-        const entity = await store.update(itemId, payload, expectedVersionId, tx);
+        const entity = await store.update(itemId, data, expectedVersionId, tx, changeSetCommit);
+        await changeSetService.hydrateInto(entity, tx);
         await commitTransaction(tx);
         return entity;
     }
@@ -76,16 +81,20 @@ export class VersionedItemService {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
+            const { data: patchData, changeSetCommit } = this._extractChangeSetCommit(patchPayload);
 
             const current = await store.findById(itemId, tx);
             if (!current) {
                 throw new Error('Entity not found');
             }
+            // changeSetCommit is a read-only field — never feed it back into a write
+            delete current.changeSetCommit;
 
-            const completePayload = await this._computePatchedPayload(current, patchPayload);
+            const completePayload = await this._computePatchedPayload(current, patchData);
             await this._validateUpdatePayload(completePayload, itemId);
 
-            const entity = await store.update(itemId, completePayload, expectedVersionId, tx);
+            const entity = await store.update(itemId, completePayload, expectedVersionId, tx, changeSetCommit);
+            await changeSetService.hydrateInto(entity, tx);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -119,6 +128,7 @@ export class VersionedItemService {
             }
 
             const entity = await store.findById(itemId, tx, resolvedBaselineId, resolvedEditionId, projection);
+            await changeSetService.hydrateInto(entity, tx);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -135,6 +145,7 @@ export class VersionedItemService {
         try {
             const store = this.getStore();
             const entity = await store.findByIdAndVersion(itemId, versionNumber, tx);
+            await changeSetService.hydrateInto(entity, tx);
             await commitTransaction(tx);
             return entity;
         } catch (error) {
@@ -151,6 +162,7 @@ export class VersionedItemService {
         try {
             const store = this.getStore();
             const history = await store.findVersionHistory(itemId, tx);
+            await changeSetService.hydrateAll(history, tx);
             await commitTransaction(tx);
             return history;
         } catch (error) {
@@ -184,6 +196,7 @@ export class VersionedItemService {
             }
 
             const entities = await store.findAll(tx, resolvedBaselineId, resolvedFilters, projection);
+            await changeSetService.hydrateAll(entities, tx);
             await commitTransaction(tx);
             return entities;
         } catch (error) {
@@ -220,6 +233,21 @@ export class VersionedItemService {
     // Abstract patch method - must be implemented by subclasses for entity-specific field merging
     async _computePatchedPayload(current, patchPayload) {
         throw new Error('_computePatchedPayload must be implemented by subclass');
+    }
+
+    /**
+     * Split the commit metadata out of a request message. Routes stay pass-through
+     * (they hand the body over untransformed); the message→domain split happens here.
+     * Returns the entity `data` (without changeSetId/note) and the `changeSetCommit`
+     * { changeSetId, note } threaded to the store. `note` is the optional top-level
+     * per-object annotation — distinct from any nested reference notes.
+     *
+     * @param {object} payload - request message body
+     * @returns {{data: object, changeSetCommit: {changeSetId: *, note: *}}}
+     */
+    _extractChangeSetCommit(payload) {
+        const { changeSetId, note, ...data } = payload;
+        return { data, changeSetCommit: { changeSetId, note } };
     }
 
     /**

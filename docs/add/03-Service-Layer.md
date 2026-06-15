@@ -116,6 +116,8 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 `patch()` is implemented entirely in the base class: it fetches the current entity (latest version), calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
 
+**Change-set linkage (LCM).** `payload` is the request message, and the request models carry the commit fields (`changeSetId`, `note`) alongside entity content. Routes stay pass-through; the message→domain split happens here, in `_extractChangeSetCommit(payload)` → `{data, changeSetCommit}`. `create`/`update`/`patch` pass `data` (pure entity state) and the explicit `changeSetCommit = {changeSetId, note}` to `store.*`, so the store boundary never sees the commit embedded in entity data. In `patch`, the read-only `changeSetCommit` is stripped off the fetched `current` before merging, so it is never fed back into a write. On the read side, `getById`/`getByIdAndVersion`/`getVersionHistory`/`getAll` hydrate each result's `changeSetCommit` via `changeSetService.hydrateInto`/`hydrateAll` (filling `code`/`changeSetTitle`/`classifier` from the cache) before commit.
+
 `ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full, using `'standard'` projection). It also overrides `getById()` to default to `'extended'` projection. It disables `create()` and `delete()` — chapters are bootstrap-only.
 
 **Edition context resolution:** When `editionId` is provided to `getAll` or `getById`, the service calls `odpEditionStore().resolveContext(editionId, tx)` within the same transaction to obtain `{baselineId, editionId}`. It then passes `baselineId` as the store's positional argument and `editionId` via `filters.editionId`. The store applies `$editionId IN r.editions` as a WHERE condition on the `HAS_ITEMS` relationship. The route layer has no knowledge of baselines — it passes only `editionId` or `null`.
@@ -156,6 +158,8 @@ Additional milestone methods — all require `expectedVersionId` because each op
 | `deleteMilestone(itemId, milestoneKey, expectedVersionId, userId)` | Removes milestone by key; returns `{operationalChange}` |
 
 Milestone mutations work by fetching the current OC, rebuilding the full milestones array, and calling `store.update()` with the complete payload — there is no direct milestone write. The `milestoneKey` is a stable UUID-based identifier preserved across versions.
+
+**Change-set linkage:** each milestone mutation creates a new OC version and therefore commits under a change set. `addMilestone`/`updateMilestone` extract `{changeSetId, note}` from their `milestoneData` message (the milestone fields are the remainder); `deleteMilestone` has no entity body, so it takes an explicit `changeSetCommit` argument supplied by the route. All three thread `changeSetCommit` into `store.update(itemId, completePayload, expectedVersionId, tx, changeSetCommit)`.
 
 **Milestone ownership contract:** `milestones` is forbidden in `update` and `patch` payloads — passing it returns a 400 validation error. Milestones must be managed exclusively via the dedicated milestone endpoints above. On the general update/patch path the store automatically inherits milestones from the current version (see §2.2 of the Storage Layer chapter).
 
@@ -252,6 +256,26 @@ Private helpers: `_buildFlat()`, `_buildSet()`, `_extractZipToWorks()`, `_create
 
 ---
 
+### 3.9 ChangeSetService
+
+Extends `SimpleItemService` (store: `ChangeSetStore`). Owns ChangeSet CRUD, lifecycle, member listing, and the in-process `id→ChangeSet` cache that hydrates the per-version `changeSetCommit` on every versioned read.
+
+| Method | Description |
+|---|---|
+| `createItem(data, userId)` | Validate (title required, valid classifier), create, cache the result |
+| `updateItem(id, data, userId)` | Edit `title`/`reasonText` — **only while OPEN** (guarded in one transaction); refresh cache |
+| `deleteItem(id, userId)` | Delete — **only an empty, OPEN set**; closed sets or sets with members are rejected; evict cache |
+| `close(id, userId)` / `reopen(id, userId)` | Status transitions; refresh cache |
+| `findByStatus(status, userId)` / `findByClassifier(classifier, userId)` | List queries |
+| `getMembers(changeSetId, userId)` | Member-row list via `store.findMembers` |
+| `hydrateInto(entity, tx)` / `hydrateAll(entities, tx)` | Fill `changeSetCommit.code`/`changeSetTitle`/`classifier` from cache (called by `VersionedItemService` reads) |
+
+**Cache coherence:** the cache is lazily populated on hydration misses (loaded from the store within the active read transaction) and refreshed on every mutation — `create`/`update`/`close`/`reopen` set the entry, `delete` evicts it. Because title, classifier and status are mutable on the set, resolving them on read keeps a rename or reclassification consistent everywhere, with no stale denormalised copies on the `HAS_REASON` edge. The cache is per-process.
+
+Exported as a singleton (`export default new ChangeSetService()`), imported directly — including by `VersionedItemService` for read hydration.
+
+---
+
 ## 4. Transaction Management
 
 ### 4.1 Standard Pattern
@@ -313,6 +337,7 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | `ChapterService` | `VersionedItemService` | `ChapterStore` |
 | `OperationalRequirementService` | `VersionedItemService` | `OperationalRequirementStore` |
 | `OperationalChangeService` | `VersionedItemService` | `OperationalChangeStore` |
+| `ChangeSetService` | `SimpleItemService` | `ChangeSetStore` |
 | `BaselineService` | — | `BaselineStore` |
 | `ODIPEditionService` | — | `ODPEditionStore`, `BaselineStore`, `WaveStore` |
 | `QualityService` | — | none (delegates to `OperationalRequirementStore` via internal service methods) |

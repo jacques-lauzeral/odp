@@ -93,6 +93,8 @@ export class OperationalChangeService extends VersionedItemService {
      * @returns {object} { milestone, operationalChange: { itemId, versionId, version } }
      */
     async addMilestone(itemId, milestoneData, expectedVersionId, userId) {
+        const { changeSetId, note, ...milestone } = milestoneData;
+        const changeSetCommit = { changeSetId, note };
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
@@ -103,13 +105,13 @@ export class OperationalChangeService extends VersionedItemService {
             }
 
             const existingMilestonesData = this._convertMilestonesToRawData(current.milestones);
-            const newMilestones = [...existingMilestonesData, milestoneData];
+            const newMilestones = [...existingMilestonesData, milestone];
 
             this._validateMilestones(newMilestones);
             await this._validateMilestoneWaves(newMilestones);
 
             const completePayload = this._buildCompletePayload(current, newMilestones);
-            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
+            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx, changeSetCommit);
             await commitTransaction(tx);
 
             const addedMilestone = updatedOC.milestones[updatedOC.milestones.length - 1];
@@ -132,6 +134,8 @@ export class OperationalChangeService extends VersionedItemService {
      * @returns {object} { milestone, operationalChange: { itemId, versionId, version } }
      */
     async updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, userId) {
+        const { changeSetId, note, ...milestone } = milestoneData;
+        const changeSetCommit = { changeSetId, note };
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
@@ -148,13 +152,13 @@ export class OperationalChangeService extends VersionedItemService {
             }
 
             const newMilestones = [...existingMilestonesData];
-            newMilestones[milestoneIndex] = { ...milestoneData, milestoneKey };
+            newMilestones[milestoneIndex] = { ...milestone, milestoneKey };
 
             this._validateMilestones(newMilestones);
             await this._validateMilestoneWaves(newMilestones);
 
             const completePayload = this._buildCompletePayload(current, newMilestones);
-            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
+            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx, changeSetCommit);
             await commitTransaction(tx);
 
             return {
@@ -175,7 +179,7 @@ export class OperationalChangeService extends VersionedItemService {
      * Delete milestone (creates new OC version)
      * @returns {object} { operationalChange: { itemId, versionId, version } }
      */
-    async deleteMilestone(itemId, milestoneKey, expectedVersionId, userId) {
+    async deleteMilestone(itemId, milestoneKey, expectedVersionId, userId, changeSetCommit) {
         const tx = createTransaction(userId);
         try {
             const store = this.getStore();
@@ -197,7 +201,7 @@ export class OperationalChangeService extends VersionedItemService {
             await this._validateMilestoneWaves(newMilestones);
 
             const completePayload = this._buildCompletePayload(current, newMilestones);
-            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx);
+            const updatedOC = await store.update(itemId, completePayload, expectedVersionId, tx, changeSetCommit);
             await commitTransaction(tx);
 
             return {

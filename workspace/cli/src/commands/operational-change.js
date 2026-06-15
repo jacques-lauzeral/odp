@@ -68,11 +68,9 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Domain', 'Title', 'Version', 'Created By', 'Purpose', 'Initial State', 'Final State', 'Details', 'Private Notes', 'Add. Doc.'],
-                        colWidths: [10, 15, 15, 20, 10, 20, 18, 18, 18, 18, 18, 18]
+                        head: ['Item ID', 'Code', 'Domain', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 15, 15, 20, 10, 20]
                     });
-
-                    const trunc = (val) => val ? String(val).substring(0, 16) : '—';
 
                     items.forEach(item => {
                         table.push([
@@ -81,13 +79,7 @@ class OperationalChangeCommands extends VersionedCommands {
                             item.domain || '-',
                             item.title,
                             item.version,
-                            item.createdBy,
-                            trunc(item.purpose),
-                            trunc(item.initialState),
-                            trunc(item.finalState),
-                            trunc(item.details),
-                            trunc(item.privateNotes),
-                            trunc(item.additionalDocumentation)
+                            item.createdBy
                         ]);
                     });
 
@@ -199,6 +191,8 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--cost <cost>', 'Cost (integer)')
             .option('--implements <or-ids...>', 'OR IDs that this change implements (space-separated)')
             .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions (space-separated)')
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (title, options) => {
                 try {
                     const data = {
@@ -214,8 +208,10 @@ class OperationalChangeCommands extends VersionedCommands {
                         implementedORs: options.implements || [],
                         decommissionedORs: options.decommissions || [],
                         dependsOnChanges: [],
-                        milestones: []
+                        milestones: [],
+                        changeSetId: options.changeSet
                     };
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
                         method: 'POST',
@@ -253,6 +249,8 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--cost <cost>', 'Cost (integer)')
             .option('--implements <or-ids...>', 'OR IDs that this change implements')
             .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions')
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
                     const data = {
@@ -268,8 +266,10 @@ class OperationalChangeCommands extends VersionedCommands {
                         cost: options.cost != null ? parseInt(options.cost, 10) : null,
                         implementedORs: options.implements || [],
                         decommissionedORs: options.decommissions || [],
-                        dependsOnChanges: []
+                        dependsOnChanges: [],
+                        changeSetId: options.changeSet
                     };
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PUT',
@@ -318,6 +318,8 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--cost <cost>', 'Cost (integer)')
             .option('--implements <or-ids...>', 'OR IDs that this change implements')
             .option('--decommissions <or-ids...>', 'OR IDs that this change decommissions')
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
@@ -332,6 +334,8 @@ class OperationalChangeCommands extends VersionedCommands {
                     if (options.cost != null) data.cost = parseInt(options.cost, 10);
                     if (options.implements) data.implementedORs = options.implements;
                     if (options.decommissions) data.decommissionedORs = options.decommissions;
+                    data.changeSetId = options.changeSet;
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PATCH',

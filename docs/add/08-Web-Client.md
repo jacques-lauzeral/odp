@@ -4,7 +4,7 @@
 
 The ODIP web client is a Vanilla JavaScript single-page application (no framework). It communicates exclusively with the REST API and shares data models with the server via the `@odp/shared` workspace package. **Vite** is used as the build tool and development server. The deliberate absence of a UI framework keeps the application flexible while still enforcing consistent component patterns through class-based composition and delegation.
 
-The client has been rewritten as **ODIP Space** — a structured multi-workspace SPA replacing the flat seven-activity layout of the former ODIP Tool. The migration is incremental; this chapter describes the target architecture as implemented from Phase A onward.
+The client is structured as **ODIP Space** — a multi-workspace SPA organised around top-level activities (Home, Elaborate, Explore, Converse, Manage) with shared sub-activities mounted inside the Elaborate and Explore workspace shells.
 
 ---
 
@@ -38,6 +38,10 @@ web-client/src/
 │   │       │   ├── change-form.js          OC create/edit form
 │   │       │   ├── change-form-fields.js
 │   │       │   └── change-form-milestone.js
+│   │       ├── narrative/
+│   │       │   ├── narrative.js            Narrative sub-activity orchestrator
+│   │       │   ├── chapter-toc.js          Chapter / topic / O* tree (left panel)
+│   │       │   └── chapter-body.js         Chapter narrative / topic / O* detail (right panel)
 │   │       ├── plan/
 │   │       │   ├── plan.js                 Plan workspace shell
 │   │       │   ├── planning.js             ON planning view
@@ -63,23 +67,24 @@ web-client/src/
 │           └── odp-edition-form.js
 │
 ├── components/
-│   ├── header.js                           Global header — two-row layout, breadcrumb trail, connect popup
-│   ├── breadcrumb.js                       Breadcrumb trail utility (moved from activities/workspace/shared/os/)
+│   ├── header.js                           Global header — nav tabs, change-set chip, connect popup
+│   ├── breadcrumb.js                       Breadcrumb trail utility (used by NarrativeActivity)
 │   ├── master-detail.js                    Reusable two-column resizable layout
 │   ├── tree-entity.js                      Base class for hierarchical entity management (MasterDetail layout)
 │   ├── list-entity.js                      Base class for flat entity management (table layout)
-│   ├── collection-entity.js
-│   ├── collection-entity-form.js           Base form class with tab rendering
+│   ├── collection-entity.js                Base class for operational entity table/list perspective
+│   ├── collection-entity-form.js           Base form class with config-driven tab rendering
 │   ├── rich-text-component.js              TipTap-backed rich text editor/viewer component
-│   ├── tree-table-entity.js
-│   ├── temporal-grid.js
-│   ├── filter-bar.js
-│   ├── reference-list-manager.js
-│   ├── reference-manager.js
-│   ├── annotated-multiselect-manager.js
-│   ├── diff-popup.js
+│   ├── tree-table-entity.js                Base class for tree-table perspectives
+│   ├── temporal-grid.js                    Generic temporal visualisation grid
+│   ├── filter-bar.js                       FilterBar chip component
+│   ├── reference-list-manager.js           Chip list + search popup (0..n references)
+│   ├── reference-manager.js                Canonical single-value tree picker
+│   ├── annotated-multiselect-manager.js    Reference list with per-item note
+│   ├── diff-popup.js                       Version comparison modal
+│   ├── change-set-commit-dialog.js         Commit gate dialog for versioned writes
 │   ├── odp-column-types.js
-│   └── user-dialogs.js                     ODIP-styled interactive dialogs: odipConfirm (Yes/No), odipUnsavedChanges (Save/Discard/Cancel), odipPromptLink (URL + link text)
+│   └── user-dialogs.js                     ODIP-styled modal helpers: odipConfirm, odipUnsavedChanges, odipPromptLink
 │
 └── shared/
     ├── router.js
@@ -90,6 +95,8 @@ web-client/src/
 ```
 
 `vite.config.js` lives at `web-client/vite.config.js` (workspace root for the web client package).
+
+> **Component placement convention:** all components live flat under `components/`. There is no `components/odp/` subfolder.
 
 ---
 
@@ -176,10 +183,15 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 - Router instantiation and delegation
 - User state (`setUser` / `getUser`) — persisted to localStorage by Header
 - Dataset context (`setDatasetContext` / `getDatasetContext`) — set by Home on selection
+- Active change set (`setActiveChangeSet` / `getActiveChangeSet`) — see §13
 - Setup data cache (`getSetupData` / `invalidateSetupData`) — lazy-loaded, shared across all activities
 - Chapter cache (`getChapters`) — config-driven, cached permanently
 - O* summary cache (`getOStars` / `findOStar` / `invalidateOStars`) — TTL-refreshed, 5 minutes
 - Connection monitoring (polls `GET /ping` every 60 seconds; dispatches `connection:change` on `window`)
+
+### 4.1 Dataset Context
+
+Dataset context is set on `App` by Home when the user selects a dataset. It is the single mechanism by which all sub-activities discover whether they operate against the live dataset or an edition snapshot.
 
 **Dataset context shape:**
 
@@ -187,6 +199,15 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 { type: 'live' }                        // Elaborate context
 { type: 'edition', editionId: number }  // Explore context
 ```
+
+Sub-activities read `app.getDatasetContext()` on mount to determine:
+
+- Whether to pass `?edition={editionId}` to API calls
+- Whether edit actions are available (`type: 'live'`) or suppressed (`type: 'edition'`)
+
+Edition context resolution — mapping the edition to a baseline and optional start date — happens server-side. The web client passes the edition ID directly to the API as `?edition=<id>` and never resolves `baselineId` or `startDate` client-side.
+
+### 4.2 Setup Data Cache
 
 **Setup data shape** (loaded once, cached):
 
@@ -196,6 +217,8 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 
 `invalidateSetupData()` must be called after any setup entity CRUD operation.
 
+### 4.3 O* Summary Cache
+
 **O* summary shape** (TTL-cached, 5 minutes, stale-while-revalidate):
 
 ```js
@@ -204,7 +227,17 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 
 `getOStars()` returns the full summary array. `findOStar(itemId)` returns a single summary or `null`. `invalidateOStars()` must be called after any O* create/update/delete operation.
 
-**Unsaved-changes guard — top-level activity switch:** `App._loadActivity()` calls `canDeactivate()` on the current activity before mounting a new one. If `false` is returned, `router._activeSegment` is restored to the current activity name (so the Header tab reverts) and the load is aborted. `ElaborateActivity.canDeactivate()` forwards to the current sub-activity's `canDeactivate()` if present, enabling the guard to reach `NarrativeActivity` through the shell layer.
+### 4.4 Single Data Load and Shared State
+
+Activities that present the same entity set through more than one view (e.g. the Plan activity, or any entity component exposing collection plus tree-table perspectives) follow a single-load pattern coordinated through `App`:
+
+- **Single data load** — entities are fetched once and distributed to all active views via an `onDataUpdated(data)` callback; no view fetches independently.
+- **Shared state** — filters, selection, and grouping are coordinated across views in a shared `sharedState` object rather than duplicated per view.
+- **Injected callbacks** — views receive `onItemSelect`, `getViewControlsEl`, `isReadOnly` at construction and hold no back-reference to their parent activity.
+
+### 4.5 Unsaved-Changes Guard — Top-Level Activity Switch
+
+`App._loadActivity()` calls `canDeactivate()` on the current activity before mounting a new one. If `false` is returned, `router._activeSegment` is restored to the current activity name (so the Header tab reverts) and the load is aborted. `ElaborateActivity.canDeactivate()` forwards to the current sub-activity's `canDeactivate()` if present, enabling the guard to reach `NarrativeActivity` through the shell layer.
 
 ---
 
@@ -212,7 +245,7 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 
 `Header` (`components/header.js`) owns a single-row layout:
 
-- **Row 1** — logo · brand · nav tabs · right cluster (Connect/username button · server status dot)
+- **Row 1** — logo · brand · nav tabs · right cluster (change-set chip · Connect/username button · server status dot)
 
 **Nav tabs** (row 1):
 
@@ -223,8 +256,6 @@ Every inter-O\* navigation pushes a URL history entry via `window.history.pushSt
 | Explore | Only when dataset context is `edition` |
 | Converse | Always |
 | Manage | Always (access enforced by router — protected route) |
-
-
 
 **User identification:**
 
@@ -237,13 +268,17 @@ Identified → username display → same popup (update / disconnect).
 
 Small dot (green / amber / red), extreme right of row 1, always visible. Driven by `connection:change` custom event dispatched by `App` connection monitoring.
 
+### 5.1 Access Model
+
 User identification is entirely client-side. Anonymous users can access Home, Explore, and Converse. `/elaborate` and `/manage` require an identified user — the router redirects to `/` if no user is set.
+
+Server-side, all GET routes accept requests without an `x-user-id` header (returning `null` userId), enabling anonymous read access to Home (edition list) and Explore. Write operations still require `x-user-id`. Affected route files: `simple-item-router.js`, `versioned-item-router.js`, `odp-edition.js`, `baseline.js`.
 
 ---
 
 ## 6. Component Patterns
 
-Four base component classes cover all entity management needs.
+Four base component classes cover all entity management needs. They are the architectural patterns that concrete activities build on; individual reusable UI components are catalogued separately in §7.
 
 ### 6.1 TreeEntity
 
@@ -253,13 +288,13 @@ Concrete subclasses declare only three things — no methods required:
 
 | Declaration | Purpose |
 |---|---|
-| `entityLabel` | Singular display name (e.g. `'Domain'`) |
+| `entityLabel` | Singular display name (e.g. `'Stakeholder Category'`) |
 | `parentScope` | `'all'` — any non-self item as parent; `'roots'` — root items only (grandchildren blocked at UI level) |
 | `fields` | Array of `{ name, label, type, required }` for entity-specific fields, appended after `baseFields` |
 
 `TreeEntity` declares `baseFields = [{ name: 'description', label: 'Description', type: 'textarea', required: false }]` — rendered before subclass `fields` in all forms and detail views.
 
-The parent field uses `ReferenceManager` (`components/reference-manager.js`) instead of a native `<select>`. The manager is wired after modal DOM insertion via `_initParentRM(modal)` and destroyed on `_closeModal`.
+The parent field uses `ReferenceManager` (§7.4) instead of a native `<select>`. The manager is wired after modal DOM insertion via `_initParentRM(modal)` and destroyed on `_closeModal`.
 
 `ReferenceDocument` additionally overrides `getDisplayName()` to append the version. Its `parentScope` is `'all'`, supporting up to three levels (root / child / grandchild).
 
@@ -271,11 +306,26 @@ Used for flat planning entities (`Wave`, `Bandwidth`). Located in `components/li
 
 Used for operational entities in table/list perspective. Provides filtering, grouping, column configuration, row selection, and a details panel. Complex entities (requirements, changes) use **delegation** — the entity class owns a `CollectionEntity` instance and passes callbacks for filter config, column config, grouping config, and event handlers. This keeps entity-specific logic out of the base component.
 
+**Keyboard navigation & focus management.** `CollectionEntity` supports ArrowDown / ArrowUp navigation through the visible collection rows:
+
+- `collection-content` wrapper has `tabindex="0"` — focusable without affecting tab order of interactive elements inside
+- Clicking a row calls `selectItem()` then immediately focuses `collection-content` so arrow keys work without an extra click
+- A `keydown` listener on `collection-content` intercepts ArrowDown / ArrowUp, calls `_navigateByKey(±1)`, then re-asserts focus via `focus({ preventScroll: true })`
+- `_navigateByKey(delta)` operates on **visible DOM rows** (`querySelectorAll('.collection-row')`) — not `this.data` — so filtering and search are automatically respected
+- Clamps at boundaries; no wrap
+
+**Tab preservation across item selection.** When the user switches selection in the master list, the active tab in the detail form is preserved:
+
+- `RequirementDetails.render()` and `ChangeDetails.render()` capture `formExisted = this._form != null` before `_ensureForm()`
+- `generateReadOnlyView(item, formExisted)` — `preserveTabIndex = true` on re-renders, `false` on first render
+- `CollectionEntityForm._activeInstance` static property tracks the currently rendered panel form instance; `initializeReadOnlyInPanel` sets it on every panel render
+- The shared document-level tab delegation listener updates `_activeInstance.currentTabIndex`, so the currently rendered panel form is the one whose tab index is tracked
+
 ### 6.4 TreeTableEntity
 
 Used for tree-table perspectives on ORs/OCs and for the ON tree in the Plan activity. Builds tree structure from a flat entity list using a configurable `pathBuilder` function. The path builder returns a typed path array that drives both tree structure and per-node rendering via `typeRenderers`.
 
-The `pathBuilder` may produce **virtual hierarchy** (e.g. `drg-folder → on-node` derived from entity attributes) or **graph-based hierarchy** (e.g. `parent-on-node → child-on-node` derived from real `refines` relationships). Both modes are supported without component modification.
+The `pathBuilder` may produce **virtual hierarchy** (e.g. `domain-folder → on-node` derived from entity attributes) or **graph-based hierarchy** (e.g. `parent-on-node → child-on-node` derived from real `refines` relationships). Both modes are supported without component modification.
 
 **Build algorithm invariants:**
 
@@ -285,35 +335,11 @@ The `pathBuilder` may produce **virtual hierarchy** (e.g. `drg-folder → on-nod
 
 Filter matchers are injected as `options.filterMatchers`, enabling consistent filter behaviour across all perspectives sharing a `TreeTableEntity`.
 
+**Scroll preservation.** `TreeTableEntity.renderContent()` saves and restores `scrollTop` on `.tree-table-container` around every `innerHTML` replacement, ensuring expand/collapse and row selection do not scroll the tree back to the top.
+
 ### 6.5 CollectionEntityForm
 
 Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement: `getReadConfig()`, `getEditConfig()`, `hydrateField()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
-
-**Layout configs drive rendering.** Forms expose two layout configs (see §24): `getReadConfig()` for read mode and `getEditConfig()` for edit/create. When either is non-null, `generateForm()` delegates to `_generateFormFromConfig()`. The edit config additionally carries full field metadata (type, label, options, validation, placeholder) and is the single source of truth consumed by `validateForm`, `collectFormData`, the manager initialisers, and `restoreVersionToForm` via a flat `Map<key, fieldDef>` built by `_buildFieldMap()` / cached by `_getFieldMap()`. The legacy `getFieldDefinitions()` virtual is retained only as an empty-returning fallback for forms that have not adopted the config pattern.
-
-**hydrateField** — each form binds string references (`optionsKey`, `formatKey`, `computeKey`, `renderKey`) on its edit-config field entries to actual bound methods. `_buildFieldMap()` calls `this.hydrateField(entry)` on every field as it builds the map.
-
-**Field visibility (`visibleWhen`)** on a config entry is `'ON'` | `'OR'` (matched against `item.type`) or a function `(item) => bool`. Section visibility is determined by section `modes` (which modes the section appears in) plus whether any field entry is visible for the current item.
-
-**Computed reference fields** (`type: 'reference-list'` with `computeKey`) derive their value at initialisation time by calling a named method on the form instance. `initializeReferenceListManagers` calls `field.compute(this.currentItem)` when present.
-
-**Context resolvers** — forms receive resolver functions in their `context`:
-
-| Resolver | Returns | Used by |
-|---|---|---|
-| `getSetupData()` | Setup data object | `getSetupDataOptions`, `getReferenceDocumentOptions` |
-| `getRequirements()` | Full live requirements array | `_computeImplementedByIds`, `_computeRefinedByIds`, `getAllRequirementOptions` |
-| `onNavigate(ref)` | — | Enables navigable reference chips in read mode |
-
-**`onNavigate` option** — when provided at construction, `CollectionEntityForm` passes `onItemClick` to `ReferenceListManager` and `ReferenceManager` in read mode, enabling reference chips to navigate on click. Entity type is derived from `field.formatArgs[0]` and mapped to URL segment (`'requirement'` or `'change'`).
-
-**Modal title** — `getFormTitle(mode, item = null)` is called by `showModal` with `this.currentItem`. Subclasses override it. In edit mode, `RequirementForm` and `ChangeForm` return `Edit {code} — {title}` using the item's `code` and `title` fields. Create mode returns `Create {type}` / `Create OC` as before.
-
-**Edit mode field layout** — `renderEditableField` applies `.form-group--inline` to scalar field types (`text`, `number`, `select`, `tentative`, `reference`), rendering the label left of the input on a single line. Spatially extended types (`richtext`, `reference-list`, `annotated-reference-list`, `custom`) keep the label-above-value layout. `helpText` is suppressed for inline scalar fields — the placeholder carries the hint.
-
-**Read mode field rendering** — non-scalar field wrappers (`reference-list`, `reference`, `richtext`, `annotated-reference-list`) receive the `.detail-field--block` modifier, which indents the value area. Read mode labels match edit mode style (no uppercase, `font-size-sm`, `font-weight-medium`).
-
-**Confirm on change** — `_attachConfirmOnChangeListeners` is async and uses `odipConfirm` from `components/user-dialogs.js` instead of `window.confirm`. The message is `Do you really want to re-assign this ${type} to another domain?` using `this.currentItem?.type`.
 
 Key methods used by detail views:
 
@@ -324,248 +350,98 @@ Key methods used by detail views:
 | `showEditModal(item)` | Opens edit popup |
 | `showCreateModal()` | Opens create popup |
 
----
+#### 6.5.1 Field Type Vocabulary
 
-## 7. Multi-Perspective Pattern
+| Type | Component | Cardinality | Notes |
+|---|---|---|---|
+| `select` | Native `<select>` | 1 | Enum choices |
+| `number` | Native `<input type="number">` | 1 | Optional integer |
+| `text` | Native `<input type="text">` | 1 | Scalar text |
+| `static-label` | `<div>` with `staticText`, no `name` | — | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
+| `tentative` | `<input type="text">` pattern `^\d{4}(-\d{4})?$` | 1 | Formats `[start, end]` as `"YYYY"` or `"YYYY-ZZZZ"`; parsed via `parseTentative()` → `parseYearPeriod()` |
+| `reference` | `ReferenceManager` (§7.4) | 0..1 | Inline typeahead; value wrapped in `[id]` array on save |
+| `reference-list` | `ReferenceListManager` (§7.5) | 0..n | Chip list + search popup; may be computed/read-only via `computeKey` |
+| `annotated-reference-list` | `AnnotatedMultiselectManager` (§7.6) | 0..n with note | Table with per-item note |
+| `richtext` | `RichTextComponent` (§7.3) | — | TipTap JSON stored as stringified JSON |
 
-Requirements and changes support multiple simultaneous perspectives (collection table, tree-table, temporal timeline) that share a single data load and common state. Key principles:
+#### 6.5.2 Layout Configs
 
-- **Single data load**: entities fetched once, distributed to all active perspectives via `onDataUpdated(data)` callback
-- **Shared state**: filters, selection, and grouping coordinated across perspectives in `sharedState`
-- **Perspective switching**: tab-driven by entity component, preserves selection and filter state
-- **Injected callbacks**: `onItemSelect`, `getViewControlsEl`, `isReadOnly` — no back-references to parent activity
+Forms expose two declarative layout configs exported from `requirement-form-fields.js` / `change-form-fields.js`. They replace the former single `getFieldDefinitions()` section catalogue: layout and field metadata live together, and the edit config is the single source of truth for validation, data collection, and manager initialisation. When either config is non-null, `generateForm()` delegates to `_generateFormFromConfig()`.
 
-**Cross-perspective selection sync** (`ChangesEntity`): when switching between Collection and Tree perspectives with an item selected, the entity synchronises state — the tree re-renders with ancestors expanded and the selected row visible; the collection re-renders with the selected row scrolled into view.
-
-**Tree scroll preservation**: `TreeTableEntity.renderContent()` saves and restores `scrollTop` on `.tree-table-container` around every `innerHTML` replacement — ensuring expand/collapse and row selection do not scroll the tree back to the top.
-
----
-
-## 8. TemporalGrid Component
-
-`TemporalGrid` (`components/odp/temporal-grid.js`) is a single generic component for all temporal visualisations. It renders a horizontal grid with a continuous **calendar-based time axis** and a structured row hierarchy. All domain knowledge lives in the caller.
-
-### 8.1 Data Model
-
-```javascript
-// TimelineMilestone
-{
-    label:       string,        // short display label
-        description: string,        // tooltip / detail text
-    eventTypes:  string[],      // one or more event type keys
-    date:        Date           // calendar position
-}
-```
-
-### 8.2 Row Taxonomy
-
-Four row kinds are supported, rendered in insertion order:
-
-| Kind | Description |
-|---|---|
-| `separator` | Full-width label spanning both label and axis columns. No timeline track, no selection. Used as a visual section header (e.g. DrG name). |
-| `group` | Label column + timeline track + expand/collapse toggle (`▶/▼`). Collapsing hides all child rows. Expand state preserved across re-renders. |
-| `child` | Indented label column + timeline track. Visibility controlled by parent group's expanded state. |
-| `timeline` | Flat label column + timeline track. No hierarchy — used by `ChangesEntity`. |
-
-### 8.3 Public API
-
-#### Time axis
-
-```javascript
-setTimeInterval(startYear, endYear)   // set visible interval; fires timeIntervalListeners
-setTicks(ticks)                       // ticks: [{ label: string, date: Date }]
-getTimeInterval()                     // → { startYear, endYear }
-addTimeIntervalUpdateListener(fn)     // fn(startYear, endYear)
-```
-
-#### Milestone rendering
-
-```javascript
-setMilestoneRendering(spec)
-```
-
-One call per instance before adding rows. Two modes:
-
-**Icon mode** — one marker per milestone, styled by event type:
-
-```javascript
-{ mode: 'icon', eventTypes: { 'period-start': { icon: '▶', colour: '#2563eb' }, ... } }
-```
-
-**Pixmap mode** — a `rows × cols` pixel grid per milestone:
-
-```javascript
-{
-    mode: 'pixmap', rows: 1, cols: 3,
-        eventTypes: {
-        'API_PUBLICATION':    { row: 0, col: 0, colour: '#3b82f6' },
-        'UI_TEST_DEPLOYMENT': { row: 0, col: 1, colour: '#8b5cf6' },
-        'OPS_DEPLOYMENT':     { row: 0, col: 2, colour: '#10b981' }
-    }
-}
-```
-
-#### Row management
-
-```javascript
-addGroupRow(id, label, milestones)          // header/separator rows: addGroupRow(id, label, [])
-addChildRow(id, parentId, label, milestones)
-addRow(id, label, milestones)               // flat row — used by ChangesEntity
-updateRow(id, milestones)
-removeRow(id)
-clearRows()
-```
-
-All row-management calls trigger a full re-render. Rows are rendered in insertion order.
-
-#### Selection
-
-```javascript
-addSelectionListener(fn)              // fn(id) — fires on every click, always
-setTimeLineSelected(id, boolean)      // programmatic selection; does NOT fire listeners
-getSelectedTimeLine()                 // → id | null
-```
-
-#### Lifecycle
-
-```javascript
-render(container)
-cleanup()
-```
-
-### 8.4 Connector Lines
-
-When a row has two or more milestones visible within the current time interval, the component draws horizontal connector lines between adjacent milestones (sorted by date).
-
-### 8.5 Zoom Control
-
-`TemporalGrid` renders a zoom control bar above the grid accepting `YYYY` or `YYYY-ZZZZ` format. Delegates parsing to `parseYearPeriod()` from `shared/year-period.js`. Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`).
-
----
-
-## 9. Temporal Perspective (Changes)
-
-`ChangesEntity` is the only entity with a third perspective beyond collection and tree-table: the **temporal view**, implemented by `TemporalGrid` using flat `timeline` rows.
-
-### 9.1 Time Interval and Ticks
-
-`ChangesEntity.calculateOptimalTimeWindow()` computes the default interval from `setupData.waves` (earliest to latest future wave). It calls `temporalGrid.setTimeInterval(startYear, endYear)` and `temporalGrid.setTicks(waveTicks)` where `waveTicks` is derived from `setupData.waves` using `implementationDate` as the wave date.
-
-Changes with no milestones within the current time interval are excluded before `addRow` calls. `_feedTemporalGrid()` performs this pre-filter and calls `clearRows()` then re-adds all visible changes.
-
-### 9.2 Milestone Rendering
-
-```javascript
-temporalGrid.setMilestoneRendering({
-    mode: 'pixmap', rows: 1, cols: 3,
-    eventTypes: {
-        'API_PUBLICATION':     { row: 0, col: 0, colour: '#3b82f6' },
-        'API_TEST_DEPLOYMENT': { row: 0, col: 0, colour: '#3b82f6' },
-        'API_DECOMMISSIONING': { row: 0, col: 0, colour: '#3b82f6' },
-        'UI_TEST_DEPLOYMENT':  { row: 0, col: 1, colour: '#8b5cf6' },
-        'OPS_DEPLOYMENT':      { row: 0, col: 2, colour: '#10b981' }
-    }
-})
-```
-
-### 9.3 Selection and State Sharing
-
-`ChangesEntity` registers a selection listener on construction. Selection state is stored in `sharedState.selectedItem` and restored when switching back to the temporal perspective via `temporalGrid.setTimeLineSelected(itemId, true)`.
-
----
-
-## 10. O* Workspace
-
-### 10.1 Architecture
-
-`OsActivity` (`os.js`) is the orchestrator. `OStarEntity` (`o-star-entity.js`) owns the unified ON/OR/OC list component.
-
-Responsibilities:
-
-| Concern | Owner |
-|---|---|
-| SubPath routing (list vs detail) | `OsActivity` |
-| Shell layout (toolbar, view controls, MasterDetail) | `OsActivity` |
-| Search box (debounced text input) | `OsActivity` |
-| Filter bar instantiation and wiring | `OsActivity` |
-| Data fetching via `listOStars` | `OsActivity` |
-| OC type normalisation (`type = 'OC'`) | `OsActivity` |
-| Count summary (ONs · ORs · OCs) | `OsActivity` |
-| Breadcrumb trail | `OsActivity` |
-| Two-column layout + resizable divider | `MasterDetail` component |
-| List rendering — Collection perspective | `OStarEntity` |
-| Grouping selector | `OStarEntity` |
-| Virtual `implements` field pre-computation | `OStarEntity` |
-| Detail panel content | `RequirementDetails` / `ChangeDetails` |
-
-**Full-page mode navigation pattern:** when inter-O\* reference navigation triggers a full-page detail render, `OsActivity` sets `_inPageMode = true` and renders the detail view into `this.container`, replacing the list shell. When the user navigates back (breadcrumb "O\*s" click or O\*s tab click), `ElaborateActivity._route` calls `os.handleSubPath([])`, which detects `_inPageMode` and calls `_renderList()` to rebuild the full list shell. `_prepareOStarEntity()` reconnects `_ostarEntity.container` to the new `masterDetail.listContainer` after each rebuild.
-
-### 10.2 OStarEntity
-
-`OStarEntity` receives injected callbacks at construction:
-
-```js
-{
-    onItemSelect(item),             // called on row click
-        getViewControlsEl(),            // returns HTMLElement for view controls mount
-        isReadOnly,                     // boolean; true in Explore/edition context
-        onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
-}
-```
-
-Lifecycle hooks called by `OsActivity`:
-- `onActivated()` — mounts view controls, renders from cache
-- `onDeactivated()` — clears view controls
-- `onDataUpdated(data)` — pre-computes virtual fields, caches data, re-renders if active
-
-**Virtual field pre-computation** in `onDataUpdated()`:
-- `item.implements` = `item.implementedONs` (OR) or `item.implementedORs` (OC), whichever is non-empty
-
-### 10.3 Detail Views
-
-`RequirementDetails` and `ChangeDetails` own the detail shell and delegate body rendering to the form class via `generateReadOnlyView(item)` + `initializeReadOnlyInPanel(container, item)`.
-
-Two rendering modes:
-
-| Mode | Context | Back button |
+| Config | Returned by | Role |
 |---|---|---|
-| `'panel'` | MasterDetail right column | None |
-| `'page'` | Full page (inter-O\* navigation) | None |
+| `*ReadConfig` | `getReadConfig()` | Read-mode layout only — keys plus layout hints. Field metadata resolved from the edit config field map at render time. |
+| `*EditConfig` | `getEditConfig()` | Edit/create layout **and** full field metadata (type, label, required, options, validation, placeholder, helpText). Source of truth for `validateForm`, `collectFormData`, manager init, and `restoreVersionToForm`. |
 
-### 10.4 Navigable References
+Both share a common shape: `{ sections: [ { title, modes?, fields: [...] } ] }`. Field `key` is the contract linking read entries to their metadata in the edit config. The legacy `getFieldDefinitions()` virtual is retained only as an empty-returning fallback for forms that have not adopted the config pattern.
 
-Inter-O\* references in read-only detail views are rendered as navigable links:
+**Section properties:**
 
-1. `RequirementDetails` / `ChangeDetails` pass `onNavigate(ref)` to the form at construction
-2. `CollectionEntityForm` stores `onNavigate` and passes `onItemClick` to `ReferenceListManager` / `ReferenceManager` in read mode
-3. Managers render `selected-chip--link` spans; `stopPropagation` prevents panel deselection
-4. `onItemClick` fires; `_navigateToRef` maps `ref.entityType` to a canonical URL segment (`on`, `or`, `oc`) and navigates
-5. `annotated-ref-link` anchors (`strategicDocuments`) navigate to the document URL directly
+| Property | Meaning |
+|---|---|
+| `title` | Tab label. |
+| `modes` | Optional `['create' \| 'edit']`. Restricts the section to the listed modes; absent means both. Used to hide `Derived` and `Metadata` sections in create mode. |
+| `fields` | Ordered list of field entries and row wrappers. |
 
-Entity type mapping in `_navigateToRef` is defensive — accepts both legacy values (`requirement`, `change`) and canonical values (`ON`, `OR`, `OC`, `on`, `or`, `oc`).
+**Field entry properties** — a `fields` entry is either a bare field (`{ key, ... }`) or a row wrapper (`{ row: [ ...fields ], valueInline? }`):
 
-**Link style:** navigable reference chips use `--link-color` (`--ec-blue`) with `font-weight: semibold` and no underline. The shared `.odip-link` utility class in `main.css` defines the canonical link style; `selected-chip--link` and `annotated-ref-link` in `reference-list-manager.css` and `form-components.css` reference the same tokens.
+| Property | Applies | Meaning |
+|---|---|---|
+| `key` | field | Field identifier; in the edit config the entry also carries full metadata. |
+| `visibleWhen` | field | `'ON'` \| `'OR'` (matched against `item.type`) or `(item) => bool`. Absent = always visible. |
+| `readOnly` | field (edit) | Renders as display value in edit mode; suppressed entirely in create mode. Used for `itemId`, `version`, `_history`, and derived `refinedBy` / `implementedBy`. |
+| `confirmOnChange` | field (edit) | Intercepts the field's change event; the user must confirm before the new value is accepted. Applied to `domain`. |
+| `hideIfNullOrEmpty` | field (read) | When the value is null, empty string, or empty array, the field is not rendered. Default false. Applied to forward-reference fields so empty relations vanish in read mode. Derived fields deliberately omit it and always render. |
+| `row` | wrapper | Array of field entries rendered side-by-side. A single visible child collapses to full width (unless `valueInline`). No visible children → the row emits nothing. |
+| `valueInline` | row | When true, the row's fields render label and value on one line (`label \| value`) via `form-row--inline`, and even a single visible field stays wrapped so the inline styling applies. Used for compact metadata pairs (`maturity`/`tentative`, `itemId`/`version`). |
 
-### 10.5 Breadcrumb
+**hydrateField** — each form binds string references (`optionsKey`, `formatKey`, `computeKey`, `renderKey`) on its edit-config field entries to actual bound methods. `_buildFieldMap()` calls `this.hydrateField(entry)` on every field as it builds the map.
 
-`breadcrumb.js` (`components/breadcrumb.js`) provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`.
+**Computed reference fields** (`type: 'reference-list'` with `computeKey`) derive their value at initialisation time by calling a named method on the form instance. `initializeReferenceListManagers` calls `field.compute(this.currentItem)` when present.
 
-This utility is used exclusively by `NarrativeActivity` for intra-narrative back-navigation (← Chapters, current chapter name). It is not a general-purpose header mechanism — `app.header.setBreadcrumb()` does not exist and must not be called by other activities.
+**Renderer** — `_generateFormFromConfig()` consumes the active config:
 
-### 10.6 API Client — listOStars
+- `_buildFieldMap()` flattens the **edit** config (including row children) into `Map<key, hydratedFieldDef>`, calling `hydrateField()` per entry; cached by `_getFieldMap()`.
+- `_isSectionVisibleFromConfig()` applies section `modes` and per-field `visibleWhen`.
+- `_renderConfigEntry()` / `_renderConfigRow()` handle bare fields and `row` wrappers, applying `hideIfNullOrEmpty` and `valueInline`.
+- `_resolveFieldDef()` looks up metadata by key from the field map; `_resolveEntryVisible()` evaluates `visibleWhen`.
+- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook). The handler is async and uses `odipConfirm` from `user-dialogs.js` (§7.8) with the message `Do you really want to re-assign this ${type} to another domain?` — replacing `window.confirm`.
 
-`apiClient.listOStars(params)` is the unified O* query method. See §10 of the API Client documentation (ADD chapter 04) for full parameter mapping. Key behaviour:
+There is no header/strip concept: `code` and `title` are shown in the detail toolbar (`requirement-details.js` / `change-details.js` render `code — title`, matching the TOC), not repeated inside the form body.
 
-- Fans out to `/operational-requirements` + `/operational-changes` in parallel
-- Skip optimisation: OC-only type filter skips requirements call; non-OC type filter skips changes call
-- Returns merged array in fetch order (requirements first, then changes) — no client-side sorting
+**Context resolvers** — forms receive resolver functions in their `context`:
+
+| Resolver | Returns | Used by |
+|---|---|---|
+| `getSetupData()` | Setup data object | `getSetupDataOptions`, `getReferenceDocumentOptions` |
+| `getRequirements()` | Full live requirements array | `_computeImplementedByIds`, `_computeRefinedByIds`, `getAllRequirementOptions` |
+| `onNavigate(ref)` | — | Enables navigable reference chips in read mode |
+| `app` | `App` instance | `_getLinkProvider()` — reference target preloading; commit gate (§13) |
+| `onInternalLink` | — | `initializeRichTextReadOnly()` — internal link click navigation |
+| `onSaved(result, mode)` | — | Save-propagation callback (see below) |
+
+**Edit mode field layout** — `renderEditableField` applies `.form-group--inline` to scalar field types (`text`, `number`, `select`, `tentative`, `reference`), rendering the label left of the input on a single line. Spatially extended types (`richtext`, `reference-list`, `annotated-reference-list`, `custom`) keep the label-above-value layout. `helpText` is suppressed for inline scalar fields — the placeholder carries the hint.
+
+**Read mode field rendering** — non-scalar field wrappers (`reference-list`, `reference`, `richtext`, `annotated-reference-list`) receive the `.detail-field--block` modifier, which indents the value area. Read mode labels match edit mode style (no uppercase, `font-size-sm`, `font-weight-medium`).
+
+**Ancillary exports** — the `*-form-fields.js` modules also export the save-path helpers consumed by `transformDataForSave`: `requiredIdentifierArrayFields`, `requiredAnnotatedReferenceArrayFields` (requirement only), `requiredTextFields`, `optionalTextFields` (change only), the `*FormTitles` map, and `*Defaults`.
+
+**Save propagation** — `CollectionEntityForm` fires an optional `onSaved(result, mode)` callback after any successful create or edit (`mode` is `'create'` | `'edit'`), in addition to the legacy `entitySaved` DOM event. The detail views capture `callbacks.onSaved` on every `render()` and route the form's `onSaved` through `_handleSaved(result, mode)`, which re-renders their own panel from the server then forwards to the caller. This single mechanism replaces ad-hoc reload logic and works identically in the O* and Narrative perspectives.
+
+**OC-specific focus fixes:**
+
+- **Stale MutationObserver** — `ChangeForm.loadHistoryWithObserver` is called on every `generateReadOnlyView`. Without a disconnect guard, each OC re-render accumulated a new observer on `document.body`; stale observers fired on subsequent DOM mutations. Fix: `this._historyObserver?.disconnect()` before creating the new observer.
+- **TipTap read-only focus** — `RichTextComponent` in read-only mode calls `blur()` immediately after `mount()` to prevent focus theft. The edit modal is unaffected — `focusFirstInput()` runs after modal open.
 
 ---
 
-## 11. MasterDetail Component
+## 7. Components
 
-`MasterDetail` (`components/master-detail.js`) is a reusable two-column resizable layout used by `OsActivity`, `NarrativeActivity`, `TreeEntity` (Setup), and `ManageActivity` (Editions).
+Reusable UI components, each described independently of the activities that consume it. These are distinct from the base component *patterns* in §6: the items here are concrete widgets with their own public API.
+
+### 7.1 MasterDetail
+
+`MasterDetail` (`components/master-detail.js`) is a reusable two-column resizable layout used by `OsActivity`, `NarrativeActivity`, `TreeEntity` (Setup), and `EditionsActivity` (Manage).
 
 Public API:
 
@@ -578,13 +454,106 @@ md.clearDetail()             // Restore placeholder
 md.cleanup()                 // Unbind resize listeners
 ```
 
----
+### 7.2 TemporalGrid
 
-## 12. Rich Text
+`TemporalGrid` (`components/temporal-grid.js`) is a single generic component for all temporal visualisations. It renders a horizontal grid with a continuous **calendar-based time axis** and a structured row hierarchy. All domain knowledge lives in the caller.
 
-Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **TipTap** editor. Content is stored and transmitted as TipTap document JSON serialised to a string. The web client renders content in read mode and edits it with a toolbar in write mode using `RichTextComponent`.
+#### 7.2.1 Data Model
 
-### 12.1 Storage Format
+```javascript
+// TimelineMilestone
+{
+    label:       string,        // short display label
+    description: string,        // tooltip / detail text
+    eventTypes:  string[],      // one or more event type keys
+    date:        Date           // calendar position
+}
+```
+
+#### 7.2.2 Row Taxonomy
+
+Four row kinds are supported, rendered in insertion order:
+
+| Kind | Description |
+|---|---|
+| `separator` | Full-width label spanning both label and axis columns. No timeline track, no selection. Used as a visual section header (e.g. domain name). |
+| `group` | Label column + timeline track + expand/collapse toggle (`▶/▼`). Collapsing hides all child rows. Expand state preserved across re-renders. |
+| `child` | Indented label column + timeline track. Visibility controlled by parent group's expanded state. |
+| `timeline` | Flat label column + timeline track. No hierarchy — used by `ChangesEntity`. |
+
+#### 7.2.3 Public API
+
+**Time axis**
+
+```javascript
+setTimeInterval(startYear, endYear)   // set visible interval; fires timeIntervalListeners
+setTicks(ticks)                       // ticks: [{ label: string, date: Date }]
+getTimeInterval()                     // → { startYear, endYear }
+addTimeIntervalUpdateListener(fn)     // fn(startYear, endYear)
+```
+
+**Milestone rendering** — `setMilestoneRendering(spec)`, one call per instance before adding rows. Two modes:
+
+*Icon mode* — one marker per milestone, styled by event type:
+
+```javascript
+{ mode: 'icon', eventTypes: { 'period-start': { icon: '▶', colour: '#2563eb' }, ... } }
+```
+
+*Pixmap mode* — a `rows × cols` pixel grid per milestone:
+
+```javascript
+{
+    mode: 'pixmap', rows: 1, cols: 3,
+    eventTypes: {
+        'API_PUBLICATION':    { row: 0, col: 0, colour: '#3b82f6' },
+        'UI_TEST_DEPLOYMENT': { row: 0, col: 1, colour: '#8b5cf6' },
+        'OPS_DEPLOYMENT':     { row: 0, col: 2, colour: '#10b981' }
+    }
+}
+```
+
+**Row management**
+
+```javascript
+addGroupRow(id, label, milestones)          // header/separator rows: addGroupRow(id, label, [])
+addChildRow(id, parentId, label, milestones)
+addRow(id, label, milestones)               // flat row — used by ChangesEntity
+updateRow(id, milestones)
+removeRow(id)
+clearRows()
+```
+
+All row-management calls trigger a full re-render. Rows are rendered in insertion order.
+
+**Selection**
+
+```javascript
+addSelectionListener(fn)              // fn(id) — fires on every click, always
+setTimeLineSelected(id, boolean)      // programmatic selection; does NOT fire listeners
+getSelectedTimeLine()                 // → id | null
+```
+
+**Lifecycle**
+
+```javascript
+render(container)
+cleanup()
+```
+
+#### 7.2.4 Connector Lines
+
+When a row has two or more milestones visible within the current time interval, the component draws horizontal connector lines between adjacent milestones (sorted by date).
+
+#### 7.2.5 Zoom Control
+
+`TemporalGrid` renders a zoom control bar above the grid accepting `YYYY` or `YYYY-ZZZZ` format. Delegates parsing to `parseYearPeriod()` from `shared/year-period.js`. Absolute bounds (`minYear`, `maxYear`) are injected as constructor options (default `2025`–`2045`).
+
+### 7.3 RichTextComponent
+
+Rich text fields (`statement`, `rationale`, `flows`, `nfrs`, `privateNotes`, `purpose`, `initialState`, `finalState`, `details`) use the **TipTap** editor. Content is stored and transmitted as TipTap document JSON serialised to a string. `RichTextComponent` (`components/rich-text-component.js`) encapsulates all TipTap instantiation, configuration, and lifecycle. It is the single point of rich text usage across all forms and detail views.
+
+#### 7.3.1 Storage Format
 
 TipTap JSON document format:
 
@@ -594,11 +563,7 @@ TipTap JSON document format:
 
 This is the canonical format at rest (Neo4j), in transit (REST API), and in the browser. The `DistributedEditionImporter` converts Quill Delta source files to TipTap JSON at import time via `_deltaToTipTap()`.
 
-### 12.2 RichTextComponent
-
-`RichTextComponent` (`components/rich-text-component.js`) encapsulates all TipTap instantiation, configuration, and lifecycle. It is the single point of rich text usage across all forms and detail views.
-
-**Constructor options:**
+#### 7.3.2 Constructor Options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -609,11 +574,11 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `placeholder` | string | `''` | Placeholder text for empty edit fields |
 | `onChange` | Function | `null` | Called with TipTap JSON string on every content change |
 | `onInternalLink` | Function | `null` | Called with `(type, value)` on internal link click in read-only mode. `type`: `'n-ref'` \| `'o-ref'` \| `'d-ref'`; `value`: the mark's value attribute. Navigation implemented by the caller. |
-| `linkProvider` | object | `null` | Supplies reference targets for the toolbar `#` picker (see §12.6). When absent, only the external-link button is shown. |
+| `linkProvider` | object | `null` | Supplies reference targets for the toolbar `#` picker (see §7.3.6). When absent, only the external-link button is shown. |
 | `availableBlockIds` | string[] | `[]` | Block IDs for insertion in this chapter's narrative. Feeds the ⚙ dropdown in edit mode. Always `[]` for O* field editors. Never passed in read-only mode. |
 | `availableStringKeys` | string[] | `[]` | Inline string keys for insertion in this chapter's narrative. Combined with `availableBlockIds` in the same ⚙ dropdown, separated by a divider. Always `[]` for O* field editors. Never passed in read-only mode. |
 
-**Public API:**
+#### 7.3.3 Public API
 
 | Method | Description |
 |---|---|
@@ -624,27 +589,82 @@ This is the canonical format at rest (Neo4j), in transit (REST API), and in the 
 | `focus()` | Focus the editor (edit mode only) |
 | `blur()` | Blur the editor |
 
-**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`, `GeneratedBlockMark`, `GeneratedStringMark`, `odipLinkClick` (custom ProseMirror plugin — see §12.7).
+**Extensions loaded:** `StarterKit` (paragraph, bold, italic, strike, lists, code, blockquote, hardBreak), `Underline`, `TextStyle`, `Link`, `Image`, `Table`/`TableRow`/`TableHeader`/`TableCell`, `Placeholder`, `OdipNRef`, `OdipORef`, `OdipDRef`, `GeneratedBlockMark`, `GeneratedStringMark`, `odipLinkClick` (custom ProseMirror plugin — see §7.3.5).
 
-**Internal reference marks** — three mark extensions (`OdipNRef`, `OdipORef`, `OdipDRef`) that both preserve round-tripped content and support authoring via set/unset commands:
+#### 7.3.4 Internal Reference Marks
+
+Three mark extensions (`OdipNRef`, `OdipORef`, `OdipDRef`) preserve round-tripped content and support authoring via set/unset commands:
 
 | Mark name | Rendered as | Attributes | Semantics |
 |---|---|---|---|
 | `n-ref` (`OdipNRef`) | `<span data-n-ref="{value}" data-label="{label}">` | `value`, `label` | Narrative reference: `{chapterId}[/{topicId}]` |
 | `o-ref` (`OdipORef`) | `<span data-o-ref="{value}" data-label="{label}">` | `value`, `label` | O* reference: opaque O* itemId |
-| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}" data-label="{label}">` | `value`, `label` | Strategic document reference: refdoc id — **legacy/imported content only** (see §12.6) |
-| `generated-block` (`GeneratedBlockMark`) | `<span data-generated-block="{id}" class="generated-block-chip">` | `id` | Block placeholder — chapter narratives only. In edit mode rendered as a non-editable ⚙ chip. In read-only mode `ChapterBody` substitutes the mark with resolved TipTap node arrays (see §18.5). |
-| `generated-string` (`GeneratedStringMark`) | `<span data-generated-string="{key}" class="generated-string-chip">` | `key` | Inline string placeholder — chapter narratives only. In edit mode rendered as a non-editable Σ chip. In read-only mode `ChapterBody` substitutes the mark with the resolved plain-text value (see §18.5). |
+| `d-ref` (`OdipDRef`) | `<span data-d-ref="{value}" data-label="{label}">` | `value`, `label` | Strategic document reference: refdoc id — **legacy/imported content only** (see §7.3.6) |
+| `generated-block` (`GeneratedBlockMark`) | `<span data-generated-block="{id}" class="generated-block-chip">` | `id` | Block placeholder — chapter narratives only. In edit mode rendered as a non-editable ⚙ chip. In read-only mode `ChapterBody` substitutes the mark with resolved TipTap node arrays (see §8.3). |
+| `generated-string` (`GeneratedStringMark`) | `<span data-generated-string="{key}" class="generated-string-chip">` | `key` | Inline string placeholder — chapter narratives only. In edit mode rendered as a non-editable Σ chip. In read-only mode `ChapterBody` substitutes the mark with the resolved plain-text value (see §8.3). |
 
-Each mark stores two attributes: `value` (the stable target identifier) and `label` (cached display text — code/title/name — may be absent on legacy imported marks). Each mark exposes `set{X}({ value, label })` / `unset{X}()` TipTap commands for programmatic authoring.
+Each mark stores `value` (stable target identifier) and `label` (cached display text — may be absent on legacy imported marks). Each exposes `set{X}({ value, label })` / `unset{X}()` TipTap commands for programmatic authoring.
 
-In read-only mode, `n-ref` and `o-ref` spans are styled as clickable links and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic. `d-ref` spans in legacy/imported content follow the same path. Newly authored strategic document references are inserted as standard `link` marks (see §12.6) and open the document URL directly — `onInternalLink` is not involved.
+In read-only mode, `n-ref` and `o-ref` spans are styled as clickable links and a delegated click listener fires `onInternalLink(type, value)`. Navigation is implemented by the caller; the component is navigation-agnostic. `d-ref` spans in legacy/imported content follow the same path. Newly authored strategic document references are inserted as standard `link` marks (see §7.3.6) and open the document URL directly — `onInternalLink` is not involved.
 
 **Read-only mode** — `editable: false` is set on the TipTap instance; the toolbar is omitted; `blur()` is called immediately after mount to prevent focus theft.
 
 **Toolbar keyboard accessibility** — all toolbar buttons, the heading select, and dropdown menu items are created with `tabIndex = -1`. Tab therefore skips the entire toolbar and lands directly on the editor's content area. Toolbar controls remain accessible via mouse/click.
 
-### 12.3 Integration with CollectionEntityForm
+#### 7.3.5 Toolbar Structure and Link Behaviour
+
+The toolbar is organised in groups (`.rich-text-component__toolbar-group`), rendered left to right:
+
+| Group | Buttons | Condition |
+|---|---|---|
+| Text formatting | Bold · Italic · Underline · Strikethrough | always |
+| Headings | H1 · H2 · H3 | `headings: true` only |
+| Lists | Bullet list · Ordered list | always |
+| Links | 🔗 External link · `#` Insert reference | `#` button only when `linkProvider` present |
+| Images | 🖼 Insert image | `images: true` only |
+| Tables | ⊞ Insert · +row · -row · +col · -col · ✕tbl | `tables: true` only |
+| Generated content | ⚙ Insert block or string | `availableBlockIds` or `availableStringKeys` non-empty |
+
+The toolbar is `position: sticky; top: 0` so it remains visible when the ancestor container scrolls.
+
+**External link button (🔗)** — opens `odipPromptLink` dialog (§7.8) with two fields: URL and link text. Pre-fills link text from the current selection; pre-fills URL when the cursor is inside an existing `link` mark. On confirm, inserts or updates a `link` mark. When the URL field is cleared, the link mark is removed. The editor selection (`from`/`to`) is captured synchronously before the dialog opens to survive the `await`.
+
+**Link click behaviour (`odipLinkClick` plugin)** — a custom ProseMirror plugin replaces TipTap's built-in `openOnClick` handling. It handles `handleDOMEvents.click` on `<a href>` elements:
+
+| Mode | Trigger | Behaviour |
+|---|---|---|
+| Read-only | Any click | Opens `href` in a new tab (`target="_blank"`, `noopener,noreferrer`) |
+| Edit | Ctrl/Cmd+click | Opens `href` in a new tab |
+| Edit | Plain click | Passed through — ProseMirror places the cursor normally |
+
+**Reference picker (`#` button)** — opens a modal overlay (`.rich-text-ref-popup`) with a type selector row (**O\*** `o-ref` · **Narrative** `n-ref` · **Document** `d-ref`) and a `ReferenceManager` typeahead preloaded from the `linkProvider`. On selection, `_applyRef(type, value, label, url?)` applies the mark to the current selection. For `o-ref`/`n-ref`, the corresponding mark is applied. For `d-ref`, a standard `link` mark is inserted pointing to the document's `url` — no `OdipDRef` mark is used for newly authored references. When the selection is empty, the label is inserted as text first, then marked. The editor selection is captured before the overlay opens and restored on apply via `setTextSelection`.
+
+#### 7.3.6 Reference Authoring — `linkProvider` and `link-provider.js`
+
+`RichTextComponent` supports authoring of `o-ref`, `n-ref`, and `d-ref` marks in edit mode when a `linkProvider` is injected by the owner. The provider is built via the factory `buildLinkProvider(app)` exported from `components/link-provider.js`.
+
+`buildLinkProvider(app)` accepts an `App` instance and returns a provider object:
+
+| Method | Description |
+|---|---|
+| `load()` | Preload all target nodes (chapters, refdocs, O\*s) from the app cache. Returns a `Promise`; no-op if already loaded. |
+| `nodes(type)` | Return `ReferenceManager`-compatible node tree for `'o-ref'`, `'n-ref'`, or `'d-ref'`. Synchronous after `load()`. |
+| `options(type)` | Return flat `Array<{ value, label }>` — backward-compat for flat-list consumers. |
+| `isLoaded()` | Returns `true` once `load()` has completed. |
+
+**Target preloading** — one `Promise.all` on first `load()` call, parallel to the three app caches:
+
+| Mark type | Source | `value` | `label` | Node shape |
+|---|---|---|---|---|
+| `n-ref` | `app.getChapters()` | chapter `itemId` (string) | chapter title | Chapter hierarchy tree; topics/subtopics lazy via `onExpand` — fetches `apiClient.getChapter(itemId)` (extended projection) on first expand since `app.getChapters()` returns standard projection without `osHierarchy` |
+| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | `name (version)` or `name` | Hierarchy tree via `ReferenceManager.buildTreeNodes()` when `parentId` present; flat leaf nodes otherwise. Each node carries an additional `url` field used at insertion time. |
+| `o-ref` | `app.getOStars()` | O\* `itemId` (string) | `"{code} — {title}"` | Flat leaf nodes sorted by code |
+
+O\* volumes are bounded (hundreds); preloading is cheap and avoids per-keystroke API calls. The interface supports swapping to async search behind the same `nodes(type)` contract without touching consumers.
+
+**Owner responsibility** — `ChapterBody` is the reference implementation. It lazily creates a single `linkProvider` instance (stored as `this._linkProvider`) and passes it to `RichTextComponent` only in edit mode. `RequirementDetails` and `ChangeDetails` follow the same pattern when O\* rich-text fields are opened in edit mode.
+
+#### 7.3.7 Integration with CollectionEntityForm
 
 `CollectionEntityForm` manages `RichTextComponent` instances:
 
@@ -652,17 +672,9 @@ In read-only mode, `n-ref` and `o-ref` spans are styled as clickable links and a
 - **Read** — `initializeRichTextReadOnly()` finds `.richtext-readonly-placeholder` elements, mounts a read-only `RichTextComponent` per field, and passes `onInternalLink: this._onInternalLink` so reference spans are navigable.
 - Instances are stored in `this.richTextComponents[fieldKey]` and destroyed in `cleanupRichTextComponents()`.
 
-**`_getLinkProvider()`** — lazily builds a `linkProvider` from `context.app` on first call via `buildLinkProvider(app)`. Returns `null` when `context.app` is absent (e.g. standalone modal not owned by a details view), in which case only the external-link toolbar button is shown.
+`_getLinkProvider()` lazily builds a `linkProvider` from `context.app` on first call via `buildLinkProvider(app)`; returns `null` when `context.app` is absent (e.g. standalone modal not owned by a details view), in which case only the external-link toolbar button is shown.
 
-**Context fields consumed** (`context` passed at construction by `RequirementDetails` / `ChangeDetails`):
-
-| Field | Used by |
-|---|---|
-| `app` | `_getLinkProvider()` — reference target preloading |
-| `onInternalLink` | `initializeRichTextReadOnly()` — internal link click navigation |
-| `onNavigate` | Read-mode reference chips (O\* / strategic document navigation) |
-
-**`RequirementDetails` / `ChangeDetails`** pass `app: this.app` and `onInternalLink` in the context to `_ensureForm()`. Their `_handleInternalLink(type, value)` implementation resolves all three mark types against the active dataset context:
+`RequirementDetails` / `ChangeDetails` `_handleInternalLink(type, value)` resolves all three mark types against the active dataset context:
 
 | Mark | Resolution | Target |
 |---|---|---|
@@ -670,7 +682,7 @@ In read-only mode, `n-ref` and `o-ref` spans are styled as clickable links and a
 | `o-ref` | `app.findOStar(itemId)` → resolves type | `{base}/os/{type}/{itemId}` |
 | `d-ref` | Direct — value is refdoc id (legacy imported marks only) | `{ctxBase}/setup/reference-documents/{id}` |
 
-### 12.4 Content Emptiness Check
+#### 7.3.8 Content Emptiness Check
 
 `VersionedItemService._isContentEmpty(value)` is the canonical check for whether a TipTap JSON string is empty:
 
@@ -684,89 +696,22 @@ _isContentEmpty(value) {
 }
 ```
 
-Used by `OperationalRequirementService` and `OperationalChangeService` in `_validateMaturityGatedFields` to enforce that `statement`/`rationale` (ADVANCED+) and `purpose`/`initialState`/`finalState` (MATURE) are non-empty.
+Used by `OperationalRequirementService` and `OperationalChangeService` in `_validateMaturityGatedFields` to enforce that maturity-gated rich-text fields are non-empty.
 
-### 12.5 Images
+#### 7.3.9 Images
 
 Images are embedded as base64-encoded data URLs directly in the TipTap JSON (`type: 'image'`, `attrs.src`). The toolbar image button opens a hidden file input; the selected file is read via `FileReader.readAsDataURL` and inserted via `editor.chain().setImage({ src })`.
 
-### 12.6 Reference Authoring — `linkProvider` and `link-provider.js`
-
-`RichTextComponent` supports authoring of `o-ref`, `n-ref`, and `d-ref` marks in edit mode when a `linkProvider` is injected by the owner. The provider is built via the factory `buildLinkProvider(app)` exported from `components/link-provider.js`.
-
-**`buildLinkProvider(app)` — factory**
-
-Accepts an `App` instance and returns a provider object with three methods:
-
-| Method | Description |
-|---|---|
-| `load()` | Preload all target nodes (chapters, refdocs, O\*s) from the app cache. Returns a `Promise`; no-op if already loaded. |
-| `nodes(type)` | Return `ReferenceManager`-compatible node tree for `'o-ref'`, `'n-ref'`, or `'d-ref'`. Synchronous after `load()`. Used by `RichTextComponent` reference picker. |
-| `options(type)` | Return flat `Array<{ value: string, label: string }>` — backward-compat for flat-list consumers. |
-| `isLoaded()` | Returns `true` once `load()` has completed. |
-
-**Target preloading** — one `Promise.all` on first `load()` call, parallel to the three app caches:
-
-| Mark type | Source | `value` | `label` | Node shape |
-|---|---|---|---|---|
-| `n-ref` | `app.getChapters()` | chapter `itemId` (string) | chapter title | Chapter hierarchy tree; topics/subtopics lazy via `onExpand` — fetches `apiClient.getChapter(itemId)` (extended projection) on first expand since `app.getChapters()` returns standard projection without `osHierarchy` |
-| `d-ref` | `app.getSetupData().referenceDocuments` | refdoc `id` (string) | `name (version)` or `name` | Hierarchy tree built via `ReferenceManager.buildTreeNodes()` when `parentId` present; flat leaf nodes otherwise. Each node carries an additional `url` field (the document's external URL) used at insertion time. |
-| `o-ref` | `app.getOStars()` | O\* `itemId` (string) | `"{code} — {title}"` | Flat leaf nodes sorted by code |
-
-O\* volumes are bounded (hundreds); preloading is cheap and avoids per-keystroke API calls. If volume demands it, the interface supports swapping to async search behind the same `nodes(type)` contract without touching consumers.
-
-**Owner responsibility** — `ChapterBody` is the reference implementation. It lazily creates a single `linkProvider` instance (stored as `this._linkProvider`) and passes it to `RichTextComponent` only in edit mode:
-
-```js
-linkProvider: editable
-    ? (this._linkProvider ??= buildLinkProvider(this._app))
-    : null,
-```
-
-`RequirementDetails` and `ChangeDetails` follow the same pattern when O\* rich-text fields are opened in edit mode.
-
-### 12.7 Toolbar Structure
-
-The toolbar is organised in groups (`.rich-text-component__toolbar-group`), rendered left to right:
-
-| Group | Buttons | Condition |
-|---|---|---|
-| Text formatting | Bold · Italic · Underline · Strikethrough | always |
-| Headings | H1 · H2 · H3 | `headings: true` only |
-| Lists | Bullet list · Ordered list | always |
-| Links | 🔗 External link · `#` Insert reference | `#` button only when `linkProvider` present |
-
-**External link button (🔗)** — opens `odipPromptLink` dialog (see §25.3) with two fields: URL and link text. Pre-fills link text from the current selection; pre-fills URL when the cursor is inside an existing `link` mark. On confirm, inserts or updates a `link` mark. When the URL field is cleared (empty), the link mark is removed (unset). The dialog also exposes a **Remove** button when editing an existing link. The editor selection (`from`/`to`) is captured synchronously before the dialog opens to survive the `await`.
-
-**Link click behaviour (`odipLinkClick` plugin)** — a custom ProseMirror plugin replaces TipTap's built-in `openOnClick` handling, which is unsuitable for mixed read-only/edit-mode use. The plugin handles `handleDOMEvents.click` on `<a href>` elements:
-
-| Mode | Trigger | Behaviour |
-|---|---|---|
-| Read-only | Any click | Opens `href` in a new tab (`target="_blank"`, `noopener,noreferrer`) |
-| Edit | Ctrl/Cmd+click | Opens `href` in a new tab |
-| Edit | Plain click | Passed through — ProseMirror places the cursor normally |
-| Images | 🖼 Insert image | `images: true` only |
-| Tables | ⊞ Insert · +row · -row · +col · -col · ✕tbl | `tables: true` only |
-| Generated content | ⚙ Insert block or string (single button or dropdown with separator between categories) | `availableBlockIds` or `availableStringKeys` non-empty |
-
-The toolbar is `position: sticky; top: 0` so it remains visible when the ancestor container scrolls.
-
-**Reference picker (`#` button)** — opens a modal overlay (`.rich-text-ref-popup`) with:
-- A type selector row: **O\*** (`o-ref`) · **Narrative** (`n-ref`) · **Document** (`d-ref`)
-- A `ReferenceManager` typeahead mounted below, preloaded from the `linkProvider`
-
-On selection, `_applyRef(type, value, label, url?)` applies the mark to the current selection. For `o-ref` and `n-ref`, the corresponding `OdipNRef`/`OdipORef` mark is applied. For `d-ref`, a standard `link` mark is inserted pointing to the document's `url` — no `OdipDRef` mark is used for newly authored references. When the selection is empty, the label is inserted as text first, then marked. The editor selection is captured before the overlay opens (DOM focus shift) and restored on apply via `setTextSelection`.
-
-### 12.8 Sticky Toolbar & Vertical Scroll Invariant
+#### 7.3.10 Sticky Toolbar & Vertical Scroll Invariant
 
 > ⚠️ **Fragile — read before changing any `overflow` or `height` rule on a rich-text container or its ancestors.** This behaviour has regressed several times. The symptom of a break is either the toolbar scrolling out of view while editing a long narrative, or editor content overflowing onto sibling fields with no scrollbar.
 
 The sticky toolbar (`position: sticky; top: 0`) only works if **exactly one** element in the chain is the scroll container and the toolbar is a direct child of it. Two rules make this fragile:
 
 1. A `position: sticky` element sticks relative to its **nearest ancestor that has `overflow` other than `visible`**. If an intermediate wrapper has `overflow: hidden`/`auto`, the toolbar is trapped inside that wrapper (which does not itself scroll) and never pins.
-2. The scroll container must have a **definite (bounded) height**. A `height: 100%` only resolves if every ancestor up to a viewport-bounded element also has a definite height. Otherwise the element grows to content height and some unexpected outer element scrolls instead.
+2. The scroll container must have a **definite (bounded) height**. A `height: 100%` only resolves if every ancestor up to a viewport-bounded element also has a definite height.
 
-**The invariant:** in every edit context the **`.rich-text-component` is the sole scroll container**, the toolbar is sticky relative to it, and the editor (`.rich-text-component__editor`) **never** carries its own `overflow-y` (a local scroll context on the editor traps `sticky` inside it). Read-only contexts have no scroll container — content grows naturally and an outer panel (`.master-detail__detail`) owns the scroll.
+**The invariant:** in every edit context the **`.rich-text-component` is the sole scroll container**, the toolbar is sticky relative to it, and the editor (`.rich-text-component__editor`) **never** carries its own `overflow-y`. Read-only contexts have no scroll container — content grows naturally and an outer panel (`.master-detail__detail`) owns the scroll.
 
 Per-context sizing (all defined in `rich-text-component.css`; context applied by the owner):
 
@@ -777,38 +722,78 @@ Per-context sizing (all defined in `rich-text-component.css`; context applied by
 | Theme narrative (edit) | `--capped` | `min-height: 200px; max-height: 50vh` | the component | `ChapterBody._renderTopic` |
 | Any field/narrative (read) | `--readonly` | `min-height: 0; max-height: none; overflow: visible` | outer panel | all read views |
 
-Supporting container rules that must stay consistent (in `narrative.css`):
+Supporting container rules (in `narrative.css`): `.chapter-body` (editable chapter) `overflow: hidden`; `.chapter-body--topic` (editable theme) `overflow-y: auto`; `.chapter-body--readonly` `overflow: visible`. For the full-page O\* read view the equivalent rule lives in `os.css`: `.os-detail--page` is bounded and `.os-detail--page .os-detail__body` scrolls; panel mode is unbounded and lets `.master-detail__detail` scroll.
 
-- `.chapter-body` (editable chapter): `overflow: hidden` — the `--fill` component inside is the sole scroller, so the body must **not** scroll and steal the toolbar.
-- `.chapter-body--topic` (editable theme): `overflow-y: auto` — the body **must** scroll to reach the O\* and subtopic lists below the `--capped` editor.
-- `.chapter-body--readonly`: `overflow: visible` — lets `.master-detail__detail` own the scroll (preserves the read-only scrollbar fix).
+### 7.4 ReferenceManager
 
-For the full-page O\* read view, the equivalent rule lives in `os.css`: `.os-detail--page` is bounded (`height: 100%`) and `.os-detail--page .os-detail__body` scrolls (`min-height: 0; overflow-y: auto`); panel mode is unbounded and lets `.master-detail__detail` scroll instead (see §18 detail-view notes).
+`ReferenceManager` (`components/reference-manager.js`) is the canonical tree-picker component for single-value selection from a hierarchical list. It is used in:
 
----
+- `TreeEntity` — parent field for `StakeholderCategory` and `ReferenceDocument`
+- `CollectionEntityForm` — `reference` field type (single-select typeahead)
+- `AnnotatedMultiselectManager` — embedded inline picker
+- `RichTextComponent` — reference mark picker (`o-ref` / `n-ref` / `d-ref`)
 
-## 13. Edition Context
+**Node shape:**
 
-Dataset context is set on `App` by Home when the user selects a dataset. Sub-activities read `app.getDatasetContext()` on mount to determine:
+```js
+{
+    value:        string | number | null,  // null = non-selectable header
+    label:        string,                  // display text; used for filtering
+    displayLabel: string?,                 // override label for rendering only
+    leaf:         boolean?,                // hint; children absence is authoritative
+    children:     node[]?,                 // static children (absent on leaves)
+    onExpand:     () => Promise<node[]>?,  // lazy children loader
+}
+```
 
-- Whether to pass `?edition={editionId}` to API calls
-- Whether edit actions are available (`type: 'live'`) or suppressed (`type: 'edition'`)
+**Static utility — `ReferenceManager.buildTreeNodes(items, getLabel?)`** — converts a flat array of setup entities carrying `parentId` into a node tree. This is the **single source of truth** for tree construction — used by `link-provider.js` (d-ref), `collection-entity-form.js` (annotated-reference-list), and `annotated-multiselect-manager.js` (flat options fallback).
 
-Edition context resolution — mapping the edition to a baseline and optional start date — happens server-side. The web client passes the edition ID directly to the API as `?edition=<id>` and never resolves `baselineId` or `startDate` client-side.
+- When no item carries `parentId`, returns flat leaf nodes (backward-compatible)
+- All nodes are selectable (`value = item id`)
+- Children sorted alphabetically at every level
+- `getLabel` defaults to `item.name ?? item.title ?? String(item.id)`
 
----
+**Path-aware filtering** — when a search term is typed, `_filterNodesWithPath` is used instead of label-only matching. A node is included if **any segment of its full ancestor path** (including itself) contains the term. While a filter term is active, results render **fully expanded**; clearing the term restores normal expand/collapse state.
 
-## 14. API Integration
+Two non-selectable node styles:
 
-The shared API client in `shared/api-client.js` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
+| Class | Used for | `text-transform` |
+|---|---|---|
+| `rm-node-label--header` | True non-selectable group nodes (never had a value) | `uppercase` |
+| `rm-node-label--context` | Ancestors demoted during filtering (originally selectable, `value` nulled) | none — original case preserved |
 
-### 14.1 Connection Monitoring
+Filtered nodes carry `_contextOnly: true` to distinguish them from true headers. Every filtered copy carries `_origin` pointing to the original `_roots` node; `_toggleExpand` writes lazy-loaded `_children` to `node._origin ?? node`, ensuring `_findNode` can locate descendants even when expand was triggered from a filtered view.
 
-Connection monitoring is owned by `App` (`app.js`). On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator. The 60-second interval is intentional — the application is a low-concurrency internal tool.
+**Composite node values** — `ReferenceManager` supports non-integer node values (e.g. n-ref topic values `"{chapterItemId}/{topicId}"`). A module-level `_isIntegerId` helper (`/^\d+$/.test(String(v))`) replaces the unavailable `isValidId` from `@odp/shared`: `_normalizeValue` passes composite strings through as-is and normalises integer strings via `normalizeId`; `_findNode` and `isSelected` use `idsEqual` for integer pairs and fall back to `String(a) === String(b)` otherwise.
 
-### 14.2 DiffPopup
+**Fixed-height popup** — the search popup (`.search-popup`) has a fixed `height: 360px`, preventing expand/collapse from resizing the frame. The results area (`.search-popup-results`) uses `flex: 1; min-height: 0; overflow-y: auto`.
 
-`DiffPopup` (`components/odp/diff-popup.js`) renders a modal comparison between two versions of an entity. Opened from the history tab.
+**Filter-mode selection** — `_handleClick` resolves the selected node with priority `_findNode` (by value) → `_nodeAtPath` (fallback) → label-only stub. `_findNode` is tried first since it works for both integer and composite values once `_children` are populated; `_nodeAtPath` is unreliable in filter mode.
+
+### 7.5 ReferenceListManager
+
+`ReferenceListManager` (`components/reference-list-manager.js`) renders a chip list plus search popup for 0..n reference selection (the `reference-list` field type). In read mode, chips can be made navigable: when `onItemClick` is supplied, chips render as `selected-chip--link` spans and fire the callback on click (with `stopPropagation` to prevent panel deselection). Computed/read-only variants derive their value via a form `computeKey` method at initialisation.
+
+### 7.6 AnnotatedMultiselectManager
+
+`AnnotatedMultiselectManager` (`components/annotated-multiselect-manager.js`) renders the `annotated-reference-list` field type — a 0..n reference list where each selected item carries a free-text note.
+
+**Edit / create mode** — each selected item is an editable table row; the note field is a `<textarea>`; line breaks are stored as `\n` and rendered with `white-space: pre-line`. The add control uses a `ReferenceManager` tree picker embedded inline in the footer. When the setup entity carries `parentId` on any item, `CollectionEntityForm.initializeAnnotatedMultiselects()` calls `ReferenceManager.buildTreeNodes()` and passes the resulting `nodes` tree; when no hierarchy exists, flat `options` are passed and `buildTreeNodes()` produces root-only leaf nodes. All nodes — leaf and non-leaf — are selectable.
+
+**Read-only mode** — items render as a structured block list sorted alphabetically; each item: `• Title (link if url available) / note text`.
+
+**Metadata resolution (`_resolveAnnotatedRefMeta`)** — fields declare `setupEntity` referencing a `setupData` collection key. Returns `{ description, url }`: description as native `title` tooltip; url renders the title as `<a>` for strategic documents.
+
+`setupEntity` mapping:
+
+| Field | `setupEntity` |
+|---|---|
+| `strategicDocuments` | `referenceDocuments` |
+| `impactedStakeholders` | `stakeholderCategories` |
+
+### 7.7 DiffPopup
+
+`DiffPopup` (`components/diff-popup.js`) renders a modal comparison between two versions of an entity. Opened from the history tab.
 
 **Responsibilities:**
 - Fetch both versions in parallel via `GET /{entityType}/{id}/versions/{versionNumber}`
@@ -827,90 +812,357 @@ Connection monitoring is owned by `App` (`app.js`). On initialisation, `App` cal
 
 **Known design debt:** `DiffPopup` currently uses `_isReferenceArrayField(fieldName)` (hardcoded list) and an explicit `change.field === 'milestones'` guard. Planned refactor: `type` property on each change entry set by `Comparator`.
 
-### 14.3 Anonymous Access
+### 7.8 User Dialogs
 
-All GET routes on the server accept requests without `x-user-id` header (returning `null` userId). This enables anonymous access to Home (edition list) and Explore. Write operations still require `x-user-id`. Affected route files: `simple-item-router.js`, `versioned-item-router.js`, `odp-edition.js`, `baseline.js`.
+`components/user-dialogs.js` is a shared module of ODIP-styled interactive dialogs that replace browser-native `window.confirm` / `window.alert` with modal overlays using existing `.modal-overlay`, `.modal`, `.modal-body`, `.modal-footer`, and `odip-btn` CSS classes — no new CSS required. The module is intentionally pure-DOM / I/O-free.
 
----
+**`odipConfirm(message)`** — returns `Promise<boolean>`. Small modal (z-index 2000, above edit modals at 1000) with the message, a **No** button (`odip-btn--standard`) and an auto-focused **Yes** button (`odip-btn--primary odip-btn--standard`).
 
-## 15. CSS Architecture
+| Caller | Message |
+|---|---|
+| `CollectionEntityForm._attachConfirmOnChangeListeners` | `Do you really want to re-assign this ${type} to another domain?` |
+| `ChapterBody._deleteTheme` | `Do you really want to delete this theme?` |
 
-### 15.1 File Tree
+**`odipUnsavedChanges(message?)`** — returns `Promise<'save' | 'discard' | 'cancel'>`. Modal with three buttons (left to right): **Cancel** (`odip-btn--standard`), **Discard** (`odip-btn--danger odip-btn--standard`), **Save** (`odip-btn--primary odip-btn--standard`, auto-focused). Escape resolves `'cancel'`. Default message `'You have unsaved changes.'`.
 
-```
-styles/
-├── main.css                          Design tokens, CSS reset, typography, layout utilities — includes EC palette tokens (--ec-navy, --ec-blue, --ec-sky, --ec-light), link tokens (--link-color, --link-color-hover), and .odip-link utility class
-├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
-├── feedback-components.css           Toasts, error notifications, loading/skeleton states
-├── layout-components.css             Top header (two-row: nav tabs + breadcrumb), connect popup, cards, modals
-│   ├── activities/workspace/shared/os/
-│   │   └── os-additions.css              O* toolbar, search input, type badges, view controls
-├── components/
-│   ├── filter-bar.css                FilterBar chip component
-│   ├── form-components.css           Form tabs, tag selector, multi-select, rich text integration
-│   ├── history-tab.css               History version list, diff popup
-│   ├── master-detail.css             Two-column resizable layout
-│   ├── reference-list-manager.css    Inline chip list with search popup
-│   ├── table-components.css          Collection table, row selection, grouping, empty states
-│   ├── tree-table-components.css     Tree table with indentation levels
-│   └── temporal-components.css       TemporalGrid base styles
-└── activities/
-    ├── activity.css                  Base layout for all activities
-    ├── home/
-    │   └── home.css
-    ├── workspace/
-    │   ├── elaborate/elaborate.css
-    │   ├── explore/explore.css
-    │   ├── setup/setup.css           Setup entity tabs, three-pane layout
-    │   └── shared/
-    │       ├── os/os.css             O* activity shell layout, detail shell height propagation, type badge colours (ON blue, OR green, OC purple)
-    │       ├── plan/plan.css         ON plan two-pane layout, TemporalGrid context
-    │       ├── quality/quality.css
-    │       └── notes/notes.css
-    └── manage/
-        ├── manage.css
-        └── editions/editions.css     Edition count badge, publication action buttons
-```
+| Caller | Context |
+|---|---|
+| `ChapterBody._guardNavigation` | Shown when leaving an unsaved chapter narrative or topic in Elaborate |
 
-Note: `abstract-interaction-activity.css`, `elaboration.css`, `review.css`, `planning.css`, `publication.css`, `prioritisation.css` have been removed. Their responsibilities are covered by the new activity structure or by `activity.css` directly.
+**`odipPromptLink(initialUrl?, initialText?)`** — returns `Promise<{ url, text } | null>`. Modal with two inputs: **URL** (type `url`, placeholder `https://…`) and **Link text** (type `text`), pre-filled from arguments. Resolves `null` on Cancel/Escape; `{ url: '', text: '' }` on **Remove** (shown only when `initialUrl` is non-empty). Enter in the URL field confirms.
 
-### 15.2 Layer Hierarchy
+| Caller | Context |
+|---|---|
+| `RichTextComponent._promptLink` | External link toolbar button — insert or update a `link` mark |
 
-Files are loaded in strict dependency order: global → components → activities (base first, then concrete).
+### 7.9 ChangeSetCommitDialog
 
-**Global** (`styles/`) — no dependencies between files at this level. `primitives.css` is the lowest-level layer.
+> Part of the in-progress LCM workstream (§13). Documented here as a component; its wider integration is described in §13.
 
-**Components** (`styles/components/`) — depend only on global tokens. No component file references another component file or any activity file.
+`openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit' }) → Promise<{ changeSetId, note } | null>` (`components/change-set-commit-dialog.js`). The shared commit gate for every versioned write (null = cancelled).
 
-**Activities** (`styles/activities/`) — depend on global and component layers. `activity.css` is the base for all activities.
+- **`mode: 'commit'`** (saves) — confirm button reads *Save*; an optional per-object **note** field is shown.
+- **`mode: 'select'`** (header chip) — picks the active default only; no note; confirm reads *Set as active*.
+
+Behaviour: fetches `OPEN` change sets, pre-selects the active default (dropped if no longer open), and offers confirm / pick-another / create-inline (title + classifier + optional reason). On confirm it calls `app.setActiveChangeSet(chosen)` and resolves; cancel/overlay/Esc resolves `null`.
+
+**Module placement & styling.** It is the same *family* as `user-dialogs.js` (promise-based modal helpers) but is **data-aware** (reads `OPEN` sets, may `POST` a new one), so it lives in its own module rather than in `user-dialogs.js`. It reuses the existing modal vocabulary exactly — `modal-overlay` / `modal` / `modal-header|body|footer` with the same inline overrides (`max-width:480px; height:auto; min-height:0; resize:none`), z-index `2000`, `odip-btn` buttons, `odip-input` fields, and real design tokens. **No new CSS file.**
 
 ---
 
-## 16. Planning Activity
+## 8. Activities
+
+Each sub-activity is mounted inside a workspace shell (Elaborate / Explore) or a top-level activity, and reads its read/write context transparently from `app.getDatasetContext()`. The sections below describe each activity; the shared single-load / shared-state coordination they rely on is described in §4.4.
+
+### 8.1 Home
+
+`HomeActivity` (`activities/home/home.js`) is the dataset-context selection gateway. It is unprotected and is the landing route (`/`). It presents the live dataset and the list of editions; selecting one calls `app.setDatasetContext()` and navigates into the corresponding workspace (Elaborate for live, Explore for an edition). Edition data is fetched anonymously (`GET /odp-editions`), so the list is visible before the user identifies.
+
+### 8.2 O* Workspace
+
+#### 8.2.1 Architecture
+
+`OsActivity` (`os.js`) is the orchestrator. `OStarEntity` (`o-star-entity.js`) owns the unified ON/OR/OC list component.
+
+| Concern | Owner |
+|---|---|
+| SubPath routing (list vs detail) | `OsActivity` |
+| Shell layout (toolbar, view controls, MasterDetail) | `OsActivity` |
+| Search box (debounced text input) | `OsActivity` |
+| Filter bar instantiation and wiring | `OsActivity` |
+| Data fetching via `listOStars` | `OsActivity` |
+| OC type normalisation (`type = 'OC'`) | `OsActivity` |
+| Count summary (ONs · ORs · OCs) | `OsActivity` |
+| Breadcrumb trail | `OsActivity` |
+| Two-column layout + resizable divider | `MasterDetail` component |
+| List rendering — Collection perspective | `OStarEntity` |
+| Grouping selector | `OStarEntity` |
+| Virtual `implements` field pre-computation | `OStarEntity` |
+| Detail panel content | `RequirementDetails` / `ChangeDetails` |
+
+**Full-page mode navigation pattern:** when inter-O\* reference navigation triggers a full-page detail render, `OsActivity` sets `_inPageMode = true` and renders the detail view into `this.container`, replacing the list shell. When the user navigates back, `ElaborateActivity._route` calls `os.handleSubPath([])`, which detects `_inPageMode` and calls `_renderList()` to rebuild the full list shell. `_prepareOStarEntity()` reconnects `_ostarEntity.container` to the new `masterDetail.listContainer` after each rebuild.
+
+#### 8.2.2 OStarEntity
+
+`OStarEntity` receives injected callbacks at construction:
+
+```js
+{
+    onItemSelect(item),             // called on row click
+    getViewControlsEl(),            // returns HTMLElement for view controls mount
+    isReadOnly,                     // boolean; true in Explore/edition context
+    onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
+}
+```
+
+Lifecycle hooks called by `OsActivity`: `onActivated()` (mounts view controls, renders from cache), `onDeactivated()` (clears view controls), `onDataUpdated(data)` (pre-computes virtual fields, caches data, re-renders if active).
+
+**Virtual field pre-computation** in `onDataUpdated()`: `item.implements` = `item.implementedONs` (OR) or `item.implementedORs` (OC), whichever is non-empty.
+
+#### 8.2.3 Unified List
+
+**Layout:**
+```
+[ filter bar · · · · · · · · · · 🔍 search  +ON  +OR  +OC ]   ← toolbar row (OsActivity)
+[ grouping | counts                                        ]   ← view controls row
+[ list panel                    ‖ detail panel              ]
+```
+
+The +ON / +OR / +OC create buttons are owned by `OsActivity` (toolbar row), only rendered in live (non-read-only) context, and delegate to `_ostarEntity._handleCreate(type)`. They each pass `app: this.app` into the form context so the commit gate (§13) can read it.
+
+**Search** — free-text input (debounced 300ms), maps to the `text` parameter, visually separate from structured filters.
+
+**Filter bar** — Type · Domain · Maturity · Stakeholder · Implements · Strategic Document.
+
+**Grouping** — Type · Domain · Maturity.
+
+**Column set:**
+
+| Column | Applies to | Sortable |
+|---|---|---|
+| Type | all | Yes |
+| Code | all | Yes |
+| Title | all | Yes |
+| Maturity | all | Yes |
+| Domain | all | Yes |
+| Implements | OR, OC | No |
+| Refines | ON, OR | No |
+| Strategic Documents | ON only | No |
+| Impacted Stakeholders | OR, OC | No |
+
+**OC type normalisation** — OCs from `/operational-changes` have no `type` field; normalised to `'OC'` in `_loadData()` after merge.
+
+#### 8.2.4 Detail Views
+
+`RequirementDetails` and `ChangeDetails` own the detail shell and delegate body rendering to the form class via `generateReadOnlyView(item)` + `initializeReadOnlyInPanel(container, item)`.
+
+Two rendering modes:
+
+| Mode | Context | Toolbar |
+|---|---|---|
+| `'panel'` | MasterDetail right column | `[ title · · · Edit  Full page ]` |
+| `'page'` | Full page (inter-O\* navigation) | `[ title · · · In collection  In narrative ]` |
+
+`os-detail__title` takes `flex: 1` and truncates with ellipsis. Action buttons are right-aligned, compact (`odip-btn`).
+
+Mode-dependent navigation buttons:
+
+| Mode | Button | Action |
+|---|---|---|
+| Panel | **Full page** | Pushes `/{base}/os/{type}/{id}` to browser history |
+| Page | **In collection** | Navigates to `/{base}/os?selected={id}` |
+| Page | **In narrative** | Navigates to `/{base}/narrative/{chapterId}?on={id}`, `?or={id}`, or `?oc={id}` |
+
+**`In narrative` navigation** — `OsActivity._navigateToNarrative(item)` resolves the chapter by matching `item.domain` against `app.getChapters()` (cached). On match, pushes a typed URL (`?on=`/`?or=`/`?oc=`; absence of `item.type` implies OC). Falls back to `/{base}/narrative` if no chapter is found. `normalizeId` serialises the chapter `itemId`.
+
+**Callback injection** — callbacks are passed into `render()` on every call (not at construction), ensuring cached instances always receive correct wiring:
+
+```js
+await this._requirementDetails.render(container, id, 'panel', {
+    onFullPage: (item) => this._navigateToFullPage(item),
+});
+
+await this._requirementDetails.render(container, id, 'page', {
+    onInCollection: (item) => this._navigateToList(item),
+    onInNarrative:  (item) => this._navigateToNarrative(item),
+});
+```
+
+**Search param restore** — `_restoreFromSearchParams()` runs once after `_renderList()`. It reads `?selected`, sets `sharedState.selectedItem`, then calls `_handleItemSelect()` for the panel render. Params are cleaned via `replaceState` after consumption.
+
+#### 8.2.5 Navigable References
+
+Inter-O\* references in read-only detail views are rendered as navigable links:
+
+1. `RequirementDetails` / `ChangeDetails` pass `onNavigate(ref)` to the form at construction
+2. `CollectionEntityForm` stores `onNavigate` and passes `onItemClick` to `ReferenceListManager` / `ReferenceManager` in read mode
+3. Managers render `selected-chip--link` spans; `stopPropagation` prevents panel deselection
+4. `onItemClick` fires; `_navigateToRef` maps `ref.entityType` to a canonical URL segment (`on`, `or`, `oc`) and navigates
+5. `annotated-ref-link` anchors (`strategicDocuments`) navigate to the document URL directly
+
+Entity type mapping in `_navigateToRef` is defensive — accepts both legacy values (`requirement`, `change`) and canonical values (`ON`, `OR`, `OC`, `on`, `or`, `oc`).
+
+**Link style** — navigable reference chips use `--link-color` (`--ec-blue`) with `font-weight: semibold` and no underline. The shared `.odip-link` utility class in `main.css` defines the canonical link style.
+
+#### 8.2.6 Breadcrumb
+
+`breadcrumb.js` (`components/breadcrumb.js`) provides `buildBreadcrumb(crumbs)` and `attachBreadcrumbListeners(container, app)`. It is used exclusively by `NarrativeActivity` for intra-narrative back-navigation (← Chapters, current chapter name). It is not a general-purpose header mechanism — `app.header.setBreadcrumb()` does not exist and must not be called by other activities.
+
+#### 8.2.7 API Client — listOStars
+
+`apiClient.listOStars(params)` is the unified O* query method (see §9 and ADD chapter 04). Key behaviour: fans out to `/operational-requirements` + `/operational-changes` in parallel; skip optimisation (OC-only type filter skips requirements call, non-OC type filter skips changes call); returns a merged array in fetch order (requirements first, then changes) with no client-side sorting.
+
+### 8.3 Narrative Activity
+
+The Narrative sub-activity (`activities/workspace/shared/narrative/`) provides editorial access to chapter narratives and O* organisation within ODIP editions.
+
+#### 8.3.1 Layout
+
+Two-pane `MasterDetail` layout (20% / 80% initial ratio):
+
+- **Left panel** — `ChapterToc`: chapter tree (ODIP scope) or topic/O* tree (chapter scope)
+- **Right panel** — `ChapterBody`: chapter narrative, topic card list, or O* detail view
+
+A toolbar row is always rendered above the `MasterDetail`, in both Elaborate and Explore, with two slots:
+
+- **Left slot** (`narrative-activity__toolbar-nav`) — in chapter scope, shows **← Chapters** (climbs to ODIP scope) and the current chapter name (selects chapter narrative); empty in ODIP scope.
+- **Right slot** (`narrative-activity__toolbar-actions`) — in Elaborate, shows **+ Theme · + ON · + OR · + OC** (`odip-btn odip-btn--create`); absent in Explore.
+
+Create buttons are disabled until a chapter is dived into (`NarrativeActivity._setToolbarEnabled`). Back/chapter nav is injected by `NarrativeActivity._updateToolbarNav()` on scope transitions.
+
+#### 8.3.2 Scope State Machine
+
+| Scope | TOC | Body default |
+|---|---|---|
+| `odip` | Full chapter tree; expand/collapse; select / dive → | Chapter narrative (read-only) |
+| `chapter` | topic/O* tree | Chapter narrative (editable in Elaborate) |
+
+Navigation between scopes lives in the toolbar left slot, not the TOC. In chapter scope, selecting the chapter node makes the **chapter narrative** editable; selecting a topic node makes that **topic narrative** editable (Elaborate only). Create actions are enabled on dive, disabled on climb.
+
+#### 8.3.3 Sub-Path and Query Parameter Routing
+
+| URL pattern | Behaviour |
+|---|---|
+| `{base}/narrative` | ODIP scope — chapter tree |
+| `{base}/narrative/{chapterId}` | Chapter scope — dive into chapter by numeric `itemId` |
+| `{base}/narrative/{chapterId}?theme={topicId}` | Chapter scope + select topic by numeric string ID |
+| `{base}/narrative/{chapterId}?on={itemId}` | Chapter scope + select and render a specific ON |
+| `{base}/narrative/{chapterId}?or={itemId}` | Chapter scope + select and render a specific OR |
+| `{base}/narrative/{chapterId}?oc={itemId}` | Chapter scope + select and render a specific OC |
+
+`{base}` is `/elaborate` (live) or `/explore/{editionId}` (edition context).
+
+`_selectTopic(topicId)` — called after diving when `?theme=` is present. Delegates to `ChapterToc.setActiveByTopicId(topicId)`, which performs a DFS search across topics and sub-topics, expands collapsed ancestors, scrolls into view, and fires `onChapterSelect`.
+
+`_selectOStar(ostarId, type)` — called after diving when `?on=`/`?or=`/`?oc=` is present. The type is derived directly from the param name. Calls `ChapterToc.setActiveByItemId(id)` then `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and the typed O* params are mutually exclusive.
+
+**Same-chapter navigation** — `handleSubPath` short-circuits when the incoming `chapterId` matches `_selectedChapter` but still consumes the query params before returning, so Ctrl+Click on an `n-ref` within the open chapter selects the target without a full reload.
+
+#### 8.3.4 ChapterToc External API
+
+| Method | Description |
+|---|---|
+| `renderOdip(chapters, selectedId)` | Render full chapter tree (ODIP scope) |
+| `renderChapter(chapter)` | Render topic/O* tree for a single chapter |
+| `setActiveKey(key)` | Highlight a TOC entry by its `data-key` |
+| `setActiveByItemId(id)` | Highlight the O* entry matching `id`; expands ancestors |
+| `setActiveByTopicId(id)` | Highlight the topic/subtopic entry matching the stable string `id`; expands collapsed ancestors; fires `onChapterSelect` |
+| `selectTopicByIndex(idx)` | Programmatically select a top-level topic by zero-based index |
+| `refreshTree()` | Rebuild the chapter-scope tree from the current `_hierarchy` while preserving selection highlight and scroll position |
+
+**Constructor callbacks:** `onOdipSelect(chapter)`, `onDive(chapter)`, `onClimb()`, `onFocusOdip()`, `onChapterSelect(entry)`, `onHierarchyChange(hierarchy)` (DnD, Elaborate only), `onUnclassifiedChange(hierarchy)`.
+
+**Keyboard navigation** — both TOC shells (`#chapterTocOdip`, `#chapterTocChapter`) have `tabindex="0"` and handle `keydown`. Navigation moves the **selection** directly (identical to a click):
+
+| Key | ODIP TOC | Chapter TOC |
+|---|---|---|
+| ↑ / ↓ | Move selection to prev/next visible chapter node | Move selection to prev/next visible entry; scrolls into view |
+| → | Expand collapsed node; if expanded → dive into chapter | Expand collapsed topic; if expanded → move to first child |
+| ← | Collapse expanded node | Collapse expanded topic; if collapsed → move to parent; at top level → transfer focus to ODIP TOC via `onFocusOdip` |
+| Enter / Space | Activate selected node (same as click) | Activate selected entry (same as click) |
+
+#### 8.3.5 ChapterBody Renderers
+
+| Entry type | Renderer | Notes |
+|---|---|---|
+| `chapter` | `_renderChapterNarrative` | Full narrative; editable in Elaborate |
+| `topic` | `_renderTopic` | Title input · narrative · O* cards · subtheme cards; editable in Elaborate |
+| `subtopic-by-id` | — | Synthetic entry fired by subtheme card click; intercepted by `_handleChapterTocSelect`, delegated to `ChapterToc.setActiveByTopicId`, re-enters as `topic` |
+| `unassigned` | `_renderUnassigned` | O*s with no topic placement |
+| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button navigates to `{base}/os/{type}/{id}` |
+
+**Chapter narrative rendering** (`_renderChapterNarrative`) — delegates to `_initRichTextNarrative(el, chapter, editable)`, passing the chapter so the renderer has both `availableBlockIds` and `availableStringKeys`:
+
+- **Edit mode** — both lists are passed to `RichTextComponent`; block and string chips are visible and insertable via the unified ⚙ dropdown.
+- **Read-only** — narrative is rendered immediately with chips visible. If either list is non-empty, `_resolveAndSubstituteGeneratedContent()` runs asynchronously after mount: it calls `POST /chapters/:id/resolve-generated-content`, then applies block and string substitutions into the live TipTap document via `setValue`. Always dynamic — no stored content.
+
+`_substituteGeneratedBlocks()` walks `doc.content` recursively; when a paragraph containing only a `generated-block` mark is found, replaces it with the resolved node array (unknown IDs left as-is). `_substituteGeneratedStrings()` replaces text nodes carrying a `generated-string` mark with a plain text node containing the resolved value (unresolved keys left as-is).
+
+**Topic body layout** (`_renderTopic`) renders in order: Title (Elaborate: `odip-input.chapter-body__topic-title`, saves on blur/Enter, reverts on Escape; Explore: plain `<h3>`); Narrative (editable `RichTextComponent` in Elaborate, read-only when non-null in Explore); O* card list (direct O*s of the theme, no empty message); Subtheme card list (after O*s when `subTopics.length > 0`; each card shows a `▸` icon, label, and count hint, navigates via `subtopic-by-id`).
+
+**Delete theme** — in Elaborate, a **Delete theme** `odip-btn--danger` button shows in the body header actions when the theme has no O*s and no subtopics. Clicking opens `odipConfirm` before delegating to `onThemeDelete(topicId)`.
+
+#### 8.3.6 Internal Link Navigation
+
+`ChapterBody._handleInternalLink(type, value)` — called via `onInternalLink` from `RichTextComponent`. Resolves the link, passes through `_guardNavigation()`, then calls `app.navigate()`:
+
+| Mark type | Resolution | Target URL |
+|---|---|---|
+| `n-ref` | Value is `{chapterId}[/{topicId}]` — navigate directly | `{base}/narrative/{chapterId}[?theme={topicId}]` |
+| `o-ref` | `app.findOStar(itemId)` resolves type; stale-while-revalidate via `app.getOStars()` | `{base}/os/{type}/{itemId}` |
+| `d-ref` | Direct — value is refdoc id (legacy imported marks only) | `{base}/setup/reference-documents/{id}` |
+
+**Edit mode — Ctrl+Click** — in read-only mode, any click on an internal ref span fires `onInternalLink`. In edit mode, only Ctrl/Cmd+Click fires it; plain clicks pass through to TipTap. While Ctrl/Cmd is held, `rich-text-component__editor--ctrl` is toggled on the editor element (triggering a `cursor: pointer` rule on ref spans). The class is removed on `keyup` and `window blur`. Listeners are registered once per instance and removed in `destroy()`.
+
+#### 8.3.7 OsHierarchy Theme Model
+
+Each topic in `osHierarchy.topics` carries:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Chapter-scoped unique ID; first free positive integer as string (`"1"`, `"2"`, …) |
+| `topic` | string | Display label |
+| `narrative` | string\|null | Optional TipTap JSON string; rendered above O* list |
+| `ons`, `ors`, `ocs` | `OsHierarchyItem[]` | Enriched O* references (read path) |
+| `subtopics` | `OsHierarchyTopic[]` | Recursive sub-themes |
+
+IDs are first assigned at import time by `DistributedEditionImporter._patchChapterOsHierarchy` using a chapter-scoped counter (DFS order, starting at 1). The same ID is used in `n-ref` mark values. When a theme is created from the web client, `ChapterToc._nextFreeTopicId(hierarchy)` mirrors this counter (DFS max + 1).
+
+#### 8.3.8 Editorial Actions (Elaborate)
+
+The toolbar create actions and topic-editing all mutate the chapter `osHierarchy` and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`.
+
+| Action | Flow |
+|---|---|
+| **+ Theme** | `_handleAddTheme(activePath)` — minimal title modal → fetch-fresh chapter → insert new topic as child of active topic (or root) → PATCH → `refreshTree()` |
+| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open create modal pre-populated with chapter `domain` (and `type` for OR/ON) → on save `_insertOStarIntoHierarchy`: fetch-fresh → insert into active topic's items (sorted ON→OR→OC) or leave unclassified → PATCH → `refreshTree()` → `app.invalidateOStars()` |
+| **Theme title / narrative** | `ChapterBody._saveTopicFull(topic, topicId)` → `_handleTopicFullSave`: fetch-fresh → DFS-locate topic by `id` → mutate label and narrative in one pass → PATCH → sync into live `_toc._hierarchy` → `refreshTree()` only when title changed. A single PATCH is always used to avoid `versionId` conflicts. |
+| **Delete theme** | `ChapterBody._deleteTheme(topicId)` (button visible only when empty) → `_handleThemeDelete`: fetch-fresh → defensive non-empty guard → `_removeTopicById` → PATCH → `refreshTree()` → body falls back to chapter narrative |
+
+**Concurrency model:**
+
+- **Non-DnD writes** use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`.
+- **DnD reorder** uses the **optimistic** client `versionId`. On `409`, `_handleDndConflict` reloads the chapter, re-renders the TOC, resets the body, and informs the user.
+
+`_mergeChapterConfig(cached, fresh)` reconciles a freshly fetched chapter with config-owned fields (`title`, `domain`, `position`) held in memory, and syncs `versionId`/`osHierarchy` back to the cached object.
+
+**Unsaved-changes guard (Elaborate only)** — `ChapterBody` tracks a `_dirty` flag (set by `RichTextComponent.onChange` and the title input's `input` event) and `_currentEntry`. Before any navigation that would replace the body content, `_guardNavigation()` is called: not dirty → proceed; dirty → `odipUnsavedChanges()` (§7.8) with Cancel (abort), Discard (clear flag, proceed), Save (`_saveCurrentEntry()` then proceed on success).
+
+Navigation paths guarded:
+
+| Trigger | Guard location |
+|---|---|
+| TOC click / O* card / subtheme card | `ChapterBody.renderSelectionRead()` |
+| Ctrl+Click on internal ref (edit mode) | `ChapterBody._handleInternalLink()` |
+| ← Chapters toolbar button | `NarrativeActivity._climbToOdip()` |
+| Elaborate tab switch | `ElaborateActivity._route()` via `canDeactivate()` |
+| Top-level activity switch | `App._loadActivity()` via `canDeactivate()` chain |
+| Browser Back / F5 / tab close | `beforeunload` listener (registered in `_renderShell`, removed in `cleanup`) |
+
+`NarrativeActivity.canDeactivate()` delegates to `this._body._guardNavigation()`.
+
+**Duplicate instance prevention** — `NarrativeActivity` instances are cached by `ElaborateActivity`; `render()` may be called again on the same instance. It tears down any existing `_toc`, `_body`, and `_masterDetail` (including the `beforeunload` listener) before calling `_renderShell()`, preventing accumulation of stale `RichTextComponent` instances.
+
+#### 8.3.9 Service Layer Enrichment Contract
+
+`ChapterService` overrides `update()` and `patch()` from `VersionedItemService`. Both call `super.update/patch` (which commits the write transaction) then immediately call `this.getById(itemId, userId)` (enriched `GET`) and return its result. This guarantees that **every write to a chapter returns the same enriched read-shape as `GET /chapters/{id}`** — `osHierarchy` items are always `{ id, type, code, title }` objects, never bare integer ids.
+
+**Invariant:** client code must never use `updated.osHierarchy` from a PATCH response to rebuild the render-side hierarchy via a second `getChapter()` call. The PATCH response is already enriched.
+
+### 8.4 Plan Activity
 
 The Plan activity (`activities/workspace/shared/plan/`) supports deployment and implementation planning across two phases. Phase 1 (ON-based) is fully implemented. Phase 2 (OC-based) is reserved as a placeholder tab.
-
-### 16.1 Tab Structure
 
 | Tab | Status |
 |---|---|
 | `ON Plan` | Active — full implementation |
 | `OC Plan` | Placeholder — disabled |
 
-### 16.2 Data Loading
+**Data loading** — `PlanningActivity.loadSetupData()` loads setup entities and requirements in a single `Promise.all`. Requirements are **not** part of `setupData` — passed to `ONPlanning` as a dedicated constructor argument and exposed to `RequirementForm` via `getRequirements()`. Setup data loading is delegated to `app.getSetupData()`.
 
-`PlanningActivity.loadSetupData()` loads setup entities and requirements in a single `Promise.all`. Requirements are **not** part of `setupData` — passed to `ONPlanning` as a dedicated constructor argument and exposed to `RequirementForm` via `getRequirements()`.
+**ON Plan layout** — two-pane horizontal layout with resizable divider: left pane `TemporalGrid` with structured ON hierarchy rows; right pane selected ON details (toolbar + `RequirementForm.generateReadOnlyView()`).
 
-Since Phase A, setup data loading is delegated to `app.getSetupData()` rather than loaded independently.
-
-### 16.3 ON Plan Layout
-
-Two-pane horizontal layout with resizable column divider:
-
-- **Left pane** — `TemporalGrid` with structured ON hierarchy rows
-- **Right pane** — Selected ON details: toolbar (title + code + Edit button) + full `RequirementForm.generateReadOnlyView()`
-
-### 16.4 TemporalGrid Row Structure (Left Pane)
+**TemporalGrid row structure (left pane):**
 
 | Row kind | Content |
 |---|---|
@@ -918,9 +1170,7 @@ Two-pane horizontal layout with resizable column divider:
 | `group` | Root ON (no `refinesParents`); expand/collapse |
 | `child` | Refined ON (has `refinesParents`); indented |
 
-ONs with a `tentative` period get two milestones: `period-start` (▶) and `period-end` (◀).
-
-### 16.5 Milestone Rendering
+ONs with a `tentative` period get two milestones: `period-start` (▶) and `period-end` (◀):
 
 ```javascript
 temporalGrid.setMilestoneRendering({
@@ -932,11 +1182,9 @@ temporalGrid.setMilestoneRendering({
 })
 ```
 
-### 16.6 ON Details (Right Pane)
+**ON details (right pane)** — clicking any row fires the selection listener; `ONPlanning.handleGridSelect(id)` renders the right pane with `RequirementForm.generateReadOnlyView()`. The Edit button calls `requirementForm.showEditModal(on)`. After a successful save, the `entitySaved` DOM event triggers a reload and refresh.
 
-Clicking any row fires the selection listener. `ONPlanning.handleGridSelect(id)` renders the right pane with `RequirementForm.generateReadOnlyView()`. The Edit button calls `requirementForm.showEditModal(on)`. After a successful save, the `entitySaved` DOM event triggers a reload and refresh.
-
-### 16.7 File Structure
+**File structure:**
 
 ```
 activities/workspace/shared/plan/
@@ -953,24 +1201,18 @@ shared/
 └── year-period.js      parseYearPeriod() / formatYearPeriod()
 ```
 
----
-
-## 17. Prioritisation Activity
+### 8.5 Prioritisation Activity
 
 The Prioritisation activity (`activities/workspace/shared/plan/prioritisation.js`) matches OC implementation effort against domain bandwidth constraints across waves. Wave assignments are persisted via OPS_DEPLOYMENT milestones.
-
-### 17.1 Data Inputs
 
 | Source | Usage |
 |---|---|
 | `GET /operational-changes` | OCs with `cost`, `domain`, `maturity`, `dependencies`, `milestones` |
 | `GET /waves` | Wave definitions |
 | `GET /bandwidths` | Available MW per (waveId, scope) pair |
-| `DraftingGroup` enum | Hardcoded column order — **known limitation**: prioritisation board still uses DrG-based columns; OC `domain` field not yet integrated. Redesign pending. |
+| `DraftingGroup` enum | Hardcoded column order — **known limitation**: the board still uses DrG-based columns; OC `domain` field not yet integrated. Redesign pending. |
 
-### 17.2 Bandwidth Aggregation Module
-
-Pure aggregation logic in `shared/src/model/bandwidth-aggregation.js` — no DOM, no API calls.
+**Bandwidth aggregation** — pure logic in `shared/src/model/bandwidth-aggregation.js` (no DOM, no API):
 
 | Function | Description |
 |---|---|
@@ -980,396 +1222,183 @@ Pure aggregation logic in `shared/src/model/bandwidth-aggregation.js` — no DOM
 | `cardHeight(cost)` | Returns card height in rem (logarithmic scale) |
 | `checkDependencyViolations(oc, targetWaveId, allOcs, waves)` | Returns `{ violated, offenders }` |
 
-**`AggregationMatrix` shape:**
+`AggregationMatrix` shape: `{ cells: Map<waveId, Map<drg, CellData>>, waveGlobal: Map<waveId, CellData>, unplanned: OC[] }`; `CellData` is `{ consumed, available, ocs }`. `available` sentinels: `null` (no bandwidth record → grey), `0` (explicit zero → red if OCs assigned), `> 0` (load classified by consumed/available ratio). Load thresholds: green < 80%, orange 80–120%, red ≥ 120%.
 
-```javascript
-{
-    cells:      Map<waveId, Map<drg, CellData>>,
-        waveGlobal: Map<waveId, CellData>,
-        unplanned:  OC[]
-}
-// CellData
-{ consumed: number, available: number | null, ocs: OC[] }
-```
+**Grid layout** — wave rows ordered furthest-top to nearest-bottom (`flex-direction: column-reverse`); columns per DrG plus a Global column; backlog sub-rows (Mature / Advanced / Draft) below.
 
-**`available` sentinel values:**
-- `null` — no bandwidth record → grey, no load classification
-- `0` — explicit zero MW → red if any OCs assigned
-- `> 0` — normal; load classified by consumed/available ratio
+**OC cards** — `h = 2 + 2·log10(max(1, cost))` rem (clamped 2–12); left colour strip by maturity (grey/amber/green); shows title, cost in MW, dependency icon (⛓) if any; Draft cards are `cursor: not-allowed`, dimmed, locked (🔒), not draggable; hover open button (↗) navigates to `/elaborate/os/oc/{itemId}`.
 
-**Load colour thresholds:** green < 80%, orange 80–120%, red ≥ 120%.
+**Wave row collapse** — collapsed (32px): cards hidden, DrG cells show `consumed / available MW`, 4px load strip; dropping onto a collapsed row auto-expands it.
 
-### 17.3 Grid Layout
+**Backlog section** — Mature (`MATURE`) and Advanced (`ADVANCED`) are draggable and accept drops; Draft (`DRAFT`) is neither. Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
 
-```
-┌─────────┬──────────┬──────────┬─────────┐
-│  Label  │   DrG 1  │   DrG N  │ Global  │
-├─────────┼──────────┼──────────┼─────────┤  ← furthest wave (top)
-│ 2029#1  │  cards   │  cards   │ tinted  │
-├─────────┼──────────┼──────────┼─────────┤
-│ 2027#2  │  ...     │  ...     │  ...    │  ← nearest wave (bottom)
-├─────────┼──────────┼──────────┼─────────┤
-│ Mature  │  cards   │  cards   │  count  │  ← backlog sub-rows
-│ Advanced│  cards   │  cards   │  + MW   │
-│ Draft   │  cards   │  cards   │  count  │
-└─────────┴──────────┴──────────┴─────────┘
-```
+**Drag-and-drop** — constrained to the same DrG column; wave assignment (backlog → wave) `createMilestone()`; reassignment (wave → wave) `updateMilestone()`; removal (wave → backlog) `deleteMilestone()`; `checkDependencyViolations()` on drop surfaces a confirmation dialog but does not block.
 
-Wave rows ordered furthest-top to nearest-bottom (`flex-direction: column-reverse`).
+> **Known limitation** — the board still uses `oc.drg` for column placement, but OCs now carry `domain` instead. The board is broken for domain-model data; redesign around the domain model is deferred.
 
-### 17.4 OC Cards
+### 8.6 Quality Activity
 
-- Height: `h = 2 + 2·log10(max(1, cost))` rem, clamped 2–12 rem
-- Left colour strip: grey (Draft), amber (Advanced), green (Mature)
-- Shows: title (truncated), cost in MW, dependency icon (⛓) if any
-- Hover: open button (↗) navigates to `/elaborate/os/change/{itemId}`
-- Draft cards: `cursor: not-allowed`, reduced opacity, lock icon (🔒), not draggable
+`QualityActivity` (`activities/workspace/shared/quality/quality.js`) provides on-demand dataset quality checks in both Elaborate (live dataset) and Explore (edition snapshot) contexts — context read transparently from `app.getDatasetContext()`.
 
-### 17.5 Wave Row Collapse
+**Layout** — full-width scrollable page (no `MasterDetail`): toolbar (**Run checks** button + last-run timestamp) and report area (summary banner + one collapsible domain section per domain in scope).
 
-- **Collapsed state** (32px): OC cards hidden; DrG cells show `consumed / available MW`; 4px load strip
-- **Expand on drop**: dropping onto a collapsed wave row automatically expands it
+**Context awareness** — on **Run checks**:
 
-### 17.6 Backlog Section
-
-| Sub-row | Maturity | Draggable | Accepts drops |
-|---|---|---|---|
-| Mature | `MATURE` | Yes | Yes |
-| Advanced | `ADVANCED` | Yes | Yes |
-| Draft | `DRAFT` | No | No |
-
-Wave→backlog drop only accepted by the sub-row matching the OC's maturity.
-
-### 17.7 Drag-and-Drop
-
-- **Constraint**: only within the same DrG column
-- **Wave assignment** (backlog → wave): `apiClient.createMilestone()`
-- **Wave reassignment** (wave → wave): `apiClient.updateMilestone()`
-- **Wave removal** (wave → backlog): `apiClient.deleteMilestone()`
-- **Dependency check**: `checkDependencyViolations()` on drop; violations surface confirmation dialog but do not block
-
----
-
-## 18. iCDM DrGs Edition 4 Model Changes
-
-### 18.1 Setup Layer
-
-| Change | Detail |
+| Context | API call |
 |---|---|
-| `DataCategory` removed | `data-categories.js` deleted |
-| `Service` removed | `services.js` deleted |
-| `Document` → `ReferenceDocument` | `reference-documents.js`; `description` field added; hierarchy up to three levels; now a `TreeEntity`; endpoint `/reference-documents` |
-| `Domain` removed | `domains.js` deleted — Domain setup entity retired; domain is now a config-driven key from `domains.json` |
-| `Bandwidth` added | New `ListEntity` (`bandwidths.js`); unique on `(year, waveId, scope)`; `scope` is a `DraftingGroup` enum key |
-| `Wave` fields renamed | `quarter` → `sequenceNumber`, `date` → `implementationDate`, `name` removed |
+| `{ type: 'live' }` | `GET /quality/checks` (live dataset) |
+| `{ type: 'edition', editionId }` | `GET /quality/checks?edition={editionId}` (edition snapshot) |
 
-### 18.1b Field Type Vocabulary
-
-| Type | Component | Cardinality | Notes |
-|---|---|---|---|
-| `select` | Native `<select>` | 1 | Enum choices |
-| `reference` | `ReferenceManager` | 0..1 | Inline typeahead; value wrapped in `[id]` array on save |
-| `reference-list` | `ReferenceListManager` | 0..n | Chip list + search popup |
-| `annotated-reference-list` | `AnnotatedMultiselectManager` | 0..n with note | Table with per-item note |
-| `richtext` | `RichTextComponent` (TipTap) | — | TipTap JSON stored as stringified JSON |
-
-### 18.1c Annotated Reference List
-
-**Edit / create mode** — each selected item in an editable table row; note field is `<textarea>`; line breaks stored as `\n`, rendered with `white-space: pre-line`.
-
-The add control uses a `ReferenceManager` tree picker (embedded inline in the footer, not a flat `<select>`). When the setup entity carries `parentId` on any item, `CollectionEntityForm.initializeAnnotatedMultiselects()` calls `ReferenceManager.buildTreeNodes()` and passes the resulting `nodes` tree to `AnnotatedMultiselectManager`. When no hierarchy exists, flat `options` are passed instead and `ReferenceManager.buildTreeNodes()` produces root-only leaf nodes (backward-compatible). All nodes — leaf and non-leaf — are selectable.
-
-**Read-only mode** — items rendered as structured block list sorted alphabetically. Each item: `• Title (link if url available) / note text`.
-
-**Metadata resolution (`_resolveAnnotatedRefMeta`)** — fields declare `setupEntity` referencing a `setupData` collection key. Returns `{ description, url }`: description as native `title` tooltip; url renders title as `<a>` for strategic documents.
-
-**`setupEntity` mapping:**
-
-| Field | `setupEntity` |
-|---|---|
-| `strategicDocuments` | `referenceDocuments` |
-| `impactedStakeholders` | `stakeholderCategories` |
-
-
-### 18.2 Operational Requirement Fields
-
-**Added to both ON and OR:**
-
-| Field | Type | Notes |
-|---|---|---|
-| `maturity` | `select` | Required; options from `MaturityLevel` enum |
-| `additionalDocumentation` | `static-label` | Renders "Not available yet"; not submitted |
-
-**Added to ON only:**
-
-| Field | Type | Notes |
-|---|---|---|
-| `strategicDocuments` | `annotated-reference-list` | Options from `referenceDocuments`; titles link to `url` if present |
-| `tentative` | `tentative` | User enters `YYYY` or `YYYY-ZZZZ`; saved as `[start, end]` integer array |
-
-**Added to OR only:**
-
-| Field | Type | Notes |
-|---|---|---|
-| `nfrs` | `richtext` | Optional operational NFRs |
-| `impactedStakeholders` | `annotated-reference-list` | Options from `stakeholderCategories` |
-| `refinesParents` | `reference` | Single-select typeahead; wraps id in `[id]` array on save. Options are type-filtered: ON items propose ONs only; OR items propose ORs only. |
-| `refinedBy` | `reference-list` | Computed, read-only. Uses `computeKey: '_computeRefinedByIds'` |
-| `implementedBy` | `reference-list` | Computed, read-only, ON only. Uses `computeKey: '_computeImplementedByIds'` |
-
-**Renamed:** `impactsStakeholderCategories` → `impactedStakeholders`, `dependsOnRequirements` → `dependencies`, `documentReferences` → `strategicDocuments` (ON only).
-
-**Removed:** `impactsData`, `impactsServices`, `documentReferences` (from OR), `impactedDomains` (from OR — replaced by `domain` on the item itself), `drg`, `path`.
-
-**Added to both ON and OR:** `domain` (`select`, required, options from `getDomainKeys()`).
-
-**Traceability tab field order:** Strategic Documents → Refines (Parent) → Refined By → Implements (ONs) → Implemented By (ORs).
-
-**Impact tab visibility:** Always renders (stable tab index). Fields hidden for ONs via `visibleWhen` — produces a blank tab for ON items intentionally to avoid tab index shifts.
-
-### 18.3 Operational Change Fields
-
-**Added:**
-
-| Field | Type | Notes |
-|---|---|---|
-| `maturity` | `select` | Required |
-| `cost` | `number` | Optional integer; MW |
-| `dependencies` | `reference-list` | OCs that must precede this OC |
-| `additionalDocumentation` | `static-label` | Renders "Not available yet" |
-
-**Renamed:** `satisfiesRequirements` → `implementedORs`, `supersedsRequirements` → `decommissionedORs`.
-
-**Removed:** `documentReferences` section, `visibility` field, `drg`, `path`.
-
-**Added:** `domain` (`select`, required, options from `getDomainKeys()`).
-
-### 18.4 Milestone Name Field
-
-Milestone `title` field renamed to `name` throughout `change-form-milestone.js`. Wave label rendered as `{year}#{sequenceNumber}`.
-
-### 18.5 New Field Types in CollectionEntityForm
-
-| Type | Edit rendering | Read rendering | Notes |
-|---|---|---|---|
-| `static-label` | `<div>` with `staticText`, no `name` | Label + `staticText` | Skipped in `collectFormData`, `validateForm`, `restoreVersionToForm` |
-| `tentative` | `<input type="text">` with pattern `^\d{4}(-\d{4})?$` | Formats `[start,end]` as `"YYYY"` or `"YYYY-ZZZZ"` | Parsed via `parseTentative()` → `parseYearPeriod()` |
-
-### 18.6 O*s Activity — Unified List
-
-`OsActivity` (`os.js`) and `OStarEntity` (`o-star-entity.js`) together implement the unified ON/OR/OC workspace.
-
-**Layout:**
-```
-[ Filter bar ]  [ 🔍 search ]        ← single toolbar row
-[ grouping | counts ]                ← view controls row
-[ MasterDetail: list | detail ]
-```
-
-**Search:** free-text input (debounced 300ms), maps to `text` parameter — visually separate from structured filters.
-
-**Filter bar:** Type · Domain · Maturity · Stakeholder · Implements · Strategic Document.
-
-**Grouping:** Type · Domain · Maturity.
-
-**Column set:**
-
-| Column | Applies to | Sortable |
-|---|---|---|
-| Type | all | Yes |
-| Code | all | Yes |
-| Title | all | Yes |
-| Maturity | all | Yes |
-| Domain | all | Yes |
-| Implements | OR, OC | No |
-| Refines | ON, OR | No |
-| Strategic Documents | ON only | No |
-| Impacted Stakeholders | OR, OC | No |
-
-**Virtual field:** `item.implements` is pre-computed in `OStarEntity.onDataUpdated()` — merges `implementedONs` (OR) and `implementedORs` (OC) into a single array for the Implements column renderer.
-
-**OC type normalisation:** OCs from `/operational-changes` have no `type` field — normalised to `'OC'` in `_loadData()` after merge.
-
----
-
-## 18.7 ReferenceManager Component
-
-`ReferenceManager` (`components/reference-manager.js`) is the canonical tree-picker component used throughout the client for single-value selection from a hierarchical list. It is used in:
-
-- `TreeEntity` — parent field for `StakeholderCategory` and `ReferenceDocument`
-- `CollectionEntityForm` — `reference` field type (single-select typeahead)
-- `AnnotatedMultiselectManager` — embedded inline picker (replaces the former flat `<select>`)
-- `RichTextComponent` — reference mark picker (`o-ref` / `n-ref` / `d-ref`)
-
-### Node shape
+**Report structure** — the response is a `QualityReport` (defined in `@odp/shared` `quality-elements.js`):
 
 ```js
 {
-    value:        string | number | null,  // null = non-selectable header
-        label:        string,                  // display text; used for filtering
-        displayLabel: string?,                 // override label for rendering only
-        leaf:         boolean?,                // hint; children absence is authoritative
-        children:     node[]?,                 // static children (absent on leaves)
-        onExpand:     () => Promise<node[]>?,  // lazy children loader
+    runAt:         string,           // ISO timestamp
+    rules:         QualityRule[],    // registered rules — drives section headers
+    domainReports: DomainQualityReport[]  // one entry per domain, always present
 }
 ```
 
-### Static utility — `ReferenceManager.buildTreeNodes(items, getLabel?)`
+Each `DomainQualityReport` contains one array per rule (always present, empty when no findings): `brokenONTraceability` (rule `on-traceability`), `untraceableORs` (`or-traceability`), `orphanONs` (`orphan-on`), `noShowOStars` (`no-show`).
 
-Converts a flat array of setup entities carrying `parentId` into a node tree. This is the **single source of truth** for tree construction — used by `link-provider.js` (d-ref), `collection-entity-form.js` (annotated-reference-list), and `annotated-multiselect-manager.js` (flat options fallback).
+Finding shapes and navigation:
 
-- When no item carries `parentId`, returns flat leaf nodes (backward-compatible)
-- All nodes are selectable (`value = item id`)
-- Children sorted alphabetically at every level
-- `getLabel` defaults to `item.name ?? item.title ?? String(item.id)`
+| Finding type | ID field | Version field | Navigation |
+|---|---|---|---|
+| `BrokenONTraceability` | `onId` | `onVersionId` | `data-on-id` |
+| `UntraceableOR` | `orId` | `orVersionId` | `data-or-id` |
+| `OrphanON` | `onId` | `onVersionId` | `data-on-id` |
+| `NoShowOStar` | `oStarId` | `oStarVersionId` | `data-ostar-id` + `data-ostar-type` |
 
-### Filtering — path-aware
+**Finding navigation** — clicking a code link navigates to the O* detail page in the correct workspace:
 
-When a search term is typed, `_filterNodesWithPath` is used instead of label-only matching. A node is included if **any segment of its full ancestor path** (including itself) contains the term:
-
-- `FMP` → matches the node whose label is `FMP`; its ancestors appear as greyed context headers
-- `NM` → matches the `NM` node **and** all its descendants (NM is in the path of all children)
-- `Network` → matches the `Network` root and its entire subtree
-
-While a filter term is active, results are rendered **fully expanded** (no expand/collapse toggle). Clearing the term restores normal expand/collapse state.
-
-**Two non-selectable node styles:**
-
-| Class | Used for | `text-transform` |
+| Attribute | Handler | Target URL pattern |
 |---|---|---|
-| `rm-node-label--header` | True non-selectable group nodes (never had a value) | `uppercase` |
-| `rm-node-label--context` | Ancestors demoted during filtering (originally selectable, `value` nulled to provide hierarchy context) | none — original case preserved |
+| `data-on-id` | ON findings | `{base}/os/on/{id}` |
+| `data-or-id` | OR findings | `{base}/os/or/{id}` |
+| `data-ostar-id` + `data-ostar-type` | NO SHOW findings | `{base}/os/{type}/{id}` |
 
-Filtered nodes carry `_contextOnly: true` to distinguish them from true headers.
+Where `base` is `/elaborate` (live) or `/explore/{editionId}` (edition snapshot).
 
-**`_origin` reference** — every filtered copy carries `_origin` pointing to the original `_roots` node. `_toggleExpand` writes lazy-loaded `_children` to `node._origin ?? node`, ensuring `_findNode` can locate descendants even when expand was triggered from a filtered view.
+**Report persistence across tab switches** — results are held in `QualityActivity._report` (instance memory), not cached in `App` or persisted to the server. `ElaborateActivity`/`ExploreActivity` cache sub-activity instances; `cleanup()` preserves `_report` and `_runAt`, clearing only `container` and `_running`. On return to the Quality tab, `render()` detects an existing report and restores it immediately. The report is discarded only when the top-level shell is torn down.
 
-### Composite node values
+**Staleness detection on tab return** — `_renderReportWithStaleness()` calls `app.getOStars()` and compares each finding's stored `versionId` against the current cache value. O*s whose `versionId` changed are marked "possibly fixed" (amber badge, dimmed row). Covers `brokenONTraceability`, `untraceableORs`, `orphanONs`; `noShowOStars` is excluded — NO SHOW status is structural, not version-sensitive. If the cache is unavailable, the report renders without indicators.
 
-`ReferenceManager` supports non-integer node values (e.g. n-ref topic values `"{chapterItemId}/{topicId}"`). A module-level `_isIntegerId` helper (`/^\d+$/.test(String(v))`) replaces the unavailable `isValidId` from `@odp/shared`:
-
-- `_normalizeValue` — passes composite strings through as-is; integer strings are normalised via `normalizeId`
-- `_findNode` and `isSelected` — use `idsEqual` for integer pairs; fall back to `String(a) === String(b)` otherwise
-
-### Fixed-height popup
-
-The search popup (`.search-popup`) has a fixed `height: 360px`. This prevents expand/collapse of tree nodes from resizing the popup frame. The results area (`.search-popup-results`) uses `flex: 1; min-height: 0; overflow-y: auto` to scroll within the fixed frame.
-
-### Filter-mode selection — `_findNode` first
-
-`_handleClick` resolves the selected node with priority order:
+**API client** — `apiClient.runQualityChecks({ domains?, editionId? })`:
 
 ```js
-const node = this._findNode(this._normalizeValue(raw), this._roots)
-    ?? this._nodeAtPath(labelBtn.dataset.path)
-    ?? { label: labelBtn.dataset.label ?? raw };
+async runQualityChecks({ domains = [], editionId = null } = {}) {
+    const params = {};
+    if (domains.length > 0) params.domain = domains.join(',');
+    if (editionId !== null)  params.edition = editionId;
+    return this.get('/quality/checks', { params });
+}
 ```
 
-`_findNode` by value is tried first — it works correctly for both integer and composite values once `_children` are populated. `_nodeAtPath` is a fallback only; it is unreliable in filter mode since filtered-tree path indices don't map to `_roots` positions.
+**Extensibility** — adding a new quality rule requires one client change: a new block in `_renderDomainReport()` calling `_renderFindingTable()` with the appropriate `rowFn`. Staleness detection is opt-in per rule via `_isStale()`.
 
----
+### 8.7 Setup Activity
 
-## 19. Phase 2 — Domain/Chapter Model Evolution
+`SetupActivity` (`activities/workspace/shared/setup/setup.js`) is the setup sub-activity shell, shared between Elaborate and Explore. It hosts the hierarchical setup entities as `TreeEntity` tabs:
 
-
-### 19.1 Setup Layer
-
-| Change | Detail |
-|---|---|
-| `Domain` setup entity retired | `domains.js` deleted; domain is now a config-driven string key from `domains.json` |
-| `domains` removed from setup data cache | `app.getSetupData()` no longer fetches `/domains`; `setupData.domains` no longer exists |
-
-### 19.2 O* Fields
-
-| Field | Change |
-|---|---|
-| `drg` | Removed from OR and OC — replaced by `domain` (string key) |
-| `path` | Removed from OR and OC |
-| `impactedDomains` | Removed from OR |
-| `domain` | Added to both OR and OC — mandatory string key validated against `domains.json` |
-
-### 19.3 O*s Activity
-
-- Filter bar: `drg` and `impactedDomain` filters replaced by single `domain` string key filter
-- Grouping: `drg` grouping replaced by `domain` grouping
-- `on-planning.js`: TemporalGrid separator rows now show domain labels (via `getDomainLabel()`)
-
-### 19.4 Known Limitations (Phase 2)
-
-- **Prioritisation board** (`prioritisation.js`, `prioritisation-grid.js`) still uses `oc.drg` for column placement. OCs now carry `domain` instead. The board is broken for Phase 2 data — redesign of the prioritisation board around the domain model is deferred.
-
----
-
-## 20. Manage Activity — Editions
-
-### 20.1 Architecture
-
-`EditionsActivity` (`manage/editions/editions.js`) is a self-contained sub-activity. It does not use `CollectionEntity` or the retired `ODPEditionsEntity` wrapper. Layout mirrors the O* workspace:
-
-- **Top toolbar** — reuses `.os-toolbar` / `.os-toolbar__create`; `+ Edition` button right-aligned.
-- **`MasterDetail`** (`initialRatio: 0.30`) — left: edition card list; right: edition detail shell.
-
-`ODPEditionForm` (`manage/editions/odp-edition-form.js`) is used only for the create modal. `ODPEditionsEntity` (`odp-editions.js`) is **retired and deleted**.
-
-### 20.2 Edition List (Left Panel)
-
-Scrollable card list. Each card shows: title, DRAFT/OFFICIAL badge, creation date. Clicking a card selects it and renders the detail panel. Cards use string comparison (`String(id)`) for selection state to handle Neo4j integer vs DOM string mismatch.
-
-Data loaded on mount via `Promise.all([GET /odp-editions, GET /baselines])`. Baselines are fetched to support the create form. List reloads after every successful create (via `entitySaved` DOM event).
-
-### 20.3 Edition Detail (Right Panel)
-
-Uses `.os-detail` shell pattern — `.os-detail__toolbar` with title left and action buttons right, `.os-detail__body` below.
-
-**Toolbar actions:** `Explore` · `Export`
-
-**Body** — `<dl>` with fields: Created, Created by, Type (badge), Baseline, Start date, Min ON maturity.
-
-**Explore** navigates to `/explore/{editionId}` — the router and `ExploreActivity` handle context resolution from the URL.
-
-### 20.4 Export Modal
-
-`Export` opens a compact modal (`.edition-export-overlay`). Content:
-
-- Format checkboxes: PDF · Word · Website
-- **Run** button — builds a single `PublishOptions` object from checked formats and calls `apiClient.publishEdition(id, options)` once
-- Results rendered inline per format: `✓ Label — Open` link on success, error message on failure
-- 409 response: "Export already in progress — please retry later"
-
-**`PublishOptions` mapping:**
-
-| Format | Options key | Value |
+| Tab | Entity | Component |
 |---|---|---|
-| PDF | `pdfFlat` | `{}` |
-| Word | `wordFlat` | `{}` |
-| Website | `website` | `true` |
+| Stakeholder Categories | `StakeholderCategory` | `stakeholder-categories.js` (`TreeEntity`) |
+| Reference Documents | `ReferenceDocument` | `reference-documents.js` (`TreeEntity`) |
 
-Modal size is scoped via `.edition-export-overlay .modal` overrides in `editions.css` (width: 390px, height: auto).
+Sub-path routing accepts `[entityKey, itemId?]` (see §3.3), enabling deep-links to a specific item. In Explore (edition context) the editing actions are suppressed.
 
-### 20.5 ODPEditionForm
+### 8.8 Manage Activity
 
-Migrated to config-based pattern (`getEditConfig()` / `getReadConfig()`). `getFieldDefinitions()` removed. `getReadConfig()` returns `null` — detail rendering is owned by `EditionsActivity` directly.
+`EditionsActivity` (`manage/editions/editions.js`) is a self-contained sub-activity within the Manage shell. It does not use `CollectionEntity`. Layout mirrors the O* workspace: top toolbar (reuses `.os-toolbar` / `.os-toolbar__create`, `+ Edition` right-aligned) and a `MasterDetail` (`initialRatio: 0.30`) — left edition card list, right edition detail shell.
 
-**Edit config sections:**
+`ODPEditionForm` (`manage/editions/odp-edition-form.js`) is used only for the create modal.
 
-| Section | Fields |
-|---|---|
-| Edition | `title` (text, required), `type` (radio: DRAFT/OFFICIAL, required) |
-| Content rules | `baselineId` (select, optional), `startDate` (date, optional), `minONMaturity` (radio: DRAFT/ADVANCED/MATURE, optional) |
+**Edition list (left panel)** — scrollable card list; each card shows title, DRAFT/OFFICIAL badge, creation date. Cards use string comparison (`String(id)`) for selection state. Data loaded on mount via `Promise.all([GET /odp-editions, GET /baselines])`; list reloads after every successful create (via `entitySaved` DOM event).
 
-`transformDataForSave()` — defaults `type` to `'DRAFT'`, `minONMaturity` to `'DRAFT'`; coerces `baselineId` to integer; strips absent optional fields. Editions are create-only — `onSave()` throws on any mode other than `'create'`.
+**Edition detail (right panel)** — `.os-detail` shell: toolbar actions **Explore** · **Export**; body `<dl>` with Created, Created by, Type (badge), Baseline, Start date, Min ON maturity. **Explore** navigates to `/explore/{editionId}`.
+
+**Export modal** — `Export` opens a compact modal (`.edition-export-overlay`): format checkboxes (PDF · Word · Website); **Run** builds a single `PublishOptions` object and calls `apiClient.publishEdition(id, options)` once; results rendered inline per format (`✓ Label — Open` on success, error on failure; 409 → "Export already in progress — please retry later").
+
+`PublishOptions` mapping: PDF → `pdfFlat: {}`; Word → `wordFlat: {}`; Website → `website: true`. Modal size scoped via `.edition-export-overlay .modal` in `editions.css` (width 390px, height auto).
+
+**ODPEditionForm** — config-based (`getEditConfig()` / `getReadConfig()`); `getReadConfig()` returns `null` (detail rendering owned by `EditionsActivity`). Edit config sections: Edition (`title` text required, `type` radio DRAFT/OFFICIAL required); Content rules (`baselineId` select optional, `startDate` date optional, `minONMaturity` radio DRAFT/ADVANCED/MATURE optional). `transformDataForSave()` defaults `type` to `'DRAFT'`, `minONMaturity` to `'DRAFT'`, coerces `baselineId` to integer, strips absent optional fields. Editions are create-only — `onSave()` throws on any mode other than `'create'`.
+
+### 8.9 Converse Activity
+
+`ConverseActivity` (`activities/converse/converse.js`) is a top-level placeholder for collaborative threading. It is unprotected and currently renders a placeholder shell; no data model or API integration exists yet.
 
 ---
 
-## 20. ODIP Design System — UI Primitives
+## 9. API Integration
 
-### 20.1 Overview
+The shared API client in `shared/api-client.js` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
+
+### 9.1 Connection Monitoring
+
+Connection monitoring is owned by `App` (`app.js`). On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator. The 60-second interval is intentional — the application is a low-concurrency internal tool.
+
+> Component-level API concerns are documented with their components: the unified `listOStars` query in §8.2.7, `runQualityChecks` in §8.6, and the change-set methods in §13.2.
+
+---
+
+## 10. CSS Architecture
+
+### 10.1 File Tree
+
+```
+styles/
+├── main.css                          Design tokens, CSS reset, typography, layout utilities — includes EC palette tokens (--ec-navy, --ec-blue, --ec-sky, --ec-light), link tokens (--link-color, --link-color-hover), and .odip-link utility class
+├── primitives.css                    Buttons, form controls, spinners (atomic UI elements)
+├── feedback-components.css           Toasts, error notifications, loading/skeleton states
+├── layout-components.css             Top header, connect popup, cards, modals
+├── components/
+│   ├── filter-bar.css                FilterBar chip component
+│   ├── form-components.css           Form tabs, tag selector, multi-select, rich text integration
+│   ├── history-tab.css               History version list, diff popup
+│   ├── master-detail.css             Two-column resizable layout
+│   ├── reference-list-manager.css    Inline chip list with search popup
+│   ├── rich-text-component.css       RichTextComponent editor/viewer, sticky toolbar, per-context sizing
+│   ├── table-components.css          Collection table, row selection, grouping, empty states
+│   ├── tree-table-components.css     Tree table with indentation levels
+│   └── temporal-components.css       TemporalGrid base styles
+└── activities/
+    ├── activity.css                  Base layout for all activities
+    ├── home/
+    │   └── home.css
+    ├── workspace/
+    │   ├── elaborate/elaborate.css
+    │   ├── explore/explore.css
+    │   ├── setup/setup.css           Setup entity tabs, three-pane layout
+    │   └── shared/
+    │       ├── os/os.css             O* activity shell layout, detail shell height propagation, type badge colours (ON blue, OR green, OC purple)
+    │       ├── plan/plan.css         ON plan two-pane layout, TemporalGrid context
+    │       ├── narrative/narrative.css
+    │       └── quality/quality.css
+    └── manage/
+        ├── manage.css
+        └── editions/editions.css     Edition count badge, publication action buttons
+```
+
+### 10.2 Layer Hierarchy
+
+Files are loaded in strict dependency order: global → components → activities (base first, then concrete).
+
+**Global** (`styles/`) — no dependencies between files at this level. `primitives.css` is the lowest-level layer.
+
+**Components** (`styles/components/`) — depend only on global tokens. No component file references another component file or any activity file.
+
+**Activities** (`styles/activities/`) — depend on global and component layers. `activity.css` is the base for all activities.
+
+---
+
+## 11. ODIP Design System — UI Primitives
 
 ODIP Space uses a canonical set of UI primitive classes defined in `primitives.css`. These replace Bootstrap-legacy class names (`btn`, `btn-primary`, `form-control`) throughout all ODIP components. The design system enforces two tiers — **compact** (inline/toolbar contexts) and **standard** (modal/form contexts) — with semantic variants for both buttons and inputs.
 
-### 20.2 Button System — `odip-btn`
+### 11.1 Button System — `odip-btn`
 
-All buttons in ODIP components use `odip-btn`. The base class defines the compact tier; `--standard` upgrades to form-body size.
+All buttons use `odip-btn`. The base class defines the compact tier; `--standard` upgrades to form-body size.
 
 **Size tiers:**
 
@@ -1388,7 +1417,6 @@ All buttons in ODIP components use `odip-btn`. The base class defines the compac
 | `--warning` | Consequential — Decommission | white | `#854F0B` | `#FAC775` |
 | `--create` | New-object — +ON, +OR, +OC | white | `#185FA5` | `#B5D4F4` |
 
-**Usage pattern:**
 ```html
 <button class="odip-btn">History</button>
 <button class="odip-btn odip-btn--primary">Edit</button>
@@ -1400,25 +1428,17 @@ All buttons in ODIP components use `odip-btn`. The base class defines the compac
 
 The legacy `.btn` / `.btn-primary` / `.btn-secondary` / `.btn-sm` classes remain in `primitives.css` but are not used in any ODIP component.
 
-### 20.3 Input System — `odip-input`
+### 11.2 Input System — `odip-input`
 
-All text inputs, selects, and textareas in ODIP components use `odip-input`. Same two-tier pattern as `odip-btn`.
-
-**Size tiers:**
+All text inputs, selects, and textareas use `odip-input`. Same two-tier pattern as `odip-btn`.
 
 | Class | Font size | Padding | Border |
 |---|---|---|---|
 | `.odip-input` (default) | 11px | 4px 9px | 0.5px solid |
 | `.odip-input.odip-input--standard` | `--font-size-sm` | `--space-2` `--space-3` | 1px solid |
 
-**Modifiers:**
+Modifiers: `--textarea` (adds `min-height: 80px`, `resize: vertical`), `--error` (red border for validation error state).
 
-| Modifier | Use |
-|---|---|
-| `--textarea` | Adds `min-height: 80px`, `resize: vertical` |
-| `--error` | Red border for validation error state |
-
-**Usage pattern:**
 ```html
 <input class="odip-input" type="text">                          <!-- compact -->
 <input class="odip-input odip-input--standard" type="text">    <!-- form body -->
@@ -1428,7 +1448,7 @@ All text inputs, selects, and textareas in ODIP components use `odip-input`. Sam
 
 The legacy `form-control`, `form-select`, `form-textarea`, `form-control-sm` classes are not used in any ODIP component.
 
-### 20.4 Link Style — `odip-link`
+### 11.3 Link Style — `odip-link`
 
 Navigable inline references (O* chips, strategic document links) use `.odip-link` defined in `main.css`:
 
@@ -1441,138 +1461,25 @@ text-decoration: none
 
 Hover: `color: var(--link-color-hover)` (`--ec-navy`).
 
-### 20.5 Affected Files
-
-| File | Change |
-|---|---|
-| `primitives.css` | Added `odip-btn` and `odip-input` systems |
-| `os.css` | Added `os-toolbar__create`, `os-detail__toolbar`, `os-detail__title`, `os-detail__actions`; removed `os-action-btn`, `os-create-btn` |
-| `form-components.css` | Migrated `.form-control` selectors to `.odip-input`; removed `.milestone-actions .btn` sizing override |
-| `collection-entity-form.js` | `btn` → `odip-btn`; `form-control` → `odip-input odip-input--standard` |
-| `change-form-milestone.js` | `btn` → `odip-btn`; `form-control` → `odip-input` |
-| `annotated-multiselect-manager.js` | `btn` → `odip-btn`; `form-control` → `odip-input` |
-| `reference-list-manager.js` | `btn` → `odip-btn`; `form-control` → `odip-input` |
-| `reference-manager.js` | `form-control` → `odip-input` |
-| `diff-popup.js` | `btn` → `odip-btn` |
-| `os.js` | `os-action-btn` → `odip-btn`; `os-create-btn` → `odip-btn odip-btn--create` |
-| `requirement-details.js` | `os-action-btn` → `odip-btn` |
-| `change-details.js` | `os-action-btn` → `odip-btn` |
-
 ---
 
-## 21. O* Workspace — Plain Page / Master Detail Navigation
+## 12. Build Tooling — Vite
 
-### 21.1 Layout Changes
+### 12.1 Role
 
-The O* workspace toolbar row has been restructured:
+Vite is the build tool and development server. It provides:
 
-```
-[ filter bar · · · · · · · · · · 🔍 search  +ON  +OR  +OC ]
-[ grouping | counts                                        ]
-[ list panel                    ‖ detail panel              ]
-```
-
-The +ON / +OR / +OC create buttons moved from the view controls row (owned by `OStarEntity`) to the toolbar row (owned by `OsActivity`). This eliminates visual competition between create buttons and detail action buttons.
-
-Create buttons are only rendered in live (non-read-only) context. They delegate to `_ostarEntity._handleCreate(type)`.
-
-### 21.2 Detail Panel Header
-
-The detail panel (`RequirementDetails` / `ChangeDetails`) uses a single toolbar row:
-
-```
-[ title (fills available space) · · · · Edit  Full page ]   ← panel mode
-[ title (fills available space) · · · In collection  In narrative ]  ← page mode
-```
-
-`os-detail__title` takes `flex: 1` and truncates with ellipsis. Action buttons are right-aligned, compact (`odip-btn`).
-
-### 21.3 Plain Page ↔ Master Detail Navigation
-
-Two action buttons per detail view, mode-dependent:
-
-| Mode | Button | Action |
-|---|---|---|
-| Panel | **Full page** | Pushes `/{base}/os/{type}/{id}` to browser history |
-| Page | **In collection** | Navigates to `/{base}/os?perspective=coll&selected={id}` |
-| Page | **In narrative** | Navigates to `/{base}/narrative/{chapterId}?on={id}`, `?or={id}`, or `?oc={id}` |
-
-**`In narrative` navigation** — `OsActivity._navigateToNarrative(item)` resolves the chapter by matching `item.domain` against `app.getChapters()` (cached). On match, pushes a typed URL: `?on=` for ONs, `?or=` for ORs, `?oc=` for OCs (absence of `item.type` implies OC). Falls back to `/{base}/narrative` if no chapter is found. `normalizeId` is used to serialise the chapter `itemId` in the URL.
-
-**Callback injection** — callbacks are passed into `render()` on every call (not at construction), ensuring cached instances always receive correct wiring:
-
-```js
-await this._requirementDetails.render(container, id, 'panel', {
-    onFullPage: (item) => this._navigateToFullPage(item),
-});
-
-await this._requirementDetails.render(container, id, 'page', {
-    onInCollection: (item) => this._navigateToList(item),
-    onInNarrative:  (item) => this._navigateToNarrative(item),
-});
-```
-
-**Search param restore** — `_restoreFromSearchParams()` is called once after `_renderList()` completes. It reads `?selected`, sets `sharedState.selectedItem`, then calls `_handleItemSelect()` for panel render. `?perspective` is accepted in the URL for compatibility but ignored — only the collection perspective exists. Params are cleaned via `replaceState` after consumption.
-
-
-## 22. CollectionEntity — Keyboard Navigation & Focus Management
-
-### 22.1 Keyboard Navigation
-
-`CollectionEntity` supports ArrowDown / ArrowUp keyboard navigation through the visible collection rows.
-
-- `collection-content` wrapper has `tabindex="0"` — making it focusable without affecting tab order of interactive elements inside
-- Clicking a row calls `selectItem()` then immediately focuses `collection-content` so arrow keys work without an extra click
-- `keydown` listener on `collection-content` intercepts ArrowDown / ArrowUp, calls `_navigateByKey(±1)`, then re-asserts focus via `focus({ preventScroll: true })`
-- `_navigateByKey(delta)` operates on **visible DOM rows** (`querySelectorAll('.collection-row')`) — not `this.data` — so filtering and search are automatically respected
-- Clamps at boundaries; no wrap
-
-### 22.2 Tab Preservation Across Item Selection
-
-When the user switches selection in the master list, the active tab in the detail form is preserved:
-
-- `RequirementDetails.render()` and `ChangeDetails.render()` capture `formExisted = this._form != null` before `_ensureForm()`
-- `generateReadOnlyView(item, formExisted)` — `preserveTabIndex=true` on re-renders, `false` on first render
-- `CollectionEntityForm._activeInstance` static property tracks the currently rendered panel form instance
-- `initializeReadOnlyInPanel` sets `CollectionEntityForm._activeInstance = this` on every panel render
-- The shared document-level tab delegation listener updates `_activeInstance.currentTabIndex` — fixing a bug where only the first-constructed form instance ever had its tab index tracked
-
-### 22.3 OC-Specific Focus Fixes
-
-**Stale MutationObserver** — `ChangeForm.loadHistoryWithObserver` is called on every `generateReadOnlyView`. Without a disconnect guard, each OC re-render accumulated a new observer on `document.body`. Stale observers fired on subsequent DOM mutations, causing interference. Fix: `this._historyObserver?.disconnect()` before creating the new observer.
-
-**TipTap read-only focus** — `RichTextComponent` in read-only mode calls `blur()` immediately after `mount()` to prevent focus theft. Edit modal unaffected — `focusFirstInput()` runs after modal open.
-
-### 22.4 Affected Files
-
-| File | Change |
-|---|---|
-| `collection-entity.js` | `tabindex="0"` on `collection-content`; auto-focus on row click; `_navigateByKey` uses visible DOM rows |
-| `collection-entity-form.js` | `_activeInstance` static property; tab delegation updates `_activeInstance`; `RichTextComponent.blur()` in read-only init |
-| `requirement-details.js` | `formExisted` flag passed as `preserveTabIndex` to `generateReadOnlyView`; `getRequirements` synthesised from extended projection |
-| `change-details.js` | `formExisted` flag passed as `preserveTabIndex` to `generateReadOnlyView` |
-| `change-form.js` | `_historyObserver?.disconnect()` before new observer creation |
-| `requirement-form.js` | `_computeRefinedByIds` and `_computeImplementedByIds` prefer extended projection fields |
-
----
-
-## 23. Build Tooling — Vite
-
-### 23.1 Role
-
-Vite replaces the former no-build-step approach. It provides:
-
-- **Development server** — fast dev server with ES module native serving; replaces `sirv-cli`
+- **Development server** — fast dev server with ES module native serving
 - **Production build** — `npm run build` outputs a hashed, tree-shaken bundle to `web-client/dist/`
 - **Asset processing** — files in `src/assets/` are processed and fingerprinted; must be imported as ES modules to get the resolved URL
 
-### 23.2 Configuration (`vite.config.js`)
+### 12.2 Configuration (`vite.config.js`)
 
 Located at `web-client/vite.config.js`. Key settings: root set to `src/`, output to `dist/`, dev server port `3000`.
 
-### 23.3 Asset Import Pattern
+### 12.3 Asset Import Pattern
 
-Static assets (SVG, images) that were previously referenced by hardcoded paths must be imported as ES modules:
+Static assets (SVG, images) must be imported as ES modules:
 
 ```js
 import logoUrl from '../assets/odip-space-logo.svg';
@@ -1582,11 +1489,11 @@ import logoUrl from '../assets/odip-space-logo.svg';
 
 Placing an asset in `src/assets/` and referencing it by a static string path will fail in production — Vite does not serve `src/assets/` at a predictable URL after bundling.
 
-### 23.4 @odp/shared Copy
+### 12.4 @odp/shared Copy
 
 The `@odp/shared` source is copied into `web-client/src/shared/src/` as a build preparation step (executed by `odip-admin` on `--rebuild`). This copy is imported directly as plain ES modules and processed by Vite as part of the main bundle.
 
-### 23.5 Development vs Production
+### 12.5 Development vs Production
 
 | Mode | Command | Output |
 |---|---|---|
@@ -1596,417 +1503,55 @@ The `@odp/shared` source is copied into `web-client/src/shared/src/` as a build 
 
 The container runs `vite preview` to serve the pre-built `dist/` bundle. The build step runs on the host (EC) or inside the container (local) before the image is committed. This avoids running a full dev server in the deployed container while retaining Vite's SPA fallback routing.
 
-## 18. Narrative Activity
-
-The Narrative sub-activity (`activities/workspace/shared/narrative/`) provides editorial access to chapter narratives and O* organisation within ODIP editions.
-
-### 18.1 Layout
-
-Two-pane `MasterDetail` layout (20% / 80% initial ratio):
-
-- **Left panel** — `ChapterToc`: chapter tree (ODIP scope) or topic/O* tree (chapter scope)
-- **Right panel** — `ChapterBody`: chapter narrative, topic card list, or O* detail view
-
-A toolbar row is always rendered above the `MasterDetail`, in both Elaborate and Explore. It has two slots:
-
-- **Left slot** (`narrative-activity__toolbar-nav`) — in chapter scope, shows **← Chapters** (climbs to ODIP scope) and the current chapter name (selects chapter narrative); empty in ODIP scope.
-- **Right slot** (`narrative-activity__toolbar-actions`) — in Elaborate, shows **+ Theme · + ON · + OR · + OC** (`odip-btn odip-btn--create`); absent in Explore.
-
-Create buttons are disabled until a chapter is dived into (`NarrativeActivity._setToolbarEnabled`). Back/chapter nav is injected by `NarrativeActivity._updateToolbarNav()` on scope transitions. See §18.8.
-
-### 18.2 Scope State Machine
-
-| Scope | TOC | Body default |
-|---|---|---|
-| `odip` | Full chapter tree; expand/collapse; select / dive → | Chapter narrative (read-only) |
-| `chapter` | topic/O* tree | Chapter narrative (editable in Elaborate) |
-
-Navigation between scopes (← Chapters, current chapter name) lives in the toolbar left slot, not the TOC. In chapter scope, selecting the chapter node makes the **chapter narrative** editable; selecting a topic node makes that **topic narrative** editable (Elaborate only). The toolbar create actions are enabled on dive and disabled on climb (`NarrativeActivity._setToolbarEnabled`).
-
-### 18.3 Sub-Path and Query Parameter Routing
-
-| URL pattern | Behaviour |
-|---|---|
-| `{base}/narrative` | ODIP scope — chapter tree |
-| `{base}/narrative/{chapterId}` | Chapter scope — dive into chapter by numeric `itemId` |
-| `{base}/narrative/{chapterId}?theme={topicId}` | Chapter scope + select topic by numeric string ID |
-| `{base}/narrative/{chapterId}?on={itemId}` | Chapter scope + select and render a specific ON |
-| `{base}/narrative/{chapterId}?or={itemId}` | Chapter scope + select and render a specific OR |
-| `{base}/narrative/{chapterId}?oc={itemId}` | Chapter scope + select and render a specific OC |
-
-`{base}` is `/elaborate` (live dataset) or `/explore/{editionId}` (edition context).
-
-`NarrativeActivity._selectTopic(topicId)` — called after diving when `?theme=` is present. Delegates directly to `ChapterToc.setActiveByTopicId(topicId)`, which performs a DFS search across topics and sub-topics, expands collapsed ancestors, scrolls the entry into view, and fires `onChapterSelect`. The former index-based lookup via `selectTopicByIndex` was replaced because it only worked for top-level topics and ignored sub-topics.
-
-`NarrativeActivity._selectOStar(ostarId, type)` — called after diving when `?on=`, `?or=`, or `?oc=` is present. The type is derived directly from the param name — no `app.findOStar()` call needed. Calls `ChapterToc.setActiveByItemId(id)` then `ChapterBody.renderSelectionRead({ type: 'ostar', ostar: { id, type } }, chapter)`. `?theme` and the typed O* params are mutually exclusive.
-
-**Same-chapter navigation:** `handleSubPath` short-circuits when the incoming `chapterId` matches `_selectedChapter` — but still consumes `?theme`/`?on`/`?or`/`?oc` query params before returning. This ensures that Ctrl+Click on an `n-ref` within the currently open chapter correctly selects the target topic or O* without a full chapter reload.
-
-### 18.4 ChapterToc External API
-
-| Method | Description |
-|---|---|
-| `renderOdip(chapters, selectedId)` | Render full chapter tree (ODIP scope). No title header — TOC content is self-evident. |
-| `renderChapter(chapter)` | Render topic/O* tree for a single chapter. No back/chapter-name header — navigation lives in the toolbar. |
-| `setActiveKey(key)` | Highlight a TOC entry by its `data-key` |
-| `setActiveByItemId(id)` | Highlight the O* entry matching `id`; expands ancestors |
-| `setActiveByTopicId(id)` | Highlight the topic/subtopic entry matching the stable string `id`; expands collapsed ancestors; fires `onChapterSelect`. Used when navigation originates from a subtheme card in the body panel. |
-| `selectTopicByIndex(idx)` | Programmatically select a top-level topic by zero-based index; equivalent to user click; fires `onChapterSelect` callback |
-| `refreshTree()` | Rebuild the chapter-scope tree from the current `_hierarchy` while preserving the active selection highlight and scroll position. Used after out-of-band hierarchy changes (theme create, rename, delete, O* create/edit) |
-
-**Constructor callbacks:**
-
-| Callback | Signature | Description |
-|---|---|---|
-| `onOdipSelect` | `(chapter)` | ODIP scope label click — selection + body render |
-| `onDive` | `(chapter)` | Dive into chapter scope |
-| `onClimb` | `()` | Climb back to ODIP scope |
-| `onFocusOdip` | `()` | Transfer keyboard focus to ODIP TOC shell — called by chapter TOC on ← at top level |
-| `onChapterSelect` | `(entry)` | Chapter scope node click |
-| `onHierarchyChange` | `(hierarchy)` | Fired after each DnD mutation (Elaborate only) |
-| `onUnclassifiedChange` | `(hierarchy)` | Fired when an O* moves into/out of unclassified |
-
-**Keyboard navigation** — both TOC shells (`#chapterTocOdip`, `#chapterTocChapter`) have `tabindex="0"` and handle `keydown`. Navigation moves the **selection** directly (identical to a click — fires the same callbacks and renders the body):
-
-| Key | ODIP TOC | Chapter TOC |
-|---|---|---|
-| ↑ / ↓ | Move selection to prev/next visible chapter node | Move selection to prev/next visible entry; scrolls into view |
-| → | Expand collapsed node; if already expanded → dive into chapter | Expand collapsed topic; if expanded → move to first child |
-| ← | Collapse expanded node | Collapse expanded topic; if collapsed → move to parent; at top level → transfer focus to ODIP TOC via `onFocusOdip` |
-| Enter / Space | Activate selected node (same as click) | Activate selected entry (same as click) |
-
-### 18.5 ChapterBody Renderers
-
-| Entry type | Renderer | Notes |
-|---|---|---|
-| `chapter` | `_renderChapterNarrative` | Full narrative; editable in Elaborate |
-| `topic` | `_renderTopic` | Title input · narrative · O* cards · subtheme cards; editable in Elaborate |
-| `subtopic-by-id` | — | Synthetic entry fired by subtheme card click; intercepted by `NarrativeActivity._handleChapterTocSelect` which delegates to `ChapterToc.setActiveByTopicId` and returns — re-enters as `topic` |
-| `unassigned` | `_renderUnassigned` | O*s with no topic placement |
-| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button available (navigates to `{base}/os/{type}/{id}`) |
-
-**Chapter narrative rendering (`_renderChapterNarrative`)** — delegates to `_initRichTextNarrative(el, chapter, editable)`. The chapter object is passed so the renderer has access to both `availableBlockIds` and `availableStringKeys`:
-
-- **Edit mode** — both lists are passed to `RichTextComponent`; block and string chips are visible and insertable via the unified ⚙ dropdown.
-- **Read-only** (ODIP-level preview in elaborate mode, or explore mode) — narrative is rendered immediately with chips visible as-is. If either list is non-empty, `_resolveAndSubstituteGeneratedContent()` is called asynchronously after mount: it calls `POST /chapters/:id/resolve-generated-content`, then applies both block and string substitutions into the live TipTap document via `setValue`. Always dynamic — no stored content.
-
-`_resolveAndSubstituteGeneratedContent(chapter)` — async, non-blocking. Calls the resolve endpoint, which returns `{ blocks, strings }`. Applies `_substituteGeneratedBlocks()` then `_substituteGeneratedStrings()` in sequence, updates the editor with `setValue`. Silently no-ops if the component was destroyed before the response arrived.
-
-`_substituteGeneratedBlocks(narrativeJson, generatedBlocks)` — pure utility. Walks `doc.content` recursively; when a paragraph containing only a `generated-block` mark is found, replaces it with the resolved node array. Nodes with unknown IDs are left as-is.
-
-`_substituteGeneratedStrings(narrativeJson, generatedStrings)` — pure utility. Walks `doc.content` recursively; when a text node carrying a `generated-string` mark is found, replaces it with a plain text node containing the resolved value. Keys with no resolved value are left as-is.
-
-**Topic body layout** — `_renderTopic` renders in this order:
-1. **Title** — in Elaborate: `odip-input.chapter-body__topic-title` (saves on blur or Enter; reverts on Escape). In Explore: plain `<h3>`.
-2. **Narrative** — editable `RichTextComponent` in Elaborate; read-only when non-null in Explore.
-3. **O* card list** — direct O*s of the theme (ONs, ORs, OCs); no empty message.
-4. **Subtheme card list** — rendered after O*s when `subTopics.length > 0`; each card shows a `▸` icon and the subtheme label with a count hint `(n)`. Clicking navigates to the subtheme via `subtopic-by-id` entry type.
-
-**Delete theme** — in Elaborate, a **Delete theme** `odip-btn--danger` button is shown in the body header actions when the theme has no O*s and no subtopics (`items.length === 0 && subTopics.length === 0`). Clicking opens an `odipConfirm` dialog (`components/user-dialogs.js`) before delegating to `onThemeDelete(topicId)` → `NarrativeActivity._handleThemeDelete`.
-
-### 18.6 Internal Link Navigation
-
-`ChapterBody._handleInternalLink(type, value)` — called via `onInternalLink` from `RichTextComponent`. Resolves the link, passes through `_guardNavigation()`, then calls `app.navigate()`:
-
-| Mark type | Resolution | Target URL |
-|---|---|---|
-| `n-ref` | Value is `{chapterId}[/{topicId}]` — navigate directly, no lookup | `{base}/narrative/{chapterId}[?theme={topicId}]` |
-| `o-ref` | `app.findOStar(itemId)` resolves type; stale-while-revalidate via `app.getOStars()` | `{base}/os/{type}/{itemId}` |
-| `d-ref` | Direct — value is refdoc id (legacy imported marks only; newly authored d-refs are `link` marks, not handled here) | `{base}/setup/reference-documents/{id}` |
-
-**Edit mode — Ctrl+Click:** In read-only mode, any click on an internal ref span fires `onInternalLink`. In edit mode, only `Ctrl+Click` (or `Cmd+Click` on Mac) fires it — plain clicks are passed through to TipTap for normal cursor placement. While Ctrl/Cmd is held, the class `rich-text-component__editor--ctrl` is toggled on the editor element, triggering a `cursor: pointer` CSS rule on ref spans as a visual affordance. The class is removed on `keyup` and on `window blur` (to prevent it getting stuck when the user Alt-Tabs while holding Ctrl). The `keydown`/`keyup` listeners are registered once per `RichTextComponent` instance and removed in `destroy()`.
-
-### 18.7 OsHierarchy Theme Model
-
-Each topic in `osHierarchy.topics` carries:
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string | Chapter-scoped unique ID; first free positive integer as string (`"1"`, `"2"`, …) |
-| `topic` | string | Display label |
-| `narrative` | string\|null | Optional TipTap JSON string; rendered above O* list |
-| `ons`, `ors`, `ocs` | `OsHierarchyItem[]` | Enriched O* references (read path) |
-| `subtopics` | `OsHierarchyTopic[]` | Recursive sub-themes |
-
-IDs are first assigned at import time by `DistributedEditionImporter._patchChapterOsHierarchy` using a chapter-scoped counter (DFS order, starting at 1). The same ID is used in `n-ref` mark values for intra-chapter navigation. When a theme is created from the web client, `ChapterToc._nextFreeTopicId(hierarchy)` mirrors this counter (DFS max + 1) so client-assigned IDs stay consistent with the import scheme.
-
-### 18.8 Editorial Actions (Elaborate)
-
-The toolbar create actions and topic-editing all mutate the chapter `osHierarchy` and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`, which returns `{ topicIndex, subPath }` for the selected topic/subtopic, or `null` when the chapter node or an O* is active.
-
-| Action | Flow |
-|---|---|
-| **+ Theme** | `NarrativeActivity._handleAddTheme(activePath)` — minimal title modal → fetch-fresh chapter → insert new topic as child of the active topic (or at root if none) → PATCH → `ChapterToc.refreshTree()` |
-| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open `RequirementForm`/`ChangeForm` create modal pre-populated with the chapter `domain` (and `type` for OR/ON) → on save, `_insertOStarIntoHierarchy`: fetch-fresh → insert the new O* into the active topic's items (sorted ON→OR→OC), or leave unclassified if no topic is active → PATCH → `refreshTree()` → `app.invalidateOStars()` |
-| **Theme title / narrative** | `ChapterBody._saveTopicFull(topic, topicId)` (Save button, or from guard dialog) → `onTopicFullSave(topicId, title, narrative)` → `NarrativeActivity._handleTopicFullSave`: fetch-fresh → DFS-locate topic by `id` → mutate both `topic` label and `narrative` in one pass → PATCH → sync both into live `_toc._hierarchy` → `refreshTree()` only when title changed. A single PATCH is always used regardless of which fields changed, to avoid `versionId` conflicts from sequential patches. |
-| **Delete theme** | `ChapterBody._deleteTheme(topicId)` (button visible only when `items.length === 0 && subTopics.length === 0`) → `onThemeDelete(topicId)` → `NarrativeActivity._handleThemeDelete`: fetch-fresh → defensive non-empty guard → `_removeTopicById` → PATCH → `refreshTree()` → body falls back to chapter narrative |
-
-**Concurrency model:**
-
-- **Non-DnD writes** (theme create/rename/delete, O* insert, topic narrative) use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`. This avoids conflicts from background chapter edits.
-- **DnD reorder** (`_handleHierarchyChange`, `_handleUnclassifiedChange`) uses the **optimistic** client `versionId`. On `409`, `_handleDndConflict` reloads the chapter, re-renders the TOC, resets the body, and informs the user that the change was not applied.
-
-`_mergeChapterConfig(cached, fresh)` reconciles a freshly fetched chapter with config-owned fields (`title`, `domain`, `position`) held in memory, and syncs `versionId`/`osHierarchy` back to the cached object.
-
-**Unsaved-changes guard (Elaborate only):**
-
-`ChapterBody` tracks a `_dirty` flag (set by `RichTextComponent.onChange` and the title input's `input` event) and a `_currentEntry` field (the last `entry` passed to `renderSelectionRead`). Before any navigation that would replace the body content, `_guardNavigation()` is called:
-
-- If not dirty → proceed immediately.
-- If dirty → show `odipUnsavedChanges()` (§25.2):
-    - **Cancel** → return false; navigation aborted, user stays in editor.
-    - **Discard** → clear dirty flag, return true; navigation proceeds.
-    - **Save** → call `_saveCurrentEntry()` (routes to `_saveNarrative` or `_saveTopicFull` based on `_currentEntry.type`); on success return true; on error surface the error and return false.
-
-Navigation paths guarded:
-
-| Trigger | Guard location |
-|---|---|
-| TOC click / O* card / subtheme card | `ChapterBody.renderSelectionRead()` |
-| Ctrl+Click on internal ref (edit mode) | `ChapterBody._handleInternalLink()` |
-| ← Chapters toolbar button | `NarrativeActivity._climbToOdip()` |
-| Elaborate tab switch (O*s, Plan, Setup…) | `ElaborateActivity._route()` via `canDeactivate()` |
-| Top-level activity switch (Home, Manage…) | `App._loadActivity()` via `canDeactivate()` chain |
-| Browser Back / F5 / tab close | `beforeunload` listener (generic browser warning; registered on `window` in `_renderShell`, removed in `cleanup`) |
-
-`NarrativeActivity.canDeactivate()` delegates to `this._body._guardNavigation()`. `ElaborateActivity.canDeactivate()` forwards to the current sub-activity's `canDeactivate()` if present.
-
-**Duplicate instance prevention:** `NarrativeActivity` instances are cached by `ElaborateActivity` — `render()` may be called again on the same instance when the user returns to the Narrative tab. `render()` tears down any existing `_toc`, `_body`, and `_masterDetail` (including removing the `beforeunload` listener) before calling `_renderShell()`, preventing duplicate `RichTextComponent` instances with stale click listeners from accumulating.
-
-### 18.9 Save Propagation
-
-`CollectionEntityForm` fires an optional `onSaved(result, mode)` callback after any successful create or edit (`mode` is `'create'` | `'edit'`), in addition to the legacy `entitySaved` DOM event. Callers opt in by passing `onSaved` in the form `context`.
-
-The detail views forward it with a self-refresh:
-
-- `RequirementDetails` / `ChangeDetails` capture `callbacks.onSaved` on every `render()` and route the form's `onSaved` through `_handleSaved(result, mode)`, which **re-renders its own panel** from the server (so edited fields show immediately) and then forwards to the caller's `onSaved`.
-
-Consumers of the forwarded callback:
-
-| Consumer | Wiring | Effect on save |
-|---|---|---|
-| `NarrativeActivity` | `ChapterBody` `onOStarSaved` → `_handleOStarSaved` | Re-fetch chapter (enriched hierarchy) → `ChapterToc.refreshTree()` so a changed O* title updates in the tree without losing selection or scroll |
-| `OsActivity` | `onSaved` on the panel-mode detail render | `_loadData()` re-fetches the collection so the master list row reflects the edit |
-
-This single mechanism replaces ad-hoc reload logic and works identically in both the OS and Narrative perspectives.
-
-### 18.10 Service Layer Enrichment Contract
-
-`ChapterService` overrides both `update()` and `patch()` from `VersionedItemService`:
-
-```
-async update(itemId, payload, expectedVersionId, userId)
-async patch(itemId, patchPayload, expectedVersionId, userId)
-```
-
-Both call `super.update/patch` (which commits the write transaction) then immediately call `this.getById(itemId, userId)` (enriched `GET`) and return its result. This guarantees that **every write to a chapter returns the same enriched read-shape as `GET /chapters/{id}`** — `osHierarchy` items are always `{ id, type, code, title }` objects, never bare integer ids.
-
-**Invariant:** client code must never use `updated.osHierarchy` from a PATCH response to rebuild the render-side hierarchy via a second `getChapter()` call. The PATCH response is already enriched. Workaround patterns (`_fullyLoaded = false`, redundant re-fetches) are prohibited.
-
 ---
 
-## 24. O* Form Layout Configs
+## 13. Lifecycle & Change Management (LCM) — Web Client
 
-The ON/OR/OC forms (`RequirementForm`, `ChangeForm`) are driven by two declarative layout configs exported from `requirement-form-fields.js` / `change-form-fields.js`. The configs replace the former single `getFieldDefinitions()` section catalogue: layout and field metadata now live together, and the edit config is the single source of truth for validation, data collection, and manager initialisation.
+> **Work in progress.** Every versioned write (O* create/edit, and — in later sub-steps — narrative/hierarchy saves) is committed under a **change set**: a first-class, non-versioned node carrying the *why* of a save. This section documents the current web-client foundation and the O* save-path integration. The Change Set management workspace, the narrative/hierarchy edit sessions, and the history/diff surfacing of commit metadata are separate, not-yet-implemented sub-steps. The content here is expected to be redistributed into the relevant sections once the workstream stabilises.
 
-### 24.1 Two Configs
+### 13.1 Active Change Set on `App`
 
-| Config | Returned by | Role |
-|---|---|---|
-| `*ReadConfig` | `getReadConfig()` | Read-mode layout only — keys plus layout hints. Field metadata is resolved from the edit config field map at render time. |
-| `*EditConfig` | `getEditConfig()` | Edit/create layout **and** full field metadata (type, label, required, options, validation, placeholder, helpText). Source of truth for `validateForm`, `collectFormData`, manager init, and `restoreVersionToForm`. |
+`App` holds an **active change set** — the remembered default offered by the commit dialog. It is a convenience default only; the server re-validates that the set is `OPEN` at write time, and the commit dialog re-fetches `OPEN` sets on every open.
 
-Both share a common shape: `{ sections: [ { title, modes?, fields: [...] } ] }`. Field `key` is the contract linking read entries to their metadata in the edit config.
-
-### 24.2 Section Properties
-
-| Property | Meaning |
+| Member | Behaviour |
 |---|---|
-| `title` | Tab label. |
-| `modes` | Optional `['create' \| 'edit']`. Restricts the section to the listed modes; absent means both. Used to hide `Derived` and `Metadata` sections in create mode. |
-| `fields` | Ordered list of field entries and row wrappers. |
+| `activeChangeSet` | `{ id, title, classifier } \| null` |
+| `setActiveChangeSet(cs)` | Sets the field, persists to `localStorage` (`odip-space-active-change-set`), and calls `header.onChangeSetChange()` |
+| `getActiveChangeSet()` | Returns the field |
+| `restoreActiveChangeSet()` | Called in `initialize()` after user restore; lenient — a stale/closed stored value is harmless (re-validated on next dialog use) |
 
-### 24.3 Field Entry Properties
+### 13.2 `api-client.js` — Change Set Methods
 
-A `fields` entry is either a bare field (`{ key, ... }`) or a row wrapper (`{ row: [ ...fields ], valueInline? }`).
+All target the standalone `/change-sets` route: `listChangeSets({status?, classifier?})` (status takes precedence over classifier), `getChangeSet(id)`, `getChangeSetMembers(id)` (`?subPath=members`), `createChangeSet(data)`, `updateChangeSet(id, data)` (OPEN only), `closeChangeSet(id)` / `reopenChangeSet(id)` (`?subPath=close|reopen`), `deleteChangeSet(id)` (empty + OPEN only).
 
-| Property | Applies | Meaning |
-|---|---|---|
-| `key` | field | Field identifier; in the edit config the entry also carries full metadata. |
-| `visibleWhen` | field | `'ON'` \| `'OR'` (matched against `item.type`) or `(item) => bool`. Absent = always visible. |
-| `readOnly` | field (edit) | Renders as display value in edit mode; suppressed entirely in create mode. Used for `itemId`, `version`, `_history`, and the derived `refinedBy` / `implementedBy`. |
-| `confirmOnChange` | field (edit) | Intercepts the field's change event; the user must confirm before the new value is accepted. Applied to `domain`. |
-| `hideIfNullOrEmpty` | field (read) | When the value is null, empty string, or empty array, the field is not rendered. Default false. Applied to forward-reference fields (`refinesParents`, `implementedONs`, `dependencies`, `implementedORs`, `decommissionedORs`) so empty relations vanish in read mode. Derived fields deliberately omit it and always render. |
-| `row` | wrapper | Array of field entries rendered side-by-side. A single visible child collapses to full width (unless `valueInline`). No visible children → the row emits nothing. |
-| `valueInline` | row | When true, the row's fields render label and value on one line (`label \| value`) via the `form-row--inline` class, and even a single visible field stays wrapped so the inline styling applies. Used for compact metadata pairs (`maturity`/`tentative`, `itemId`/`version`). |
+### 13.3 Commit Dialog
 
-### 24.4 Renderer
+The commit dialog component (`openChangeSetCommitDialog`) is documented in §7.9.
 
-`CollectionEntityForm._generateFormFromConfig()` consumes the active config:
+### 13.4 Header Chip
 
-- `_buildFieldMap()` flattens the **edit** config (including row children) into `Map<key, hydratedFieldDef>`, calling `hydrateField()` per entry; cached by `_getFieldMap()`.
-- `_isSectionVisibleFromConfig()` applies section `modes` and per-field `visibleWhen`.
-- `_renderConfigEntry()` / `_renderConfigRow()` handle bare fields and `row` wrappers, applying `hideIfNullOrEmpty` and `valueInline`.
-- `_resolveFieldDef()` looks up metadata by key from the field map; `_resolveEntryVisible()` evaluates `visibleWhen`.
-- `_attachConfirmOnChangeListeners()` wires `confirmOnChange` fields after the modal DOM is ready (called from each form's modal-ready hook). The handler is async and uses `odipConfirm` from `components/user-dialogs.js` with the message `Do you really want to re-assign this ${type} to another domain?` — replacing `window.confirm`.
+A live-context-only chip (`_buildChangeSetChip()`, hidden when `datasetContext.type !== 'live'`) reuses the existing `.odp-header__user-btn` treatment and shows the active change set's title (or *none*). Clicking it opens the commit dialog in `select` mode. `header.onChangeSetChange()` re-renders the chip after the active set changes.
 
-There is no header/strip concept: `code` and `title` are shown in the detail toolbar (`requirement-details.js` / `change-details.js` render `code — title`, matching the TOC), not repeated inside the form body.
+### 13.5 O* Save-Path Threading
 
-### 24.5 Ancillary Exports
+The commit gate is applied **once** in the shared base `CollectionEntityForm.handleSave()`, after validation/transform and before `onSave`:
 
-The `*-form-fields.js` modules also export the save-path helpers consumed by `transformDataForSave`: `requiredIdentifierArrayFields`, `requiredAnnotatedReferenceArrayFields` (requirement only), `requiredTextFields`, `optionalTextFields` (change only), the `*FormTitles` map, and `*Defaults`.
-
----
-
-## 25. User Dialogs — `components/user-dialogs.js`
-
-Shared module for ODIP-styled interactive dialogs. Replaces browser-native `window.confirm` / `window.alert` with modal overlays that use existing `.modal-overlay`, `.modal`, `.modal-body`, `.modal-footer`, and `odip-btn` CSS classes — no new CSS required.
-
-### 25.1 `odipConfirm(message)`
-
-```js
-import { odipConfirm } from '../../../../components/user-dialogs.js';
-const confirmed = await odipConfirm('Are you sure?');
+```
+const commit = await openChangeSetCommitDialog(this.context.app, { allowNote: true });
+if (!commit) return;                 // cancel aborts the save; form stays open
+dataToSave.changeSetId = commit.changeSetId;
+if (commit.note) dataToSave.note = commit.note;
 ```
 
-Returns `Promise<boolean>`. Renders a small modal (z-index 2000, above edit modals at 1000) with the message, a **No** button (`odip-btn--standard`) and a **Yes** button (`odip-btn--primary odip-btn--standard`). The Yes button is auto-focused for keyboard accessibility. Resolves `true`/`false` on button click; the overlay removes itself.
+Both `RequirementForm.onSave` and `ChangeForm.onSave` already send `dataToSave` as the POST/PUT body, so `changeSetId`/`note` ride into the request and match the server's inline write contract. One insertion point covers ON/OR/OC, create and edit.
 
-**Current callers:**
+**Context requirement** — the gate reads `this.context.app`, so every form construction must supply `app` in its context. The detail views (`RequirementDetails`/`ChangeDetails`) already did; `OStarEntity._handleCreate` was updated to pass `app: this.app` into both create contexts. Any future form instantiation (e.g. the Narrative "+ON/OR/OC" insert) must also pass `app`.
 
-| Caller | Message |
-|---|---|
-| `CollectionEntityForm._attachConfirmOnChangeListeners` | `Do you really want to re-assign this ${type} to another domain?` |
-| `ChapterBody._deleteTheme` | `Do you really want to delete this theme?` |
+O* delete is not a form path and carries no commit gate at this layer.
 
-### 25.2 `odipUnsavedChanges(message?)`
+### 13.6 Affected Files
 
-```js
-import { odipUnsavedChanges } from '../../../../components/user-dialogs.js';
-const answer = await odipUnsavedChanges('You have unsaved changes. What would you like to do?');
-// answer: 'save' | 'discard' | 'cancel'
-```
-
-Returns `Promise<'save' | 'discard' | 'cancel'>`. Renders a modal with three buttons (left to right): **Cancel** (`odip-btn--standard`), **Discard** (`odip-btn--danger odip-btn--standard`), **Save** (`odip-btn--primary odip-btn--standard`). The Save button is auto-focused. Pressing Escape resolves to `'cancel'`. The `message` parameter defaults to `'You have unsaved changes.'`.
-
-**Current callers:**
-
-| Caller | Context |
-|---|---|
-| `ChapterBody._guardNavigation` | Shown when leaving an unsaved chapter narrative or topic (title/narrative) in Elaborate |
-
-### 25.3 `odipPromptLink(initialUrl?, initialText?)`
-
-```js
-import { odipPromptLink } from '../../../../components/user-dialogs.js';
-const result = await odipPromptLink(existingUrl, selectedText);
-// result: { url: string, text: string } | null
-```
-
-Returns `Promise<{ url: string, text: string } | null>`. Renders a modal with two inputs: **URL** (type `url`, placeholder `https://…`) and **Link text** (type `text`). Both are pre-filled from the arguments. Resolves `null` on Cancel or Escape. Resolves `{ url: '', text: '' }` when the **Remove** button is clicked (only shown when `initialUrl` is non-empty). Enter in the URL field confirms; Enter in the Link text field is left to allow typing without closing.
-
-**Current callers:**
-
-| Caller | Context |
-|---|---|
-| `RichTextComponent._promptLink` | External link toolbar button — insert or update a `link` mark |
-
----
-
-## 20. Quality Activity
-
-`QualityActivity` (`activities/workspace/shared/quality/quality.js`) provides on-demand dataset quality checks. It operates in both Elaborate (live dataset) and Explore (edition snapshot) contexts — context is read transparently from `app.getDatasetContext()`.
-
-### 20.1 Layout
-
-Full-width scrollable page. No `MasterDetail` layout — the report is self-contained.
-
-- **Toolbar** — **Run checks** button + last-run timestamp (session-only, cleared on page refresh)
-- **Report area** — summary banner + one collapsible domain section per domain in scope
-
-### 20.2 Context Awareness
-
-On **Run checks**, `QualityActivity` reads `app.getDatasetContext()`:
-
-| Context | API call |
-|---|---|
-| `{ type: 'live' }` | `GET /quality/checks` (live dataset) |
-| `{ type: 'edition', editionId }` | `GET /quality/checks?edition={editionId}` (edition snapshot) |
-
-This is the same transparent context pattern used by all other sub-activities — `QualityActivity` does not know which shell (Elaborate or Explore) it is mounted in.
-
-### 20.3 Report Structure
-
-The response is a `QualityReport` (defined in `@odp/shared` `quality-elements.js`):
-
-```js
-{
-    runAt:         string,           // ISO timestamp
-        rules:         QualityRule[],    // registered rules — drives section headers
-        domainReports: DomainQualityReport[]  // one entry per domain, always present
-}
-```
-
-Each `DomainQualityReport` contains one array per rule — always present, empty when no findings:
-
-```js
-{
-    domain:               string,
-        brokenONTraceability: BrokenONTraceability[],  // rule 'on-traceability'
-        untraceableORs:       UntraceableOR[],          // rule 'or-traceability'
-        orphanONs:            OrphanON[],               // rule 'orphan-on'
-        noShowOStars:         NoShowOStar[]             // rule 'no-show'
-}
-```
-
-Finding shapes and their navigable ID fields:
-
-| Finding type | ID field | Version field | Navigation |
-|---|---|---|---|
-| `BrokenONTraceability` | `onId` | `onVersionId` | `data-on-id` |
-| `UntraceableOR` | `orId` | `orVersionId` | `data-or-id` |
-| `OrphanON` | `onId` | `onVersionId` | `data-on-id` |
-| `NoShowOStar` | `oStarId` | `oStarVersionId` | `data-ostar-id` + `data-ostar-type` |
-
-### 20.4 Finding Navigation
-
-Clicking a code link navigates to the O* detail page in the correct workspace. Link attributes drive navigation:
-
-| Attribute | Handler | Target URL pattern |
-|---|---|---|
-| `data-on-id` | ON findings | `{base}/os/on/{id}` |
-| `data-or-id` | OR findings | `{base}/os/or/{id}` |
-| `data-ostar-id` + `data-ostar-type` | NO SHOW findings | `{base}/os/{type}/{id}` |
-
-Where `base` is `/elaborate` (live) or `/explore/{editionId}` (edition snapshot).
-
-### 20.5 Report Persistence Across Tab Switches
-
-Results are held in `QualityActivity._report` (instance memory). They are not cached in `App` and not persisted to the server.
-
-`ElaborateActivity` and `ExploreActivity` cache sub-activity instances — `QualityActivity` is not destroyed on tab switch. `cleanup()` intentionally preserves `_report` and `_runAt`, clearing only `container` and `_running`. When the user returns to the Quality tab, `render()` detects an existing report and restores it immediately — no re-run required.
-
-The report is discarded only when the top-level workspace shell is torn down (top-level activity switch). The "Last run" timestamp tells the user when the report was generated; they can re-run explicitly at any time.
-
-**Staleness detection on tab return:** when `render()` is called on an existing report, `_renderReportWithStaleness()` calls `app.getOStars()` and compares each finding's stored `versionId` against the current cache value. O*s whose `versionId` has changed are marked "possibly fixed" (amber badge, dimmed row). Staleness detection covers `brokenONTraceability`, `untraceableORs`, and `orphanONs`. `noShowOStars` are excluded — NO SHOW status is structural, not version-sensitive. Re-running confirms. If the cache is unavailable the report renders without indicators.
-
-### 20.6 API Client
-
-`apiClient.runQualityChecks({ domains?, editionId? })` — added to `shared/api-client.js`:
-
-```js
-async runQualityChecks({ domains = [], editionId = null } = {}) {
-    const params = {};
-    if (domains.length > 0) params.domain = domains.join(',');
-    if (editionId !== null)  params.edition = editionId;
-    return this.get('/quality/checks', { params });
-}
-```
-
-### 20.7 Extensibility
-
-Adding a new quality rule requires one client change: a new block in `_renderDomainReport()` calling `_renderFindingTable()` with the appropriate `rowFn`. The generic `_renderFindingTable()` handles column headers, row rendering, and badge columns — only the rule-specific field mapping is needed per rule.
-
-Staleness detection is opt-in per rule: add the finding array's iteration to `_renderReportWithStaleness()` using `_isStale()`. `noShowOStars` intentionally omits staleness — it is a structural finding not version-sensitive.
+`app.js`, `shared/api-client.js`, `components/header.js`, `components/change-set-commit-dialog.js`, `components/collection-entity-form.js`, `activities/workspace/shared/os/o-star-entity.js`.
 
 ---
 

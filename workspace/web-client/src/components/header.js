@@ -21,6 +21,7 @@
  *   Visible only to integrators. Rendered in row 1 right cluster.
  */
 import { dom } from '../shared/utils.js';
+import { openChangeSetCommitDialog } from './change-set-commit-dialog.js';
 import logoUrl from '../assets/odip-space-logo.svg';
 
 const STORAGE_KEY = 'odip-space-user';
@@ -76,6 +77,7 @@ export default class Header {
                             ${this._buildNavItems()}
                         </nav>
                         <div class="odp-header__right">
+                            ${this._buildChangeSetChip()}
                             <button class="odp-header__user-btn${user ? ' odp-header__user-btn--identified' : ''}" id="header-user-btn">
                                 ${user ? this._esc(user.name) : 'Connect'}
                             </button>
@@ -136,6 +138,22 @@ export default class Header {
     }
 
     // -------------------------------------------------------------------------
+    // Active change set chip (live context only)
+    // -------------------------------------------------------------------------
+
+    _buildChangeSetChip() {
+        const ctx = this.app.getDatasetContext();
+        if (ctx?.type !== 'live') return '';   // editing only happens in Elaborate; hidden in Explore
+        const cs = this.app.getActiveChangeSet();
+        const label = cs ? this._esc(cs.title) : 'none';
+        return `
+            <button class="odp-header__user-btn${cs ? ' odp-header__user-btn--identified' : ''}" id="header-cs-chip"
+                title="Active change set — click to change the default offered when you save">
+                <span style="opacity:0.6;">Change set:</span> ${label}
+            </button>`;
+    }
+
+    // -------------------------------------------------------------------------
     // Active tab
     // -------------------------------------------------------------------------
 
@@ -158,6 +176,9 @@ export default class Header {
 
         dom.find('#header-user-btn', this.container)
             ?.addEventListener('click', () => this._openPopup());
+
+        dom.find('#header-cs-chip', this.container)
+            ?.addEventListener('click', () => openChangeSetCommitDialog(this.app, { mode: 'select' }));
 
         dom.find('#connect-close', this.container)
             ?.addEventListener('click', () => this._closePopup());
@@ -242,6 +263,12 @@ export default class Header {
     }
 
     onContextChange() {
+        this.render(this.container);
+        this._updateConnectionStatus(this.app.getConnectionStatus());
+    }
+
+    /** Re-render after the active change set changes (chip label). */
+    onChangeSetChange() {
         this.render(this.container);
         this._updateConnectionStatus(this.app.getConnectionStatus());
     }

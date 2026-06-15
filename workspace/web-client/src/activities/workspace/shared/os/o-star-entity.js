@@ -217,14 +217,14 @@ export default class OStarEntity {
             const { default: ChangeForm } = await import('./change-form.js');
             const form = new ChangeForm(
                 { endpoint: '/operational-changes' },
-                { setupData: this.setupData, domains: this._domains, getSetupData: () => this.setupData, getRequirements: () => this.data }
+                { setupData: this.setupData, domains: this._domains, app: this.app, getSetupData: () => this.setupData, getRequirements: () => this.data }
             );
             form.showCreateModal();
         } else {
             const { default: RequirementForm } = await import('./requirement-form.js');
             const form = new RequirementForm(
                 { endpoint: '/operational-requirements' },
-                { setupData: this.setupData, domains: this._domains, getSetupData: () => this.setupData, getRequirements: () => this.data }
+                { setupData: this.setupData, domains: this._domains, app: this.app, getSetupData: () => this.setupData, getRequirements: () => this.data }
             );
             form.showCreateModal({ defaultType: type });
         }

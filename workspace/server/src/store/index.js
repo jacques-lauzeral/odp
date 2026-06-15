@@ -12,6 +12,7 @@ import { OperationalRequirementStore } from './operational-requirement-store.js'
 import { OperationalChangeStore } from './operational-change-store.js';
 import { BaselineStore } from './baseline-store.js';
 import { ODPEditionStore } from './odp-edition-store.js';
+import { ChangeSetStore } from './change-set-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
@@ -23,6 +24,7 @@ let operationalRequirementStore = null;
 let operationalChangeStore = null;
 let baselineStore = null;
 let odpEditionStore = null;
+let changeSetStore = null;
 
 /**
  * Initialize the store layer with Neo4j connection and store instances.
@@ -46,6 +48,7 @@ export async function initializeStores() {
         operationalChangeStore = new OperationalChangeStore(driver);
         baselineStore = new BaselineStore(driver);
         odpEditionStore = new ODPEditionStore(driver);
+        changeSetStore = new ChangeSetStore(driver);
 
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
@@ -57,7 +60,8 @@ export async function initializeStores() {
             operationalRequirement: '✓',
             operationalChange: '✓',
             baseline: '✓',
-            odpEdition: '✓'
+            odpEdition: '✓',
+            changeSet: '✓'
         });
 
     } catch (error) {
@@ -84,6 +88,7 @@ export async function closeStores() {
         operationalChangeStore = null;
         baselineStore = null;
         odpEditionStore = null;
+        changeSetStore = null;
 
         await closeConnection();
 
@@ -91,6 +96,27 @@ export async function closeStores() {
     } catch (error) {
         console.error('Error closing store layer:', error.message);
         throw new Error(`Store layer cleanup failed: ${error.message}`);
+    }
+}
+
+/**
+ * Ensure required Neo4j uniqueness constraints exist.
+ * Idempotent — IF NOT EXISTS makes repeated calls safe.
+ * Runs in its own write transaction (schema ops must be isolated from data writes).
+ * @returns {Promise<void>}
+ */
+async function _ensureConstraints() {
+    const tx = createTransaction('write');
+    try {
+        await tx.run(`
+            CREATE CONSTRAINT changeset_code_unique IF NOT EXISTS
+            FOR (cs:ChangeSet) REQUIRE cs.code IS UNIQUE
+        `);
+        await commitTransaction(tx);
+        console.log('  Schema constraints verified');
+    } catch (error) {
+        await rollbackTransaction(tx);
+        throw new Error(`Schema constraint initialization failed: ${error.message}`);
     }
 }
 
@@ -104,6 +130,9 @@ export async function closeStores() {
  */
 export async function initializeDatabase() {
     console.log('Initializing database...');
+
+    await _ensureConstraints();
+
     const store = getChapterStore();
     const chapters = getChapters();
 
@@ -175,6 +204,11 @@ function getODPEditionStore() {
     return odpEditionStore;
 }
 
+function getChangeSetStore() {
+    if (!changeSetStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
+    return changeSetStore;
+}
+
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
     getChapterStore as chapterStore,
@@ -184,7 +218,8 @@ export {
     getOperationalRequirementStore as operationalRequirementStore,
     getOperationalChangeStore as operationalChangeStore,
     getBaselineStore as baselineStore,
-    getODPEditionStore as odpEditionStore
+    getODPEditionStore as odpEditionStore,
+    getChangeSetStore as changeSetStore
 };
 
 /**
@@ -200,7 +235,8 @@ export function getAllStores() {
         operationalRequirement: getOperationalRequirementStore(),
         operationalChange: getOperationalChangeStore(),
         baseline: getBaselineStore(),
-        odpEdition: getODPEditionStore()
+        odpEdition: getODPEditionStore(),
+        changeSet: getChangeSetStore()
     };
 }
 
@@ -217,7 +253,8 @@ export function isStoreLayerInitialized() {
         operationalRequirementStore &&
         operationalChangeStore &&
         baselineStore &&
-        odpEditionStore
+        odpEditionStore &&
+        changeSetStore
     );
 }
 
@@ -234,7 +271,8 @@ export function getStoreLayerStatus() {
         operationalRequirement: !!operationalRequirementStore,
         operationalChange: !!operationalChangeStore,
         baseline: !!baselineStore,
-        odpEdition: !!odpEditionStore
+        odpEdition: !!odpEditionStore,
+        changeSet: !!changeSetStore
     };
 
     const initializedCount = Object.values(stores).filter(Boolean).length;

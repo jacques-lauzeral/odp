@@ -1,5 +1,6 @@
 import { VersionedItemRouter } from './versioned-item-router.js';
 import OperationalChangeService from '../services/OperationalChangeService.js';
+import { StoreErrorCode } from '../store/transaction.js';
 
 class OperationalChangeRouter extends VersionedItemRouter {
     constructor() {
@@ -114,6 +115,10 @@ router.post('/:id/milestones', async (req, res) => {
             res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+            res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+            res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }
@@ -143,6 +148,10 @@ router.put('/:id/milestones/:milestoneKey', async (req, res) => {
             res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+            res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+            res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }
@@ -160,7 +169,8 @@ router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
             });
         }
         console.log(`OperationalChangeService.deleteMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        const response = await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, userId);
+        const changeSetCommit = { changeSetId: req.body.changeSetId, note: req.body.note };
+        const response = await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, userId, changeSetCommit);
         res.status(200).json(response);
     } catch (error) {
         console.error('Error deleting milestone:', error);
@@ -170,6 +180,10 @@ router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
             res.status(409).json({ error: { code: 'VERSION_CONFLICT', message: 'Operational change has been modified by another user. Please refresh and try again.' } });
         } else if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+            res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+            res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }

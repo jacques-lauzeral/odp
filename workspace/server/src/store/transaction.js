@@ -4,10 +4,11 @@ import { getDriver } from './connection.js';
  * Store layer error hierarchy
  */
 export class StoreError extends Error {
-    constructor(message, cause = null) {
+    constructor(message, cause = null, code = null) {
         super(message);
         this.name = this.constructor.name;
         this.cause = cause;
+        this.code = code;
     }
 }
 
@@ -16,6 +17,16 @@ export class TransactionError extends StoreError {
         super(message, cause);
     }
 }
+
+/**
+ * Stable discriminators for store errors that callers (routes) map to specific
+ * HTTP statuses. Distinct from the HTTP-facing `code` in the response envelope —
+ * routes switch on `error.code` and translate to an envelope code + status.
+ */
+export const StoreErrorCode = Object.freeze({
+    CHANGESET_NOT_FOUND: 'CHANGESET_NOT_FOUND',
+    CHANGESET_CLOSED: 'CHANGESET_CLOSED'
+});
 
 /**
  * Transaction wrapper that encapsulates Neo4j transaction and session

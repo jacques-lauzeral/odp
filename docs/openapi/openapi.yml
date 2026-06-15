@@ -51,6 +51,8 @@ paths:
     $ref: 'openapi-import.yml#/paths/~1import~1map~1{drg}'
   /import/structured:
     $ref: 'openapi-import.yml#/paths/~1import~1structured'
+  /import/distributed:
+    $ref: 'openapi-import.yml#/paths/~1import~1distributed'
 
   # Operational entity endpoints
   /operational-requirements:
@@ -107,6 +109,18 @@ paths:
   /quality/checks:
     $ref: 'openapi-quality.yml#/paths/~1quality~1checks'
 
+  # Change-set endpoints (LCM)
+  /change-sets:
+    $ref: 'openapi-change-set.yml#/paths/~1change-sets'
+  /change-sets/{id}:
+    $ref: 'openapi-change-set.yml#/paths/~1change-sets~1{id}'
+  /change-sets/{id}/members:
+    $ref: 'openapi-change-set.yml#/paths/~1change-sets~1{id}~1members'
+  /change-sets/{id}/close:
+    $ref: 'openapi-change-set.yml#/paths/~1change-sets~1{id}~1close'
+  /change-sets/{id}/reopen:
+    $ref: 'openapi-change-set.yml#/paths/~1change-sets~1{id}~1reopen'
+
 
 tags:
   - name: Stakeholder Categories
@@ -135,3 +149,5 @@ tags:
     description: Edition publication operations for generating ODIP documents
   - name: Quality
     description: Dataset quality checks — structural integrity and traceability rules
+  - name: Change Sets
+    description: Change-set management — the reason carrier for every versioned write (LCM)

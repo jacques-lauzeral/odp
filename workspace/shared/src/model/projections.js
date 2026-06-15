@@ -3,6 +3,7 @@
  *
  * Three field sets are defined per entity type:
  *   summary    — scalar and reference fields sufficient for list views
+ *                (includes changeSetCommit — the HAS_REASON forward hop)
  *   rich-text  — rich text content fields (excluded from summary)
  *   derived    — reverse-traversal attributes (available on extended projection only)
  *
@@ -45,6 +46,7 @@ const FIELD_SET_FIELDS = {
             'impactedStakeholders',
             'strategicDocuments',
             'dependencies',
+            'changeSetCommit',
         ],
         'rich-text': [
             'statement',
@@ -80,6 +82,7 @@ const FIELD_SET_FIELDS = {
             'decommissionedORs',
             'dependencies',
             'milestones',
+            'changeSetCommit',
         ],
         'rich-text': [
             'purpose',

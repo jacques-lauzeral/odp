@@ -92,7 +92,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Chapter'
         '409':
-          description: Version Conflict
+          description: Version Conflict (VERSION_CONFLICT), or the referenced change set is closed (CHANGESET_CLOSED)
           content:
             application/json:
               schema:
@@ -104,7 +104,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '404':
-          description: Not Found
+          description: Not Found, or referenced change set not found (CHANGESET_NOT_FOUND)
           content:
             application/json:
               schema:
@@ -133,7 +133,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Chapter'
         '409':
-          description: Version Conflict
+          description: Version Conflict (VERSION_CONFLICT), or the referenced change set is closed (CHANGESET_CLOSED)
           content:
             application/json:
               schema:
@@ -145,7 +145,7 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
         '404':
-          description: Not Found
+          description: Not Found, or referenced change set not found (CHANGESET_NOT_FOUND)
           content:
             application/json:
               schema:

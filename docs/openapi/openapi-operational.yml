@@ -133,6 +133,18 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Referenced change set not found (CHANGESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: Referenced change set is closed (CHANGESET_CLOSED)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
   /operational-requirements/{id}:
     get:
@@ -202,7 +214,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '409':
-          description: Version Conflict
+          description: Version Conflict (VERSION_CONFLICT), or the referenced change set is closed (CHANGESET_CLOSED)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Referenced change set not found (CHANGESET_NOT_FOUND)
           content:
             application/json:
               schema:
@@ -237,7 +255,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalRequirement'
         '409':
-          description: Version Conflict
+          description: Version Conflict (VERSION_CONFLICT), or the referenced change set is closed (CHANGESET_CLOSED)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Referenced change set not found (CHANGESET_NOT_FOUND)
           content:
             application/json:
               schema:
@@ -400,6 +424,18 @@ paths:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Referenced change set not found (CHANGESET_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '409':
+          description: Referenced change set is closed (CHANGESET_CLOSED)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
 
   /operational-changes/{id}:
     get:
@@ -469,7 +505,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '409':
-          description: Version Conflict
+          description: Version Conflict (VERSION_CONFLICT), or the referenced change set is closed (CHANGESET_CLOSED)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Referenced change set not found (CHANGESET_NOT_FOUND)
           content:
             application/json:
               schema:
@@ -504,7 +546,13 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/OperationalChange'
         '409':
-          description: Version Conflict
+          description: Version Conflict (VERSION_CONFLICT), or the referenced change set is closed (CHANGESET_CLOSED)
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Referenced change set not found (CHANGESET_NOT_FOUND)
           content:
             application/json:
               schema:

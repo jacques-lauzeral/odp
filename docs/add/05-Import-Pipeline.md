@@ -14,6 +14,8 @@ Source JSON (source.schema.json)
 
 The `DistributedEditionImporter` is the sole importer. It consumes one source JSON file per chapter directly — no extraction or mapping stage is involved. Setup entities (reference documents, waves, stakeholder categories) must already exist in the database before import; failed resolution emits warnings rather than errors.
 
+Every operational version created or updated during an import is committed under a single **change set** supplied by the caller (LCM). `importSourceFile(sourceData, userId, changeSetId)` threads `changeSetId` down to each versioned write; setup-only imports never reach a versioned write, so the id is simply unused on that path.
+
 **API endpoint**: `POST /import/distributed`  
 **CLI command**: `import distributed --file <path|glob...>`
 
@@ -58,6 +60,8 @@ Each topic node is assigned a **chapter-scoped numeric string ID** (`id: "1"`, `
 **`_buildAnchorToIdMap(requirements)`** — called before Phase 0b. Iterates `requirements[]` in source order, identifies unique top-level topic labels (first appearances of `path[0]`), and maps anchor suffix strings (e.g. `"2"`, `"3"`) to the topic IDs that will be assigned in Phase 4. The counter logic mirrors `insertAtLeaf` exactly (seq starts at 2, ID starts at 1). The resulting `Map<string, string>` is stored on `context.anchorToId` and passed to `BlocksToTipTapConverter.convert()`.
 
 **DRAFT-first creation pattern**: All requirements are created in Phase 2 with `maturity: 'DRAFT'`, regardless of the target maturity in the source data. The real maturity is applied in Phase 3 alongside resolved references. This is necessary because the service layer enforces maturity-gated validation rules — ADVANCED and MATURE requirements must have `strategicDocuments` or `refinesParents` (ONs) and `implementedONs` or `refinesParents` (ORs) — which cannot be satisfied until references are resolved.
+
+**Change-set linkage (LCM)**: `changeSetId` is threaded from `importSourceFile` through the Phase 2/3/4 write methods (`_createRequirementsWithoutReferences`, `_resolveRequirementReferences` → `_resolveEntityReferences`, `_patchChapterNarrative`, `_patchChapterOsHierarchy`) and injected as `{changeSetId, note: ''}` into each create/update/patch request message. The services extract it into a `changeSetCommit` exactly as a route would, and the store writes the `HAS_REASON` edge per version. The supplied change set must be OPEN — the store validates this on each write, so a closed or unknown id aborts the affected requirement (greedy error handling). The per-object note is left empty for imports. Setup-entity resolution (Phase 1) performs no versioned writes and never consults `changeSetId`.
 
 **`path` / `refinesParents` XOR enforcement**: In Phase 3, if `refinesParents` resolves to a non-empty array, `path` is set to `null` in the update request. This enforces the business rule that a requirement cannot have both a path and a parent simultaneously.
 

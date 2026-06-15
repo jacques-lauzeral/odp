@@ -210,6 +210,8 @@ components:
       type: object
       properties:
         # --- summary fields (all projections) ---
+        changeSetCommit:
+          $ref: '#/components/schemas/ChangeSetCommit'
         itemId:
           type: string
         title:
@@ -310,8 +312,14 @@ components:
 
     OperationalRequirementRequest:
       type: object
-      required: [title, type, statement, rationale, maturity]
+      required: [title, type, statement, rationale, maturity, changeSetId]
       properties:
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under (LCM)"
+        note:
+          type: string
+          description: "Optional per-object annotation stored on the HAS_REASON edge (LCM)"
         title:
           type: string
         type:
@@ -387,10 +395,16 @@ components:
 
     OperationalRequirementPatchRequest:
       type: object
-      required: [expectedVersionId]
+      required: [expectedVersionId, changeSetId]
       properties:
         expectedVersionId:
           type: string
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under (LCM)"
+        note:
+          type: string
+          description: "Optional per-object annotation (LCM)"
         title:
           type: string
         type:
@@ -477,11 +491,17 @@ components:
       allOf:
         - $ref: '#/components/schemas/MilestoneRequest'
         - type: object
-          required: [expectedVersionId]
+          required: [expectedVersionId, changeSetId]
           properties:
             expectedVersionId:
               type: string
               description: "Version ID of the parent OperationalChange (for optimistic locking)"
+            changeSetId:
+              type: string
+              description: "ID of the OPEN change set this write commits under (LCM)"
+            note:
+              type: string
+              description: "Optional per-object annotation (LCM)"
 
     OperationalChangeVersionRef:
       type: object
@@ -525,6 +545,8 @@ components:
       type: object
       properties:
         # --- summary fields (all projections) ---
+        changeSetCommit:
+          $ref: '#/components/schemas/ChangeSetCommit'
         itemId:
           type: string
         title:
@@ -598,8 +620,14 @@ components:
     OperationalChangeBaseRequest:
       description: "Content fields for an OperationalChange. Does not include milestones — those are managed exclusively via the dedicated milestone endpoints."
       type: object
-      required: [title, purpose, maturity]
+      required: [title, purpose, maturity, changeSetId]
       properties:
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under (LCM)"
+        note:
+          type: string
+          description: "Optional per-object annotation stored on the HAS_REASON edge (LCM)"
         title:
           type: string
         purpose:
@@ -676,10 +704,16 @@ components:
     OperationalChangePatchRequest:
       description: "Partial update request for an OperationalChange. Milestones are not accepted — use the dedicated milestone endpoints."
       type: object
-      required: [expectedVersionId]
+      required: [expectedVersionId, changeSetId]
       properties:
         expectedVersionId:
           type: string
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under (LCM)"
+        note:
+          type: string
+          description: "Optional per-object annotation (LCM)"
         title:
           type: string
         purpose:
@@ -800,6 +834,8 @@ components:
         at read time by the service layer and are not user-editable.
       type: object
       properties:
+        changeSetCommit:
+          $ref: '#/components/schemas/ChangeSetCommit'
         itemId:
           type: string
         code:
@@ -888,10 +924,16 @@ components:
 
     ChapterUpdateRequest:
       type: object
-      required: [expectedVersionId]
+      required: [expectedVersionId, changeSetId]
       properties:
         expectedVersionId:
           type: string
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under (LCM)"
+        note:
+          type: string
+          description: "Optional per-object annotation (LCM)"
         narrative:
           type: string
           nullable: true
@@ -901,10 +943,16 @@ components:
 
     ChapterPatchRequest:
       type: object
-      required: [expectedVersionId]
+      required: [expectedVersionId, changeSetId]
       properties:
         expectedVersionId:
           type: string
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under (LCM)"
+        note:
+          type: string
+          description: "Optional per-object annotation (LCM)"
         narrative:
           type: string
           nullable: true
@@ -924,6 +972,8 @@ components:
           format: date-time
         createdBy:
           type: string
+        changeSetCommit:
+          $ref: '#/components/schemas/ChangeSetCommit'
 
     # Management Entity Schemas
     Baseline:
@@ -993,3 +1043,117 @@ components:
           enum: [DRAFT, ADVANCED, MATURE]
           nullable: true
           description: "Optional minimum ON maturity gate for edition content selection"
+    # ── Change-set (LCM) schemas ────────────────────────────────────────────
+    ChangeSetClassifier:
+      type: string
+      description: "Nature of the change captured by a change set"
+      enum: [NEW_CONTENT, IN_DEPTH_REWORK, CLARIFICATION, EDITORIAL]
+
+    ChangeSetStatus:
+      type: string
+      enum: [OPEN, CLOSED]
+
+    ChangeSetCommitFields:
+      type: object
+      description: "Commit metadata carried on every versioned write (LCM). The service splits these out of the request message into a changeSetCommit before calling the store."
+      required: [changeSetId]
+      properties:
+        changeSetId:
+          type: string
+          description: "ID of the OPEN change set this write commits under"
+        note:
+          type: string
+          description: "Optional per-object annotation stored on the HAS_REASON edge"
+
+    ChangeSetCommit:
+      type: object
+      description: "Reason for this version, resolved from HAS_REASON (LCM). Present in summary and standard projections; null on pre-LCM versions. changeSetId/note come from the store; code/changeSetTitle/classifier are hydrated by the service."
+      nullable: true
+      properties:
+        changeSetId:
+          type: string
+        code:
+          type: string
+          description: "CS-##### handle — hydrated by the service from its ChangeSet cache"
+        changeSetTitle:
+          type: string
+        classifier:
+          $ref: '#/components/schemas/ChangeSetClassifier'
+        note:
+          type: string
+
+    ChangeSet:
+      type: object
+      description: "Change set — the carrier of why content changed (LCM)"
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+          description: "Stable human-readable handle, e.g. CS-00001; generated at creation; unique"
+        title:
+          type: string
+        reasonText:
+          type: string
+        classifier:
+          $ref: '#/components/schemas/ChangeSetClassifier'
+        commentRefs:
+          type: array
+          items:
+            type: string
+          description: "Empty at P0"
+        status:
+          $ref: '#/components/schemas/ChangeSetStatus'
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+        closedBy:
+          type: string
+          nullable: true
+
+    ChangeSetCreateRequest:
+      type: object
+      required: [title, classifier]
+      properties:
+        title:
+          type: string
+        reasonText:
+          type: string
+        classifier:
+          $ref: '#/components/schemas/ChangeSetClassifier'
+
+    ChangeSetUpdateRequest:
+      type: object
+      description: "Edit title / reasonText — accepted only while the change set is OPEN"
+      properties:
+        title:
+          type: string
+        reasonText:
+          type: string
+
+    ChangeSetMember:
+      type: object
+      description: "A version committed under a change set (member-row projection)"
+      properties:
+        itemId:
+          type: string
+        itemType:
+          type: string
+          enum: [ON, OR, OC, chapter]
+        code:
+          type: string
+          nullable: true
+        title:
+          type: string
+        versionId:
+          type: string
+        version:
+          type: integer
+        note:
+          type: string

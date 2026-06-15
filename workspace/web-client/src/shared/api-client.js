@@ -343,6 +343,59 @@ export class ApiClient {
         if (editionId !== null)  params.edition = editionId;
         return this.get('/quality/checks', { params });
     }
+
+    // -------------------------------------------------------------------------
+    // Change sets (LCM)
+    // -------------------------------------------------------------------------
+
+    /**
+     * List change sets, optionally filtered. status takes precedence over classifier.
+     * @param {object} [opts]
+     * @param {string} [opts.status]     - OPEN | CLOSED
+     * @param {string} [opts.classifier] - NEW_CONTENT | IN_DEPTH_REWORK | CLARIFICATION | EDITORIAL
+     * @returns {Promise<Array>}
+     */
+    async listChangeSets({ status = null, classifier = null } = {}) {
+        const params = {};
+        if (status) params.status = status;
+        else if (classifier) params.classifier = classifier;
+        return this.get('/change-sets', Object.keys(params).length ? { params } : {});
+    }
+
+    /** @param {number|string} id @returns {Promise<object>} */
+    async getChangeSet(id) {
+        return this.get('/change-sets', { id });
+    }
+
+    /** @param {number|string} id @returns {Promise<Array>} the versions committed under the change set */
+    async getChangeSetMembers(id) {
+        return this.get('/change-sets', { id, subPath: 'members' });
+    }
+
+    /** @param {{ title: string, classifier: string, reasonText?: string }} data */
+    async createChangeSet(data) {
+        return this.post('/change-sets', data);
+    }
+
+    /** @param {number|string} id @param {{ title?: string, reasonText?: string }} data — OPEN only */
+    async updateChangeSet(id, data) {
+        return this.put('/change-sets', data, { id });
+    }
+
+    /** @param {number|string} id @returns {Promise<object>} */
+    async closeChangeSet(id) {
+        return this.post('/change-sets', null, { id, subPath: 'close' });
+    }
+
+    /** @param {number|string} id @returns {Promise<object>} */
+    async reopenChangeSet(id) {
+        return this.post('/change-sets', null, { id, subPath: 'reopen' });
+    }
+
+    /** @param {number|string} id — only an empty, OPEN set may be deleted */
+    async deleteChangeSet(id) {
+        return this.delete('/change-sets', { id });
+    }
 }
 
 // Export singleton instance (will be initialized with app in index.js)

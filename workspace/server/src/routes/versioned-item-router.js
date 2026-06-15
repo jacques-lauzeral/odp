@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { StoreErrorCode } from '../store/transaction.js';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
@@ -173,6 +174,10 @@ export class VersionedItemRouter {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else if (error.message.includes('Validation failed:')) {
                     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+                    res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+                    res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }
@@ -206,6 +211,10 @@ export class VersionedItemRouter {
                     res.status(409).json({ error: { code: 'VERSION_CONFLICT', message: 'Item has been modified by another user. Please refresh and try again.' } });
                 } else if (error.message.includes('Validation failed:')) {
                     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+                    res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+                    res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }
@@ -239,6 +248,10 @@ export class VersionedItemRouter {
                     res.status(409).json({ error: { code: 'VERSION_CONFLICT', message: 'Item has been modified by another user. Please refresh and try again.' } });
                 } else if (error.message.includes('Validation failed:')) {
                     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+                    res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+                } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+                    res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }

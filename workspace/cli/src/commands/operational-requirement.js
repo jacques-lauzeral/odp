@@ -63,11 +63,9 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version', 'Created By', 'Statement', 'Rationale', 'Flows', 'NFRs', 'Private Notes', 'Add. Doc.'],
-                        colWidths: [10, 15, 8, 15, 25, 10, 20, 18, 18, 18, 18, 18, 18]
+                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version', 'Created By'],
+                        colWidths: [10, 15, 8, 15, 25, 10, 20]
                     });
-
-                    const trunc = (val) => val ? String(val).substring(0, 16) : '—';
 
                     items.forEach(item => {
                         table.push([
@@ -77,13 +75,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                             item.domain || '-',
                             item.title,
                             item.version,
-                            item.createdBy,
-                            trunc(item.statement),
-                            trunc(item.rationale),
-                            trunc(item.flows),
-                            trunc(item.nfrs),
-                            trunc(item.privateNotes),
-                            trunc(item.additionalDocumentation)
+                            item.createdBy
                         ]);
                     });
 
@@ -215,6 +207,8 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (title, options) => {
                 try {
                     const data = {
@@ -230,8 +224,10 @@ class OperationalRequirementCommands extends VersionedCommands {
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
-                        dependencies: this.parseIds(options.dependencies)
+                        dependencies: this.parseIds(options.dependencies),
+                        changeSetId: options.changeSet
                     };
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}`, {
                         method: 'POST',
@@ -271,6 +267,8 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--implemented-ons <on-ids>', `Implemented ON requirement IDs (comma-separated)`)
             .option('--impacted-stakeholders <ids>', `Impacted stakeholder category IDs (comma-separated)`)
             .option('--dependencies <ids>', `Dependency OR IDs (comma-separated)`)
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (itemId, expectedVersionId, title, options) => {
                 try {
                     const data = {
@@ -287,8 +285,10 @@ class OperationalRequirementCommands extends VersionedCommands {
                         refinesParents: options.parent ? [options.parent] : [],
                         implementedONs: this.parseIds(options.implementedOns),
                         impactedStakeholders: this.parseIds(options.impactedStakeholders),
-                        dependencies: this.parseIds(options.dependencies)
+                        dependencies: this.parseIds(options.dependencies),
+                        changeSetId: options.changeSet
                     };
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PUT',
@@ -339,6 +339,8 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--implemented-ons <on-ids>', 'Implemented ON requirement IDs (comma-separated)')
             .option('--impacted-stakeholders <ids>', 'Impacted stakeholder category IDs (comma-separated)')
             .option('--dependencies <ids>', 'Dependency OR IDs (comma-separated)')
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
@@ -355,6 +357,8 @@ class OperationalRequirementCommands extends VersionedCommands {
                     if (options.implementedOns !== undefined) data.implementedONs = this.parseIds(options.implementedOns);
                     if (options.impactedStakeholders) data.impactedStakeholders = this.parseIds(options.impactedStakeholders);
                     if (options.dependencies) data.dependencies = this.parseIds(options.dependencies);
+                    data.changeSetId = options.changeSet;
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PATCH',

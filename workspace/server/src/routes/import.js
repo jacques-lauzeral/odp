@@ -42,7 +42,17 @@ router.post('/distributed', async (req, res) => {
             });
         }
 
-        const summary = await importService.importDistributedSourceFile(sourceData, userId);
+        const changeSetId = req.query.changeSetId;
+        if (!changeSetId) {
+            return res.status(400).json({
+                error: {
+                    code: 'BAD_REQUEST',
+                    message: 'Missing required query parameter: changeSetId'
+                }
+            });
+        }
+
+        const summary = await importService.importDistributedSourceFile(sourceData, userId, changeSetId);
 
         console.log(`Distributed import completed: ${JSON.stringify(summary)}`);
         res.json(summary);

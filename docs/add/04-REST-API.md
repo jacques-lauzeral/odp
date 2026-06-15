@@ -48,8 +48,10 @@ GET    /:id/milestones                      → service.getMilestones(id, userId
 GET    /:id/milestones/:milestoneKey        → service.getMilestone(id, milestoneKey, userId, editionId)
 POST   /:id/milestones                      → service.addMilestone(id, body, expectedVersionId, userId)
 PUT    /:id/milestones/:milestoneKey        → service.updateMilestone(id, milestoneKey, body, expectedVersionId, userId)
-DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, milestoneKey, expectedVersionId, userId)
+DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, milestoneKey, expectedVersionId, userId, changeSetCommit)
 ```
+
+**Change-set linkage (LCM).** Every versioned write commits under a change set. Because the service splits the commit out of the request message, the generic create/update/patch routes and the milestone POST/PUT routes stay pass-through — `changeSetId`/`note` simply ride in `req.body` and the service extracts them. The one exception is `DELETE /:id/milestones/:milestoneKey`: it carries no entity body, so the route reads `changeSetId`/`note` from the request body (alongside `expectedVersionId`) and passes an explicit `changeSetCommit` to `deleteMilestone`.
 
 ### 2.3 ChapterRouter
 
@@ -85,6 +87,27 @@ GET /quality/checks[?domain=<keys>][&edition=<id>]  → qualityService.runChecks
 
 The route requires `x-user-id` — quality checks are not available to anonymous users.
 
+### 2.6 ChangeSetRouter
+
+`change-set.js` is a hand-written router (standalone — change sets are non-versioned and need custom lifecycle/member routes):
+
+```
+GET    /                       → service.listItems | findByStatus(status) | findByClassifier(classifier)
+GET    /:id                    → service.getItem(id, userId)
+GET    /:id/members            → service.getMembers(id, userId)
+POST   /                       → service.createItem(body, userId)
+PUT    /:id                    → service.updateItem(id, body, userId)        (OPEN only → 409)
+POST   /:id/close              → service.close(id, userId)
+POST   /:id/reopen             → service.reopen(id, userId)
+DELETE /:id                    → service.deleteItem(id, userId)              (empty + OPEN only → 409)
+```
+
+`GET /` accepts optional `?status=` or `?classifier=` (status takes precedence). All GET routes allow anonymous access; mutations require `x-user-id`. Attempting to edit/delete a non-OPEN set, or delete a set with members, returns `409 CONFLICT`.
+
+### 2.7 Import Change-Set Parameter
+
+`POST /import/distributed` gains a required `?changeSetId=` query parameter — every operational version created or updated by the import commits under it (LCM). The id is kept out of the source JSON body (which conforms to `source.schema.json`). Setup-only source files never reach a versioned write, so the id is unused on that path.
+
 ---
 
 ## 3. Edition Context Resolution
@@ -105,8 +128,13 @@ Route handlers catch errors thrown by services and map them to HTTP responses:
 | Validation error (service throws) | 400 | `VALIDATION_ERROR` |
 | Version conflict (store optimistic lock) | 409 | `VERSION_CONFLICT` |
 | Delete blocked by dependencies | 409 | `CONFLICT` |
+| Change set not found on a versioned write | 404 | `CHANGESET_NOT_FOUND` |
+| Change set closed on a versioned write | 409 | `CHANGESET_CLOSED` |
+| `changeSetId` missing on a versioned write | 400 | `VALIDATION_ERROR` |
 | PUT/DELETE on immutable entity | 405 | `METHOD_NOT_ALLOWED` |
 | Unhandled / unexpected error | 500 | `INTERNAL_ERROR` |
+
+The two change-set conditions are detected authoritatively inside the write transaction by the store, which throws a `StoreError` tagged with a stable `error.code` (`StoreErrorCode.CHANGESET_NOT_FOUND` / `CHANGESET_CLOSED`, declared in `store/transaction.js`). The versioned, milestone, and chapter write handlers switch on `error.code` — not on the message — to choose 404 / 409. A missing `changeSetId` is a request-shape error: the store rewords it to a `Validation failed:` message so it rides the existing 400 arm without a dedicated code. `CHANGESET_CLOSED` is reported distinctly from `VERSION_CONFLICT` so a client can tell "the change set you picked is closed" from "someone else edited this item."
 
 All error responses use the standard envelope:
 
@@ -131,6 +159,7 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-baseline.yml` | Baselines |
 | `openapi-odp.yml` | ODIP editions (`Edition`, `EditionRequest` schemas) |
 | `openapi-import.yml` | Import endpoints |
+| `openapi-change-set.yml` | Change-set endpoints (CRUD, close/reopen, members) |
 | `openapi-docx.yml` | DOCX export endpoint |
 | `openapi-publication.yml` | Publication endpoint |
 | `openapi-quality.yml` | Quality check endpoints and schemas (`QualityReport`, `DomainQualityReport`, `BrokenONTraceability`, `UntraceableOR`, `OrphanON`, `NoShowOStar`) |

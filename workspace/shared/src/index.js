@@ -18,6 +18,9 @@ export * from './model/odp-elements.js';
 // Export chapter elements
 export * from './model/chapter-elements.js';
 
+// Export change-set elements
+export * from './model/change-set-elements.js';
+
 // Export quality elements
 export * from './model/quality-elements.js';
 

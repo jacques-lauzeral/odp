@@ -122,6 +122,7 @@ class ChapterCommands extends VersionedCommands {
         console.log(`Position:   ${item.position ?? '—'}`);
         console.log(`Version:    ${item.version} (Version ID: ${item.versionId})`);
         console.log(`Created:    ${item.createdAt ? new Date(item.createdAt).toLocaleString() : '—'} by ${item.createdBy || '—'}`);
+        this.displayChangeSetCommit(item);
         console.log(`Narrative:  ${item.narrative ? item.narrative.substring(0, 80) + (item.narrative.length > 80 ? '…' : '') : '—'}`);
         console.log(`osHierarchy: ${item.osHierarchy ? JSON.stringify(item.osHierarchy).substring(0, 80) + '…' : '—'}`);
     }
@@ -136,6 +137,8 @@ class ChapterCommands extends VersionedCommands {
             .description('Update chapter narrative and/or osHierarchy (creates new version)')
             .option('--narrative <narrative>', 'Chapter narrative (Quill Delta JSON string)')
             .option('--os-hierarchy <json>', 'OsHierarchy JSON string')
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
@@ -148,6 +151,8 @@ class ChapterCommands extends VersionedCommands {
                             process.exit(1);
                         }
                     }
+                    data.changeSetId = options.changeSet;
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PUT',
@@ -183,6 +188,8 @@ class ChapterCommands extends VersionedCommands {
             .description('Patch chapter narrative and/or osHierarchy (partial update, creates new version)')
             .option('--narrative <narrative>', 'Chapter narrative (Quill Delta JSON string)')
             .option('--os-hierarchy <json>', 'OsHierarchy JSON string')
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
             .action(async (itemId, expectedVersionId, options) => {
                 try {
                     const data = { expectedVersionId };
@@ -195,6 +202,8 @@ class ChapterCommands extends VersionedCommands {
                             process.exit(1);
                         }
                     }
+                    data.changeSetId = options.changeSet;
+                    if (options.commitNote) data.note = options.commitNote;
 
                     const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}`, {
                         method: 'PATCH',

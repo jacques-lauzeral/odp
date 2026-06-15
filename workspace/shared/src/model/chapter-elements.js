@@ -7,6 +7,9 @@
  *   { id, type, code, title } — resolved by ChapterService from O* stores.
  *
  * parentCode (formerly parentKey) — parent chapter code from edition.json config.
+ *
+ * The chapter write-path request shape (ChapterRequests) now lives in
+ * messages/messages.js alongside the other request models.
  */
 
 /**
@@ -70,6 +73,7 @@ export const OsHierarchy = {
  * @property {number}           version
  * @property {string}           createdAt
  * @property {string}           createdBy
+ * @property {object|null}      changeSetCommit  — ChangeSetCommitRead {changeSetId, changeSetTitle, classifier, note}; HAS_REASON forward hop, always returned
  * @property {string|null}      narrative        — TipTap JSON string
  * @property {OsHierarchy|null} osHierarchy      — enriched on read; bare ids on write
  * @property {string|null}      domain           — config-owned; null on pure narrative chapters
@@ -86,6 +90,7 @@ export const Chapter = {
     version:            null,
     createdAt:          null,
     createdBy:          null,
+    changeSetCommit:    null,   // ChangeSetCommitRead {changeSetId, changeSetTitle, classifier, note} — HAS_REASON hop
     narrative:          null,
     osHierarchy:        null,
     // config-owned
@@ -94,19 +99,4 @@ export const Chapter = {
     parentCode:         null,
     availableBlockIds:  [],
     availableStringKeys: [],
-};
-
-/**
- * Request shape for chapter update / patch (write path).
- * osHierarchy.topics[].ons/ors/ocs must be integer arrays.
- *
- * @typedef {object} ChapterRequests
- * @property {string|null}      narrative
- * @property {OsHierarchy|null} osHierarchy — bare integer ids in ons/ors/ocs
- * @property {number}           expectedVersionId
- */
-export const ChapterRequests = {
-    narrative:         null,
-    osHierarchy:       null,
-    expectedVersionId: null,
 };

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import ChapterService from '../services/ChapterService.js';
+import { StoreErrorCode } from '../store/transaction.js';
 
 const router = Router();
 
@@ -113,6 +114,10 @@ router.put('/:id', async (req, res) => {
             res.status(409).json({ error: { code: 'VERSION_CONFLICT', message: 'Chapter has been modified by another user. Please refresh and try again.' } });
         } else if (error.message.includes('Validation failed:')) {
             res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+            res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+            res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }
@@ -141,6 +146,10 @@ router.patch('/:id', async (req, res) => {
             res.status(409).json({ error: { code: 'VERSION_CONFLICT', message: 'Chapter has been modified by another user. Please refresh and try again.' } });
         } else if (error.message.includes('Validation failed:')) {
             res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_NOT_FOUND) {
+            res.status(404).json({ error: { code: 'CHANGESET_NOT_FOUND', message: error.message } });
+        } else if (error.code === StoreErrorCode.CHANGESET_CLOSED) {
+            res.status(409).json({ error: { code: 'CHANGESET_CLOSED', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
         }

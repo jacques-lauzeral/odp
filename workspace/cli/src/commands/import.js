@@ -108,6 +108,7 @@ export class ImportCommands {
             .command('distributed')
             .description('Import distributed edition source JSON file(s) directly into database')
             .requiredOption('-f, --file <pattern>', 'Path or glob pattern for source JSON file(s) (e.g. "sources/*.json")')
+            .requiredOption('--change-set <id>', 'OPEN change set every imported version commits under (LCM)')
             .option('--continue-on-error', 'Continue processing remaining files when a file fails (default: stop on first error)')
             .action(async (options) => {
                 const files = globSync(options.file).sort();
@@ -122,7 +123,7 @@ export class ImportCommands {
                     console.log(`Error handling: ${options.continueOnError ? 'continue on error' : 'stop on first error'}`);
                 }
 
-                const url = `${this.baseUrl}/import/distributed`;
+                const url = `${this.baseUrl}/import/distributed?changeSetId=${encodeURIComponent(options.changeSet)}`;
 
                 const countProperties = ['chapters', 'requirements'];
                 const totals = Object.fromEntries(countProperties.map(p => [p, 0]));

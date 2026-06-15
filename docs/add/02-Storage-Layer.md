@@ -41,6 +41,7 @@ Invalid inputs (bad IDs, missing referenced nodes, self-references) throw immedi
 BaseStore                              (base-store.js)
 ├── BaselineStore                      (baseline-store.js)
 ├── BandwidthStore                     (bandwidth-store.js)
+├── ChangeSetStore                     (change-set-store.js)
 ├── ODPEditionStore                    (odp-edition-store.js)
 ├── OperationalChangeMilestoneStore    (operational-change-milestone-store.js)
 ├── RefinableEntityStore               (refinable-entity-store.js)
@@ -143,11 +144,11 @@ async createRefinesRelation(childId, parentId, transaction) {
 Extends `BaseStore` with the dual-node versioning pattern, code generation, optimistic locking, and multi-context query support.
 
 **Concrete public methods:**
-- `create(data, tx)` — generates `code`, creates Item + ItemVersion (version 1), establishes all relationships
-- `update(itemId, data, expectedVersionId, tx)` — validates lock, creates new version, always uses provided relationship arrays
-- `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references
-- `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships
-- `findVersionHistory(itemId, tx)` — lightweight list of all versions (versionId, version, createdAt, createdBy)
+- `create(data, tx, changeSetCommit)` — generates `code`, creates Item + ItemVersion (version 1), establishes all relationships; validates the change set is OPEN and writes the `HAS_REASON` edge (carrying `changeSetCommit.note`). `data` carries entity state only — the commit is a separate argument.
+- `update(itemId, data, expectedVersionId, tx, changeSetCommit)` — validates lock, creates new version, always uses provided relationship arrays; validates the change set is OPEN and writes the `HAS_REASON` edge. Restore and decommission are service operations that flow through this method, so they link identically.
+- `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references plus `changeSetCommit` (`{changeSetId, note}`, one `HAS_REASON` hop)
+- `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships and `changeSetCommit`
+- `findVersionHistory(itemId, tx)` — list of all versions (versionId, version, createdAt, createdBy) plus per-row `changeSetCommit` — the History-tab feed
 
 **Abstract methods** (must be implemented by concrete stores):
 - `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
@@ -163,6 +164,9 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_findMaxCodeNumber(entityType, drg, tx)` — finds highest existing code number for a type+DRG pair
 - `_buildReference(record, titleField?)` — builds a `{id, title, code, ...}` Reference object from a Neo4j record
 - `_validateReferences(label, ids, tx)` — batch-validates that all referenced node IDs exist; throws `StoreError` listing missing IDs
+- `_validateOpenChangeSet(changeSetCommit, tx)` — fail-fast: missing `changeSetId` throws a `Validation failed:` `StoreError` (no code); a non-existent ChangeSet throws `code: CHANGESET_NOT_FOUND`; a non-`OPEN` ChangeSet throws `code: CHANGESET_CLOSED`
+- `_writeHasReason(versionId, changeSetCommit, tx)` — creates `(version)-[:HAS_REASON {note}]->(ChangeSet)`
+- `_resolveChangeSetCommit(versionId, tx)` / `_attachChangeSetCommits(items, tx)` — resolve the store-level `changeSetCommit` (`{changeSetId, note}`) for a single version or a whole list (one query); `null` when the version has no `HAS_REASON` edge
 
 **Note on `code` field**: Item nodes carry a `code` property (e.g. `OR-IDL-0042`) that is generated at creation time from the entity type and domain key. Codes are stable identifiers used for round-trip import matching alongside `externalId`.
 
@@ -179,6 +183,7 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 | `BaselineStore` | `BaseStore` | `HAS_ITEMS` capture; immutable |
 | `ODPEditionStore` | `BaseStore` | `EXPOSES`, context resolution; immutable |
 | `OperationalChangeMilestoneStore` | `BaseStore` | `BELONGS_TO`, `TARGETS`; internal to `OperationalChangeStore` |
+| `ChangeSetStore` | `BaseStore` | Non-versioned; status transitions; `HAS_REASON` reverse traversal (`findMembers`) |
 | `ChapterStore` | `VersionedItemStore` | No relationships; `findByKey(key, tx)` for bootstrap; config-owned fields merged at read time |
 | `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
 | `OperationalChangeStore` | `VersionedItemStore` | `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`; milestones delegated |
@@ -410,6 +415,39 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 
 ---
 
+### 4.8 ChangeSetStore (`change-set-store.js`)
+
+Inherits `BaseStore` (node label `ChangeSet`). Non-versioned — a change set is a single mutable node, not a dual-node entity. It records *why* content changed; every versioned write links its new version to one OPEN change set via `HAS_REASON` (written by `VersionedItemStore`, §5.5).
+
+**Overridden methods:**
+- `create(data, tx)` — generates `code` (`CS-#####`, sequential, 5-digit zero-pad) via `_findMaxChangeSetCodeNumber(tx)`, then stamps `createdAt`/`createdBy`, initialises `status = 'OPEN'` and `commentRefs = []`, and delegates to `BaseStore.create`. `closedAt`/`closedBy` remain unset until closure.
+
+**Private helpers:**
+- `_findMaxChangeSetCodeNumber(tx)` — scans `ChangeSet.code` values prefixed `CS-`, extracts the numeric suffix, and returns the highest found (0 when none exist). Mirrors `VersionedItemStore._findMaxCodeNumber` — no DRG segment, 5-digit pad. A `UNIQUE` constraint on `ChangeSet.code` (declared in `initializeDatabase()` via `_ensureConstraints()`) is the fail-fast backstop against race-condition duplicates.
+
+**Additional public methods:**
+- `close(id, tx)` — sets `status = 'CLOSED'`, `closedAt = now`, `closedBy = userId`; throws if not found
+- `reopen(id, tx)` — sets `status = 'OPEN'`, clears `closedAt`/`closedBy` (multi-cycle history not retained); throws if not found
+- `findByStatus(status, tx)` → `Array<ChangeSet>` ordered by `createdAt DESC`
+- `findByClassifier(classifier, tx)` → `Array<ChangeSet>` ordered by `createdAt DESC`
+- `findMembers(changeSetId, tx)` → member-row projection — the `ChangeSet ← HAS_REASON ← version → item` reverse traversal in a single query
+
+**Member-row projection** (the declared shape returned by `findMembers`, distinct from any O* projection — the change-set detail view renders these common columns only):
+
+| Field | Source |
+|---|---|
+| `itemId` | `id(item)` |
+| `itemType` | `'OC'` / `'chapter'` from `labels(item)`, else `version.type` (`'ON'` / `'OR'`) |
+| `code` | `item.code` |
+| `title` | `item.title` |
+| `versionId` | `id(version)` — the specific version committed under this set |
+| `version` | `version.version` |
+| `note` | `HAS_REASON.note` |
+
+`findMembers` is the only place the reverse (`ChangeSet → versions`) traversal occurs; per-version forward resolution (`version → ChangeSet`) lives in `VersionedItemStore`. Title / status / classifier of the set itself are hydrated by `ChangeSetService` from its cache, not by the store.
+
+---
+
 ## 5. Versioning Pattern
 
 ### 5.1 Dual-Node Structure
@@ -468,6 +506,24 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 ### 5.4 Optimistic Locking
 
 The client must supply `expectedVersionId` (the `versionId` of the version it last read). If another user has since updated the entity, the IDs will not match and the operation fails fast with a `StoreError`.
+
+### 5.5 Change-Set Linkage (`HAS_REASON`)
+
+Every versioned write records its reason as a `HAS_REASON` edge from the new version to a `ChangeSet`:
+
+```cypher
+(version)-[:HAS_REASON {note}]->(changeSet:ChangeSet)
+```
+
+**Write path** — `create` and `update` take a `changeSetCommit = {changeSetId, note}` argument, separate from `data` (which carries entity state only). `_validateOpenChangeSet` fails fast if the set is missing or not `OPEN`, then `_writeHasReason` creates the edge. Restore and decommission are service-level operations flowing through `update`, so they link identically.
+
+**Read path** — the per-version reason is resolved by a single forward hop and returned as `changeSetCommit = {changeSetId, note}`:
+- `findById` / `findByIdAndVersion` — via `_resolveChangeSetCommit(versionId)`
+- `findAll` / `findVersionHistory` — via the batch `_attachChangeSetCommits(items)` (one query for all rows)
+
+The store populates only `{changeSetId, note}`; `ChangeSetService` hydrates `changeSetTitle` / `classifier` from its change-set cache (the single polymorphic `ChangeSetCommitRead` shape, partially populated at the store boundary). Keeping the set's mutable attributes out of the version graph means a rename or reclassification never leaves stale denormalised copies.
+
+> **Bootstrap exception:** `ChapterStore.createChapter` seeds version 1 directly (not through `VersionedItemStore.create`) and therefore writes no `HAS_REASON` edge; bootstrap chapters carry a `null` `changeSetCommit` until first edited. Whether bootstrap should attach a system change set is a service-layer decision.
 
 ---
 
@@ -622,6 +678,17 @@ StoreError          (base — message + cause)
 
 `StoreError` is also imported and thrown by store classes for data-level errors. `TransactionError` covers session/commit/rollback failures.
 
+`StoreError` carries an optional third constructor argument, `code` (`constructor(message, cause = null, code = null)`), exposing `error.code`. It defaults to `null`, so existing two-argument throws are unaffected. The codes are declared once as a frozen `StoreErrorCode` constant alongside the class:
+
+```javascript
+export const StoreErrorCode = Object.freeze({
+    CHANGESET_NOT_FOUND: 'CHANGESET_NOT_FOUND',
+    CHANGESET_CLOSED: 'CHANGESET_CLOSED'
+});
+```
+
+`code` is a stable, message-independent discriminator that the route layer switches on to choose an HTTP status (404 / 409), rather than matching on prose. It is distinct from the HTTP-facing `code` in the REST error envelope. Only change-set write failures are coded today; all other store errors leave `code` null and continue to be classified by message.
+
 ### 8.3 Connection Management (`connection.js`)
 
 A singleton Neo4j driver is managed by `connection.js`. It initialises with retry logic (configurable `maxAttempts` and `intervalMs` from `config.json`) and exposes three functions:
@@ -632,7 +699,7 @@ export function getDriver()                   // used by createTransaction()
 export async function closeConnection()       // called on server shutdown
 ```
 
-The driver is configured with `maxConnectionPoolSize` and `connectionTimeout` from `config.json`. Stores are initialised once via `initializeStores()` in `store/index.js`. After store initialisation, `initializeDatabase()` (also in `store/index.js`) ensures config-driven DB entities exist — currently bootstrapping `Chapter` nodes from `edition.json`. Both are called from `server/src/index.js` at startup. Stores are accessed through named accessor functions that throw if called before initialisation:
+The driver is configured with `maxConnectionPoolSize` and `connectionTimeout` from `config.json`. Stores are initialised once via `initializeStores()` in `store/index.js`. After store initialisation, `initializeDatabase()` (also in `store/index.js`) ensures the schema and config-driven DB entities exist — it first calls `_ensureConstraints()` (creates the `ChangeSet.code` uniqueness constraint and any future constraints, idempotent via `IF NOT EXISTS`, isolated in its own write transaction), then bootstraps `Chapter` nodes from `edition.json`. Both are called from `server/src/index.js` at startup. Stores are accessed through named accessor functions that throw if called before initialisation:
 
 ```javascript
 export function operationalRequirementStore() {
@@ -679,6 +746,10 @@ Unlike the previous design, there is no separate `ValidationError` or `Optimisti
 | Self-reference in REFINES | `StoreError` | `RefinableEntityStore` |
 | Referenced node(s) not found | `StoreError` | `RefinableEntityStore`, `_validateReferences` |
 | Version mismatch on update | `StoreError` | `VersionedItemStore` |
+| Change set missing on write (changeSetId absent) | `StoreError` (`Validation failed:` message, no code) | `VersionedItemStore._validateOpenChangeSet` |
+| Change set not found on write | `StoreError` (`code: CHANGESET_NOT_FOUND`) | `VersionedItemStore._validateOpenChangeSet` |
+| Change set not OPEN on write | `StoreError` (`code: CHANGESET_CLOSED`) | `VersionedItemStore._validateOpenChangeSet` |
+| Change set not found on close/reopen | `StoreError` | `ChangeSetStore` |
 | Item has no versions (data integrity) | `StoreError` | `findVersionHistory` |
 | Invalid ID format | `StoreError` | `normalizeId` |
 | Baseline not found | `StoreError` | Multi-context queries |

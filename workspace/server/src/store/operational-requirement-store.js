@@ -280,6 +280,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 items.push(item);
             }
 
+            await this._attachChangeSetCommits(items, transaction);
             return items;
         } catch (error) {
             if (error instanceof StoreError) throw error;

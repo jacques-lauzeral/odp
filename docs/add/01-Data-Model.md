@@ -2,11 +2,12 @@
 
 ## 1. Overview
 
-The ODIP data model is organised into three categories of entities:
+The ODIP data model is organised into four categories of entities:
 
 - **Setup Entities** — reference data configured once and referenced throughout (reference documents, stakeholder categories, bandwidths, waves)
 - **Operational Entities** — versioned content authored by contributors (operational requirements, operational changes)
 - **Management Entities** — immutable lifecycle records (baselines, editions)
+- **Change-Management Entities** — mutable lifecycle records capturing the *reason* for every version (change sets)
 
 All entity definitions are centralised in the `@odp/shared` workspace package, providing a single source of truth consumed by the server, CLI, and web client.
 
@@ -41,6 +42,7 @@ shared/src/
 │   └── messages.js           # Request/response model definitions
 └── model/                    # Domain model: entities, enums, utilities
     ├── chapter-elements.js   # Chapter entity model + OsHierarchy type
+    ├── change-set-elements.js # ChangeSet model + classifier/status enums + HAS_REASON edge + ChangeSetCommit fragments (write/read)
     ├── drafting-groups.js    # DRG enum + validation helpers — retained for Bandwidth.scope only
     ├── maturity-levels.js    # Maturity level enum (DRAFT, ADVANCED, MATURE)
     ├── milestone-events.js   # Milestone event types
@@ -199,6 +201,7 @@ Several attributes are type-specific. The service layer enforces these rules; th
 | `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | summary | List of implemented ONs |
 | `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | summary | List of StakeholderCategories |
 | `dependencies` | **OR only** | optional | summary | List of ORs that must be implemented before this OR |
+| `changeSetCommit` | both | mandatory | summary | Reason for this version — one forward hop along `HAS_REASON` to its ChangeSet: `{ changeSetId, code, changeSetTitle, classifier, note }`. Read-only; the write counterpart is the `ChangeSetCommit` request fragment `{ changeSetId, note }`. |
 
 **Derived fields** (reverse-traversal, available in `extended` projection only):
 
@@ -240,6 +243,7 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 | `dependencies` | optional | summary | OCs that must be deployed before this OC |
 | `milestones` | optional | summary | Deployment milestones (see §4.4) |
 | `orCosts` | optional | summary | Per-OR cost breakdown (see ORCost below) |
+| `changeSetCommit` | mandatory | summary | Reason for this version — forward hop along `HAS_REASON`: `{ changeSetId, code, changeSetTitle, classifier, note }`. Read-only. |
 
 **Derived fields** (reverse-traversal, available in `extended` projection only):
 
@@ -284,6 +288,8 @@ Chapters are **config-owned** (domain, position declared in `edition.json`) but 
 | `parentKey` | string | Parent chapter code — null for top-level chapters |
 | `availableBlockIds` | string[] | Block IDs from `edition.json` `generatedBlocks` — drives toolbar ⚙ block picker |
 | `availableStringKeys` | string[] | String keys from `edition.json` `generatedStrings` — drives toolbar ⚙ string picker |
+
+**Read model** also carries `changeSetCommit` (`{ changeSetId, code, changeSetTitle, classifier, note }`) — the `HAS_REASON` forward hop (§4.6). Always returned, since chapters bypass the projection mechanism.
 
 **OsHierarchy type:**
 
@@ -354,7 +360,48 @@ An edition selects content via two independent paths whose results are unioned:
 
 ---
 
-## 3.4 Projection Model
+### 3.4 Change-Management Entities
+
+Change-management entities record *why* content changed. Unlike Management entities they are **mutable** — a change set transitions `OPEN → CLOSED` and may be reopened.
+
+#### ChangeSet
+
+A `ChangeSet` is the first-class carrier of the reason for change. Every version of every managed object (OR, OC, Chapter) links to **exactly one** `ChangeSet` via a `HAS_REASON` edge (§4.6). Change sets are authored in-app only — they carry no external id and are never imported.
+
+A change set is **not a transaction**: each save is an independent atomic commit, and a change set may accumulate members over time while `OPEN`. Partial sets are valid and visible to other users.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `code` | string | Stable human-readable handle, e.g. `CS-00001`; generated at creation; unique |
+| `title` | string | Human-readable label |
+| `reasonText` | string | Free-text justification |
+| `classifier` | enum | `NEW_CONTENT` \| `IN_DEPTH_REWORK` \| `CLARIFICATION` \| `EDITORIAL` (see §6.6) |
+| `commentRefs` | string[] | Empty at P0; populated at P1 with FBK-04 register IDs |
+| `status` | enum | `OPEN` \| `CLOSED` (see §6.7) |
+| `createdAt` | timestamp | |
+| `createdBy` | string | |
+| `closedAt` | timestamp | Nullable — most recent closure; overwritten on reopen |
+| `closedBy` | string | Nullable |
+
+**Lifecycle:**
+
+| Transition | Who | Notes |
+|---|---|---|
+| Created | Any active user | Change-sets workspace or inline from the save dialog |
+| Used | Any active user | Selected in the save dialog; no ownership |
+| Closed | Any active user | From the change-set detail page |
+| Reopened | Creator or integrator | `status` flips to `OPEN`; `closedBy` / `closedAt` overwritten. Multi-cycle history not retained at P0. |
+| Deleted | Creator | Empty `OPEN` sets only (soft delete). Closed sets with members are never deletable. |
+
+**Write vs read shape.** The reason a save commits under travels under the field name `changeSetCommit`, which has two shapes — the read shape being a strict superset of the write shape:
+
+- **Write** (request input): `{ changeSetId, note }` — `changeSetId` required; `note` is the optional per-object annotation written to the `HAS_REASON` edge.
+- **Read** (response, on OR / OC / Chapter): `{ changeSetId, code, changeSetTitle, classifier, note }` — resolved by one forward hop along `HAS_REASON`. Included in the **summary** field set, hence present in all three projections (§3.5). Cheap because it is a bounded forward reference of cardinality one — unlike the unbounded reverse-traversal derived fields, which remain `extended`-only. Surfacing it in `summary` is what lets the History view show the reason on every version row (list/version endpoints cannot use `extended`).
+
+---
+
+## 3.5 Projection Model
 
 Operational entity responses support three projection levels, controlling which fields are returned. The projection is specified via the `projection` query parameter on list and single-item endpoints.
 
@@ -439,11 +486,21 @@ Milestones are independent — no sequencing or dependency between them is enfor
 
 ---
 
+### 4.6 Change-Set Relationships
+
+```
+(ItemVersion)-[:HAS_REASON]->(ChangeSet)   # exactly one per version; carries optional `note`
+```
+
+`HAS_REASON` links every `ItemVersion` (OR, OC, Chapter) to exactly one `ChangeSet`, recording why the version was created. The edge carries an optional `note` (per-object annotation). The reverse traversal — *all versions under a change set* — drives the change-set member view in a single hop, with no denormalised reason text on version nodes.
+
+---
+
 ## 5. Versioning Model
 
 ### 5.1 Version Creation
 
-Every mutation of an operational entity (OR or OC) creates a new `ItemVersion` node. The `LATEST_VERSION` pointer on the `Item` node is atomically moved to the new version. Previous versions remain accessible for historical navigation.
+Every mutation of an operational entity (OR or OC) creates a new `ItemVersion` node. The `LATEST_VERSION` pointer on the `Item` node is atomically moved to the new version. Previous versions remain accessible for historical navigation. Every new version links to exactly one `OPEN` `ChangeSet` via `HAS_REASON` (§4.6); the save fails if no change set is supplied or the referenced set is `CLOSED`.
 
 ### 5.2 Version Context
 
@@ -524,6 +581,22 @@ The `DraftingGroup` enum identifies the drafting group scope for bandwidth plann
 | `API_DECOMMISSIONING` | API Decommissioning |
 
 Each milestone carries one or more event types from this list.
+
+### 6.6 Change Set Classifier
+
+| Key | Meaning |
+|---|---|
+| `NEW_CONTENT` | Net-new content |
+| `IN_DEPTH_REWORK` | Substantial revision of existing content |
+| `CLARIFICATION` | Meaning-preserving clarification |
+| `EDITORIAL` | Wording, formatting, typographical |
+
+### 6.7 Change Set Status
+
+| Key | Meaning |
+|---|---|
+| `OPEN` | Accepts new members; selectable in the save dialog |
+| `CLOSED` | No longer accepts members; reopen required to add more |
 
 ---
 

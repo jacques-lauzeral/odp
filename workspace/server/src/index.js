@@ -14,6 +14,7 @@ import baselineRoutes from './routes/baseline.js';
 import odpEditionRoutes from './routes/odp-edition.js';
 import importRoutes from './routes/import.js';
 import qualityRoutes from './routes/quality.js';
+import changeSetRoutes from './routes/change-set.js';
 import { loadConfig, getDomainChapterSlugs } from './config/loader.js';
 import { standbyMiddleware, adminRouter } from './routes/admin.js';
 
@@ -96,6 +97,9 @@ app.use('/odp-editions', odpEditionRoutes);
 
 // Quality API Routes
 app.use('/quality', qualityRoutes);
+
+// Change-set API Routes (LCM)
+app.use('/change-sets', changeSetRoutes);
 
 // Serve built publication site
 const siteDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works', 'build', 'site');

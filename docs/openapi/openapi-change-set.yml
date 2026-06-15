@@ -1,0 +1,227 @@
+openapi: 3.0.3
+
+info:
+  title: ODP REST API / Change Sets
+  description: Change-set management — the carrier of "why" for every versioned write (LCM)
+  version: 1.0.0
+  contact:
+    name: ODP Development Team
+
+paths:
+  /change-sets:
+    get:
+      summary: List change sets (optionally filtered by status or classifier)
+      tags: [Change Sets]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: 'openapi-base.yml#/components/schemas/ChangeSetStatus'
+          description: "Filter by status. Takes precedence over classifier if both are given."
+        - name: classifier
+          in: query
+          required: false
+          schema:
+            $ref: 'openapi-base.yml#/components/schemas/ChangeSetClassifier'
+          description: "Filter by classifier."
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/ChangeSet'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    post:
+      summary: Create a change set (status initialised to OPEN)
+      tags: [Change Sets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ChangeSetCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ChangeSet'
+        '400':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /change-sets/{id}:
+    get:
+      summary: Get change set by ID
+      tags: [Change Sets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ChangeSet'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    put:
+      summary: Update title / reasonText (accepted only while OPEN)
+      tags: [Change Sets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'openapi-base.yml#/components/schemas/ChangeSetUpdateRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ChangeSet'
+        '409':
+          description: Conflict — change set is not OPEN
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+    delete:
+      summary: Delete a change set (only an empty, OPEN set may be deleted)
+      tags: [Change Sets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '409':
+          description: Conflict — set is closed or has members
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /change-sets/{id}/members:
+    get:
+      summary: List the versions committed under a change set
+      tags: [Change Sets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/ChangeSetMember'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /change-sets/{id}/close:
+    post:
+      summary: Close a change set
+      tags: [Change Sets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ChangeSet'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /change-sets/{id}/reopen:
+    post:
+      summary: Reopen a change set
+      tags: [Change Sets]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/ChangeSet'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+tags:
+  - name: Change Sets
+    description: Change-set management — the reason carrier for every versioned write (LCM)

@@ -31,6 +31,13 @@ paths:
           refinesON         → refinesParents (scalar alias, ON only)
           refinesORs        → refinesParents (array alias, OR only)
       tags: [Import]
+      parameters:
+        - name: changeSetId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "ID of an existing OPEN change set; every version created or updated by the import commits under it (LCM). Unused for setup-only source files."
       requestBody:
         required: true
         content:

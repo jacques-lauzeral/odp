@@ -70,11 +70,13 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
-**`requirement list` projection**: `--projection summary|standard` (default: `standard`). `summary` omits rich-text fields; all six rich-text columns render `—` in the list table.
+**`requirement list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Type, Domain, Title, Version, Created By`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
 **`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`.
 
 **`requirement create/update` options**: `--type`, `--domain` (required on create), `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--maturity`, `--dependencies`, `--nfrs`.
+
+**Change set (LCM)**: `requirement create/update/patch` require `--change-set <id>` (the OPEN change set the new version commits under) and accept an optional `--commit-note <text>` (recorded on the change-set link). These are folded into the request body as `changeSetId` / `note`.
 
 ### Operational Changes
 
@@ -92,11 +94,13 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`change list` filter flags**: `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
-**`change list` projection**: `--projection summary|standard` (default: `standard`). `summary` omits rich-text fields; all six rich-text columns render `—` in the list table.
+**`change list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Domain, Title, Version, Created By`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
 **`change show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends the derived field `requiredByOCs`. Fields absent from the projection render as `(not in projection)`.
 
 **`change create/update` options**: `--purpose`, `--domain` (required on create), `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
+
+**Change set (LCM)**: `change create/update/patch` require `--change-set <id>` and accept an optional `--commit-note <text>`, folded into the request body as `changeSetId` / `note`.
 
 ### Chapters
 
@@ -111,7 +115,7 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 No `create` or `delete` — chapters are managed by server bootstrap from `edition.json`.
 
-**`chapter update/patch` options**: `--narrative <delta-json>`, `--os-hierarchy <json>`.
+**`chapter update/patch` options**: `--narrative <delta-json>`, `--os-hierarchy <json>`. Both require `--change-set <id>` and accept an optional `--commit-note <text>` (LCM), folded into the body as `changeSetId` / `note`.
 
 ### Management Entities
 
@@ -164,16 +168,16 @@ odp-cli edition publish 42 --website
 
 | Command | Action |
 |---|---|
-| `import distributed --file <path\|glob...>` | Import distributed edition source JSON file(s) directly into database |
+| `import distributed --file <path\|glob...> --change-set <id>` | Import distributed edition source JSON file(s) directly into database |
 
-**`import distributed`** accepts glob patterns (quote to prevent shell expansion). Processes source JSON files conforming to `source.schema.json` — one file per chapter — directly into the database with no extract or map stage. Setup entities must already exist. Use `--continue-on-error` to process remaining files after a failure. Summary reports `chapters` (narrative patches) and `requirements` (entities created) per file.
+**`import distributed`** accepts glob patterns (quote to prevent shell expansion). Processes source JSON files conforming to `source.schema.json` — one file per chapter — directly into the database with no extract or map stage. Setup entities must already exist. A `--change-set <id>` (OPEN) is required: every operational version created or updated by the import commits under it, passed as the `?changeSetId=` query parameter. Use `--continue-on-error` to process remaining files after a failure. Summary reports `chapters` (narrative patches) and `requirements` (entities created) per file.
 
 ```bash
 # Single file
-odp import distributed --file sources/rerouting_source.json
+odp import distributed --file sources/rerouting_source.json --change-set 4201
 
 # Bulk import with error tolerance
-odp import distributed --file "sources/*.json" --continue-on-error
+odp import distributed --file "sources/*.json" --change-set 4201 --continue-on-error
 ```
 
 ### Quality Checks
@@ -196,12 +200,32 @@ Each rule renders as a labelled table when findings are present. Column layout:
 | Orphan ON | ON ID, Code, Title |
 | NO SHOW O\* | ID, Code, Type, Title |
 
+### Change Sets
+
+Change sets carry the *why* of every versioned write (LCM). They are non-versioned and authored in-app only (never imported). Every `requirement` / `change` / `chapter` write and every `import distributed` run commits under one OPEN change set.
+
+| Command | Action |
+|---|---|
+| `change-set list` | List all change sets |
+| `change-set list --status OPEN\|CLOSED` | Filter by status |
+| `change-set list --classifier <C>` | Filter by classifier |
+| `change-set show <id>` | Show a single change set |
+| `change-set members <id>` | List the versions committed under it |
+| `change-set create <title> <classifier>` | Create (status initialised to OPEN) |
+| `change-set update <id>` | Edit `--title` / `--reason` (OPEN only) |
+| `change-set close <id>` | Close |
+| `change-set reopen <id>` | Reopen |
+| `change-set delete <id>` | Delete (empty + OPEN only) |
+
+`change-set list` displays columns: `ID, Code, Title, Classifier, Status, Created By`. `change-set show <id>` prints all fields including `code`. `change-set create` and `close`/`reopen` success messages include the assigned `CS-#####` code.
+
+`<classifier>` is one of `NEW_CONTENT`, `IN_DEPTH_REWORK`, `CLARIFICATION`, `EDITORIAL` and is passed positionally on `create`; `--reason <text>` is optional. `update` is partial — only the flags supplied are sent, so omitting one never clears it. Closing/deleting a non-eligible set returns `409` from the API and exits non-zero.
+
 ### Publication
 
 | Command | Action |
 |---|---|
-| `edition publish <id> --website` | Build and serve HTML site |
-| `edition publish <id> --pdf-flat` | Generate flat PDF |
+| `edition publish <id> --website` | Build and serve HTML site || `edition publish <id> --pdf-flat` | Generate flat PDF |
 | `edition publish <id> --word-flat` | Generate flat Word |
 | `edition publish <id> --word-multipart` | Generate multipart Word ZIP |
 | `edition publish <id> --pdf-flat --word-flat --word-multipart` | Generate all document formats |
@@ -251,7 +275,7 @@ The following command files or subcommands were removed:
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--edition <id>` (optional). The `--baseline` option has been removed — baseline is an internal implementation detail not exposed in the CLI. Edition ID is passed directly as `?edition=<id>` to the API; server-side resolution handles baseline and wave context internally.
 
-`addListCommand` and `addShowCommand` in `VersionedCommands` both support `--projection`. The projection value is validated before the request is issued; an invalid value exits with a non-zero code. The projection is appended as a query parameter only when non-default. List tables always include all rich-text columns, rendering `—` when the field is absent from the response.
+`addListCommand` and `addShowCommand` in `VersionedCommands` both support `--projection`. The projection value is validated before the request is issued; an invalid value exits with a non-zero code. The projection is appended as a query parameter only when non-default. List tables show identity/classification columns only — rich-text fields are surfaced in `show` / `show-version`, not in the list.
 
 ---
 

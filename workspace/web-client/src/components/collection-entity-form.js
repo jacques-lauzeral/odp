@@ -5,6 +5,7 @@ import ReferenceManager from './reference-manager.js';
 import RichTextComponent from './rich-text-component.js';
 import { buildLinkProvider } from './link-provider.js';
 import { odipConfirm } from './user-dialogs.js';
+import { openChangeSetCommitDialog } from './change-set-commit-dialog.js';
 
 /**
  * CollectionEntityForm - Business-agnostic form rendering and modal management
@@ -1659,6 +1660,14 @@ export class CollectionEntityForm {
 
         // Transform data
         const dataToSave = this.transformDataForSave(formData, this.currentMode, this.currentItem);
+
+        // LCM commit gate — every versioned write commits under a change set. The dialog
+        // offers the active change set (confirm), lets the user pick another or create one,
+        // and optionally attach a note. Cancelling aborts the save and leaves the form open.
+        const commit = await openChangeSetCommitDialog(this.context.app, { allowNote: true });
+        if (!commit) return;
+        dataToSave.changeSetId = commit.changeSetId;
+        if (commit.note) dataToSave.note = commit.note;
 
         try {
             // Save

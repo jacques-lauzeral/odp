@@ -10,6 +10,7 @@ import { Router } from './shared/router.js';
 import Header from './components/header.js';
 
 const CONNECTION_CHECK_INTERVAL = 60000;
+const ACTIVE_CHANGE_SET_KEY = 'odip-space-active-change-set';
 
 /**
  * Load an activity module by key.
@@ -38,6 +39,7 @@ export class App {
         this.activities = new Map();
         this.user = null;
         this.datasetContext = null;
+        this.activeChangeSet = null;   // { id, title, classifier } — remembered default for save dialogs (LCM)
         this._setupData = null;        // lazy-loaded shared cache
         this._setupDataPromise = null; // in-flight guard
         this._domains = null;          // config-derived domain list, cached permanently
@@ -64,6 +66,8 @@ export class App {
             this.header.render(headerContainer);
             this.header.restoreUser();
         }
+
+        this.restoreActiveChangeSet();
 
         this.router = new Router({
             onNavigate:    (activityKey, subPath) => this._loadActivity(activityKey, subPath),
@@ -207,6 +211,48 @@ export class App {
      */
     getDatasetContext() {
         return this.datasetContext;
+    }
+
+    // -------------------------------------------------------------------------
+    // Active change set (public) — LCM
+    // -------------------------------------------------------------------------
+
+    /**
+     * Set the active change set — the remembered default offered by save dialogs.
+     * This is a display/convenience default only: the server validates the change set
+     * is OPEN at write time, and the commit dialog re-fetches OPEN sets each time.
+     * @param {{ id: (number|string), title: string, classifier: string }|null} cs
+     */
+    setActiveChangeSet(cs) {
+        this.activeChangeSet = cs;
+        try {
+            if (cs) localStorage.setItem(ACTIVE_CHANGE_SET_KEY, JSON.stringify(cs));
+            else localStorage.removeItem(ACTIVE_CHANGE_SET_KEY);
+        } catch {
+            // localStorage unavailable — in-memory only
+        }
+        if (this.header) this.header.onChangeSetChange();
+    }
+
+    /** @returns {{ id, title, classifier }|null} */
+    getActiveChangeSet() {
+        return this.activeChangeSet;
+    }
+
+    /**
+     * Restore the active change set from localStorage. Lenient — a stale/closed value is
+     * harmless: it is only a default, re-validated by the commit dialog on next use.
+     */
+    restoreActiveChangeSet() {
+        try {
+            const stored = localStorage.getItem(ACTIVE_CHANGE_SET_KEY);
+            if (stored) {
+                const cs = JSON.parse(stored);
+                if (cs && cs.id != null) this.activeChangeSet = cs;
+            }
+        } catch {
+            try { localStorage.removeItem(ACTIVE_CHANGE_SET_KEY); } catch { /* ignore */ }
+        }
     }
 
     // -------------------------------------------------------------------------

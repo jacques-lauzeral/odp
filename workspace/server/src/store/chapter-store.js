@@ -143,7 +143,9 @@ export class ChapterStore extends VersionedItemStore {
         try {
             const { cypher, params } = this.buildFindAllQuery(null, {}, null, projection);
             const result = await transaction.run(cypher, params);
-            return result.records.map(record => this._prepareOutput(this._buildChapterItem(record), projection));
+            const items = result.records.map(record => this._prepareOutput(this._buildChapterItem(record), projection));
+            await this._attachChangeSetCommits(items, transaction);
+            return items;
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find all Chapters: ${error.message}`, error);

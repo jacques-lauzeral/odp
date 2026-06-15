@@ -1,5 +1,5 @@
 import {BaseStore} from './base-store.js';
-import {StoreError} from './transaction.js';
+import {StoreError, StoreErrorCode} from './transaction.js';
 
 export class VersionedItemStore extends BaseStore {
     constructor(driver, itemLabel, versionLabel) {
@@ -112,7 +112,7 @@ export class VersionedItemStore extends BaseStore {
         return item;
     }
 
-    async create(data, transaction) {
+    async create(data, transaction, changeSetCommit) {
         try {
             const { title, ...versionData } = data;
             const createdAt = new Date().toISOString();
@@ -156,6 +156,10 @@ export class VersionedItemStore extends BaseStore {
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
+            // LCM — link this version to its change set (validates the set is OPEN)
+            await this._validateOpenChangeSet(changeSetCommit, transaction);
+            await this._writeHasReason(versionId, changeSetCommit, transaction);
+
             // Create Item-Version relationships
             await transaction.run(`
                 MATCH (item:${this.nodeLabel}), (version:${this.versionLabel})
@@ -176,7 +180,7 @@ export class VersionedItemStore extends BaseStore {
         }
     }
 
-    async update(itemId, data, expectedVersionId, transaction) {
+    async update(itemId, data, expectedVersionId, transaction, changeSetCommit) {
         try {
             const numericItemId = this.normalizeId(itemId);
             const numericExpectedVersionId = this.normalizeId(expectedVersionId);
@@ -238,6 +242,10 @@ export class VersionedItemStore extends BaseStore {
             `, { newVersion, createdAt, createdBy, contentData: this._prepareInput(contentData) });
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
+
+            // LCM — link this version to its change set (validates the set is OPEN)
+            await this._validateOpenChangeSet(changeSetCommit, transaction);
+            await this._writeHasReason(versionId, changeSetCommit, transaction);
 
             // Update Item-Version relationships
             await transaction.run(`
@@ -345,7 +353,9 @@ export class VersionedItemStore extends BaseStore {
             };
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-            return this._prepareOutput({ ...baseItem, ...relationshipReferences });
+            const enriched = { ...baseItem, ...relationshipReferences };
+            enriched.changeSetCommit = await this._resolveChangeSetCommit(enriched.versionId, transaction);
+            return this._prepareOutput(enriched);
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
         }
@@ -387,7 +397,9 @@ export class VersionedItemStore extends BaseStore {
             };
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
-            return this._prepareOutput({ ...baseItem, ...relationshipReferences });
+            const enriched = { ...baseItem, ...relationshipReferences };
+            enriched.changeSetCommit = await this._resolveChangeSetCommit(enriched.versionId, transaction);
+            return this._prepareOutput(enriched);
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID and version: ${error.message}`, error);
         }
@@ -414,12 +426,14 @@ export class VersionedItemStore extends BaseStore {
                 throw new StoreError('Data integrity error: Item exists but has no versions');
             }
 
-            return result.records.map(record => ({
+            const rows = result.records.map(record => ({
                 versionId: this.normalizeId(record.get('versionId')),
                 version: this.normalizeId(record.get('version')),
                 createdAt: record.get('createdAt'),
                 createdBy: record.get('createdBy')
             }));
+            await this._attachChangeSetCommits(rows, transaction);
+            return rows;
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find version history for ${this.nodeLabel}: ${error.message}`, error);
@@ -487,5 +501,108 @@ export class VersionedItemStore extends BaseStore {
                 `Missing IDs: [${missingIds.join(', ')}]`
             );
         }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Change-set linkage (HAS_REASON) — LCM
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Validate that the supplied change set exists and is OPEN. Fail-fast.
+     * @param {{changeSetId:(number|string), note?:string}} changeSetCommit
+     * @param {Transaction} transaction
+     */
+    async _validateOpenChangeSet(changeSetCommit, transaction) {
+        if (!changeSetCommit || changeSetCommit.changeSetId === undefined
+            || changeSetCommit.changeSetId === null || changeSetCommit.changeSetId === '') {
+            // Request-shape error — rides the routes' existing 'Validation failed:' → 400 arm.
+            // Expected to be unreachable: malformed writes are normally rejected before the
+            // transaction opens. This is the in-transaction backstop.
+            throw new StoreError('Validation failed: changeSetCommit.changeSetId is required for every versioned write');
+        }
+        const changeSetId = this.normalizeId(changeSetCommit.changeSetId);
+        const result = await transaction.run(`
+            MATCH (cs:ChangeSet)
+            WHERE id(cs) = $changeSetId
+            RETURN cs.status as status
+        `, { changeSetId });
+        if (result.records.length === 0) {
+            throw new StoreError(`ChangeSet ${changeSetId} not found`, null, StoreErrorCode.CHANGESET_NOT_FOUND);
+        }
+        if (result.records[0].get('status') !== 'OPEN') {   // ChangeSetStatus.OPEN
+            throw new StoreError(`ChangeSet ${changeSetId} is not OPEN — cannot commit a new version to it`, null, StoreErrorCode.CHANGESET_CLOSED);
+        }
+    }
+
+    /**
+     * Create the HAS_REASON edge (version → ChangeSet) carrying the optional note.
+     * @param {number} versionId
+     * @param {{changeSetId:(number|string), note?:string}} changeSetCommit
+     * @param {Transaction} transaction
+     */
+    async _writeHasReason(versionId, changeSetCommit, transaction) {
+        await transaction.run(`
+            MATCH (version:${this.versionLabel}), (cs:ChangeSet)
+            WHERE id(version) = $versionId AND id(cs) = $changeSetId
+            CREATE (version)-[:HAS_REASON {note: $note}]->(cs)
+        `, {
+            versionId: this.normalizeId(versionId),
+            changeSetId: this.normalizeId(changeSetCommit.changeSetId),
+            note: changeSetCommit.note ?? ''
+        });
+    }
+
+    /**
+     * Resolve the store-level changeSetCommit for one version: { changeSetId, note },
+     * or null when the version has no HAS_REASON edge. Title/classifier are hydrated
+     * by the service from its ChangeSet cache (the ChangeSetCommitRead shape, partially
+     * populated here).
+     * @param {number} versionId
+     * @param {Transaction} transaction
+     * @returns {Promise<{changeSetId:number, note:string}|null>}
+     */
+    async _resolveChangeSetCommit(versionId, transaction) {
+        const result = await transaction.run(`
+            MATCH (version:${this.versionLabel})
+            WHERE id(version) = $versionId
+            OPTIONAL MATCH (version)-[hr:HAS_REASON]->(cs:ChangeSet)
+            RETURN id(cs) as changeSetId, hr.note as note
+        `, { versionId: this.normalizeId(versionId) });
+        if (result.records.length === 0) return null;
+        const changeSetId = result.records[0].get('changeSetId');
+        if (changeSetId === null || changeSetId === undefined) return null;
+        return { changeSetId: this.normalizeId(changeSetId), note: result.records[0].get('note') ?? '' };
+    }
+
+    /**
+     * Attach changeSetCommit to each item in a list using a single query.
+     * Mutates and returns the same array. Items must carry `versionId`.
+     * @param {Array<object>} items
+     * @param {Transaction} transaction
+     * @returns {Promise<Array<object>>}
+     */
+    async _attachChangeSetCommits(items, transaction) {
+        if (!Array.isArray(items) || items.length === 0) return items;
+        const versionIds = items.map(i => this.normalizeId(i.versionId));
+        const result = await transaction.run(`
+            MATCH (version:${this.versionLabel})
+            WHERE id(version) IN $versionIds
+            OPTIONAL MATCH (version)-[hr:HAS_REASON]->(cs:ChangeSet)
+            RETURN id(version) as versionId, id(cs) as changeSetId, hr.note as note
+        `, { versionIds });
+        const byVersion = new Map();
+        for (const rec of result.records) {
+            const changeSetId = rec.get('changeSetId');
+            byVersion.set(
+                this.normalizeId(rec.get('versionId')),
+                (changeSetId === null || changeSetId === undefined)
+                    ? null
+                    : { changeSetId: this.normalizeId(changeSetId), note: rec.get('note') ?? '' }
+            );
+        }
+        for (const item of items) {
+            item.changeSetCommit = byVersion.get(this.normalizeId(item.versionId)) ?? null;
+        }
+        return items;
     }
 }
