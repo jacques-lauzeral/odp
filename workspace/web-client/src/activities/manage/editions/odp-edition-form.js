@@ -22,6 +22,11 @@ export default class ODPEditionForm extends CollectionEntityForm {
         return field;
     }
 
+    // Editions are not versioned writes — no change-set commit gate.
+    requiresChangeSet() {
+        return false;
+    }
+
     getEditConfig() {
         return {
             sections: [

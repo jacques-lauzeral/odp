@@ -56,6 +56,9 @@ web-client/src/
 │   │           ├── setup.js                Setup sub-activity shell — shared Elaborate/Explore
 │   │           ├── stakeholder-categories.js
 │   │           └── reference-documents.js
+│   │       └── change-sets/
+│   │           ├── change-sets.js          Change Sets sub-activity — shared Elaborate/Explore
+│   │           └── change-set-form.js      Create/edit form (extends CollectionEntityForm)
 │   │
 │   ├── converse/
 │   │   └── converse.js                     Converse activity — placeholder
@@ -141,6 +144,7 @@ Route table:
 | Plan | `plan` | `PlanActivity` |
 | Quality | `quality` | `QualityActivity` |
 | Setup | `setup` | `SetupActivity` |
+| Change Sets | `change-sets` | `ChangeSetsActivity` |
 
 **Manage tab strip:**
 
@@ -151,6 +155,8 @@ Route table:
 Context difference (live vs edition, R/W vs R/O) flows transparently through `app.getDatasetContext()` — sub-activities do not need to know which shell they are mounted in.
 
 **Setup sub-path routing:** `SetupActivity` accepts a two-segment sub-path: `[entityKey, itemId?]`. `entityKey` selects the tab (`stakeholder-categories` or `reference-documents`); the optional `itemId` is forwarded to `TreeEntity.selectItem(itemId)` after render, enabling direct deep-links to a specific item (e.g. `/elaborate/setup/reference-documents/66`).
+
+**Change Sets sub-path routing:** `ChangeSetsActivity` accepts a one-segment sub-path `[itemId?]`; the optional `itemId` is selected after load (deep-link to a specific change set, e.g. `/elaborate/change-sets/4201`).
 
 **Unsaved-changes guard — sub-activity tab switch:** `ElaborateActivity._route()` calls `canDeactivate()` on the current sub-activity before switching to a different tab. If the method returns `false` (user chose Cancel), the active tab highlight is restored and the switch is aborted. `canDeactivate()` is implemented by `NarrativeActivity`; all other sub-activities omit it and are always safe to leave.
 
@@ -341,6 +347,10 @@ Filter matchers are injected as `options.filterMatchers`, enabling consistent fi
 
 Abstract base class for entity forms. Concrete forms (`RequirementForm`, `ChangeForm`) extend it and implement: `getReadConfig()`, `getEditConfig()`, `hydrateField()`, `onSave()`, `onValidate()`, and optionally `transformDataForSave()` / `transformDataForEdit()`. The base class handles modal lifecycle, field rendering, validation orchestration, and error display.
 
+**Commit gate — `requiresChangeSet()`.** `handleSave()` applies the LCM commit gate (§13.5) only when `requiresChangeSet()` returns `true` (the default — every O\* form). Non-versioned forms override it to `false`: `ChangeSetForm` (a change set is itself the reason carrier) and `ODPEditionForm` (editions are not versioned writes). When `false`, no commit dialog is shown and no `changeSetId` is attached to the save payload.
+
+**`editableOnlyOnCreate` field flag.** A field marked `editableOnlyOnCreate: true` is editable in create mode and read-only (immutable) in edit mode. The base treats it as a normal field **only in create** — rendered editable, with `required` honoured for both the `*` marker and validation; in edit it renders read-only and is skipped by `validateForm`/`collectFormData`. So such a field can be declared `required: true` safely (mandatory on create, untouched on edit).
+
 Key methods used by detail views:
 
 | Method | Purpose |
@@ -464,7 +474,7 @@ md.cleanup()                 // Unbind resize listeners
 // TimelineMilestone
 {
     label:       string,        // short display label
-    description: string,        // tooltip / detail text
+        description: string,        // tooltip / detail text
     eventTypes:  string[],      // one or more event type keys
     date:        Date           // calendar position
 }
@@ -505,7 +515,7 @@ addTimeIntervalUpdateListener(fn)     // fn(startYear, endYear)
 ```javascript
 {
     mode: 'pixmap', rows: 1, cols: 3,
-    eventTypes: {
+        eventTypes: {
         'API_PUBLICATION':    { row: 0, col: 0, colour: '#3b82f6' },
         'UI_TEST_DEPLOYMENT': { row: 0, col: 1, colour: '#8b5cf6' },
         'OPS_DEPLOYMENT':     { row: 0, col: 2, colour: '#10b981' }
@@ -732,17 +742,19 @@ Supporting container rules (in `narrative.css`): `.chapter-body` (editable chapt
 - `CollectionEntityForm` — `reference` field type (single-select typeahead)
 - `AnnotatedMultiselectManager` — embedded inline picker
 - `RichTextComponent` — reference mark picker (`o-ref` / `n-ref` / `d-ref`)
+- `ChangeSetCommitDialog` — OPEN change-set picker (flat options, `code — title` label, `reasonText` tooltip)
 
 **Node shape:**
 
 ```js
 {
     value:        string | number | null,  // null = non-selectable header
-    label:        string,                  // display text; used for filtering
-    displayLabel: string?,                 // override label for rendering only
-    leaf:         boolean?,                // hint; children absence is authoritative
-    children:     node[]?,                 // static children (absent on leaves)
-    onExpand:     () => Promise<node[]>?,  // lazy children loader
+        label:        string,                  // display text; used for filtering
+        displayLabel: string?,                 // override label for rendering only
+        title:        string?,                 // optional tooltip; rendered as title= on the label button and selected chip
+        leaf:         boolean?,                // hint; children absence is authoritative
+        children:     node[]?,                 // static children (absent on leaves)
+        onExpand:     () => Promise<node[]>?,  // lazy children loader
 }
 ```
 
@@ -846,6 +858,8 @@ Filtered nodes carry `_contextOnly: true` to distinguish them from true headers.
 
 Behaviour: fetches `OPEN` change sets, pre-selects the active default (dropped if no longer open), and offers confirm / pick-another / create-inline (title + classifier + optional reason). On confirm it calls `app.setActiveChangeSet(chosen)` and resolves; cancel/overlay/Esc resolves `null`.
 
+**Existing-set selection — `ReferenceManager` typeahead.** The pick-an-existing path is a `ReferenceManager` (§7.4) in flat-options mode, replacing the earlier radio list (which did not scale past a handful of OPEN sets). Each option is built from one OPEN set: `label = `code — title`` (degrades to `title` if `code` is absent), filterable on the combined label (i.e. code **and** title); `value = id`; `title = reasonText`, surfaced as a hover tooltip on each row and on the selected chip. The picker is mounted into a `[data-role="picker-host"]` element and `destroy()`d on every re-render (create-toggle) and on dialog finish. Selection drives `_selectedId` via `onChange`, which re-evaluates the confirm button. The create-inline and optional-note paths and the `{ changeSetId, note } | null` contract are unchanged, so no caller is affected.
+
 **Module placement & styling.** It is the same *family* as `user-dialogs.js` (promise-based modal helpers) but is **data-aware** (reads `OPEN` sets, may `POST` a new one), so it lives in its own module rather than in `user-dialogs.js`. It reuses the existing modal vocabulary exactly — `modal-overlay` / `modal` / `modal-header|body|footer` with the same inline overrides (`max-width:480px; height:auto; min-height:0; resize:none`), z-index `2000`, `odip-btn` buttons, `odip-input` fields, and real design tokens. **No new CSS file.**
 
 ---
@@ -889,9 +903,9 @@ Each sub-activity is mounted inside a workspace shell (Elaborate / Explore) or a
 ```js
 {
     onItemSelect(item),             // called on row click
-    getViewControlsEl(),            // returns HTMLElement for view controls mount
-    isReadOnly,                     // boolean; true in Explore/edition context
-    onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
+        getViewControlsEl(),            // returns HTMLElement for view controls mount
+        isReadOnly,                     // boolean; true in Explore/edition context
+        onViewControlsRendered(),       // called after renderViewControls() — used to refresh count summary
 }
 ```
 
@@ -1254,8 +1268,8 @@ The Prioritisation activity (`activities/workspace/shared/plan/prioritisation.js
 ```js
 {
     runAt:         string,           // ISO timestamp
-    rules:         QualityRule[],    // registered rules — drives section headers
-    domainReports: DomainQualityReport[]  // one entry per domain, always present
+        rules:         QualityRule[],    // registered rules — drives section headers
+        domainReports: DomainQualityReport[]  // one entry per domain, always present
 }
 ```
 
@@ -1324,7 +1338,30 @@ Sub-path routing accepts `[entityKey, itemId?]` (see §3.3), enabling deep-links
 
 **ODPEditionForm** — config-based (`getEditConfig()` / `getReadConfig()`); `getReadConfig()` returns `null` (detail rendering owned by `EditionsActivity`). Edit config sections: Edition (`title` text required, `type` radio DRAFT/OFFICIAL required); Content rules (`baselineId` select optional, `startDate` date optional, `minONMaturity` radio DRAFT/ADVANCED/MATURE optional). `transformDataForSave()` defaults `type` to `'DRAFT'`, `minONMaturity` to `'DRAFT'`, coerces `baselineId` to integer, strips absent optional fields. Editions are create-only — `onSave()` throws on any mode other than `'create'`.
 
-### 8.9 Converse Activity
+### 8.9 Change Sets Activity
+
+`ChangeSetsActivity` (`activities/workspace/shared/change-sets/change-sets.js`) is a shared sub-activity mounted in both the Elaborate and Explore shells. Layout mirrors `EditionsActivity`: top toolbar (`.os-toolbar`) with a status filter on the left and a `+ Change Set` button on the right, over a `MasterDetail` (`initialRatio: 0.30`) — left change-set card list, right `.os-detail` detail shell.
+
+**Read/write context** — derived from `app.getDatasetContext()`: edition context ⇒ read-only. In Explore the create button and all lifecycle actions are suppressed; the list and detail (including members) render identically. Sub-activities do not know which shell they are mounted in.
+
+**Explore data source (interim).** The list is loaded via `apiClient.listChangeSets()` in **both** contexts, so Explore currently shows *all* change sets rather than only those that produced the selected edition's versions. This is a deliberate placeholder: edition-scoped filtering (walking `(Edition)-[:EXPOSES]->(Baseline)-[:HAS_ITEMS {editions}]->(version)-[:HAS_REASON]->(ChangeSet)`, with the chapter-inclusion question to settle) requires a new server query and is a planned second pass. Until then Explore parity is list + detail only.
+
+**List (left panel)** — card list filtered client-side by a status chip bar (`All` / `Open` / `Closed`) from a single load (no refetch on filter change). Each card shows `code — title`, an OPEN/CLOSED badge, and `classifier · date`. Selection uses `String(id)` comparison.
+
+**Detail (right panel)** — `.os-detail` shell. Toolbar shows `code — title` and the status-gated action set; body is a `<dl>` (code, status badge, classifier, reason, created/closed stamps) followed by a **Changes** section — the versions committed under the set, fetched via `apiClient.getChangeSetMembers(id)`. The list is **de-duplicated by `itemId`** (multiple consecutive saves of one object under the same set collapse to a single row, keeping the highest version) and rendered **flat**, ordered Chapter → ON → OR → OC then by code/title. Each row carries a **coloured type label** (`.type-badge--on/or/oc/chapter`; the ON/OR/OC palette mirrors os.css, chapter is neutral — a local copy pending the styling-cleanup hoist to a shared `components/type-badge.css`) and the object name as a **context-aware deep link** (`/{base}/os/{on|or|oc}/{itemId}` for O\*s, `/{base}/narrative/{itemId}` for chapters, `{base}` being `/elaborate` or `/explore/{editionId}`; intercepted by the router's global anchor handler). O\* rows show `code title`; chapter rows show the title only (chapters carry no O\*-style code). A stale-await guard drops results if the selection changed during the fetch. Delete-enablement keys off the **raw** member count, not the de-duped list. *(Per-change Create/Update/Delete action and domain classification are deferred — they require new fields on the `findMembers` projection; see the parked change-set server pass.)*
+
+**Lifecycle actions (Elaborate only)** — status-gated detail-toolbar buttons, never a status field:
+
+| Status | Actions |
+|---|---|
+| OPEN | Edit · Close · Delete *(enabled only once members load and the set is empty)* |
+| CLOSED | Reopen |
+
+Close / Reopen / Delete confirm via `odipConfirm` (§7.8) and call `closeChangeSet` / `reopenChangeSet` / `deleteChangeSet`; server `409`s are surfaced inline in the detail body (e.g. "Only an empty, open change set can be deleted"). Create and Edit use `ChangeSetForm`; a single `entitySaved` document listener (registered once, removed in `cleanup()`) reloads the list and re-selects after either.
+
+**`ChangeSetForm`** (`change-set-form.js`) — config-based (`getReadConfig()` returns `null`; detail rendering owned by the activity). A **single section** (`title`, `reasonText`, `classifier`) — no tab to click. `classifier` is `required: true` + `editableOnlyOnCreate: true`: a mandatory editable select in create (shows the `*`), a read-only value in edit (immutable after creation, skipped by validate/collect — see §6.5). `onSave` posts `{ title, classifier, reasonText? }` on create and PUTs `{ title, reasonText }` on edit (OPEN only); `status` is never sent — lifecycle is driven by the action buttons. The form overrides `requiresChangeSet()` to `false` (see §6.5) — a change set is the reason carrier and must not commit under another change set.
+
+### 8.10 Converse Activity
 
 `ConverseActivity` (`activities/converse/converse.js`) is a top-level placeholder for collaborative threading. It is unprotected and currently renders a placeholder shell; no data model or API integration exists yet.
 
@@ -1375,6 +1412,7 @@ styles/
     │       ├── plan/plan.css         ON plan two-pane layout, TemporalGrid context
     │       ├── narrative/narrative.css
     │       └── quality/quality.css
+    │       └── change-sets/change-sets.css  Change-set cards, status badge/chips, detail dl + members list
     └── manage/
         ├── manage.css
         └── editions/editions.css     Edition count badge, publication action buttons
@@ -1526,7 +1564,7 @@ All target the standalone `/change-sets` route: `listChangeSets({status?, classi
 
 ### 13.3 Commit Dialog
 
-The commit dialog component (`openChangeSetCommitDialog`) is documented in §7.9.
+The commit dialog component (`openChangeSetCommitDialog`) is documented in §7.9. Its existing-set selector is a `ReferenceManager` typeahead (label `code — title`, searchable on code + title, `reasonText` on hover) — the radio list it replaced did not scale past a handful of OPEN sets.
 
 ### 13.4 Header Chip
 

@@ -1,0 +1,239 @@
+/* ==========================================================================
+   Change Sets activity (LCM) — shared Elaborate / Explore
+   Depends on: primitives.css, activity.css, master-detail.css, os.css
+   Mirrors editions.css for the card/detail layer; reuses the setup active-tab
+   treatment for the status-filter chips.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Activity shell — reuses .os-toolbar from os.css
+   -------------------------------------------------------------------------- */
+
+.change-sets-activity {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.change-sets-toolbar {
+    flex-shrink: 0;
+}
+
+.change-sets-master-detail {
+    flex: 1;
+    min-height: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Status filter chips (left side of the toolbar)
+   -------------------------------------------------------------------------- */
+
+.cs-status-chip {
+    padding: var(--space-1) var(--space-3);
+}
+
+.cs-status-chip--active {
+    background: var(--ec-light);
+    color: var(--ec-navy);
+    border-color: var(--ec-sky);
+}
+
+/* --------------------------------------------------------------------------
+   Left panel — change-set list
+   -------------------------------------------------------------------------- */
+
+.change-sets-list-loading,
+.change-sets-empty {
+    padding: var(--space-4);
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.change-set-card {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-color-light);
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.change-set-card:hover {
+    background-color: var(--bg-hover);
+}
+
+.change-set-card--selected {
+    background-color: var(--bg-selected);
+    border-left: 3px solid var(--ec-blue);
+}
+
+.change-set-card__header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.change-set-card__title {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.change-set-card__meta {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Status badge
+   -------------------------------------------------------------------------- */
+
+.cs-badge {
+    display: inline-block;
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.cs-badge--open {
+    background-color: var(--color-official-bg, #d1fae5);
+    color: var(--color-official-text, #065f46);
+}
+
+.cs-badge--closed {
+    background-color: var(--color-draft-bg, #f3f4f6);
+    color: var(--color-draft-text, #6b7280);
+}
+
+/* --------------------------------------------------------------------------
+   Right panel — detail (extends os-detail)
+   -------------------------------------------------------------------------- */
+
+.change-set-detail__body {
+    padding: var(--space-4);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.change-set-detail__error {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: #FFF0F0;
+    color: #A32D2D;
+    font-size: var(--font-size-sm);
+}
+
+.change-set-detail__dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-4);
+    margin: 0;
+    font-size: var(--font-size-sm);
+}
+
+.change-set-detail__dl dt {
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+}
+
+.change-set-detail__dl dd {
+    margin: 0;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+/* --------------------------------------------------------------------------
+   Members list
+   -------------------------------------------------------------------------- */
+
+.change-set-detail__members-title {
+    margin: 0 0 var(--space-2) 0;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+.change-set-detail__members-loading,
+.change-set-detail__members-empty,
+.change-set-detail__members-error {
+    margin: 0;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.change-set-detail__members-error {
+    color: var(--color-error, #991b1b);
+}
+
+.change-set-detail__members-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.change-set-detail__member {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    padding: var(--space-1) 0;
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+/* Object type label — local copy of the os.css ON/OR/OC palette (chapter → neutral).
+   To be hoisted into a shared components/type-badge.css in the styling cleanup pass. */
+.type-badge {
+    display: inline-block;
+    flex-shrink: 0;
+    min-width: 2.2em;
+    text-align: center;
+    padding: 1px var(--space-1);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+}
+
+.type-badge--on { background: #dbeafe; color: #1d4ed8; }
+.type-badge--or { background: #dcfce7; color: #15803d; }
+.type-badge--oc { background: #ede9fe; color: #6b21a8; }
+
+.type-badge--chapter,
+.type-badge--other {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+/* Object link — uses the canonical .odip-link colour/weight; this only sizes it. */
+.change-set-detail__member-link,
+.change-set-detail__member-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.change-set-detail__member-ver {
+    flex-shrink: 0;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+}
+
+.change-set-detail__member-note {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}

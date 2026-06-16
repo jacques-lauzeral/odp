@@ -184,7 +184,7 @@ export default class ReferenceManager {
             return `<span class="selected-chip">${this._esc(label)}</span>`;
         }
 
-        return `<span class="selected-chip">
+        return `<span class="selected-chip"${node?.title ? ` title="${this._esc(node.title)}"` : ''}>
                     ${this._esc(label)}
                     <button type="button" class="chip-remove" title="Remove">×</button>
                 </span>`;
@@ -279,6 +279,7 @@ export default class ReferenceManager {
                            data-value="${this._esc(String(node.value))}"
                            data-label="${this._esc(node.label)}"
                            data-path="${this._esc(path)}"
+                           ${node.title ? `title="${this._esc(node.title)}"` : ''}
                    >${this._esc(displayLabel)}</button>`
                 : `<span class="rm-node-label ${node._contextOnly ? 'rm-node-label--context' : 'rm-node-label--header'}">${this._esc(displayLabel)}</span>`;
 
@@ -498,7 +499,7 @@ export default class ReferenceManager {
      * @returns {object[]}
      */
     _flatToNodes(options) {
-        return options.map(o => ({ value: o.value, label: o.label, leaf: true }));
+        return options.map(o => ({ value: o.value, label: o.label, title: o.title, leaf: true }));
     }
 
     /**

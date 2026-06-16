@@ -36,6 +36,7 @@ const SUB_ACTIVITIES = {
     quality:   () => import('../shared/quality/quality.js'),
     narrative: () => import('../shared/narrative/narrative.js'),
     setup:     () => import('../shared/setup/setup.js'),
+    'change-sets': () => import('../shared/change-sets/change-sets.js'),
 };
 
 const TABS = [
@@ -44,6 +45,7 @@ const TABS = [
     { key: 'plan',      label: 'Plan'      },
     { key: 'quality',   label: 'Quality'   },
     { key: 'setup',     label: 'Setup'     },
+    { key: 'change-sets', label: 'Change Sets' },
 ];
 
 const DEFAULT_SUB = 'os';

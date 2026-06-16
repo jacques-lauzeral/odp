@@ -151,6 +151,16 @@ export class CollectionEntityForm {
         return null;
     }
 
+    /**
+     * Whether a save through this form is a versioned write that must commit under a
+     * change set (LCM). Default true — every O* form. Non-versioned forms (ODIP editions,
+     * change sets themselves) override this to return false to skip the commit gate.
+     * @returns {boolean}
+     */
+    requiresChangeSet() {
+        return true;
+    }
+
     getFormTitle(mode, item = null) {
         // Override in subclasses for custom titles
         switch (mode) {
@@ -1661,13 +1671,16 @@ export class CollectionEntityForm {
         // Transform data
         const dataToSave = this.transformDataForSave(formData, this.currentMode, this.currentItem);
 
-        // LCM commit gate — every versioned write commits under a change set. The dialog
+        // LCM commit gate — every *versioned* write commits under a change set. The dialog
         // offers the active change set (confirm), lets the user pick another or create one,
         // and optionally attach a note. Cancelling aborts the save and leaves the form open.
-        const commit = await openChangeSetCommitDialog(this.context.app, { allowNote: true });
-        if (!commit) return;
-        dataToSave.changeSetId = commit.changeSetId;
-        if (commit.note) dataToSave.note = commit.note;
+        // Non-versioned forms (editions, change sets) opt out via requiresChangeSet().
+        if (this.requiresChangeSet()) {
+            const commit = await openChangeSetCommitDialog(this.context.app, { allowNote: true });
+            if (!commit) return;
+            dataToSave.changeSetId = commit.changeSetId;
+            if (commit.note) dataToSave.note = commit.note;
+        }
 
         try {
             // Save
@@ -1716,6 +1729,8 @@ export class CollectionEntityForm {
         for (const [, field] of this._getFieldMap()) {
             if (field.readOnly) continue;
             if (field.type === 'static-label') continue;
+            // editableOnlyOnCreate fields render read-only outside create — nothing to collect.
+            if (field.editableOnlyOnCreate && this.currentMode !== 'create') continue;
 
             // Special handling for annotated-reference-list
             if (field.type === 'annotated-reference-list') {
@@ -1799,6 +1814,8 @@ export class CollectionEntityForm {
         for (const [, field] of this._getFieldMap()) {
             if (field.readOnly) continue;
             if (field.type === 'static-label') continue;
+            // editableOnlyOnCreate fields are immutable (read-only) outside create — don't validate.
+            if (field.editableOnlyOnCreate && mode !== 'create') continue;
 
             const value = data[field.key];
 

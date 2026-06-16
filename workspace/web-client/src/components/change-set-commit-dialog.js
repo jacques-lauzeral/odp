@@ -18,6 +18,7 @@
  * This is a display default only — the server re-validates the set is OPEN at write time.
  */
 import { apiClient } from '../shared/api-client.js';
+import ReferenceManager from './reference-manager.js';
 
 const CLASSIFIERS = [
     { value: 'NEW_CONTENT',     label: 'New content'     },
@@ -40,6 +41,7 @@ class ChangeSetCommitDialog {
         this._openSets = [];
         this._creating = false;
         this._selectedId = app.getActiveChangeSet()?.id ?? null;
+        this._picker = null;
         this._onKeydown = this._onKeydown.bind(this);
     }
 
@@ -100,24 +102,16 @@ class ChangeSetCommitDialog {
     }
 
     _renderBody() {
+        // Destroy any prior picker before the host element is replaced.
+        if (this._picker) { this._picker.destroy(); this._picker = null; }
+
         const body = this.overlay.querySelector('[data-role="body"]');
         const labelStyle = 'display:block; font-size:var(--font-size-xs); color:var(--text-secondary); margin-bottom:var(--space-1);';
         const optStyle = 'color:var(--text-tertiary); font-weight:var(--font-weight-normal);';
 
-        const rows = this._openSets.map(cs => `
-            <label class="radio-label" style="justify-content:space-between; padding:var(--space-2) var(--space-3);
-                   border:1px solid var(--border-primary); border-radius:var(--radius-md); font-size:var(--font-size-sm);">
-                <span style="display:flex; align-items:center; gap:var(--space-2);">
-                    <input type="radio" name="cs-pick" value="${cs.id}"
-                           ${String(cs.id) === String(this._selectedId) ? 'checked' : ''} ${this._creating ? 'disabled' : ''}>
-                    ${esc(cs.title)}
-                </span>
-                <span style="font-size:var(--font-size-xs); color:var(--text-tertiary);">${esc(cs.classifier ?? '')}</span>
-            </label>`).join('');
-
         body.innerHTML = `
             ${this._openSets.length > 0 ? `
-                <div style="display:flex; flex-direction:column; gap:var(--space-2); ${this._creating ? 'opacity:0.5;' : ''}">${rows}</div>
+                <div data-role="picker-host" ${this._creating ? 'hidden' : ''}></div>
                 <button class="odip-link" data-act="toggle-create" style="align-self:flex-start; background:none; border:none; cursor:pointer; font-size:var(--font-size-sm);">
                     ${this._creating ? '← Pick an existing change set' : '+ Create a new change set'}
                 </button>
@@ -148,12 +142,28 @@ class ChangeSetCommitDialog {
                 </div>` : ''}
         `;
 
+        // Mount the OPEN change-set typeahead (existing-set selection path only).
+        if (this._openSets.length > 0 && !this._creating) {
+            const host = body.querySelector('[data-role="picker-host"]');
+            this._picker = new ReferenceManager({
+                fieldId: 'cs-pick',
+                placeholder: 'Filter by code or title…',
+                noneLabel: 'No change set selected',
+                initialValue: this._selectedId,
+                options: this._openSets.map(cs => ({
+                    value: cs.id,
+                    label: cs.code ? `${cs.code} — ${cs.title}` : cs.title,
+                    title: cs.reasonText || undefined,
+                })),
+                onChange: (raw) => { this._selectedId = raw; this._syncConfirm(); },
+            });
+            this._picker.render(host);
+        }
+
         body.querySelector('[data-act="toggle-create"]')?.addEventListener('click', () => {
             this._creating = !this._creating;
             this._renderBody();
         });
-        body.querySelectorAll('input[name="cs-pick"]').forEach(r =>
-            r.addEventListener('change', () => { this._selectedId = r.value; this._syncConfirm(); }));
         body.querySelector('[data-field="new-title"]')?.addEventListener('input', () => this._syncConfirm());
         this._syncConfirm();
     }
@@ -212,16 +222,11 @@ class ChangeSetCommitDialog {
 
     _finish(result) {
         document.removeEventListener('keydown', this._onKeydown);
+        if (this._picker) { this._picker.destroy(); this._picker = null; }
         this.overlay?.remove();
         this.overlay = null;
         const resolve = this._resolve;
         this._resolve = null;
         if (resolve) resolve(result);
     }
-}
-
-function esc(str) {
-    return String(str ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
