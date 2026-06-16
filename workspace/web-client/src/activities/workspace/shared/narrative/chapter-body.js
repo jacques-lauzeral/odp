@@ -44,14 +44,23 @@ export default class ChapterBody {
         this._onSaved                = options.onSaved                ?? (() => {});
         this._onChapterSelect        = options.onChapterSelect        ?? (() => {});
         this._onTopicFullSave        = options.onTopicFullSave        ?? (() => {});
+        this._onChapterNarrativeSave = options.onChapterNarrativeSave ?? (() => {});
         this._onThemeDelete          = options.onThemeDelete          ?? (() => {});
         this._onOStarSaved           = options.onOStarSaved           ?? (() => {});
+        // LCM edit-session coordination (2c)
+        this._onEditSessionStart     = options.onEditSessionStart     ?? (() => {});
+        this._onEditSessionEnd       = options.onEditSessionEnd       ?? (() => {});
+        this._canStartNarrativeEdit  = options.canStartNarrativeEdit  ?? (() => true);
 
         this._richText       = null;
         this._currentChapter = null;
         this._currentEntry   = null;   // last entry passed to renderSelectionRead
         this._dirty          = false;
         this._saving         = false;
+        // True while a buffered hierarchy session owns the TOC — Edit buttons disabled.
+        this._narrativeEditLocked = false;
+        // True while THIS body is in an explicit edit session (chapter or topic).
+        this._editing        = false;
 
         this._requirementDetails = null;
         this._changeDetails      = null;
@@ -79,6 +88,9 @@ export default class ChapterBody {
     /**
      * Render a single TOC entry.
      * Guards unsaved changes before switching view.
+     *
+     * 2c: chapter and topic entries now render READ-ONLY by default even in
+     * Elaborate. An explicit Edit button opens an edit session (see _enterEdit).
      * @param {object}  entry
      * @param {object}  chapter
      * @param {boolean} [forceReadOnly=false] — true when called from ODIP scope
@@ -88,17 +100,60 @@ export default class ChapterBody {
         this._destroyRichText();
         this._currentChapter = chapter;
         this._currentEntry   = entry;
+        this._editing        = false;   // new selection always starts read-only
 
-        const editable = this._isEditable && !forceReadOnly;
+        // editable capability — whether an Edit affordance is offered at all
+        const canEdit = this._isEditable && !forceReadOnly;
 
         if (entry.type === 'chapter') {
-            this._renderChapterNarrative(chapter, editable);
+            this._renderChapterNarrative(chapter, /* editing */ false, canEdit);
         } else if (entry.type === 'topic') {
-            this._renderTopic(entry.topic);
+            this._renderTopic(entry.topic, /* editing */ false, canEdit);
         } else if (entry.type === 'unassigned') {
             this._renderUnassigned(entry.items ?? []);
         } else if (entry.type === 'ostar') {
             await this._renderOStar(entry.ostar);
+        }
+    }
+
+    /**
+     * Enter an edit session for the current chapter or topic entry. Refuses if a
+     * hierarchy session holds the lock. Notifies NarrativeActivity so the TOC locks
+     * out drags, then re-renders the current entry in editable mode.
+     */
+    _enterEdit() {
+        if (!this._isEditable || this._narrativeEditLocked || !this._canStartNarrativeEdit()) return;
+        const entry   = this._currentEntry;
+        const chapter = this._currentChapter;
+        if (!entry || !chapter) return;
+
+        this._editing = true;
+        this._onEditSessionStart();
+
+        this._destroyRichTextKeepFlags();
+        if (entry.type === 'chapter') {
+            this._renderChapterNarrative(chapter, /* editing */ true, /* canEdit */ true);
+        } else if (entry.type === 'topic') {
+            this._renderTopic(entry.topic, /* editing */ true, /* canEdit */ true);
+        }
+    }
+
+    /**
+     * Exit the current edit session back to read-only, re-rendering the same entry.
+     * Fires onEditSessionEnd so the TOC unlocks. Assumes _dirty already handled.
+     */
+    _exitEdit() {
+        const entry   = this._currentEntry;
+        const chapter = this._currentChapter;
+        this._editing = false;
+        this._dirty   = false;
+        this._onEditSessionEnd();
+
+        this._destroyRichTextKeepFlags();
+        if (entry?.type === 'chapter') {
+            this._renderChapterNarrative(chapter, false, true);
+        } else if (entry?.type === 'topic') {
+            this._renderTopic(entry.topic, false, true);
         }
     }
 
@@ -132,19 +187,33 @@ export default class ChapterBody {
     // Selection-read renderers
     // =========================================================================
 
-    _renderChapterNarrative(chapter, editable) {
+    /**
+     * @param {object}  chapter
+     * @param {boolean} editing  — true = edit session open (editable + Save/Cancel)
+     * @param {boolean} canEdit  — true = offer an Edit button in read mode
+     */
+    _renderChapterNarrative(chapter, editing, canEdit) {
         const title = this._esc(chapter.title ?? chapter.code ?? '');
+        const editLocked = this._narrativeEditLocked;
+
+        const actions = editing
+            ? `<div class="chapter-body__actions">
+                   <button class="odip-btn odip-btn--standard chapter-body__cancel">Cancel</button>
+                   <button class="odip-btn odip-btn--primary chapter-body__save" disabled>Save</button>
+                   <span class="chapter-body__status"></span>
+               </div>`
+            : (canEdit
+                ? `<div class="chapter-body__actions">
+                       <button class="odip-btn odip-btn--standard chapter-body__edit"
+                               ${editLocked ? 'disabled title="Finish the structure changes first"' : ''}>Edit</button>
+                   </div>`
+                : '');
 
         this.container.innerHTML = `
-            <div class="chapter-body chapter-body--padded${editable ? '' : ' chapter-body--readonly'}">
+            <div class="chapter-body chapter-body--padded${editing ? '' : ' chapter-body--readonly'}">
                 <div class="chapter-body__header">
                     <h2 class="chapter-body__title">${title}</h2>
-                    ${editable ? `
-                        <div class="chapter-body__actions">
-                            <button class="odip-btn odip-btn--primary chapter-body__save" disabled>Save</button>
-                            <span class="chapter-body__status"></span>
-                        </div>
-                    ` : ''}
+                    ${actions}
                 </div>
                 <div class="chapter-body__editor-wrap">
                     <div id="chapterNarrativeEditor" class="chapter-body__editor"></div>
@@ -153,44 +222,60 @@ export default class ChapterBody {
         `;
 
         const editorEl = this.container.querySelector('#chapterNarrativeEditor');
-        this._initRichTextNarrative(editorEl, chapter, editable);
+        this._initRichTextNarrative(editorEl, chapter, editing);
 
-        if (editable) {
+        if (editing) {
             this.container.querySelector('.chapter-body__save')
                 ?.addEventListener('click', () => this._saveNarrative(chapter));
+            this.container.querySelector('.chapter-body__cancel')
+                ?.addEventListener('click', () => this._cancelEdit());
+        } else if (canEdit) {
+            this.container.querySelector('.chapter-body__edit')
+                ?.addEventListener('click', () => this._enterEdit());
         }
     }
 
-    _renderTopic(topic) {
+    /**
+     * @param {object}  topic
+     * @param {boolean} editing  — true = edit session open
+     * @param {boolean} canEdit  — true = offer an Edit button in read mode
+     */
+    _renderTopic(topic, editing, canEdit) {
         const items      = topic?.items     ?? [];
         const subTopics  = topic?.subTopics ?? [];
         const title      = topic?.topic     ?? '';
         const narrative  = topic?.narrative ?? null;
-        const editable   = this._isEditable;
         const topicId    = topic?.id        ?? null;
         const isEmpty    = items.length === 0 && subTopics.length === 0;
+        const editLocked = this._narrativeEditLocked;
+
+        const header = editing
+            ? `<input class="odip-input chapter-body__topic-title"
+                       id="topicTitleInput"
+                       type="text"
+                       value="${this._esc(title)}"
+                       placeholder="Theme title…"
+                       maxlength="200" />
+                <div class="chapter-body__actions">
+                    ${isEmpty ? `
+                        <button class="odip-btn odip-btn--danger chapter-body__topic-delete"
+                                title="Delete this theme">Delete theme</button>
+                    ` : ''}
+                    <button class="odip-btn odip-btn--standard chapter-body__topic-cancel">Cancel</button>
+                    <button class="odip-btn odip-btn--primary chapter-body__topic-save" disabled>Save</button>
+                    <span class="chapter-body__status"></span>
+                </div>`
+            : `<h3 class="chapter-body__title chapter-body__title--topic">${this._esc(title)}</h3>
+                ${canEdit ? `
+                <div class="chapter-body__actions">
+                    <button class="odip-btn odip-btn--standard chapter-body__topic-edit"
+                            ${editLocked ? 'disabled title="Finish the structure changes first"' : ''}>Edit</button>
+                </div>` : ''}`;
 
         this.container.innerHTML = `
-            <div class="chapter-body chapter-body--padded${editable ? ' chapter-body--topic' : ' chapter-body--readonly'}">
+            <div class="chapter-body chapter-body--padded${editing ? ' chapter-body--topic' : ' chapter-body--readonly'}">
                 <div class="chapter-body__header">
-                    ${editable ? `
-                        <input class="odip-input chapter-body__topic-title"
-                               id="topicTitleInput"
-                               type="text"
-                               value="${this._esc(title)}"
-                               placeholder="Theme title…"
-                               maxlength="200" />
-                        <div class="chapter-body__actions">
-                            ${isEmpty ? `
-                                <button class="odip-btn odip-btn--danger chapter-body__topic-delete"
-                                        title="Delete this theme">Delete theme</button>
-                            ` : ''}
-                            <button class="odip-btn odip-btn--primary chapter-body__topic-save" disabled>Save</button>
-                            <span class="chapter-body__status"></span>
-                        </div>
-                    ` : `
-                        <h3 class="chapter-body__title chapter-body__title--topic">${this._esc(title)}</h3>
-                    `}
+                    ${header}
                 </div>
                 <div class="chapter-body__topic-narrative">
                     <div id="topicNarrativeEditor" class="chapter-body__editor"></div>
@@ -206,8 +291,7 @@ export default class ChapterBody {
             </div>
         `;
 
-        // Title input — mark dirty on input; save on blur or Enter
-        if (editable) {
+        if (editing) {
             const titleInput = this.container.querySelector('#topicTitleInput');
             if (titleInput) {
                 const markDirty = () => {
@@ -230,14 +314,18 @@ export default class ChapterBody {
 
             this.container.querySelector('.chapter-body__topic-delete')
                 ?.addEventListener('click', () => this._deleteTheme(topicId));
-
+            this.container.querySelector('.chapter-body__topic-cancel')
+                ?.addEventListener('click', () => this._cancelEdit());
             this.container.querySelector('.chapter-body__topic-save')
                 ?.addEventListener('click', () => this._saveTopicFull(topic, topicId));
+        } else if (canEdit) {
+            this.container.querySelector('.chapter-body__topic-edit')
+                ?.addEventListener('click', () => this._enterEdit());
         }
 
         const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
 
-        if (editable) {
+        if (editing) {
             this._richText = new RichTextComponent({
                 readOnly:    false,
                 headings:    true,
@@ -263,6 +351,7 @@ export default class ChapterBody {
                 rt.mount(narrativeEl);
                 rt.setValue(typeof narrative === 'string' ? narrative : JSON.stringify(narrative));
                 rt.blur();
+                this._richText = rt;
             } else {
                 narrativeEl.classList.add('chapter-body__editor--empty');
             }
@@ -415,9 +504,37 @@ export default class ChapterBody {
         }
     }
 
+    /**
+     * Cancel the current edit session — discards any unsaved changes and returns
+     * to read-only. The Cancel button is itself the discard intent, so no
+     * confirmation dialog is shown. `_exitEdit` clears `_dirty`, so no later
+     * navigation guard fires for the abandoned edit.
+     */
+    _cancelEdit() {
+        this._exitEdit();
+    }
+
     // =========================================================================
-    // Unsaved-changes guard
+    // Narrative-edit lock (2c) — set by NarrativeActivity during hierarchy session
     // =========================================================================
+
+    /**
+     * Enable/disable the narrative Edit affordance. While locked (a hierarchy
+     * session is buffering in the TOC), Edit buttons are disabled. If a read-only
+     * view is currently shown, re-render it so the disabled state is reflected.
+     * @param {boolean} locked
+     */
+    setNarrativeEditLocked(locked) {
+        this._narrativeEditLocked = !!locked;
+        // Only re-render if we're showing a read-mode chapter/topic (Edit button visible).
+        if (this._editing) return;
+        const entry = this._currentEntry;
+        if (entry?.type === 'chapter') {
+            this._renderChapterNarrative(this._currentChapter, false, this._isEditable);
+        } else if (entry?.type === 'topic') {
+            this._renderTopic(entry.topic, false, this._isEditable);
+        }
+    }
 
     /**
      * If there are unsaved changes, show the Save / Discard / Cancel dialog.
@@ -440,6 +557,11 @@ export default class ChapterBody {
 
         if (answer === 'discard') {
             this._dirty = false;
+            // If we were in an explicit edit session, close it so the TOC unlocks.
+            if (this._editing) {
+                this._editing = false;
+                this._onEditSessionEnd();
+            }
             return true;
         }
 
@@ -642,12 +764,9 @@ export default class ChapterBody {
 
         try {
             const narrative = this._richText.getValue() ?? '';
-            const updated = await apiClient.patchChapter(chapter.itemId, {
-                narrative,
-                expectedVersionId: chapter.versionId,
-            });
-            if (updated?.versionId) chapter.versionId = updated.versionId;
-            if (updated?.narrative) chapter.narrative  = updated.narrative;
+            // The activity owns the chapter write: it runs the commit gate, PATCHes
+            // with changeSetId, and updates chapter.versionId / chapter.narrative in place.
+            await this._onChapterNarrativeSave(narrative);
             this._dirty  = false;
             this._saving = false;
             if (statusEl) {
@@ -655,6 +774,8 @@ export default class ChapterBody {
                 setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
             }
             this._onSaved(chapter.itemId);
+            // Exit the edit session back to read-only after a brief confirmation.
+            this._exitEdit();
         } catch (error) {
             this._saving = false;
             errorHandler.handle(error, 'chapter-body-save');
@@ -694,6 +815,9 @@ export default class ChapterBody {
                 statusEl.textContent = '✓ Saved';
                 setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
             }
+            // Sync the in-memory topic node so the read re-render shows fresh content.
+            if (topic) { topic.topic = newTitle; topic.narrative = narrative; }
+            this._exitEdit();
         } catch (error) {
             this._saving = false;
             errorHandler.handle(error, 'chapter-body-topic-save');
@@ -804,6 +928,18 @@ export default class ChapterBody {
         }
         this._dirty  = false;
         this._saving = false;
+    }
+
+    /**
+     * Destroy the rich-text component without touching _dirty / _saving / _editing.
+     * Used during edit-session entry/exit, where those flags are managed by the
+     * caller and must survive the re-render.
+     */
+    _destroyRichTextKeepFlags() {
+        if (this._richText) {
+            this._richText.destroy();
+            this._richText = null;
+        }
     }
 
     _esc(str) {

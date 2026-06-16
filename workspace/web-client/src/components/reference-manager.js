@@ -161,7 +161,7 @@ export default class ReferenceManager {
         // The multi-root tree lives in the popup, not inline.
         if (this.selectedId != null) {
             return `${this._renderChip()}
-                    <button type="button" class="odip-btn odip-btn--primary rm-pick-btn">Change</button>`;
+                    <button type="button" class="odip-btn odip-btn--primary rm-pick-btn">Select</button>`;
         }
         return `<span class="empty-state-inline">${this._esc(this._noneLabel)}</span>
                 <button type="button" class="odip-btn odip-btn--primary rm-pick-btn">Select</button>`;

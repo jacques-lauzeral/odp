@@ -67,6 +67,17 @@ export default class ChapterToc {
         this._onAddOStar           = options.onAddOStar           ?? (() => {});
         this._onFocusOdip          = options.onFocusOdip          ?? (() => {});
 
+        // LCM hierarchy edit session (2c)
+        this._onHierarchySessionSave   = options.onHierarchySessionSave   ?? (() => {});
+        this._onHierarchySessionCancel = options.onHierarchySessionCancel ?? (() => {});
+        this._canStartHierarchyEdit    = options.canStartHierarchyEdit    ?? (() => true);
+
+        // True while a 'hierarchy' edit session is buffering drops — drives the
+        // Save/Cancel strip at the top of the chapter tree.
+        this._hierarchySessionActive = false;
+        // True while a 'narrative' edit session owns the body — drags are refused.
+        this._hierarchyEditLocked    = false;
+
         // ODIP scope state — all ids stored as normalizeId() integers
         this._collapsedIds  = new Set();
         this._odipActiveId  = null;
@@ -339,6 +350,7 @@ export default class ChapterToc {
         this._unassignedOStars = unassignedOStars;
         this._collapsedTopics  = new Set();
         this._hierarchy        = [];
+        this._hierarchySessionActive = false;
 
         const title = this._esc(chapter.title ?? chapter.code ?? '');
 
@@ -384,7 +396,21 @@ export default class ChapterToc {
         // visibility is gated by NarrativeActivity (only injected for domain chapters).
         const unclassifiedBucket = this._renderUnassignedBucket();
 
+        // Hierarchy edit-session strip (2c) — shown once the first buffered drop has
+        // started a session. Save commits the whole session as one change; Cancel
+        // discards and restores the last-saved hierarchy.
+        const sessionStrip = this._hierarchySessionActive
+            ? `<div class="chapter-toc__session-strip" id="chapterTocSessionStrip">
+                   <span class="chapter-toc__session-label">Unsaved structure changes</span>
+                   <span class="chapter-toc__session-actions">
+                       <button class="odip-btn odip-btn--standard" id="chapterTocSessionCancel">Cancel</button>
+                       <button class="odip-btn odip-btn--primary" id="chapterTocSessionSave">Save</button>
+                   </span>
+               </div>`
+            : '';
+
         treeEl.innerHTML = [
+            sessionStrip,
             unclassifiedBucket,
             rootStrip,
             ...hierarchy.map((topic, ti) => this._renderTopic(topic, ti, 0)),
@@ -392,6 +418,13 @@ export default class ChapterToc {
                 ? '<div class="chapter-toc__empty">No O*s in this chapter.</div>'
                 : '',
         ].join('');
+
+        if (this._hierarchySessionActive) {
+            treeEl.querySelector('#chapterTocSessionSave')
+                ?.addEventListener('click', () => this._onHierarchySessionSave());
+            treeEl.querySelector('#chapterTocSessionCancel')
+                ?.addEventListener('click', () => this._onHierarchySessionCancel());
+        }
     }
 
     /**
@@ -788,6 +821,12 @@ export default class ChapterToc {
     }
 
     _handleDragStart(e) {
+        // Mutual exclusion: a narrative edit is open in the body — refuse to start a
+        // structure drag. NarrativeActivity owns the authoritative check.
+        if (this._hierarchyEditLocked || !this._canStartHierarchyEdit()) {
+            e.preventDefault();
+            return;
+        }
         const el = e.target.closest('[data-drag-path]');
         if (!el) return;
         const path     = el.dataset.dragPath;
@@ -910,6 +949,7 @@ export default class ChapterToc {
             dstNode.items = this._sortItemsByType(dstNode.items);
             this._clearDropIndicators();
             this._drag = null;
+            this._hierarchySessionActive = true;
             this._onUnclassifiedChange(h);
             return;
         }
@@ -924,6 +964,7 @@ export default class ChapterToc {
                 srcNode.items.splice(src.itemIndex, 1);
                 this._clearDropIndicators();
                 this._drag = null;
+                this._hierarchySessionActive = true;
                 this._onUnclassifiedChange(h);
                 return;
             }
@@ -959,6 +1000,7 @@ export default class ChapterToc {
     _commitMutation(mutated) {
         if (!mutated) { this._cancelDrag(); return; }
         this._hierarchy = mutated;
+        this._hierarchySessionActive = true;   // first drop opens the session strip
         this._clearDropIndicators();
         this._drag = null;
         this._renderChapterTree();
@@ -1220,6 +1262,30 @@ export default class ChapterToc {
 
     // =========================================================================
 
+    // =========================================================================
+    // Edit-session control (2c) — called by NarrativeActivity
+    // =========================================================================
+
+    /**
+     * Lock or unlock hierarchy editing. While locked (a narrative edit is open in
+     * the body), drag starts are refused. Called by NarrativeActivity on the
+     * narrative session begin/end.
+     * @param {boolean} locked
+     */
+    setHierarchyEditLocked(locked) {
+        this._hierarchyEditLocked = !!locked;
+    }
+
+    /**
+     * End the hierarchy session: clear the active flag so the Save/Cancel strip is
+     * removed on the next render. Called by NarrativeActivity after a successful
+     * save or a cancel. Does not itself re-render — the caller re-renders the tree
+     * from the authoritative (saved or restored) hierarchy.
+     */
+    endHierarchySession() {
+        this._hierarchySessionActive = false;
+    }
+
     setActiveKey(key) {
         this._activeKey = key;
         this.container?.querySelectorAll('.chapter-toc__entry').forEach(b => {
@@ -1421,6 +1487,8 @@ export default class ChapterToc {
         this._collapsedTopics  = new Set();
         this._hierarchy        = [];
         this._drag             = null;
+        this._hierarchySessionActive = false;
+        this._hierarchyEditLocked    = false;
     }
 
 

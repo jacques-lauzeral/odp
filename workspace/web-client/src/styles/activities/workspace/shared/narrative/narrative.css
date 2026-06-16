@@ -675,3 +675,37 @@
     border-top: 2px solid var(--ec-blue, #2E75B6);
     border-bottom: 2px solid var(--ec-blue, #2E75B6);
 }
+/* ── Hierarchy edit-session strip (LCM 2c) ──
+   Shown atop the chapter TOC tree once the first buffered drag opens a
+   structure session. Save commits the whole session as one change; Cancel
+   discards and restores the last-saved hierarchy. Buttons reuse .odip-btn. */
+.chapter-toc__session-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-2);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--ec-light, #EBF3FB);
+    border: 1px solid var(--ec-sky, #B5D4F4);
+    border-radius: 4px;
+}
+
+.chapter-toc__session-label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--ec-navy, #1F3864);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chapter-toc__session-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+}

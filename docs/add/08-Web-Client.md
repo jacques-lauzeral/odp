@@ -849,16 +849,14 @@ Filtered nodes carry `_contextOnly: true` to distinguish them from true headers.
 
 ### 7.9 ChangeSetCommitDialog
 
-> Part of the in-progress LCM workstream (§13). Documented here as a component; its wider integration is described in §13.
-
-`openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit' }) → Promise<{ changeSetId, note } | null>` (`components/change-set-commit-dialog.js`). The shared commit gate for every versioned write (null = cancelled).
+`openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit' }) → Promise<{ changeSetId, note } | null>` (`components/change-set-commit-dialog.js`). The shared commit gate for every versioned write (null = cancelled). Wider LCM integration is described in §13.
 
 - **`mode: 'commit'`** (saves) — confirm button reads *Save*; an optional per-object **note** field is shown.
 - **`mode: 'select'`** (header chip) — picks the active default only; no note; confirm reads *Set as active*.
 
 Behaviour: fetches `OPEN` change sets, pre-selects the active default (dropped if no longer open), and offers confirm / pick-another / create-inline (title + classifier + optional reason). On confirm it calls `app.setActiveChangeSet(chosen)` and resolves; cancel/overlay/Esc resolves `null`.
 
-**Existing-set selection — `ReferenceManager` typeahead.** The pick-an-existing path is a `ReferenceManager` (§7.4) in flat-options mode, replacing the earlier radio list (which did not scale past a handful of OPEN sets). Each option is built from one OPEN set: `label = `code — title`` (degrades to `title` if `code` is absent), filterable on the combined label (i.e. code **and** title); `value = id`; `title = reasonText`, surfaced as a hover tooltip on each row and on the selected chip. The picker is mounted into a `[data-role="picker-host"]` element and `destroy()`d on every re-render (create-toggle) and on dialog finish. Selection drives `_selectedId` via `onChange`, which re-evaluates the confirm button. The create-inline and optional-note paths and the `{ changeSetId, note } | null` contract are unchanged, so no caller is affected.
+**Existing-set selection — `ReferenceManager` typeahead.** The pick-an-existing path is a `ReferenceManager` (§7.4) in flat-options mode. Each option is built from one OPEN set: `label = `code — title`` (degrades to `title` if `code` is absent), filterable on the combined label (i.e. code **and** title); `value = id`; `title = reasonText`, surfaced as a hover tooltip on each row and on the selected chip. The picker is mounted into a `[data-role="picker-host"]` element and `destroy()`d on every re-render (create-toggle) and on dialog finish. Selection drives `_selectedId` via `onChange`, which re-evaluates the confirm button.
 
 **Module placement & styling.** It is the same *family* as `user-dialogs.js` (promise-based modal helpers) but is **data-aware** (reads `OPEN` sets, may `POST` a new one), so it lives in its own module rather than in `user-dialogs.js`. It reuses the existing modal vocabulary exactly — `modal-overlay` / `modal` / `modal-header|body|footer` with the same inline overrides (`max-width:480px; height:auto; min-height:0; resize:none`), z-index `2000`, `odip-btn` buttons, `odip-input` fields, and real design tokens. **No new CSS file.**
 
@@ -1029,9 +1027,26 @@ Create buttons are disabled until a chapter is dived into (`NarrativeActivity._s
 | Scope | TOC | Body default |
 |---|---|---|
 | `odip` | Full chapter tree; expand/collapse; select / dive → | Chapter narrative (read-only) |
-| `chapter` | topic/O* tree | Chapter narrative (editable in Elaborate) |
+| `chapter` | topic/O* tree | Chapter narrative (read-only; **Edit** button in Elaborate) |
 
-Navigation between scopes lives in the toolbar left slot, not the TOC. In chapter scope, selecting the chapter node makes the **chapter narrative** editable; selecting a topic node makes that **topic narrative** editable (Elaborate only). Create actions are enabled on dive, disabled on climb.
+Navigation between scopes lives in the toolbar left slot, not the TOC. Every body view — chapter narrative, topic — is read-only on selection. In Elaborate each read view of a chapter or topic carries an **Edit** button that opens an explicit edit session for that entry; selecting a different node closes the read view and shows the new one, again read-only. Create actions are enabled on dive, disabled on climb.
+
+##### Edit-session model (Elaborate only)
+
+`NarrativeActivity._editSession` is the single source of truth for what is being edited at any moment:
+
+| Value | Meaning | Owner of dirty state |
+|---|---|---|
+| `null` | nothing being edited | — |
+| `'narrative'` | a chapter or topic narrative is open for editing in the body | `ChapterBody._dirty` |
+| `'hierarchy'` | a buffered structure (drag-and-drop) session is open in the TOC | `NarrativeActivity._pendingHierarchy` |
+
+At most one session is active at a time. The exclusion is enforced through paired callbacks, with the authoritative check held on `NarrativeActivity`:
+
+- **Body → activity.** Entering a narrative edit fires `onEditSessionStart` (sets `_editSession = 'narrative'` and calls `ChapterToc.setHierarchyEditLocked(true)`); leaving it fires `onEditSessionEnd` (clears the session and calls `setHierarchyEditLocked(false)`). While the TOC is hierarchy-locked, `ChapterToc._handleDragStart` refuses to begin a drag.
+- **TOC → activity.** The first buffered drop fires `onHierarchyChange`, which `_beginHierarchySession` turns into `_editSession = 'hierarchy'` and a call to `ChapterBody.setNarrativeEditLocked(true)`. While the body is narrative-locked, its **Edit** buttons render disabled with a "finish the structure changes first" tooltip.
+
+Each side also receives a guard predicate from the activity — `canStartHierarchyEdit()` (true when `_editSession !== 'narrative'`) and `canStartNarrativeEdit()` (true when `_editSession !== 'hierarchy'`) — checked defensively before a drag or an Edit click is honoured.
 
 #### 8.3.3 Sub-Path and Query Parameter Routing
 
@@ -1063,8 +1078,12 @@ Navigation between scopes lives in the toolbar left slot, not the TOC. In chapte
 | `setActiveByTopicId(id)` | Highlight the topic/subtopic entry matching the stable string `id`; expands collapsed ancestors; fires `onChapterSelect` |
 | `selectTopicByIndex(idx)` | Programmatically select a top-level topic by zero-based index |
 | `refreshTree()` | Rebuild the chapter-scope tree from the current `_hierarchy` while preserving selection highlight and scroll position |
+| `setHierarchyEditLocked(locked)` | Lock/unlock drag start while a narrative edit owns the body |
+| `endHierarchySession()` | Clear the active-session flag so the Save/Cancel strip is dropped on the next render |
 
-**Constructor callbacks:** `onOdipSelect(chapter)`, `onDive(chapter)`, `onClimb()`, `onFocusOdip()`, `onChapterSelect(entry)`, `onHierarchyChange(hierarchy)` (DnD, Elaborate only), `onUnclassifiedChange(hierarchy)`.
+**Constructor callbacks:** `onOdipSelect(chapter)`, `onDive(chapter)`, `onClimb()`, `onFocusOdip()`, `onChapterSelect(entry)`, `onHierarchyChange(hierarchy)` (first buffered drop — Elaborate only), `onUnclassifiedChange(hierarchy)`, `onHierarchySessionSave()`, `onHierarchySessionCancel()`, `canStartHierarchyEdit()`.
+
+**Hierarchy edit session.** In chapter scope, drag-and-drop edits are buffered, not written per drop. The first drop sets an in-component active flag and `_renderChapterTree` paints a **Save / Cancel** strip at the top of the tree (`#chapterTocSessionStrip`); its buttons call `onHierarchySessionSave` / `onHierarchySessionCancel`. Subsequent drops mutate the in-memory `_hierarchy` and re-render, leaving the strip in place. The strip is removed when the activity ends the session via `endHierarchySession()` followed by a tree refresh.
 
 **Keyboard navigation** — both TOC shells (`#chapterTocOdip`, `#chapterTocChapter`) have `tabindex="0"` and handle `keydown`. Navigation moves the **selection** directly (identical to a click):
 
@@ -1079,22 +1098,24 @@ Navigation between scopes lives in the toolbar left slot, not the TOC. In chapte
 
 | Entry type | Renderer | Notes |
 |---|---|---|
-| `chapter` | `_renderChapterNarrative` | Full narrative; editable in Elaborate |
-| `topic` | `_renderTopic` | Title input · narrative · O* cards · subtheme cards; editable in Elaborate |
+| `chapter` | `_renderChapterNarrative(chapter, editing, canEdit)` | Read-only by default; **Edit** button when `canEdit`; **Save / Cancel** when `editing` |
+| `topic` | `_renderTopic(topic, editing, canEdit)` | Title · narrative · O* cards · subtheme cards; read-only by default, editable within a session |
 | `subtopic-by-id` | — | Synthetic entry fired by subtheme card click; intercepted by `_handleChapterTocSelect`, delegated to `ChapterToc.setActiveByTopicId`, re-enters as `topic` |
 | `unassigned` | `_renderUnassigned` | O*s with no topic placement |
 | `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button navigates to `{base}/os/{type}/{id}` |
 
-**Chapter narrative rendering** (`_renderChapterNarrative`) — delegates to `_initRichTextNarrative(el, chapter, editable)`, passing the chapter so the renderer has both `availableBlockIds` and `availableStringKeys`:
+**Edit-session entry/exit.** In Elaborate, `_enterEdit()` opens a session: it refuses while `_narrativeEditLocked` or `!canStartNarrativeEdit()`, otherwise sets `_editing = true`, fires `onEditSessionStart`, and re-renders the current entry editable. `_exitEdit()` returns to read-only, clears `_dirty`, fires `onEditSessionEnd`, and re-renders. Both use `_destroyRichTextKeepFlags()`, a `_destroyRichText` variant that preserves `_dirty`/`_saving` because entry/exit manage those explicitly. `_cancelEdit()` (the Cancel button) discards any unsaved changes and returns to read-only immediately — no confirmation, since the button is itself the discard intent; because `_exitEdit` clears `_dirty`, no navigation guard fires afterwards for the abandoned edit. A successful `_saveNarrative` or `_saveTopicFull` calls `_exitEdit()`, so saving returns the view to read-only and closes the session in one step.
+
+**Chapter narrative rendering** (`_renderChapterNarrative`) — delegates to `_initRichTextNarrative(el, chapter, editing)`, passing the chapter so the renderer has both `availableBlockIds` and `availableStringKeys`:
 
 - **Edit mode** — both lists are passed to `RichTextComponent`; block and string chips are visible and insertable via the unified ⚙ dropdown.
 - **Read-only** — narrative is rendered immediately with chips visible. If either list is non-empty, `_resolveAndSubstituteGeneratedContent()` runs asynchronously after mount: it calls `POST /chapters/:id/resolve-generated-content`, then applies block and string substitutions into the live TipTap document via `setValue`. Always dynamic — no stored content.
 
 `_substituteGeneratedBlocks()` walks `doc.content` recursively; when a paragraph containing only a `generated-block` mark is found, replaces it with the resolved node array (unknown IDs left as-is). `_substituteGeneratedStrings()` replaces text nodes carrying a `generated-string` mark with a plain text node containing the resolved value (unresolved keys left as-is).
 
-**Topic body layout** (`_renderTopic`) renders in order: Title (Elaborate: `odip-input.chapter-body__topic-title`, saves on blur/Enter, reverts on Escape; Explore: plain `<h3>`); Narrative (editable `RichTextComponent` in Elaborate, read-only when non-null in Explore); O* card list (direct O*s of the theme, no empty message); Subtheme card list (after O*s when `subTopics.length > 0`; each card shows a `▸` icon, label, and count hint, navigates via `subtopic-by-id`).
+**Topic body layout** (`_renderTopic`) renders in order: Title (editing: `odip-input.chapter-body__topic-title`, saves on blur/Enter, reverts on Escape; read-only: plain `<h3>`); Narrative (editable `RichTextComponent` within a session, read-only otherwise — the read-only instance is retained on `this._richText` so it is torn down on the next selection); O* card list (direct O*s of the theme, no empty message); Subtheme card list (after O*s when `subTopics.length > 0`; each card shows a `▸` icon, label, and count hint, navigates via `subtopic-by-id`).
 
-**Delete theme** — in Elaborate, a **Delete theme** `odip-btn--danger` button shows in the body header actions when the theme has no O*s and no subtopics. Clicking opens `odipConfirm` before delegating to `onThemeDelete(topicId)`.
+**Delete theme** — in an open topic edit session, a **Delete theme** `odip-btn--danger` button shows in the header actions when the theme has no O*s and no subtopics. Clicking opens `odipConfirm` before delegating to `onThemeDelete(topicId)`.
 
 #### 8.3.6 Internal Link Navigation
 
@@ -1124,44 +1145,56 @@ IDs are first assigned at import time by `DistributedEditionImporter._patchChapt
 
 #### 8.3.8 Editorial Actions (Elaborate)
 
-The toolbar create actions and topic-editing all mutate the chapter `osHierarchy` and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`.
+The toolbar create actions, topic editing, and drag-and-drop structure edits all mutate the chapter `osHierarchy` (or narrative) and persist via `PATCH /chapters/{id}`. The active topic at action time is resolved by `ChapterToc._getActiveTopicPath()`.
 
-| Action | Flow |
-|---|---|
-| **+ Theme** | `_handleAddTheme(activePath)` — minimal title modal → fetch-fresh chapter → insert new topic as child of active topic (or root) → PATCH → `refreshTree()` |
-| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open create modal pre-populated with chapter `domain` (and `type` for OR/ON) → on save `_insertOStarIntoHierarchy`: fetch-fresh → insert into active topic's items (sorted ON→OR→OC) or leave unclassified → PATCH → `refreshTree()` → `app.invalidateOStars()` |
-| **Theme title / narrative** | `ChapterBody._saveTopicFull(topic, topicId)` → `_handleTopicFullSave`: fetch-fresh → DFS-locate topic by `id` → mutate label and narrative in one pass → PATCH → sync into live `_toc._hierarchy` → `refreshTree()` only when title changed. A single PATCH is always used to avoid `versionId` conflicts. |
-| **Delete theme** | `ChapterBody._deleteTheme(topicId)` (button visible only when empty) → `_handleThemeDelete`: fetch-fresh → defensive non-empty guard → `_removeTopicById` → PATCH → `refreshTree()` → body falls back to chapter narrative |
+**Commit gate.** Every chapter PATCH commits under a change set, since `ChapterPatchRequest` requires `changeSetId` (§13, LCM). The shared gate is `NarrativeActivity._commitFor()` → `openChangeSetCommitDialog(app, { allowNote: true })` (§7.9), returning `{ changeSetId, note? }` or `null`; a `null` aborts the write. The returned fields are spread into the PATCH payload.
+
+| Action | Flow | Commit prompts |
+|---|---|---|
+| **Chapter narrative** | `ChapterBody._saveNarrative` reads the editor value and delegates the write to the activity via `onChapterNarrativeSave(narrative)` → `_handleChapterNarrativeSave`: `_commitFor` → fetch-fresh → PATCH `narrative` + `changeSetId` → sync `versionId`/`narrative` into `_selectedChapter`. The body owns no chapter write. | one |
+| **Structure (drag-and-drop)** | Drops are buffered. The first drop opens a hierarchy session (Save/Cancel strip atop the TOC); subsequent drops mutate the in-memory hierarchy. `_saveHierarchySession`: `_commitFor` → fetch-fresh → single PATCH → re-parse + `refreshTree()`. `_cancelHierarchySession`: restore from the chapter's last-saved `osHierarchy` → `refreshTree()` | one (at Save) |
+| **+ Theme** | `_handleAddTheme(activePath)` — title modal → `_commitFor` → fetch-fresh → insert new topic as child of active topic (or root) → PATCH → `refreshTree()` | one |
+| **+ ON/OR/OC** | `_handleAddOStar(type, activePath)` — open create modal (form constructed with `app` in context, so its own gate covers the entity create) pre-populated with chapter `domain` → on save `_insertOStarIntoHierarchy`: when a topic is targeted, `_commitFor` → fetch-fresh → insert (sorted ON→OR→OC) → PATCH; when no topic is targeted the O* is left unclassified and no chapter version is written → `refreshTree()` → `app.invalidateOStars()` | O* entity gate; + one for placement when a topic is targeted |
+| **Theme title / narrative** | `ChapterBody._saveTopicFull(topic, topicId)` → `_handleTopicFullSave`: `_commitFor` → fetch-fresh → DFS-locate topic by `id` → mutate label and narrative in one pass → single PATCH → sync into live `_toc._hierarchy` → `refreshTree()` when the title changed | one |
+| **Delete theme** | `ChapterBody._deleteTheme(topicId)` (button visible only when empty) → `odipConfirm` → `_handleThemeDelete`: `_commitFor` → fetch-fresh → non-empty guard → `_removeTopicById` → PATCH → `refreshTree()` → body falls back to chapter narrative | one |
+
+Every chapter write lives in `NarrativeActivity`; `ChapterBody` only collects input and delegates via callbacks, so the commit gate is applied in exactly one layer.
 
 **Concurrency model:**
 
-- **Non-DnD writes** use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`.
-- **DnD reorder** uses the **optimistic** client `versionId`. On `409`, `_handleDndConflict` reloads the chapter, re-renders the TOC, resets the body, and informs the user.
+- All chapter writes use a **fetch-fresh** pattern — `GET /chapters/{id}` immediately before mutating, so the PATCH carries the latest `expectedVersionId`.
+- A buffered structure session is committed as a single PATCH at Save. If a concurrent edit landed between the fetch-fresh and the PATCH, the server returns `409`; `_saveHierarchySession` routes that to `_handleDndConflict`, which discards the buffered session, reloads the chapter, re-renders the TOC, resets the body, and informs the user. The buffered edits are not recoverable in this case, so navigation that triggered the save is allowed to proceed.
+- The unclassified bucket reflects buffered moves before any PATCH: `_handleUnclassifiedChange` recomputes it from the pending hierarchy via `_computeUnassignedFromHierarchy`, which reuses the `_allOStarsCache` populated by `_computeUnassignedOStars`.
 
 `_mergeChapterConfig(cached, fresh)` reconciles a freshly fetched chapter with config-owned fields (`title`, `domain`, `position`) held in memory, and syncs `versionId`/`osHierarchy` back to the cached object.
-
-**Unsaved-changes guard (Elaborate only)** — `ChapterBody` tracks a `_dirty` flag (set by `RichTextComponent.onChange` and the title input's `input` event) and `_currentEntry`. Before any navigation that would replace the body content, `_guardNavigation()` is called: not dirty → proceed; dirty → `odipUnsavedChanges()` (§7.8) with Cancel (abort), Discard (clear flag, proceed), Save (`_saveCurrentEntry()` then proceed on success).
-
-Navigation paths guarded:
-
-| Trigger | Guard location |
-|---|---|
-| TOC click / O* card / subtheme card | `ChapterBody.renderSelectionRead()` |
-| Ctrl+Click on internal ref (edit mode) | `ChapterBody._handleInternalLink()` |
-| ← Chapters toolbar button | `NarrativeActivity._climbToOdip()` |
-| Elaborate tab switch | `ElaborateActivity._route()` via `canDeactivate()` |
-| Top-level activity switch | `App._loadActivity()` via `canDeactivate()` chain |
-| Browser Back / F5 / tab close | `beforeunload` listener (registered in `_renderShell`, removed in `cleanup`) |
-
-`NarrativeActivity.canDeactivate()` delegates to `this._body._guardNavigation()`.
-
-**Duplicate instance prevention** — `NarrativeActivity` instances are cached by `ElaborateActivity`; `render()` may be called again on the same instance. It tears down any existing `_toc`, `_body`, and `_masterDetail` (including the `beforeunload` listener) before calling `_renderShell()`, preventing accumulation of stale `RichTextComponent` instances.
 
 #### 8.3.9 Service Layer Enrichment Contract
 
 `ChapterService` overrides `update()` and `patch()` from `VersionedItemService`. Both call `super.update/patch` (which commits the write transaction) then immediately call `this.getById(itemId, userId)` (enriched `GET`) and return its result. This guarantees that **every write to a chapter returns the same enriched read-shape as `GET /chapters/{id}`** — `osHierarchy` items are always `{ id, type, code, title }` objects, never bare integer ids.
 
 **Invariant:** client code must never use `updated.osHierarchy` from a PATCH response to rebuild the render-side hierarchy via a second `getChapter()` call. The PATCH response is already enriched.
+
+#### 8.3.10 Navigation Guards and Session Teardown
+
+`ChapterBody` tracks a `_dirty` flag (set by `RichTextComponent.onChange` and the title input's `input` event) for the open narrative edit, and `NarrativeActivity` holds `_pendingHierarchy` for a buffered structure session. Before any navigation that would discard pending work, both are guarded.
+
+`NarrativeActivity.canDeactivate()` delegates to `_guardAllSessions()`, which covers both session types in turn (only one is ever active, so the other is a pass-through):
+
+1. **Narrative/topic** — `ChapterBody._guardNavigation()`: not dirty → proceed; dirty → `odipUnsavedChanges()` (§7.8) with Cancel (stay), Discard (clear `_dirty`, fire `onEditSessionEnd`, proceed), Save (`_saveCurrentEntry()` then proceed on success).
+2. **Hierarchy** — `_guardHierarchySession()`: `odipUnsavedChanges()` with Cancel (stay), Discard (`_cancelHierarchySession`, proceed), Save (`_saveHierarchySession`, which runs the commit prompt, then proceed on success).
+
+Navigation paths guarded:
+
+| Trigger | Guard location |
+|---|---|
+| TOC click / O* card / subtheme card | `ChapterBody.renderSelectionRead()` (narrative) |
+| Ctrl+Click on internal ref (edit mode) | `ChapterBody._handleInternalLink()` (narrative) |
+| ← Chapters toolbar button | `NarrativeActivity._climbToOdip()` → `_guardAllSessions()` (both) |
+| Elaborate tab switch | `ElaborateActivity._route()` via `canDeactivate()` → `_guardAllSessions()` (both) |
+| Top-level activity switch | `App._loadActivity()` via `canDeactivate()` chain → `_guardAllSessions()` (both) |
+| Browser Back / F5 / tab close | `beforeunload` listener — fires when `ChapterBody._dirty` or a pending hierarchy session exists; registered in `_renderShell`, removed in `cleanup` (both) |
+
+**Duplicate instance prevention** — `NarrativeActivity` instances are cached by `ElaborateActivity`; `render()` may be called again on the same instance. It tears down any existing `_toc`, `_body`, and `_masterDetail` (including the `beforeunload` listener) before calling `_renderShell()`, preventing accumulation of stale `RichTextComponent` instances.
 
 ### 8.4 Plan Activity
 
@@ -1410,7 +1443,7 @@ styles/
     │   └── shared/
     │       ├── os/os.css             O* activity shell layout, detail shell height propagation, type badge colours (ON blue, OR green, OC purple)
     │       ├── plan/plan.css         ON plan two-pane layout, TemporalGrid context
-    │       ├── narrative/narrative.css
+    │       ├── narrative/narrative.css   Narrative shell, ChapterToc tree, ChapterBody, drop indicators, hierarchy edit-session strip
     │       └── quality/quality.css
     │       └── change-sets/change-sets.css  Change-set cards, status badge/chips, detail dl + members list
     └── manage/
@@ -1545,7 +1578,7 @@ The container runs `vite preview` to serve the pre-built `dist/` bundle. The bui
 
 ## 13. Lifecycle & Change Management (LCM) — Web Client
 
-> **Work in progress.** Every versioned write (O* create/edit, and — in later sub-steps — narrative/hierarchy saves) is committed under a **change set**: a first-class, non-versioned node carrying the *why* of a save. This section documents the current web-client foundation and the O* save-path integration. The Change Set management workspace, the narrative/hierarchy edit sessions, and the history/diff surfacing of commit metadata are separate, not-yet-implemented sub-steps. The content here is expected to be redistributed into the relevant sections once the workstream stabilises.
+> Every versioned write — O* create/edit, and chapter narrative / topic / structure saves — commits under a **change set**: a first-class, non-versioned node carrying the *why* of a save. This section documents the web-client foundation (active change set, API client methods, commit dialog, header chip) and the O* save-path threading. The change-set management workspace is described in §8.9, and the narrative/hierarchy commit threading in §8.3.8. Surfacing commit metadata in the History tab and DiffPopup is the one remaining piece, tracked separately.
 
 ### 13.1 Active Change Set on `App`
 
@@ -1564,7 +1597,7 @@ All target the standalone `/change-sets` route: `listChangeSets({status?, classi
 
 ### 13.3 Commit Dialog
 
-The commit dialog component (`openChangeSetCommitDialog`) is documented in §7.9. Its existing-set selector is a `ReferenceManager` typeahead (label `code — title`, searchable on code + title, `reasonText` on hover) — the radio list it replaced did not scale past a handful of OPEN sets.
+The commit dialog component (`openChangeSetCommitDialog`) is documented in §7.9. Its existing-set selector is a `ReferenceManager` typeahead (label `code — title`, searchable on code + title, `reasonText` on hover).
 
 ### 13.4 Header Chip
 
@@ -1583,13 +1616,13 @@ if (commit.note) dataToSave.note = commit.note;
 
 Both `RequirementForm.onSave` and `ChangeForm.onSave` already send `dataToSave` as the POST/PUT body, so `changeSetId`/`note` ride into the request and match the server's inline write contract. One insertion point covers ON/OR/OC, create and edit.
 
-**Context requirement** — the gate reads `this.context.app`, so every form construction must supply `app` in its context. The detail views (`RequirementDetails`/`ChangeDetails`) already did; `OStarEntity._handleCreate` was updated to pass `app: this.app` into both create contexts. Any future form instantiation (e.g. the Narrative "+ON/OR/OC" insert) must also pass `app`.
+**Context requirement** — the gate reads `this.context.app`, so every form construction supplies `app` in its context: the detail views (`RequirementDetails`/`ChangeDetails`), `OStarEntity._handleCreate` for both create contexts, and the Narrative "+ON/OR/OC" insert (`NarrativeActivity._handleAddOStar`).
 
 O* delete is not a form path and carries no commit gate at this layer.
 
 ### 13.6 Affected Files
 
-`app.js`, `shared/api-client.js`, `components/header.js`, `components/change-set-commit-dialog.js`, `components/collection-entity-form.js`, `activities/workspace/shared/os/o-star-entity.js`.
+`app.js`, `shared/api-client.js`, `components/header.js`, `components/change-set-commit-dialog.js`, `components/collection-entity-form.js`, `activities/workspace/shared/os/o-star-entity.js`, `activities/workspace/shared/narrative/narrative.js`, `activities/workspace/shared/narrative/chapter-toc.js`, `activities/workspace/shared/narrative/chapter-body.js`.
 
 ---
 

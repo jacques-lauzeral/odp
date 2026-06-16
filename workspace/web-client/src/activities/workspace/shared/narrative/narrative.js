@@ -56,6 +56,8 @@ import { errorHandler } from '../../../../shared/error-handler.js';
 import { dom } from '../../../../shared/utils.js';
 import { normalizeId } from '../../../../shared/src/index.js';
 import MasterDetail from '../../../../components/master-detail.js';
+import { openChangeSetCommitDialog } from '../../../../components/change-set-commit-dialog.js';
+import { odipUnsavedChanges } from '../../../../components/user-dialogs.js';
 import ChapterToc from './chapter-toc.js';
 import ChapterBody from './chapter-body.js';
 
@@ -79,9 +81,24 @@ export default class NarrativeActivity {
         // Cached setup data and domains — loaded once, used for O* create forms
         this._setupData       = null;
         this._domains         = [];
+        this._allOStarsCache  = null;   // last-loaded full O* list, reused during buffered hierarchy sessions
 
         // beforeunload guard — registered when Elaborate shell is active
         this._beforeUnloadHandler = null;
+
+        // Edit-session mutual exclusion (Elaborate only).
+        //   null         — nothing being edited
+        //   'narrative'   — chapter or topic narrative open in the body (owned by ChapterBody._dirty)
+        //   'hierarchy'   — buffered DnD session in the TOC (owned by _pendingHierarchy)
+        // At most one may be active at a time; the body and the TOC each consult
+        // this before allowing their own edit affordance to start.
+        this._editSession = null;
+
+        // Buffered hierarchy session state. While 'hierarchy' is active, drag-and-drop
+        // mutations accumulate here (render-shape topic array) instead of PATCHing on
+        // every drop. Save serialises one PATCH; Cancel discards and restores from the
+        // chapter's last-saved osHierarchy.
+        this._pendingHierarchy = null;
     }
 
     // -------------------------------------------------------------------------
@@ -131,6 +148,8 @@ export default class NarrativeActivity {
         this._scope           = 'odip';
         this._selectedChapter = null;
         this._odipSelection   = null;
+        this._editSession     = null;
+        this._pendingHierarchy = null;
 
         this._renderShell();
         this._updateToolbarNav();
@@ -213,12 +232,59 @@ export default class NarrativeActivity {
     /**
      * Called by App._loadActivity before switching away from this activity.
      * Returns false (and shows the unsaved-changes dialog) when there are pending
-     * edits in ChapterBody, so the user can save or discard before leaving.
+     * edits — either a narrative/topic edit in ChapterBody, or a buffered
+     * hierarchy session in the TOC — so the user can save or discard before leaving.
      * @returns {Promise<boolean>}
      */
     async canDeactivate() {
-        if (!this._body) return true;
-        return this._body._guardNavigation();
+        return this._guardAllSessions();
+    }
+
+    /**
+     * Unified navigation guard covering both edit-session types.
+     *
+     * The body owns the 'narrative' session (its own _dirty flag + dialog), so we
+     * delegate there first — that path is unchanged from before. The 'hierarchy'
+     * session is owned here (buffered drops have no body dirty state), so we run a
+     * dedicated Save/Discard/Cancel prompt for it.
+     *
+     * Only one session can be active at a time (mutual exclusion), so at most one
+     * branch ever does real work; the other is a cheap pass-through.
+     *
+     * @returns {Promise<boolean>} true → navigation may proceed; false → stay
+     */
+    async _guardAllSessions() {
+        // Narrative/topic edits — delegate to the body's existing guard.
+        if (this._body && !await this._body._guardNavigation()) return false;
+
+        // Buffered hierarchy session — guard here.
+        if (this._editSession === 'hierarchy' && this._pendingHierarchy) {
+            return this._guardHierarchySession();
+        }
+        return true;
+    }
+
+    /**
+     * Save/Discard/Cancel prompt for a pending (buffered) hierarchy session.
+     * @returns {Promise<boolean>} true → may proceed; false → cancelled, stay
+     */
+    async _guardHierarchySession() {
+        const answer = await odipUnsavedChanges(
+            'You have unsaved theme/structure changes. What would you like to do?'
+        );
+        if (answer === 'cancel') return false;
+        if (answer === 'discard') {
+            this._cancelHierarchySession();
+            return true;
+        }
+        // answer === 'save'
+        try {
+            await this._saveHierarchySession();
+            return true;
+        } catch {
+            // Error already surfaced by the save method; block navigation.
+            return false;
+        }
     }
 
     async cleanup() {
@@ -236,6 +302,8 @@ export default class NarrativeActivity {
         this._chapterMap      = new Map();
         this._selectedChapter = null;
         this._odipSelection   = null;
+        this._editSession     = null;
+        this._pendingHierarchy = null;
         this.container        = null;
     }
 
@@ -337,6 +405,13 @@ export default class NarrativeActivity {
             onUnclassifiedChange: (hier)    => this._handleUnclassifiedChange(hier),
             onAddTheme:           (path)    => this._handleAddTheme(path),
             onAddOStar:           (type, path) => this._handleAddOStar(type, path),
+            // LCM edit-session coordination (2c)
+            onHierarchySessionSave:   ()    => this._saveHierarchySession(),
+            onHierarchySessionCancel: ()    => this._cancelHierarchySession(),
+            // Consulted by the TOC before it lets a drag start: a drag may only begin
+            // when no narrative edit is open (mutual exclusion). A hierarchy session
+            // already being active is fine — that's the session the drag extends.
+            canStartHierarchyEdit:    ()    => this._editSession !== 'narrative',
         });
 
         this._body = new ChapterBody(this._masterDetail.detailContainer, {
@@ -345,15 +420,25 @@ export default class NarrativeActivity {
             onSaved:                (_id) => { /* versionId updated in place */ },
             onChapterSelect:        (entry) => this._handleChapterTocSelect(entry),
             onTopicFullSave:        (topicId, title, narrative) => this._handleTopicFullSave(topicId, title, narrative),
+            onChapterNarrativeSave: (narrative)           => this._handleChapterNarrativeSave(narrative),
             onThemeDelete:          (topicId)             => this._handleThemeDelete(topicId),
             onOStarSaved:           (result, mode) => this._handleOStarSaved(result, mode),
+            // LCM edit-session coordination (2c) — the body opens/closes the
+            // 'narrative' session so the TOC can refuse to start a drag meanwhile.
+            onEditSessionStart:     ()      => this._beginNarrativeSession(),
+            onEditSessionEnd:       ()      => this._endNarrativeSession(),
+            // Consulted by the body before it lets an Edit button activate: a
+            // narrative edit may only begin when no hierarchy session is buffered.
+            canStartNarrativeEdit:  ()      => this._editSession !== 'hierarchy',
         });
 
         // Safety net: warn on browser-level navigation (F5, tab close, address bar)
         // when unsaved changes exist. Only registered in Elaborate (editable) mode.
         if (this._isEditable) {
             this._beforeUnloadHandler = (e) => {
-                if (this._body?._dirty) {
+                const bodyDirty      = this._body?._dirty;
+                const hierarchyDirty = this._editSession === 'hierarchy' && this._pendingHierarchy;
+                if (bodyDirty || hierarchyDirty) {
                     e.preventDefault();
                     e.returnValue = '';  // required for Chrome
                 }
@@ -466,7 +551,7 @@ export default class NarrativeActivity {
     }
 
     async _climbToOdip(viaButton = false) {
-        if (!await this._body?._guardNavigation()) return;
+        if (!await this._guardAllSessions()) return;
 
         this._selectedChapter = null;
         this._scope           = 'odip';
@@ -522,90 +607,207 @@ export default class NarrativeActivity {
     }
 
     // -------------------------------------------------------------------------
-    // Hierarchy DnD save
+    // Edit-session lifecycle (2c) — mutual exclusion between narrative & hierarchy
     // -------------------------------------------------------------------------
 
     /**
-     * Called by ChapterToc after each successful drag-and-drop mutation.
-     * Serializes the render-shape hierarchy to the write shape and PATCHes the chapter.
-     * Updates _selectedChapter.osHierarchy in place on success.
-     * @param {object[]} hierarchy — render-shape topic array from ChapterToc._hierarchy
+     * Called by ChapterBody when the user enters edit mode on a chapter or topic
+     * narrative. Marks the 'narrative' session active so the TOC refuses to start
+     * a drag until the body session closes.
      */
-    async _handleHierarchyChange(hierarchy) {
+    _beginNarrativeSession() {
+        this._editSession = 'narrative';
+        this._toc?.setHierarchyEditLocked?.(true);
+    }
+
+    /**
+     * Called by ChapterBody when a narrative/topic edit closes (saved or cancelled).
+     * Clears the session and re-enables hierarchy editing in the TOC.
+     */
+    _endNarrativeSession() {
+        if (this._editSession === 'narrative') this._editSession = null;
+        this._toc?.setHierarchyEditLocked?.(false);
+    }
+
+    /**
+     * Called by ChapterToc on the FIRST buffered drag of a hierarchy session.
+     * Marks the 'hierarchy' session active so the body disables its Edit buttons,
+     * and seeds the pending buffer from the TOC's current render-shape hierarchy.
+     * @param {object[]} hierarchy — render-shape topic array (already mutated by the drop)
+     */
+    _beginHierarchySession(hierarchy) {
+        this._editSession      = 'hierarchy';
+        this._pendingHierarchy = hierarchy;
+        this._body?.setNarrativeEditLocked?.(true);
+    }
+
+    /**
+     * Persist the buffered hierarchy session as a single PATCH under one change set.
+     * Fetch-fresh for the latest versionId, run the commit gate once, PATCH, then
+     * sync state and clear the session. Throws on failure so guards can block nav.
+     * @returns {Promise<void>}
+     */
+    async _saveHierarchySession() {
         const chapter = this._selectedChapter;
-        if (!chapter) return;
+        if (!chapter || !this._pendingHierarchy) {
+            this._clearHierarchySession();
+            return;
+        }
 
-        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
+        // One commit prompt for the whole session.
+        const commit = await openChangeSetCommitDialog(this.app, { allowNote: true });
+        if (!commit) throw new Error('commit-cancelled');  // keep session; block nav
 
+        const fresh = await apiClient.getChapter(chapter.itemId);
+        this._mergeChapterConfig(chapter, fresh);
+
+        const writeTopics = this._pendingHierarchy.map(t => this._hierarchyToWrite(t));
+
+        let updated;
         try {
-            const updated = await apiClient.patchChapter(chapter.itemId, {
+            updated = await apiClient.patchChapter(fresh.itemId, {
                 osHierarchy:       { topics: writeTopics },
-                expectedVersionId: chapter.versionId,
+                expectedVersionId: fresh.versionId,
+                changeSetId:       commit.changeSetId,
+                ...(commit.note ? { note: commit.note } : {}),
             });
-            if (updated?.versionId) chapter.versionId = updated.versionId;
-            if (updated?.osHierarchy) {
-                chapter.osHierarchy = updated.osHierarchy;
-            }
         } catch (error) {
             if (error?.status === 409 || error?.response?.status === 409) {
+                // Stale buffer — discard, reload, inform. Nothing left to save, so
+                // navigation may proceed (do not re-throw).
                 await this._handleDndConflict(chapter);
-            } else {
-                errorHandler.handle(error, 'narrative-hierarchy-save');
+                return;
             }
+            throw error;  // other errors block navigation via the guard
+        }
+
+        if (updated?.versionId)   chapter.versionId   = updated.versionId;
+        if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
+        chapter._fullyLoaded = true;
+
+        // Re-parse from the authoritative server response and re-render.
+        const unassigned = await this._computeUnassignedOStars(chapter);
+        this._toc._hierarchy        = this._toc._parseHierarchy(chapter);
+        this._toc._unassignedOStars = unassigned;
+
+        this._clearHierarchySession();
+        this._toc.refreshTree();
+    }
+
+    /**
+     * Discard a buffered hierarchy session: restore the TOC from the chapter's
+     * last-saved osHierarchy and clear the session.
+     */
+    _cancelHierarchySession() {
+        const chapter = this._selectedChapter;
+        this._clearHierarchySession();
+        if (!chapter) return;
+        this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+        this._toc.refreshTree();
+    }
+
+    /**
+     * Reset session bookkeeping (no rendering, no network). Shared teardown for
+     * both save and cancel.
+     */
+    _clearHierarchySession() {
+        this._editSession      = null;
+        this._pendingHierarchy = null;
+        this._toc?.endHierarchySession?.();
+        this._body?.setNarrativeEditLocked?.(false);
+    }
+
+
+    /**
+     * Called by ChapterToc after each successful drag-and-drop mutation.
+     *
+     * 2c: drops are now BUFFERED, not PATCHed per-drop. The TOC has already applied
+     * the mutation to its own _hierarchy and re-rendered; we capture that render-shape
+     * array as the pending buffer and (on the first drop) open the hierarchy session.
+     * The single PATCH happens later in _saveHierarchySession().
+     * @param {object[]} hierarchy — render-shape topic array from ChapterToc._hierarchy
+     */
+    _handleHierarchyChange(hierarchy) {
+        if (!this._selectedChapter) return;
+        if (this._editSession !== 'hierarchy') {
+            this._beginHierarchySession(hierarchy);
+        } else {
+            this._pendingHierarchy = hierarchy;
         }
     }
 
     /**
      * Called by ChapterToc when an O* moves into or out of the <unclassified> bucket.
-     * The mutated hierarchy (without the unclassified O*) is already applied client-side.
-     * We PATCH the chapter, then recompute unassigned O*s and re-render the TOC so the
-     * bucket reflects the new state without a full chapter reload.
+     *
+     * 2c: also buffered. The TOC has applied the mutation to its own _hierarchy; we
+     * recompute the unclassified bucket against the pending state (so it reflects the
+     * move) and re-render, but defer the PATCH to _saveHierarchySession().
      * @param {object[]} hierarchy — mutated render-shape hierarchy
      */
     async _handleUnclassifiedChange(hierarchy) {
         const chapter = this._selectedChapter;
         if (!chapter) return;
 
-        const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
-
-        try {
-            const updated = await apiClient.patchChapter(chapter.itemId, {
-                osHierarchy:       { topics: writeTopics },
-                expectedVersionId: chapter.versionId,
-            });
-            if (updated?.versionId) chapter.versionId = updated.versionId;
-            if (updated?.osHierarchy) chapter.osHierarchy = updated.osHierarchy;
-        } catch (error) {
-            if (error?.status === 409 || error?.response?.status === 409) {
-                await this._handleDndConflict(chapter);
-                return;
-            }
-            errorHandler.handle(error, 'narrative-unclassified-save');
-            return;
+        if (this._editSession !== 'hierarchy') {
+            this._beginHierarchySession(hierarchy);
+        } else {
+            this._pendingHierarchy = hierarchy;
         }
 
-        // DnD reorder uses the render-shape hierarchy passed by ChapterToc directly —
-        // the TOC already holds the mutated state; no re-parse needed.
+        // The TOC already holds the mutated state; recompute the unclassified bucket
+        // from the pending hierarchy so a moved O* leaves/enters the bucket visually.
         this._toc._hierarchy = hierarchy;
-        chapter._fullyLoaded = true;
-
-        // Recompute unclassified from the updated O* cache and re-render.
-        const unassigned = await this._computeUnassignedOStars(chapter);
+        const unassigned = this._computeUnassignedFromHierarchy(chapter, hierarchy);
         this._toc._unassignedOStars = unassigned;
         this._toc._renderChapterTree();
     }
 
+    /**
+     * Compute the unclassified bucket against an IN-MEMORY hierarchy (the pending
+     * buffer), not the server state. Mirrors _computeUnassignedOStars but takes the
+     * topic array directly so buffered moves are reflected before any PATCH.
+     * @param {object} chapter
+     * @param {object[]} hierarchy — render-shape topic array
+     * @returns {Array}
+     */
+    _computeUnassignedFromHierarchy(chapter, hierarchy) {
+        if (!chapter.domain) return [];
+        const assignedIds = new Set();
+        const walk = (nodes) => {
+            for (const t of nodes ?? []) {
+                for (const item of t.items ?? []) {
+                    const id = item?.id ?? item?.itemId ?? item;
+                    if (id != null) assignedIds.add(Number(id));
+                }
+                walk(t.subTopics ?? []);
+            }
+        };
+        walk(hierarchy);
+
+        const allOStars = this._allOStarsCache ?? [];
+        return allOStars
+            .filter(o => o.domain === chapter.domain && !assignedIds.has(Number(o.itemId)))
+            .map(o => ({
+                id:     Number(o.itemId),
+                itemId: Number(o.itemId),
+                type:   (o.type ?? 'on').toUpperCase(),
+                code:   o.code  ?? null,
+                title:  o.title ?? null,
+            }));
+    }
+
     // -------------------------------------------------------------------------
-    // DnD conflict handling
+    // Concurrent-edit (409) handling for the buffered hierarchy save
     // -------------------------------------------------------------------------
 
     /**
-     * Called when a PATCH returns 409 (concurrent edit detected during DnD).
-     * Reloads the chapter from server, resets client state, re-renders TOC,
-     * and informs the user that their change was not applied.
+     * Called when the buffered hierarchy PATCH returns 409 (someone else edited the
+     * chapter between our fetch-fresh and our PATCH). Discards the pending buffer,
+     * reloads the chapter, re-renders the TOC, resets the body, and tells the user.
      * @param {object} chapter
      */
     async _handleDndConflict(chapter) {
+        this._clearHierarchySession();
         chapter._fullyLoaded = false;
         const fresh = await this._loadChapter(chapter);
         if (!fresh) return;
@@ -616,9 +818,8 @@ export default class NarrativeActivity {
         // Restore body to chapter narrative to reset any stale topic view
         this._body.renderSelectionRead({ type: 'chapter' }, fresh);
 
-        // Notify user — use a simple banner approach consistent with errorHandler
         errorHandler.handle(
-            { message: 'The chapter was modified by someone else — your change was not applied.' },
+            { message: 'The chapter was modified by someone else — your structure changes were not applied.' },
             'narrative-dnd-conflict'
         );
     }
@@ -642,6 +843,9 @@ export default class NarrativeActivity {
 
         const title = await this._promptThemeTitle();
         if (!title) return;  // user cancelled
+
+        const commit = await this._commitFor();
+        if (!commit) return;  // commit cancelled — abort
 
         try {
             const fresh = await apiClient.getChapter(chapter.itemId);
@@ -667,6 +871,7 @@ export default class NarrativeActivity {
             const updated = await apiClient.patchChapter(fresh.itemId, {
                 osHierarchy:       { topics: writeTopics },
                 expectedVersionId: fresh.versionId,
+                ...commit,
             });
 
             if (updated?.versionId) chapter.versionId = updated.versionId;
@@ -789,6 +994,7 @@ export default class NarrativeActivity {
             const form = new ChangeForm(
                 { endpoint: '/operational-changes' },
                 {
+                    app:             this.app,
                     setupData:       this._setupData,
                     domains:         this._domains,
                     getSetupData:    () => this._setupData,
@@ -802,6 +1008,7 @@ export default class NarrativeActivity {
             const form = new RequirementForm(
                 { endpoint: '/operational-requirements' },
                 {
+                    app:             this.app,
                     setupData:       this._setupData,
                     domains:         this._domains,
                     getSetupData:    () => this._setupData,
@@ -826,27 +1033,52 @@ export default class NarrativeActivity {
         const newId   = Number(result.itemId ?? result.id);
         const newType = (result.type ?? 'OR').toUpperCase();
 
+        // If there's no topic to place into, the O* simply stays unclassified —
+        // no chapter version is written, so no commit gate is needed.
+        if (activePath == null) {
+            try {
+                this.app.invalidateOStars?.();
+                const unassigned = await this._computeUnassignedOStars(chapter);
+                this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+                this._toc._unassignedOStars = unassigned;
+                this._toc.refreshTree();
+            } catch (error) {
+                errorHandler.handle(error, 'narrative-insert-ostar');
+            }
+            return;
+        }
+
+        const commit = await this._commitFor();
+        if (!commit) {
+            // Placement cancelled — the O* exists but stays unclassified. Refresh the
+            // bucket so it appears there rather than vanishing.
+            this.app.invalidateOStars?.();
+            const unassigned = await this._computeUnassignedOStars(chapter);
+            this._toc._hierarchy = this._toc._parseHierarchy(chapter);
+            this._toc._unassignedOStars = unassigned;
+            this._toc.refreshTree();
+            return;
+        }
+
         try {
             const fresh = await apiClient.getChapter(chapter.itemId);
             this._mergeChapterConfig(chapter, fresh);
 
             const hierarchy = this._toc._parseHierarchy(fresh);
 
-            if (activePath != null) {
-                const node = this._resolveHierarchyNode(hierarchy, activePath);
-                if (node) {
-                    node.items = node.items ?? [];
-                    node.items.push({ id: newId, type: newType, code: result.code ?? null, title: result.title ?? null });
-                    // Enforce ON → OR → OC order
-                    node.items = this._toc._sortItemsByType(node.items);
-                }
+            const node = this._resolveHierarchyNode(hierarchy, activePath);
+            if (node) {
+                node.items = node.items ?? [];
+                node.items.push({ id: newId, type: newType, code: result.code ?? null, title: result.title ?? null });
+                // Enforce ON → OR → OC order
+                node.items = this._toc._sortItemsByType(node.items);
             }
-            // If no activePath — O* left unclassified, hierarchy unchanged
 
             const writeTopics = hierarchy.map(t => this._hierarchyToWrite(t));
             const updated = await apiClient.patchChapter(fresh.itemId, {
                 osHierarchy:       { topics: writeTopics },
                 expectedVersionId: fresh.versionId,
+                ...commit,
             });
 
             if (updated?.versionId) chapter.versionId = updated.versionId;
@@ -898,6 +1130,39 @@ export default class NarrativeActivity {
     }
 
     // -------------------------------------------------------------------------
+    // Chapter narrative save
+    // -------------------------------------------------------------------------
+
+    /**
+     * Called by ChapterBody when the user saves the chapter narrative.
+     * Runs the commit gate, then fetch-fresh → PATCH narrative + changeSetId.
+     * Syncs versionId / narrative back into _selectedChapter on success.
+     * Throws on commit-cancel or error so ChapterBody keeps the edit open and
+     * _guardNavigation can block navigation.
+     * @param {string} narrative — serialised TipTap JSON string
+     */
+    async _handleChapterNarrativeSave(narrative) {
+        const chapter = this._selectedChapter;
+        if (!chapter) throw new Error('No chapter selected');
+
+        const commit = await this._commitFor();
+        if (!commit) throw new Error('commit-cancelled');  // abort; body keeps edit open
+
+        const fresh = await apiClient.getChapter(chapter.itemId);
+        this._mergeChapterConfig(chapter, fresh);
+
+        const updated = await apiClient.patchChapter(fresh.itemId, {
+            narrative,
+            expectedVersionId: fresh.versionId,
+            ...commit,
+        });
+
+        if (updated?.versionId) chapter.versionId = updated.versionId;
+        if (updated?.narrative) chapter.narrative  = updated.narrative;
+        chapter._fullyLoaded = true;
+    }
+
+    // -------------------------------------------------------------------------
     // Topic save (title + narrative combined)
     // -------------------------------------------------------------------------
 
@@ -919,6 +1184,9 @@ export default class NarrativeActivity {
         const chapter = this._selectedChapter;
         if (!chapter) throw new Error('No chapter selected');
 
+        const commit = await this._commitFor();
+        if (!commit) throw new Error('commit-cancelled');  // abort; body keeps edit open
+
         const fresh = await apiClient.getChapter(chapter.itemId);
         this._mergeChapterConfig(chapter, fresh);
 
@@ -935,6 +1203,7 @@ export default class NarrativeActivity {
         const updated = await apiClient.patchChapter(fresh.itemId, {
             osHierarchy:       { topics: writeTopics },
             expectedVersionId: fresh.versionId,
+            ...commit,
         });
 
         if (updated?.versionId) chapter.versionId = updated.versionId;
@@ -964,6 +1233,9 @@ export default class NarrativeActivity {
         const chapter = this._selectedChapter;
         if (!chapter) return;
 
+        const commit = await this._commitFor();
+        if (!commit) return;  // commit cancelled — abort
+
         try {
             const fresh = await apiClient.getChapter(chapter.itemId);
             this._mergeChapterConfig(chapter, fresh);
@@ -985,6 +1257,7 @@ export default class NarrativeActivity {
             const updated = await apiClient.patchChapter(fresh.itemId, {
                 osHierarchy:       { topics: writeTopics },
                 expectedVersionId: fresh.versionId,
+                ...commit,
             });
 
             if (updated?.versionId) chapter.versionId = updated.versionId;
@@ -1006,6 +1279,28 @@ export default class NarrativeActivity {
     // -------------------------------------------------------------------------
     // Hierarchy utilities
     // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // Commit gate (LCM)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Run the shared LCM commit gate once for a single logical chapter write.
+     * Returns the commit fields to spread into a patchChapter payload, or null if
+     * the user cancelled (callers must abort the write on null).
+     *
+     * Every chapter PATCH requires changeSetId (ChapterPatchRequest.required), so
+     * this gate fronts every chapter write path: narrative, topic, +Theme, +O*
+     * insert, delete-theme, and the buffered hierarchy session.
+     * @returns {Promise<{changeSetId: string, note?: string} | null>}
+     */
+    async _commitFor() {
+        const commit = await openChangeSetCommitDialog(this.app, { allowNote: true });
+        if (!commit) return null;
+        return commit.note
+            ? { changeSetId: commit.changeSetId, note: commit.note }
+            : { changeSetId: commit.changeSetId };
+    }
 
     /**
      * Merge config-owned fields (title, domain, position) from the cached chapter
@@ -1148,6 +1443,7 @@ export default class NarrativeActivity {
     async _computeUnassignedOStars(chapter) {
         if (!chapter.domain) return [];
         const allOStars   = await this.app.getOStars();
+        this._allOStarsCache = allOStars;  // reused by _computeUnassignedFromHierarchy during buffered sessions
         const assignedIds = this._collectHierarchyIds(chapter.osHierarchy?.topics ?? []);
         return allOStars
             .filter(o => o.domain === chapter.domain && !assignedIds.has(Number(o.itemId)))

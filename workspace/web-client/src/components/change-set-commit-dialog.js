@@ -56,7 +56,7 @@ class ChangeSetCommitDialog {
                 <div class="modal" style="max-width:480px; height:auto; min-height:0; resize:none;">
                     <div class="modal-header" style="padding: var(--space-4) var(--space-6);">
                         <span style="font-size:var(--font-size-sm); font-weight:var(--font-weight-semibold); color:var(--text-primary);">
-                            ${this.mode === 'select' ? 'Active change set' : 'Commit under a change set'}
+                            ${this.mode === 'select' ? 'Active change set' : 'Select change set'}
                         </span>
                         <button class="modal-close" data-act="cancel" aria-label="Cancel">&times;</button>
                     </div>
@@ -113,7 +113,7 @@ class ChangeSetCommitDialog {
             ${this._openSets.length > 0 ? `
                 <div data-role="picker-host" ${this._creating ? 'hidden' : ''}></div>
                 <button class="odip-link" data-act="toggle-create" style="align-self:flex-start; background:none; border:none; cursor:pointer; font-size:var(--font-size-sm);">
-                    ${this._creating ? '← Pick an existing change set' : '+ Create a new change set'}
+                    ${this._creating ? '← Pick an existing change set' : '+ New change set'}
                 </button>
             ` : `<p style="margin:0; font-size:var(--font-size-sm); color:var(--text-secondary);">No open change sets. Create one to continue.</p>`}
 
