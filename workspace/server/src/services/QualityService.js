@@ -64,17 +64,17 @@ export class QualityService {
      *
      * @param {string[]} domains  - Domain keys to scope the report; empty = all domains
      * @param {number|null} editionId - Edition context; null = live dataset
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<QualityReport>}
      */
-    async runChecks(domains, editionId, userId) {
+    async runChecks(domains, editionId, user) {
         const domainKeys = domains.length > 0 ? domains : getDomainKeys();
 
         // Resolve edition context once for all rule checks
         let baselineId = null;
         let resolvedEditionId = null;
         if (editionId !== null) {
-            const tx = createTransaction(userId);
+            const tx = createTransaction(user.id, user.role);
             try {
                 const context = await odpEditionStore().resolveContext(editionId, tx);
                 baselineId = context.baselineId;
@@ -89,7 +89,7 @@ export class QualityService {
         const domainReports = [];
         for (const domain of domainKeys) {
             domainReports.push(
-                await this._buildDomainReport(domain, baselineId, resolvedEditionId, userId)
+                await this._buildDomainReport(domain, baselineId, resolvedEditionId, user)
             );
         }
 
@@ -109,18 +109,18 @@ export class QualityService {
      * Build the quality report for a single domain — all rules, always all arrays present.
      * @private
      */
-    async _buildDomainReport(domain, baselineId, editionId, userId) {
+    async _buildDomainReport(domain, baselineId, editionId, user) {
         const brokenONTraceability = await this._checkONTraceability(
-            domain, baselineId, editionId, userId
+            domain, baselineId, editionId, user
         );
         const untraceableORs = await this._checkORTraceability(
-            domain, baselineId, editionId, userId
+            domain, baselineId, editionId, user
         );
         const orphanONs = await this._checkOrphanON(
-            domain, baselineId, editionId, userId
+            domain, baselineId, editionId, user
         );
         const noShowOStars = await this._checkNoShow(
-            domain, baselineId, editionId, userId
+            domain, baselineId, editionId, user
         );
 
         return {
@@ -143,8 +143,8 @@ export class QualityService {
      * @private
      * @returns {Promise<BrokenONTraceability[]>}
      */
-    async _checkONTraceability(domain, baselineId, editionId, userId) {
-        const tx = createTransaction(userId);
+    async _checkONTraceability(domain, baselineId, editionId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const filters = { type: 'ON', domain };
             if (editionId !== null) filters.editionId = editionId;
@@ -182,8 +182,8 @@ export class QualityService {
      * @private
      * @returns {Promise<UntraceableOR[]>}
      */
-    async _checkORTraceability(domain, baselineId, editionId, userId) {
-        const tx = createTransaction(userId);
+    async _checkORTraceability(domain, baselineId, editionId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const findings = await operationalRequirementStore().findUntraceableORs(
                 tx, baselineId, editionId, domain
@@ -209,8 +209,8 @@ export class QualityService {
      * @private
      * @returns {Promise<OrphanON[]>}
      */
-    async _checkOrphanON(domain, baselineId, editionId, userId) {
-        const tx = createTransaction(userId);
+    async _checkOrphanON(domain, baselineId, editionId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const findings = await operationalRequirementStore().findOrphanONs(
                 tx, baselineId, editionId, domain
@@ -236,8 +236,8 @@ export class QualityService {
      * @private
      * @returns {Promise<NoShowOStar[]>}
      */
-    async _checkNoShow(domain, baselineId, editionId, userId) {
-        const tx = createTransaction(userId);
+    async _checkNoShow(domain, baselineId, editionId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const filters = { maturity: 'NO_SHOW', domain };
             if (editionId !== null) filters.editionId = editionId;

@@ -10,6 +10,10 @@
  *
  * The chapter write-path request shape (ChapterRequests) now lives in
  * messages/messages.js alongside the other request models.
+ *
+ * Phase A (audit foundation): changeSetCommit, createdAt, createdBy removed.
+ * These were version-node stamps replaced by AuditEvent. History (who/when/why)
+ * is served exclusively by the audit timeline endpoint.
  */
 
 /**
@@ -71,9 +75,7 @@ export const OsHierarchy = {
  * @property {string}           title            — display title from edition.json
  * @property {number}           versionId
  * @property {number}           version
- * @property {string}           createdAt
- * @property {string}           createdBy
- * @property {object|null}      changeSetCommit  — ChangeSetCommitRead {changeSetId, changeSetTitle, classifier, note}; HAS_REASON forward hop, always returned
+ * @property {string}           status           — ItemStatus key: ACTIVE | DELETED
  * @property {string|null}      narrative        — TipTap JSON string
  * @property {OsHierarchy|null} osHierarchy      — enriched on read; bare ids on write
  * @property {string|null}      domain           — config-owned; null on pure narrative chapters
@@ -83,20 +85,18 @@ export const OsHierarchy = {
  * @property {string[]}         availableStringKeys — config-owned; string keys from edition.json generatedStrings
  */
 export const Chapter = {
-    itemId:             null,
-    code:               null,
-    title:              null,
-    versionId:          null,
-    version:            null,
-    createdAt:          null,
-    createdBy:          null,
-    changeSetCommit:    null,   // ChangeSetCommitRead {changeSetId, changeSetTitle, classifier, note} — HAS_REASON hop
-    narrative:          null,
-    osHierarchy:        null,
+    itemId:              null,
+    code:                null,
+    title:               null,
+    versionId:           null,
+    version:             null,
+    status:              null,   // ItemStatus: ACTIVE | DELETED
+    narrative:           null,
+    osHierarchy:         null,
     // config-owned
-    domain:             null,
-    position:           null,
-    parentCode:         null,
-    availableBlockIds:  [],
+    domain:              null,
+    position:            null,
+    parentCode:          null,
+    availableBlockIds:   [],
     availableStringKeys: [],
 };

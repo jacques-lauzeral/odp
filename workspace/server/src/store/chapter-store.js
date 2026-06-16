@@ -122,9 +122,7 @@ export class ChapterStore extends VersionedItemStore {
                        item.code as code,
                        item.title as title,
                        id(version) as versionId,
-                       version.version as version,
-                       version.createdAt as createdAt,
-                       version.createdBy as createdBy${extraFields}
+                       version.version as version${extraFields}
                 ORDER BY id(item)
             `,
             params: {}
@@ -144,7 +142,6 @@ export class ChapterStore extends VersionedItemStore {
             const { cypher, params } = this.buildFindAllQuery(null, {}, null, projection);
             const result = await transaction.run(cypher, params);
             const items = result.records.map(record => this._prepareOutput(this._buildChapterItem(record), projection));
-            await this._attachChangeSetCommits(items, transaction);
             return items;
         } catch (error) {
             if (error instanceof StoreError) throw error;
@@ -198,8 +195,6 @@ export class ChapterStore extends VersionedItemStore {
                        item.title as title,
                        id(version) as versionId,
                        version.version as version,
-                       version.createdAt as createdAt,
-                       version.createdBy as createdBy,
                        version.narrative as narrative,
                        version.jsonOsHierarchy as jsonOsHierarchy
             `, { code });
@@ -223,19 +218,14 @@ export class ChapterStore extends VersionedItemStore {
      */
     async createChapter(code, title, transaction) {
         try {
-            const createdAt = new Date().toISOString();
-            const createdBy = transaction.getUserId();
-
             const itemResult = await transaction.run(`
                 CREATE (item:${this.nodeLabel} {
                     code: $code,
                     title: $title,
-                    _label: $title,
-                    createdAt: $createdAt,
-                    createdBy: $createdBy
+                    _label: $title
                 })
                 RETURN id(item) as itemId
-            `, { code, title, createdAt, createdBy });
+            `, { code, title });
 
             const itemId = this.normalizeId(itemResult.records[0].get('itemId'));
 
@@ -243,13 +233,11 @@ export class ChapterStore extends VersionedItemStore {
                 CREATE (version:${this.versionLabel} {
                     version: 1,
                     _label: "1",
-                    createdAt: $createdAt,
-                    createdBy: $createdBy,
                     narrative: '',
                     jsonOsHierarchy: null
                 })
                 RETURN id(version) as versionId
-            `, { createdAt, createdBy });
+            `, {});
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
@@ -288,8 +276,6 @@ export class ChapterStore extends VersionedItemStore {
             title:           record.get('title') || null,
             versionId:       this.normalizeId(record.get('versionId')),
             version:         this.normalizeId(record.get('version')),
-            createdAt:       record.get('createdAt'),
-            createdBy:       record.get('createdBy'),
             ...(keys.includes('narrative')            ? { narrative:            record.get('narrative') || ''   } : {}),
             ...(keys.includes('jsonOsHierarchy')      ? { jsonOsHierarchy:      record.get('jsonOsHierarchy') || null } : {}),
 

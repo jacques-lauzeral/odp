@@ -144,11 +144,12 @@ async createRefinesRelation(childId, parentId, transaction) {
 Extends `BaseStore` with the dual-node versioning pattern, code generation, optimistic locking, and multi-context query support.
 
 **Concrete public methods:**
-- `create(data, tx, changeSetCommit)` — generates `code`, creates Item + ItemVersion (version 1), establishes all relationships; validates the change set is OPEN and writes the `HAS_REASON` edge (carrying `changeSetCommit.note`). `data` carries entity state only — the commit is a separate argument.
-- `update(itemId, data, expectedVersionId, tx, changeSetCommit)` — validates lock, creates new version, always uses provided relationship arrays; validates the change set is OPEN and writes the `HAS_REASON` edge. Restore and decommission are service operations that flow through this method, so they link identically.
-- `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references plus `changeSetCommit` (`{changeSetId, note}`, one `HAS_REASON` hop)
-- `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships and `changeSetCommit`
-- `findVersionHistory(itemId, tx)` — list of all versions (versionId, version, createdAt, createdBy) plus per-row `changeSetCommit` — the History-tab feed
+- `create(data, tx, changeSetCommit)` — generates `code`, creates Item (`status: ACTIVE`) + ItemVersion (version 1), establishes all relationships; validates the change set is OPEN and records a `CREATE` `AuditEvent` in the same transaction. Item and version nodes carry **no** `createdAt`/`createdBy` — who/when/why is on the event. `data` carries entity state only — the commit is a separate argument.
+- `update(itemId, data, expectedVersionId, tx, changeSetCommit)` — validates lock, creates new version, always uses provided relationship arrays; validates the change set is OPEN and records an `UPDATE` `AuditEvent`. Restore and decommission are service operations that flow through this method, so they audit identically.
+- `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references. No `createdAt`/`createdBy`/`changeSetCommit` on the read shape.
+- `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships; same read shape.
+
+> `findVersionHistory` is **removed**. The History feed is served by `AuditEventStore.findByTarget(itemId, tx)` (§3.x) — a self-contained event scan carrying action, actor, role, timestamp, frozen change-set code/title, and note. No version-node join.
 
 **Abstract methods** (must be implemented by concrete stores):
 - `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
@@ -164,11 +165,22 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_findMaxCodeNumber(entityType, drg, tx)` — finds highest existing code number for a type+DRG pair
 - `_buildReference(record, titleField?)` — builds a `{id, title, code, ...}` Reference object from a Neo4j record
 - `_validateReferences(label, ids, tx)` — batch-validates that all referenced node IDs exist; throws `StoreError` listing missing IDs
-- `_validateOpenChangeSet(changeSetCommit, tx)` — fail-fast: missing `changeSetId` throws a `Validation failed:` `StoreError` (no code); a non-existent ChangeSet throws `code: CHANGESET_NOT_FOUND`; a non-`OPEN` ChangeSet throws `code: CHANGESET_CLOSED`
-- `_writeHasReason(versionId, changeSetCommit, tx)` — creates `(version)-[:HAS_REASON {note}]->(ChangeSet)`
-- `_resolveChangeSetCommit(versionId, tx)` / `_attachChangeSetCommits(items, tx)` — resolve the store-level `changeSetCommit` (`{changeSetId, note}`) for a single version or a whole list (one query); `null` when the version has no `HAS_REASON` edge
+- `_validateOpenChangeSet(changeSetCommit, tx)` — fail-fast validation that **returns a frozen change-set snapshot** `{code, title, classifier}` for the audit event: missing `changeSetId` throws a `Validation failed:` `StoreError` (no code); a non-existent ChangeSet throws `code: CHANGESET_NOT_FOUND`; a non-`OPEN` ChangeSet throws `code: CHANGESET_CLOSED`
+- `_auditCommit(changeSetCommit, csSnapshot)` — assembles the audit commit fragment `{changeSetId, code, title, classifier, note}` from the write-time commit and the frozen snapshot
+- `_resolveAuditTargetType(contentData)` — resolves the `AuditTargetType` leaf for this store: `OC` / `CHAPTER` from the node label, otherwise the requirement's `ON`/`OR` from `contentData.type`
 
 **Note on `code` field**: Item nodes carry a `code` property (e.g. `OR-IDL-0042`) that is generated at creation time from the entity type and domain key. Codes are stable identifiers used for round-trip import matching alongside `externalId`.
+
+### 3.x AuditEventStore (`audit-event-store.js`)
+
+Extends `BaseStore` (node label `AuditEvent`). The **sole audit surface** — the single authoritative record of every consequential write. Instantiated by `VersionedItemStore` (as `this.auditEventStore`, shared by all versioned stores) and by `ChangeSetStore` (for the member feed). Write + read only — events are append-only, never updated or deleted.
+
+**Methods:**
+- `log(action, target, changeSetCommit, tx)` — the single write. Creates the `AuditEvent` node (all fields frozen at write time), the `TARGETS` edge to the item, and `UNDER_CHANGESET` when `changeSetCommit` is present. `userId`/`userRole` are read from the transaction (§8.1). `target` is `{id, type, code, title, version}`; `changeSetCommit` is `{changeSetId, code, title, classifier, note}` or `null`. Written **in the same transaction** as the operation it records — the event never exists without its cause, and the cause never commits without its event.
+- `findByTarget(itemId, tx)` → `Array<AuditEvent>` ordered by `timestamp` — the History feed. A pure event scan via `TARGETS`, no joins.
+- `findByChangeSet(changeSetId, tx)` → member-row projection — the change-set members feed: the single `(cs)<-[:UNDER_CHANGESET]-(e)-[:TARGETS]->(item)` hop. Recovers `versionId` by an on-demand hop from `targetId` + `targetVersion` to the `ItemVersion` node (off any common read path — runs only when the change-set detail page is opened).
+
+The denormalised target/change-set fields on the event are frozen snapshots; a `HARD_DELETE` event's `TARGETS` edge is removed with the item, but `targetId`/`targetType`/`targetCode`/`targetTitle` survive as the only trace.
 
 ### 3.4 Concrete Stores
 
@@ -183,7 +195,8 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 | `BaselineStore` | `BaseStore` | `HAS_ITEMS` capture; immutable |
 | `ODPEditionStore` | `BaseStore` | `EXPOSES`, context resolution; immutable |
 | `OperationalChangeMilestoneStore` | `BaseStore` | `BELONGS_TO`, `TARGETS`; internal to `OperationalChangeStore` |
-| `ChangeSetStore` | `BaseStore` | Non-versioned; status transitions; `HAS_REASON` reverse traversal (`findMembers`) |
+| `ChangeSetStore` | `BaseStore` | Non-versioned; status transitions; `findMembers` via audit `UNDER_CHANGESET` hop |
+| `AuditEventStore` | `BaseStore` | Append-only audit log; `TARGETS` / `UNDER_CHANGESET`; `log` + `findByTarget` + `findByChangeSet` |
 | `ChapterStore` | `VersionedItemStore` | No relationships; `findByKey(key, tx)` for bootstrap; config-owned fields merged at read time |
 | `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
 | `OperationalChangeStore` | `VersionedItemStore` | `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`; milestones delegated |
@@ -417,7 +430,7 @@ Extends `BaseStore` (node label `OperationalChangeMilestone`). **Not a public st
 
 ### 4.8 ChangeSetStore (`change-set-store.js`)
 
-Inherits `BaseStore` (node label `ChangeSet`). Non-versioned — a change set is a single mutable node, not a dual-node entity. It records *why* content changed; every versioned write links its new version to one OPEN change set via `HAS_REASON` (written by `VersionedItemStore`, §5.5).
+Inherits `BaseStore` (node label `ChangeSet`). Non-versioned — a change set is a single mutable node, not a dual-node entity. It records *why* content changed; every consequential write records an `AuditEvent` linked to its OPEN change set via `UNDER_CHANGESET` (written through `AuditEventStore`, §3.x). The `ChangeSet` node keeps its own `createdAt`/`createdBy` stamps — only versioned items lost theirs.
 
 **Overridden methods:**
 - `create(data, tx)` — generates `code` (`CS-#####`, sequential, 5-digit zero-pad) via `_findMaxChangeSetCodeNumber(tx)`, then stamps `createdAt`/`createdBy`, initialises `status = 'OPEN'` and `commentRefs = []`, and delegates to `BaseStore.create`. `closedAt`/`closedBy` remain unset until closure.
@@ -430,21 +443,21 @@ Inherits `BaseStore` (node label `ChangeSet`). Non-versioned — a change set is
 - `reopen(id, tx)` — sets `status = 'OPEN'`, clears `closedAt`/`closedBy` (multi-cycle history not retained); throws if not found
 - `findByStatus(status, tx)` → `Array<ChangeSet>` ordered by `createdAt DESC`
 - `findByClassifier(classifier, tx)` → `Array<ChangeSet>` ordered by `createdAt DESC`
-- `findMembers(changeSetId, tx)` → member-row projection — the `ChangeSet ← HAS_REASON ← version → item` reverse traversal in a single query
+- `findMembers(changeSetId, tx)` → member-row projection — delegates to `AuditEventStore.findByChangeSet` (the single `UNDER_CHANGESET` hop). Computed on demand by the change-set detail view.
 
 **Member-row projection** (the declared shape returned by `findMembers`, distinct from any O* projection — the change-set detail view renders these common columns only):
 
 | Field | Source |
 |---|---|
 | `itemId` | `id(item)` |
-| `itemType` | `'OC'` / `'chapter'` from `labels(item)`, else `version.type` (`'ON'` / `'OR'`) |
-| `code` | `item.code` |
-| `title` | `item.title` |
-| `versionId` | `id(version)` — the specific version committed under this set |
-| `version` | `version.version` |
-| `note` | `HAS_REASON.note` |
+| `itemType` | `e.targetType` — `ON` / `OR` / `OC` / `CHAPTER` (frozen on the event) |
+| `code` | `e.targetCode` |
+| `title` | `e.targetTitle` |
+| `versionId` | `id(v)` — resolved on demand from `targetId` + `targetVersion` |
+| `version` | `e.targetVersion` |
+| `note` | `e.note` |
 
-`findMembers` is the only place the reverse (`ChangeSet → versions`) traversal occurs; per-version forward resolution (`version → ChangeSet`) lives in `VersionedItemStore`. Title / status / classifier of the set itself are hydrated by `ChangeSetService` from its cache, not by the store.
+Members are read from the audit log; the set's own title / status / classifier are on the `ChangeSet` node (its detail header), while each row's change context is frozen on the event.
 
 ---
 
@@ -458,16 +471,13 @@ Versioned entities use two Neo4j node types:
 // Item node — stable identity
 (item:OperationalRequirement {
     title: string,
-    createdAt: datetime,
-    createdBy: string,
+    status: string,             // ACTIVE | DELETED
     latest_version: integer     // cached current version number
 })
 
-// ItemVersion node — version-specific content
+// ItemVersion node — version-specific content (no audit stamps)
 (version:OperationalRequirementVersion {
     version: integer,           // sequential: 1, 2, 3...
-    createdAt: datetime,
-    createdBy: string,
     type: string,
     statement: string,
     // ... all content fields
@@ -476,6 +486,8 @@ Versioned entities use two Neo4j node types:
 (item)-[:LATEST_VERSION]->(version)
 (version)-[:VERSION_OF]->(item)
 ```
+
+Audit (who/when/why) is **not** on these nodes — it is recorded on `AuditEvent` (§3.x). `createdAt`/`createdBy` have been removed from both item and version; the item carries only the `status` lifecycle field.
 
 ### 5.2 Create Operation (Version 1)
 
@@ -507,23 +519,20 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 
 The client must supply `expectedVersionId` (the `versionId` of the version it last read). If another user has since updated the entity, the IDs will not match and the operation fails fast with a `StoreError`.
 
-### 5.5 Change-Set Linkage (`HAS_REASON`)
+### 5.5 Audit Linkage (`AuditEvent`)
 
-Every versioned write records its reason as a `HAS_REASON` edge from the new version to a `ChangeSet`:
+Every consequential write records an `AuditEvent` in the same transaction (§3.x), linked to its change set via `UNDER_CHANGESET`:
 
 ```cypher
-(version)-[:HAS_REASON {note}]->(changeSet:ChangeSet)
+(e:AuditEvent)-[:TARGETS]->(item)
+(e:AuditEvent)-[:UNDER_CHANGESET]->(changeSet:ChangeSet)   // when change-set-bound
 ```
 
-**Write path** — `create` and `update` take a `changeSetCommit = {changeSetId, note}` argument, separate from `data` (which carries entity state only). `_validateOpenChangeSet` fails fast if the set is missing or not `OPEN`, then `_writeHasReason` creates the edge. Restore and decommission are service-level operations flowing through `update`, so they link identically.
+**Write path** — `create` and `update` take a `changeSetCommit = {changeSetId, note}` argument, separate from `data` (which carries entity state only). `_validateOpenChangeSet` fails fast if the set is missing or not `OPEN` **and returns a frozen `{code, title, classifier}` snapshot**; `_auditCommit` assembles the audit fragment; `auditEventStore.log(...)` writes the event. The change-set code/title/classifier are frozen onto the event at commit time, so a later rename or reclassification never leaves a stale member row. Restore and decommission are service-level operations flowing through `update`, so they audit identically.
 
-**Read path** — the per-version reason is resolved by a single forward hop and returned as `changeSetCommit = {changeSetId, note}`:
-- `findById` / `findByIdAndVersion` — via `_resolveChangeSetCommit(versionId)`
-- `findAll` / `findVersionHistory` — via the batch `_attachChangeSetCommits(items)` (one query for all rows)
+**Read path** — there is no per-version reason resolution on common reads. The History feed reads `AuditEventStore.findByTarget(itemId)`; the change-set members feed reads `AuditEventStore.findByChangeSet(changeSetId)`. Both are on-demand and self-contained (every field frozen on the event).
 
-The store populates only `{changeSetId, note}`; `ChangeSetService` hydrates `changeSetTitle` / `classifier` from its change-set cache (the single polymorphic `ChangeSetCommitRead` shape, partially populated at the store boundary). Keeping the set's mutable attributes out of the version graph means a rename or reclassification never leaves stale denormalised copies.
-
-> **Bootstrap exception:** `ChapterStore.createChapter` seeds version 1 directly (not through `VersionedItemStore.create`) and therefore writes no `HAS_REASON` edge; bootstrap chapters carry a `null` `changeSetCommit` until first edited. Whether bootstrap should attach a system change set is a service-layer decision.
+> **Bootstrap:** `ChapterStore.createChapter` seeds version 1 directly (not through `VersionedItemStore.create`) and records **no** audit event — bootstrap chapters are config-owned scaffolding, not a consequential user write. Their audit trail begins at first edit. (Resolves the former "bootstrap system change set" open point: no system actor is invented, keeping `UserRole` to writer roles only.)
 
 ---
 
@@ -660,11 +669,11 @@ AND $editionId IN r.editions   ← only when edition context active
 
 The `Transaction` class wraps a Neo4j transaction and session. It exposes `run()`, `commit()`, and `rollback()`, and closes the session in a `finally` block regardless of outcome. Once completed (`isComplete = true`), any further `run()` call throws a `TransactionError`.
 
-Transactions carry `userId` via `getUserId()`, which stores use when writing `createdBy` fields.
+Transactions carry the actor as `userId` (via `getUserId()`) and `userRole` (via `getUserRole()`), used when writing audit events (`AuditEvent.userId` / `userRole`) and the `ChangeSet` `createdBy`/`closedBy` stamps. `userRole` is the `UserRole` key resolved by the auth layer when the transaction is opened; it is frozen onto each `AuditEvent`.
 
 ```javascript
 // transaction.js exports
-export function createTransaction(userId)      // → Transaction
+export function createTransaction(userId, userRole)  // → Transaction
 export async function commitTransaction(tx)    // → void
 export async function rollbackTransaction(tx)  // → void
 ```
@@ -699,7 +708,7 @@ export function getDriver()                   // used by createTransaction()
 export async function closeConnection()       // called on server shutdown
 ```
 
-The driver is configured with `maxConnectionPoolSize` and `connectionTimeout` from `config.json`. Stores are initialised once via `initializeStores()` in `store/index.js`. After store initialisation, `initializeDatabase()` (also in `store/index.js`) ensures the schema and config-driven DB entities exist — it first calls `_ensureConstraints()` (creates the `ChangeSet.code` uniqueness constraint and any future constraints, idempotent via `IF NOT EXISTS`, isolated in its own write transaction), then bootstraps `Chapter` nodes from `edition.json`. Both are called from `server/src/index.js` at startup. Stores are accessed through named accessor functions that throw if called before initialisation:
+The driver is configured with `maxConnectionPoolSize` and `connectionTimeout` from `config.json`. Stores are initialised once via `initializeStores()` in `store/index.js`. After store initialisation, `initializeDatabase()` (also in `store/index.js`) ensures the schema and config-driven DB entities exist — it first calls `_ensureConstraints()` (creates the `ChangeSet.code` uniqueness constraint, plus an index on `AuditEvent.timestamp` for the History ordering; all idempotent via `IF NOT EXISTS`, isolated in its own write transaction), then bootstraps `Chapter` nodes from `edition.json`. No `HAS_REASON` constraint exists or is dropped — that edge was never constrained. Both are called from `server/src/index.js` at startup. Stores are accessed through named accessor functions that throw if called before initialisation:
 
 ```javascript
 export function operationalRequirementStore() {
@@ -750,7 +759,7 @@ Unlike the previous design, there is no separate `ValidationError` or `Optimisti
 | Change set not found on write | `StoreError` (`code: CHANGESET_NOT_FOUND`) | `VersionedItemStore._validateOpenChangeSet` |
 | Change set not OPEN on write | `StoreError` (`code: CHANGESET_CLOSED`) | `VersionedItemStore._validateOpenChangeSet` |
 | Change set not found on close/reopen | `StoreError` | `ChangeSetStore` |
-| Item has no versions (data integrity) | `StoreError` | `findVersionHistory` |
+| Audit event target not found on log | `StoreError` | `AuditEventStore.log` |
 | Invalid ID format | `StoreError` | `normalizeId` |
 | Baseline not found | `StoreError` | Multi-context queries |
 | Wave not found | `StoreError` | Multi-context queries |

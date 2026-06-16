@@ -1,11 +1,11 @@
 /**
  * @file change-set-elements.js
- * @description ChangeSet entity model, classifier and status enums, the
- * HAS_REASON edge shape, and the ChangeSetCommit fragments (write and read).
+ * @description ChangeSet entity model, classifier and status enums, and the
+ * ChangeSetCommit write fragment.
  *
  * A ChangeSet is the first-class carrier of "why" for every save of a managed
- * object (O*, chapter/narrative). Each version links to exactly one ChangeSet
- * via a HAS_REASON edge carrying an optional per-object note.
+ * object (O*, chapter/narrative). The reason for a save is recorded on the
+ * AuditEvent (see audit-elements.js), linked to its ChangeSet via UNDER_CHANGESET.
  *
  * ChangeSets are authored in-app only — no external id, never imported.
  */
@@ -75,21 +75,7 @@ export const ChangeSet = {
 };
 
 // ---------------------------------------------------------------------------
-// HAS_REASON edge
-// ---------------------------------------------------------------------------
-
-/**
- * HAS_REASON edge shape (version node → ChangeSet).
- *
- * @typedef {object} HasReason
- * @property {string} note — optional per-object annotation
- */
-export const HasReason = {
-    note: '',   // optional
-};
-
-// ---------------------------------------------------------------------------
-// Commit fragments — write and read
+// Commit fragment — write
 // ---------------------------------------------------------------------------
 
 /**
@@ -100,39 +86,11 @@ export const HasReason = {
  * @typedef {object} ChangeSetCommit
  * @property {string} changeSetId — required at the request layer; the save fails
  *                                  if missing or referring to a CLOSED set
- * @property {string} note        — optional per-object annotation (HAS_REASON.note)
+ * @property {string} note        — optional per-object annotation (recorded on the AuditEvent)
  */
 export const ChangeSetCommit = {
     changeSetId: '',
     note:        '',   // optional
-};
-
-/**
- * Commit reason RETURNED on versioned-entity reads (field `changeSetCommit` on
- * OR / OC / Chapter). One polymorphic shape, populated to different levels by
- * layer:
- *   - the STORE populates the always-present subset { changeSetId, note }
- *     (resolved by one forward hop along HAS_REASON);
- *   - the SERVICE hydrates { code, changeSetTitle, classifier } from its ChangeSet
- *     cache (these are mutable on the set, so they are resolved on read rather
- *     than denormalised onto the edge).
- *
- * Write and read travel under the same field name (`changeSetCommit`); the
- * read shape is a superset of the write shape { changeSetId, note }.
- *
- * @typedef {object} ChangeSetCommitRead
- * @property {string} changeSetId
- * @property {string} code          — CS-##### handle, hydrated by the service
- * @property {string} changeSetTitle
- * @property {string} classifier    — ChangeSetClassifier key
- * @property {string} note          — per-object HAS_REASON.note (optional)
- */
-export const ChangeSetCommitRead = {
-    changeSetId:    '',
-    code:           '',   // CS-#####, hydrated by service
-    changeSetTitle: '',
-    classifier:     '',   // ChangeSetClassifier key
-    note:           '',   // optional
 };
 
 // ---------------------------------------------------------------------------
@@ -141,19 +99,19 @@ export const ChangeSetCommitRead = {
 
 /**
  * A single version committed under a ChangeSet (member-row projection).
- * Returned by ChangeSetStore.findMembers / ChangeSetService.getMembers.
- * The exact version linked by HAS_REASON is shown — not the latest version
- * of the item. A given item may appear multiple times if updated more than
- * once within the set.
+ * Returned by ChangeSetStore.findMembers / ChangeSetService.getMembers, read
+ * from the audit log via the UNDER_CHANGESET → TARGETS hop. The exact version
+ * committed under the set is shown — not the latest version of the item. A given
+ * item may appear multiple times if updated more than once within the set.
  *
  * @typedef {object} ChangeSetMember
  * @property {string}      itemId    — stable item identity
- * @property {string}      itemType  — 'ON' | 'OR' | 'OC' | 'chapter'
+ * @property {string}      itemType  — 'ON' | 'OR' | 'OC' | 'CHAPTER' (AuditTargetType)
  * @property {string|null} code      — item code (null for pre-code chapters)
  * @property {string}      title
  * @property {string}      versionId
  * @property {number}      version
- * @property {string}      note      — per-object HAS_REASON.note (optional)
+ * @property {string}      note      — per-object annotation (optional)
  */
 export const ChangeSetMember = {
     itemId:    '',

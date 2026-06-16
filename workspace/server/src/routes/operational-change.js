@@ -47,10 +47,10 @@ const router = operationalChangeRouter.getRouter();
 // GET /operational-changes/:id/milestones
 router.get('/:id/milestones', async (req, res) => {
     try {
-        const userId = operationalChangeRouter.getUserId(req);
+        const user = operationalChangeRouter.getUser(req);
         const editionId = operationalChangeRouter.getEditionId(req);
-        console.log(`OperationalChangeService.getMilestones() itemId: ${req.params.id}, userId: ${userId}, editionId: ${editionId}`);
-        const milestones = await OperationalChangeService.getMilestones(req.params.id, userId, editionId);
+        console.log(`OperationalChangeService.getMilestones() itemId: ${req.params.id}, user: ${user?.id ?? null}, editionId: ${editionId}`);
+        const milestones = await OperationalChangeService.getMilestones(req.params.id, user, editionId);
         res.json(milestones);
     } catch (error) {
         console.error('Error fetching milestones:', error);
@@ -71,10 +71,10 @@ router.get('/:id/milestones', async (req, res) => {
 // GET /operational-changes/:id/milestones/:milestoneKey
 router.get('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const userId = operationalChangeRouter.getUserId(req);
+        const user = operationalChangeRouter.getUser(req);
         const editionId = operationalChangeRouter.getEditionId(req);
-        console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, userId: ${userId}, editionId: ${editionId}`);
-        const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneKey, userId, editionId);
+        console.log(`OperationalChangeService.getMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, user: ${user?.id ?? null}, editionId: ${editionId}`);
+        const milestone = await OperationalChangeService.getMilestone(req.params.id, req.params.milestoneKey, user, editionId);
         res.json(milestone);
     } catch (error) {
         console.error('Error fetching milestone:', error);
@@ -95,15 +95,15 @@ router.get('/:id/milestones/:milestoneKey', async (req, res) => {
 // POST /operational-changes/:id/milestones
 router.post('/:id/milestones', async (req, res) => {
     try {
-        const userId = operationalChangeRouter.getUserId(req);
+        const user = operationalChangeRouter.getUser(req);
         const expectedVersionId = req.body.expectedVersionId;
         if (!expectedVersionId) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
             });
         }
-        console.log(`OperationalChangeService.addMilestone() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        const response = await OperationalChangeService.addMilestone(req.params.id, req.body, expectedVersionId, userId);
+        console.log(`OperationalChangeService.addMilestone() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, user: ${user?.id ?? null}`);
+        const response = await OperationalChangeService.addMilestone(req.params.id, req.body, expectedVersionId, user);
         res.status(201).json(response);
     } catch (error) {
         console.error('Error adding milestone:', error);
@@ -128,15 +128,15 @@ router.post('/:id/milestones', async (req, res) => {
 // PUT /operational-changes/:id/milestones/:milestoneKey
 router.put('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const userId = operationalChangeRouter.getUserId(req);
+        const user = operationalChangeRouter.getUser(req);
         const expectedVersionId = req.body.expectedVersionId;
         if (!expectedVersionId) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
             });
         }
-        console.log(`OperationalChangeService.updateMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-        const response = await OperationalChangeService.updateMilestone(req.params.id, req.params.milestoneKey, req.body, expectedVersionId, userId);
+        console.log(`OperationalChangeService.updateMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, user: ${user?.id ?? null}`);
+        const response = await OperationalChangeService.updateMilestone(req.params.id, req.params.milestoneKey, req.body, expectedVersionId, user);
         res.json(response);
     } catch (error) {
         console.error('Error updating milestone:', error);
@@ -161,16 +161,16 @@ router.put('/:id/milestones/:milestoneKey', async (req, res) => {
 // DELETE /operational-changes/:id/milestones/:milestoneKey
 router.delete('/:id/milestones/:milestoneKey', async (req, res) => {
     try {
-        const userId = operationalChangeRouter.getUserId(req);
+        const user = operationalChangeRouter.getUser(req);
         const expectedVersionId = req.body.expectedVersionId;
         if (!expectedVersionId) {
             return res.status(400).json({
                 error: { code: 'BAD_REQUEST', message: 'Missing required field: expectedVersionId' }
             });
         }
-        console.log(`OperationalChangeService.deleteMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
+        console.log(`OperationalChangeService.deleteMilestone() itemId: ${req.params.id}, milestoneKey: ${req.params.milestoneKey}, expectedVersionId: ${expectedVersionId}, user: ${user?.id ?? null}`);
         const changeSetCommit = { changeSetId: req.body.changeSetId, note: req.body.note };
-        const response = await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, userId, changeSetCommit);
+        const response = await OperationalChangeService.deleteMilestone(req.params.id, req.params.milestoneKey, expectedVersionId, user, changeSetCommit);
         res.status(200).json(response);
     } catch (error) {
         console.error('Error deleting milestone:', error);

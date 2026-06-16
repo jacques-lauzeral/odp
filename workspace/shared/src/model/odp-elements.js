@@ -46,8 +46,7 @@ export const OperationalRequirement = {
     title: '',
     versionId: '',
     version: 0,
-    createdAt: '',
-    createdBy: '',
+    status: '',                 // ItemStatus key — ACTIVE | DELETED
     code: '',
     type: '',                   // ON | OR
     maturity: '',               // DRAFT | ADVANCED | MATURE
@@ -60,8 +59,6 @@ export const OperationalRequirement = {
     implementedONs: [],         // array of OperationalEntityReference {id, code, title, type}
     impactedStakeholders: [],   // array of AnnotatedReference {id, title, note} (StakeholderCategory)
     dependencies: [],           // array of OperationalEntityReference {id, code, title, type} (OR)
-    // commit reason — summary (read-only; one forward hop along HAS_REASON)
-    changeSetCommit: null,      // ChangeSetCommitRead {changeSetId, changeSetTitle, classifier, note}
 
     // rich-text fields — available in standard and extended projections only
     statement: '',              // rich text
@@ -94,8 +91,7 @@ export const OperationalChange = {
     title: '',
     versionId: '',
     version: 0,
-    createdAt: '',
-    createdBy: '',
+    status: '',                 // ItemStatus key — ACTIVE | DELETED
     code: '',
     maturity: '',               // DRAFT | ADVANCED | MATURE
     domain: '',                 // domain key from domains.json
@@ -105,8 +101,6 @@ export const OperationalChange = {
     milestones: [],             // array of Milestone
     cost: null,                 // integer, in MW, optional
     orCosts: [],                // array of ORCost
-    // commit reason — summary (read-only; one forward hop along HAS_REASON)
-    changeSetCommit: null,      // ChangeSetCommitRead {changeSetId, changeSetTitle, classifier, note}
 
     // rich-text fields — available in standard and extended projections only
     purpose: '',                // rich text

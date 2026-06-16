@@ -1,0 +1,189 @@
+# openapi-audit-event.yml
+# Phase A — audit foundation
+# AuditEvent schemas and the reusable /{item}/{id}/history path.
+#
+# AuditEvent is the sole authoritative audit record for every consequential write.
+# All fields are frozen at write time — no join required on read.
+# The History view renders directly from this feed.
+
+components:
+  schemas:
+
+    AuditAction:
+      type: string
+      description: "The type of action recorded by an AuditEvent."
+      enum:
+        - CREATE
+        - UPDATE
+        - DELETE
+        - RESTORE
+        - HARD_DELETE
+        - CLOSE
+        - REOPEN
+        - PUBLISH
+        - BASELINE
+        - DECOMMISSION   # reserved — not yet in use (Phase B / DEL-06)
+
+    AuditTargetType:
+      type: string
+      description: "The entity type targeted by an AuditEvent."
+      enum:
+        - ON
+        - OR
+        - OC
+        - CHAPTER
+        - CHANGESET
+        - EDITION
+        - BASELINE
+        - WAVE
+
+    AuditEventRow:
+      type: object
+      description: |
+        A single entry in an item's audit timeline. All fields are frozen at
+        write time and never resolved on read — the History view requires no
+        join. A HARD_DELETE event outlives its target: the TARGETS relationship
+        is removed with the item, but targetId/targetType/targetCode/targetTitle
+        remain on the event as the only surviving trace.
+      properties:
+        id:
+          type: string
+          description: "AuditEvent node ID"
+        action:
+          $ref: '#/components/schemas/AuditAction'
+        userId:
+          type: string
+          description: "Stable logical actor key — mirrors the transaction's userId"
+          nullable: true
+        userRole:
+          type: string
+          description: "UserRole key at action time, frozen (null until RBA populates the header)"
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        targetId:
+          type: string
+          description: "Stable item identity; persisted as scalar so it survives hard delete"
+        targetType:
+          $ref: '#/components/schemas/AuditTargetType'
+        targetCode:
+          type: string
+          nullable: true
+          description: "Item code at action time; null for code-less chapters"
+        targetTitle:
+          type: string
+          description: "Item title at action time, frozen"
+        targetVersion:
+          type: integer
+          nullable: true
+          description: "Version number for version-producing actions; null otherwise"
+        changeSetCode:
+          type: string
+          nullable: true
+          description: "CS-##### handle; null when not change-set-bound"
+        changeSetTitle:
+          type: string
+          nullable: true
+          description: "Change set title at commit time, frozen"
+        classifier:
+          type: string
+          nullable: true
+          description: "ChangeSetClassifier key at commit time, frozen"
+          enum: [NEW_CONTENT, IN_DEPTH_REWORK, CLARIFICATION, EDITORIAL]
+        note:
+          type: string
+          nullable: true
+          description: "Per-object annotation (formerly on the HAS_REASON edge)"
+
+paths:
+
+  # Reusable history path — referenced by openapi.yml for OR, OC, Chapter.
+  # The {item} placeholder is filled per entity type in the main openapi.yml.
+  /operational-requirements/{id}/history:
+    get:
+      summary: Get audit timeline for an operational requirement
+      description: |
+        Returns the full chronological AuditEvent timeline for the requirement.
+        All fields are frozen at write time — no join required on read.
+        Replaces the former /versions (list) endpoint (Phase A — audit foundation).
+      tags: [Operational Requirements]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/AuditEventRow'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /operational-changes/{id}/history:
+    get:
+      summary: Get audit timeline for an operational change
+      description: |
+        Returns the full chronological AuditEvent timeline for the change.
+        Replaces the former /versions (list) endpoint (Phase A — audit foundation).
+      tags: [Operational Changes]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/AuditEventRow'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+
+  /chapters/{id}/history:
+    get:
+      summary: Get audit timeline for a chapter
+      description: |
+        Returns the full chronological AuditEvent timeline for the chapter.
+        Replaces the former /versions (list) endpoint (Phase A — audit foundation).
+      tags: [Chapters]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: 'openapi-base.yml#/components/schemas/AuditEventRow'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'

@@ -9,17 +9,22 @@ import { isChangeSetClassifierValid } from '@odp/shared';
 
 /**
  * ChangeSetService — owns ChangeSet CRUD, lifecycle (close/reopen), member
- * listing, and the in-process id→ChangeSet cache used to hydrate the per-version
- * changeSetCommit on every versioned read.
+ * listing, and the in-process id→ChangeSet cache used by the store layer to
+ * validate open change sets on writes.
+ *
+ * Phase A (audit foundation):
+ * - userId replaced by user {id, role} throughout
+ * - hydrateInto / hydrateAll removed — changeSetCommit is no longer on the
+ *   versioned-item read shape; History is served by AuditEventService
+ * - Cache is now write-path only: used by _validateOpenChangeSet in the store
+ *   to confirm a set is OPEN and capture the frozen {code, title, classifier}
+ *   snapshot written onto AuditEvent
  *
  * Cache contract:
- *   - lazily populated on demand (hydration miss → load from store within the
- *     active read transaction, then cache);
- *   - kept coherent on every ChangeSet mutation — create/update/close/reopen
- *     refresh the entry, delete evicts it.
- * The cache is per-process; title/classifier/status are mutable on the set, so
- * resolving them on read (rather than denormalising onto the HAS_REASON edge)
- * is what keeps a rename or reclassification consistent everywhere.
+ *   - lazily populated on demand (store miss → load within active transaction)
+ *   - refreshed on every mutation: create/update/close/reopen set the entry
+ *   - evicted on delete
+ *   - per-process; no cross-instance coherence
  */
 export class ChangeSetService extends SimpleItemService {
     constructor() {
@@ -56,53 +61,21 @@ export class ChangeSetService extends SimpleItemService {
     }
 
     // -------------------------------------------------------------------------
-    // Hydration (called by VersionedItemService reads)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Enrich an entity's changeSetCommit in place — fills changeSetTitle and
-     * classifier from the cache. No-op when the entity has no commit (e.g. a
-     * pre-LCM version with a null changeSetCommit).
-     */
-    async hydrateInto(entity, transaction) {
-        if (!entity || !entity.changeSetCommit) return entity;
-        const commit = entity.changeSetCommit;
-        const changeSet = await this._cacheGet(commit.changeSetId, transaction);
-        if (changeSet) {
-            commit.code = changeSet.code;
-            commit.changeSetTitle = changeSet.title;
-            commit.classifier = changeSet.classifier;
-        }
-        return entity;
-    }
-
-    /**
-     * Hydrate a list of entities (O* list, version-history rows).
-     */
-    async hydrateAll(entities, transaction) {
-        if (!Array.isArray(entities)) return entities;
-        for (const entity of entities) {
-            await this.hydrateInto(entity, transaction);
-        }
-        return entities;
-    }
-
-    // -------------------------------------------------------------------------
     // CRUD (cache-maintaining overrides)
     // -------------------------------------------------------------------------
 
-    async createItem(data, userId) {
-        const created = await super.createItem(data, userId);
+    async createItem(data, user) {
+        const created = await super.createItem(data, user);
         return this._cacheSet(created);
     }
 
     /**
-     * Update title / reasonText. Editable only while OPEN (per change-set detail
-     * view). Runs as a single transaction so the OPEN guard and write are atomic.
+     * Update title / reasonText. Editable only while OPEN.
+     * Runs as a single transaction so the OPEN guard and write are atomic.
      */
-    async updateItem(id, data, userId) {
+    async updateItem(id, data, user) {
         await this._validateUpdateData(data);
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const current = await store.findById(id, tx);
@@ -123,11 +96,10 @@ export class ChangeSetService extends SimpleItemService {
     }
 
     /**
-     * Delete a change set. Only an empty, OPEN set may be deleted; a closed set
-     * or one with members is never deletable.
+     * Delete a change set. Only an empty, OPEN set may be deleted.
      */
-    async deleteItem(id, userId) {
-        const tx = createTransaction(userId);
+    async deleteItem(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const current = await store.findById(id, tx);
@@ -156,8 +128,8 @@ export class ChangeSetService extends SimpleItemService {
     // Lifecycle
     // -------------------------------------------------------------------------
 
-    async close(id, userId) {
-        const tx = createTransaction(userId);
+    async close(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const changeSet = await this.getStore().close(id, tx);
             await commitTransaction(tx);
@@ -168,8 +140,8 @@ export class ChangeSetService extends SimpleItemService {
         }
     }
 
-    async reopen(id, userId) {
-        const tx = createTransaction(userId);
+    async reopen(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const changeSet = await this.getStore().reopen(id, tx);
             await commitTransaction(tx);
@@ -184,8 +156,8 @@ export class ChangeSetService extends SimpleItemService {
     // Queries
     // -------------------------------------------------------------------------
 
-    async findByStatus(status, userId) {
-        const tx = createTransaction(userId);
+    async findByStatus(status, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const result = await this.getStore().findByStatus(status, tx);
             await commitTransaction(tx);
@@ -196,8 +168,8 @@ export class ChangeSetService extends SimpleItemService {
         }
     }
 
-    async findByClassifier(classifier, userId) {
-        const tx = createTransaction(userId);
+    async findByClassifier(classifier, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const result = await this.getStore().findByClassifier(classifier, tx);
             await commitTransaction(tx);
@@ -208,8 +180,8 @@ export class ChangeSetService extends SimpleItemService {
         }
     }
 
-    async getMembers(changeSetId, userId) {
-        const tx = createTransaction(userId);
+    async getMembers(changeSetId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const members = await this.getStore().findMembers(changeSetId, tx);
             await commitTransaction(tx);

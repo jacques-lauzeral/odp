@@ -1,22 +1,24 @@
 import { BaseStore } from './base-store.js';
 import { StoreError } from './transaction.js';
+import { AuditEventStore } from './audit-event-store.js';
 
 /**
  * Store for ChangeSet nodes.
  *
  * A ChangeSet records *why* content changed. It is non-versioned — a single
  * mutable node whose `status` transitions OPEN → CLOSED and may be reopened.
- * Every versioned write (OR/OC/Chapter) links its new version to one OPEN
- * change set via a HAS_REASON edge; that edge is written by VersionedItemStore.
- * The reverse traversal (a change set → its member versions) lives here, in
- * findMembers.
+ * Every consequential write records an AuditEvent linked to its OPEN change set
+ * via UNDER_CHANGESET (written by VersionedItemStore through AuditEventStore).
+ * The members view (a change set → its committed versions) lives here in
+ * findMembers, delegating to the audit log's single UNDER_CHANGESET hop.
  *
- * Title/status/classifier of a set are mutable; the service caches them and
- * hydrates per-version reads. This store never denormalises those onto edges.
+ * Change-set title/status/classifier are mutable; the per-event snapshots are
+ * frozen at commit time on the AuditEvent, so member rows never re-hydrate them.
  */
 export class ChangeSetStore extends BaseStore {
     constructor(driver) {
         super(driver, 'ChangeSet');
+        this.auditEventStore = new AuditEventStore(driver);
     }
 
     /**
@@ -148,49 +150,18 @@ export class ChangeSetStore extends BaseStore {
     }
 
     /**
-     * Members of a change set — the versions committed under it, via the
-     * HAS_REASON reverse traversal. Returns the declared member-row projection
-     * (common columns only); the change-set detail view renders these directly.
-     *
-     * itemType resolves to 'OC' / 'chapter' from the item label, otherwise to
-     * version.type ('ON' | 'OR').
+     * Members of a change set — the versions committed under it. Reads the audit
+     * log via the single UNDER_CHANGESET → TARGETS hop (AuditEventStore.findByChangeSet),
+     * returning the declared member-row projection. Computed on demand (change-set
+     * detail view), so the per-row versionId resolution it performs is off any common
+     * read path.
      *
      * @param {number} changeSetId
      * @param {Transaction} transaction
-     * @returns {Promise<Array<{itemId:number, itemType:string, code:string, title:string, versionId:number, version:number, note:string}>>}
+     * @returns {Promise<Array<{itemId:number, itemType:string, code:string, title:string, versionId:(number|null), version:(number|null), note:string}>>}
      */
     async findMembers(changeSetId, transaction) {
-        try {
-            const id = this.normalizeId(changeSetId);
-            const result = await transaction.run(`
-                MATCH (cs:ChangeSet)<-[hr:HAS_REASON]-(version)-[:VERSION_OF]->(item)
-                WHERE id(cs) = $id
-                RETURN id(item) as itemId,
-                       CASE
-                         WHEN 'OperationalChange' IN labels(item) THEN 'OC'
-                         WHEN 'Chapter' IN labels(item) THEN 'chapter'
-                         ELSE version.type
-                       END as itemType,
-                       item.code as code,
-                       item.title as title,
-                       id(version) as versionId,
-                       version.version as version,
-                       hr.note as note
-                ORDER BY item.title
-            `, { id });
-            return result.records.map(rec => ({
-                itemId: this.normalizeId(rec.get('itemId')),
-                itemType: rec.get('itemType'),
-                code: rec.get('code'),
-                title: rec.get('title'),
-                versionId: this.normalizeId(rec.get('versionId')),
-                version: this.normalizeId(rec.get('version')),
-                note: rec.get('note') ?? '',
-            }));
-        } catch (error) {
-            if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to find members of ChangeSet ${changeSetId}: ${error.message}`, error);
-        }
+        return this.auditEventStore.findByChangeSet(changeSetId, transaction);
     }
 
     // Inherits from BaseStore: findById, findAll, update, delete, exists

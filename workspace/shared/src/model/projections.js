@@ -3,7 +3,6 @@
  *
  * Three field sets are defined per entity type:
  *   summary    — scalar and reference fields sufficient for list views
- *                (includes changeSetCommit — the HAS_REASON forward hop)
  *   rich-text  — rich text content fields (excluded from summary)
  *   derived    — reverse-traversal attributes (available on extended projection only)
  *
@@ -11,6 +10,10 @@
  *   summary    — summary fields only
  *   standard   — summary + rich-text fields
  *   extended   — summary + rich-text + derived fields
+ *
+ * Phase A (audit foundation): changeSetCommit, createdAt, createdBy removed from all
+ * field sets. These were version-node stamps that are now replaced by AuditEvent.
+ * History (who/when/why) is served exclusively by the audit timeline endpoint.
  */
 
 // ---------------------------------------------------------------------------
@@ -33,10 +36,9 @@ const FIELD_SET_FIELDS = {
             'itemId',
             'versionId',
             'version',
+            'status',
             'title',
             'code',
-            'createdAt',
-            'createdBy',
             'type',
             'domain',
             'maturity',
@@ -46,7 +48,6 @@ const FIELD_SET_FIELDS = {
             'impactedStakeholders',
             'strategicDocuments',
             'dependencies',
-            'changeSetCommit',
         ],
         'rich-text': [
             'statement',
@@ -70,10 +71,9 @@ const FIELD_SET_FIELDS = {
             'itemId',
             'versionId',
             'version',
+            'status',
             'title',
             'code',
-            'createdAt',
-            'createdBy',
             'domain',
             'maturity',
             'cost',
@@ -82,7 +82,6 @@ const FIELD_SET_FIELDS = {
             'decommissionedORs',
             'dependencies',
             'milestones',
-            'changeSetCommit',
         ],
         'rich-text': [
             'purpose',

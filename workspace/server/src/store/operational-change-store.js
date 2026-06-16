@@ -132,8 +132,7 @@ export class OperationalChangeStore extends VersionedItemStore {
             cypher += `
                 RETURN id(item) as itemId, item.title as title,
                         item.code as code,
-                        id(version) as versionId, version.version as version,
-                        version.createdAt as createdAt, version.createdBy as createdBy
+                        id(version) as versionId, version.version as version
                         ${scalarVersionFields.length > 0 ? ',' : ''}
                         ${scalarVersionFields.map(f => `version.${f} as ${f}`).join(',\n                        ')}
                 ORDER BY item.title
@@ -175,8 +174,6 @@ export class OperationalChangeStore extends VersionedItemStore {
                     code: record.get('code'),
                     versionId: this.normalizeId(record.get('versionId')),
                     version: this.normalizeId(record.get('version')),
-                    createdAt: record.get('createdAt'),
-                    createdBy: record.get('createdBy'),
                 };
 
                 const scalarVersionFields = [
@@ -204,7 +201,6 @@ export class OperationalChangeStore extends VersionedItemStore {
                 items.push(item);
             }
 
-            await this._attachChangeSetCommits(items, transaction);
             return items;
         } catch (error) {
             if (error instanceof StoreError) throw error;

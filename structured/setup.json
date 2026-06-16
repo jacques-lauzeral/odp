@@ -996,29 +996,5 @@
     }
   ],
   "waves": [
-    {
-      "externalId": "wave:2027.1",
-      "year": "2027",
-      "sequenceNumber": 1,
-      "implementationDate": "2027-03-23"
-    },
-    {
-      "externalId": "wave:2028.1",
-      "year": "2028",
-      "sequenceNumber": 1,
-      "implementationDate": "2028-04-11"
-    },
-    {
-      "externalId": "wave:2029.1",
-      "year": "2029",
-      "sequenceNumber": 1,
-      "implementationDate": "2029-04-17"
-    },
-    {
-      "externalId": "wave:2030.1",
-      "year": "2030",
-      "sequenceNumber": 1,
-      "implementationDate": "2030-03-26"
-    }
   ]
 }

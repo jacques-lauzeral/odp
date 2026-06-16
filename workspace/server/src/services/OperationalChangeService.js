@@ -22,23 +22,23 @@ export class OperationalChangeService extends VersionedItemService {
     }
 
     // Inherits from VersionedItemService:
-    // - create(payload, userId)
-    // - update(itemId, payload, expectedVersionId, userId)
-    // - patch(itemId, patchPayload, expectedVersionId, userId)
-    // - getById(itemId, userId, editionId?, projection?)
-    // - getByIdAndVersion(itemId, versionNumber, userId)
-    // - getVersionHistory(itemId, userId)
-    // - getAll(userId, editionId?, filters?, projection?)
-    // - delete(itemId, userId)
+    // - create(payload, user)
+    // - update(itemId, payload, expectedVersionId, user)
+    // - patch(itemId, patchPayload, expectedVersionId, user)
+    // - getById(itemId, user, editionId?, projection?)
+    // - getByIdAndVersion(itemId, versionNumber, user)
+    // - getAll(user, editionId?, filters?, projection?)
+    // - delete(itemId, user)
+    // History is served by AuditEventService.getItemHistory (Phase A).
 
     /**
      * Get all milestones for operational change (latest version or baseline context)
      * @param {number} itemId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {number|null} baselineId
      */
-    async getMilestones(itemId, userId, baselineId = null) {
-        const tx = createTransaction(userId);
+    async getMilestones(itemId, user, baselineId = null) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const operationalChange = await this.getStore().findById(itemId, tx, baselineId);
             if (!operationalChange) {
@@ -56,11 +56,11 @@ export class OperationalChangeService extends VersionedItemService {
      * Get specific milestone by milestoneKey (latest version or baseline context)
      * @param {number} itemId
      * @param {string} milestoneKey
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {number|null} baselineId
      */
-    async getMilestone(itemId, milestoneKey, userId, baselineId = null) {
-        const tx = createTransaction(userId);
+    async getMilestone(itemId, milestoneKey, user, baselineId = null) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const milestone = await this.getStore().findMilestoneByKey(itemId, milestoneKey, tx, baselineId);
             if (!milestone) {
@@ -92,10 +92,10 @@ export class OperationalChangeService extends VersionedItemService {
      * Add milestone to operational change (creates new OC version)
      * @returns {object} { milestone, operationalChange: { itemId, versionId, version } }
      */
-    async addMilestone(itemId, milestoneData, expectedVersionId, userId) {
+    async addMilestone(itemId, milestoneData, expectedVersionId, user) {
         const { changeSetId, note, ...milestone } = milestoneData;
         const changeSetCommit = { changeSetId, note };
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
 
@@ -133,10 +133,10 @@ export class OperationalChangeService extends VersionedItemService {
      * Update milestone (creates new OC version)
      * @returns {object} { milestone, operationalChange: { itemId, versionId, version } }
      */
-    async updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, userId) {
+    async updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, user) {
         const { changeSetId, note, ...milestone } = milestoneData;
         const changeSetCommit = { changeSetId, note };
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
 
@@ -179,8 +179,8 @@ export class OperationalChangeService extends VersionedItemService {
      * Delete milestone (creates new OC version)
      * @returns {object} { operationalChange: { itemId, versionId, version } }
      */
-    async deleteMilestone(itemId, milestoneKey, expectedVersionId, userId, changeSetCommit) {
-        const tx = createTransaction(userId);
+    async deleteMilestone(itemId, milestoneKey, expectedVersionId, user, changeSetCommit) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
 

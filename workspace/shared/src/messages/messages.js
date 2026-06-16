@@ -13,8 +13,6 @@ export const OperationalRequirementRequests = {
         versionId: undefined,
         version: undefined,
         code: undefined,
-        createdAt: undefined,
-        createdBy: undefined,
         // derived fields excluded from create/update
         implementedByORs: undefined,
         implementedByOCs: undefined,
@@ -53,8 +51,6 @@ export const OperationalChangeRequests = {
         versionId: undefined,
         version: undefined,
         code: undefined,
-        createdAt: undefined,
-        createdBy: undefined,
         // derived fields excluded from create/update
         requiredByOCs: undefined,
         // path: transient topic locator on create only — not stored on the version

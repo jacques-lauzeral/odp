@@ -1,10 +1,12 @@
 import {BaseStore} from './base-store.js';
 import {StoreError, StoreErrorCode} from './transaction.js';
+import {AuditEventStore} from './audit-event-store.js';
 
 export class VersionedItemStore extends BaseStore {
     constructor(driver, itemLabel, versionLabel) {
         super(driver, itemLabel);
         this.versionLabel = versionLabel;
+        this.auditEventStore = new AuditEventStore(driver);
     }
 
     // Abstract methods that concrete stores must implement
@@ -115,8 +117,6 @@ export class VersionedItemStore extends BaseStore {
     async create(data, transaction, changeSetCommit) {
         try {
             const { title, ...versionData } = data;
-            const createdAt = new Date().toISOString();
-            const createdBy = transaction.getUserId();
 
             // Extract relationships from version data (null currentVersionId = create path)
             const { relationshipIds, ...contentData } = await this._extractRelationshipIdsFromInput(versionData, null, transaction);
@@ -128,37 +128,30 @@ export class VersionedItemStore extends BaseStore {
                 code = await this._generateCode(entityType, contentData.domain, transaction);
             }
 
-            // Create Item node with code
+            // Create Item node with code; status ACTIVE. No createdAt/createdBy — audit lives on AuditEvent.
             const itemResult = await transaction.run(`
                 CREATE (item:${this.nodeLabel} {
                     title: $title,
                     _label: $title,
-                    createdAt: $createdAt,
-                    createdBy: $createdBy
+                    status: 'ACTIVE'
                     ${code ? ', code: $code' : ''}
                 })
                 RETURN id(item) as itemId
-            `, { title, createdAt, createdBy, ...(code && { code }) });
+            `, { title, ...(code && { code }) });
 
             const itemId = this.normalizeId(itemResult.records[0].get('itemId'));
 
-            // Create first ItemVersion node
+            // Create first ItemVersion node — content only, no audit stamps.
             const versionResult = await transaction.run(`
                 CREATE (version:${this.versionLabel} {
                     version: 1,
-                    _label: "1",
-                    createdAt: $createdAt,
-                    createdBy: $createdBy
+                    _label: "1"
                 })
                 SET version += $contentData
                 RETURN id(version) as versionId
-            `, { createdAt, createdBy, contentData: this._prepareInput(contentData) });
+            `, { contentData: this._prepareInput(contentData) });
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
-
-            // LCM — link this version to its change set (validates the set is OPEN)
-            await this._validateOpenChangeSet(changeSetCommit, transaction);
-            await this._writeHasReason(versionId, changeSetCommit, transaction);
 
             // Create Item-Version relationships
             await transaction.run(`
@@ -170,6 +163,16 @@ export class VersionedItemStore extends BaseStore {
 
             // Create item relationships from ID arrays
             await this._createRelationshipsFromIds(versionId, relationshipIds, transaction);
+
+            // LCM / audit — validate the set is OPEN, then record the CREATE event in-transaction.
+            const csSnapshot = await this._validateOpenChangeSet(changeSetCommit, transaction);
+            await this.auditEventStore.log('CREATE', {
+                id: itemId,
+                type: this._resolveAuditTargetType(contentData),
+                code,
+                title,
+                version: 1,
+            }, this._auditCommit(changeSetCommit, csSnapshot), transaction);
 
             // Return complete item with relationships as Reference objects
             const completeItem = await this.findById(itemId, transaction);
@@ -186,14 +189,13 @@ export class VersionedItemStore extends BaseStore {
             const numericExpectedVersionId = this.normalizeId(expectedVersionId);
 
             const { title, expectedVersionId: _, ...versionData } = data;
-            const createdAt = new Date().toISOString();
-            const createdBy = transaction.getUserId();
 
             // Get current latest version info and validate expectedVersionId
             const currentResult = await transaction.run(`
                 MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(currentVersion:${this.versionLabel})
                 WHERE id(item) = $itemId
-                RETURN id(currentVersion) as currentVersionId, currentVersion.version as currentVersion, item.title as currentTitle
+                RETURN id(currentVersion) as currentVersionId, currentVersion.version as currentVersion,
+                       item.title as currentTitle, item.code as code
             `, { itemId: numericItemId });
 
             if (currentResult.records.length === 0) {
@@ -205,6 +207,7 @@ export class VersionedItemStore extends BaseStore {
             const currentVersion = record.get('currentVersion');
             const currentVersionNumeric = this.normalizeId(currentVersion);
             const currentTitle = record.get('currentTitle');
+            const code = record.get('code');
 
             if (currentVersionId !== numericExpectedVersionId) {
                 throw new StoreError('Outdated item version');
@@ -219,6 +222,7 @@ export class VersionedItemStore extends BaseStore {
             }
 
             const newVersion = currentVersionNumeric + 1;
+            const effectiveTitle = (title && title !== currentTitle) ? title : currentTitle;
 
             // Update Item title if provided
             if (title && title !== currentTitle) {
@@ -229,23 +233,27 @@ export class VersionedItemStore extends BaseStore {
                 `, { itemId: numericItemId, title });
             }
 
-            // Create new ItemVersion
+            // Create new ItemVersion — content only, no audit stamps.
             const versionResult = await transaction.run(`
                 CREATE (version:${this.versionLabel} {
                     version: $newVersion,
-                    _label: toString($newVersion),
-                    createdAt: $createdAt,
-                    createdBy: $createdBy
+                    _label: toString($newVersion)
                 })
                 SET version += $contentData
                 RETURN id(version) as versionId
-            `, { newVersion, createdAt, createdBy, contentData: this._prepareInput(contentData) });
+            `, { newVersion, contentData: this._prepareInput(contentData) });
 
             const versionId = this.normalizeId(versionResult.records[0].get('versionId'));
 
-            // LCM — link this version to its change set (validates the set is OPEN)
-            await this._validateOpenChangeSet(changeSetCommit, transaction);
-            await this._writeHasReason(versionId, changeSetCommit, transaction);
+            // LCM / audit — validate the set is OPEN, then record the UPDATE event in-transaction.
+            const csSnapshot = await this._validateOpenChangeSet(changeSetCommit, transaction);
+            await this.auditEventStore.log('UPDATE', {
+                id: numericItemId,
+                type: this._resolveAuditTargetType(contentData),
+                code,
+                title: effectiveTitle,
+                version: newVersion,
+            }, this._auditCommit(changeSetCommit, csSnapshot), transaction);
 
             // Update Item-Version relationships
             await transaction.run(`
@@ -295,7 +303,6 @@ export class VersionedItemStore extends BaseStore {
                     WHERE id(item) = $itemId
                     RETURN id(item) as itemId, item.title as title, item.code as code,
                            id(version) as versionId, version.version as version,
-                           version.createdAt as createdAt, version.createdBy as createdBy,
                            version { .* } as versionData
                 `;
                 params = { itemId: numericItemId };
@@ -306,7 +313,6 @@ export class VersionedItemStore extends BaseStore {
                     WHERE id(baseline) = $baselineId AND id(item) = $itemId
                     RETURN id(item) as itemId, item.title as title, item.code as code,
                            id(version) as versionId, version.version as version,
-                           version.createdAt as createdAt, version.createdBy as createdBy,
                            version { .* } as versionData
                 `;
                 params = { baselineId: this.normalizeId(baselineId), itemId: numericItemId };
@@ -318,7 +324,6 @@ export class VersionedItemStore extends BaseStore {
                       AND $editionId IN r.editions
                     RETURN id(item) as itemId, item.title as title, item.code as code,
                            id(version) as versionId, version.version as version,
-                           version.createdAt as createdAt, version.createdBy as createdBy,
                            version { .* } as versionData
                 `;
                 params = {
@@ -338,8 +343,6 @@ export class VersionedItemStore extends BaseStore {
             const versionData = rec.get('versionData');
 
             delete versionData.version;
-            delete versionData.createdAt;
-            delete versionData.createdBy;
 
             const baseItem = {
                 itemId: this.normalizeId(rec.get('itemId')),
@@ -347,14 +350,11 @@ export class VersionedItemStore extends BaseStore {
                 code: rec.get('code'),
                 versionId: this.normalizeId(rec.get('versionId')),
                 version: this.normalizeId(rec.get('version')),
-                createdAt: rec.get('createdAt'),
-                createdBy: rec.get('createdBy'),
                 ...versionData
             };
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
             const enriched = { ...baseItem, ...relationshipReferences };
-            enriched.changeSetCommit = await this._resolveChangeSetCommit(enriched.versionId, transaction);
             return this._prepareOutput(enriched);
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
@@ -370,7 +370,6 @@ export class VersionedItemStore extends BaseStore {
                 WHERE id(item) = $itemId AND version.version = $versionNumber
                 RETURN id(item) as itemId, item.title as title, item.code as code,
                        id(version) as versionId, version.version as version,
-                       version.createdAt as createdAt, version.createdBy as createdBy,
                        version { .* } as versionData
             `, { itemId: numericItemId, versionNumber: numericVersionNumber });
 
@@ -382,8 +381,6 @@ export class VersionedItemStore extends BaseStore {
             const versionData = record.get('versionData');
 
             delete versionData.version;
-            delete versionData.createdAt;
-            delete versionData.createdBy;
 
             const baseItem = {
                 itemId: this.normalizeId(record.get('itemId')),
@@ -391,54 +388,17 @@ export class VersionedItemStore extends BaseStore {
                 code: record.get('code'),
                 versionId: this.normalizeId(record.get('versionId')),
                 version: this.normalizeId(record.get('version')),
-                createdAt: record.get('createdAt'),
-                createdBy: record.get('createdBy'),
                 ...versionData
             };
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
             const enriched = { ...baseItem, ...relationshipReferences };
-            enriched.changeSetCommit = await this._resolveChangeSetCommit(enriched.versionId, transaction);
             return this._prepareOutput(enriched);
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID and version: ${error.message}`, error);
         }
     }
 
-    async findVersionHistory(itemId, transaction) {
-        try {
-            const numericItemId = this.normalizeId(itemId);
-
-            const itemExists = await this.exists(numericItemId, transaction);
-            if (!itemExists) {
-                throw new StoreError('Item not found');
-            }
-
-            const result = await transaction.run(`
-                MATCH (item:${this.nodeLabel})<-[:VERSION_OF]-(version:${this.versionLabel})
-                WHERE id(item) = $itemId
-                RETURN id(version) as versionId, version.version as version,
-                       version.createdAt as createdAt, version.createdBy as createdBy
-                ORDER BY version.version DESC
-            `, { itemId: numericItemId });
-
-            if (result.records.length === 0) {
-                throw new StoreError('Data integrity error: Item exists but has no versions');
-            }
-
-            const rows = result.records.map(record => ({
-                versionId: this.normalizeId(record.get('versionId')),
-                version: this.normalizeId(record.get('version')),
-                createdAt: record.get('createdAt'),
-                createdBy: record.get('createdBy')
-            }));
-            await this._attachChangeSetCommits(rows, transaction);
-            return rows;
-        } catch (error) {
-            if (error instanceof StoreError) throw error;
-            throw new StoreError(`Failed to find version history for ${this.nodeLabel}: ${error.message}`, error);
-        }
-    }
 
     /**
      * Find all items with optional context and projection.
@@ -504,13 +464,16 @@ export class VersionedItemStore extends BaseStore {
     }
 
     // ---------------------------------------------------------------------------
-    // Change-set linkage (HAS_REASON) — LCM
+    // Change-set validation and audit — LCM
     // ---------------------------------------------------------------------------
 
     /**
-     * Validate that the supplied change set exists and is OPEN. Fail-fast.
+     * Validate that the supplied change set exists and is OPEN, and return a
+     * frozen snapshot of its denormalised fields for the AuditEvent. Fail-fast.
+     *
      * @param {{changeSetId:(number|string), note?:string}} changeSetCommit
      * @param {Transaction} transaction
+     * @returns {Promise<{code:string, title:string, classifier:string}>} CS snapshot at commit time
      */
     async _validateOpenChangeSet(changeSetCommit, transaction) {
         if (!changeSetCommit || changeSetCommit.changeSetId === undefined
@@ -524,85 +487,47 @@ export class VersionedItemStore extends BaseStore {
         const result = await transaction.run(`
             MATCH (cs:ChangeSet)
             WHERE id(cs) = $changeSetId
-            RETURN cs.status as status
+            RETURN cs.status as status, cs.code as code, cs.title as title, cs.classifier as classifier
         `, { changeSetId });
         if (result.records.length === 0) {
             throw new StoreError(`ChangeSet ${changeSetId} not found`, null, StoreErrorCode.CHANGESET_NOT_FOUND);
         }
-        if (result.records[0].get('status') !== 'OPEN') {   // ChangeSetStatus.OPEN
+        const rec = result.records[0];
+        if (rec.get('status') !== 'OPEN') {   // ChangeSetStatus.OPEN
             throw new StoreError(`ChangeSet ${changeSetId} is not OPEN — cannot commit a new version to it`, null, StoreErrorCode.CHANGESET_CLOSED);
         }
+        return { code: rec.get('code'), title: rec.get('title'), classifier: rec.get('classifier') };
     }
 
     /**
-     * Create the HAS_REASON edge (version → ChangeSet) carrying the optional note.
-     * @param {number} versionId
+     * Assemble the audit commit fragment passed to AuditEventStore.log — the
+     * frozen change-set snapshot plus the write-time changeSetId and per-object note.
+     *
      * @param {{changeSetId:(number|string), note?:string}} changeSetCommit
-     * @param {Transaction} transaction
+     * @param {{code:string, title:string, classifier:string}} csSnapshot
+     * @returns {{changeSetId:number, code:string, title:string, classifier:string, note:string}}
      */
-    async _writeHasReason(versionId, changeSetCommit, transaction) {
-        await transaction.run(`
-            MATCH (version:${this.versionLabel}), (cs:ChangeSet)
-            WHERE id(version) = $versionId AND id(cs) = $changeSetId
-            CREATE (version)-[:HAS_REASON {note: $note}]->(cs)
-        `, {
-            versionId: this.normalizeId(versionId),
+    _auditCommit(changeSetCommit, csSnapshot) {
+        return {
             changeSetId: this.normalizeId(changeSetCommit.changeSetId),
-            note: changeSetCommit.note ?? ''
-        });
+            code:        csSnapshot.code,
+            title:       csSnapshot.title,
+            classifier:  csSnapshot.classifier,
+            note:        changeSetCommit.note ?? null,
+        };
     }
 
     /**
-     * Resolve the store-level changeSetCommit for one version: { changeSetId, note },
-     * or null when the version has no HAS_REASON edge. Title/classifier are hydrated
-     * by the service from its ChangeSet cache (the ChangeSetCommitRead shape, partially
-     * populated here).
-     * @param {number} versionId
-     * @param {Transaction} transaction
-     * @returns {Promise<{changeSetId:number, note:string}|null>}
+     * Resolve the AuditEvent targetType for this store's items. Mirrors the
+     * itemType resolution used by the change-set member feed: OC/Chapter from the
+     * node label, otherwise the requirement's ON/OR type from the version content.
+     *
+     * @param {object} contentData - the version content (carries `type` for requirements)
+     * @returns {string} AuditTargetType key
      */
-    async _resolveChangeSetCommit(versionId, transaction) {
-        const result = await transaction.run(`
-            MATCH (version:${this.versionLabel})
-            WHERE id(version) = $versionId
-            OPTIONAL MATCH (version)-[hr:HAS_REASON]->(cs:ChangeSet)
-            RETURN id(cs) as changeSetId, hr.note as note
-        `, { versionId: this.normalizeId(versionId) });
-        if (result.records.length === 0) return null;
-        const changeSetId = result.records[0].get('changeSetId');
-        if (changeSetId === null || changeSetId === undefined) return null;
-        return { changeSetId: this.normalizeId(changeSetId), note: result.records[0].get('note') ?? '' };
-    }
-
-    /**
-     * Attach changeSetCommit to each item in a list using a single query.
-     * Mutates and returns the same array. Items must carry `versionId`.
-     * @param {Array<object>} items
-     * @param {Transaction} transaction
-     * @returns {Promise<Array<object>>}
-     */
-    async _attachChangeSetCommits(items, transaction) {
-        if (!Array.isArray(items) || items.length === 0) return items;
-        const versionIds = items.map(i => this.normalizeId(i.versionId));
-        const result = await transaction.run(`
-            MATCH (version:${this.versionLabel})
-            WHERE id(version) IN $versionIds
-            OPTIONAL MATCH (version)-[hr:HAS_REASON]->(cs:ChangeSet)
-            RETURN id(version) as versionId, id(cs) as changeSetId, hr.note as note
-        `, { versionIds });
-        const byVersion = new Map();
-        for (const rec of result.records) {
-            const changeSetId = rec.get('changeSetId');
-            byVersion.set(
-                this.normalizeId(rec.get('versionId')),
-                (changeSetId === null || changeSetId === undefined)
-                    ? null
-                    : { changeSetId: this.normalizeId(changeSetId), note: rec.get('note') ?? '' }
-            );
-        }
-        for (const item of items) {
-            item.changeSetCommit = byVersion.get(this.normalizeId(item.versionId)) ?? null;
-        }
-        return items;
+    _resolveAuditTargetType(contentData) {
+        if (this.nodeLabel === 'OperationalChange') return 'OC';
+        if (this.nodeLabel === 'Chapter') return 'CHAPTER';
+        return contentData.type;   // 'ON' | 'OR'
     }
 }

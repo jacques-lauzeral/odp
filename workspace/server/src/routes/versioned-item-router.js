@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { StoreErrorCode } from '../store/transaction.js';
+import auditEventService from '../services/AuditEventService.js';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
@@ -15,22 +16,26 @@ export class VersionedItemRouter {
     }
 
     /**
-     * Extract userId from request headers — throws if absent.
+     * Extract the acting user from request headers — throws if id absent.
+     * Returns { id, role }; role is null when x-user-role is absent
+     * (role validation / implicit population arrives with RBA).
      */
-    getUserId(req) {
-        const userId = req.headers['x-user-id'];
-        if (!userId) {
+    getUser(req) {
+        const id = req.headers['x-user-id'];
+        if (!id) {
             throw new Error('Missing required header: x-user-id');
         }
-        return userId;
+        return { id, role: req.headers['x-user-role'] || null };
     }
 
     /**
-     * Extract userId from request headers — returns null if absent.
+     * Extract the acting user from request headers — returns null if id absent.
      * Used on read-only routes that allow anonymous access.
      */
-    getUserIdOptional(req) {
-        return req.headers['x-user-id'] || null;
+    getUserOptional(req) {
+        const id = req.headers['x-user-id'];
+        if (!id) return null;
+        return { id, role: req.headers['x-user-role'] || null };
     }
 
     /**
@@ -68,13 +73,13 @@ export class VersionedItemRouter {
         // List all entities (repository or edition context, content filtered)
         this.router.get('/', async (req, res) => {
             try {
-                const userId = this.getUserIdOptional(req);
+                const user = this.getUserOptional(req);
                 const editionId = this.getEditionId(req);
                 const filters = this.getContentFilters(req);
                 const projection = this.getProjection(req, ['summary', 'standard']);
 
-                console.log(`${this.service.constructor.name}.getAll() userId: ${userId}, editionId: ${editionId}, projection: ${projection}, filters:`, filters);
-                const entities = await this.service.getAll(userId, editionId, filters, projection);
+                console.log(`${this.service.constructor.name}.getAll() user: ${user?.id ?? null}, editionId: ${editionId}, projection: ${projection}, filters:`, filters);
+                const entities = await this.service.getAll(user, editionId, filters, projection);
                 res.json(entities);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
@@ -93,11 +98,11 @@ export class VersionedItemRouter {
         // Get entity by ID (repository or edition context)
         this.router.get('/:id', async (req, res) => {
             try {
-                const userId = this.getUserIdOptional(req);
+                const user = this.getUserOptional(req);
                 const editionId = this.getEditionId(req);
                 const projection = this.getProjection(req, ['standard', 'extended']);
-                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, userId: ${userId}, editionId: ${editionId}, projection: ${projection}`);
-                const entity = await this.service.getById(req.params.id, userId, editionId, projection);
+                console.log(`${this.service.constructor.name}.getById() itemId: ${req.params.id}, user: ${user?.id ?? null}, editionId: ${editionId}, projection: ${projection}`);
+                const entity = await this.service.getById(req.params.id, user, editionId, projection);
                 if (!entity) {
                     const context = editionId ? ` in edition ${editionId}` : '';
                     return res.status(404).json({
@@ -122,10 +127,10 @@ export class VersionedItemRouter {
         // Get specific version of entity (no multi-context support - version is explicit)
         this.router.get('/:id/versions/:versionNumber', async (req, res) => {
             try {
-                const userId = this.getUserIdOptional(req);
+                const user = this.getUserOptional(req);
                 const versionNumber = parseInt(req.params.versionNumber);
-                console.log(`${this.service.constructor.name}.getByIdAndVersion() itemId: ${req.params.id}, version: ${versionNumber}, userId: ${userId}`);
-                const entity = await this.service.getByIdAndVersion(req.params.id, versionNumber, userId);
+                console.log(`${this.service.constructor.name}.getByIdAndVersion() itemId: ${req.params.id}, version: ${versionNumber}, user: ${user?.id ?? null}`);
+                const entity = await this.service.getByIdAndVersion(req.params.id, versionNumber, user);
                 if (!entity) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} version ${versionNumber} not found` }
@@ -142,19 +147,18 @@ export class VersionedItemRouter {
             }
         });
 
-        // Get version history (no multi-context support - shows all versions)
-        this.router.get('/:id/versions', async (req, res) => {
+        // Get audit timeline (History) — unified AuditEvent feed for the item.
+        // Replaces the former /:id/versions version-history route (Phase A).
+        this.router.get('/:id/history', async (req, res) => {
             try {
-                const userId = this.getUserIdOptional(req);
-                console.log(`${this.service.constructor.name}.getVersionHistory() itemId: ${req.params.id}, userId: ${userId}`);
-                const history = await this.service.getVersionHistory(req.params.id, userId);
+                const user = this.getUserOptional(req);
+                console.log(`${this.service.constructor.name} history itemId: ${req.params.id}, user: ${user?.id ?? null}`);
+                const history = await auditEventService.getItemHistory(req.params.id, user);
                 res.json(history);
             } catch (error) {
-                console.error(`Error fetching ${this.entityName} version history:`, error);
+                console.error(`Error fetching ${this.entityName} history:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else if (error.message.includes('Item not found')) {
-                    res.status(404).json({ error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` } });
                 } else {
                     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
                 }
@@ -164,9 +168,9 @@ export class VersionedItemRouter {
         // Create new entity (creates Item + ItemVersion v1)
         this.router.post('/', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.create() userId: ${userId}`);
-                const entity = await this.service.create(req.body, userId);
+                const user = this.getUser(req);
+                console.log(`${this.service.constructor.name}.create() user: ${user?.id ?? null}`);
+                const entity = await this.service.create(req.body, user);
                 res.status(201).json(entity);
             } catch (error) {
                 console.error(`Error creating ${this.entityName}:`, error);
@@ -187,7 +191,7 @@ export class VersionedItemRouter {
         // Update entity (creates new ItemVersion with complete replacement)
         this.router.put('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const user = this.getUser(req);
                 const expectedVersionId = req.body.expectedVersionId;
                 if (!expectedVersionId) {
                     return res.status(400).json({
@@ -195,8 +199,8 @@ export class VersionedItemRouter {
                     });
                 }
 
-                console.log(`${this.service.constructor.name}.update() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-                const entity = await this.service.update(req.params.id, req.body, expectedVersionId, userId);
+                console.log(`${this.service.constructor.name}.update() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, user: ${user?.id ?? null}`);
+                const entity = await this.service.update(req.params.id, req.body, expectedVersionId, user);
                 if (!entity) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
@@ -224,7 +228,7 @@ export class VersionedItemRouter {
         // Patch entity (creates new ItemVersion with partial updates)
         this.router.patch('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
+                const user = this.getUser(req);
                 const expectedVersionId = req.body.expectedVersionId;
                 if (!expectedVersionId) {
                     return res.status(400).json({
@@ -232,8 +236,8 @@ export class VersionedItemRouter {
                     });
                 }
 
-                console.log(`${this.service.constructor.name}.patch() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, userId: ${userId}`);
-                const entity = await this.service.patch(req.params.id, req.body, expectedVersionId, userId);
+                console.log(`${this.service.constructor.name}.patch() itemId: ${req.params.id}, expectedVersionId: ${expectedVersionId}, user: ${user?.id ?? null}`);
+                const entity = await this.service.patch(req.params.id, req.body, expectedVersionId, user);
                 if (!entity) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
@@ -261,9 +265,9 @@ export class VersionedItemRouter {
         // Delete entity (Item + all versions)
         this.router.delete('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.delete() itemId: ${req.params.id}, userId: ${userId}`);
-                const deleted = await this.service.delete(req.params.id, userId);
+                const user = this.getUser(req);
+                console.log(`${this.service.constructor.name}.delete() itemId: ${req.params.id}, user: ${user?.id ?? null}`);
+                const deleted = await this.service.delete(req.params.id, user);
                 if (!deleted) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }

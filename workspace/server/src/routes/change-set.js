@@ -4,18 +4,26 @@ import ChangeSetService from '../services/ChangeSetService.js';
 const router = Router();
 
 /**
- * Extract userId from request headers — throws if absent.
+ * Extract the acting user from request headers — throws if id absent.
+ * Returns { id, role }; role is null when x-user-role is absent
+ * (role validation / implicit population arrives with RBA).
  */
-function getUserId(req) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) {
+function getUser(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) {
         throw new Error('Missing required header: x-user-id');
     }
-    return userId;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
-function getUserIdOptional(req) {
-    return req.headers['x-user-id'] || null;
+/**
+ * Extract the acting user from request headers — returns null if id absent.
+ * Used on read-only routes that allow anonymous access.
+ */
+function getUserOptional(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) return null;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
 /**
@@ -40,15 +48,15 @@ function handleError(res, error, entity = 'Change set') {
 // List change sets — optional status / classifier filter (mutually exclusive; status wins)
 router.get('/', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
+        const user = getUserOptional(req);
         const { status, classifier } = req.query;
         let items;
         if (status) {
-            items = await ChangeSetService.findByStatus(status, userId);
+            items = await ChangeSetService.findByStatus(status, user);
         } else if (classifier) {
-            items = await ChangeSetService.findByClassifier(classifier, userId);
+            items = await ChangeSetService.findByClassifier(classifier, user);
         } else {
-            items = await ChangeSetService.listItems(userId);
+            items = await ChangeSetService.listItems(user);
         }
         res.json(items);
     } catch (error) {
@@ -60,8 +68,8 @@ router.get('/', async (req, res) => {
 // Get change set by ID
 router.get('/:id', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        const item = await ChangeSetService.getItem(req.params.id, userId);
+        const user = getUserOptional(req);
+        const item = await ChangeSetService.getItem(req.params.id, user);
         if (!item) {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change set not found' } });
         }
@@ -75,8 +83,8 @@ router.get('/:id', async (req, res) => {
 // Members of a change set (the versions committed under it)
 router.get('/:id/members', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        const members = await ChangeSetService.getMembers(req.params.id, userId);
+        const user = getUserOptional(req);
+        const members = await ChangeSetService.getMembers(req.params.id, user);
         res.json(members);
     } catch (error) {
         console.error('Error fetching change set members:', error);
@@ -87,8 +95,8 @@ router.get('/:id/members', async (req, res) => {
 // Create a change set
 router.post('/', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        const item = await ChangeSetService.createItem(req.body, userId);
+        const user = getUser(req);
+        const item = await ChangeSetService.createItem(req.body, user);
         res.status(201).json(item);
     } catch (error) {
         console.error('Error creating change set:', error);
@@ -99,8 +107,8 @@ router.post('/', async (req, res) => {
 // Update title / reasonText (OPEN only)
 router.put('/:id', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        const item = await ChangeSetService.updateItem(req.params.id, req.body, userId);
+        const user = getUser(req);
+        const item = await ChangeSetService.updateItem(req.params.id, req.body, user);
         if (!item) {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change set not found' } });
         }
@@ -114,8 +122,8 @@ router.put('/:id', async (req, res) => {
 // Close a change set
 router.post('/:id/close', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        const item = await ChangeSetService.close(req.params.id, userId);
+        const user = getUser(req);
+        const item = await ChangeSetService.close(req.params.id, user);
         res.json(item);
     } catch (error) {
         console.error('Error closing change set:', error);
@@ -126,8 +134,8 @@ router.post('/:id/close', async (req, res) => {
 // Reopen a change set
 router.post('/:id/reopen', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        const item = await ChangeSetService.reopen(req.params.id, userId);
+        const user = getUser(req);
+        const item = await ChangeSetService.reopen(req.params.id, user);
         res.json(item);
     } catch (error) {
         console.error('Error reopening change set:', error);
@@ -138,8 +146,8 @@ router.post('/:id/reopen', async (req, res) => {
 // Delete a change set (empty + OPEN only)
 router.delete('/:id', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        const deleted = await ChangeSetService.deleteItem(req.params.id, userId);
+        const user = getUser(req);
+        const deleted = await ChangeSetService.deleteItem(req.params.id, user);
         if (!deleted) {
             return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Change set not found' } });
         }

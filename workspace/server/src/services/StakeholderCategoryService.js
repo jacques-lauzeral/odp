@@ -7,18 +7,18 @@ export class StakeholderCategoryService extends TreeItemService {
     }
 
     // Inherits from TreeItemService:
-    // - listItems(userId)
-    // - getItem(id, userId)
-    // - createItem(data, userId) - with name/description validation + parentId support
-    // - updateItem(id, data, userId) - with validation + parentId changes
-    // - deleteItem(id, userId) - with hierarchy validation
-    // - getChildren(parentId, userId)
-    // - getParent(childId, userId)
-    // - getRoots(userId)
-    // - createRefinesRelation(childId, parentId, userId)
-    // - deleteRefinesRelation(childId, parentId, userId)
-    // - findItemsByName(namePattern, userId)
-    // - isNameExists(name, excludeId, userId)
+    // - listItems(user)
+    // - getItem(id, user)
+    // - createItem(data, user) - with name/description validation + parentId support
+    // - updateItem(id, data, user) - with validation + parentId changes
+    // - deleteItem(id, user) - with hierarchy validation
+    // - getChildren(parentId, user)
+    // - getParent(childId, user)
+    // - getRoots(user)
+    // - createRefinesRelation(childId, parentId, user)
+    // - deleteRefinesRelation(childId, parentId, user)
+    // - findItemsByName(namePattern, user)
+    // - isNameExists(name, excludeId, user)
 }
 
 export default new StakeholderCategoryService();

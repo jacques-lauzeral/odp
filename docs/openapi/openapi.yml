@@ -59,8 +59,8 @@ paths:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements'
   /operational-requirements/{id}:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements~1{id}'
-  /operational-requirements/{id}/versions:
-    $ref: 'openapi-operational.yml#/paths/~1operational-requirements~1{id}~1versions'
+  /operational-requirements/{id}/history:
+    $ref: 'openapi-audit-event.yml#/paths/~1operational-requirements~1{id}~1history'
   /operational-requirements/{id}/versions/{versionNumber}:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements~1{id}~1versions~1{versionNumber}'
 
@@ -68,8 +68,8 @@ paths:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes'
   /operational-changes/{id}:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes~1{id}'
-  /operational-changes/{id}/versions:
-    $ref: 'openapi-operational.yml#/paths/~1operational-changes~1{id}~1versions'
+  /operational-changes/{id}/history:
+    $ref: 'openapi-audit-event.yml#/paths/~1operational-changes~1{id}~1history'
   /operational-changes/{id}/versions/{versionNumber}:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes~1{id}~1versions~1{versionNumber}'
 
@@ -78,8 +78,8 @@ paths:
     $ref: 'openapi-chapter.yml#/paths/~1chapters'
   /chapters/{id}:
     $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}'
-  /chapters/{id}/versions:
-    $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}~1versions'
+  /chapters/{id}/history:
+    $ref: 'openapi-audit-event.yml#/paths/~1chapters~1{id}~1history'
   /chapters/{id}/versions/{versionNumber}:
     $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}~1versions~1{versionNumber}'
 

@@ -13,7 +13,9 @@ const router = express.Router();
 // ---------------------------------------------------------------------------
 router.get('/checks', async (req, res) => {
     try {
-        const userId = req.headers['x-user-id'];
+        const user = req.headers['x-user-id']
+            ? { id: req.headers['x-user-id'], role: req.headers['x-user-role'] || null }
+            : null;
 
         // Parse optional domain filter
         const domains = [];
@@ -39,7 +41,7 @@ router.get('/checks', async (req, res) => {
             }
         }
 
-        const report = await qualityService.runChecks(domains, editionId, userId);
+        const report = await qualityService.runChecks(domains, editionId, user);
         res.json(report);
     } catch (error) {
         console.error('[quality] runChecks error:', error);

@@ -15,31 +15,35 @@ export class SimpleItemRouter {
     }
 
     /**
-     * Extract userId from request headers — throws if absent.
+     * Extract the acting user from request headers — throws if id absent.
+     * Returns { id, role }; role is null when x-user-role is absent
+     * (role validation / implicit population arrives with RBA).
      */
-    getUserId(req) {
-        const userId = req.headers['x-user-id'];
-        if (!userId) {
+    getUser(req) {
+        const id = req.headers['x-user-id'];
+        if (!id) {
             throw new Error('Missing required header: x-user-id');
         }
-        return userId;
+        return { id, role: req.headers['x-user-role'] || null };
     }
 
     /**
-     * Extract userId from request headers — returns null if absent.
+     * Extract the acting user from request headers — returns null if id absent.
      * Used on read-only routes that allow anonymous access.
      */
-    getUserIdOptional(req) {
-        return req.headers['x-user-id'] || null;
+    getUserOptional(req) {
+        const id = req.headers['x-user-id'];
+        if (!id) return null;
+        return { id, role: req.headers['x-user-role'] || null };
     }
 
     setupRoutes() {
         // List all items
         this.router.get('/', async (req, res) => {
             try {
-                const userId = this.getUserIdOptional(req);
-                console.log(`${this.service.constructor.name}.listItems() userId: ${userId}`);
-                const items = await this.service.listItems(userId);
+                const user = this.getUserOptional(req);
+                console.log(`${this.service.constructor.name}.listItems() user: ${user?.id ?? null}`);
+                const items = await this.service.listItems(user);
                 res.json(items);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName}s:`, error);
@@ -54,9 +58,9 @@ export class SimpleItemRouter {
         // Get item by ID
         this.router.get('/:id', async (req, res) => {
             try {
-                const userId = this.getUserIdOptional(req);
-                console.log(`${this.service.constructor.name}.getItem() id: ${req.params.id}, userId: ${userId}`);
-                const item = await this.service.getItem(req.params.id, userId);
+                const user = this.getUserOptional(req);
+                console.log(`${this.service.constructor.name}.getItem() id: ${req.params.id}, user: ${user?.id ?? null}`);
+                const item = await this.service.getItem(req.params.id, user);
                 if (!item) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
@@ -76,9 +80,9 @@ export class SimpleItemRouter {
         // Create new item
         this.router.post('/', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.createItem() userId: ${userId}, parentId: ${req.body.parentId}`);
-                const item = await this.service.createItem(req.body, userId);
+                const user = this.getUser(req);
+                console.log(`${this.service.constructor.name}.createItem() user: ${user?.id ?? null}, parentId: ${req.body.parentId}`);
+                const item = await this.service.createItem(req.body, user);
                 res.status(201).json(item);
             } catch (error) {
                 console.error(`Error creating ${this.entityName}:`, error);
@@ -95,9 +99,9 @@ export class SimpleItemRouter {
         // Update item
         this.router.put('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.updateItem() id: ${req.params.id}, userId: ${userId}, parentId: ${req.body.parentId}`);
-                const item = await this.service.updateItem(req.params.id, req.body, userId);
+                const user = this.getUser(req);
+                console.log(`${this.service.constructor.name}.updateItem() id: ${req.params.id}, user: ${user?.id ?? null}, parentId: ${req.body.parentId}`);
+                const item = await this.service.updateItem(req.params.id, req.body, user);
                 if (!item) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
@@ -119,9 +123,9 @@ export class SimpleItemRouter {
         // Delete item
         this.router.delete('/:id', async (req, res) => {
             try {
-                const userId = this.getUserId(req);
-                console.log(`${this.service.constructor.name}.deleteItem() id: ${req.params.id}, userId: ${userId}`);
-                const deleted = await this.service.deleteItem(req.params.id, userId);
+                const user = this.getUser(req);
+                console.log(`${this.service.constructor.name}.deleteItem() id: ${req.params.id}, user: ${user?.id ?? null}`);
+                const deleted = await this.service.deleteItem(req.params.id, user);
                 if (!deleted) {
                     return res.status(404).json({
                         error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }

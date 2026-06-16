@@ -35,10 +35,10 @@ class DistributedEditionImporter {
     /**
      * Import a single distributed edition source file.
      * @param {Object} sourceData - Parsed source JSON conforming to source.schema.json
-     * @param {string} userId - User performing the import
+     * @param {object} user - User performing the import {id, role}
      * @returns {Object} ImportSummary with counts and errors
      */
-    async importSourceFile(sourceData, userId, changeSetId) {
+    async importSourceFile(sourceData, user, changeSetId) {
         const context = this._createContext();
         const summary = {
             chapters: 0,
@@ -50,7 +50,7 @@ class DistributedEditionImporter {
         try {
             // Phase 0a: Resolve chapter identity and domain (always, even without narrative)
             console.log('Phase 0a: Resolving chapter identity...');
-            await this._resolveChapter(sourceData, userId, context);
+            await this._resolveChapter(sourceData, user, context);
 
             // Phase 0b-pre: Build the canonical theme-label → id map from source
             // requirements path[]. Single source of truth — used by both the
@@ -63,27 +63,27 @@ class DistributedEditionImporter {
 
             // Phase 1: Build reference maps from existing DB
             console.log('Phase 1: Building reference maps...');
-            await this._buildAllReferenceMaps(userId, context);
+            await this._buildAllReferenceMaps(user, context);
 
             // Phase 2 + 3: Import requirements using 3-phase algorithm
             const requirements = sourceData.requirements || [];
             if (requirements.length > 0) {
                 console.log(`Phase 2: Creating ${requirements.length} requirements as DRAFT...`);
-                await this._createRequirementsWithoutReferences(requirements, userId, context, summary, changeSetId);
+                await this._createRequirementsWithoutReferences(requirements, user, context, summary, changeSetId);
 
                 console.log('Phase 3: Resolving references and applying final maturity...');
-                await this._resolveRequirementReferences(requirements, userId, context, changeSetId);
+                await this._resolveRequirementReferences(requirements, user, context, changeSetId);
             }
 
             // Phase 4: Patch chapter narrative, then osHierarchy. Both patch the
             // chapter; each re-fetches the current versionId immediately before
             // patching, so sequential ordering is optimistic-concurrency safe.
             console.log('Phase 4a: Patching chapter narrative...');
-            await this._patchChapterNarrative(sourceData, userId, context, summary, changeSetId);
+            await this._patchChapterNarrative(sourceData, user, context, summary, changeSetId);
 
             if (requirements.length > 0) {
                 console.log('Phase 4b: Patching chapter osHierarchy...');
-                await this._patchChapterOsHierarchy(sourceData, requirements, userId, context, summary, changeSetId);
+                await this._patchChapterOsHierarchy(sourceData, requirements, user, context, summary, changeSetId);
             }
 
         } catch (error) {
@@ -183,7 +183,7 @@ class DistributedEditionImporter {
      * Called unconditionally so domain is always available for Phase 2.
      * @private
      */
-    async _resolveChapter(sourceData, userId, context) {
+    async _resolveChapter(sourceData, user, context) {
         const chapterFolder = sourceData.chapterFolder || sourceData.documentId;
         if (!chapterFolder) {
             context.warnings.push('No chapterFolder/documentId — chapter identity unresolved.');
@@ -191,7 +191,7 @@ class DistributedEditionImporter {
         }
 
         if (context.chapterCodeMap.size === 0) {
-            await this._buildChapterCodeMap(userId, context);
+            await this._buildChapterCodeMap(user, context);
         }
 
         const normalised = chapterFolder.toLowerCase()
@@ -210,7 +210,7 @@ class DistributedEditionImporter {
 
         // Store chapter domain — overrides drg for sub-chapters (e.g. iDL)
         // where source drg='AIRSPACE' but domain='IDL_ADMM', 'IDL_ADP', etc.
-        const chapter = await ChapterService.getById(chapterItemId, userId, null, 'standard');
+        const chapter = await ChapterService.getById(chapterItemId, user, null, 'standard');
         if (chapter.domain) {
             context.chapterDomain = chapter.domain;
         }
@@ -257,7 +257,7 @@ class DistributedEditionImporter {
         return labelToId;
     }
 
-    async _patchChapterNarrative(sourceData, userId, context, summary, changeSetId) {
+    async _patchChapterNarrative(sourceData, user, context, summary, changeSetId) {
         const blocks = sourceData.blocks || sourceData.chapterIntro;
         if (!blocks || blocks.length === 0) {
             console.log('No blocks[]/chapterIntro[] — skipping chapter narrative patch.');
@@ -276,12 +276,12 @@ class DistributedEditionImporter {
         }
 
         try {
-            const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
+            const current = await ChapterService.getById(context.chapterItemId, user, null, 'standard');
             await ChapterService.patch(
                 context.chapterItemId,
                 { narrative, changeSetId, note: '' },
                 current.versionId,
-                userId
+                user
             );
             summary.chapters++;
             console.log(`Patched chapter narrative: ${sourceData.chapterFolder || sourceData.documentId}`);
@@ -294,11 +294,12 @@ class DistributedEditionImporter {
      * Load all chapters from DB and build code → itemId map.
      * @private
      */
-    async _buildChapterCodeMap(userId, context) {
-        const chapters = await ChapterService.getAll(userId);
+    async _buildChapterCodeMap(user, context) {
+        const chapters = await ChapterService.getAll(user);
         chapters.forEach(ch => {
             context.chapterCodeMap.set(ch.code.toLowerCase(), ch.itemId);
             context.chapterTitleByCode.set(ch.code.toLowerCase(), ch.title ?? ch.code);
+            console.log(`Loaded chapter '${ch.code.toLowerCase()}' (${ch.itemId}) - '${ch.title}' into code map.`);
         });
         console.log(`Loaded ${chapters.length} chapters into code map.`);
     }
@@ -314,7 +315,7 @@ class DistributedEditionImporter {
      * Per node: ONs listed before ORs, each in source order.
      * @private
      */
-    async _patchChapterOsHierarchy(sourceData, requirements, userId, context, summary, changeSetId) {
+    async _patchChapterOsHierarchy(sourceData, requirements, user, context, summary, changeSetId) {
         if (!context.chapterItemId) {
             context.warnings.push('Chapter identity unresolved — skipping osHierarchy patch.');
             return;
@@ -367,12 +368,12 @@ class DistributedEditionImporter {
         }
 
         try {
-            const current = await ChapterService.getById(context.chapterItemId, userId, null, 'standard');
+            const current = await ChapterService.getById(context.chapterItemId, user, null, 'standard');
             await ChapterService.patch(
                 context.chapterItemId,
                 { osHierarchy: { topics }, changeSetId, note: '' },
                 current.versionId,
-                userId
+                user
             );
             console.log(`Patched osHierarchy for chapter '${chapterFolder}': ${topics.length} top-level topic(s).`);
         } catch (error) {
@@ -387,21 +388,21 @@ class DistributedEditionImporter {
      * No import — warn on resolution failures later.
      * @private
      */
-    async _buildAllReferenceMaps(userId, context) {
-        await this._buildSetupReferenceMaps(userId, context);
-        await this._buildRequirementReferenceMaps(userId, context);
+    async _buildAllReferenceMaps(user, context) {
+        await this._buildSetupReferenceMaps(user, context);
+        await this._buildRequirementReferenceMaps(user, context);
     }
 
     /**
      * Load existing setup entities into reference maps.
      * @private
      */
-    async _buildSetupReferenceMaps(userId, context) {
+    async _buildSetupReferenceMaps(user, context) {
         try {
             const [stakeholders, referenceDocuments, waves] = await Promise.all([
-                StakeholderCategoryService.listItems(userId),
-                ReferenceDocumentService.listItems(userId),
-                WaveService.listItems(userId)
+                StakeholderCategoryService.listItems(user),
+                ReferenceDocumentService.listItems(user),
+                WaveService.listItems(user)
             ]);
 
             // Stakeholders — hierarchical external ID resolution with memoization
@@ -483,9 +484,9 @@ class DistributedEditionImporter {
      * Load all existing requirements into globalRefMap.
      * @private
      */
-    async _buildRequirementReferenceMaps(userId, context) {
+    async _buildRequirementReferenceMaps(user, context) {
         try {
-            const allRequirements = await OperationalRequirementService.getAll(userId);
+            const allRequirements = await OperationalRequirementService.getAll(user);
 
             const reqById = new Map();
             allRequirements.forEach(req => reqById.set(req.itemId, req));
@@ -542,7 +543,7 @@ class DistributedEditionImporter {
      * Populates globalRefMap with newly created itemIds.
      * @private
      */
-    async _createRequirementsWithoutReferences(requirements, userId, context, summary, changeSetId) {
+    async _createRequirementsWithoutReferences(requirements, user, context, summary, changeSetId) {
         let createdCount = 0;
         const refResolver = this._buildRefResolver(context);
 
@@ -573,7 +574,7 @@ class DistributedEditionImporter {
                     note: ''
                 };
 
-                const created = await OperationalRequirementService.create(createRequest, userId);
+                const created = await OperationalRequirementService.create(createRequest, user);
 
                 context.globalRefMap.set(reqData.externalId.toLowerCase(), created.itemId);
                 context.refLabelMap.set(
@@ -850,11 +851,11 @@ class DistributedEditionImporter {
      * Resolve all references for each requirement and apply final maturity.
      * @private
      */
-    async _resolveRequirementReferences(requirements, userId, context, changeSetId) {
+    async _resolveRequirementReferences(requirements, user, context, changeSetId) {
         const refResolver = this._buildRefResolver(context);
         for (const reqData of requirements) {
             try {
-                await this._resolveEntityReferences(reqData, userId, context, refResolver, changeSetId);
+                await this._resolveEntityReferences(reqData, user, context, refResolver, changeSetId);
             } catch (error) {
                 context.errors.push(`Failed to resolve references for ${reqData.externalId}: ${error.message}`);
             }
@@ -866,7 +867,7 @@ class DistributedEditionImporter {
      * NO_SHOW requirements are skipped — they were fully created in phase 2.
      * @private
      */
-    async _resolveEntityReferences(reqData, userId, context, refResolver, changeSetId) {
+    async _resolveEntityReferences(reqData, user, context, refResolver, changeSetId) {
         // NO_SHOW requirements need no reference resolution
         if (reqData.noShow === true) return;
 
@@ -876,7 +877,7 @@ class DistributedEditionImporter {
             return;
         }
 
-        const current = await OperationalRequirementService.getById(itemId, userId);
+        const current = await OperationalRequirementService.getById(itemId, user);
 
         // Resolve refinesParents — accept source aliases refinesON (scalar) and refinesORs (array)
         const rawRefinesParents = reqData.refinesParents
@@ -942,7 +943,7 @@ class DistributedEditionImporter {
             itemId,
             updateRequest,
             current.versionId,
-            userId
+            user
         );
 
         console.log(`Resolved references: ${reqData.externalId}`);

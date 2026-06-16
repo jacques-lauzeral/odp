@@ -82,8 +82,8 @@ export class ODPEditionService {
     // EDITION OPERATIONS (Create + Read only — Editions are immutable)
     // =============================================================================
 
-    async createODPEdition(data, userId) {
-        const tx = createTransaction(userId);
+    async createODPEdition(data, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const validatedData = this._validateEditionData(data);
             let resolvedBaselineId = validatedData.baselineId;
@@ -109,8 +109,8 @@ export class ODPEditionService {
         }
     }
 
-    async getODPEdition(id, userId) {
-        const tx = createTransaction(userId);
+    async getODPEdition(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const edition = await odpEditionStore().findById(id, tx);
             await commitTransaction(tx);
@@ -121,8 +121,8 @@ export class ODPEditionService {
         }
     }
 
-    async listODPEditions(userId) {
-        const tx = createTransaction(userId);
+    async listODPEditions(user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const editions = await odpEditionStore().findAll(tx);
             await commitTransaction(tx);
@@ -176,7 +176,7 @@ export class ODPEditionService {
      * Publish an edition in one or more output formats.
      *
      * @param {string|number} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {object} options - PublishOptions
      * @param {object} [options.wordFlat]       - ContentSelection — generate flat Word document
      * @param {object} [options.wordMultipart]  - ContentSelection — generate multipart Word ZIP
@@ -184,7 +184,7 @@ export class ODPEditionService {
      * @param {boolean} [options.website]       - Build and serve HTML site; copy available artifacts
      * @returns {Promise<{ siteUrl, wordFlatUrl, wordMultipartUrl, pdfFlatUrl }>}
      */
-    async publishEdition(editionId, userId, options = {}) {
+    async publishEdition(editionId, user, options = {}) {
         if (this._publicationInProgress) {
             console.log(`[publish] REJECTED edition ${editionId} — publication already in progress`);
             const err = new Error('Publication already in progress — please retry later');
@@ -193,9 +193,9 @@ export class ODPEditionService {
         }
 
         this._publicationInProgress = true;
-        console.log(`[publish] START edition ${editionId} userId: ${userId}`);
+        console.log(`[publish] START edition ${editionId} user: ${user.id}`);
         try {
-            const tx = createTransaction(userId);
+            const tx = createTransaction(user.id, user.role);
             let edition;
             try {
                 edition = await odpEditionStore().findById(editionId, tx);
@@ -228,7 +228,7 @@ export class ODPEditionService {
             if (wordFlatSel !== null || pdfFlatSel !== null) {
                 const selection = wordFlatSel || pdfFlatSel || {};
                 console.log(`[publish] Generating flat content ZIP for ${scope}...`);
-                const zipBuffer = await this.generateAntoraZip(editionId, userId, { mode: 'flat', selection });
+                const zipBuffer = await this.generateAntoraZip(editionId, user, { mode: 'flat', selection });
                 console.log(`[publish] Flat content ZIP generated (${zipBuffer.length} bytes)`);
                 await this._extractZipToWorks(zipBuffer, worksDir);
                 await this._execStreaming('git add .', { cwd: worksDir });
@@ -247,14 +247,14 @@ export class ODPEditionService {
 
             // Stage 3 — Word multipart (non-fatal) — output written to _artifacts/
             const wordMultipartUrl = wordMultiSel !== null
-                ? await this._buildWordMultipart(wordMultiSel, editionId, userId, publicationDir, artifactsDir)
+                ? await this._buildWordMultipart(wordMultiSel, editionId, user, publicationDir, artifactsDir)
                 : null;
 
             // Stage 4 — Website: regenerate ZIP with website mode, build HTML, copy artifacts
             let siteUrl = null;
             if (doWebsite) {
                 console.log(`[publish] Generating website content ZIP for ${scope}...`);
-                const zipBuffer = await this.generateAntoraZip(editionId, userId, { mode: 'website' });
+                const zipBuffer = await this.generateAntoraZip(editionId, user, { mode: 'website' });
                 console.log(`[publish] Website content ZIP generated (${zipBuffer.length} bytes)`);
                 await this._extractZipToWorks(zipBuffer, worksDir);
                 await this._execStreaming('git add .', { cwd: worksDir });
@@ -345,7 +345,7 @@ export class ODPEditionService {
      * Non-fatal — returns ZIP URL on success, null on failure.
      * @private
      */
-    async _buildWordMultipart(selection, editionId, userId, publicationDir, artifactsDir) {
+    async _buildWordMultipart(selection, editionId, user, publicationDir, artifactsDir) {
         console.log(`[publish] Building Word multipart...`);
 
         const setChunks  = [];
@@ -367,7 +367,7 @@ export class ODPEditionService {
             console.log(`[publish] Building Word multipart — intro...`);
             const introWorksDir = nodePath.join(publicationDir, 'works-intro');
             const introOut      = nodePath.join(introWorksDir, 'multipart', 'build', 'assembler', 'docx', 'odip', '_exports', 'index.docx');
-            const introZip      = await this.generateAntoraZip(editionId, userId, { mode: 'intro' });
+            const introZip      = await this.generateAntoraZip(editionId, user, { mode: 'intro' });
             await this._extractZipToWorks(introZip, introWorksDir);
             await this._execStreaming('git add .', { cwd: introWorksDir });
             await this._execStreaming(`git commit -m "word multipart intro" --allow-empty`, { cwd: introWorksDir });
@@ -389,7 +389,7 @@ export class ODPEditionService {
             console.log(`[publish] Building Word multipart — domain: ${drg}...`);
             const domainWorksDir = nodePath.join(publicationDir, `works-${drgSlug}`);
             const domainOut      = nodePath.join(domainWorksDir, 'multipart', 'build', 'assembler', 'docx', 'odip', '_exports', 'index.docx');
-            const domainZip      = await this.generateAntoraZip(editionId, userId, { mode: 'domain', drgFilter: drg });
+            const domainZip      = await this.generateAntoraZip(editionId, user, { mode: 'domain', drgFilter: drg });
             await this._extractZipToWorks(domainZip, domainWorksDir);
             await this._execStreaming('git add .', { cwd: domainWorksDir });
             await this._execStreaming(`git commit -m "word multipart domain (${drg})" --allow-empty`, { cwd: domainWorksDir });
@@ -466,14 +466,14 @@ export class ODPEditionService {
      * Static shared/content/ directory is no longer used for chapter pages.
      *
      * @param {string|number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {object} [params]
      * @param {string} params.mode        - 'website' | 'flat' | 'domain' | 'intro'
      * @param {string} [params.drgFilter] - domain key (domain mode only)
      * @param {object} [params.selection] - { intro?, domains? } (website/flat modes)
      * @returns {Promise<Buffer>}
      */
-    async generateAntoraZip(editionId, userId, { mode = 'website', drgFilter = null, selection = {} } = {}) {
+    async generateAntoraZip(editionId, user, { mode = 'website', drgFilter = null, selection = {} } = {}) {
         const publicationPath     = this._publicationPath();
         const websiteConfigPath   = nodePath.join(publicationPath, 'website',   'config');
         const websiteContentPath  = nodePath.join(publicationPath, 'website',   'content');
@@ -487,7 +487,7 @@ export class ODPEditionService {
 
         // Generate all chapter content files from DB
         const generatedFiles = await this._generateAllChapterFiles(
-            userId, editionId, { mode, drgFilter, selection }
+            user, editionId, { mode, drgFilter, selection }
         );
         console.log(`[generateAntoraZip] Generated ${generatedFiles.size} files from DB`);
 
@@ -538,13 +538,13 @@ export class ODPEditionService {
      *
      * @private
      */
-    async _generateAllChapterFiles(userId, editionId, { mode, drgFilter, selection }) {
+    async _generateAllChapterFiles(user, editionId, { mode, drgFilter, selection }) {
         const allChapters = getChapters(); // flat list from edition.json incl. sub-chapters
         console.log(`[generateAntoraZip] ${allChapters.length} chapters in edition config`);
 
         // Build key → itemId map from DB (standard projection, no narrative/osHierarchy)
         console.log(`[generateAntoraZip] Fetching chapter index from DB...`);
-        const dbChapters = await chapterService.getAll(userId);
+        const dbChapters = await chapterService.getAll(user);
         const itemIdByKey = new Map(dbChapters.map(c => [c.code, c.itemId]));
         console.log(`[generateAntoraZip] ${dbChapters.length} chapters found in DB`);
 
@@ -552,13 +552,13 @@ export class ODPEditionService {
         // Fetches all chapters at extended projection to walk osHierarchy across all domains.
         // Used by ChapterGenerator for cross-domain xref resolution.
         console.log(`[generateAntoraZip] Building global O* index...`);
-        const globalOStarIndex = await this._buildGlobalOStarIndex(userId, allChapters, itemIdByKey);
+        const globalOStarIndex = await this._buildGlobalOStarIndex(user, allChapters, itemIdByKey);
         console.log(`[generateAntoraZip] Global O* index: ${globalOStarIndex.size} entries`);
 
         // Pre-fetch all O*s at summary projection — for xref/lookup resolution across all domains
         console.log(`[generateAntoraZip] Fetching all O*s (summary)...`);
         const allRequirementsSummary = await operationalRequirementService.getAll(
-            userId, editionId ?? null, {}, 'summary'
+            user, editionId ?? null, {}, 'summary'
         );
         const allOnsSummary = allRequirementsSummary.filter(r => r.type === 'ON');
         const allOrsSummary = allRequirementsSummary.filter(r => r.type === 'OR');
@@ -566,7 +566,7 @@ export class ODPEditionService {
 
         // Pre-fetch reference documents once — injected into every ChapterGenerator
         console.log(`[generateAntoraZip] Fetching reference documents...`);
-        const referenceDocuments = await this._fetchReferenceDocuments(userId);
+        const referenceDocuments = await this._fetchReferenceDocuments(user);
         console.log(`[generateAntoraZip] ${referenceDocuments.size} reference documents fetched`);
 
         // Build chapter itemId → { module, slug } for n-ref resolution.
@@ -664,7 +664,7 @@ export class ODPEditionService {
                 console.warn(`[generateAntoraZip] Chapter '${chapter.key}' not found in DB — skipped`);
                 continue;
             }
-            const fullChapter = await chapterService.getById(itemId, userId, editionId ?? null);
+            const fullChapter = await chapterService.getById(itemId, user, editionId ?? null);
             if (!fullChapter) {
                 console.warn(`[generateAntoraZip] Chapter '${chapter.key}' (itemId=${itemId}) returned null from DB — skipped`);
                 continue;
@@ -680,7 +680,7 @@ export class ODPEditionService {
                 console.log(`[generateAntoraZip] Resolving generated content for '${chapter.key}'...`);
                 try {
                     const { blocks, strings } = await chapterService.resolveGeneratedContent(
-                        itemId, editionId ?? null, userId
+                        itemId, editionId ?? null, user
                     );
                     if (Object.keys(blocks).length > 0) {
                         fullChapter.narrative = chapterService._substituteNarrativeBlocks(
@@ -705,7 +705,7 @@ export class ODPEditionService {
             if (hasDomain) {
                 console.log(`[generateAntoraZip] Fetching O*s for domain '${chapter.domain}' (standard)...`);
                 const domainRequirements = await operationalRequirementService.getAll(
-                    userId, editionId ?? null, { domain: chapter.domain }, 'standard'
+                    user, editionId ?? null, { domain: chapter.domain }, 'standard'
                 );
                 chapterOns = domainRequirements.filter(r => r.type === 'ON');
                 chapterOrs = domainRequirements.filter(r => r.type === 'OR');
@@ -713,7 +713,7 @@ export class ODPEditionService {
             }
 
             const generator = new ChapterGenerator(
-                userId,
+                user,
                 fullChapter,
                 { ons: chapterOns, ors: chapterOrs },
                 { editionId: editionId ?? null, referenceDocuments,
@@ -829,13 +829,13 @@ export class ODPEditionService {
      * the osHierarchy of every chapter. Used by ChapterGenerator for cross-domain
      * xref resolution.
      *
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {object[]} allChapters - flat list from edition.json
      * @param {Map} itemIdByKey - chapter key → DB itemId
      * @returns {Promise<Map<number, { chapterSlug: string, slugPath: string[] }>>}
      * @private
      */
-    async _buildGlobalOStarIndex(userId, allChapters, itemIdByKey) {
+    async _buildGlobalOStarIndex(user, allChapters, itemIdByKey) {
         const index = new Map();
 
         for (const chapter of allChapters) {
@@ -845,7 +845,7 @@ export class ODPEditionService {
             const itemId = itemIdByKey.get(chapter.key);
             if (!itemId) continue;
 
-            const fullChapter = await chapterService.getById(itemId, userId);
+            const fullChapter = await chapterService.getById(itemId, user);
             if (!fullChapter?.osHierarchy?.topics) continue;
 
             const chapterSlug = this._slugify(chapter.key);
@@ -903,8 +903,8 @@ export class ODPEditionService {
      * Shared across all ChapterGenerator instances within one generateAntoraZip call.
      * @private
      */
-    async _fetchReferenceDocuments(userId) {
-        const tx = createTransaction(userId);
+    async _fetchReferenceDocuments(user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const docs = await referenceDocumentStore().findAll(tx);
             await commitTransaction(tx);
@@ -1053,15 +1053,15 @@ export class ODPEditionService {
     /**
      * @deprecated Use generateAntoraZip() for Antora-based publication.
      */
-    async exportAsAsciiDoc(editionId, userId) {
+    async exportAsAsciiDoc(editionId, user) {
         const ODPEditionAggregator = (await import('./export/ODPEditionAggregator.js')).default;
         const aggregator           = new ODPEditionAggregator();
         const { default: ODPEditionTemplateRenderer } = await import('./export/ODPEditionTemplateRenderer.js');
         const renderer = new ODPEditionTemplateRenderer();
 
         const data = editionId
-            ? await aggregator.buildEditionExportData(editionId, userId)
-            : await aggregator.buildRepositoryExportData(userId);
+            ? await aggregator.buildEditionExportData(editionId, user)
+            : await aggregator.buildRepositoryExportData(user);
 
         const images   = aggregator.getExtractedImages();
         const filename = editionId ? 'edition.adoc' : 'repository.adoc';

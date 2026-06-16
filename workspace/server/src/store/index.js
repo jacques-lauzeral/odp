@@ -13,6 +13,7 @@ import { OperationalChangeStore } from './operational-change-store.js';
 import { BaselineStore } from './baseline-store.js';
 import { ODPEditionStore } from './odp-edition-store.js';
 import { ChangeSetStore } from './change-set-store.js';
+import { AuditEventStore } from './audit-event-store.js';
 
 // Store instances (initialized once)
 let stakeholderCategoryStore = null;
@@ -25,6 +26,7 @@ let operationalChangeStore = null;
 let baselineStore = null;
 let odpEditionStore = null;
 let changeSetStore = null;
+let auditEventStore = null;
 
 /**
  * Initialize the store layer with Neo4j connection and store instances.
@@ -49,6 +51,7 @@ export async function initializeStores() {
         baselineStore = new BaselineStore(driver);
         odpEditionStore = new ODPEditionStore(driver);
         changeSetStore = new ChangeSetStore(driver);
+        auditEventStore = new AuditEventStore(driver);
 
         console.log('Store layer initialized successfully');
         console.log('Available stores:', {
@@ -61,7 +64,8 @@ export async function initializeStores() {
             operationalChange: '✓',
             baseline: '✓',
             odpEdition: '✓',
-            changeSet: '✓'
+            changeSet: '✓',
+            auditEvent: '✓'
         });
 
     } catch (error) {
@@ -89,6 +93,7 @@ export async function closeStores() {
         baselineStore = null;
         odpEditionStore = null;
         changeSetStore = null;
+        auditEventStore = null;
 
         await closeConnection();
 
@@ -111,6 +116,10 @@ async function _ensureConstraints() {
         await tx.run(`
             CREATE CONSTRAINT changeset_code_unique IF NOT EXISTS
             FOR (cs:ChangeSet) REQUIRE cs.code IS UNIQUE
+        `);
+        await tx.run(`
+            CREATE INDEX audit_event_timestamp IF NOT EXISTS
+            FOR (e:AuditEvent) ON (e.timestamp)
         `);
         await commitTransaction(tx);
         console.log('  Schema constraints verified');
@@ -209,6 +218,11 @@ function getChangeSetStore() {
     return changeSetStore;
 }
 
+function getAuditEventStore() {
+    if (!auditEventStore) throw new Error('Store layer not initialized. Call initializeStores() first.');
+    return auditEventStore;
+}
+
 export {
     getStakeholderCategoryStore as stakeholderCategoryStore,
     getChapterStore as chapterStore,
@@ -219,7 +233,8 @@ export {
     getOperationalChangeStore as operationalChangeStore,
     getBaselineStore as baselineStore,
     getODPEditionStore as odpEditionStore,
-    getChangeSetStore as changeSetStore
+    getChangeSetStore as changeSetStore,
+    getAuditEventStore as auditEventStore
 };
 
 /**
@@ -236,7 +251,8 @@ export function getAllStores() {
         operationalChange: getOperationalChangeStore(),
         baseline: getBaselineStore(),
         odpEdition: getODPEditionStore(),
-        changeSet: getChangeSetStore()
+        changeSet: getChangeSetStore(),
+        auditEvent: getAuditEventStore()
     };
 }
 
@@ -254,7 +270,8 @@ export function isStoreLayerInitialized() {
         operationalChangeStore &&
         baselineStore &&
         odpEditionStore &&
-        changeSetStore
+        changeSetStore &&
+        auditEventStore
     );
 }
 
@@ -272,7 +289,8 @@ export function getStoreLayerStatus() {
         operationalChange: !!operationalChangeStore,
         baseline: !!baselineStore,
         odpEdition: !!odpEditionStore,
-        changeSet: !!changeSetStore
+        changeSet: !!changeSetStore,
+        auditEvent: !!auditEventStore
     };
 
     const initializedCount = Object.values(stores).filter(Boolean).length;

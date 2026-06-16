@@ -22,14 +22,14 @@ export class OperationalRequirementService extends VersionedItemService {
     }
 
     // Inherits from VersionedItemService:
-    // - create(payload, userId)
-    // - update(itemId, payload, expectedVersionId, userId)
-    // - patch(itemId, patchPayload, expectedVersionId, userId)
-    // - getById(itemId, userId, editionId?, projection?)
-    // - getByIdAndVersion(itemId, versionNumber, userId)
-    // - getVersionHistory(itemId, userId)
-    // - getAll(userId, editionId?, filters?, projection?)
-    // - delete(itemId, userId)
+    // - create(payload, user)
+    // - update(itemId, payload, expectedVersionId, user)
+    // - patch(itemId, patchPayload, expectedVersionId, user)
+    // - getById(itemId, user, editionId?, projection?)
+    // - getByIdAndVersion(itemId, versionNumber, user)
+    // - getAll(user, editionId?, filters?, projection?)
+    // - delete(itemId, user)
+    // History is served by AuditEventService.getItemHistory (Phase A).
 
     _getDeltaFieldNames() {
         return ['statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'];
@@ -362,12 +362,12 @@ export class OperationalRequirementService extends VersionedItemService {
      * Used by ChapterService._buildRefDocMap() for the strategic-traceability
      * generated block — replaces N+1 per-document findAll() calls.
      *
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {number|null} editionId
      * @returns {Promise<Array<{ itemId, code, title, docId, note }>>}
      */
-    async getONStrategicDocumentRefs(userId, editionId = null) {
-        const tx = createTransaction(userId);
+    async getONStrategicDocumentRefs(user, editionId = null) {
+        const tx = createTransaction(user.id, user.role);
         try {
             let resolvedBaselineId = null;
             let resolvedEditionId  = null;
@@ -392,15 +392,15 @@ export class OperationalRequirementService extends VersionedItemService {
      * Pivots the raw store rows into a flat stats object ready for key resolution.
      * Called by ChapterService.resolveGeneratedStrings() for portfolio statistics.
      *
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {number|null} editionId
      * @returns {Promise<{
      *   onTotalCount: number, onDraftCount: number, onAdvancedCount: number, onMatureCount: number,
      *   orTotalCount: number, orDraftCount: number, orAdvancedCount: number, orMatureCount: number
      * }>}
      */
-    async getEditionStats(userId, editionId = null) {
-        const tx = createTransaction(userId);
+    async getEditionStats(user, editionId = null) {
+        const tx = createTransaction(user.id, user.role);
         try {
             let resolvedBaselineId = null;
             let resolvedEditionId  = null;
@@ -441,12 +441,12 @@ export class OperationalRequirementService extends VersionedItemService {
      * Returns a Map<domain, { onTotal, orTotal }> used by ChapterService
      * to build the portfolio table rows.
      *
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @param {number|null} editionId
      * @returns {Promise<Map<string, { onTotal: number, orTotal: number }>>}
      */
-    async getEditionStatsByDomain(userId, editionId = null) {
-        const tx = createTransaction(userId);
+    async getEditionStatsByDomain(user, editionId = null) {
+        const tx = createTransaction(user.id, user.role);
         try {
             let resolvedBaselineId = null;
             let resolvedEditionId  = null;

@@ -7,7 +7,7 @@ The ODIP data model is organised into four categories of entities:
 - **Setup Entities** — reference data configured once and referenced throughout (reference documents, stakeholder categories, bandwidths, waves)
 - **Operational Entities** — versioned content authored by contributors (operational requirements, operational changes)
 - **Management Entities** — immutable lifecycle records (baselines, editions)
-- **Change-Management Entities** — mutable lifecycle records capturing the *reason* for every version (change sets)
+- **Change-Management Entities** — the change sets that capture the *reason* for change, and the `AuditEvent` log that is the sole authoritative record of every consequential write
 
 All entity definitions are centralised in the `@odp/shared` workspace package, providing a single source of truth consumed by the server, CLI, and web client.
 
@@ -41,8 +41,9 @@ shared/src/
 ├── messages/                 # API exchange contracts: request/response shapes
 │   └── messages.js           # Request/response model definitions
 └── model/                    # Domain model: entities, enums, utilities
+    ├── audit-elements.js     # AuditEvent model + AuditAction/AuditTargetType/UserRole/ItemStatus enums
     ├── chapter-elements.js   # Chapter entity model + OsHierarchy type
-    ├── change-set-elements.js # ChangeSet model + classifier/status enums + HAS_REASON edge + ChangeSetCommit fragments (write/read)
+    ├── change-set-elements.js # ChangeSet model + classifier/status enums + ChangeSetCommit write fragment
     ├── drafting-groups.js    # DRG enum + validation helpers — retained for Bandwidth.scope only
     ├── maturity-levels.js    # Maturity level enum (DRAFT, ADVANCED, MATURE)
     ├── milestone-events.js   # Milestone event types
@@ -172,9 +173,10 @@ Several attributes are type-specific. The service layer enforces these rules; th
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
 | `title` | string | Searchable unique identifier |
-| `createdAt` | timestamp | |
-| `createdBy` | string | |
+| `status` | enum | ACTIVE \| DELETED — the only lifecycle field on the item node (§3.4, §4.6). ACTIVE items hold a `LATEST_VERSION`; DELETED items do not |
 | `latest_version` | integer | Cache of current version number |
+
+> **Audit fields removed.** `createdAt` / `createdBy` no longer live on the item node. Who/when/why is recorded exclusively on `AuditEvent` (§3.4) — the sole audit surface.
 
 **Version node fields** (per version):
 
@@ -201,7 +203,8 @@ Several attributes are type-specific. The service layer enforces these rules; th
 | `implementedONs` | **OR only** | mandatory (root OR), optional otherwise | summary | List of implemented ONs |
 | `impactedStakeholders` | **OR only** | mandatory (root OR), optional otherwise | summary | List of StakeholderCategories |
 | `dependencies` | **OR only** | optional | summary | List of ORs that must be implemented before this OR |
-| `changeSetCommit` | both | mandatory | summary | Reason for this version — one forward hop along `HAS_REASON` to its ChangeSet: `{ changeSetId, code, changeSetTitle, classifier, note }`. Read-only; the write counterpart is the `ChangeSetCommit` request fragment `{ changeSetId, note }`. |
+
+> **`changeSetCommit` removed from the read model.** The reason for a version is no longer carried on the version (no `HAS_REASON` forward hop). Who/when/why is read from the `AuditEvent` log on demand via the History view (§3.4); it is not surfaced on common O\* reads.
 
 **Derived fields** (reverse-traversal, available in `extended` projection only):
 
@@ -217,7 +220,7 @@ Several attributes are type-specific. The service layer enforces these rules; th
 
 OCs describe and plan the deployment of OR evolutions. They do not group ONs directly — ONs are progressively implemented through the ORs included in one or more OCs.
 
-**Item node fields**: same pattern as Requirement (id, title, createdAt, createdBy, latest_version).
+**Item node fields**: same pattern as Requirement (id, title, `status`, latest_version) — no `createdAt`/`createdBy`; audit lives on `AuditEvent` (§3.4).
 
 **Version node fields**:
 
@@ -243,7 +246,8 @@ OCs describe and plan the deployment of OR evolutions. They do not group ONs dir
 | `dependencies` | optional | summary | OCs that must be deployed before this OC |
 | `milestones` | optional | summary | Deployment milestones (see §4.4) |
 | `orCosts` | optional | summary | Per-OR cost breakdown (see ORCost below) |
-| `changeSetCommit` | mandatory | summary | Reason for this version — forward hop along `HAS_REASON`: `{ changeSetId, code, changeSetTitle, classifier, note }`. Read-only. |
+
+> **`changeSetCommit` removed** — as for ORs (above): reason for change is read from `AuditEvent` (§3.4), not carried on the version.
 
 **Derived fields** (reverse-traversal, available in `extended` projection only):
 
@@ -289,7 +293,7 @@ Chapters are **config-owned** (domain, position declared in `edition.json`) but 
 | `availableBlockIds` | string[] | Block IDs from `edition.json` `generatedBlocks` — drives toolbar ⚙ block picker |
 | `availableStringKeys` | string[] | String keys from `edition.json` `generatedStrings` — drives toolbar ⚙ string picker |
 
-**Read model** also carries `changeSetCommit` (`{ changeSetId, code, changeSetTitle, classifier, note }`) — the `HAS_REASON` forward hop (§4.6). Always returned, since chapters bypass the projection mechanism.
+The chapter read model carries no `changeSetCommit`: the reason for a chapter version is read from the `AuditEvent` log via the History view (§3.4), as for O\*s. Chapters carry no `status` field — they are created at bootstrap and cannot be deleted.
 
 **OsHierarchy type:**
 
@@ -362,11 +366,11 @@ An edition selects content via two independent paths whose results are unioned:
 
 ### 3.4 Change-Management Entities
 
-Change-management entities record *why* content changed. Unlike Management entities they are **mutable** — a change set transitions `OPEN → CLOSED` and may be reopened.
+These entities record *why* and *what happened*. The `ChangeSet` carries the reason for change and is **mutable** (`OPEN → CLOSED`, reopenable). The `AuditEvent` is the append-only log of consequential writes — the sole audit surface; individual events are never edited.
 
 #### ChangeSet
 
-A `ChangeSet` is the first-class carrier of the reason for change. Every version of every managed object (OR, OC, Chapter) links to **exactly one** `ChangeSet` via a `HAS_REASON` edge (§4.6). Change sets are authored in-app only — they carry no external id and are never imported.
+A `ChangeSet` is the first-class carrier of the reason for change. Every consequential write of a managed object (OR, OC, Chapter) records an `AuditEvent` (§3.4) linked to **at most one** `ChangeSet` via `UNDER_CHANGESET` (§4.6). Change sets are authored in-app only — they carry no external id and are never imported.
 
 A change set is **not a transaction**: each save is an independent atomic commit, and a change set may accumulate members over time while `OPEN`. Partial sets are valid and visible to other users.
 
@@ -394,10 +398,41 @@ A change set is **not a transaction**: each save is an independent atomic commit
 | Reopened | Creator or integrator | `status` flips to `OPEN`; `closedBy` / `closedAt` overwritten. Multi-cycle history not retained at P0. |
 | Deleted | Creator | Empty `OPEN` sets only (soft delete). Closed sets with members are never deletable. |
 
-**Write vs read shape.** The reason a save commits under travels under the field name `changeSetCommit`, which has two shapes — the read shape being a strict superset of the write shape:
+**Commit write shape.** The reason a save commits under travels under the field name `changeSetCommit` on the request: `{ changeSetId, note }` — `changeSetId` required (the save fails if missing or referring to a `CLOSED` set); `note` is the optional per-object annotation. This fragment is **write-only**: it feeds the `AuditEvent` recorded for the write (its `changeSetCode` / `changeSetTitle` / `classifier` / `note`), and is linked to the set via `UNDER_CHANGESET`. There is no read counterpart on O\* projections — who/when/why is read from the audit log via the History view (§3.4), not surfaced on common reads.
 
-- **Write** (request input): `{ changeSetId, note }` — `changeSetId` required; `note` is the optional per-object annotation written to the `HAS_REASON` edge.
-- **Read** (response, on OR / OC / Chapter): `{ changeSetId, code, changeSetTitle, classifier, note }` — resolved by one forward hop along `HAS_REASON`. Included in the **summary** field set, hence present in all three projections (§3.5). Cheap because it is a bounded forward reference of cardinality one — unlike the unbounded reverse-traversal derived fields, which remain `extended`-only. Surfacing it in `summary` is what lets the History view show the reason on every version row (list/version endpoints cannot use `extended`).
+---
+
+#### AuditEvent
+
+The `AuditEvent` is the **sole authoritative record** of every consequential write. No audit information is duplicated on item or version nodes: `createdAt` / `createdBy` are gone from items and versions, and the `HAS_REASON` edge is gone — who / when / why lives here.
+
+An event is **written within the same transaction** as the operation it records: the event never exists without its cause, and the cause never commits without its event. That atomicity is what lets the log be trusted as authoritative.
+
+Every field is **captured at write time and frozen** — nothing is resolved on read. The event is a complete standalone record, so the History timeline renders with no hydration hop, and a `HARD_DELETE` event survives the destruction of its target (its `TARGETS` edge is deleted with the item, but `targetId` / `targetType` / `targetCode` / `targetTitle` remain as scalars — the only surviving trace).
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Neo4j internal ID |
+| `action` | enum | `AuditAction` key (see §6.8) — `CREATE` \| `UPDATE` \| `DELETE` \| `RESTORE` \| `HARD_DELETE` \| `CLOSE` \| `REOPEN` \| `PUBLISH` \| `BASELINE` \| `DECOMMISSION` (reserved) |
+| `userId` | string | Stable logical actor key; remappable at P2 IAM (RBA-04) without rewriting history |
+| `userRole` | enum | `UserRole` key — role held at action time (frozen): `DOMAIN_WRITER` \| `ICDM` \| `INTEGRATOR` |
+| `timestamp` | datetime | |
+| `targetId` | string | Stable item identity; persisted as a scalar so it survives hard delete |
+| `targetType` | enum | `AuditTargetType` key — `ON` \| `OR` \| `OC` \| `CHAPTER` \| `CHANGESET` \| `EDITION` \| `BASELINE` \| `WAVE` |
+| `targetCode` | string | Nullable — item code; null for code-less chapters |
+| `targetTitle` | string | Title at action time (frozen) |
+| `targetVersion` | integer | Nullable — version sequence number for version-producing actions; null otherwise |
+| `changeSetCode` | string | Nullable — `CS-#####` handle; null when not change-set-bound |
+| `changeSetTitle` | string | Nullable — set title at commit time (frozen); null when not change-set-bound |
+| `classifier` | enum | Nullable — `ChangeSetClassifier` key at commit time (frozen); null when not change-set-bound |
+| `note` | string | Nullable — per-object annotation (formerly the `HAS_REASON.note`) |
+
+The denormalised target and change-set fields deliberately duplicate what the `TARGETS` and `UNDER_CHANGESET` relationships encode; that redundancy is the point — it is what keeps a hard-deleted item's events a complete record.
+
+**Reads.** Two on-demand feeds read the log, both off any common read path:
+
+- **History view** — per-item chronological timeline across all action types: `(:AuditEvent)-[:TARGETS]->(item)`, ordered by `timestamp`. A pure `AuditEvent` scan, no joins (every field is on the event).
+- **Change-set members** — per-set "basket receipt": `(cs)<-[:UNDER_CHANGESET]-(e:AuditEvent)-[:TARGETS]->(item)`. The member row preserves everything needed to render and link the change list, including `versionId` — recovered by a single on-demand hop from `targetId` + `targetVersion` to the `ItemVersion` node, keeping version addressing uniform with the rest of the system.
 
 ---
 
@@ -486,13 +521,18 @@ Milestones are independent — no sequencing or dependency between them is enfor
 
 ---
 
-### 4.6 Change-Set Relationships
+### 4.6 Audit Relationships
 
 ```
-(ItemVersion)-[:HAS_REASON]->(ChangeSet)   # exactly one per version; carries optional `note`
+(AuditEvent)-[:TARGETS]->(item)               # always present; the item node, never a version
+(AuditEvent)-[:UNDER_CHANGESET]->(ChangeSet)  # nullable; change-set-bound writes only
 ```
 
-`HAS_REASON` links every `ItemVersion` (OR, OC, Chapter) to exactly one `ChangeSet`, recording why the version was created. The edge carries an optional `note` (per-object annotation). The reverse traversal — *all versions under a change set* — drives the change-set member view in a single hop, with no denormalised reason text on version nodes.
+`TARGETS` points to the **item** node (stable identity), never to a version node, because deletion and restore operate at item level; the version number, where relevant, is the `targetVersion` scalar on the event. The far end is polymorphic (ON/OR/OC/Chapter/ChangeSet/Edition/Baseline/Wave item) with no label constraint. On hard delete the edge is removed with the item, leaving the denormalised `targetId` / `targetType` / `targetCode` / `targetTitle` as the surviving trace.
+
+`UNDER_CHANGESET` links the event to the `ChangeSet` it commits under. It is a relationship (not a property) so the change-set detail view traverses it directly, reducing the member feed to a single hop: `(cs)<-[:UNDER_CHANGESET]-(e:AuditEvent)-[:TARGETS]->(item)`.
+
+> The former `HAS_REASON` edge (ItemVersion → ChangeSet) is **removed**. Its per-object `note` moves onto the `AuditEvent`; its reverse traversal is replaced by `UNDER_CHANGESET`.
 
 ---
 
@@ -500,7 +540,7 @@ Milestones are independent — no sequencing or dependency between them is enfor
 
 ### 5.1 Version Creation
 
-Every mutation of an operational entity (OR or OC) creates a new `ItemVersion` node. The `LATEST_VERSION` pointer on the `Item` node is atomically moved to the new version. Previous versions remain accessible for historical navigation. Every new version links to exactly one `OPEN` `ChangeSet` via `HAS_REASON` (§4.6); the save fails if no change set is supplied or the referenced set is `CLOSED`.
+Every mutation of an operational entity (OR or OC) creates a new `ItemVersion` node. The `LATEST_VERSION` pointer on the `Item` node is atomically moved to the new version. Previous versions remain accessible for historical navigation. Every such write records an `AuditEvent` in the same transaction (§3.4), linked to the supplied `OPEN` `ChangeSet` via `UNDER_CHANGESET` (§4.6); the save fails if no change set is supplied or the referenced set is `CLOSED`.
 
 ### 5.2 Version Context
 
@@ -597,6 +637,58 @@ Each milestone carries one or more event types from this list.
 |---|---|
 | `OPEN` | Accepts new members; selectable in the save dialog |
 | `CLOSED` | No longer accepts members; reopen required to add more |
+
+---
+
+### 6.8 Audit Action
+
+The consequential action an `AuditEvent` records (see AuditEvent, §3.4).
+
+| Key | Meaning |
+|---|---|
+| `CREATE` | Versioned item created (version 1) |
+| `UPDATE` | New version of a versioned item |
+| `DELETE` | Soft delete (item level) |
+| `RESTORE` | Soft-deleted item restored |
+| `HARD_DELETE` | Permanent destruction; event outlives its target |
+| `CLOSE` | Change set closed |
+| `REOPEN` | Change set reopened |
+| `PUBLISH` | Edition published |
+| `BASELINE` | Baseline captured |
+| `DECOMMISSION` | **Reserved** — DEL-06 parked; defined so the log shape is stable when it lands |
+
+### 6.9 Audit Target Type
+
+The kind of object an `AuditEvent` targets.
+
+| Key | Meaning |
+|---|---|
+| `ON` / `OR` | Operational Requirement (by type) |
+| `OC` | Operational Change |
+| `CHAPTER` | Chapter |
+| `CHANGESET` | Change set (CLOSE / REOPEN) |
+| `EDITION` | Edition (PUBLISH, delete) |
+| `BASELINE` | Baseline (BASELINE) |
+| `WAVE` | Wave |
+
+### 6.10 User Role
+
+The role under which a consequential write was performed — recorded frozen on the event. Writer roles only; passive users perform no consequential writes, so no `AuditEvent` ever carries a passive role. Source: blueprint RBA section.
+
+| Key | Meaning |
+|---|---|
+| `DOMAIN_WRITER` | Writes own domain, reads all |
+| `ICDM` | Cross-domain oversight and prioritisation |
+| `INTEGRATOR` | Administration, patching |
+
+### 6.11 Item Status
+
+Lifecycle status of a versioned item — the only lifecycle field on the item node.
+
+| Key | Meaning |
+|---|---|
+| `ACTIVE` | Live; holds a `LATEST_VERSION` |
+| `DELETED` | Soft-deleted; no `LATEST_VERSION` (§4.6) |
 
 ---
 

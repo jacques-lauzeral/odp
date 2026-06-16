@@ -187,8 +187,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 item.title as title,
                 id(version) as versionId,
                 version.version as version,
-                version.createdAt as createdAt,
-                version.createdBy as createdBy,
                 ${versionFields.map(f => `version.${f} as ${f}`).join(',\n                ')}
                 ${includeField('refinesParents') ? `,
                 collect(DISTINCT CASE WHEN parent IS NOT NULL
@@ -253,8 +251,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     code: record.get('code'),
                     versionId: this.normalizeId(record.get('versionId')),
                     version: this.normalizeId(record.get('version')),
-                    createdAt: record.get('createdAt'),
-                    createdBy: record.get('createdBy'),
                 };
 
                 const scalarVersionFields = [
@@ -280,7 +276,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 items.push(item);
             }
 
-            await this._attachChangeSetCommits(items, transaction);
             return items;
         } catch (error) {
             if (error instanceof StoreError) throw error;

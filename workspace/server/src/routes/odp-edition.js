@@ -4,30 +4,34 @@ import ODPEditionService from '../services/ODPEditionService.js';
 const router = Router();
 
 /**
- * Extract userId from request headers
+ * Extract the acting user from request headers — throws if id absent.
+ * Returns { id, role }; role is null when x-user-role is absent
+ * (role validation / implicit population arrives with RBA).
  */
-function getUserId(req) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) {
+function getUser(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) {
         throw new Error('Missing required header: x-user-id');
     }
-    return userId;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
 /**
- * Extract userId from request headers — returns null if absent.
+ * Extract the acting user from request headers — returns null if id absent.
  * Used on read-only routes that allow anonymous access.
  */
-function getUserIdOptional(req) {
-    return req.headers['x-user-id'] || null;
+function getUserOptional(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) return null;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
 // List all ODIP editions
 router.get('/', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        console.log(`ODPEditionService.listODPEditions() userId: ${userId}`);
-        const editions = await ODPEditionService.listODPEditions(userId);
+        const user = getUserOptional(req);
+        console.log(`ODPEditionService.listODPEditions() user: ${user?.id ?? null}`);
+        const editions = await ODPEditionService.listODPEditions(user);
         res.json(editions);
     } catch (error) {
         console.error('Error fetching ODIP editions:', error);
@@ -42,9 +46,9 @@ router.get('/', async (req, res) => {
 // Export entire repository as AsciiDoc
 router.get('/export', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        console.log(`ODPEditionService.exportAsAsciiDoc() repository export, userId: ${userId}`);
-        const asciiDoc = await ODPEditionService.exportAsAsciiDoc(null, userId);
+        const user = getUserOptional(req);
+        console.log(`ODPEditionService.exportAsAsciiDoc() repository export, user: ${user?.id ?? null}`);
+        const asciiDoc = await ODPEditionService.exportAsAsciiDoc(null, user);
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.setHeader('Content-Disposition', 'inline; filename="odp-repository.adoc"');
         res.send(asciiDoc);
@@ -61,9 +65,9 @@ router.get('/export', async (req, res) => {
 // Get ODIP edition by ID
 router.get('/:id', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        console.log(`ODPEditionService.getODPEdition() id: ${req.params.id}, userId: ${userId}`);
-        const edition = await ODPEditionService.getODPEdition(req.params.id, userId);
+        const user = getUserOptional(req);
+        console.log(`ODPEditionService.getODPEdition() id: ${req.params.id}, user: ${user?.id ?? null}`);
+        const edition = await ODPEditionService.getODPEdition(req.params.id, user);
         if (!edition) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'ODIP Edition not found' }
@@ -83,10 +87,10 @@ router.get('/:id', async (req, res) => {
 // Export specific ODIP edition as AsciiDoc
 router.get('/:id/export', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
+        const user = getUserOptional(req);
         const editionId = req.params.id;
-        console.log(`ODPEditionService.exportAsAsciiDoc() edition export, id: ${editionId}, userId: ${userId}`);
-        const asciiDoc = await ODPEditionService.exportAsAsciiDoc(editionId, userId);
+        console.log(`ODPEditionService.exportAsAsciiDoc() edition export, id: ${editionId}, user: ${user?.id ?? null}`);
+        const asciiDoc = await ODPEditionService.exportAsAsciiDoc(editionId, user);
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         res.setHeader('Content-Disposition', `inline; filename="odp-edition-${editionId}.adoc"`);
         res.send(asciiDoc);
@@ -105,9 +109,9 @@ router.get('/:id/export', async (req, res) => {
 // Create new ODIP edition (with auto-baseline creation if needed)
 router.post('/', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        console.log(`ODPEditionService.createODPEdition() userId: ${userId}, title: ${req.body.title}, type: ${req.body.type}, baselineId: ${req.body.baselineId}, startDate: ${req.body.startDate}`);
-        const edition = await ODPEditionService.createODPEdition(req.body, userId);
+        const user = getUser(req);
+        console.log(`ODPEditionService.createODPEdition() user: ${user?.id ?? null}, title: ${req.body.title}, type: ${req.body.type}, baselineId: ${req.body.baselineId}, startDate: ${req.body.startDate}`);
+        const edition = await ODPEditionService.createODPEdition(req.body, user);
         res.status(201).json(edition);
     } catch (error) {
         console.error('Error creating ODIP edition:', error);
@@ -128,15 +132,15 @@ router.post('/', async (req, res) => {
 // Absent or empty body defaults to { website: true }
 router.post('/:id/publish', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const user = getUser(req);
         const editionId = req.params.id;
 
         const options = (req.body && Object.keys(req.body).length > 0)
             ? req.body
             : { website: true };
 
-        console.log(`ODPEditionService.publishEdition() id: ${editionId}, options: ${JSON.stringify(options)}, userId: ${userId}`);
-        const result = await ODPEditionService.publishEdition(editionId, userId, options);
+        console.log(`ODPEditionService.publishEdition() id: ${editionId}, options: ${JSON.stringify(options)}, user: ${user?.id ?? null}`);
+        const result = await ODPEditionService.publishEdition(editionId, user, options);
         res.json(result);
     } catch (error) {
         console.error('Error publishing ODIP edition:', error);

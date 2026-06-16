@@ -10,12 +10,12 @@ class ImportService {
      * set id — the importer threads it as the changeSetCommit on each store write.
      *
      * @param {Object} sourceData - Source JSON conforming to source.schema.json
-     * @param {string} userId - User performing the import
+     * @param {object} user - User performing the import {id, role}
      * @param {number} changeSetId - Existing OPEN change set every imported version commits under
      * @returns {Promise<Object>} DistributedImportSummary with counts, errors and warnings
      */
-    async importDistributedSourceFile(sourceData, userId, changeSetId) {
-        return await DistributedEditionImporter.importSourceFile(sourceData, userId, changeSetId);
+    async importDistributedSourceFile(sourceData, user, changeSetId) {
+        return await DistributedEditionImporter.importSourceFile(sourceData, user, changeSetId);
     }
 }
 

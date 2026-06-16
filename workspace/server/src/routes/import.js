@@ -5,22 +5,24 @@ const router = Router();
 const importService = new ImportService();
 
 /**
- * Extract userId from request headers
+ * Extract the acting user from request headers — throws if id absent.
+ * Returns { id, role }; role is null when x-user-role is absent
+ * (role validation / implicit population arrives with RBA).
  */
-function getUserId(req) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) {
+function getUser(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) {
         throw new Error('Missing required header: x-user-id');
     }
-    return userId;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
 // Import distributed edition source JSON file directly
 router.post('/distributed', async (req, res) => {
     try {
-        const userId = getUserId(req);
+        const user = getUser(req);
 
-        console.log(`ImportService.importDistributedSourceFile() userId: ${userId}`);
+        console.log(`ImportService.importDistributedSourceFile() user: ${user?.id ?? null}`);
 
         if (req.get('Content-Type') !== 'application/json') {
             return res.status(400).json({
@@ -52,7 +54,7 @@ router.post('/distributed', async (req, res) => {
             });
         }
 
-        const summary = await importService.importDistributedSourceFile(sourceData, userId, changeSetId);
+        const summary = await importService.importDistributedSourceFile(sourceData, user, changeSetId);
 
         console.log(`Distributed import completed: ${JSON.stringify(summary)}`);
         res.json(summary);

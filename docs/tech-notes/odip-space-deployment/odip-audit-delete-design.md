@@ -41,16 +41,27 @@ Out of scope: data migration of the existing Edition 1 dataset (handled by re-im
 
 A first-class `AuditEvent` node records every consequential write. It is the single authoritative audit record; no audit information is duplicated on item or version nodes.
 
+> **As-built (Phase A §3.1/§3.2).** Every field is **captured at write time and frozen** — nothing resolved on read, so the History timeline renders with no join and a `HARD_DELETE` event survives its target. The node grew beyond the original sketch to carry the denormalised target and change-set snapshots below.
+
 **`AuditEvent` node:**
 
 | Field | Type | Notes |
 |---|---|---|
-| `action` | enum | `CREATE` / `UPDATE` / `DELETE` / `RESTORE` / `HARD_DELETE` / `CLOSE` / `REOPEN` / `PUBLISH` / `BASELINE` / `DECOMMISSION` (reserved, §9) |
-| `actorId` | string | Stable logical actor key (§3.7) — mirrors the write transaction's `userId` |
+| `action` | enum | `AuditAction` — `CREATE` / `UPDATE` / `DELETE` / `RESTORE` / `HARD_DELETE` / `CLOSE` / `REOPEN` / `PUBLISH` / `BASELINE` / `DECOMMISSION` (reserved, §9) |
+| `userId` | string | Stable logical actor key (§3.7) — mirrors the transaction's `userId` |
+| `userRole` | enum | `UserRole` (`DOMAIN_WRITER` / `ICDM` / `INTEGRATOR`) — role at action time, frozen |
 | `timestamp` | datetime | |
-| `targetType` | enum | `ON` / `OR` / `OC` / `CHAPTER` / `CHANGESET` / `EDITION` / `BASELINE` / `WAVE` |
-| `targetVersion` | integer | Nullable — the version number for version-producing actions; null otherwise |
-| `note` | text | Nullable — the per-object annotation formerly carried on the `HAS_REASON` edge |
+| `targetId` | string | Stable item identity; persisted as scalar so it survives hard delete |
+| `targetType` | enum | `AuditTargetType` — `ON` / `OR` / `OC` / `CHAPTER` / `CHANGESET` / `EDITION` / `BASELINE` / `WAVE` |
+| `targetCode` | string | Nullable — item code; null for code-less chapters |
+| `targetTitle` | string | Title at action time, frozen |
+| `targetVersion` | integer | Nullable — version number for version-producing actions; null otherwise |
+| `changeSetCode` | string | Nullable — `CS-#####` handle; null when not change-set-bound |
+| `changeSetTitle` | string | Nullable — set title at commit time, frozen |
+| `classifier` | enum | Nullable — `ChangeSetClassifier` at commit time, frozen |
+| `note` | text | Nullable — per-object annotation formerly on the `HAS_REASON` edge |
+
+`status` (`ACTIVE` / `DELETED`) is the new item lifecycle field (`ItemStatus`). `actorId` in the original sketch is realised as `userId`.
 
 **Relationships:**
 

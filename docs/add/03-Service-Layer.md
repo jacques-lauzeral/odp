@@ -30,7 +30,9 @@ Reference existence checks open their own short-lived `'system'` transactions, s
 
 ### 2.3 User Context Propagation
 
-Every service method receives `userId` as a parameter. It is passed to `createTransaction(userId)` and recorded on every version node created during that transaction, providing a full audit trail through version history.
+Every service method receives `user` (`{id, role}`) as a parameter. It is passed to `createTransaction(user.id, user.role)`; the transaction carries both, exposed via `getUserId()` and `getUserRole()`. The store layer reads both when writing `AuditEvent` nodes — `userId` and the role-at-action-time (`userRole`) are frozen onto each event. This is what provides the audit trail; version nodes no longer carry `createdAt`/`createdBy` stamps (Phase A — audit foundation).
+
+Routes assemble `user` from the authenticated request context and pass it down. Validation-only `'system'` transactions (reference-existence checks) are created with the literal `createTransaction('system')` and write no audit event, so the defaulted role is immaterial there.
 
 ### 2.4 No Direct Store Coupling in Routes
 
@@ -62,6 +64,9 @@ ODIPEditionService
 
 (quality orchestration — read-only, no base class:)
 QualityService
+
+(audit read orchestration — read-only, no base class:)
+AuditEventService
 ```
 
 ### 3.1 SimpleItemService
@@ -70,11 +75,11 @@ Abstract base for all non-versioned entities. Wraps `BaseStore` CRUD with transa
 
 | Method | Description |
 |---|---|
-| `listItems(userId)` | List all entities |
-| `getItem(id, userId)` | Fetch single entity |
-| `createItem(data, userId)` | Validate then create |
-| `updateItem(id, data, userId)` | Validate then update; returns `null` if not found |
-| `deleteItem(id, userId)` | Delete entity |
+| `listItems(user)` | List all entities |
+| `getItem(id, user)` | Fetch single entity |
+| `createItem(data, user)` | Validate then create |
+| `updateItem(id, data, user)` | Validate then update; returns `null` if not found |
+| `deleteItem(id, user)` | Delete entity |
 | `_validateCreateData(data)` *(abstract)* | Must be implemented by subclass |
 | `_validateUpdateData(data)` *(abstract)* | Must be implemented by subclass |
 
@@ -86,13 +91,13 @@ Additional methods:
 
 | Method | Description |
 |---|---|
-| `getChildren(parentId, userId)` | Direct children of an item |
-| `getParent(childId, userId)` | Parent of an item |
-| `getRoots(userId)` | Items with no parent |
-| `createRefinesRelation(childId, parentId, userId)` | Explicit relationship creation |
-| `deleteRefinesRelation(childId, parentId, userId)` | Explicit relationship removal |
-| `findItemsByName(namePattern, userId)` | Case-insensitive name search (in-memory filter) |
-| `isNameExists(name, excludeId?, userId)` | Uniqueness check (in-memory) |
+| `getChildren(parentId, user)` | Direct children of an item |
+| `getParent(childId, user)` | Parent of an item |
+| `getRoots(user)` | Items with no parent |
+| `createRefinesRelation(childId, parentId, user)` | Explicit relationship creation |
+| `deleteRefinesRelation(childId, parentId, user)` | Explicit relationship removal |
+| `findItemsByName(namePattern, user)` | Case-insensitive name search (in-memory filter) |
+| `isNameExists(name, excludeId?, user)` | Uniqueness check (in-memory) |
 
 `WaveService` and `BandwidthService` extend `SimpleItemService` directly (no hierarchy).
 
@@ -102,21 +107,22 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 | Method | Description |
 |---|---|
-| `create(payload, userId)` | Validate then create at version 1 |
-| `update(itemId, payload, expectedVersionId, userId)` | Validate then create new version |
-| `patch(itemId, patchPayload, expectedVersionId, userId)` | Partial update — merges with current via `_computePatchedPayload`, then validates and updates |
-| `getById(itemId, userId, editionId?, projection?)` | Fetch with optional edition context and projection; resolves edition to `{baselineId, editionId}` internally before calling store |
-| `getByIdAndVersion(itemId, versionNumber, userId)` | Fetch specific historical version |
-| `getVersionHistory(itemId, userId)` | All versions, newest first |
-| `getAll(userId, editionId?, filters?, projection?)` | List with optional edition context, filters, and projection; resolves edition internally before calling store |
-| `delete(itemId, userId)` | Delete item and all versions |
+| `create(payload, user)` | Validate then create at version 1 |
+| `update(itemId, payload, expectedVersionId, user)` | Validate then create new version |
+| `patch(itemId, patchPayload, expectedVersionId, user)` | Partial update — merges with current via `_computePatchedPayload`, then validates and updates |
+| `getById(itemId, user, editionId?, projection?)` | Fetch with optional edition context and projection; resolves edition to `{baselineId, editionId}` internally before calling store |
+| `getByIdAndVersion(itemId, versionNumber, user)` | Fetch specific historical version |
+| `getAll(user, editionId?, filters?, projection?)` | List with optional edition context, filters, and projection; resolves edition internally before calling store |
+| `delete(itemId, user)` | Delete item and all versions |
 | `_validateCreatePayload(payload)` *(abstract)* | Must be implemented by subclass |
 | `_validateUpdatePayload(payload, itemId?)` *(abstract)* | Must be implemented by subclass; `itemId` is `null` on create, set on update/patch |
 | `_computePatchedPayload(current, patchPayload)` *(abstract)* | Field merge logic; must be implemented by subclass |
 
 `patch()` is implemented entirely in the base class: it fetches the current entity (latest version), calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
 
-**Change-set linkage (LCM).** `payload` is the request message, and the request models carry the commit fields (`changeSetId`, `note`) alongside entity content. Routes stay pass-through; the message→domain split happens here, in `_extractChangeSetCommit(payload)` → `{data, changeSetCommit}`. `create`/`update`/`patch` pass `data` (pure entity state) and the explicit `changeSetCommit = {changeSetId, note}` to `store.*`, so the store boundary never sees the commit embedded in entity data. In `patch`, the read-only `changeSetCommit` is stripped off the fetched `current` before merging, so it is never fed back into a write. On the read side, `getById`/`getByIdAndVersion`/`getVersionHistory`/`getAll` hydrate each result's `changeSetCommit` via `changeSetService.hydrateInto`/`hydrateAll` (filling `code`/`changeSetTitle`/`classifier` from the cache) before commit.
+**Change-set linkage (LCM).** `payload` is the request message, and the request models carry the commit fields (`changeSetId`, `note`) alongside entity content. Routes stay pass-through; the message→domain split happens here, in `_extractChangeSetCommit(payload)` → `{data, changeSetCommit}`. `create`/`update`/`patch` pass `data` (pure entity state) and the explicit `changeSetCommit = {changeSetId, note}` to `store.*`, so the store boundary never sees the commit embedded in entity data. The store writes the `AuditEvent` (with the frozen `{code, title, classifier}` change-set snapshot) atomically inside the same transaction.
+
+There is **no read-side `changeSetCommit` hydration** (Phase A — audit foundation). The field is gone from every versioned-item response shape; who/when/why is served exclusively by the audit timeline (`AuditEventService.getItemHistory`). `getById`/`getByIdAndVersion`/`getAll` simply return what the store reads — no `changeSetService` call on the read path. `getVersionHistory` is removed entirely; History is the audit timeline.
 
 `ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full, using `'standard'` projection). It also overrides `getById()` to default to `'extended'` projection. It disables `create()` and `delete()` — chapters are bootstrap-only.
 
@@ -139,9 +145,9 @@ Key validation rules:
 - Referenced entities (`impactedStakeholders`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
 
 **Narrative generator support:**
-- `getONStrategicDocumentRefs(userId, editionId?)` — wraps `OperationalRequirementStore.findONStrategicDocumentRefs()`. Returns `Array<{ itemId, code, title, docId, note }>` — all `(ON, ReferenceDocument, note)` triples in a single query. Called by `ChapterService._buildRefDocMap()` for the strategic-traceability generated block.
-- `getEditionStats(userId, editionId?)` — wraps `OperationalRequirementStore.getMaturityCounts()` and pivots the rows into a flat stats object `{ onTotalCount, onDraftCount, onAdvancedCount, onMatureCount, orTotalCount, orDraftCount, orAdvancedCount, orMatureCount }`. Called by `ChapterService._resolveStringKeys()` for portfolio statistics generated strings.
-- `getEditionStatsByDomain(userId, editionId?)` — wraps `OperationalRequirementStore.getCountsByDomain()` and pivots the rows into `Map<domain, { onTotal, orTotal }>`. Called by `ChapterService._buildPortfolioTableData()` for the portfolio table generated block.
+- `getONStrategicDocumentRefs(user, editionId?)` — wraps `OperationalRequirementStore.findONStrategicDocumentRefs()`. Returns `Array<{ itemId, code, title, docId, note }>` — all `(ON, ReferenceDocument, note)` triples in a single query. Called by `ChapterService._buildRefDocMap()` for the strategic-traceability generated block.
+- `getEditionStats(user, editionId?)` — wraps `OperationalRequirementStore.getMaturityCounts()` and pivots the rows into a flat stats object `{ onTotalCount, onDraftCount, onAdvancedCount, onMatureCount, orTotalCount, orDraftCount, orAdvancedCount, orMatureCount }`. Called by `ChapterService._resolveStringKeys()` for portfolio statistics generated strings.
+- `getEditionStatsByDomain(user, editionId?)` — wraps `OperationalRequirementStore.getCountsByDomain()` and pivots the rows into `Map<domain, { onTotal, orTotal }>`. Called by `ChapterService._buildPortfolioTableData()` for the portfolio table generated block.
 
 ### 3.5 OperationalChangeService
 
@@ -151,11 +157,11 @@ Additional milestone methods — all require `expectedVersionId` because each op
 
 | Method | Description |
 |---|---|
-| `getMilestones(itemId, userId, baselineId?)` | Returns `milestones` array from OC |
-| `getMilestone(itemId, milestoneKey, userId, baselineId?)` | Single milestone by stable `milestoneKey` |
-| `addMilestone(itemId, milestoneData, expectedVersionId, userId)` | Appends milestone; returns `{milestone, operationalChange}` |
-| `updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, userId)` | Replaces milestone by key; returns `{milestone, operationalChange}` |
-| `deleteMilestone(itemId, milestoneKey, expectedVersionId, userId)` | Removes milestone by key; returns `{operationalChange}` |
+| `getMilestones(itemId, user, baselineId?)` | Returns `milestones` array from OC |
+| `getMilestone(itemId, milestoneKey, user, baselineId?)` | Single milestone by stable `milestoneKey` |
+| `addMilestone(itemId, milestoneData, expectedVersionId, user)` | Appends milestone; returns `{milestone, operationalChange}` |
+| `updateMilestone(itemId, milestoneKey, milestoneData, expectedVersionId, user)` | Replaces milestone by key; returns `{milestone, operationalChange}` |
+| `deleteMilestone(itemId, milestoneKey, expectedVersionId, user)` | Removes milestone by key; returns `{operationalChange}` |
 
 Milestone mutations work by fetching the current OC, rebuilding the full milestones array, and calling `store.update()` with the complete payload — there is no direct milestone write. The `milestoneKey` is a stable UUID-based identifier preserved across versions.
 
@@ -194,16 +200,16 @@ Validation rules:
 Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object).
 
 - `create()` and `delete()` are not supported — chapters are managed by server bootstrap (`initializeDatabase()`)
-- `getAll(userId)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative` and `osHierarchy` excluded). O* enrichment is not performed on the list path.
-- `getById(itemId, userId, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
-- `_buildOStarMap(userId)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
+- `getAll(user)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative` and `osHierarchy` excluded). O* enrichment is not performed on the list path.
+- `getById(itemId, user, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
+- `_buildOStarMap(user)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
-- `resolveGeneratedContent(itemId, editionId, userId)` — resolves all generated content (blocks + strings) for a chapter in a single call. Returns `{ blocks: { [blockId]: node[] }, strings: { [key]: string } }`. Block and string resolution run in parallel via `Promise.all`. Always ephemeral — never persisted.
-- `_resolveAllBlocks(narrative, editionId, userId)` — extracts generated-block mark IDs from the narrative and resolves each in parallel; returns `{ [blockId]: node[] }`.
-- `_resolveStringKeys(keys, editionId, userId)` — routes each key to the appropriate source: config keys (`chapter-count`, `sub-chapter-count`) resolved via `_resolveConfigCounts()`; all others resolved from a single `getEditionStats()` call.
+- `resolveGeneratedContent(itemId, editionId, user)` — resolves all generated content (blocks + strings) for a chapter in a single call. Returns `{ blocks: { [blockId]: node[] }, strings: { [key]: string } }`. Block and string resolution run in parallel via `Promise.all`. Always ephemeral — never persisted.
+- `_resolveAllBlocks(narrative, editionId, user)` — extracts generated-block mark IDs from the narrative and resolves each in parallel; returns `{ [blockId]: node[] }`.
+- `_resolveStringKeys(keys, editionId, user)` — routes each key to the appropriate source: config keys (`chapter-count`, `sub-chapter-count`) resolved via `_resolveConfigCounts()`; all others resolved from a single `getEditionStats()` call.
 - `_resolveConfigCounts()` — derives `chapterCount` (top-level chapters with a domain and no sub-chapters) and `subChapterCount` (all sub-chapters) from `getChapters()` config. No DB access.
-- `_buildPortfolioTableData(editionId, userId)` — builds the row array for the `portfolio-table` block. Combines edition config (chapter numbers, titles, `primaryScope`) with domain-level stats from `getEditionStatsByDomain()`. Parent containers (no domain) get `null` ON/OR counts. Intro, wayforward, and annex chapters are excluded.
-- `_buildRefDocMap(editionId, userId)` — fetches all reference documents via `ReferenceDocumentService.listItems()` and all `(ON, ReferenceDocument, note)` triples via a single `OperationalRequirementService.getONStrategicDocumentRefs()` call (no N+1). Groups triples in memory into `onsByRefDocId: Map<docId, ON[]>`. Non-leaf documents may be cited directly — all hierarchy levels included.
+- `_buildPortfolioTableData(editionId, user)` — builds the row array for the `portfolio-table` block. Combines edition config (chapter numbers, titles, `primaryScope`) with domain-level stats from `getEditionStatsByDomain()`. Parent containers (no domain) get `null` ON/OR counts. Intro, wayforward, and annex chapters are excluded.
+- `_buildRefDocMap(editionId, user)` — fetches all reference documents via `ReferenceDocumentService.listItems()` and all `(ON, ReferenceDocument, note)` triples via a single `OperationalRequirementService.getONStrategicDocumentRefs()` call (no N+1). Groups triples in memory into `onsByRefDocId: Map<docId, ON[]>`. Non-leaf documents may be cited directly — all hierarchy levels included.
 - `_mergeConfigFields(item)` — merges `domain`, `position`, `parentCode`, `availableBlockIds` (from `generatedBlocks`), and `availableStringKeys` (from `generatedStrings`) from edition config. Both drive the editor toolbar — empty arrays on chapters that declare neither.
 
 ### 3.7 BaselineService
@@ -212,10 +218,10 @@ Standalone management service (no base class). Baselines are immutable once crea
 
 | Method | Description |
 |---|---|
-| `createBaseline(data, userId)` | Validate title, create baseline (snapshot logic in store) |
-| `getBaseline(id, userId)` | Fetch single baseline |
-| `listBaselines(userId)` | List all baselines |
-| `getBaselineItems(id, userId)` | List OR/OC versions captured in the baseline |
+| `createBaseline(data, user)` | Validate title, create baseline (snapshot logic in store) |
+| `getBaseline(id, user)` | Fetch single baseline |
+| `listBaselines(user)` | List all baselines |
+| `getBaselineItems(id, user)` | List OR/OC versions captured in the baseline |
 
 The atomic snapshot of all current latest-version ORs and OCs is handled inside `baselineStore().create()`, not by the service orchestrating multiple stores.
 
@@ -225,12 +231,12 @@ Standalone management service. Editions are immutable once created.
 
 | Method | Description |
 |---|---|
-| `createODPEdition(data, userId)` | Validate and create edition; auto-creates a baseline if none provided; `minONMaturity` validated and passed through to store |
-| `getODPEdition(id, userId)` | Fetch single edition |
-| `listODPEditions(userId)` | List all editions |
-| `exportAsAsciiDoc(editionId?, userId)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
-| `publishEdition(editionId, userId, options?)` | Full publication orchestration — see Chapter 06 |
-| `generateAntoraZip(editionId, userId, drgFilter?, introOnly?)` | Generate scoped Antora source ZIP |
+| `createODPEdition(data, user)` | Validate and create edition; auto-creates a baseline if none provided; `minONMaturity` validated and passed through to store |
+| `getODPEdition(id, user)` | Fetch single edition |
+| `listODPEditions(user)` | List all editions |
+| `exportAsAsciiDoc(editionId?, user)` | Export edition (or full repository if `null`) as AsciiDoc ZIP — see Chapter 05 |
+| `publishEdition(editionId, user, options?)` | Full publication orchestration — see Chapter 06 |
+| `generateAntoraZip(editionId, user, drgFilter?, introOnly?)` | Generate scoped Antora source ZIP |
 
 Required fields: `title`, `type` (`DRAFT` or `OFFICIAL`). Optional: `baselineId`, `startDate` (yyyy-mm-dd lower bound for content filtering), `minONMaturity` (`DRAFT` | `ADVANCED` | `MATURE`). If `baselineId` is omitted a new baseline is auto-created with a generated title and linked to the edition. The optional baseline is validated for existence before the edition is written.
 
@@ -258,21 +264,36 @@ Private helpers: `_buildFlat()`, `_buildSet()`, `_extractZipToWorks()`, `_create
 
 ### 3.9 ChangeSetService
 
-Extends `SimpleItemService` (store: `ChangeSetStore`). Owns ChangeSet CRUD, lifecycle, member listing, and the in-process `id→ChangeSet` cache that hydrates the per-version `changeSetCommit` on every versioned read.
+Extends `SimpleItemService` (store: `ChangeSetStore`). Owns ChangeSet CRUD, lifecycle, member listing, and the in-process `id→ChangeSet` cache used by the store layer to validate OPEN change sets on writes and to capture the frozen `{code, title, classifier}` snapshot written onto each `AuditEvent`.
 
 | Method | Description |
 |---|---|
-| `createItem(data, userId)` | Validate (title required, valid classifier), create, cache the result |
-| `updateItem(id, data, userId)` | Edit `title`/`reasonText` — **only while OPEN** (guarded in one transaction); refresh cache |
-| `deleteItem(id, userId)` | Delete — **only an empty, OPEN set**; closed sets or sets with members are rejected; evict cache |
-| `close(id, userId)` / `reopen(id, userId)` | Status transitions; refresh cache |
-| `findByStatus(status, userId)` / `findByClassifier(classifier, userId)` | List queries |
-| `getMembers(changeSetId, userId)` | Member-row list via `store.findMembers` |
-| `hydrateInto(entity, tx)` / `hydrateAll(entities, tx)` | Fill `changeSetCommit.code`/`changeSetTitle`/`classifier` from cache (called by `VersionedItemService` reads) |
+| `createItem(data, user)` | Validate (title required, valid classifier), create, cache the result |
+| `updateItem(id, data, user)` | Edit `title`/`reasonText` — **only while OPEN** (guarded in one transaction); refresh cache |
+| `deleteItem(id, user)` | Delete — **only an empty, OPEN set**; closed sets or sets with members are rejected; evict cache |
+| `close(id, user)` / `reopen(id, user)` | Status transitions; refresh cache |
+| `findByStatus(status, user)` / `findByClassifier(classifier, user)` | List queries |
+| `getMembers(changeSetId, user)` | Member-row list via `store.findMembers` (backed by the audit log `UNDER_CHANGESET → TARGETS` traversal since Phase A) |
 
-**Cache coherence:** the cache is lazily populated on hydration misses (loaded from the store within the active read transaction) and refreshed on every mutation — `create`/`update`/`close`/`reopen` set the entry, `delete` evicts it. Because title, classifier and status are mutable on the set, resolving them on read keeps a rename or reclassification consistent everywhere, with no stale denormalised copies on the `HAS_REASON` edge. The cache is per-process.
+**Cache coherence:** the cache is lazily populated on misses (loaded from the store within the active transaction) and refreshed on every mutation — `create`/`update`/`close`/`reopen` set the entry, `delete` evicts it. It is consulted **only on the write path** (by the store's open-change-set validation, which also reads the frozen snapshot for the `AuditEvent`); no read path depends on it. The cache is per-process.
 
-Exported as a singleton (`export default new ChangeSetService()`), imported directly — including by `VersionedItemService` for read hydration.
+Exported as a singleton (`export default new ChangeSetService()`). It is no longer imported by `VersionedItemService` (read hydration removed in Phase A).
+
+---
+
+### 3.10 AuditEventService
+
+Read-side companion to `AuditEventStore` (Phase A — audit foundation). A **pure read orchestrator** — no base class, no CRUD, no write path. The audit log is written by stores atomically within their own operation transactions (`auditEventStore().log(...)`); a separate service write would break the atomicity that lets the log be trusted as authoritative, so the service layer never touches the write side.
+
+| Method | Description |
+|---|---|
+| `getItemHistory(itemId, user)` | Full chronological `AuditEvent` timeline for a versioned item; every field frozen at write time — no join on read |
+
+Direct store access (`auditEventStore()`) is the same sanctioned exception applied to `QualityService`: read-only, no business validation, the store call is the lowest abstraction needed.
+
+The response is an `AuditEventRow[]` ordered by `timestamp`, each carrying `action`, `userId`, `userRole`, `timestamp`, the frozen target snapshot (`targetId`/`targetType`/`targetCode`/`targetTitle`/`targetVersion`), the frozen change-set snapshot where present (`changeSetCode`/`changeSetTitle`/`classifier`), and the per-object `note`. This single feed replaces the removed `getVersionHistory`.
+
+Exported as a singleton (`export default new AuditEventService()`).
 
 ---
 
@@ -283,7 +304,7 @@ Exported as a singleton (`export default new ChangeSetService()`), imported dire
 Every service method follows the same try/catch/rollback structure:
 
 ```javascript
-const tx = createTransaction(userId);
+const tx = createTransaction(user.id, user.role);
 try {
     const result = await store.someMethod(data, tx);
     await commitTransaction(tx);
@@ -309,6 +330,7 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Check | Where | Notes |
 |---|---|---|
 | Required fields present | Service, before transaction | Throws immediately |
+| `user` present (`{id, role}`) | Route, before service call | Assembled from auth context; passed to every service method |
 | Enum values valid | Service, before transaction | Uses `@odp/shared` enum validators |
 | `maturity` valid | Service, before transaction | `MaturityLevel` enum on OR and OC |
 | Array field types | Service, before transaction | Checks `Array.isArray` |
@@ -341,6 +363,7 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | `BaselineService` | — | `BaselineStore` |
 | `ODIPEditionService` | — | `ODPEditionStore`, `BaselineStore`, `WaveStore` |
 | `QualityService` | — | none (delegates to `OperationalRequirementStore` via internal service methods) |
+| `AuditEventService` | — | `AuditEventStore` (direct, read-only) |
 
 ---
 
@@ -362,7 +385,7 @@ This pattern keeps the quality concern encapsulated: the operational entity rout
 
 ### 7.4 Edition Context
 
-`QualityService.runChecks(domains, editionId, userId)` resolves the edition context once at the start of the call via `odpEditionStore().resolveContext()`, then passes `baselineId` and `editionId` to each rule implementation. This mirrors the pattern used by `VersionedItemService.getAll()`.
+`QualityService.runChecks(domains, editionId, user)` resolves the edition context once at the start of the call via `odpEditionStore().resolveContext()`, then passes `baselineId` and `editionId` to each rule implementation. This mirrors the pattern used by `VersionedItemService.getAll()`.
 
 ### 7.5 Rule Registry
 

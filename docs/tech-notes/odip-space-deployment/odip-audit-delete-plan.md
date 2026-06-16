@@ -16,13 +16,15 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase A — Audit foundation.** Introduce `AuditEvent`; strip audit fields from item/version nodes; remove `HAS_REASON`; rewire change-set membership and the History view onto the log. At the end of Phase A the application behaves as before *to the user* (no deletion yet) but records every write in the log and reads History/members from it.
 
+> **Status (16 Jun 2026):** §3.1 model/shared ✅ DONE · §3.2 storage ✅ DONE · §3.3 service ⏳ NEXT · §3.4 REST · §3.5 CLI · §3.6 web · §3.7 ADD (01/02 done with their layers).
+
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
 Phase A must complete before Phase B begins. Within each phase the layer order is the project standard: model → store → service → API → CLI → web → ADD.
 
 ## 3. Phase A — Audit foundation
 
-### 3.1 Model / shared
+### 3.1 Model / shared ✅ DONE
 
 - New `AuditAction` enum in `@odp/shared` — `CREATE` / `UPDATE` / `DELETE` / `RESTORE` / `HARD_DELETE` / `CLOSE` / `REOPEN` / `PUBLISH` / `BASELINE` / `DECOMMISSION` (reserved).
 - New `AuditTargetType` enum — `ON` / `OR` / `OC` / `CHAPTER` / `CHANGESET` / `EDITION` / `BASELINE` / `WAVE`.
@@ -30,7 +32,16 @@ Phase A must complete before Phase B begins. Within each phase the layer order i
 - `ItemVersion`: remove `createdAt` / `createdBy` from the version projection. The version is content-only.
 - Remove the `changeSetCommit` read-shape resolution that depended on `HAS_REASON` — superseded by the audit log.
 
-### 3.2 Storage
+### 3.2 Storage ✅ DONE
+
+> **As-built refinements (vs the sketch below):**
+> - `log` signature is **object-based**: `log(action, target, changeSetCommit, tx)` where `target = {id, type, code, title, version}` and `changeSetCommit = {changeSetId, code, title, classifier, note} | null`.
+> - `userId` **and `userRole`** are read from the transaction; `transaction.js` gained `userRole` + `getUserRole()`, `createTransaction(userId, userRole)`.
+> - `_validateOpenChangeSet` now **returns the frozen `{code, title, classifier}` snapshot**; `_auditCommit` and `_resolveAuditTargetType` added.
+> - `findVersionHistory` **removed** (not rewired) — History is served by `AuditEventStore.findByTarget`. `_writeHasReason` / `_resolveChangeSetCommit` / `_attachChangeSetCommits` removed.
+> - Member row keeps **`versionId`** (resolved on demand from `targetId`+`targetVersion`); `itemType` is the uppercase `AuditTargetType` (`CHAPTER`, not `chapter`).
+> - **Bootstrap chapters record no audit event** (config scaffolding); resolves the old "system change set" open point — no system actor, `UserRole` stays writer-only.
+> - Index: `AuditEvent.timestamp` only at P0. *(Pending: the `_ensureConstraints` edit in `store/index.js`, not yet uploaded.)*
 
 - New `AuditEventStore` with the single write method `log(action, targetId, targetType, targetVersion, actorId, changeSetId, note, tx)` — creates the `AuditEvent` node, the `TARGETS` edge, and the `UNDER_CHANGESET` edge when `changeSetId` is present. Read methods: `findByTarget(itemId, tx)` (History feed) and `findByChangeSet(changeSetId, tx)` (members feed).
 - `VersionedItemStore` — `create` / `update` stop stamping `createdAt` / `createdBy` and stop writing `HAS_REASON`; instead each calls `auditEventStore.log(...)` in the same transaction. The `changeSetCommit` argument is retained (it still carries `changeSetId` + `note`) but now feeds the audit event rather than the edge.
@@ -83,21 +94,21 @@ Updated in the same batch as the code:
 ### 4.2 Storage
 
 - `VersionedItemStore`:
-    - `softDelete(itemId, changeSetCommit, tx)` — removes `LATEST_VERSION`, sets `status = DELETED`, logs `DELETE`.
-    - `restore(itemId, changeSetCommit, tx)` — creates a new version copying latest content, re-points `LATEST_VERSION`, sets `status = ACTIVE`, logs `RESTORE`.
-    - `hardDelete(itemId, changeSetCommit, tx)` — destroys item + versions + relationships, logs `HARD_DELETE` (event survives the target).
-    - `findBlockingDependencies(itemId, tx)` — gathers **all** live inbound references (design §4), returns the structured list.
-    - `isPublished(itemId, tx)` — the `HAS_ITEMS.editions` membership check (design §5).
-    - `findDeleted(tx, domainFilter?)` — the recycle-bin query (`status = DELETED`).
+  - `softDelete(itemId, changeSetCommit, tx)` — removes `LATEST_VERSION`, sets `status = DELETED`, logs `DELETE`.
+  - `restore(itemId, changeSetCommit, tx)` — creates a new version copying latest content, re-points `LATEST_VERSION`, sets `status = ACTIVE`, logs `RESTORE`.
+  - `hardDelete(itemId, changeSetCommit, tx)` — destroys item + versions + relationships, logs `HARD_DELETE` (event survives the target).
+  - `findBlockingDependencies(itemId, tx)` — gathers **all** live inbound references (design §4), returns the structured list.
+  - `isPublished(itemId, tx)` — the `HAS_ITEMS.editions` membership check (design §5).
+  - `findDeleted(tx, domainFilter?)` — the recycle-bin query (`status = DELETED`).
 - `ODPEditionStore` — replace the unconditional `delete()`-throws with `softDelete` (status flip + log) and `hardDelete` (remove node + `EXPOSES` edge + log). Add `findDeleted`. Edition content immutability is unchanged.
 
 ### 4.3 Service
 
 - `VersionedItemService`:
-    - `deleteItem(id, changeSetCommit, userId)` — runs `findBlockingDependencies` and `isPublished` first; throws a structured conflict if blocked or published; else `softDelete`.
-    - `restoreItem(id, changeSetCommit, userId)` — permission check (deleter or integrator); `restore`.
-    - `hardDeleteItem(id, changeSetCommit, userId)` — integrator-only; requires `status = DELETED` and never-published; `hardDelete`.
-    - `getRecycleBin(userId)` — `findDeleted` with domain scoping.
+  - `deleteItem(id, changeSetCommit, userId)` — runs `findBlockingDependencies` and `isPublished` first; throws a structured conflict if blocked or published; else `softDelete`.
+  - `restoreItem(id, changeSetCommit, userId)` — permission check (deleter or integrator); `restore`.
+  - `hardDeleteItem(id, changeSetCommit, userId)` — integrator-only; requires `status = DELETED` and never-published; `hardDelete`.
+  - `getRecycleBin(userId)` — `findDeleted` with domain scoping.
 - `ODIPEditionService` — `deleteEdition` / `hardDeleteEdition` (integrator-only) and `getDeletedEditions`.
 - Permission checks reference the RBA-02 matrix (hard-coded at P0).
 
@@ -145,7 +156,7 @@ These are settled in the design note but surface as concrete code choices:
 - **Decommissioning (DEL-06)** — parked; `DECOMMISSION` action reserved so the audit shape is stable when it lands. A separate note will cover the lifecycle status, integrity sequencing, and its (non-)coupling to the OC `DECOMMISSIONS` relationship.
 - **AuditEvent retention** — no purge policy at P0; revisit if volume warrants.
 - **`actorId` IAM remapping** — model-ready; implementation at P2 (RBA-04).
-- **Hard-deleted target identity in the log** — the `HARD_DELETE` event outlives its target; confirm whether the dangling identity (former item id) is worth persisting as a scalar on the event for traceability, or whether `targetType` + timestamp + actor suffice.
+- **Hard-deleted target identity in the log** — ✅ resolved: `targetId` (plus `targetType` / `targetCode` / `targetTitle`) is persisted as a frozen scalar on the event, so a `HARD_DELETE` event remains a complete record after its `TARGETS` edge is gone.
 
 ## 7. Estimated layer touch summary
 

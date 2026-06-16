@@ -4,30 +4,34 @@ import BaselineService from '../services/BaselineService.js';
 const router = Router();
 
 /**
- * Extract userId from request headers
+ * Extract the acting user from request headers — throws if id absent.
+ * Returns { id, role }; role is null when x-user-role is absent
+ * (role validation / implicit population arrives with RBA).
  */
-function getUserId(req) {
-    const userId = req.headers['x-user-id'];
-    if (!userId) {
+function getUser(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) {
         throw new Error('Missing required header: x-user-id');
     }
-    return userId;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
 /**
- * Extract userId from request headers — returns null if absent.
+ * Extract the acting user from request headers — returns null if id absent.
  * Used on read-only routes that allow anonymous access.
  */
-function getUserIdOptional(req) {
-    return req.headers['x-user-id'] || null;
+function getUserOptional(req) {
+    const id = req.headers['x-user-id'];
+    if (!id) return null;
+    return { id, role: req.headers['x-user-role'] || null };
 }
 
 // List all baselines
 router.get('/', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        console.log(`BaselineService.listBaselines() userId: ${userId}`);
-        const baselines = await BaselineService.listBaselines(userId);
+        const user = getUserOptional(req);
+        console.log(`BaselineService.listBaselines() user: ${user?.id ?? null}`);
+        const baselines = await BaselineService.listBaselines(user);
         res.json(baselines);
     } catch (error) {
         console.error('Error fetching baselines:', error);
@@ -42,9 +46,9 @@ router.get('/', async (req, res) => {
 // Get baseline by ID
 router.get('/:id', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        console.log(`BaselineService.getBaseline() id: ${req.params.id}, userId: ${userId}`);
-        const baseline = await BaselineService.getBaseline(req.params.id, userId);
+        const user = getUserOptional(req);
+        console.log(`BaselineService.getBaseline() id: ${req.params.id}, user: ${user?.id ?? null}`);
+        const baseline = await BaselineService.getBaseline(req.params.id, user);
         if (!baseline) {
             return res.status(404).json({
                 error: { code: 'NOT_FOUND', message: 'Baseline not found' }
@@ -64,9 +68,9 @@ router.get('/:id', async (req, res) => {
 // Create new baseline (atomic snapshot creation)
 router.post('/', async (req, res) => {
     try {
-        const userId = getUserIdOptional(req);
-        console.log(`BaselineService.createBaseline() userId: ${userId}, startsFromWaveId: ${req.body.startsFromWaveId}`);
-        const baseline = await BaselineService.createBaseline(req.body, userId);
+        const user = getUserOptional(req);
+        console.log(`BaselineService.createBaseline() user: ${user?.id ?? null}, startsFromWaveId: ${req.body.startsFromWaveId}`);
+        const baseline = await BaselineService.createBaseline(req.body, user);
         res.status(201).json(baseline);
     } catch (error) {
         console.error('Error creating baseline:', error);
@@ -85,9 +89,9 @@ router.post('/', async (req, res) => {
 // Get items captured in baseline
 router.get('/:id/items', async (req, res) => {
     try {
-        const userId = getUserId(req);
-        console.log(`BaselineService.getBaselineItems() id: ${req.params.id}, userId: ${userId}`);
-        const items = await BaselineService.getBaselineItems(req.params.id, userId);
+        const user = getUser(req);
+        console.log(`BaselineService.getBaselineItems() id: ${req.params.id}, user: ${user?.id ?? null}`);
+        const items = await BaselineService.getBaselineItems(req.params.id, user);
         res.json(items);
     } catch (error) {
         console.error('Error fetching baseline items:', error);

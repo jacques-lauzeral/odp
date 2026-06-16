@@ -16,8 +16,8 @@ export class TreeItemService extends SimpleItemService {
     }
 
     // Inherits from SimpleItemService:
-    // - listItems(userId)
-    // - getItem(id, userId)
+    // - listItems(user)
+    // - getItem(id, user)
     // - Legacy compatibility methods
 
     // =============================================================================
@@ -103,11 +103,11 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Create new item with optional parent relationship
      */
-    async createItem(data, userId) {
+    async createItem(data, user) {
         // Validate data first
         await this._validateCreateData(data);
 
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             console.log('TreeItemService.createItem() parentId:', data.parentId);
             const store = this.getStore();
@@ -129,11 +129,11 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Update item with optional parent relationship changes
      */
-    async updateItem(id, data, userId) {
+    async updateItem(id, data, user) {
         // Validate data first
         await this._validateUpdateData(data);
 
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             console.log('TreeItemService.updateItem() id:', id, ', parentId:', data.parentId);
             const store = this.getStore();
@@ -174,8 +174,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Delete item with hierarchy validation
      */
-    async deleteItem(id, userId) {
-        const tx = createTransaction(userId);
+    async deleteItem(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
 
@@ -209,8 +209,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Get direct children of an item
      */
-    async getChildren(parentId, userId) {
-        const tx = createTransaction(userId);
+    async getChildren(parentId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const children = await store.findChildren(parentId, tx);
@@ -225,8 +225,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Get parent of an item
      */
-    async getParent(childId, userId) {
-        const tx = createTransaction(userId);
+    async getParent(childId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const parent = await store.findParent(childId, tx);
@@ -241,8 +241,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Get all root items (no parent)
      */
-    async getRoots(userId) {
-        const tx = createTransaction(userId);
+    async getRoots(user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const roots = await store.findRoots(tx);
@@ -257,8 +257,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Create REFINES relationship between items
      */
-    async createRefinesRelation(childId, parentId, userId) {
-        const tx = createTransaction(userId);
+    async createRefinesRelation(childId, parentId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const success = await store.createRefinesRelation(childId, parentId, tx);
@@ -273,8 +273,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Delete REFINES relationship between items
      */
-    async deleteRefinesRelation(childId, parentId, userId) {
-        const tx = createTransaction(userId);
+    async deleteRefinesRelation(childId, parentId, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const success = await store.deleteRefinesRelation(childId, parentId, tx);
@@ -293,8 +293,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Find items by name pattern (case-insensitive search)
      */
-    async findItemsByName(namePattern, userId) {
-        const items = await this.listItems(userId);
+    async findItemsByName(namePattern, user) {
+        const items = await this.listItems(user);
         const pattern = namePattern.toLowerCase();
         return items.filter(item =>
             item.name.toLowerCase().includes(pattern)
@@ -304,8 +304,8 @@ export class TreeItemService extends SimpleItemService {
     /**
      * Check if item name already exists
      */
-    async isNameExists(name, excludeId = null, userId) {
-        const items = await this.listItems(userId);
+    async isNameExists(name, excludeId = null, user) {
+        const items = await this.listItems(user);
         return items.some(item =>
             item.name.toLowerCase() === name.toLowerCase() &&
             (excludeId === null || item.id !== excludeId)

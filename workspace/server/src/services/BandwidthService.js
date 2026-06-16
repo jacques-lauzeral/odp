@@ -8,11 +8,11 @@ export class BandwidthService extends SimpleItemService {
     }
 
     // Inherits from SimpleItemService:
-    // - listItems(userId)
-    // - getItem(id, userId)
-    // - createItem(data, userId)
-    // - updateItem(id, data, userId)
-    // - deleteItem(id, userId)
+    // - listItems(user)
+    // - getItem(id, user)
+    // - createItem(data, user)
+    // - updateItem(id, data, user)
+    // - deleteItem(id, user)
 
     async _validateCreateData(data) {
         this._validateRequiredFields(data);

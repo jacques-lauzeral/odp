@@ -39,8 +39,8 @@ export class BaselineService {
     /**
      * Create new baseline with atomic snapshot of all current OR/OC versions
      */
-    async createBaseline(data, userId) {
-        const tx = createTransaction(userId);
+    async createBaseline(data, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const validatedData = this._validateBaselineData(data);
 
@@ -58,8 +58,8 @@ export class BaselineService {
     /**
      * Get baseline by ID
      */
-    async getBaseline(id, userId) {
-        const tx = createTransaction(userId);
+    async getBaseline(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const baseline = await baselineStore().findById(id, tx);
             await commitTransaction(tx);
@@ -73,8 +73,8 @@ export class BaselineService {
     /**
      * List all baselines
      */
-    async listBaselines(userId) {
-        const tx = createTransaction(userId);
+    async listBaselines(user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const baselines = await baselineStore().findAll(tx);
             await commitTransaction(tx);
@@ -88,8 +88,8 @@ export class BaselineService {
     /**
      * Get all operational items captured in this baseline
      */
-    async getBaselineItems(id, userId) {
-        const tx = createTransaction(userId);
+    async getBaselineItems(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const items = await baselineStore().getBaselineItems(id, tx);
             await commitTransaction(tx);

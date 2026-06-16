@@ -4,6 +4,11 @@ components:
       type: apiKey
       in: header
       name: X-User-ID
+    UserRole:
+      type: apiKey
+      in: header
+      name: X-User-Role
+      description: "Optional role header. Role validation and implicit population arrive with RBA (P2). Frozen onto AuditEvent at write time; null until RBA populates it."
 
   schemas:
     Error:
@@ -210,21 +215,18 @@ components:
       type: object
       properties:
         # --- summary fields (all projections) ---
-        changeSetCommit:
-          $ref: '#/components/schemas/ChangeSetCommit'
         itemId:
           type: string
+        status:
+          type: string
+          enum: [ACTIVE, DELETED]
+          description: "Item lifecycle status (Phase A). DELETED items are excluded from live dataset."
         title:
           type: string
         versionId:
           type: string
         version:
           type: integer
-        createdAt:
-          type: string
-          format: date-time
-        createdBy:
-          type: string
         code:
           type: string
           description: "System-generated unique code for this requirement"
@@ -319,7 +321,7 @@ components:
           description: "ID of the OPEN change set this write commits under (LCM)"
         note:
           type: string
-          description: "Optional per-object annotation stored on the HAS_REASON edge (LCM)"
+          description: "Optional per-object annotation (recorded on the AuditEvent, LCM)"
         title:
           type: string
         type:
@@ -545,21 +547,18 @@ components:
       type: object
       properties:
         # --- summary fields (all projections) ---
-        changeSetCommit:
-          $ref: '#/components/schemas/ChangeSetCommit'
         itemId:
           type: string
+        status:
+          type: string
+          enum: [ACTIVE, DELETED]
+          description: "Item lifecycle status (Phase A). DELETED items are excluded from live dataset."
         title:
           type: string
         versionId:
           type: string
         version:
           type: integer
-        createdAt:
-          type: string
-          format: date-time
-        createdBy:
-          type: string
         code:
           type: string
           description: "System-generated unique code for this change"
@@ -627,7 +626,7 @@ components:
           description: "ID of the OPEN change set this write commits under (LCM)"
         note:
           type: string
-          description: "Optional per-object annotation stored on the HAS_REASON edge (LCM)"
+          description: "Optional per-object annotation (recorded on the AuditEvent, LCM)"
         title:
           type: string
         purpose:
@@ -834,10 +833,12 @@ components:
         at read time by the service layer and are not user-editable.
       type: object
       properties:
-        changeSetCommit:
-          $ref: '#/components/schemas/ChangeSetCommit'
         itemId:
           type: string
+        status:
+          type: string
+          enum: [ACTIVE, DELETED]
+          description: "Item lifecycle status (Phase A)."
         code:
           type: string
           description: "Stable chapter identifier (= chapter key from edition.json) — set at bootstrap"
@@ -845,11 +846,6 @@ components:
           type: string
         version:
           type: integer
-        createdAt:
-          type: string
-          format: date-time
-        createdBy:
-          type: string
         # item node field — set at bootstrap, not user-editable
         title:
           type: string
@@ -960,20 +956,12 @@ components:
           $ref: '#/components/schemas/OsHierarchyWrite'
           nullable: true
 
-    VersionHistory:
-      type: object
-      properties:
-        versionId:
-          type: string
-        version:
-          type: integer
-        createdAt:
-          type: string
-          format: date-time
-        createdBy:
-          type: string
-        changeSetCommit:
-          $ref: '#/components/schemas/ChangeSetCommit'
+    AuditEventRow:
+      description: |
+        A single entry in an item's audit timeline (Phase A — audit foundation).
+        All fields frozen at write time; no join required on read.
+        See openapi-audit-event.yml for the full schema definition.
+      $ref: 'openapi-audit-event.yml#/components/schemas/AuditEventRow'
 
     # Management Entity Schemas
     Baseline:
@@ -1063,24 +1051,22 @@ components:
           description: "ID of the OPEN change set this write commits under"
         note:
           type: string
-          description: "Optional per-object annotation stored on the HAS_REASON edge"
+          description: "Optional per-object annotation (recorded on the AuditEvent)"
 
     ChangeSetCommit:
       type: object
-      description: "Reason for this version, resolved from HAS_REASON (LCM). Present in summary and standard projections; null on pre-LCM versions. changeSetId/note come from the store; code/changeSetTitle/classifier are hydrated by the service."
-      nullable: true
+      description: |
+        Phase A (audit foundation): ChangeSetCommit is no longer returned on versioned-item
+        responses. Who/when/why is served exclusively by the AuditEvent timeline
+        (GET /{item}/{id}/history). This schema is retained only as the write-path
+        commit fragment embedded in request bodies (changeSetId + note).
       properties:
         changeSetId:
           type: string
-        code:
-          type: string
-          description: "CS-##### handle — hydrated by the service from its ChangeSet cache"
-        changeSetTitle:
-          type: string
-        classifier:
-          $ref: '#/components/schemas/ChangeSetClassifier'
+          description: "ID of the OPEN change set this write commits under"
         note:
           type: string
+          description: "Optional per-object annotation (recorded on the AuditEvent)"
 
     ChangeSet:
       type: object
@@ -1145,7 +1131,7 @@ components:
           type: string
         itemType:
           type: string
-          enum: [ON, OR, OC, chapter]
+          enum: [ON, OR, OC, CHAPTER]
         code:
           type: string
           nullable: true

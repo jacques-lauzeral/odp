@@ -24,8 +24,8 @@ export class SimpleItemService {
     /**
      * List all items
      */
-    async listItems(userId) {
-        const tx = createTransaction(userId);
+    async listItems(user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const items = await store.findAll(tx);
@@ -40,8 +40,8 @@ export class SimpleItemService {
     /**
      * Get item by ID
      */
-    async getItem(id, userId) {
-        const tx = createTransaction(userId);
+    async getItem(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const item = await store.findById(id, tx);
@@ -56,11 +56,11 @@ export class SimpleItemService {
     /**
      * Create new item
      */
-    async createItem(data, userId) {
+    async createItem(data, user) {
         // Validate data before transaction
         await this._validateCreateData(data);
 
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const item = await store.create(data, tx);
@@ -75,11 +75,11 @@ export class SimpleItemService {
     /**
      * Update item by ID
      */
-    async updateItem(id, data, userId) {
+    async updateItem(id, data, user) {
         // Validate data before transaction
         await this._validateUpdateData(data);
 
-        const tx = createTransaction(userId);
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const updatedItem = await store.update(id, data, tx);
@@ -100,8 +100,8 @@ export class SimpleItemService {
     /**
      * Delete item by ID
      */
-    async deleteItem(id, userId) {
-        const tx = createTransaction(userId);
+    async deleteItem(id, user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const store = this.getStore();
             const deleted = await store.delete(id, tx);

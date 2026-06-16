@@ -7,11 +7,11 @@ export class WaveService extends SimpleItemService {
     }
 
     // Inherits from SimpleItemService:
-    // - listItems(userId)
-    // - getItem(id, userId)
-    // - createItem(data, userId)
-    // - updateItem(id, data, userId)
-    // - deleteItem(id, userId)
+    // - listItems(user)
+    // - getItem(id, user)
+    // - createItem(data, user)
+    // - updateItem(id, data, user)
+    // - deleteItem(id, user)
 
     static YEAR_RANGE = {
         MIN: 2025,
@@ -74,8 +74,8 @@ export class WaveService extends SimpleItemService {
         }
     }
 
-    async findWavesByYear(year, userId) {
-        const waves = await this.listItems(userId);
+    async findWavesByYear(year, user) {
+        const waves = await this.listItems(user);
         return waves.filter(wave => wave.year === year);
     }
 }

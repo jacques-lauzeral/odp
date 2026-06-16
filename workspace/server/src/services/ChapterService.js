@@ -21,11 +21,12 @@ import { normalizeId } from '../../../shared/src/index.js';
  * Only narrative and osHierarchy are user-maintained.
  *
  * Inherits from VersionedItemService:
- * - update(itemId, payload, expectedVersionId, userId)
- * - patch(itemId, patchPayload, expectedVersionId, userId)
- * - getById(itemId, userId, editionId?, projection?)
- * - getByIdAndVersion(itemId, versionNumber, userId)
- * - getVersionHistory(itemId, userId)
+ * - update(itemId, payload, expectedVersionId, user)
+ * - patch(itemId, patchPayload, expectedVersionId, user)
+ * - getById(itemId, user, editionId?, projection?)
+ * - getByIdAndVersion(itemId, versionNumber, user)
+ *
+ * History is served by AuditEventService.getItemHistory (Phase A) — not here.
  *
  * Does NOT expose: create(), delete() — chapters are bootstrap-only.
  *
@@ -53,11 +54,11 @@ export class ChapterService extends VersionedItemService {
      * chapters via getById (which uses 'extended' projection) when full
      * content is needed.
      *
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<Array<object>>}
      */
-    async getAll(userId) {
-        const tx = createTransaction(userId);
+    async getAll(user) {
+        const tx = createTransaction(user.id, user.role);
         try {
             const chapters = await this.getStore().findAll(tx, 'standard');
             await commitTransaction(tx);
@@ -72,29 +73,29 @@ export class ChapterService extends VersionedItemService {
      * @override — enriches the response after the base write so PUT returns
      * the same read-shape as GET (osHierarchy items as {id, type, code, title}).
      */
-    async update(itemId, payload, expectedVersionId, userId) {
-        await super.update(itemId, payload, expectedVersionId, userId);
-        return this.getById(itemId, userId);
+    async update(itemId, payload, expectedVersionId, user) {
+        await super.update(itemId, payload, expectedVersionId, user);
+        return this.getById(itemId, user);
     }
 
     /**
      * @override — enriches the response after the base write so PATCH returns
      * the same read-shape as GET (osHierarchy items as {id, type, code, title}).
      */
-    async patch(itemId, patchPayload, expectedVersionId, userId) {
-        await super.patch(itemId, patchPayload, expectedVersionId, userId);
-        return this.getById(itemId, userId);
+    async patch(itemId, patchPayload, expectedVersionId, user) {
+        await super.patch(itemId, patchPayload, expectedVersionId, user);
+        return this.getById(itemId, user);
     }
 
     /**
      * @override — merges config fields and enriches osHierarchy after store read.
      */
-    async getById(itemId, userId, editionId = null, projection = 'extended') {
-        const result = await super.getById(itemId, userId, editionId, projection);
+    async getById(itemId, user, editionId = null, projection = 'extended') {
+        const result = await super.getById(itemId, user, editionId, projection);
         if (!result) return null;
         const merged = this._mergeConfigFields(result);
         if (!this._hasHierarchyItems(merged.osHierarchy)) return merged;
-        const oStarMap = await this._buildOStarMap(userId);
+        const oStarMap = await this._buildOStarMap(user);
         return {
             ...merged,
             osHierarchy: this._enrichOsHierarchy(merged.osHierarchy, oStarMap),
@@ -104,8 +105,8 @@ export class ChapterService extends VersionedItemService {
     /**
      * @override — merges config fields after store read (no enrichment on version history).
      */
-    async getByIdAndVersion(itemId, versionNumber, userId) {
-        const result = await super.getByIdAndVersion(itemId, versionNumber, userId);
+    async getByIdAndVersion(itemId, versionNumber, user) {
+        const result = await super.getByIdAndVersion(itemId, versionNumber, user);
         return result ? this._mergeConfigFields(result) : null;
     }
 
@@ -121,13 +122,13 @@ export class ChapterService extends VersionedItemService {
      * transaction lifecycle is owned by the service layer — no raw store calls.
      * Uses 'summary' projection to avoid fetching rich-text fields.
      *
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<Map<number, {id: number, type: string, code: string, title: string}>>}
      */
-    async _buildOStarMap(userId) {
+    async _buildOStarMap(user) {
         const [requirements, changes] = await Promise.all([
-            OperationalRequirementService.getAll(userId, null, {}, 'summary').catch(() => []),
-            OperationalChangeService.getAll(userId, null, {}, 'summary').catch(() => []),
+            OperationalRequirementService.getAll(user, null, {}, 'summary').catch(() => []),
+            OperationalChangeService.getAll(user, null, {}, 'summary').catch(() => []),
         ]);
 
         const map = new Map();
@@ -359,18 +360,18 @@ export class ChapterService extends VersionedItemService {
      *
      * @param {number} itemId
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<{ blocks: object, strings: object }>}
      *   blocks:  { [blockId]: node[] }  — TipTap node arrays ready for splicing
      *   strings: { [key]: string }      — inline string values ready for substitution
      */
-    async resolveGeneratedContent(itemId, editionId, userId) {
-        const chapter = await this.getById(itemId, userId, editionId, 'extended');
+    async resolveGeneratedContent(itemId, editionId, user) {
+        const chapter = await this.getById(itemId, user, editionId, 'extended');
         if (!chapter) throw new Error(`Chapter ${itemId} not found`);
 
         const [blocks, strings] = await Promise.all([
-            this._resolveAllBlocks(chapter.narrative, editionId, userId),
-            this._resolveStringKeys(chapter.availableStringKeys ?? [], editionId, userId),
+            this._resolveAllBlocks(chapter.narrative, editionId, user),
+            this._resolveStringKeys(chapter.availableStringKeys ?? [], editionId, user),
         ]);
 
         return { blocks, strings };
@@ -381,14 +382,14 @@ export class ChapterService extends VersionedItemService {
      *
      * @param {string|null} narrative
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<object>} { [blockId]: node[] }
      */
-    async _resolveAllBlocks(narrative, editionId, userId) {
+    async _resolveAllBlocks(narrative, editionId, user) {
         const blockIds = this._extractGeneratedBlockIds(narrative);
         if (blockIds.length === 0) return {};
         const entries = await Promise.all(
-            blockIds.map(async id => [id, await this._resolveBlock(id, editionId, userId)])
+            blockIds.map(async id => [id, await this._resolveBlock(id, editionId, user)])
         );
         return Object.fromEntries(entries);
     }
@@ -399,13 +400,13 @@ export class ChapterService extends VersionedItemService {
      * then groups them in memory. No N+1 queries.
      *
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<{ refDocs: object[], onsByRefDocId: Map<number, object[]> }>}
      */
-    async _buildRefDocMap(editionId, userId) {
+    async _buildRefDocMap(editionId, user) {
         const [refDocs, refs] = await Promise.all([
-            ReferenceDocumentService.listItems(userId),
-            OperationalRequirementService.getONStrategicDocumentRefs(userId, editionId),
+            ReferenceDocumentService.listItems(user),
+            OperationalRequirementService.getONStrategicDocumentRefs(user, editionId),
         ]);
 
         // Group refs by docId — each entry carries itemId, code, title, note
@@ -429,21 +430,21 @@ export class ChapterService extends VersionedItemService {
      *
      * @param {string} blockId
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<object[]>} TipTap node array — splice into narrative at placeholder position
      */
-    async _resolveBlock(blockId, editionId, userId) {
+    async _resolveBlock(blockId, editionId, user) {
         switch (blockId) {
             case 'strategic-traceability': {
-                const { refDocs, onsByRefDocId } = await this._buildRefDocMap(editionId, userId);
+                const { refDocs, onsByRefDocId } = await this._buildRefDocMap(editionId, user);
                 return StrategicTraceabilityGenerator.generate(refDocs, onsByRefDocId);
             }
             case 'portfolio-table': {
-                const rows = await this._buildPortfolioTableData(editionId, userId);
+                const rows = await this._buildPortfolioTableData(editionId, user);
                 return PortfolioTableGenerator.generate(rows);
             }
             case 'portfolio-chart': {
-                const rows = await this._buildPortfolioChartData(editionId, userId);
+                const rows = await this._buildPortfolioChartData(editionId, user);
                 return PortfolioChartGenerator.generate(rows);
             }
             default:
@@ -460,16 +461,16 @@ export class ChapterService extends VersionedItemService {
      * annexes) are excluded.
      *
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<Array<object>>}
      */
-    async _buildPortfolioTableData(editionId, userId) {
+    async _buildPortfolioTableData(editionId, user) {
         const allChapters  = getChapters();
-        const dbChapters   = await this.getAll(userId);
+        const dbChapters   = await this.getAll(user);
         const itemIdByCode = new Map(dbChapters.map(c => [c.code, c.itemId]));
 
         const statsByDomain = await OperationalRequirementService.getEditionStatsByDomain(
-            userId, editionId
+            user, editionId
         );
 
         // Map top-level key → position for building sub-chapter numbers (e.g. "2.1")
@@ -531,7 +532,7 @@ export class ChapterService extends VersionedItemService {
      *
      * @param {string[]} keys
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<object>} { [key]: string }
      */
     /**
@@ -539,13 +540,13 @@ export class ChapterService extends VersionedItemService {
      * Only leaf domain chapters are included — no parent containers.
      *
      * @param {number|null} editionId
-     * @param {string} userId
+     * @param {object} user — {id, role}
      * @returns {Promise<Array<{ number, title, on, or }>>}
      */
-    async _buildPortfolioChartData(editionId, userId) {
+    async _buildPortfolioChartData(editionId, user) {
         const allChapters   = getChapters();
         const statsByDomain = await OperationalRequirementService.getEditionStatsByDomain(
-            userId, editionId
+            user, editionId
         );
 
         const topLevelPosition = new Map(
@@ -576,7 +577,7 @@ export class ChapterService extends VersionedItemService {
         return rows;
     }
 
-    async _resolveStringKeys(keys, editionId, userId) {
+    async _resolveStringKeys(keys, editionId, user) {
         const result = {};
 
         const configKeys = ['chapter-count', 'sub-chapter-count'];
@@ -589,7 +590,7 @@ export class ChapterService extends VersionedItemService {
 
         const statsKeys = keys.filter(k => !configKeys.includes(k));
         if (statsKeys.length > 0) {
-            const stats = await OperationalRequirementService.getEditionStats(userId, editionId);
+            const stats = await OperationalRequirementService.getEditionStats(user, editionId);
             const statsMap = {
                 'on-total-count':    String(stats.onTotalCount),
                 'on-draft-count':    String(stats.onDraftCount),

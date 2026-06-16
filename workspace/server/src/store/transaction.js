@@ -32,10 +32,11 @@ export const StoreErrorCode = Object.freeze({
  * Transaction wrapper that encapsulates Neo4j transaction and session
  */
 class Transaction {
-    constructor(neo4jTransaction, session, userId) {
+    constructor(neo4jTransaction, session, userId, userRole) {
         this.neo4jTransaction = neo4jTransaction;
         this.session = session;
         this.userId = userId;
+        this.userRole = userRole;
         this.isComplete = false;
     }
 
@@ -108,19 +109,25 @@ class Transaction {
     getUserId() {
         return this.userId;
     }
+
+    getUserRole() {
+        return this.userRole;
+    }
 }
 
 /**
  * Create a new transaction
+ * @param {string} userId - stable logical actor key (audit userId)
+ * @param {string} userRole - UserRole key held at action time (audit userRole)
  * @returns {Transaction} Transaction wrapper instance
  */
-export function createTransaction(userId) {
+export function createTransaction(userId, userRole) {
     try {
         const driver = getDriver();
         const session = driver.session();
         const neo4jTransaction = session.beginTransaction();
 
-        return new Transaction(neo4jTransaction, session, userId);
+        return new Transaction(neo4jTransaction, session, userId, userRole);
     } catch (error) {
         throw new TransactionError(`Failed to create transaction: ${error.message}`, error);
     }
