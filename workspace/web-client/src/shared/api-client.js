@@ -23,6 +23,10 @@ export class ApiClient {
             headers['x-user-id'] = this.app.user.name;
         }
 
+        if (this.app?.user?.role) {
+            headers['x-user-role'] = this.app.user.role;
+        }
+
         return headers;
     }
 
@@ -165,10 +169,6 @@ export class ApiClient {
         return this.delete(endpoint, { id });
     }
 
-    async getEntityVersions(endpoint, id) {
-        return this.get(endpoint, { id, subPath: 'versions' });
-    }
-
     async getEntityVersion(endpoint, id, versionNumber) {
         return this.get(endpoint, { id, subPath: `versions/${versionNumber}` });
     }
@@ -279,6 +279,29 @@ export class ApiClient {
 
         const [requirements, changes] = await Promise.all(calls);
         return [...requirements, ...changes];
+    }
+
+    // -------------------------------------------------------------------------
+    // Audit events
+    // -------------------------------------------------------------------------
+
+    /**
+     * Query the audit log. All filters are optional and AND-combined.
+     * - { targetId }     → unified History timeline for one item
+     * - { changeSetId }  → events committed under a change set (also backs /change-sets/{id}/members)
+     * - { userId }       → all actions by a specific actor
+     * @param {object} [filters]
+     * @param {string} [filters.changeSetId]
+     * @param {string} [filters.targetId]
+     * @param {string} [filters.userId]
+     * @returns {Promise<Array>} AuditEventRow[] ordered by timestamp ascending
+     */
+    async getAuditEvents({ changeSetId = null, targetId = null, userId = null } = {}) {
+        const params = {};
+        if (changeSetId !== null) params.changeSetId = changeSetId;
+        if (targetId    !== null) params.targetId    = targetId;
+        if (userId      !== null) params.userId      = userId;
+        return this.get('/audit-events', Object.keys(params).length ? { params } : {});
     }
 
     // -------------------------------------------------------------------------

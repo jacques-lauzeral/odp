@@ -72,12 +72,11 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `requirement update <itemId> <expectedVersionId> <title>` | Full update (new version) |
 | `requirement patch <itemId> <expectedVersionId>` | Partial update (new version) |
 | `requirement delete <itemId>` | Delete all versions |
-| `requirement versions <itemId>` | List version history |
 | `requirement show-version <itemId> <versionNumber>` | Show specific version |
 
 **`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
-**`requirement list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Type, Domain, Title, Version, Created By`); rich-text fields are not displayed in the list, so the projection does not affect the table.
+**`requirement list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Type, Domain, Title, Version`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
 **`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`.
 
@@ -96,12 +95,11 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `change update <itemId> <expectedVersionId> <title>` | Full update (new version) |
 | `change patch <itemId> <expectedVersionId>` | Partial update (new version) |
 | `change delete <itemId>` | Delete all versions |
-| `change versions <itemId>` | List version history |
 | `change show-version <itemId> <versionNumber>` | Show specific version |
 
 **`change list` filter flags**: `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
-**`change list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Domain, Title, Version, Created By`); rich-text fields are not displayed in the list, so the projection does not affect the table.
+**`change list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Domain, Title, Version`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
 **`change show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends the derived field `requiredByOCs`. Fields absent from the projection render as `(not in projection)`.
 
@@ -117,7 +115,6 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `chapter show <itemId>` | Show chapter latest version (or `--edition` context) |
 | `chapter update <itemId> <expectedVersionId>` | Full update — replace narrative and/or osHierarchy |
 | `chapter patch <itemId> <expectedVersionId>` | Partial update — update narrative and/or osHierarchy |
-| `chapter versions <itemId>` | List version history |
 | `chapter show-version <itemId> <versionNumber>` | Show specific version |
 
 No `create` or `delete` — chapters are managed by server bootstrap from `edition.json`.
@@ -269,6 +266,7 @@ The following command files or subcommands were removed:
 | `import map` | Three-stage Office import pipeline removed |
 | `import structured` | Three-stage Office import pipeline removed |
 | `docx export` | Round-trip docx export/re-import workflow removed |
+| `requirement versions` / `change versions` / `chapter versions` | `GET /{entity}/{id}/versions` list endpoint removed (Phase A); History is now the audit-event timeline via `audit-event list --target <id>` |
 
 ---
 

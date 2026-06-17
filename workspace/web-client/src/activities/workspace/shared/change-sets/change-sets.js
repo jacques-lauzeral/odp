@@ -37,9 +37,9 @@ const STATUS_FILTERS = [
     { key: 'CLOSED', label: 'Closed' },
 ];
 
-const TYPE_LABEL       = { ON: 'ON', OR: 'OR', OC: 'OC', chapter: 'Chapter' };
-const TYPE_BADGE_CLASS = { ON: 'type-badge--on', OR: 'type-badge--or', OC: 'type-badge--oc', chapter: 'type-badge--chapter' };
-const TYPE_RANK        = { chapter: 0, ON: 1, OR: 2, OC: 3 };
+const TYPE_LABEL       = { ON: 'ON', OR: 'OR', OC: 'OC', CHAPTER: 'Chapter' };
+const TYPE_BADGE_CLASS = { ON: 'type-badge--on', OR: 'type-badge--or', OC: 'type-badge--oc', CHAPTER: 'type-badge--chapter' };
+const TYPE_RANK        = { CHAPTER: 0, ON: 1, OR: 2, OC: 3 };
 
 export default class ChangeSetsActivity {
 
@@ -325,9 +325,9 @@ export default class ChangeSetsActivity {
     _dedupeByItem(members) {
         const byItem = new Map();
         for (const m of members) {
-            const key = String(m.itemId);
+            const key = String(m.targetId);
             const existing = byItem.get(key);
-            if (!existing || (m.version ?? 0) > (existing.version ?? 0)) byItem.set(key, m);
+            if (!existing || (m.targetVersion ?? 0) > (existing.targetVersion ?? 0)) byItem.set(key, m);
         }
         return [...byItem.values()];
     }
@@ -336,10 +336,10 @@ export default class ChangeSetsActivity {
     _membersListHtml(members) {
         const deduped = this._dedupeByItem(members);
         deduped.sort((a, b) => {
-            const ra = TYPE_RANK[a.itemType] ?? 99;
-            const rb = TYPE_RANK[b.itemType] ?? 99;
+            const ra = TYPE_RANK[a.targetType] ?? 99;
+            const rb = TYPE_RANK[b.targetType] ?? 99;
             if (ra !== rb) return ra - rb;
-            return String(a.code ?? a.title ?? '').localeCompare(String(b.code ?? b.title ?? ''));
+            return String(a.targetCode ?? a.targetTitle ?? '').localeCompare(String(b.targetCode ?? b.targetTitle ?? ''));
         });
         return `<ul class="change-set-detail__members-list">${deduped.map(m => this._memberRowHtml(m)).join('')}</ul>`;
     }
@@ -348,23 +348,23 @@ export default class ChangeSetsActivity {
     _objectPath(m) {
         const ctx = this.app.getDatasetContext();
         const base = ctx?.type === 'edition' ? `/explore/${ctx.editionId}` : '/elaborate';
-        switch (m.itemType) {
-            case 'ON':      return `${base}/os/on/${m.itemId}`;
-            case 'OR':      return `${base}/os/or/${m.itemId}`;
-            case 'OC':      return `${base}/os/oc/${m.itemId}`;
-            case 'chapter': return `${base}/narrative/${m.itemId}`;
+        switch (m.targetType) {
+            case 'ON':      return `${base}/os/on/${m.targetId}`;
+            case 'OR':      return `${base}/os/or/${m.targetId}`;
+            case 'OC':      return `${base}/os/oc/${m.targetId}`;
+            case 'CHAPTER': return `${base}/narrative/${m.targetId}`;
             default:        return null;
         }
     }
 
     _memberRowHtml(m) {
-        const type       = m.itemType ?? 'other';
+        const type       = m.targetType ?? 'other';
         const badgeClass = TYPE_BADGE_CLASS[type] ?? 'type-badge--other';
         const typeLabel  = TYPE_LABEL[type] ?? type;
 
-        const codePart  = (m.code && type !== 'chapter') ? `${_esc(m.code)} ` : '';
-        let heading = (codePart + _esc(m.title ?? '')).trim();
-        if (!heading) heading = `Item ${_esc(String(m.itemId))}`;
+        const codePart  = (m.targetCode && type !== 'CHAPTER') ? `${_esc(m.targetCode)} ` : '';
+        let heading = (codePart + _esc(m.targetTitle ?? '')).trim();
+        if (!heading) heading = `Item ${_esc(String(m.targetId))}`;
 
         const path = this._objectPath(m);
         const nameEl = path
@@ -376,7 +376,7 @@ export default class ChangeSetsActivity {
         return `<li class="change-set-detail__member">
                     <span class="type-badge ${badgeClass}">${_esc(typeLabel)}</span>
                     ${nameEl}
-                    <span class="change-set-detail__member-ver">v${m.version}</span>${note}
+                    <span class="change-set-detail__member-ver">v${m.targetVersion}</span>${note}
                 </li>`;
     }
 

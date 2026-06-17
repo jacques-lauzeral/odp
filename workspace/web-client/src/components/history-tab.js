@@ -2,21 +2,25 @@ import { DiffPopup } from './diff-popup.js';
 
 /**
  * history-tab.js
- * Standalone HistoryTab component for versioned entities (OR, OC)
+ * Standalone HistoryTab component for versioned entities (ON, OR, OC, Chapter)
+ *
+ * Phase A revision — history is now the audit event timeline fetched from
+ * GET /audit-events?targetId= rather than the removed version-list endpoint.
+ * Every field is frozen on the AuditEvent at write time; no hydration hop on read.
  *
  * Responsibilities:
- * - Lazy-load version history from API on first tab activation
- * - Render a list of version rows with createdAt, createdBy
- * - Per-row: Diff button (always) + Restore button (hidden on latest version)
- * - Diff: confirmation popup with version selector pre-set to previous version
- * - Restore: confirmation dialog warning that current version will be overridden
- * - Confirmed actions fire onDiff / onRestore callbacks (stub: console.log)
+ * - Lazy-load the audit event timeline on first tab activation
+ * - Render one row per event: version, action, date, actor, CS code, note
+ * - Per version-producing row (targetVersion != null):
+ *     Diff button (all except first version)
+ *     Restore button (all except current latest version, edit mode only)
+ * - Diff: opens DiffPopup with a versions array derived from the event list
+ * - Restore: confirmation dialog → onRestore callback (loads version into form)
  *
  * Usage:
  *   const historyTab = new HistoryTab(apiClient, {
- *       onDiff: (versionId, compareVersionId) => { ... },
- *       onRestore: (versionId, versionNumber) => { ... },
- *       onViewVersion: (versionId, versionNumber) => { ... }
+ *       onRestore:     (versionId, versionNumber) => { ... },
+ *       onViewVersion: (versionId, versionNumber) => { ... },
  *   });
  *   // On tab activation:
  *   historyTab.attach(containerElement, 'operational-requirements', itemId);
@@ -24,21 +28,22 @@ import { DiffPopup } from './diff-popup.js';
 
 export class HistoryTab {
     /**
-     * @param {object} apiClient        - The shared apiClient instance
+     * @param {object} apiClient
      * @param {object} [callbacks]
-     * @param {Function} [callbacks.onDiff]    - (versionId, compareVersionId) => void
+     * @param {Function} [callbacks.onDiff]        - (versionNumber) => void
      * @param {Function} [callbacks.onRestore]     - (versionId, versionNumber) => void
      * @param {Function} [callbacks.onViewVersion] - (versionId, versionNumber) => void
+     * @param {boolean}  [callbacks.readOnly]
      */
     constructor(apiClient, callbacks = {}) {
         this.apiClient = apiClient;
 
         this._diffPopup = new DiffPopup(apiClient);
 
-        // onDiff(versionNumber) — DiffPopup receives the full versions array
-        // and picks the default comparison target (previous version) itself.
+        // Default onDiff passes a versions array derived from the event list
+        // so DiffPopup gets the same { id, version } shape it previously received.
         this.onDiff = callbacks.onDiff || ((versionNumber) => {
-            this._diffPopup.open(this._entityType, this._itemId, versionNumber, this._versions);
+            this._diffPopup.open(this._entityType, this._itemId, versionNumber, this._versionsForDiff());
         });
         this.onRestore     = callbacks.onRestore     || ((versionId, versionNumber) => console.log(`[HistoryTab] Restore: versionId=${versionId} versionNumber=${versionNumber}`));
         this.onViewVersion = callbacks.onViewVersion || null;
@@ -46,9 +51,9 @@ export class HistoryTab {
 
         // State
         this._container  = null;
-        this._entityType = null;
+        this._entityType = null;   // still needed for DiffPopup and Restore fetch path
         this._itemId     = null;
-        this._versions   = [];   // [{ id, versionNumber, createdAt, createdBy }, ...] newest-first
+        this._events     = [];     // AuditEventRow[], ascending by timestamp (oldest first from API)
         this._loaded     = false;
         this._loading    = false;
     }
@@ -61,9 +66,9 @@ export class HistoryTab {
      * Attach to a DOM container and trigger first load.
      * Safe to call multiple times (idempotent after first load).
      *
-     * @param {HTMLElement}    container
-     * @param {string}         entityType  e.g. 'operational-requirements'
-     * @param {string|number}  itemId
+     * @param {HTMLElement}   container
+     * @param {string}        entityType  e.g. 'operational-requirements'
+     * @param {string|number} itemId
      */
     async attach(container, entityType, itemId) {
         this._container  = container;
@@ -76,7 +81,7 @@ export class HistoryTab {
         }
 
         if (this._loading) {
-            // _load() is already in flight — it will call _render() when done
+            // _load() already in flight — it will call _render() when done
             // since _container is now set, the render will go to the right place
             return;
         }
@@ -85,10 +90,11 @@ export class HistoryTab {
     }
 
     /**
-     * Preload version history before tab activation so attach() renders immediately.
+     * Preload audit events before tab activation so attach() renders immediately.
+     * entityType is kept for backward compatibility and DiffPopup / Restore use.
      *
-     * @param {string}         entityType
-     * @param {string|number}  itemId
+     * @param {string}        entityType
+     * @param {string|number} itemId
      */
     preload(entityType, itemId) {
         if (!itemId) return;
@@ -106,7 +112,7 @@ export class HistoryTab {
         this._container  = null;
         this._entityType = null;
         this._itemId     = null;
-        this._versions   = [];
+        this._events     = [];
         this._loaded     = false;
         this._loading    = false;
     }
@@ -121,14 +127,12 @@ export class HistoryTab {
         if (this._container) this._renderLoading();
 
         try {
-            const versions = await this.apiClient.get(
-                `/${this._entityType}/${this._itemId}/versions`
-            );
-            this._versions = Array.isArray(versions) ? versions : [];
-            this._loaded   = true;
+            const events = await this.apiClient.getAuditEvents({ targetId: this._itemId });
+            this._events = Array.isArray(events) ? events : [];
+            this._loaded = true;
             if (this._container) this._render();
         } catch (err) {
-            console.error('HistoryTab: failed to load versions', err);
+            console.error('HistoryTab: failed to load audit events', err);
             if (this._container) this._renderError(err);
         } finally {
             this._loading = false;
@@ -143,7 +147,7 @@ export class HistoryTab {
         this._container.innerHTML = `
             <div class="history-tab-loading">
                 <span class="loading-spinner"></span>
-                Loading version history…
+                Loading history…
             </div>
         `;
     }
@@ -158,59 +162,74 @@ export class HistoryTab {
     }
 
     _render() {
-        const versions = this._versions;
+        // Display newest-first; API returns ascending by timestamp (oldest first)
+        const events = [...this._events].reverse();
 
-        if (versions.length === 0) {
+        if (events.length === 0) {
             this._container.innerHTML = `
-                <div class="history-tab-empty">No version history available.</div>
+                <div class="history-tab-empty">No history available.</div>
             `;
             return;
         }
 
-        // versions[0] = latest (newest-first from API)
-        const rows = versions.map((v, idx) => {
-            const isLatest  = idx === 0;
-            const isOldest  = idx === versions.length - 1;
-            const versionLabel = `v${v.version}`;
+        const latestVersion = this._latestVersion();
 
-            return `
-                <div class="history-row${isLatest ? ' history-row--latest' : ''}" data-version-id="${this._escape(String(v.id))}">
-                    <div class="history-row-meta">
-                        ${this.onViewVersion ? `
-                        <button
+        const rows = events.map((e) => {
+            const hasVersion      = e.targetVersion != null;
+            const isLatestVersion = hasVersion && e.targetVersion === latestVersion;
+            const isFirstVersion  = hasVersion && e.targetVersion === 1;
+
+            // Version badge / link
+            const verCell = hasVersion
+                ? (this.onViewVersion
+                    ? `<button
                             type="button"
                             class="history-version-badge history-version-badge--link"
-                            data-version-id="${this._escape(String(v.id))}"
-                            data-version-number="${this._escape(String(v.version))}"
-                            title="View v${this._escape(String(v.version))}"
-                        >${this._escape(versionLabel)}</button>
-                        ` : `<span class="history-version-badge history-version-badge--static">${this._escape(versionLabel)}</span>`}
-                        ${isLatest ? '<span class="history-latest-badge">Latest</span>' : ''}
-                        <span class="history-row-date">${this._formatDate(v.createdAt)}</span>
-                        <span class="history-row-author">${this._escape(v.createdBy || '—')}</span>
+                            data-version-id="${this._escape(String(e.versionId ?? ''))}"
+                            data-version-number="${this._escape(String(e.targetVersion))}"
+                            title="View v${e.targetVersion}"
+                        >v${e.targetVersion}</button>`
+                    : `<span class="history-version-badge history-version-badge--static">v${e.targetVersion}</span>`)
+                : `<span class="history-version-badge history-version-badge--none">—</span>`;
+
+            // Action badge
+            const actionBadge = `<span class="history-action-badge history-action-badge--${this._escape((e.action ?? '').toLowerCase())}">${this._escape(e.action ?? '—')}</span>`;
+
+            // Change-set code + frozen title
+            const csCell = e.changeSetCode
+                ? `<span class="history-cs-code">${this._escape(e.changeSetCode)}</span>${e.changeSetTitle ? `<span class="history-cs-title"> — ${this._escape(e.changeSetTitle)}</span>` : ''}`
+                : '<span class="history-cs-code history-cs-code--none">—</span>';
+
+            // Per-action buttons — only for version-producing events
+            const diffBtn = (hasVersion && !isFirstVersion) ? `
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary history-btn-diff"
+                    data-version-id="${this._escape(String(e.versionId ?? ''))}"
+                    data-version-number="${this._escape(String(e.targetVersion))}"
+                >Diff</button>` : '';
+
+            const restoreBtn = (hasVersion && !isLatestVersion && !this.readOnly) ? `
+                <button
+                    type="button"
+                    class="btn btn-sm btn-warning history-btn-restore"
+                    data-version-id="${this._escape(String(e.versionId ?? ''))}"
+                    data-version-number="${this._escape(String(e.targetVersion))}"
+                >Restore</button>` : '';
+
+            return `
+                <div class="history-row${isLatestVersion ? ' history-row--latest' : ''}"
+                     data-version-id="${this._escape(String(e.versionId ?? ''))}">
+                    <div class="history-row-meta">
+                        ${verCell}
+                        ${isLatestVersion ? '<span class="history-latest-badge">Latest</span>' : ''}
+                        ${actionBadge}
+                        <span class="history-row-date">${this._formatDate(e.timestamp)}</span>
+                        <span class="history-row-author">${this._escape(e.userId || '—')}</span>
+                        <span class="history-row-cs">${csCell}</span>
+                        <span class="history-row-note">${e.note ? `— ${this._escape(e.note)}` : ''}</span>
                     </div>
-                    <div class="history-row-actions">
-                        ${!isOldest ? `
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-secondary history-btn-diff"
-                            data-version-id="${this._escape(String(v.id))}"
-                            data-version-number="${this._escape(String(v.version))}"
-                        >
-                            Diff
-                        </button>
-                        ` : ''}
-                        ${(!isLatest && !this.readOnly) ? `
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-warning history-btn-restore"
-                            data-version-id="${this._escape(String(v.id))}"
-                            data-version-number="${this._escape(String(v.version))}"
-                        >
-                            Restore
-                        </button>
-                        ` : ''}
-                    </div>
+                    <div class="history-row-actions">${diffBtn}${restoreBtn}</div>
                 </div>
             `;
         }).join('');
@@ -220,13 +239,9 @@ export class HistoryTab {
                 <div class="history-list">
                     <div class="history-row history-row--header">
                         <div class="history-row-meta">
-                            <span class="history-col-title history-col-version">Version</span>
-                            <span class="history-col-title history-col-date">Created</span>
-                            <span class="history-col-title history-col-author">By</span>
+                            <span class="history-col-title">Version history</span>
                         </div>
-                        <div class="history-row-actions">
-                            <span class="history-col-title">Actions</span>
-                        </div>
+                        <div class="history-row-actions"></div>
                     </div>
                     ${rows}
                 </div>
@@ -266,15 +281,9 @@ export class HistoryTab {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // DIFF — direct launch, no intermediate confirm popup
+    // DIFF — direct launch via DiffPopup
     // ─────────────────────────────────────────────────────────────
 
-    /**
-     * Launch the diff directly. The DiffPopup handles version selection internally.
-     *
-     * @param {string} versionId      - Node ID of the version (unused here, kept for symmetry)
-     * @param {string} versionNumber  - Version number of the row clicked
-     */
     _showDiffConfirm(versionId, versionNumber) {
         this.onDiff(Number(versionNumber));
     }
@@ -283,16 +292,10 @@ export class HistoryTab {
     // RESTORE CONFIRMATION POPUP
     // ─────────────────────────────────────────────────────────────
 
-    /**
-     * Show the restore confirmation dialog.
-     *
-     * @param {string} versionId      - ID of the version to restore
-     * @param {string} versionNumber  - Display version number
-     */
     _showRestoreConfirm(versionId, versionNumber) {
         this._removePopup('history-restore-confirm-popup');
 
-        const latestVersion = this._versions[0];
+        const latestVersion = this._latestVersion();
 
         const popupHtml = `
             <div class="history-popup-overlay" id="history-restore-confirm-popup">
@@ -308,7 +311,7 @@ export class HistoryTab {
                                 The form will be populated with the content of
                                 <strong>v${this._escape(versionNumber)}</strong>,
                                 replacing the current content
-                                ${latestVersion ? `(<strong>v${this._escape(String(latestVersion.version))}</strong>)` : ''}.
+                                ${latestVersion != null ? `(<strong>v${latestVersion}</strong>)` : ''}.
                             </p>
                             <p>
                                 The restore will only be finalised when you <strong>save</strong> the form.
@@ -334,14 +337,11 @@ export class HistoryTab {
         document.body.insertAdjacentHTML('beforeend', popupHtml);
         const popup = document.getElementById('history-restore-confirm-popup');
 
-        // Confirm
         popup.querySelector('.history-btn-confirm-restore')?.addEventListener('click', () => {
-            console.log(`[HistoryTab] Restore confirmed: v${versionNumber} (id=${versionId})`);
             this.onRestore(versionId, versionNumber);
             this._removePopup('history-restore-confirm-popup');
         });
 
-        // Cancel / overlay
         this._bindPopupClose(popup, 'history-restore-confirm-popup');
     }
 
@@ -350,17 +350,14 @@ export class HistoryTab {
     // ─────────────────────────────────────────────────────────────
 
     _bindPopupClose(popup, popupId) {
-        // Cancel buttons and × button
         popup.querySelectorAll('[data-action="cancel"]').forEach(btn => {
             btn.addEventListener('click', () => this._removePopup(popupId));
         });
 
-        // Click on overlay backdrop
         popup.addEventListener('click', (e) => {
             if (e.target === popup) this._removePopup(popupId);
         });
 
-        // Escape key
         const onEsc = (e) => {
             if (e.key === 'Escape') {
                 this._removePopup(popupId);
@@ -375,8 +372,32 @@ export class HistoryTab {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // UTILITIES
+    // PRIVATE HELPERS
     // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Highest targetVersion across all events; null if no version-producing events exist.
+     */
+    _latestVersion() {
+        let max = null;
+        for (const e of this._events) {
+            if (e.targetVersion != null && (max === null || e.targetVersion > max)) {
+                max = e.targetVersion;
+            }
+        }
+        return max;
+    }
+
+    /**
+     * Versions array compatible with DiffPopup — derived from version-producing events,
+     * sorted newest-first. Only events with both targetVersion and versionId are included.
+     */
+    _versionsForDiff() {
+        return this._events
+            .filter(e => e.targetVersion != null && e.versionId != null)
+            .map(e => ({ id: e.versionId, version: e.targetVersion }))
+            .sort((a, b) => b.version - a.version);
+    }
 
     _escape(text) {
         if (text === null || text === undefined) return '';

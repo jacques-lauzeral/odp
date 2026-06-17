@@ -23,13 +23,14 @@
 import { dom } from '../shared/utils.js';
 import { openChangeSetCommitDialog } from './change-set-commit-dialog.js';
 import logoUrl from '../assets/odip-space-logo.svg';
+import { UserRole } from '/shared/src/index.js';
 
 const STORAGE_KEY = 'odip-space-user';
 
 const ROLES = [
-    { value: 'contributor', label: 'Contributor' },
-    { value: 'reviewer',    label: 'Reviewer'    },
-    { value: 'integrator',  label: 'Integrator'  },
+    { value: UserRole.DOMAIN_WRITER, label: 'Domain writer' },
+    { value: UserRole.ICDM,          label: 'iCDM'          },
+    { value: UserRole.INTEGRATOR,    label: 'Integrator'    },
 ];
 
 /** @type {Array<{ segment: string, label: string, path: string }>} */
@@ -65,7 +66,7 @@ export default class Header {
 
     _buildHtml() {
         const user = this.app.getUser();
-        const isIntegrator = user?.role === 'integrator';
+        const isIntegrator = user?.role === UserRole.INTEGRATOR;
 
         return `
             <header class="odp-header">
@@ -240,11 +241,24 @@ export default class Header {
     }
 
     restoreUser() {
+        // Legacy role migration: old sessions used lowercase client-side role names
+        // that predate the server UserRole enum. Remap on restore so existing
+        // connected users don't need to reconnect manually.
+        const LEGACY_ROLE_MAP = {
+            contributor: UserRole.DOMAIN_WRITER,
+            reviewer:    UserRole.ICDM,
+            integrator:  UserRole.INTEGRATOR,
+        };
+
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
             if (stored) {
                 const userData = JSON.parse(stored);
                 if (userData?.name && userData?.role) {
+                    if (LEGACY_ROLE_MAP[userData.role]) {
+                        userData.role = LEGACY_ROLE_MAP[userData.role];
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+                    }
                     this.app.setUser(userData);
                 }
             }

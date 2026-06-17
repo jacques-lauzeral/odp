@@ -2,7 +2,7 @@
 
 *Technical solution description*
 
-*v0.1 — 16 June 2026 — DRAFT for discussion*
+*v1.0 — 17 June 2026 — Phase A complete*
 
 ## 1. Scope
 
@@ -135,6 +135,18 @@ ORDER BY e.timestamp
 ### 3.7 actorId and future IAM remapping
 
 `actorId` stores the raw interim identifier today (the professional email of RBA-04's whitelist). The model treats it as a **stable logical actor key**, not a display string: the P2 platform-IAM integration (RBA-04, "account mapping preserved") will remap the identifier behind the key without rewriting history. The remapping layer is not built now — this is a design constraint that keeps the door open, not an implementation in this scope.
+
+### 3.8 Web client — as-built (Phase A)
+
+> **As-built (Phase A §3.6 — Web client).** Several implementation-time discoveries are recorded here; none required design changes.
+>
+> **Role enum alignment.** The web client previously maintained its own client-side role vocabulary (`contributor`, `reviewer`, `integrator`) predating the server's `UserRole` enum. Phase A aligned `header.js` to use the canonical values (`DOMAIN_WRITER`, `ICDM`, `INTEGRATOR`) from `@odp/shared`, and added a one-time silent migration in `Header.restoreUser()` to remap legacy values stored in localStorage, so existing sessions survive without a forced reconnect. `x-user-role` is now sent alongside `x-user-id` on every `ApiClient` request.
+>
+> **HistoryTab rebuilt.** `HistoryTab` was entirely rebuilt on the audit query (`GET /audit-events?targetId=`). The removed `/versions` list endpoint is gone; events are displayed newest-first (API returns ascending). Columns: Ver · Action · Date · Actor · CS · Note · Actions. The CS cell renders `changeSetCode — changeSetTitle`. Diff and Restore remain, gated to version-producing rows (`targetVersion != null`); `_versionsForDiff()` projects a backward-compatible shape for `DiffPopup`. `addVersionsCommand()` and `displayChangeSetCommit()` are removed from `VersionedCommands`; `Created By` is removed from all versioned-entity list tables.
+>
+> **Change-set members.** `ChangeSetsActivity` member rendering adapted to `AuditEventRow` fields (`targetId`, `targetType` uppercase, `targetCode`, `targetTitle`, `targetVersion`). The deferred "new fields on `findMembers` projection" note in ADD §8.9 is resolved — members now carry the full frozen event shape.
+>
+> **CSS.** New rules added to `history-tab.css`: `.history-action-badge` with per-action colour variants (green for CREATE/RESTORE, primary blue for UPDATE/PUBLISH/BASELINE, red for DELETE, dark red for HARD_DELETE, neutral for CLOSE/REOPEN); `.history-version-badge--none` for non-version-producing events; `.history-cs-code` / `.history-cs-title` / `.history-row-note` for the new timeline columns.
 
 ## 4. Referential integrity (DEL-01)
 

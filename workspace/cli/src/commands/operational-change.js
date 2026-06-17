@@ -68,8 +68,8 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Domain', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 15, 15, 20, 10, 20]
+                        head: ['Item ID', 'Code', 'Domain', 'Title', 'Version'],
+                        colWidths: [10, 15, 15, 30, 10]
                     });
 
                     items.forEach(item => {
@@ -78,8 +78,7 @@ class OperationalChangeCommands extends VersionedCommands {
                             item.code || '-',
                             item.domain || '-',
                             item.title,
-                            item.version,
-                            item.createdBy
+                            item.version
                         ]);
                     });
 

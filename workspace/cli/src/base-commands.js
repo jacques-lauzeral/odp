@@ -379,7 +379,6 @@ export class VersionedCommands extends BaseCommands {
 
         this.addListCommand(itemCommand);
         this.addShowCommand(itemCommand);
-        this.addVersionsCommand(itemCommand);
         this.addShowVersionCommand(itemCommand);
         this._addCreateCommand(itemCommand);
         this._addUpdateCommand(itemCommand);
@@ -429,16 +428,15 @@ export class VersionedCommands extends BaseCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 40, 10, 20]
+                        head: ['Item ID', 'Title', 'Version'],
+                        colWidths: [10, 50, 10]
                     });
 
                     items.forEach(item => {
                         table.push([
                             item.itemId,
                             item.title,
-                            item.version,
-                            item.createdBy
+                            item.version
                         ]);
                     });
 
@@ -504,57 +502,6 @@ export class VersionedCommands extends BaseCommands {
             });
     }
 
-    // Keep existing versions and show-version commands unchanged
-    addVersionsCommand(itemCommand) {
-        itemCommand
-            .command('versions <itemId>')
-            .description(`Show version history for ${this.displayName}`)
-            .action(async (itemId) => {
-                try {
-                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/versions`, {
-                        headers: this.createHeaders()
-                    });
-
-                    if (response.status === 404) {
-                        console.error(`${this.displayName} with ID ${itemId} not found.`);
-                        process.exit(1);
-                    }
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-
-                    const versions = await response.json();
-
-                    const table = new Table({
-                        head: ['Version', 'Version ID', 'Created At', 'Created By', 'CS ID', 'CS Code', 'Title', 'Classifier', 'Note'],
-                        colWidths: [9, 12, 22, 16, 8, 11, 24, 16, 24]
-                    });
-
-                    versions.forEach(version => {
-                        const cs = version.changeSetCommit;
-                        table.push([
-                            version.version,
-                            version.versionId,
-                            new Date(version.createdAt).toLocaleString(),
-                            version.createdBy,
-                            cs?.changeSetId ?? '—',
-                            cs?.code ?? '—',
-                            cs?.changeSetTitle ?? '—',
-                            cs?.classifier ?? '—',
-                            cs?.note || '—'
-                        ]);
-                    });
-
-                    console.log(`Version history for ${this.displayName} ${itemId}:`);
-                    console.log(table.toString());
-                } catch (error) {
-                    console.error(`Error fetching version history:`, error.message);
-                    process.exit(1);
-                }
-            });
-    }
-
     addShowVersionCommand(itemCommand) {
         itemCommand
             .command('show-version <itemId> <versionNumber>')
@@ -612,31 +559,11 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Print the change-set commit (the reason for this version), when present (LCM).
-     * Shared by show / show-version across all versioned entities.
-     */
-    displayChangeSetCommit(item) {
-        const cs = item.changeSetCommit;
-        if (!cs) {
-            console.log(`Change Set: —`);
-            return;
-        }
-        const handle = cs.code ? `${cs.code} (#${cs.changeSetId})` : `#${cs.changeSetId}`;
-        const header = [handle];
-        if (cs.changeSetTitle) header.push(cs.changeSetTitle);
-        if (cs.classifier) header.push(`[${cs.classifier}]`);
-        console.log(`Change Set: ${header.join(' ')}`);
-        if (cs.note) console.log(`Commit Note: ${cs.note}`);
-    }
-
-    /**
      * Display item details - override in subclasses for item-specific formatting
      */
     displayItemDetails(item) {
         console.log(`Item ID: ${item.itemId}`);
         console.log(`Title: ${item.title}`);
         console.log(`Version: ${item.version} (Version ID: ${item.versionId})`);
-        console.log(`Created: ${new Date(item.createdAt).toLocaleString()} by ${item.createdBy}`);
-        this.displayChangeSetCommit(item);
     }
 }

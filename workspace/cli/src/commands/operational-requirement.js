@@ -63,8 +63,8 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version', 'Created By'],
-                        colWidths: [10, 15, 8, 15, 25, 10, 20]
+                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version'],
+                        colWidths: [10, 15, 8, 15, 30, 10]
                     });
 
                     items.forEach(item => {
@@ -74,8 +74,7 @@ class OperationalRequirementCommands extends VersionedCommands {
                             item.type,
                             item.domain || '-',
                             item.title,
-                            item.version,
-                            item.createdBy
+                            item.version
                         ]);
                     });
 

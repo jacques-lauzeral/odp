@@ -32,3 +32,6 @@ export * from './messages/messages.js';
 
 // Export config loaders and accessors
 export * from './config/config.js';
+
+// Export audit elements
+export * from './model/audit-elements.js';

@@ -568,6 +568,111 @@
    Responsive
 ───────────────────────────────────────────────────────────── */
 
+/* ─────────────────────────────────────────────────────────────
+   Action Badge (Phase A — audit event timeline)
+───────────────────────────────────────────────────────────── */
+
+.history-action-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    line-height: 1.4;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    /* Default / fallback — neutral */
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    color: var(--text-secondary);
+}
+
+.history-action-badge--create,
+.history-action-badge--restore {
+    background: #e6f4ea;
+    border-color: #34a853;
+    color: #1e7e34;
+}
+
+.history-action-badge--update,
+.history-action-badge--publish,
+.history-action-badge--baseline {
+    background: var(--primary-50);
+    border-color: var(--primary-500);
+    color: var(--primary-700);
+}
+
+.history-action-badge--delete {
+    background: #ffebee;
+    border-color: #e57373;
+    color: #c62828;
+}
+
+.history-action-badge--hard_delete {
+    background: #ffcdd2;
+    border-color: #c62828;
+    color: #b71c1c;
+    font-weight: var(--font-weight-bold);
+}
+
+/* CLOSE / REOPEN / DECOMMISSION — neutral, inherited from default */
+
+/* ─────────────────────────────────────────────────────────────
+   Version badge — no version (non-version-producing events)
+───────────────────────────────────────────────────────────── */
+
+.history-version-badge--none {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-tertiary);
+    font-weight: var(--font-weight-normal);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Change Set cell (Phase A — audit event timeline)
+───────────────────────────────────────────────────────────── */
+
+.history-row-cs {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    font-size: var(--font-size-sm);
+}
+
+.history-cs-code {
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.history-cs-code--none {
+    color: var(--text-tertiary);
+    font-weight: var(--font-weight-normal);
+}
+
+.history-cs-title {
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Note cell (Phase A — audit event timeline)
+───────────────────────────────────────────────────────────── */
+
+.history-row-note {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    font-style: italic;
+    min-width: 0;
+    word-break: break-word;
+}
+
 @media (max-width: 768px) {
     .history-popup {
         width: 95%;

@@ -268,7 +268,9 @@ Activities that present the same entity set through more than one view (e.g. the
 Anonymous → "Connect" button → popup dialog (name + role selector, persisted to localStorage).
 Identified → username display → same popup (update / disconnect).
 
-`Header.restoreUser()` is called once by `App.initialize()` after initial render — not inside `render()` — to avoid a re-render loop triggered by `app.setUser()` calling `header.onUserChange()`.
+The role selector uses the canonical `UserRole` enum values from `@odp/shared` — `DOMAIN_WRITER`, `ICDM`, `INTEGRATOR` — with display labels "Domain writer", "iCDM", "Integrator". `isIntegrator` checks `user?.role === UserRole.INTEGRATOR`.
+
+`Header.restoreUser()` is called once by `App.initialize()` after initial render — not inside `render()` — to avoid a re-render loop triggered by `app.setUser()` calling `header.onUserChange()`. It performs a one-time silent migration of legacy lowercase role values stored in localStorage (`contributor` → `DOMAIN_WRITER`, `reviewer` → `ICDM`, `integrator` → `INTEGRATOR`), writing the canonical value back to localStorage so existing sessions survive the transition without requiring a reconnect.
 
 **Server status:**
 
@@ -277,6 +279,8 @@ Small dot (green / amber / red), extreme right of row 1, always visible. Driven 
 ### 5.1 Access Model
 
 User identification is entirely client-side. Anonymous users can access Home, Explore, and Converse. `/elaborate` and `/manage` require an identified user — the router redirects to `/` if no user is set.
+
+`ApiClient.getHeaders()` sends both `x-user-id` and `x-user-role` on every request, reading them from `app.user.name` and `app.user.role` respectively. The server assembles `user { id, role }` from these headers and threads the pair into every transaction, where `userRole` is frozen onto each `AuditEvent` at write time. RBA enforcement is deferred to a later phase — at P0 the headers are always trusted.
 
 Server-side, all GET routes accept requests without an `x-user-id` header (returning `null` userId), enabling anonymous read access to Home (edition list) and Explore. Write operations still require `x-user-id`. Affected route files: `simple-item-router.js`, `versioned-item-router.js`, `odp-edition.js`, `baseline.js`.
 
@@ -860,6 +864,25 @@ Behaviour: fetches `OPEN` change sets, pre-selects the active default (dropped i
 
 **Module placement & styling.** It is the same *family* as `user-dialogs.js` (promise-based modal helpers) but is **data-aware** (reads `OPEN` sets, may `POST` a new one), so it lives in its own module rather than in `user-dialogs.js`. It reuses the existing modal vocabulary exactly — `modal-overlay` / `modal` / `modal-header|body|footer` with the same inline overrides (`max-width:480px; height:auto; min-height:0; resize:none`), z-index `2000`, `odip-btn` buttons, `odip-input` fields, and real design tokens. **No new CSS file.**
 
+### 7.10 HistoryTab
+
+`HistoryTab` (`components/history-tab.js`) renders the audit event timeline for a versioned entity inside the History tab of the O* detail form. Instantiated by `RequirementForm` and `ChangeForm`; mounted into a `#history-tab-container` element.
+
+**Phase A revision.** The component was rebuilt on the `AuditEvent` foundation. The previous version-list approach (fetching `GET /{entityType}/{id}/versions`) is replaced by a single audit query (`GET /audit-events?targetId=<itemId>`). The version-list endpoint has been removed; `getEntityVersions()` is gone from `ApiClient`. History is the sole authoritative timeline of who did what and when.
+
+**Data flow:**
+- `preload(entityType, itemId)` — fire-and-forget fetch on item load, before the tab is activated. `entityType` is retained in state for DiffPopup and the Restore fetch path; it is not used in the audit query itself.
+- `attach(container, entityType, itemId)` — called on tab activation; renders immediately if already preloaded, otherwise triggers the fetch.
+- `reset()` — clears all state; called when the parent modal closes.
+
+**Rendering.** Events arrive ascending by timestamp (oldest first); the component reverses for newest-first display. Columns: **Ver** · **Action** · **Date** · **Actor** · **CS** · **Note** · **Actions**. The CS cell renders `changeSetCode — changeSetTitle` (title omitted when null). The Note cell renders `— note text` when present, empty when absent.
+
+Diff and Restore buttons appear only on **version-producing** rows (`targetVersion != null`):
+- **Diff** — all version-producing rows except v1 (nothing to compare against). Opens `DiffPopup` via `onDiff(versionNumber)`.
+- **Restore** — version-producing rows that are not the current latest, edit mode only. Opens a confirmation popup; on confirm calls `onRestore(versionId, versionNumber)`, which the parent form fetches via the retained `GET /{entityType}/{id}/versions/{versionNumber}` and loads into the form.
+
+**Helpers:** `_latestVersion()` — max `targetVersion` across all events. `_versionsForDiff()` — projects `{ id: versionId, version: targetVersion }` from version-producing events, newest-first, for DiffPopup backward compatibility.
+
 ---
 
 ## 8. Activities
@@ -1381,7 +1404,7 @@ Sub-path routing accepts `[entityKey, itemId?]` (see §3.3), enabling deep-links
 
 **List (left panel)** — card list filtered client-side by a status chip bar (`All` / `Open` / `Closed`) from a single load (no refetch on filter change). Each card shows `code — title`, an OPEN/CLOSED badge, and `classifier · date`. Selection uses `String(id)` comparison.
 
-**Detail (right panel)** — `.os-detail` shell. Toolbar shows `code — title` and the status-gated action set; body is a `<dl>` (code, status badge, classifier, reason, created/closed stamps) followed by a **Changes** section — the versions committed under the set, fetched via `apiClient.getChangeSetMembers(id)`. The list is **de-duplicated by `itemId`** (multiple consecutive saves of one object under the same set collapse to a single row, keeping the highest version) and rendered **flat**, ordered Chapter → ON → OR → OC then by code/title. Each row carries a **coloured type label** (`.type-badge--on/or/oc/chapter`; the ON/OR/OC palette mirrors os.css, chapter is neutral — a local copy pending the styling-cleanup hoist to a shared `components/type-badge.css`) and the object name as a **context-aware deep link** (`/{base}/os/{on|or|oc}/{itemId}` for O\*s, `/{base}/narrative/{itemId}` for chapters, `{base}` being `/elaborate` or `/explore/{editionId}`; intercepted by the router's global anchor handler). O\* rows show `code title`; chapter rows show the title only (chapters carry no O\*-style code). A stale-await guard drops results if the selection changed during the fetch. Delete-enablement keys off the **raw** member count, not the de-duped list. *(Per-change Create/Update/Delete action and domain classification are deferred — they require new fields on the `findMembers` projection; see the parked change-set server pass.)*
+**Detail (right panel)** — `.os-detail` shell. Toolbar shows `code — title` and the status-gated action set; body is a `<dl>` (code, status badge, classifier, reason, created/closed stamps) followed by a **Changes** section — the audit events committed under the set, fetched via `apiClient.getChangeSetMembers(id)` (returns `AuditEventRow[]`, same shape as `GET /audit-events`). The list is **de-duplicated by `targetId`** (multiple saves of one object under the same set collapse to a single row, keeping the highest `targetVersion`) and rendered **flat**, ordered CHAPTER → ON → OR → OC then by `targetCode`/`targetTitle`. Each row carries a **coloured type label** (`.type-badge--on/or/oc/chapter`; key in lookup maps is uppercase `CHAPTER`, matching `AuditTargetType`) and the object name as a **context-aware deep link** (`/{base}/os/{on|or|oc}/{targetId}` for O\*s, `/{base}/narrative/{targetId}` for chapters). O\* rows show `targetCode targetTitle`; chapter rows show `targetTitle` only. A stale-await guard drops results if the selection changed during the fetch. Delete-enablement keys off the **raw** member count, not the de-duped list.
 
 **Lifecycle actions (Elaborate only)** — status-gated detail-toolbar buttons, never a status field:
 
@@ -1404,6 +1427,10 @@ Close / Reopen / Delete confirm via `odipConfirm` (§7.8) and call `closeChangeS
 
 The shared API client in `shared/api-client.js` handles all `fetch` calls, base URL configuration, and error normalisation. All components use this client — no component issues `fetch` directly. The base URL is configured to target the API server port explicitly (`http://<hostname>:8080`) to support remote browser access.
 
+`getHeaders()` sends both `x-user-id` and `x-user-role` on every request (read from `app.user.name` and `app.user.role`). `getEntityVersions()` has been removed — the version-list endpoint no longer exists. The retained `getEntityVersion(endpoint, id, versionNumber)` fetches a single specific version by number.
+
+**Audit events.** `getAuditEvents({ changeSetId?, targetId?, userId? })` calls `GET /audit-events` with the supplied filters (all optional, AND-combined). Returns `AuditEventRow[]` ordered by timestamp ascending. This is the sole audit query surface — it backs the `HistoryTab` timeline (`targetId`), the change-set members view (`changeSetId`), and any actor-scoped queries (`userId`).
+
 ### 9.1 Connection Monitoring
 
 Connection monitoring is owned by `App` (`app.js`). On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator. The 60-second interval is intentional — the application is a low-concurrency internal tool.
@@ -1425,7 +1452,7 @@ styles/
 ├── components/
 │   ├── filter-bar.css                FilterBar chip component
 │   ├── form-components.css           Form tabs, tag selector, multi-select, rich text integration
-│   ├── history-tab.css               History version list, diff popup
+│   ├── history-tab.css               History audit event timeline, diff popup
 │   ├── master-detail.css             Two-column resizable layout
 │   ├── reference-list-manager.css    Inline chip list with search popup
 │   ├── rich-text-component.css       RichTextComponent editor/viewer, sticky toolbar, per-context sizing
@@ -1578,7 +1605,7 @@ The container runs `vite preview` to serve the pre-built `dist/` bundle. The bui
 
 ## 13. Lifecycle & Change Management (LCM) — Web Client
 
-> Every versioned write — O* create/edit, and chapter narrative / topic / structure saves — commits under a **change set**: a first-class, non-versioned node carrying the *why* of a save. This section documents the web-client foundation (active change set, API client methods, commit dialog, header chip) and the O* save-path threading. The change-set management workspace is described in §8.9, and the narrative/hierarchy commit threading in §8.3.8. Surfacing commit metadata in the History tab and DiffPopup is the one remaining piece, tracked separately.
+> Every versioned write — O* create/edit, and chapter narrative / topic / structure saves — commits under a **change set**: a first-class, non-versioned node carrying the *why* of a save. This section documents the web-client foundation (active change set, API client methods, commit dialog, header chip) and the O* save-path threading. The change-set management workspace is described in §8.9, and the narrative/hierarchy commit threading in §8.3.8. Commit metadata (change-set code/title, note) surfaces in the History tab via the `AuditEvent` timeline (§7.10).
 
 ### 13.1 Active Change Set on `App`
 
@@ -1593,7 +1620,9 @@ The container runs `vite preview` to serve the pre-built `dist/` bundle. The bui
 
 ### 13.2 `api-client.js` — Change Set Methods
 
-All target the standalone `/change-sets` route: `listChangeSets({status?, classifier?})` (status takes precedence over classifier), `getChangeSet(id)`, `getChangeSetMembers(id)` (`?subPath=members`), `createChangeSet(data)`, `updateChangeSet(id, data)` (OPEN only), `closeChangeSet(id)` / `reopenChangeSet(id)` (`?subPath=close|reopen`), `deleteChangeSet(id)` (empty + OPEN only).
+All target the standalone `/change-sets` route: `listChangeSets({status?, classifier?})` (status takes precedence over classifier), `getChangeSet(id)`, `getChangeSetMembers(id)` (`?subPath=members` — returns `AuditEventRow[]`, same shape as `GET /audit-events?changeSetId=`), `createChangeSet(data)`, `updateChangeSet(id, data)` (OPEN only), `closeChangeSet(id)` / `reopenChangeSet(id)` (`?subPath=close|reopen`), `deleteChangeSet(id)` (empty + OPEN only).
+
+The audit query method `getAuditEvents({ changeSetId?, targetId?, userId? })` is documented in §9.
 
 ### 13.3 Commit Dialog
 

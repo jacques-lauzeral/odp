@@ -121,8 +121,6 @@ class ChapterCommands extends VersionedCommands {
         console.log(`Domain:     ${item.domain || '(narrative)'}`);
         console.log(`Position:   ${item.position ?? '—'}`);
         console.log(`Version:    ${item.version} (Version ID: ${item.versionId})`);
-        console.log(`Created:    ${item.createdAt ? new Date(item.createdAt).toLocaleString() : '—'} by ${item.createdBy || '—'}`);
-        this.displayChangeSetCommit(item);
         console.log(`Narrative:  ${item.narrative ? item.narrative.substring(0, 80) + (item.narrative.length > 80 ? '…' : '') : '—'}`);
         console.log(`osHierarchy: ${item.osHierarchy ? JSON.stringify(item.osHierarchy).substring(0, 80) + '…' : '—'}`);
     }

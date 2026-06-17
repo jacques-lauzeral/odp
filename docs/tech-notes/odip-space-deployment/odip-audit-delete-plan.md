@@ -2,7 +2,7 @@
 
 *Implementation plan*
 
-*v0.1 — 16 June 2026 — DRAFT for discussion*
+*v1.0 — 17 June 2026 — Phase A complete*
 
 ## 1. Scope
 
@@ -16,7 +16,7 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase A — Audit foundation.** Introduce `AuditEvent`; strip audit fields from item/version nodes; remove `HAS_REASON`; rewire change-set membership and the History view onto the log. At the end of Phase A the application behaves as before *to the user* (no deletion yet) but records every write in the log and reads History/members from it.
 
-> **Status (17 Jun 2026):** §3.1 model/shared ✅ DONE · §3.2 storage ✅ DONE · §3.3 service ✅ DONE · §3.4 REST ✅ DONE · §3.5 CLI ⏳ NEXT · §3.6 web · §3.7 ADD (01/02/03/04 done with their layers; 07/08 pending).
+> **Status (17 Jun 2026):** §3.1 model/shared ✅ DONE · §3.2 storage ✅ DONE · §3.3 service ✅ DONE · §3.4 REST ✅ DONE · §3.5 CLI ✅ DONE · §3.6 web ✅ DONE · §3.7 ADD ✅ DONE — **Phase A complete.**
 
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
@@ -65,7 +65,7 @@ Phase A must complete before Phase B begins. Within each phase the layer order i
 - Response schemas lost `createdAt` / `createdBy` / `changeSetCommit`; gained `status`.
 - OpenAPI: new `openapi-audit-event.yml` (`AuditAction` / `AuditTargetType` / `AuditEventRow` schemas + `/audit-events`); `VersionHistory` schema replaced by `AuditEventRow`; `/versions` list paths replaced; stamp fields removed from entity schemas.
 
-### 3.5 CLI ⏳ NEXT
+### 3.5 CLI ✅ DONE
 
 - New `audit-event` command group mapping to the single audit query (`GET /audit-events` / `auditEventService.getAuditEvents`). One verb — list/query the log — with optional filter flags, all aligned with the store's `findAll` filters:
   - `--change-set <id>` → `changeSetId`
@@ -75,11 +75,15 @@ Phase A must complete before Phase B begins. Within each phase the layer order i
 - Existing write commands unchanged at the call site (they already pass `--change-set`).
 - Note the `user {id, role}` propagation: CLI commands assemble the acting user the same way routes do (the CLI's user-context source feeds `{id, role}` to the service/API call).
 
-### 3.6 Web client
+### 3.6 Web client ✅ DONE
 
-- `apiClient` — new audit query method wrapping `GET /audit-events` (params `changeSetId` / `targetId` / `userId`); remove reliance on version-node stamps in any list/detail rendering.
-- **History view** — built client-side from `apiClient` audit query with `{targetId}`. Render the unified AuditEvent timeline: one row per event, showing action, actor, timestamp, change-set link (where present), note. The previous version-list History tab is replaced by this timeline. There is no server History endpoint — the client owns the timeline assembly.
-- Change-set member rendering — backed by the same audit query (`{changeSetId}`) via `GET /change-sets/{id}/members`; member rows are now AuditEvent rows (read `targetType` / `targetCode` / `targetTitle` / `targetVersion`).
+> **As-built refinements:**
+> - `UserRole` enum alignment in `header.js`: ROLES updated to `DOMAIN_WRITER` / `ICDM` / `INTEGRATOR` from `@odp/shared`; `restoreUser()` performs a one-time silent migration of legacy lowercase values from localStorage; `isIntegrator` guard updated. `x-user-role` added to every `ApiClient.getHeaders()` call alongside `x-user-id`.
+> - `getEntityVersions()` removed from `ApiClient` (version-list endpoint gone). `getAuditEvents({ changeSetId?, targetId?, userId? })` added.
+> - `HistoryTab` fully rebuilt: fetches `GET /audit-events?targetId=` instead of removed `/versions` list; state renamed `_events` (AuditEventRow[]); columns Ver · Action · Date · Actor · CS · Note · Actions; newest-first display; Diff and Restore gated to version-producing rows; `_latestVersion()` + `_versionsForDiff()` helpers added.
+> - `ChangeSetsActivity` members re-renders on `AuditEventRow` shape: dedupe key `targetId`, type lookup key `CHAPTER` (uppercase), fields `targetCode` / `targetTitle` / `targetVersion`.
+> - `VersionedCommands.addVersionsCommand()` removed; `displayChangeSetCommit()` removed from `BaseCommands`; `createdAt` / `createdBy` stripped from `displayItemDetails()`; `Created By` column dropped from requirement, change, and chapter list tables.
+> - `history-tab.css`: new `.history-action-badge` (per-action colour variants), `.history-version-badge--none`, `.history-cs-code` / `.history-cs-title` / `.history-row-note`.
 
 ### 3.7 ADD chapters (Phase A)
 
@@ -89,8 +93,8 @@ Updated in the same batch as each layer:
 - **02-Storage-Layer** ✅ — `AuditEventStore` (`log` + `findAll`); `VersionedItemStore` write-path changes; `findMembers` delegation; bootstrap changes.
 - **03-Service-Layer** ✅ — `AuditEventService` (`getAuditEvents`); hydration removal; `user {id, role}` propagation.
 - **04-REST-API** ✅ — `/audit-events` resource; `x-user-role`; schema changes; `/versions` list removal.
-- **07-CLI** ⏳ — `audit-event` command (next).
-- **08-Web-Client** — History view (client-built over the audit query).
+- **07-CLI** ✅ — `audit-event` command; `versions` subcommands removed; `Created By` dropped from list tables; `displayChangeSetCommit` removed.
+- **08-Web-Client** ✅ — History view (client-built over the audit query); HistoryTab (§7.10); user identity role alignment; api-client changes; change-set members shape.
 
 ## 4. Phase B — Deletion
 
