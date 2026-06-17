@@ -4,7 +4,7 @@
 
 The **Operational Development and Implementation Plan (ODIP)** is an aviation industry tool for managing operational requirements, changes, and deployment planning within the iCDM (improved release Content Definition Meeting) process.
 
-ODIP supports the full lifecycle of operational content — from initial drafting by working groups (Drafting Groups, DrGs) through collaborative elaboration, baseline management, publication, and review. It provides a structured repository for:
+ODIP supports the full lifecycle of operational content — from initial drafting through collaborative elaboration, baseline management, publication, and review. It provides a structured repository for:
 
 - **Operational Needs (ONs)** — high-level operational objectives
 - **Operational Requirements (ORs)** — detailed, traceable requirements derived from ONs
@@ -23,75 +23,46 @@ NOTE: ODIP was formerly named ODP (for Operational Deployment Plan). Consequentl
 | **ON** | Operational Need — high-level objective |
 | **OR** | Operational Requirement — traceable requirement derived from an ON |
 | **OC** | Operational Change — deployment unit implementing one or more ORs |
-| **DrG** | Drafting Group — working group responsible for a domain (e.g. AIRSPACE, 4DT, ASM_ATFCM) |
 | **Wave** | NM deployment cycle — milestone-aligned deployment window |
 | **Baseline** | Immutable snapshot of the repository at a point in time |
 | **ODIP Edition** | Published edition of the Operational Development and Implementation Plan |
-| **Domain** | Business domain impacted by an OR (e.g. ATM, ATC, NM) |
+| **Domain** | Organisational unit grouping O*s under a common authoring scope; defines the write boundary for Domain Writers |
 | **Reference Document** | Strategic document linked to an ON with an optional entry point note; may carry a URL |
 | **Setup Entities** | Reference data: stakeholder categories, domains, reference documents, waves |
+| **ChangeSet** | Named grouping of related saves sharing a common reason for change |
 | **Round-trip editing** | Workflow: export to Word → manual edit → re-import |
 
 ---
 
 ## 3. Actors
 
-Four actor roles are defined:
+Two user categories are defined: **active users**, who hold a named role and can write to the live dataset, and **passive users** (external organisations, NM read-only reviewers), who have read-only access to published editions and no commenting rights until a later phase.
 
-**Contributor** — writes, reviews, and documents ONs, ORs, OCs, and ODIP editions. Can configure setup data and manage electronic documents. Typically DrG members, iCDM members, iCDM-C, and the iCDM Chair.
+Three active roles are defined:
 
-**Reviewer** — reviews ODIP editions including their OCs, ORs, and ONs. Typically DrG and iCDM-C members, the iCDM Chair.
+**Domain Writer** (`DOMAIN_WRITER`) — authors ONs, ORs, OCs, narratives, and setup data within their own domain; reads all other domains.
 
-**Publisher** — triggers publication of an ODIP Edition. Typically iCDM-C.
+**iCDM** (`ICDM`) — cross-domain read and write access; drives prioritisation and wave assignment. Typically iCDM members, iCDM-C, and the iCDM Chair.
 
-**Administrator** — super user with full access. Reserved for platform management.
+**Integrator** (`INTEGRATOR`) — full administrative rights: publication, hard delete, patching, permission-matrix administration, and backup/restore. Reserved for the application team.
+
+User identification is client-declared against a server-side email whitelist (interim scheme); role is assigned per address on the same whitelist. Platform SSO integration is planned for a later phase.
 
 ---
 
 ## 4. Functional Scope
 
-ODIP supports four main activities:
+ODIP Space is organised around five top-level activities.
 
-### 4.1 Setup Management
-Definition of reference data used consistently across the platform:
-- Stakeholder Categories
-- Domains
-- Reference Documents (with optional URL)
-- Waves (flat list, aligned with NM deployment cycles)
+**Home** is the entry point for all users. It presents the available dataset contexts — the live dataset or a specific published edition — and routes the user into the appropriate workspace. Anonymous access is permitted.
 
-### 4.2 Elaboration
-Collaborative creation and maintenance of operational content:
-- Authoring and versioning of ONs, ORs, and OCs
-- Cross-referencing between ONs, ORs, and OCs
-- Impact characterisation via setup entities (domains, stakeholder categories, strategic documents)
-- Milestone planning for OC deployment
-- Rich text editing (purpose, statement, rationale, initial/final state, details)
+**Elaborate** is the authoring workspace, operating against the live dataset in read/write mode. Active users draft and maintain ONs, ORs, OCs, chapter narratives, and setup data; manage change sets; run quality checks; and plan OC deployment across waves. Access requires identification.
 
-### 4.3 Planning
-Deployment and implementation planning across NM waves:
-- ON-based planning view: ON hierarchy with tentative implementation periods visualised on a temporal grid
-- OC-based planning view: reserved (Phase 2)
+**Explore** is the consultation workspace, operating against a selected published edition in read-only mode. It exposes the same sub-activities as Elaborate but suppresses all write actions, enabling stakeholders to navigate and review a specific edition without affecting the live dataset. Anonymous access is permitted.
 
-See [Chapter 08 §11](./08-Web-Client.md) for implementation details.
+**Converse** is a placeholder for collaborative threading — asynchronous discussion and consultation comment management. It is accessible without identification. Full implementation is deferred to a later phase.
 
-### 4.4 Prioritisation
-Iterative assignment of OCs to delivery waves against DrG bandwidth constraints:
-- Board view: OC cards organised by wave and DrG
-- Bandwidth monitoring: per-wave, per-DrG load indicators (green / orange / red)
-- Dependency enforcement: wave assignment validated against OC dependency order
-- Wave assignments persisted via OPS_DEPLOYMENT milestones
-
-See [Chapter 08 §13](./08-Web-Client.md) for implementation details.
-
-### 4.5 Publication
-Packaging and publishing of an ODIP Edition:
-- Baseline creation (immutable repository snapshot)
-- ODIP Edition generation from a baseline
-- Document generation via `DetailsModuleGenerator` (AsciiDoc + Mustache templates)
-- Antora-generated static web site for external consultation
-
-### 4.6 Review
-Consultation and review of published ODIP Editions by internal and external stakeholders.
+**Manage** is the administration workspace, restricted to Integrators. It covers edition lifecycle management (baseline creation, publication, patching) and will host the permission-matrix configuration and capability catalogue in later phases.
 
 ---
 
@@ -149,31 +120,8 @@ Each layer has a single, clear responsibility. No layer skips another.
 
 ---
 
-## 6. Round-Trip Editing Concept
 
-A core workflow in ODIP is **round-trip editing**: enabling aviation industry contributors to work in familiar tools (Microsoft Word) while keeping the system of record in the platform.
-
-```
-ODIP Repository
-      │
-      │  Export (Word generation)
-      ▼
-  Word Document
-      │
-      │  Manual editing by contributors
-      ▼
-  Edited Document
-      │
-      │  Re-import (Extract → Map → Import pipeline)
-      ▼
-ODIP Repository (updated)
-```
-
-This workflow is supported by the three-stage Import Pipeline (see [Chapter 05](./05-Import-Pipeline.md)).
-
----
-
-## 7. Technology Stack Summary
+## 6. Technology Stack Summary
 
 | Layer | Technology | Notes |
 |---|---|---|
