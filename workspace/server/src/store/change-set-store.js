@@ -150,18 +150,18 @@ export class ChangeSetStore extends BaseStore {
     }
 
     /**
-     * Members of a change set — the versions committed under it. Reads the audit
-     * log via the single UNDER_CHANGESET → TARGETS hop (AuditEventStore.findByChangeSet),
-     * returning the declared member-row projection. Computed on demand (change-set
-     * detail view), so the per-row versionId resolution it performs is off any common
-     * read path.
+     * Members of a change set — the versions committed under it. Delegates to the
+     * audit log's single query method, filtered by changeSetId. Returns the standard
+     * AuditEvent row shape (the same shape every audit consumer receives); the
+     * change-set detail view reads targetType / targetCode / targetTitle /
+     * targetVersion / versionId directly off each row. Computed on demand.
      *
      * @param {number} changeSetId
      * @param {Transaction} transaction
-     * @returns {Promise<Array<{itemId:number, itemType:string, code:string, title:string, versionId:(number|null), version:(number|null), note:string}>>}
+     * @returns {Promise<Array<object>>} AuditEvent rows under the change set, ordered by timestamp
      */
     async findMembers(changeSetId, transaction) {
-        return this.auditEventStore.findByChangeSet(changeSetId, transaction);
+        return this.auditEventStore.findAll({ changeSetId }, transaction);
     }
 
     // Inherits from BaseStore: findById, findAll, update, delete, exists

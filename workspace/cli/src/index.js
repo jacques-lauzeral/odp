@@ -14,6 +14,7 @@ import { operationalRequirementCommands } from './commands/operational-requireme
 import { operationalChangeCommands } from './commands/operational-change.js';
 import { importCommands } from './commands/import.js';
 import { qualityCommands } from './commands/quality.js';
+import { auditEventCommands } from './commands/audit-event.js';
 import { changeSetCommands } from './commands/change-set.js';
 
 const program = new Command();
@@ -24,6 +25,7 @@ program
     .description('Operational Deployment Plan CLI')
     .version('1.0.0')
     .option('--user <userId>', 'User identifier for audit context (required)')
+    .option('--role <role>', 'User role for authorization context (default: INTEGRATOR)')
     .hook('preAction', (thisCommand, actionCommand) => {
         const options = thisCommand.opts();
         if (!options.user) {
@@ -56,6 +58,7 @@ operationalChangeCommands(program, config);
 importCommands(program, config);
 qualityCommands(program, config);
 changeSetCommands(program, config);
+auditEventCommands(program, config);
 
 // Parse command line arguments
 program.parse();

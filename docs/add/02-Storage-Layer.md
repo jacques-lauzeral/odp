@@ -149,7 +149,7 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references. No `createdAt`/`createdBy`/`changeSetCommit` on the read shape.
 - `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships; same read shape.
 
-> `findVersionHistory` is **removed**. The History feed is served by `AuditEventStore.findByTarget(itemId, tx)` (§3.x) — a self-contained event scan carrying action, actor, role, timestamp, frozen change-set code/title, and note. No version-node join.
+> `findVersionHistory` is **removed**. The History feed is built by the client from `AuditEventStore.findAll({targetId}, tx)` (§3.x) — self-contained event rows carrying action, actor, role, timestamp, frozen change-set code/title, and note. No version-node join on the common path.
 
 **Abstract methods** (must be implemented by concrete stores):
 - `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
@@ -177,8 +177,7 @@ Extends `BaseStore` (node label `AuditEvent`). The **sole audit surface** — th
 
 **Methods:**
 - `log(action, target, changeSetCommit, tx)` — the single write. Creates the `AuditEvent` node (all fields frozen at write time), the `TARGETS` edge to the item, and `UNDER_CHANGESET` when `changeSetCommit` is present. `userId`/`userRole` are read from the transaction (§8.1). `target` is `{id, type, code, title, version}`; `changeSetCommit` is `{changeSetId, code, title, classifier, note}` or `null`. Written **in the same transaction** as the operation it records — the event never exists without its cause, and the cause never commits without its event.
-- `findByTarget(itemId, tx)` → `Array<AuditEvent>` ordered by `timestamp` — the History feed. A pure event scan via `TARGETS`, no joins.
-- `findByChangeSet(changeSetId, tx)` → member-row projection — the change-set members feed: the single `(cs)<-[:UNDER_CHANGESET]-(e)-[:TARGETS]->(item)` hop. Recovers `versionId` by an on-demand hop from `targetId` + `targetVersion` to the `ItemVersion` node (off any common read path — runs only when the change-set detail page is opened).
+- `findAll(filters, tx)` → `Array<AuditEvent row>` ordered by `timestamp` — the **sole audit-query method**. `filters` is `{changeSetId?, targetId?, userId?}`, all optional, AND-combined; an empty object returns the entire log. Every consumer reads this one shape: the audit interface (`/audit-events`), the client-built History timeline (filter by `targetId`), and the change-set members feed (`ChangeSetStore.findMembers` delegates with `{changeSetId}`). Each row carries every frozen event attribute plus a resolved `versionId` — the `ItemVersion` node id recovered via an `OPTIONAL MATCH` on `targetId` + `targetVersion` **within the same query** (one statement, no N+1; null for non-version-producing events). When `changeSetId` is supplied the match starts from the `UNDER_CHANGESET` hop; otherwise it is a plain `TARGETS` scan.
 
 The denormalised target/change-set fields on the event are frozen snapshots; a `HARD_DELETE` event's `TARGETS` edge is removed with the item, but `targetId`/`targetType`/`targetCode`/`targetTitle` survive as the only trace.
 
@@ -196,7 +195,7 @@ Each concrete store extends the appropriate base and adds entity-specific relati
 | `ODPEditionStore` | `BaseStore` | `EXPOSES`, context resolution; immutable |
 | `OperationalChangeMilestoneStore` | `BaseStore` | `BELONGS_TO`, `TARGETS`; internal to `OperationalChangeStore` |
 | `ChangeSetStore` | `BaseStore` | Non-versioned; status transitions; `findMembers` via audit `UNDER_CHANGESET` hop |
-| `AuditEventStore` | `BaseStore` | Append-only audit log; `TARGETS` / `UNDER_CHANGESET`; `log` + `findByTarget` + `findByChangeSet` |
+| `AuditEventStore` | `BaseStore` | Append-only audit log; `TARGETS` / `UNDER_CHANGESET`; `log` + `findAll` (single audit-query method) |
 | `ChapterStore` | `VersionedItemStore` | No relationships; `findByKey(key, tx)` for bootstrap; config-owned fields merged at read time |
 | `OperationalRequirementStore` | `VersionedItemStore` | `REFINES`, `IMPACTS_STAKEHOLDER`, `REFERENCES`, `DEPENDS_ON`, `IMPLEMENTS` |
 | `OperationalChangeStore` | `VersionedItemStore` | `IMPLEMENTS`, `DECOMMISSIONS`, `DEPENDS_ON`; milestones delegated |
@@ -443,19 +442,20 @@ Inherits `BaseStore` (node label `ChangeSet`). Non-versioned — a change set is
 - `reopen(id, tx)` — sets `status = 'OPEN'`, clears `closedAt`/`closedBy` (multi-cycle history not retained); throws if not found
 - `findByStatus(status, tx)` → `Array<ChangeSet>` ordered by `createdAt DESC`
 - `findByClassifier(classifier, tx)` → `Array<ChangeSet>` ordered by `createdAt DESC`
-- `findMembers(changeSetId, tx)` → member-row projection — delegates to `AuditEventStore.findByChangeSet` (the single `UNDER_CHANGESET` hop). Computed on demand by the change-set detail view.
+- `findMembers(changeSetId, tx)` → `Array<AuditEvent row>` — delegates to `AuditEventStore.findAll({changeSetId}, tx)`. Returns the standard audit-row shape (same as every audit consumer); the change-set detail view reads `targetType` / `targetCode` / `targetTitle` / `targetVersion` / `versionId` directly off each row. Computed on demand.
 
-**Member-row projection** (the declared shape returned by `findMembers`, distinct from any O* projection — the change-set detail view renders these common columns only):
+**Member rows** are the standard AuditEvent row shape returned by `findAll` (no separate projection — `findMembers` delegates with `{changeSetId}`). The change-set detail view reads these columns off each row:
 
 | Field | Source |
 |---|---|
-| `itemId` | `id(item)` |
-| `itemType` | `e.targetType` — `ON` / `OR` / `OC` / `CHAPTER` (frozen on the event) |
-| `code` | `e.targetCode` |
-| `title` | `e.targetTitle` |
-| `versionId` | `id(v)` — resolved on demand from `targetId` + `targetVersion` |
-| `version` | `e.targetVersion` |
+| `targetId` | `id(item)` — stable item identity |
+| `targetType` | frozen on the event — `ON` / `OR` / `OC` / `CHAPTER` etc. |
+| `targetCode` | `e.targetCode` |
+| `targetTitle` | `e.targetTitle` |
+| `targetVersion` | `e.targetVersion` — the version sequence integer |
+| `versionId` | `id(v)` — `ItemVersion` node id, resolved in the same query via the `OPTIONAL MATCH` hop |
 | `note` | `e.note` |
+| `action`, `userId`, `userRole`, `timestamp`, `changeSetCode`, `changeSetTitle`, `classifier` | also present — the full frozen event |
 
 Members are read from the audit log; the set's own title / status / classifier are on the `ChangeSet` node (its detail header), while each row's change context is frozen on the event.
 
@@ -530,7 +530,7 @@ Every consequential write records an `AuditEvent` in the same transaction (§3.x
 
 **Write path** — `create` and `update` take a `changeSetCommit = {changeSetId, note}` argument, separate from `data` (which carries entity state only). `_validateOpenChangeSet` fails fast if the set is missing or not `OPEN` **and returns a frozen `{code, title, classifier}` snapshot**; `_auditCommit` assembles the audit fragment; `auditEventStore.log(...)` writes the event. The change-set code/title/classifier are frozen onto the event at commit time, so a later rename or reclassification never leaves a stale member row. Restore and decommission are service-level operations flowing through `update`, so they audit identically.
 
-**Read path** — there is no per-version reason resolution on common reads. The History feed reads `AuditEventStore.findByTarget(itemId)`; the change-set members feed reads `AuditEventStore.findByChangeSet(changeSetId)`. Both are on-demand and self-contained (every field frozen on the event).
+**Read path** — there is no per-version reason resolution on common reads. Both the History feed and the change-set members feed read `AuditEventStore.findAll(filters)` — History with `{targetId}`, members with `{changeSetId}`. Both are on-demand and self-contained (every field frozen on the event).
 
 > **Bootstrap:** `ChapterStore.createChapter` seeds version 1 directly (not through `VersionedItemStore.create`) and records **no** audit event — bootstrap chapters are config-owned scaffolding, not a consequential user write. Their audit trail begins at first edit. (Resolves the former "bootstrap system change set" open point: no system actor is invented, keeping `UserRole` to writer roles only.)
 

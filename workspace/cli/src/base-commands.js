@@ -42,6 +42,14 @@ export class BaseCommands {
     }
 
     /**
+     * Get user role from global program options
+     */
+    getUserRole() {
+        const program = this.getCurrentProgram();
+        return program.opts().role;
+    }
+
+    /**
      * Get the current commander program instance
      */
     getCurrentProgram() {
@@ -54,10 +62,13 @@ export class BaseCommands {
      */
     createHeaders() {
         const userId = this.getUserId();
-        return {
+        const userRole = this.getUserRole();
+        const headers = {
             'Content-Type': 'application/json',
             'x-user-id': userId
         };
+        if (userRole) headers['x-user-role'] = userRole;
+        return headers;
     }
 
     /**

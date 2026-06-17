@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import ChapterService from '../services/ChapterService.js';
 import { StoreErrorCode } from '../store/transaction.js';
-import auditEventService from '../services/AuditEventService.js';
 
 const router = Router();
 
@@ -56,24 +55,6 @@ router.get('/:id', async (req, res) => {
     } catch (error) {
         console.error('Error fetching chapter:', error);
         if (error.message.includes('Edition not found') || error.message.includes('ODPEdition not found')) {
-            res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-        } else {
-            res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
-        }
-    }
-});
-
-// Get audit timeline (History) — unified AuditEvent feed for the chapter.
-// Replaces the former /:id/versions version-history route (Phase A).
-router.get('/:id/history', async (req, res) => {
-    try {
-        const user = getUserOptional(req);
-        console.log(`Chapter history itemId: ${req.params.id}, user: ${user?.id ?? null}`);
-        const history = await auditEventService.getItemHistory(req.params.id, user);
-        res.json(history);
-    } catch (error) {
-        console.error('Error fetching chapter history:', error);
-        if (error.message.includes('x-user-id')) {
             res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
         } else {
             res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });

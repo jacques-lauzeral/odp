@@ -22,7 +22,14 @@ Every command constructs an HTTP request to the configured API server using `nod
 
 ### 2.2 User Identity
 
-Commands that write data (create, update, patch, delete, import) require a `--user` flag or a configured default user. The value is passed as a header to the API, which propagates it into the transaction for version authorship tracking.
+The `odip-cli` launcher script injects two global options before passing arguments to Node:
+
+| Option | Default | Header sent |
+|---|---|---|
+| `--user <userId>` | `$USER` (OS user) | `x-user-id` |
+| `--role <role>` | `INTEGRATOR` | `x-user-role` |
+
+Both are available on every command. `createHeaders()` in `base-commands.js` sends both headers on every request; the server assembles `user {id, role}` from them and threads the pair into the transaction. The role is frozen onto every `AuditEvent` at write time (Phase A audit foundation). RBA enforcement is deferred to a later phase — at P0 the headers are always trusted.
 
 ### 2.3 Output Formatting
 
@@ -200,6 +207,19 @@ Each rule renders as a labelled table when findings are present. Column layout:
 | Orphan ON | ON ID, Code, Title |
 | NO SHOW O\* | ID, Code, Type, Title |
 
+### Audit Events
+
+The audit log is the sole authoritative record of every consequential write (Phase A — audit foundation). The `audit-event` command provides read-only access; the log is never mutated via the CLI.
+
+| Command | Action |
+|---|---|
+| `audit-event list` | Query the full log (use with care) |
+| `audit-event list --change-set <id>` | Events committed under a change set (item History per CS) |
+| `audit-event list --target <id>` | Unified History timeline for one item |
+| `audit-event list --user <id>` | All actions by a specific actor |
+
+All three filters are optional and combinable (AND semantics). The table columns are: Timestamp, Action, Type, Code, Title, Ver, Actor, CS Code, Note. `--target <id>` is the canonical way to view an item's History — there is no item-scoped `/history` endpoint; the client passes `targetId` to the single audit query surface.
+
 ### Change Sets
 
 Change sets carry the *why* of every versioned write (LCM). They are non-versioned and authored in-app only (never imported). Every `requirement` / `change` / `chapter` write and every `import distributed` run commits under one OPEN change set.
@@ -210,7 +230,7 @@ Change sets carry the *why* of every versioned write (LCM). They are non-version
 | `change-set list --status OPEN\|CLOSED` | Filter by status |
 | `change-set list --classifier <C>` | Filter by classifier |
 | `change-set show <id>` | Show a single change set |
-| `change-set members <id>` | List the versions committed under it |
+| `change-set members <id>` | List the audit events committed under it (backed by the audit log) |
 | `change-set create <title> <classifier>` | Create (status initialised to OPEN) |
 | `change-set update <id>` | Edit `--title` / `--reason` (OPEN only) |
 | `change-set close <id>` | Close |
@@ -274,6 +294,8 @@ The following command files or subcommands were removed:
 `VersionedCommands` extends `BaseCommands` and adds: version history, show-version, edition context support, and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--edition <id>` (optional). The `--baseline` option has been removed — baseline is an internal implementation detail not exposed in the CLI. Edition ID is passed directly as `?edition=<id>` to the API; server-side resolution handles baseline and wave context internally.
+
+`getUserRole()` mirrors `getUserId()` — both read from the global `program.opts()` set by the `odip-cli` script. `createHeaders()` sends `x-user-role` alongside `x-user-id` on every request.
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--projection`. The projection value is validated before the request is issued; an invalid value exits with a non-zero code. The projection is appended as a query parameter only when non-default. List tables show identity/classification columns only — rich-text fields are surfaced in `show` / `show-version`, not in the list.
 

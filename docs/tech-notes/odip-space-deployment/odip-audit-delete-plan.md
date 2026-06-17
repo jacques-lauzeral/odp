@@ -16,7 +16,7 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase A — Audit foundation.** Introduce `AuditEvent`; strip audit fields from item/version nodes; remove `HAS_REASON`; rewire change-set membership and the History view onto the log. At the end of Phase A the application behaves as before *to the user* (no deletion yet) but records every write in the log and reads History/members from it.
 
-> **Status (16 Jun 2026):** §3.1 model/shared ✅ DONE · §3.2 storage ✅ DONE · §3.3 service ⏳ NEXT · §3.4 REST · §3.5 CLI · §3.6 web · §3.7 ADD (01/02 done with their layers).
+> **Status (17 Jun 2026):** §3.1 model/shared ✅ DONE · §3.2 storage ✅ DONE · §3.3 service ✅ DONE · §3.4 REST ✅ DONE · §3.5 CLI ⏳ NEXT · §3.6 web · §3.7 ADD (01/02/03/04 done with their layers; 07/08 pending).
 
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
@@ -36,53 +36,61 @@ Phase A must complete before Phase B begins. Within each phase the layer order i
 
 > **As-built refinements (vs the sketch below):**
 > - `log` signature is **object-based**: `log(action, target, changeSetCommit, tx)` where `target = {id, type, code, title, version}` and `changeSetCommit = {changeSetId, code, title, classifier, note} | null`.
-> - `userId` **and `userRole`** are read from the transaction; `transaction.js` gained `userRole` + `getUserRole()`, `createTransaction(userId, userRole)`.
+> - `userId` **and `userRole`** are read from the transaction; `transaction.js` gained `userRole` + `getUserRole()`, `createTransaction(userId, userRole)`. The route layer assembles `user {id, role}` from `x-user-id` / `x-user-role` and threads it through every service call (`userId` → `user` across the whole service + route surface).
 > - `_validateOpenChangeSet` now **returns the frozen `{code, title, classifier}` snapshot**; `_auditCommit` and `_resolveAuditTargetType` added.
-> - `findVersionHistory` **removed** (not rewired) — History is served by `AuditEventStore.findByTarget`. `_writeHasReason` / `_resolveChangeSetCommit` / `_attachChangeSetCommits` removed.
-> - Member row keeps **`versionId`** (resolved on demand from `targetId`+`targetVersion`); `itemType` is the uppercase `AuditTargetType` (`CHAPTER`, not `chapter`).
+> - **Single query method.** `findByTarget` / `findByChangeSet` were consolidated into one `findAll(filters, tx)` (`filters = {changeSetId?, targetId?, userId?}`). `AuditEventStore` exposes exactly `log` + `findAll`. One row shape for all consumers — the full frozen event plus a `versionId` recovered via `OPTIONAL MATCH` in the same statement (no N+1). `findVersionHistory` removed; `_writeHasReason` / `_resolveChangeSetCommit` / `_attachChangeSetCommits` removed.
+> - `ChangeSetStore.findMembers` delegates to `auditEventStore.findAll({changeSetId}, tx)` — no standalone member-row projection; members are AuditEvent rows. `itemType` carried as uppercase `AuditTargetType` (`CHAPTER`).
 > - **Bootstrap chapters record no audit event** (config scaffolding); resolves the old "system change set" open point — no system actor, `UserRole` stays writer-only.
-> - Index: `AuditEvent.timestamp` only at P0. *(Pending: the `_ensureConstraints` edit in `store/index.js`, not yet uploaded.)*
+> - Index: `AuditEvent.timestamp` only at P0. The `_ensureConstraints` edit in `store/index.js` ✅ applied (timestamp index added alongside the changeset-code uniqueness constraint).
 
-- New `AuditEventStore` with the single write method `log(action, targetId, targetType, targetVersion, actorId, changeSetId, note, tx)` — creates the `AuditEvent` node, the `TARGETS` edge, and the `UNDER_CHANGESET` edge when `changeSetId` is present. Read methods: `findByTarget(itemId, tx)` (History feed) and `findByChangeSet(changeSetId, tx)` (members feed).
+- New `AuditEventStore` with the single write method `log(action, target, changeSetCommit, tx)` — creates the `AuditEvent` node, the `TARGETS` edge, and the `UNDER_CHANGESET` edge when change-set-bound. One read method: `findAll(filters, tx)` with `filters = {changeSetId?, targetId?, userId?}` — the sole audit query, serving the audit interface, client-built History (`targetId`), and the members feed (`changeSetId`).
 - `VersionedItemStore` — `create` / `update` stop stamping `createdAt` / `createdBy` and stop writing `HAS_REASON`; instead each calls `auditEventStore.log(...)` in the same transaction. The `changeSetCommit` argument is retained (it still carries `changeSetId` + `note`) but now feeds the audit event rather than the edge.
-- `ChangeSetStore.findMembers` — rewrite onto the single-hop `UNDER_CHANGESET` traversal (design §3.6). Drop the `HAS_REASON` reverse traversal.
+- `ChangeSetStore.findMembers` — delegates to `auditEventStore.findAll({changeSetId}, tx)` (the single `UNDER_CHANGESET` hop). Drops the `HAS_REASON` reverse traversal and the standalone member-row projection.
 - `BaseStore` — `close` / `reopen` on `ChangeSetStore`, and the management-entity writes, gain their `log(...)` calls.
 - Remove the `HAS_REASON` constraint/index bootstrap; add the `AuditEvent` node and any index on `timestamp`.
 
-### 3.3 Service
+### 3.3 Service ✅ DONE
 
-- New `AuditEventService` — read-side queries for the History view (`getItemHistory(itemId, userId)`) and any audit consumers. Write is not a service concern: the log is written by stores inside the operation transaction, not by a separate service call (which would break atomicity).
-- `VersionedItemService` — read hydration that filled `changeSetCommit.changeSetTitle` / `classifier` from the `ChangeSetService` cache is retained for the History view, but now keyed off the audit event's `UNDER_CHANGESET` rather than the version's `HAS_REASON`.
-- `ChangeSetService.getMembers` — unchanged signature; backed by the rewritten `findMembers`.
+- New `AuditEventService` — a single read method `getAuditEvents(filters, user)` (`filters = {changeSetId?, targetId?, userId?}`) delegating to `auditEventStore.findAll`. No `getItemHistory` — History is a client concern (the client passes `{targetId}`). Write is not a service concern: the log is written by stores inside the operation transaction (atomicity).
+- `VersionedItemService` — read-side `changeSetCommit` hydration **removed entirely** (not rewired). `getById` / `getByIdAndVersion` / `getAll` return what the store reads; `getVersionHistory` removed. `changeSetCommit` is gone from every versioned-item response shape.
+- `ChangeSetService` — `hydrateInto` / `hydrateAll` removed; the `id→ChangeSet` cache is now write-path-only (open-set validation + frozen snapshot). `getMembers` signature unchanged; backed by the rewritten `findMembers`.
+- **`user {id, role}` propagation** — every service method signature changed `userId` → `user`, calling `createTransaction(user.id, user.role)`. Applies across all base classes (`SimpleItemService`, `TreeItemService`, `VersionedItemService`), all concrete services, the import pipeline, and `QualityService`.
 
-### 3.4 REST API
+### 3.4 REST API ✅ DONE
 
-- New read-only resource `/audit` (or nested `GET /{item}/{id}/history`) returning the unified timeline for an item. Confirm placement: a dedicated `/audit` namespace vs a `history` sub-resource on each versioned item. Recommendation: `GET /operational-requirements/{id}/history` etc., since History is always item-scoped at P0.
-- Versioned-item write bodies are unchanged — they already carry `changeSetId` + `note` (the `changeSetCommit` write shape). No request-shape change for clients.
-- Remove any response fields that exposed version-node `createdAt` / `createdBy` directly; History responses carry the audit event's actor/timestamp instead.
-- OpenAPI: new `AuditEvent` schema, new history path(s), removal of stamp fields from version response schemas.
+- New read-only resource **`GET /audit-events?changeSetId=&targetId=&userId=`** → `auditEventService.getAuditEvents(filters, user)`. Hand-written `audit-event.js` router, mounted at `/audit-events`. The append-only log is never mutated via REST.
+- **No item-scoped `/history` endpoint.** The earlier sketch's `/{item}/{id}/history` was dropped in favour of the single audit resource — History is built client-side from `?targetId=`. The former `/{item}/{id}/versions` (version-history list) is removed from the base router and `chapter.js`; `/{item}/{id}/versions/{versionNumber}` (specific-version content) is retained.
+- `x-user-role` header added: routes assemble `user {id, role}` via `getUser` / `getUserOptional` (was `getUserId` / `getUserIdOptional`, now returning the object); `role` is `null` when the header is absent (validation deferred to RBA). CORS `Access-Control-Allow-Headers` gains `x-user-role`.
+- Versioned-item write bodies unchanged — they already carry `changeSetId` + `note`.
+- Response schemas lost `createdAt` / `createdBy` / `changeSetCommit`; gained `status`.
+- OpenAPI: new `openapi-audit-event.yml` (`AuditAction` / `AuditTargetType` / `AuditEventRow` schemas + `/audit-events`); `VersionHistory` schema replaced by `AuditEventRow`; `/versions` list paths replaced; stamp fields removed from entity schemas.
 
-### 3.5 CLI
+### 3.5 CLI ⏳ NEXT
 
-- New `audit` command group (or `history` subcommand on existing item commands): `... history <id>` lists the timeline.
-- Existing write commands are unchanged at the call site (they already pass `--change-set`).
+- New `audit-event` command group mapping to the single audit query (`GET /audit-events` / `auditEventService.getAuditEvents`). One verb — list/query the log — with optional filter flags, all aligned with the store's `findAll` filters:
+  - `--change-set <id>` → `changeSetId`
+  - `--target <id>` → `targetId` (an item's History timeline)
+  - `--user <id>` → `userId`
+    All optional and combinable; no flag lists the whole log. No item-scoped `history` subcommand on entity commands — History is the `--target` filter on `audit-event`, mirroring the client.
+- Existing write commands unchanged at the call site (they already pass `--change-set`).
+- Note the `user {id, role}` propagation: CLI commands assemble the acting user the same way routes do (the CLI's user-context source feeds `{id, role}` to the service/API call).
 
 ### 3.6 Web client
 
-- `apiClient` — new `getItemHistory(type, id)`; remove reliance on version-node stamps in any list/detail rendering.
-- **History view redesign** — this is the deferred LCM History revisit, realised now. Render the unified AuditEvent timeline: one row per event, showing action, actor, timestamp, change-set link (where present), note. The previous version-list History tab is replaced by this timeline.
-- Change-set member rendering is unchanged in the UI (the `findMembers` projection shape is preserved); only its backing query changed.
+- `apiClient` — new audit query method wrapping `GET /audit-events` (params `changeSetId` / `targetId` / `userId`); remove reliance on version-node stamps in any list/detail rendering.
+- **History view** — built client-side from `apiClient` audit query with `{targetId}`. Render the unified AuditEvent timeline: one row per event, showing action, actor, timestamp, change-set link (where present), note. The previous version-list History tab is replaced by this timeline. There is no server History endpoint — the client owns the timeline assembly.
+- Change-set member rendering — backed by the same audit query (`{changeSetId}`) via `GET /change-sets/{id}/members`; member rows are now AuditEvent rows (read `targetType` / `targetCode` / `targetTitle` / `targetVersion`).
 
 ### 3.7 ADD chapters (Phase A)
 
-Updated in the same batch as the code:
+Updated in the same batch as each layer:
 
-- **01-Data-Model** — `AuditEvent` node and relationships; item/version field removals; `HAS_REASON` removal; status field.
-- **02-Storage-Layer** — `AuditEventStore`; `VersionedItemStore` write-path changes; `findMembers` rewrite; bootstrap changes.
-- **03-Service-Layer** — `AuditEventService`; hydration rewiring.
-- **04-REST-API** — history resource; schema changes.
-- **07-CLI** — `history` command.
-- **08-Web-Client** — History view redesign.
+- **01-Data-Model** ✅ — `AuditEvent` node and relationships; item/version field removals; `HAS_REASON` removal; status field.
+- **02-Storage-Layer** ✅ — `AuditEventStore` (`log` + `findAll`); `VersionedItemStore` write-path changes; `findMembers` delegation; bootstrap changes.
+- **03-Service-Layer** ✅ — `AuditEventService` (`getAuditEvents`); hydration removal; `user {id, role}` propagation.
+- **04-REST-API** ✅ — `/audit-events` resource; `x-user-role`; schema changes; `/versions` list removal.
+- **07-CLI** ⏳ — `audit-event` command (next).
+- **08-Web-Client** — History view (client-built over the audit query).
 
 ## 4. Phase B — Deletion
 
@@ -147,7 +155,7 @@ Updated in the same batch as the code:
 
 These are settled in the design note but surface as concrete code choices:
 
-- **History endpoint placement** — item-scoped sub-resource (`/{item}/{id}/history`) preferred over a global `/audit` namespace at P0 (§3.4).
+- **Audit query surface** — settled on a **single `GET /audit-events?changeSetId=&targetId=&userId=`** resource backed by one store method `findAll(filters)`, rather than an item-scoped `/{item}/{id}/history` endpoint. History is built client-side from `?targetId=`; change-set members reuse the same query with `?changeSetId=`. This superseded the earlier §3.4 recommendation of a nested `history` sub-resource.
 - **Hard-delete API shape** — distinct `/hard` sub-path preferred over a `?hard=` modifier (§4.4).
 - **Published-wall message at P0** — since decommission is parked, the wall presents as "deletion not possible" with no decommission CTA yet (§4.6).
 
@@ -163,12 +171,12 @@ These are settled in the design note but surface as concrete code choices:
 | Layer | Phase A | Phase B |
 |---|---|---|
 | shared | enums, status, field removals | blocking-dependency type |
-| storage | AuditEventStore, write-path rewire, findMembers | delete/restore/hard methods, integrity, wall, edition store |
-| service | AuditEventService, hydration rewire | delete/restore/hard services, permission gates |
-| REST API | history resource, schema cleanup | delete/restore/hard/recycle-bin paths |
-| CLI | history command | delete/restore/hard/recycle-bin verbs |
-| web | History view redesign | recycle bin, delete affordance |
-| ADD | 6 chapters | 6 chapters |
+| storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | delete/restore/hard methods, integrity, wall, edition store |
+| service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | delete/restore/hard services, permission gates |
+| REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | delete/restore/hard/recycle-bin paths |
+| CLI | `audit-event` command | delete/restore/hard-delete/recycle-bin verbs |
+| web | History view (client-built over audit query) | recycle bin, delete affordance |
+| ADD | 6 chapters (01–04 done, 07/08 pending) | 6 chapters |
 
 ---
 

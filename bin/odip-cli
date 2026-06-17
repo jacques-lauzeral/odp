@@ -5,13 +5,15 @@
 # Requires ODIP_REPO to be set in the environment.
 #
 # Usage:
-#   odip-cli [--user <n>] <command> [args...]
+#   odip-cli [--user <n>] [--role <role>] <command> [args...]
 #
 # If --user is not provided, defaults to the current OS user ($USER).
+# If --role is not provided, defaults to INTEGRATOR.
 #
 # Examples:
 #   odip-cli stakeholder list
 #   odip-cli --user jack requirement list
+#   odip-cli --user jack --role DOMAIN_WRITER requirement list
 #   odip-cli document tree
 
 set -e
@@ -29,9 +31,28 @@ if [[ ! -f "$CLI_ENTRY" ]]; then
     exit 1
 fi
 
-# Inject --user if not already provided
-if [[ "$1" == "--user" ]]; then
-    exec node "$CLI_ENTRY" "$@"
-else
-    exec node "$CLI_ENTRY" --user "$USER" "$@"
-fi
+# Parse --user and --role from the front of the argument list, injecting
+# defaults for whichever are absent, then pass everything through to node.
+#
+# Supported leading forms (order must be --user before --role if both given):
+#   odip-cli ...                            → --user $USER --role INTEGRATOR ...
+#   odip-cli --user jack ...               → --user jack  --role INTEGRATOR ...
+#   odip-cli --role DOMAIN_WRITER ...      → --user $USER --role DOMAIN_WRITER ...
+#   odip-cli --user jack --role DOMAIN_WRITER ... → passed through as-is
+
+ARGS=("$@")
+INJECT_USER="--user $USER"
+INJECT_ROLE="--role INTEGRATOR"
+HAS_USER=false
+HAS_ROLE=false
+
+for arg in "${ARGS[@]}"; do
+    [[ "$arg" == "--user" ]] && HAS_USER=true
+    [[ "$arg" == "--role" ]] && HAS_ROLE=true
+done
+
+PREFIX=()
+$HAS_USER || PREFIX+=("--user" "$USER")
+$HAS_ROLE || PREFIX+=("--role" "INTEGRATOR")
+
+exec node "$CLI_ENTRY" "${PREFIX[@]}" "${ARGS[@]}"

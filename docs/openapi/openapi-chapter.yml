@@ -151,32 +151,6 @@ paths:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
-  /chapters/{id}/versions:
-    get:
-      summary: Get version history for chapter
-      tags: [Chapters]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/VersionHistory'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-
   /chapters/{id}/versions/{versionNumber}:
     get:
       summary: Get specific version of chapter

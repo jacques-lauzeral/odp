@@ -122,7 +122,7 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 **Change-set linkage (LCM).** `payload` is the request message, and the request models carry the commit fields (`changeSetId`, `note`) alongside entity content. Routes stay pass-through; the message→domain split happens here, in `_extractChangeSetCommit(payload)` → `{data, changeSetCommit}`. `create`/`update`/`patch` pass `data` (pure entity state) and the explicit `changeSetCommit = {changeSetId, note}` to `store.*`, so the store boundary never sees the commit embedded in entity data. The store writes the `AuditEvent` (with the frozen `{code, title, classifier}` change-set snapshot) atomically inside the same transaction.
 
-There is **no read-side `changeSetCommit` hydration** (Phase A — audit foundation). The field is gone from every versioned-item response shape; who/when/why is served exclusively by the audit timeline (`AuditEventService.getItemHistory`). `getById`/`getByIdAndVersion`/`getAll` simply return what the store reads — no `changeSetService` call on the read path. `getVersionHistory` is removed entirely; History is the audit timeline.
+There is **no read-side `changeSetCommit` hydration** (Phase A — audit foundation). The field is gone from every versioned-item response shape; who/when/why lives in the audit log, queried via `AuditEventService.getAuditEvents`. `getById`/`getByIdAndVersion`/`getAll` simply return what the store reads — no `changeSetService` call on the read path. `getVersionHistory` is removed entirely; the client builds History from audit events filtered by `targetId`.
 
 `ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full, using `'standard'` projection). It also overrides `getById()` to default to `'extended'` projection. It disables `create()` and `delete()` — chapters are bootstrap-only.
 
@@ -285,13 +285,17 @@ Exported as a singleton (`export default new ChangeSetService()`). It is no long
 
 Read-side companion to `AuditEventStore` (Phase A — audit foundation). A **pure read orchestrator** — no base class, no CRUD, no write path. The audit log is written by stores atomically within their own operation transactions (`auditEventStore().log(...)`); a separate service write would break the atomicity that lets the log be trusted as authoritative, so the service layer never touches the write side.
 
+It exposes a single query method mirroring the store's single `findAll`:
+
 | Method | Description |
 |---|---|
-| `getItemHistory(itemId, user)` | Full chronological `AuditEvent` timeline for a versioned item; every field frozen at write time — no join on read |
+| `getAuditEvents(filters, user)` | Query the audit log. `filters = {changeSetId?, targetId?, userId?}` — all optional, AND-combined; an empty filter returns the entire log. Returns `AuditEventRow[]` ordered by `timestamp`. |
 
 Direct store access (`auditEventStore()`) is the same sanctioned exception applied to `QualityService`: read-only, no business validation, the store call is the lowest abstraction needed.
 
-The response is an `AuditEventRow[]` ordered by `timestamp`, each carrying `action`, `userId`, `userRole`, `timestamp`, the frozen target snapshot (`targetId`/`targetType`/`targetCode`/`targetTitle`/`targetVersion`), the frozen change-set snapshot where present (`changeSetCode`/`changeSetTitle`/`classifier`), and the per-object `note`. This single feed replaces the removed `getVersionHistory`.
+Each row carries every frozen event attribute — `action`, `userId`, `userRole`, `timestamp`, the target snapshot (`targetId`/`targetType`/`targetCode`/`targetTitle`/`targetVersion`), the resolved `versionId`, the change-set snapshot where present (`changeSetCode`/`changeSetTitle`/`classifier`), and the per-object `note`.
+
+**History is a client concern.** There is no item-scoped service method. The History timeline is built by the client, which calls the audit interface filtered by `targetId` (`getAuditEvents({targetId})`). The same single feed also backs the change-set members view (`ChangeSetService.getMembers` → `ChangeSetStore.findMembers` → `findAll({changeSetId})`) and the general `/audit-events` resource.
 
 Exported as a singleton (`export default new AuditEventService()`).
 

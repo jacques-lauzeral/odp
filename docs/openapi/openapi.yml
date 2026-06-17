@@ -59,8 +59,6 @@ paths:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements'
   /operational-requirements/{id}:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements~1{id}'
-  /operational-requirements/{id}/history:
-    $ref: 'openapi-audit-event.yml#/paths/~1operational-requirements~1{id}~1history'
   /operational-requirements/{id}/versions/{versionNumber}:
     $ref: 'openapi-operational.yml#/paths/~1operational-requirements~1{id}~1versions~1{versionNumber}'
 
@@ -68,8 +66,6 @@ paths:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes'
   /operational-changes/{id}:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes~1{id}'
-  /operational-changes/{id}/history:
-    $ref: 'openapi-audit-event.yml#/paths/~1operational-changes~1{id}~1history'
   /operational-changes/{id}/versions/{versionNumber}:
     $ref: 'openapi-operational.yml#/paths/~1operational-changes~1{id}~1versions~1{versionNumber}'
 
@@ -78,8 +74,6 @@ paths:
     $ref: 'openapi-chapter.yml#/paths/~1chapters'
   /chapters/{id}:
     $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}'
-  /chapters/{id}/history:
-    $ref: 'openapi-audit-event.yml#/paths/~1chapters~1{id}~1history'
   /chapters/{id}/versions/{versionNumber}:
     $ref: 'openapi-chapter.yml#/paths/~1chapters~1{id}~1versions~1{versionNumber}'
 
@@ -121,6 +115,10 @@ paths:
   /change-sets/{id}/reopen:
     $ref: 'openapi-change-set.yml#/paths/~1change-sets~1{id}~1reopen'
 
+  # Audit log (Phase A)
+  /audit-events:
+    $ref: 'openapi-audit-event.yml#/paths/~1audit-events'
+
 
 tags:
   - name: Stakeholder Categories
@@ -151,3 +149,5 @@ tags:
     description: Dataset quality checks — structural integrity and traceability rules
   - name: Change Sets
     description: Change-set management — the reason carrier for every versioned write (LCM)
+  - name: Audit Events
+    description: Append-only audit log — the sole audit surface (Phase A)

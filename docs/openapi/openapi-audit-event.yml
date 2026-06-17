@@ -1,10 +1,14 @@
 # openapi-audit-event.yml
 # Phase A — audit foundation
-# AuditEvent schemas and the reusable /{item}/{id}/history path.
+# AuditEvent schemas and the /audit-events query interface.
 #
 # AuditEvent is the sole authoritative audit record for every consequential write.
 # All fields are frozen at write time — no join required on read.
-# The History view renders directly from this feed.
+#
+# There is no item-scoped /history endpoint: History is a client concern. The
+# client builds an item's timeline by querying GET /audit-events?targetId=<id>.
+# The same interface backs the change-set members view (?changeSetId=) and
+# actor-scoped queries (?userId=).
 
 components:
   schemas:
@@ -40,11 +44,12 @@ components:
     AuditEventRow:
       type: object
       description: |
-        A single entry in an item's audit timeline. All fields are frozen at
-        write time and never resolved on read — the History view requires no
-        join. A HARD_DELETE event outlives its target: the TARGETS relationship
-        is removed with the item, but targetId/targetType/targetCode/targetTitle
-        remain on the event as the only surviving trace.
+        A single audit-log entry. All fields are frozen at write time and never
+        resolved on read — every consumer (the /audit-events interface, the
+        client-built History timeline, the change-set members view) reads this
+        one shape. A HARD_DELETE event outlives its target: the TARGETS
+        relationship is removed with the item, but targetId/targetType/
+        targetCode/targetTitle remain on the event as the only surviving trace.
       properties:
         id:
           type: string
@@ -77,7 +82,11 @@ components:
         targetVersion:
           type: integer
           nullable: true
-          description: "Version number for version-producing actions; null otherwise"
+          description: "Version sequence number for version-producing actions; null otherwise"
+        versionId:
+          type: string
+          nullable: true
+          description: "ItemVersion node id, resolved from targetId + targetVersion in the same query; null for non-version-producing events or when the version no longer exists"
         changeSetCode:
           type: string
           nullable: true
@@ -98,22 +107,37 @@ components:
 
 paths:
 
-  # Reusable history path — referenced by openapi.yml for OR, OC, Chapter.
-  # The {item} placeholder is filled per entity type in the main openapi.yml.
-  /operational-requirements/{id}/history:
+  /audit-events:
     get:
-      summary: Get audit timeline for an operational requirement
+      summary: Query the audit log
       description: |
-        Returns the full chronological AuditEvent timeline for the requirement.
-        All fields are frozen at write time — no join required on read.
-        Replaces the former /versions (list) endpoint (Phase A — audit foundation).
-      tags: [Operational Requirements]
+        Returns AuditEvent rows matching the supplied filters, ordered by
+        timestamp ascending. All query parameters are optional and AND-combined;
+        with no filter the entire log is returned. Read-only — the append-only
+        log is never mutated via REST.
+
+        The client builds an item's History timeline by passing targetId. The
+        change-set members view passes changeSetId. userId scopes to one actor.
+      tags: [Audit Events]
       parameters:
-        - name: id
-          in: path
-          required: true
+        - name: changeSetId
+          in: query
+          required: false
           schema:
             type: string
+          description: "Filter to events committed under this change set (UNDER_CHANGESET)"
+        - name: targetId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter to events targeting this item (TARGETS) — the History timeline filter"
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Filter to events recorded for this actor"
       responses:
         '200':
           description: Success
@@ -123,67 +147,19 @@ paths:
                 type: array
                 items:
                   $ref: 'openapi-base.yml#/components/schemas/AuditEventRow'
-        '404':
-          description: Not Found
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-base.yml#/components/schemas/Error'
+        '500':
+          description: Internal Server Error
           content:
             application/json:
               schema:
                 $ref: 'openapi-base.yml#/components/schemas/Error'
 
-  /operational-changes/{id}/history:
-    get:
-      summary: Get audit timeline for an operational change
-      description: |
-        Returns the full chronological AuditEvent timeline for the change.
-        Replaces the former /versions (list) endpoint (Phase A — audit foundation).
-      tags: [Operational Changes]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/AuditEventRow'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
-
-  /chapters/{id}/history:
-    get:
-      summary: Get audit timeline for a chapter
-      description: |
-        Returns the full chronological AuditEvent timeline for the chapter.
-        Replaces the former /versions (list) endpoint (Phase A — audit foundation).
-      tags: [Chapters]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/AuditEventRow'
-        '404':
-          description: Not Found
-          content:
-            application/json:
-              schema:
-                $ref: 'openapi-base.yml#/components/schemas/Error'
+tags:
+  - name: Audit Events
+    description: Append-only audit log — the sole audit surface (Phase A)

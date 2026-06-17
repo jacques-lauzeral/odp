@@ -8,34 +8,35 @@ The ODIP REST API is an Express.js application following a manual routes pattern
 
 ## 2. Router Architecture
 
-Two reusable base routers cover all entity types, plus hand-written routers for the management entities.
+Two reusable base routers cover all entity types, plus hand-written routers for the management entities, quality, change sets, and the audit log.
 
 ### 2.1 SimpleItemRouter
 
 Used by all setup entity routes (`stakeholder-category.js`, `reference-document.js`, `bandwidth.js`, `wave.js`). Wires standard CRUD to the corresponding `SimpleItemService` / `TreeItemService` methods:
 
 ```
-GET    /           → service.listItems(userId)
-GET    /:id        → service.getItem(id, userId)
-POST   /           → service.createItem(body, userId)
-PUT    /:id        → service.updateItem(id, body, userId)
-DELETE /:id        → service.deleteItem(id, userId)
+GET    /           → service.listItems(user)
+GET    /:id        → service.getItem(id, user)
+POST   /           → service.createItem(body, user)
+PUT    /:id        → service.updateItem(id, body, user)
+DELETE /:id        → service.deleteItem(id, user)
 ```
 
 ### 2.2 VersionedItemRouter
 
-Used by `operational-requirement.js` and `operational-change.js`. Wires the full versioned entity surface including edition-context list/get, patch, and version history endpoints:
+Used by `operational-requirement.js` and `operational-change.js`. Wires the full versioned entity surface including edition-context list/get, patch, and specific-version retrieval:
 
 ```
-GET    /                          → service.getAll(userId, editionId, filters, projection)
-GET    /:id                       → service.getById(id, userId, editionId, projection)
-GET    /:id/versions              → service.getVersionHistory(id, userId)
-GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, userId)
-POST   /                          → service.create(body, userId)
-PUT    /:id                       → service.update(id, body, expectedVersionId, userId)
-PATCH  /:id                       → service.patch(id, body, expectedVersionId, userId)
-DELETE /:id                       → service.delete(id, userId)
+GET    /                          → service.getAll(user, editionId, filters, projection)
+GET    /:id                       → service.getById(id, user, editionId, projection)
+GET    /:id/versions/:versionNum  → service.getByIdAndVersion(id, versionNum, user)
+POST   /                          → service.create(body, user)
+PUT    /:id                       → service.update(id, body, expectedVersionId, user)
+PATCH  /:id                       → service.patch(id, body, expectedVersionId, user)
+DELETE /:id                       → service.delete(id, user)
 ```
+
+There is **no version-history route** (Phase A — audit foundation). The former `GET /:id/versions` (list) is removed; an item's History timeline is built by the client from the audit log (`GET /audit-events?targetId=<id>`, §2.8). `GET /:id/versions/:versionNum` is retained — it returns the content of one specific version, not the audit trail.
 
 `editionId` is extracted from `req.query.edition` (optional). When absent the service queries the repository (latest versions).
 
@@ -44,11 +45,11 @@ DELETE /:id                       → service.delete(id, userId)
 `operational-change.js` extends this with milestone sub-resource routes:
 
 ```
-GET    /:id/milestones                      → service.getMilestones(id, userId, editionId)
-GET    /:id/milestones/:milestoneKey        → service.getMilestone(id, milestoneKey, userId, editionId)
-POST   /:id/milestones                      → service.addMilestone(id, body, expectedVersionId, userId)
-PUT    /:id/milestones/:milestoneKey        → service.updateMilestone(id, milestoneKey, body, expectedVersionId, userId)
-DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, milestoneKey, expectedVersionId, userId, changeSetCommit)
+GET    /:id/milestones                      → service.getMilestones(id, user, editionId)
+GET    /:id/milestones/:milestoneKey        → service.getMilestone(id, milestoneKey, user, editionId)
+POST   /:id/milestones                      → service.addMilestone(id, body, expectedVersionId, user)
+PUT    /:id/milestones/:milestoneKey        → service.updateMilestone(id, milestoneKey, body, expectedVersionId, user)
+DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, milestoneKey, expectedVersionId, user, changeSetCommit)
 ```
 
 **Change-set linkage (LCM).** Every versioned write commits under a change set. Because the service splits the commit out of the request message, the generic create/update/patch routes and the milestone POST/PUT routes stay pass-through — `changeSetId`/`note` simply ride in `req.body` and the service extracts them. The one exception is `DELETE /:id/milestones/:milestoneKey`: it carries no entity body, so the route reads `changeSetId`/`note` from the request body (alongside `expectedVersionId`) and passes an explicit `changeSetCommit` to `deleteMilestone`.
@@ -58,16 +59,15 @@ DELETE /:id/milestones/:milestoneKey        → service.deleteMilestone(id, mile
 `chapter.js` is a hand-written router (not a `VersionedItemRouter` subclass — chapters have no `create`/`delete` and `getAll` takes no edition context or content filters):
 
 ```
-GET    /                                        → service.getAll(userId)
-GET    /:id                                     → service.getById(id, userId, editionId?)
-GET    /:id/versions                            → service.getVersionHistory(id, userId)
-GET    /:id/versions/:versionNum                → service.getByIdAndVersion(id, versionNum, userId)
-PUT    /:id                                     → service.update(id, body, expectedVersionId, userId)
-PATCH  /:id                                     → service.patch(id, body, expectedVersionId, userId)
-POST   /:id/resolve-generated-content          → service.resolveGeneratedContent(id, editionId?, userId)
+GET    /                                        → service.getAll(user)
+GET    /:id                                     → service.getById(id, user, editionId?)
+GET    /:id/versions/:versionNum                → service.getByIdAndVersion(id, versionNum, user)
+PUT    /:id                                     → service.update(id, body, expectedVersionId, user)
+PATCH  /:id                                     → service.patch(id, body, expectedVersionId, user)
+POST   /:id/resolve-generated-content          → service.resolveGeneratedContent(id, editionId?, user)
 ```
 
-All GET routes allow anonymous access (`getUserIdOptional`). PUT, PATCH, and POST require `x-user-id`.
+All GET routes allow anonymous access (`getUserOptional`). PUT, PATCH, and POST require `x-user-id`. As with the operational routers, there is no `GET /:id/versions` history route — History is built client-side from `GET /audit-events?targetId=<id>` (§2.8); `GET /:id/versions/:versionNum` (specific-version content) is retained.
 
 `POST /:id/resolve-generated-content` — elaborate mode preview; resolves all generated content declared for the chapter in a single call. Returns `{ blocks: { [blockId]: node[] }, strings: { [key]: string } }`. Block and string resolution run in parallel. Ephemeral — result is not persisted. Accepts optional `?edition=` query parameter for edition-scoped resolution.
 
@@ -80,7 +80,7 @@ All GET routes allow anonymous access (`getUserIdOptional`). PUT, PATCH, and POS
 `quality.js` is a hand-written router. A single endpoint — no base router applies:
 
 ```
-GET /quality/checks[?domain=<keys>][&edition=<id>]  → qualityService.runChecks(domains, editionId, userId)
+GET /quality/checks[?domain=<keys>][&edition=<id>]  → qualityService.runChecks(domains, editionId, user)
 ```
 
 `domain` is an optional comma-separated list of domain keys validated against `domains.json` before the service call. `edition` is an optional edition ID — when present the route passes it directly to `QualityService`, which resolves it to `{baselineId, editionId}` internally via `odpEditionStore().resolveContext()`. When absent, checks run against the live dataset (latest versions).
@@ -93,20 +93,37 @@ The route requires `x-user-id` — quality checks are not available to anonymous
 
 ```
 GET    /                       → service.listItems | findByStatus(status) | findByClassifier(classifier)
-GET    /:id                    → service.getItem(id, userId)
-GET    /:id/members            → service.getMembers(id, userId)
-POST   /                       → service.createItem(body, userId)
-PUT    /:id                    → service.updateItem(id, body, userId)        (OPEN only → 409)
-POST   /:id/close              → service.close(id, userId)
-POST   /:id/reopen             → service.reopen(id, userId)
-DELETE /:id                    → service.deleteItem(id, userId)              (empty + OPEN only → 409)
+GET    /:id                    → service.getItem(id, user)
+GET    /:id/members            → service.getMembers(id, user)
+POST   /                       → service.createItem(body, user)
+PUT    /:id                    → service.updateItem(id, body, user)        (OPEN only → 409)
+POST   /:id/close              → service.close(id, user)
+POST   /:id/reopen             → service.reopen(id, user)
+DELETE /:id                    → service.deleteItem(id, user)              (empty + OPEN only → 409)
 ```
 
-`GET /` accepts optional `?status=` or `?classifier=` (status takes precedence). All GET routes allow anonymous access; mutations require `x-user-id`. Attempting to edit/delete a non-OPEN set, or delete a set with members, returns `409 CONFLICT`.
+`GET /` accepts optional `?status=` or `?classifier=` (status takes precedence). All GET routes allow anonymous access; mutations require `x-user-id`. Attempting to edit/delete a non-OPEN set, or delete a set with members, returns `409 CONFLICT`. `GET /:id/members` returns AuditEvent rows under the set (the same shape as `/audit-events`) — `findMembers` delegates to the audit log filtered by `changeSetId` (§2.8).
 
 ### 2.7 Import Change-Set Parameter
 
 `POST /import/distributed` gains a required `?changeSetId=` query parameter — every operational version created or updated by the import commits under it (LCM). The id is kept out of the source JSON body (which conforms to `source.schema.json`). Setup-only source files never reach a versioned write, so the id is unused on that path.
+
+### 2.8 AuditEventRouter
+
+`audit-event.js` is a hand-written, read-only router exposing the single audit query surface:
+
+```
+GET /audit-events[?changeSetId=][&targetId=][&userId=]  → auditEventService.getAuditEvents(filters, user)
+```
+
+All three query parameters are optional and AND-combined; with no filter the entire log is returned. The append-only log is never mutated via REST — there is no POST/PUT/DELETE. All filtering maps directly to the store's single `findAll(filters, tx)`.
+
+This one resource serves every audit consumer:
+- **Item History** — the client builds a versioned item's timeline by passing `?targetId=<id>`. There is deliberately no item-scoped `/{item}/{id}/history` endpoint; History is assembled client-side from this feed.
+- **Change-set members** — backed by the same query (`?changeSetId=`), surfaced through `GET /change-sets/{id}/members`.
+- **Actor audit** — `?userId=` scopes to one actor.
+
+Each row is the frozen `AuditEventRow` (action, actor, role, timestamp, target snapshot, resolved `versionId`, change-set snapshot, note). GET allows anonymous access, consistent with the other read routes.
 
 ---
 
@@ -160,6 +177,7 @@ The full API contract is defined across a set of modular OpenAPI 3.0 files:
 | `openapi-odp.yml` | ODIP editions (`Edition`, `EditionRequest` schemas) |
 | `openapi-import.yml` | Import endpoints |
 | `openapi-change-set.yml` | Change-set endpoints (CRUD, close/reopen, members) |
+| `openapi-audit-event.yml` | Audit log query interface (`GET /audit-events`) and `AuditAction` / `AuditTargetType` / `AuditEventRow` schemas |
 | `openapi-docx.yml` | DOCX export endpoint |
 | `openapi-publication.yml` | Publication endpoint |
 | `openapi-quality.yml` | Quality check endpoints and schemas (`QualityReport`, `DomainQualityReport`, `BrokenONTraceability`, `UntraceableOR`, `OrphanON`, `NoShowOStar`) |

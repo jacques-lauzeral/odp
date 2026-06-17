@@ -1057,9 +1057,10 @@ components:
       type: object
       description: |
         Phase A (audit foundation): ChangeSetCommit is no longer returned on versioned-item
-        responses. Who/when/why is served exclusively by the AuditEvent timeline
-        (GET /{item}/{id}/history). This schema is retained only as the write-path
-        commit fragment embedded in request bodies (changeSetId + note).
+        responses. Who/when/why lives in the audit log, queried via GET /audit-events
+        (the client builds an item's History by filtering on targetId). This schema is
+        retained only as the write-path commit fragment embedded in request bodies
+        (changeSetId + note).
       properties:
         changeSetId:
           type: string

@@ -286,26 +286,6 @@ paths:
         '204':
           description: No Content
 
-  /operational-requirements/{id}/versions:
-    get:
-      summary: Get version history for operational requirement
-      tags: [Operational Requirements]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/VersionHistory'
-
   /operational-requirements/{id}/versions/{versionNumber}:
     get:
       summary: Get specific version of operational requirement
@@ -576,26 +556,6 @@ paths:
       responses:
         '204':
           description: No Content
-
-  /operational-changes/{id}/versions:
-    get:
-      summary: Get version history for operational change
-      tags: [Operational Changes]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: 'openapi-base.yml#/components/schemas/VersionHistory'
 
   /operational-changes/{id}/versions/{versionNumber}:
     get:

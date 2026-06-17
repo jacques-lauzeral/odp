@@ -4,6 +4,7 @@ import nodePath from 'path';
 import { execSync } from 'child_process';
 import { initializeStores, initializeDatabase, closeStores } from './store/index.js';
 import stakeholderCategoryRoutes from './routes/stakeholder-category.js';
+import auditEventRoutes from './routes/audit-event.js';
 import chapterRoutes from './routes/chapter.js';
 import referenceDocumentRoutes from './routes/reference-document.js';
 import bandwidthRoutes from './routes/bandwidth.js';
@@ -32,7 +33,7 @@ app.use('/import', express.raw({ type: ['application/yaml', 'text/yaml'], limit:
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id, x-user-role');
 
     if (req.method === 'OPTIONS') {
         res.sendStatus(200);
@@ -100,6 +101,7 @@ app.use('/quality', qualityRoutes);
 
 // Change-set API Routes (LCM)
 app.use('/change-sets', changeSetRoutes);
+app.use('/audit-events', auditEventRoutes);
 
 // Serve built publication site
 const siteDir = nodePath.join(process.env.ODIP_HOME || '.', 'publication', 'works', 'build', 'site');

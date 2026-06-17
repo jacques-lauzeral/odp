@@ -101,74 +101,92 @@ export class AuditEventStore extends BaseStore {
     }
 
     /**
-     * History feed for one item — the unified chronological timeline across all
-     * action types. A pure AuditEvent scan via TARGETS; no joins (every field is
-     * on the event). Consulted on explicit user demand only — off any common
-     * read path.
+     * The SOLE audit-query method. Returns AuditEvent rows matching the supplied
+     * filters, ordered chronologically. All filters are optional and combined with
+     * AND; an empty filter object returns the entire log.
      *
-     * @param {number} itemId
+     *   filters.changeSetId — events under a given ChangeSet (UNDER_CHANGESET)
+     *   filters.targetId    — events targeting a given item (TARGETS)
+     *   filters.userId      — events by a given actor
+     *
+     * Each row carries every frozen event attribute (action, userId, userRole,
+     * timestamp, target* snapshot, changeSet* snapshot, classifier, note, id) plus
+     * a resolved `versionId`: the ItemVersion node id recovered in the same query
+     * via an OPTIONAL MATCH on targetId + targetVersion. The recovery hop runs
+     * once as part of this statement (no N+1) and is null for non-version-producing
+     * events or when the version no longer exists.
+     *
+     * This single shape serves every consumer — the audit interface (/audit-events),
+     * the client-built History timeline (filter by targetId), and the change-set
+     * members feed (ChangeSetStore.findMembers delegates with filter by changeSetId).
+     *
+     * @param {object} filters - { changeSetId?, targetId?, userId? }
      * @param {Transaction} transaction
-     * @returns {Promise<Array<object>>} events ordered by timestamp ascending
+     * @returns {Promise<Array<object>>} rows ordered by timestamp ascending
      */
-    async findByTarget(itemId, transaction) {
+    async findAll(filters, transaction) {
         try {
-            const result = await transaction.run(`
-                MATCH (e:AuditEvent)-[:TARGETS]->(item)
-                WHERE id(item) = $itemId
-                RETURN e
-                ORDER BY e.timestamp
-            `, { itemId: this.normalizeId(itemId) });
-            return this.transformRecords(result.records, 'e');
-        } catch (error) {
-            throw new StoreError(`Failed to find audit events for target ${itemId}: ${error.message}`, error);
-        }
-    }
+            const { changeSetId, targetId, userId } = filters ?? {};
 
-    /**
-     * Members feed for one change set — the "basket receipt": every write
-     * committed under the set, via the single UNDER_CHANGESET → TARGETS hop.
-     * Returns the member-row projection. `versionId` is recovered by an on-demand
-     * hop from targetId + targetVersion to the ItemVersion node, keeping version
-     * addressing uniform with the rest of the system; this runs only when the
-     * change-set detail page is opened.
-     *
-     * @param {number} changeSetId
-     * @param {Transaction} transaction
-     * @returns {Promise<Array<{itemId:number, itemType:string, code:string, title:string, versionId:(number|null), version:(number|null), note:string}>>}
-     */
-    async findByChangeSet(changeSetId, transaction) {
-        try {
+            const conditions = [];
+            const params = {};
+
+            // changeSetId requires the UNDER_CHANGESET hop; otherwise a plain TARGETS scan.
+            const matchClause = (changeSetId !== undefined && changeSetId !== null && changeSetId !== '')
+                ? `MATCH (cs:ChangeSet)<-[:UNDER_CHANGESET]-(e:AuditEvent)-[:TARGETS]->(item)`
+                : `MATCH (e:AuditEvent)-[:TARGETS]->(item)`;
+
+            if (changeSetId !== undefined && changeSetId !== null && changeSetId !== '') {
+                conditions.push(`id(cs) = $changeSetId`);
+                params.changeSetId = this.normalizeId(changeSetId);
+            }
+            if (targetId !== undefined && targetId !== null && targetId !== '') {
+                conditions.push(`id(item) = $targetId`);
+                params.targetId = this.normalizeId(targetId);
+            }
+            if (userId !== undefined && userId !== null && userId !== '') {
+                conditions.push(`e.userId = $userId`);
+                params.userId = userId;
+            }
+
+            const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
             const result = await transaction.run(`
-                MATCH (cs:ChangeSet)<-[:UNDER_CHANGESET]-(e:AuditEvent)-[:TARGETS]->(item)
-                WHERE id(cs) = $changeSetId
+                ${matchClause}
+                ${whereClause}
                 OPTIONAL MATCH (item)<-[:VERSION_OF]-(v)
                   WHERE e.targetVersion IS NOT NULL AND v.version = e.targetVersion
-                RETURN id(item) as itemId,
-                       e.targetType as itemType,
-                       e.targetCode as code,
-                       e.targetTitle as title,
-                       id(v) as versionId,
-                       e.targetVersion as version,
-                       e.note as note,
-                       e.timestamp as timestamp
+                RETURN e,
+                       id(e) as id,
+                       id(item) as itemId,
+                       id(v) as versionId
                 ORDER BY e.timestamp
-            `, { changeSetId: this.normalizeId(changeSetId) });
+            `, params);
 
             return result.records.map(rec => {
+                const e = rec.get('e').properties;
                 const versionId = rec.get('versionId');
-                const version = rec.get('version');
+                const itemId = rec.get('itemId');
                 return {
-                    itemId: this.normalizeId(rec.get('itemId')),
-                    itemType: rec.get('itemType'),
-                    code: rec.get('code'),
-                    title: rec.get('title'),
-                    versionId: (versionId === null || versionId === undefined) ? null : this.normalizeId(versionId),
-                    version: (version === null || version === undefined) ? null : this.normalizeId(version),
-                    note: rec.get('note') ?? '',
+                    id:             this.normalizeId(rec.get('id')),
+                    action:         e.action,
+                    userId:         e.userId ?? null,
+                    userRole:       e.userRole ?? null,
+                    timestamp:      e.timestamp,
+                    targetId:       (itemId === null || itemId === undefined) ? this.normalizeId(e.targetId) : this.normalizeId(itemId),
+                    targetType:     e.targetType,
+                    targetCode:     e.targetCode ?? null,
+                    targetTitle:    e.targetTitle,
+                    targetVersion:  (e.targetVersion === null || e.targetVersion === undefined) ? null : this.normalizeId(e.targetVersion),
+                    versionId:      (versionId === null || versionId === undefined) ? null : this.normalizeId(versionId),
+                    changeSetCode:  e.changeSetCode ?? null,
+                    changeSetTitle: e.changeSetTitle ?? null,
+                    classifier:     e.classifier ?? null,
+                    note:           e.note ?? null,
                 };
             });
         } catch (error) {
-            throw new StoreError(`Failed to find audit events for ChangeSet ${changeSetId}: ${error.message}`, error);
+            throw new StoreError(`Failed to query audit events: ${error.message}`, error);
         }
     }
 

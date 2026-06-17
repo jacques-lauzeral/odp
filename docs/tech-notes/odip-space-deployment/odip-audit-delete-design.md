@@ -23,7 +23,7 @@ Requirements addressed:
 - **DEL-06** — Decommissioning *[P0 — **parked**, see §9]*
 - **LCM-03** — Audit trail *[P0 — realised here]*
 
-The **History view** is also revisited here. Its full redesign was deferred under LCM until deletion support arrived; that moment is now, and the new audit timeline *is* the revisit.
+The **History view** is also revisited here. Its full redesign was deferred under LCM until deletion support arrived; that moment is now. The revisit is realised as a *client view over the audit query interface* (`GET /audit-events?targetId=`), not a bespoke server endpoint — see §3.6.
 
 Out of scope: data migration of the existing Edition 1 dataset (handled by re-import, §8), single-version rollback (DEL-03 position (b) — versions remain strictly immutable, §9), and decommissioning (§9).
 
@@ -41,7 +41,7 @@ Out of scope: data migration of the existing Edition 1 dataset (handled by re-im
 
 A first-class `AuditEvent` node records every consequential write. It is the single authoritative audit record; no audit information is duplicated on item or version nodes.
 
-> **As-built (Phase A §3.1/§3.2).** Every field is **captured at write time and frozen** — nothing resolved on read, so the History timeline renders with no join and a `HARD_DELETE` event survives its target. The node grew beyond the original sketch to carry the denormalised target and change-set snapshots below.
+> **As-built (Phase A §3.1/§3.2).** Every field is **captured at write time and frozen** — nothing resolved on read, so an item's timeline renders with no join and a `HARD_DELETE` event survives its target. The node grew beyond the original sketch to carry the denormalised target and change-set snapshots below. The store exposes `log` + a single `findAll(filters, tx)` query (filters: `changeSetId` / `targetId` / `userId`); `userId` and `userRole` are read from the transaction, which now carries `user {id, role}` threaded from the route layer (`x-user-id` / `x-user-role` headers).
 
 **`AuditEvent` node:**
 
@@ -111,28 +111,26 @@ Restore re-attaches the item to the live dataset:
 
 Restore is available to the deleter and to any integrator (DEL-03). The `DELETE` event remains in the log permanently — the timeline shows delete then restore as two events, the honest record.
 
-### 3.6 Querying — History view and change-set members
+### 3.6 Querying — the single audit query surface
 
-Both the History view and change-set membership now read from the audit log.
+> **As-built (Phase A).** The original sketch had two read methods (`findByTarget` for History, `findByChangeSet` for members). These were consolidated into **one** store method, `AuditEventStore.findAll(filters, tx)`, where `filters = {changeSetId?, targetId?, userId?}` (all optional, AND-combined; empty returns the whole log). `AuditEventStore` therefore exposes exactly `log` + `findAll`. The service mirrors this with the single `AuditEventService.getAuditEvents(filters, user)`, and the REST layer exposes the single resource `GET /audit-events?changeSetId=&targetId=&userId=`. One row shape serves every consumer.
 
-**History view (LCM revisit).** A unified chronological timeline for an item — one query, all action types:
-
-```cypher
-MATCH (e:AuditEvent)-[:TARGETS]->(item)
-WHERE id(item) = $itemId
-RETURN e ORDER BY e.timestamp
-```
-
-The History view is consulted on explicit user demand, so the join from event to version content (on `targetVersion`) is incurred only when the view is opened — no cost on the common read paths. This consolidates the deferred LCM History redesign into the deletion work.
-
-**Change-set members.** `findMembers` simplifies from the current triple-hop (`ChangeSet ← HAS_REASON ← version → item`) to a single hop through the event log:
+Every audit read goes through `findAll`. The query starts from the `UNDER_CHANGESET` hop when `changeSetId` is supplied, otherwise a plain `TARGETS` scan; an `OPTIONAL MATCH` recovers `versionId` from `targetId` + `targetVersion` in the **same** statement (no N+1, null for non-version-producing events):
 
 ```cypher
-MATCH (cs)<-[:UNDER_CHANGESET]-(e:AuditEvent)-[:TARGETS]->(item)
-WHERE id(cs) = $changeSetId
-RETURN e.targetType, e.targetVersion, e.note, item
+// changeSetId given → start from the change set; otherwise MATCH (e)-[:TARGETS]->(item)
+MATCH (cs:ChangeSet)<-[:UNDER_CHANGESET]-(e:AuditEvent)-[:TARGETS]->(item)
+WHERE id(cs) = $changeSetId            // + optional id(item) = $targetId, e.userId = $userId
+OPTIONAL MATCH (item)<-[:VERSION_OF]-(v) WHERE v.version = e.targetVersion
+RETURN e, id(e), id(item), id(v)
 ORDER BY e.timestamp
 ```
+
+**History is a client concern.** There is **no** item-scoped `/{item}/{id}/history` endpoint and no `getItemHistory` service method. The client builds an item's unified chronological timeline by calling `GET /audit-events?targetId=<id>` and rendering the returned rows. This is the LCM History revisit, realised as a client view over the audit interface rather than a bespoke server endpoint.
+
+**Change-set members.** `ChangeSetStore.findMembers` delegates to `auditEventStore.findAll({changeSetId}, tx)` — the same single-hop traversal, the same row shape. `ChangeSetService.getMembers` and `GET /change-sets/{id}/members` are unchanged in signature; only the backing query changed. The standalone member-row projection (renamed fields, separate shape) is gone — members are AuditEvent rows like every other consumer.
+
+**`/versions/{versionNumber}` retained.** Fetching the *content* of one specific historical version (`getByIdAndVersion`) remains a distinct endpoint — it returns entity content, not audit trail. Only the former `/versions` (list) endpoint, which was version-history, is removed.
 
 ### 3.7 actorId and future IAM remapping
 

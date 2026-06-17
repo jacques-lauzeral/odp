@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { StoreErrorCode } from '../store/transaction.js';
-import auditEventService from '../services/AuditEventService.js';
 
 /**
  * VersionedItemRouter provides versioned CRUD routes for operational entity services.
@@ -139,24 +138,6 @@ export class VersionedItemRouter {
                 res.json(entity);
             } catch (error) {
                 console.error(`Error fetching ${this.entityName} version:`, error);
-                if (error.message.includes('x-user-id')) {
-                    res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
-                } else {
-                    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
-                }
-            }
-        });
-
-        // Get audit timeline (History) — unified AuditEvent feed for the item.
-        // Replaces the former /:id/versions version-history route (Phase A).
-        this.router.get('/:id/history', async (req, res) => {
-            try {
-                const user = this.getUserOptional(req);
-                console.log(`${this.service.constructor.name} history itemId: ${req.params.id}, user: ${user?.id ?? null}`);
-                const history = await auditEventService.getItemHistory(req.params.id, user);
-                res.json(history);
-            } catch (error) {
-                console.error(`Error fetching ${this.entityName} history:`, error);
                 if (error.message.includes('x-user-id')) {
                     res.status(400).json({ error: { code: 'BAD_REQUEST', message: error.message } });
                 } else {
