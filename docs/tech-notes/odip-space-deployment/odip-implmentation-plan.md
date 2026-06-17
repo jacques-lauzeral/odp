@@ -1,95 +1,185 @@
-# ODIP Implementation Plan
+# ODIP Implementation Plan — Audit & Deletion (Plan)
 
-*v0.1 — 12 June 2026 — DRAFT for discussion*
+*Implementation plan*
 
-## 1. Context and purpose
+*v0.1 — 16 June 2026 — DRAFT for discussion*
 
-This note and its companions consolidate the implementation plan for the ODIP application against the requirements set out in *ODIP Application Requirements Plan v0.4* (Yves Steyt, 11 June 2026).
+## 1. Scope
 
-Each topic is treated in its own card-note (`odip-implementation-plan-<topic>.md`). The present document is a slim index and approach statement.
+Layer-by-layer implementation of the audit/deletion revision described in the companion design note ([odip-audit-deletion-design.md](odip-audit-deletion-design.md)). Read that note first — this document carries execution only, not rationale.
 
-## 2. Approach
+The revision is foundational: it touches the core versioning pattern (`ItemVersion` loses its audit role), removes the `HAS_REASON` edge, and introduces `AuditEvent` as the sole audit surface, before layering deletion on top. Sequencing therefore matters — the audit foundation lands before the deletion features that depend on it.
 
-### 2.1 Topic as the unit of design
+## 2. Sequencing overview
 
-The requirements are organised into 14 areas (LCM, RBA, MOD, ACR, DEL, DIF, DEP, PRI, FBK, OUT, NAV, QUA, DAM, OPS). Topics are cross-package: any given topic typically spans P0, P1 and P2 deliverables. This plan uses the topic as the unit of design — priorities are reflected in the implementation steps within each topic note, not in the topic structure itself.
+The work splits into two phases, each implemented layer by layer with its ADD companion chapter updated in the same batch.
 
-One additional cross-cutting topic is introduced here:
+**Phase A — Audit foundation.** Introduce `AuditEvent`; strip audit fields from item/version nodes; remove `HAS_REASON`; rewire change-set membership and the History view onto the log. At the end of Phase A the application behaves as before *to the user* (no deletion yet) but records every write in the log and reads History/members from it.
 
-- **HIST — Version history view.** A consequence of LCM (it surfaces the change-set link and classifier on every version row) and an entry point to DIF (clicking a version opens the diff popup). Treated separately because the work is layout/columns/filters rather than diff algorithms.
+> **Status (17 Jun 2026):** §3.1 model/shared ✅ DONE · §3.2 storage ✅ DONE · §3.3 service ✅ DONE · §3.4 REST ✅ DONE · §3.5 CLI ✅ DONE · §3.6 web ⏳ NEXT · §3.7 ADD (01/02/03/04/07 done with their layers; 08 pending).
 
-### 2.2 Note depth
+**Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
-- **Full treatment** for topics with P0 deliverables that involve application work: LCM, RBA, DEL, DIF, OPS, HIST.
-- **Succinct treatment** for the others: NAV, FBK, MOD, ACR, DEP, PRI, OUT, QUA, DAM.
+Phase A must complete before Phase B begins. Within each phase the layer order is the project standard: model → store → service → API → CLI → web → ADD.
 
-NAV and FBK are succinct here despite carrying P0 line items in v0.4:
+## 3. Phase A — Audit foundation
 
-- **NAV** P0 (structured query + text search) is largely covered by the existing O*s workspace; the meaningful P0 improvement on text search (cross-content scope, highlighting, ranking) is parked pending a broader design discussion.
-- **FBK** P0 lives outside the application — bug report template and internal CRD on the iCDM SharePoint site. No application work to plan.
+### 3.1 Model / shared ✅ DONE
 
-## 3. Topics
+- New `AuditAction` enum in `@odp/shared` — `CREATE` / `UPDATE` / `DELETE` / `RESTORE` / `HARD_DELETE` / `CLOSE` / `REOPEN` / `PUBLISH` / `BASELINE` / `DECOMMISSION` (reserved).
+- New `AuditTargetType` enum — `ON` / `OR` / `OC` / `CHAPTER` / `CHANGESET` / `EDITION` / `BASELINE` / `WAVE`.
+- `Item` node: add `status` (`ACTIVE` / `DELETED`), default `ACTIVE`. Remove `createdAt` / `createdBy` from the item projection.
+- `ItemVersion`: remove `createdAt` / `createdBy` from the version projection. The version is content-only.
+- Remove the `changeSetCommit` read-shape resolution that depended on `HAS_REASON` — superseded by the audit log.
 
-### 3.1 LCM — Lifecycle and change management → [full note](./odip-implementation-plan-lcm.md)
+### 3.2 Storage ✅ DONE
 
-Every save of a managed object (O*, theme/chapter, narrative) is part of a change set carrying the reason for change (free text + classifier + optional comment refs). Versions link to change sets via a `HAS_REASON` edge with an optional per-object note. Audit trail at P0 relies on the lifecycle stamps already present on entities; a dedicated audit log is deferred. Maturity/no-show split parked.
+> **As-built refinements (vs the sketch below):**
+> - `log` signature is **object-based**: `log(action, target, changeSetCommit, tx)` where `target = {id, type, code, title, version}` and `changeSetCommit = {changeSetId, code, title, classifier, note} | null`.
+> - `userId` **and `userRole`** are read from the transaction; `transaction.js` gained `userRole` + `getUserRole()`, `createTransaction(userId, userRole)`. The route layer assembles `user {id, role}` from `x-user-id` / `x-user-role` and threads it through every service call (`userId` → `user` across the whole service + route surface).
+> - `_validateOpenChangeSet` now **returns the frozen `{code, title, classifier}` snapshot**; `_auditCommit` and `_resolveAuditTargetType` added.
+> - **Single query method.** `findByTarget` / `findByChangeSet` were consolidated into one `findAll(filters, tx)` (`filters = {changeSetId?, targetId?, userId?}`). `AuditEventStore` exposes exactly `log` + `findAll`. One row shape for all consumers — the full frozen event plus a `versionId` recovered via `OPTIONAL MATCH` in the same statement (no N+1). `findVersionHistory` removed; `_writeHasReason` / `_resolveChangeSetCommit` / `_attachChangeSetCommits` removed.
+> - `ChangeSetStore.findMembers` delegates to `auditEventStore.findAll({changeSetId}, tx)` — no standalone member-row projection; members are AuditEvent rows. `itemType` carried as uppercase `AuditTargetType` (`CHAPTER`).
+> - **Bootstrap chapters record no audit event** (config scaffolding); resolves the old "system change set" open point — no system actor, `UserRole` stays writer-only.
+> - Index: `AuditEvent.timestamp` only at P0. The `_ensureConstraints` edit in `store/index.js` ✅ applied (timestamp index added alongside the changeset-code uniqueness constraint).
 
-### 3.2 RBA — Roles and access → *full note tbd*
+- New `AuditEventStore` with the single write method `log(action, target, changeSetCommit, tx)` — creates the `AuditEvent` node, the `TARGETS` edge, and the `UNDER_CHANGESET` edge when change-set-bound. One read method: `findAll(filters, tx)` with `filters = {changeSetId?, targetId?, userId?}` — the sole audit query, serving the audit interface, client-built History (`targetId`), and the members feed (`changeSetId`).
+- `VersionedItemStore` — `create` / `update` stop stamping `createdAt` / `createdBy` and stop writing `HAS_REASON`; instead each calls `auditEventStore.log(...)` in the same transaction. The `changeSetCommit` argument is retained (it still carries `changeSetId` + `note`) but now feeds the audit event rather than the edge.
+- `ChangeSetStore.findMembers` — delegates to `auditEventStore.findAll({changeSetId}, tx)` (the single `UNDER_CHANGESET` hop). Drops the `HAS_REASON` reverse traversal and the standalone member-row projection.
+- `BaseStore` — `close` / `reopen` on `ChangeSetStore`, and the management-entity writes, gain their `log(...)` calls.
+- Remove the `HAS_REASON` constraint/index bootstrap; add the `AuditEvent` node and any index on `timestamp`.
 
-Passive vs active users, action-permission matrix as the single source of "who can do what, when". Interim authentication is an email whitelist (no password) until P2 platform IAM.
+### 3.3 Service ✅ DONE
 
-### 3.3 DEL — Deletion, recycle bin, decommissioning → *full note tbd*
+- New `AuditEventService` — a single read method `getAuditEvents(filters, user)` (`filters = {changeSetId?, targetId?, userId?}`) delegating to `auditEventStore.findAll`. No `getItemHistory` — History is a client concern (the client passes `{targetId}`). Write is not a service concern: the log is written by stores inside the operation transaction (atomicity).
+- `VersionedItemService` — read-side `changeSetCommit` hydration **removed entirely** (not rewired). `getById` / `getByIdAndVersion` / `getAll` return what the store reads; `getVersionHistory` removed. `changeSetCommit` is gone from every versioned-item response shape.
+- `ChangeSetService` — `hydrateInto` / `hydrateAll` removed; the `id→ChangeSet` cache is now write-path-only (open-set validation + frozen snapshot). `getMembers` signature unchanged; backed by the rewritten `findMembers`.
+- **`user {id, role}` propagation** — every service method signature changed `userId` → `user`, calling `createTransaction(user.id, user.role)`. Applies across all base classes (`SimpleItemService`, `TreeItemService`, `VersionedItemService`), all concrete services, the import pipeline, and `QualityService`.
 
-Three mechanisms with a clear wall: published content can only be decommissioned; internal-baseline content can be soft-deleted or hard-deleted (integrator only); referential integrity blocks deletion with the full dependency list.
+### 3.4 REST API ✅ DONE
 
-### 3.4 DIF — Diff and comparison → *full note tbd*
+- New read-only resource **`GET /audit-events?changeSetId=&targetId=&userId=`** → `auditEventService.getAuditEvents(filters, user)`. Hand-written `audit-event.js` router, mounted at `/audit-events`. The append-only log is never mutated via REST.
+- **No item-scoped `/history` endpoint.** The earlier sketch's `/{item}/{id}/history` was dropped in favour of the single audit resource — History is built client-side from `?targetId=`. The former `/{item}/{id}/versions` (version-history list) is removed from the base router and `chapter.js`; `/{item}/{id}/versions/{versionNumber}` (specific-version content) is retained.
+- `x-user-role` header added: routes assemble `user {id, role}` via `getUser` / `getUserOptional` (was `getUserId` / `getUserIdOptional`, now returning the object); `role` is `null` when the header is absent (validation deferred to RBA). CORS `Access-Control-Allow-Headers` gains `x-user-role`.
+- Versioned-item write bodies unchanged — they already carry `changeSetId` + `note`.
+- Response schemas lost `createdAt` / `createdBy` / `changeSetCommit`; gained `status`.
+- OpenAPI: new `openapi-audit-event.yml` (`AuditAction` / `AuditTargetType` / `AuditEventRow` schemas + `/audit-events`); `VersionHistory` schema replaced by `AuditEventRow`; `/versions` list paths replaced; stamp fields removed from entity schemas.
 
-Field-by-field diff between any two versions of O*s, narratives and chapters, in dataset and edition contexts. Smart diff and evolutions lens are later milestones.
+### 3.5 CLI ✅ DONE
 
-### 3.5 OPS — Operations and resilience → *full note tbd*
+> **As-built.** `audit-event` does not extend `BaseCommands` (no CRUD scaffolding needed); it holds a minimal `BaseCommands` instance purely to borrow `createHeaders()`. `--role` added as a global option to both `index.js` (program definition) and the `odip-cli` launcher script (default: `INTEGRATOR`, same injection pattern as `--user` / `$USER`). `getUserRole()` added to `BaseCommands` mirroring `getUserId()`; `createHeaders()` sends `x-user-role` when present. Table columns: Timestamp, Action, Type, Code, Title, Ver, Actor, CS Code, Note.
 
-Daily automatic backup in two forms (database + JSON), one copy off-site, retention 30 daily + 12 monthly, never delete the most recent of any kind. Quarterly restore test by integrators collectively.
+- New `audit-event` command group mapping to the single audit query (`GET /audit-events` / `auditEventService.getAuditEvents`). One verb — list/query the log — with optional filter flags, all aligned with the store's `findAll` filters:
+    - `--change-set <id>` → `changeSetId`
+    - `--target <id>` → `targetId` (an item's History timeline)
+    - `--user <id>` → `userId`
+      All optional and combinable; no flag lists the whole log. No item-scoped `history` subcommand on entity commands — History is the `--target` filter on `audit-event`, mirroring the client.
+- Existing write commands unchanged at the call site (they already pass `--change-set`).
+- `user {id, role}` propagation: `--role` global option added to `index.js`; `odip-cli` script injects `--role INTEGRATOR` default; `createHeaders()` sends `x-user-role` on every request.
 
-### 3.6 HIST — Version history view → *full note tbd*
+### 3.6 Web client ⏳ NEXT
 
-The History tab of every O* / chapter / narrative — list of versions, surfacing change-set link, classifier, per-object note. Entry point to the diff popup (DIF) and to the change-set detail (LCM).
+- `apiClient` — new audit query method wrapping `GET /audit-events` (params `changeSetId` / `targetId` / `userId`); remove reliance on version-node stamps in any list/detail rendering.
+- **History view** — built client-side from `apiClient` audit query with `{targetId}`. Render the unified AuditEvent timeline: one row per event, showing action, actor, timestamp, change-set link (where present), note. The previous version-list History tab is replaced by this timeline. There is no server History endpoint — the client owns the timeline assembly.
+- Change-set member rendering — backed by the same audit query (`{changeSetId}`) via `GET /change-sets/{id}/members`; member rows are now AuditEvent rows (read `targetType` / `targetCode` / `targetTitle` / `targetVersion`).
 
-### 3.7 NAV — Search, navigation and deep links
+### 3.7 ADD chapters (Phase A) — 07 ✅ DONE · 08 pending
 
-Structured query and free-text search exist today in the O*s workspace. The P0 gap is text-search *scope* (extend beyond O* fields to narrative content) with match highlighting and relevance ranking — parked pending broader design discussion. Deep links and a cross-content global search arrive at P1.
+Updated in the same batch as each layer:
 
-### 3.8 FBK — Feedback and commenting
+- **01-Data-Model** ✅ — `AuditEvent` node and relationships; item/version field removals; `HAS_REASON` removal; status field.
+- **02-Storage-Layer** ✅ — `AuditEventStore` (`log` + `findAll`); `VersionedItemStore` write-path changes; `findMembers` delegation; bootstrap changes.
+- **03-Service-Layer** ✅ — `AuditEventService` (`getAuditEvents`); hydration removal; `user {id, role}` propagation.
+- **04-REST-API** ✅ — `/audit-events` resource; `x-user-role`; schema changes; `/versions` list removal.
+- **07-CLI** ⏳ — `audit-event` command (next).
+- **08-Web-Client** — History view (client-built over the audit query).
 
-Two strictly separate flows: feedback on the application itself, and comments on ODIP content. At P0 both flows live on the iCDM SharePoint site (bug template + internal CRD) — no application work. AI-assisted CRD compilation arrives at P1; in-app feedback and structured content commenting at P2.
+## 4. Phase B — Deletion
 
-### 3.9 MOD — Content model and structured input
+### 4.1 Model / shared
 
-Strategic anchoring, stakeholders and domains from governed picklists. Key change at P1/M4: split acting and impacted stakeholders into two fields, with a new three-level taxonomy and a documented migration of Edition 1 values. No P0 deliverable.
+- Referential-integrity result type — a structured `BlockingDependency` list shape (`{id, type, code, title}[]`) in `@odp/shared`, used by store, service, API and UI.
+- No new enums beyond Phase A (the `DELETE` / `RESTORE` / `HARD_DELETE` actions already exist).
 
-### 3.10 ACR — Acronyms
+### 4.2 Storage
 
-Managed register sourcing Annex A. In-context capture of unknown acronyms (no modal, no navigation), portfolio coverage check covering both directions (uncovered terms in content, orphan registrations). No P0 deliverable.
+- `VersionedItemStore`:
+    - `softDelete(itemId, changeSetCommit, tx)` — removes `LATEST_VERSION`, sets `status = DELETED`, logs `DELETE`.
+    - `restore(itemId, changeSetCommit, tx)` — creates a new version copying latest content, re-points `LATEST_VERSION`, sets `status = ACTIVE`, logs `RESTORE`.
+    - `hardDelete(itemId, changeSetCommit, tx)` — destroys item + versions + relationships, logs `HARD_DELETE` (event survives the target).
+    - `findBlockingDependencies(itemId, tx)` — gathers **all** live inbound references (design §4), returns the structured list.
+    - `isPublished(itemId, tx)` — the `HAS_ITEMS.editions` membership check (design §5).
+    - `findDeleted(tx, domainFilter?)` — the recycle-bin query (`status = DELETED`).
+- `ODPEditionStore` — replace the unconditional `delete()`-throws with `softDelete` (status flip + log) and `hardDelete` (remove node + `EXPOSES` edge + log). Add `findDeleted`. Edition content immutability is unchanged.
 
-### 3.11 DEP — Dependencies
+### 4.3 Service
 
-First-class typed relationships in a two-layer model (logical OR–OR via curated capability catalogue, planning OC–OC). Four-step discovery mechanism (catalogue → AI-proposed tags → deterministic matching → two-sided confirmation). Deployment continuity check, advisory only, with attributed iCDM overrides. No P0 deliverable.
+- `VersionedItemService`:
+    - `deleteItem(id, changeSetCommit, userId)` — runs `findBlockingDependencies` and `isPublished` first; throws a structured conflict if blocked or published; else `softDelete`.
+    - `restoreItem(id, changeSetCommit, userId)` — permission check (deleter or integrator); `restore`.
+    - `hardDeleteItem(id, changeSetCommit, userId)` — integrator-only; requires `status = DELETED` and never-published; `hardDelete`.
+    - `getRecycleBin(userId)` — `findDeleted` with domain scoping.
+- `ODIPEditionService` — `deleteEdition` / `hardDeleteEdition` (integrator-only) and `getDeletedEditions`.
+- Permission checks reference the RBA-02 matrix (hard-coded at P0).
 
-### 3.12 PRI — Prioritisation and planning
+### 4.4 REST API
 
-Waves as first-class objects; OC-to-wave assignment with bandwidth feedback; scenarios with overlay model (a scenario is its deviations from the evolving base plan); "must" flags carried by OCs (or ORs within their OC), never free-standing ORs. M2 (31 July) is the first milestone. No P0 deliverable.
+- `DELETE /{item}/{id}` — soft delete; `409 CONFLICT` with the blocking-dependency list or published-wall reason in the error envelope.
+- `POST /{item}/{id}/restore`.
+- `DELETE /{item}/{id}/hard` (integrator-only) — or a `?hard=true` modifier; recommendation: a distinct `/hard` sub-path for clarity and separate authorization.
+- `GET /recycle-bin` — bin contents, domain-scoped.
+- Edition equivalents: `DELETE /editions/{id}`, `POST /editions/{id}/restore`, `DELETE /editions/{id}/hard`.
+- Error mapping: blocked deletion → `409 CONFLICT` (reuse existing arm); published wall → `409 CONFLICT` with a distinct code (e.g. `PUBLISHED_WALL`); hard-delete authorization failure → `403`.
+- OpenAPI: delete/restore/hard paths, `BlockingDependency` schema, recycle-bin resource, new error codes.
 
-### 3.13 OUT — Outputs and integration
+### 4.5 CLI
 
-Word, PDF, static website, CSV, XLSX, JSON outputs generated from any result set. Jira one-off import at P1 (NMUI Flow backlog → ORs); permanent ODIP-to-Jira feed at P2. No P0 deliverable.
+- New verbs on item command groups: `delete <id> --change-set <id>`, `restore <id> --change-set <id>`, `hard-delete <id> --change-set <id>` (integrator), `recycle-bin [--domain ...]`.
+- Edition equivalents under the existing edition command group.
+- Blocking-dependency lists rendered as a table when a delete is refused.
 
-### 3.14 QUA — Quality
+### 4.6 Web client
 
-Structural completeness enforced at save (DRAFT may be substantively incomplete); editorial rules reported but never blocking. Portfolio checks: mandatory fields, anchoring, stakeholders, editorial conformance, acronym coverage, suspect dependencies. AI-assisted editorial harmonisation at P2. No P0 deliverable.
+- **Recycle bin** — a new view (Manage activity) listing deleted items with who/when/why, domain-scoped; restore action (deleter/integrator); hard-delete action (integrator) with strong confirmation.
+- **Delete affordance** — on O* / chapter detail, a Delete action routed through the standard save dialog (it is a version-producing… *no longer version-producing, but still* change-set-bound write — the dialog supplies the ChangeSet + note). On a blocked delete, render the full blocking-dependency list inline with deep links to each blocker. On a published item, render the wall message (decommission is the path, but decommission is parked — so at P0 the message states deletion is not possible).
+- Edition delete / restore in the edition management view (integrator-gated).
 
-### 3.15 DAM — Documents and attachments
+### 4.7 ADD chapters (Phase B)
 
-Upload, version and associate documents with domains/themes/O*s. Full-text search alongside content from a single search box. Built-in storage first behind a small storage interface; SharePoint integration via Microsoft Graph as a P2 adapter swap. No P0 deliverable.
+- **01-Data-Model** — deletion lifecycle, status transitions, published-wall semantics.
+- **02-Storage-Layer** — the new `VersionedItemStore` / `ODPEditionStore` methods.
+- **03-Service-Layer** — delete/restore/hard-delete service methods and permission gates.
+- **04-REST-API** — delete/restore/hard/recycle-bin paths and error codes.
+- **07-CLI** — delete/restore/hard-delete/recycle-bin verbs.
+- **08-Web-Client** — recycle bin view, delete affordance, blocking-dependency display.
+
+## 5. Decision points carried into implementation
+
+These are settled in the design note but surface as concrete code choices:
+
+- **Audit query surface** — settled on a **single `GET /audit-events?changeSetId=&targetId=&userId=`** resource backed by one store method `findAll(filters)`, rather than an item-scoped `/{item}/{id}/history` endpoint. History is built client-side from `?targetId=`; change-set members reuse the same query with `?changeSetId=`. This superseded the earlier §3.4 recommendation of a nested `history` sub-resource.
+- **Hard-delete API shape** — distinct `/hard` sub-path preferred over a `?hard=` modifier (§4.4).
+- **Published-wall message at P0** — since decommission is parked, the wall presents as "deletion not possible" with no decommission CTA yet (§4.6).
+
+## 6. Open points
+
+- **Decommissioning (DEL-06)** — parked; `DECOMMISSION` action reserved so the audit shape is stable when it lands. A separate note will cover the lifecycle status, integrity sequencing, and its (non-)coupling to the OC `DECOMMISSIONS` relationship.
+- **AuditEvent retention** — no purge policy at P0; revisit if volume warrants.
+- **`actorId` IAM remapping** — model-ready; implementation at P2 (RBA-04).
+- **Hard-deleted target identity in the log** — ✅ resolved: `targetId` (plus `targetType` / `targetCode` / `targetTitle`) is persisted as a frozen scalar on the event, so a `HARD_DELETE` event remains a complete record after its `TARGETS` edge is gone.
+
+## 7. Estimated layer touch summary
+
+| Layer | Phase A | Phase B |
+|---|---|---|
+| shared | enums, status, field removals | blocking-dependency type |
+| storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | delete/restore/hard methods, integrity, wall, edition store |
+| service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | delete/restore/hard services, permission gates |
+| REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | delete/restore/hard/recycle-bin paths |
+| CLI | `audit-event` command | delete/restore/hard-delete/recycle-bin verbs |
+| web | History view (client-built over audit query) | recycle bin, delete affordance |
+| ADD | 6 chapters (01–04 done, 07/08 pending) | 6 chapters |
 
 ---
 
-*Companion notes will be added as topics are settled.*
+*See also: [main index](odip-implementation-plan.md) · [design note](odip-audit-deletion-design.md) · [LCM note](odip-implmentation-plan-lcm.md)*
