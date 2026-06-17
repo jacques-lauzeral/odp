@@ -96,72 +96,62 @@ Updated in the same batch as each layer:
 - **07-CLI** ✅ — `audit-event` command; `versions` subcommands removed; `Created By` dropped from list tables; `displayChangeSetCommit` removed.
 - **08-Web-Client** ✅ — History view (client-built over the audit query); HistoryTab (§7.10); user identity role alignment; api-client changes; change-set members shape.
 
-## 4. Phase B — Deletion
+## 4. Phase B — Lifecycle & Deletion
+
+Layer by layer, ADD companion updated in the same batch. Rationale and full specification are in the design note (`odip-audit-delete-design.md` §3.2, §4) — this is execution sequencing only.
+
+**In-round scope.** Lifecycle-edge model; soft delete + restore (per-item); referential integrity (blocking dependencies, published-wall folded in); the `lifecycleStatus` read model; strict-payload rejection. **Deferred** (designed, not built): release / decommission (DEL-06), hard delete (DEL-04), edition deletion (DEL-05), `BatchService`, and the non-soft-delete web client.
 
 ### 4.1 Model / shared
 
-- Referential-integrity result type — a structured `BlockingDependency` list shape (`{id, type, code, title}[]`) in `@odp/shared`, used by store, service, API and UI.
-- No new enums beyond Phase A (the `DELETE` / `RESTORE` / `HARD_DELETE` actions already exist).
+- `AuditAction` gains `RELEASE` (`DECOMMISSION` already reserved from Phase A).
+- `BlockingDependency` shape `{id, type, code, title}` in `@odp/shared`.
 
 ### 4.2 Storage
 
-- `VersionedItemStore`:
-  - `softDelete(itemId, changeSetCommit, tx)` — removes `LATEST_VERSION`, sets `status = DELETED`, logs `DELETE`.
-  - `restore(itemId, changeSetCommit, tx)` — creates a new version copying latest content, re-points `LATEST_VERSION`, sets `status = ACTIVE`, logs `RESTORE`.
-  - `hardDelete(itemId, changeSetCommit, tx)` — destroys item + versions + relationships, logs `HARD_DELETE` (event survives the target).
-  - `findBlockingDependencies(itemId, tx)` — gathers **all** live inbound references (design §4), returns the structured list.
-  - `isPublished(itemId, tx)` — the `HAS_ITEMS.editions` membership check (design §5).
-  - `findDeleted(tx, domainFilter?)` — the recycle-bin query (`status = DELETED`).
-- `ODPEditionStore` — replace the unconditional `delete()`-throws with `softDelete` (status flip + log) and `hardDelete` (remove node + `EXPOSES` edge + log). Add `findDeleted`. Edition content immutability is unchanged.
+- New lifecycle edges `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` / `DELETED_VERSION` (joining `LATEST_VERSION`).
+- Remove the Phase A `Item.status` field; lifecycle is now edge-derived.
+- `findAll` gains the `lifecycleStatus` dataset selector (edge-anchored; mutually exclusive with `baselineId`) and computes the four lifecycle flags into the read row at the summary tier.
+- Transition methods `softDelete` / `restore` (in-round) and `release` / `decommission` / `hardDelete` (designed; build deferred).
+- `findBlockingDependencies`.
 
 ### 4.3 Service
 
-- `VersionedItemService`:
-  - `deleteItem(id, changeSetCommit, userId)` — runs `findBlockingDependencies` and `isPublished` first; throws a structured conflict if blocked or published; else `softDelete`.
-  - `restoreItem(id, changeSetCommit, userId)` — permission check (deleter or integrator); `restore`.
-  - `hardDeleteItem(id, changeSetCommit, userId)` — integrator-only; requires `status = DELETED` and never-published; `hardDelete`.
-  - `getRecycleBin(userId)` — `findDeleted` with domain scoping.
-- `ODIPEditionService` — `deleteEdition` / `hardDeleteEdition` (integrator-only) and `getDeletedEditions`.
-- Permission checks reference the RBA-02 matrix (hard-coded at P0).
+- `getAll` gains `lifecycleStatus` (default `active`, mutually exclusive with `editionId`).
+- Per-item `softDelete` / `restore` with the two-part precondition guard (Active state + no blocking dependencies); `getBlockingDependencies`.
+- Strict-payload rejection (`BAD_REQUEST` on unexpected attributes) added to create/update/patch validation.
+- `release` / `decommission` / `hardDelete` and `BatchService.applyLifecycleBatch` — designed, build deferred.
 
 ### 4.4 REST API
 
-- `DELETE /{item}/{id}` — soft delete; `409 CONFLICT` with the blocking-dependency list or published-wall reason in the error envelope.
-- `POST /{item}/{id}/restore`.
-- `DELETE /{item}/{id}/hard` (integrator-only) — or a `?hard=true` modifier; recommendation: a distinct `/hard` sub-path for clarity and separate authorization.
-- `GET /recycle-bin` — bin contents, domain-scoped.
-- Edition equivalents: `DELETE /editions/{id}`, `POST /editions/{id}/restore`, `DELETE /editions/{id}/hard`.
-- Error mapping: blocked deletion → `409 CONFLICT` (reuse existing arm); published wall → `409 CONFLICT` with a distinct code (e.g. `PUBLISHED_WALL`); hard-delete authorization failure → `403`.
-- OpenAPI: delete/restore/hard paths, `BlockingDependency` schema, recycle-bin resource, new error codes.
+- Per-item lifecycle actions `POST /{item}/{id}/{delete|restore}` in-round; `/release` `/decommission` `/hard-delete` deferred.
+- `lifecycleStatus` query parameter on the list endpoint (mutually exclusive with `edition`); `GET /{item}/{id}/blocking-dependencies`.
+- `409` refusal reuses the `Error` envelope with a new code (e.g. `LIFECYCLE_BLOCKED`) carrying the blocker list.
+- OpenAPI: lifecycle flags at summary tier of the OR/OC response schemas; `BlockingDependency`; new `openapi-batch.yml` for `/batch/lifecycle` (deferred build).
 
 ### 4.5 CLI
 
-- New verbs on item command groups: `delete <id> --change-set <id>`, `restore <id> --change-set <id>`, `hard-delete <id> --change-set <id>` (integrator), `recycle-bin [--domain ...]`.
-- Edition equivalents under the existing edition command group.
-- Blocking-dependency lists rendered as a table when a delete is refused.
+- `requirement` / `change`: `delete` / `restore` verbs; `list --lifecycle-status`; lifecycle state in `list` / `show`.
+- Non-preemptive (renders the `409` blocker list on refusal); no batch.
 
 ### 4.6 Web client
 
-- **Recycle bin** — a new view (Manage activity) listing deleted items with who/when/why, domain-scoped; restore action (deleter/integrator); hard-delete action (integrator) with strong confirmation.
-- **Delete affordance** — on O* / chapter detail, a Delete action routed through the standard save dialog (it is a version-producing… *no longer version-producing, but still* change-set-bound write — the dialog supplies the ChangeSet + note). On a blocked delete, render the full blocking-dependency list inline with deep links to each blocker. On a published item, render the wall message (decommission is the path, but decommission is parked — so at P0 the message states deletion is not possible).
-- Edition delete / restore in the edition management view (integrator-gated).
+- **In-round:** soft-delete action on the O* detail form, via the change-set save dialog; `409` conflict surfaced with blocker list.
+- Everything else (lifecycle display, `lifecycleStatus` selector, recycle bin, restore / release / decommission / hard-delete, batch worksheet) — P1+, deferred.
 
 ### 4.7 ADD chapters (Phase B)
 
-- **01-Data-Model** — deletion lifecycle, status transitions, published-wall semantics.
-- **02-Storage-Layer** — the new `VersionedItemStore` / `ODPEditionStore` methods.
-- **03-Service-Layer** — delete/restore/hard-delete service methods and permission gates.
-- **04-REST-API** — delete/restore/hard/recycle-bin paths and error codes.
-- **07-CLI** — delete/restore/hard-delete/recycle-bin verbs.
-- **08-Web-Client** — recycle bin view, delete affordance, blocking-dependency display.
+Updated in the same batch as each layer: **01-Data-Model**, **02-Storage-Layer**, **03-Service-Layer**, **04-REST-API**, **07-CLI**, **08-Web-Client**.
 
 ## 5. Decision points carried into implementation
 
 These are settled in the design note but surface as concrete code choices:
 
-- **Audit query surface** — settled on a **single `GET /audit-events?changeSetId=&targetId=&userId=`** resource backed by one store method `findAll(filters)`, rather than an item-scoped `/{item}/{id}/history` endpoint. History is built client-side from `?targetId=`; change-set members reuse the same query with `?changeSetId=`. This superseded the earlier §3.4 recommendation of a nested `history` sub-resource.
-- **Hard-delete API shape** — distinct `/hard` sub-path preferred over a `?hard=` modifier (§4.4).
-- **Published-wall message at P0** — since decommission is parked, the wall presents as "deletion not possible" with no decommission CTA yet (§4.6).
+- **Audit query surface** — settled on a **single `GET /audit-events?changeSetId=&targetId=&userId=`** resource backed by one store method `findAll(filters)`, rather than an item-scoped `/{item}/{id}/history` endpoint (Phase A).
+- **Lifecycle is edge-derived** — no stored `Item.status`; the Phase A field is removed. The four flags (`active` / `released` / `decommissioned` / `deleted`) are computed from edge presence into the read row at the summary tier.
+- **`lifecycleStatus` is a dataset selector, not a filter** — it chooses which lifecycle face the read walks, the peer of `baselineId` and mutually exclusive with it (and with `editionId` at the service/API).
+- **Published-wall folds into blocking dependencies** — no separate `isPublished` gate; an edition/baseline reference is one kind of blocker. Soft delete requires Active state *and* no blocking dependencies.
+- **Strict-payload rejection** — the service rejects unexpected attributes with `BAD_REQUEST` rather than absorbing them.
 
 ## 6. Open points
 
@@ -174,12 +164,12 @@ These are settled in the design note but surface as concrete code choices:
 
 | Layer | Phase A | Phase B |
 |---|---|---|
-| shared | enums, status, field removals | blocking-dependency type |
-| storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | delete/restore/hard methods, integrity, wall, edition store |
-| service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | delete/restore/hard services, permission gates |
-| REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | delete/restore/hard/recycle-bin paths |
-| CLI | `audit-event` command | delete/restore/hard-delete/recycle-bin verbs |
-| web | History view (client-built over audit query) | recycle bin, delete affordance |
+| shared | enums, status, field removals | `RELEASE` action, `BlockingDependency` type |
+| storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | lifecycle edges, `status` removal, `lifecycleStatus` + flags in `findAll`, soft-delete/restore (release/decommission/hard-delete designed) |
+| service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | `lifecycleStatus` on `getAll`, soft-delete/restore + guard, strict-payload rejection |
+| REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | per-item delete/restore, `lifecycleStatus` param, blocking-dependencies, `409` blocker envelope |
+| CLI | `audit-event` command | delete/restore verbs, `list --lifecycle-status` |
+| web | History view (client-built over audit query) | soft-delete from O* detail form (rest P1+) |
 | ADD | 6 chapters (01–04 done, 07/08 pending) | 6 chapters |
 
 ---
