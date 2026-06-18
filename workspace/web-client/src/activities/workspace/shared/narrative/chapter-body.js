@@ -26,7 +26,7 @@ import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
 import RichTextComponent from '../../../../components/rich-text-component.js';
 import { buildLinkProvider } from '../../../../components/link-provider.js';
-import { odipConfirm, odipUnsavedChanges } from '../../../../components/user-dialogs.js';
+import { odipUnsavedChanges } from '../../../../components/user-dialogs.js';
 
 export default class ChapterBody {
     /**
@@ -199,13 +199,13 @@ export default class ChapterBody {
 
         const actions = editing
             ? `<div class="chapter-body__actions">
-                   <button class="odip-btn odip-btn--standard chapter-body__cancel">Cancel</button>
+                   <button class="odip-btn chapter-body__cancel">Cancel</button>
                    <button class="odip-btn odip-btn--primary chapter-body__save" disabled>Save</button>
                    <span class="chapter-body__status"></span>
                </div>`
             : (canEdit
                 ? `<div class="chapter-body__actions">
-                       <button class="odip-btn odip-btn--standard chapter-body__edit"
+                       <button class="odip-btn odip-btn--primary chapter-body__edit"
                                ${editLocked ? 'disabled title="Finish the structure changes first"' : ''}>Edit</button>
                    </div>`
                 : '');
@@ -258,19 +258,21 @@ export default class ChapterBody {
                        placeholder="Theme title…"
                        maxlength="200" />
                 <div class="chapter-body__actions">
-                    ${isEmpty ? `
-                        <button class="odip-btn odip-btn--danger chapter-body__topic-delete"
-                                title="Delete this theme">Delete theme</button>
-                    ` : ''}
-                    <button class="odip-btn odip-btn--standard chapter-body__topic-cancel">Cancel</button>
+                    <button class="odip-btn chapter-body__topic-cancel">Cancel</button>
                     <button class="odip-btn odip-btn--primary chapter-body__topic-save" disabled>Save</button>
                     <span class="chapter-body__status"></span>
                 </div>`
             : `<h3 class="chapter-body__title chapter-body__title--topic">${this._esc(title)}</h3>
                 ${canEdit ? `
                 <div class="chapter-body__actions">
-                    <button class="odip-btn odip-btn--standard chapter-body__topic-edit"
+                    <button class="odip-btn odip-btn--primary chapter-body__topic-edit"
                             ${editLocked ? 'disabled title="Finish the structure changes first"' : ''}>Edit</button>
+                    ${isEmpty ? `
+                    <button class="odip-btn odip-btn--danger chapter-body__topic-delete"
+                            ${editLocked
+                ? 'disabled title="Finish the structure changes first"'
+                : 'title="Delete this theme"'}>Delete theme</button>
+                    ` : ''}
                 </div>` : ''}`;
 
         this.container.innerHTML = `
@@ -313,8 +315,6 @@ export default class ChapterBody {
                 });
             }
 
-            this.container.querySelector('.chapter-body__topic-delete')
-                ?.addEventListener('click', () => this._deleteTheme(topicId));
             this.container.querySelector('.chapter-body__topic-cancel')
                 ?.addEventListener('click', () => this._cancelEdit());
             this.container.querySelector('.chapter-body__topic-save')
@@ -322,6 +322,8 @@ export default class ChapterBody {
         } else if (canEdit) {
             this.container.querySelector('.chapter-body__topic-edit')
                 ?.addEventListener('click', () => this._enterEdit());
+            this.container.querySelector('.chapter-body__topic-delete')
+                ?.addEventListener('click', () => this._deleteTheme(topicId));
         }
 
         const narrativeEl = this.container.querySelector('#topicNarrativeEditor');
@@ -850,13 +852,12 @@ export default class ChapterBody {
 
     /**
      * Delete the current empty theme topic.
-     * Delegates to NarrativeActivity via onThemeDelete.
+     * Delegates to NarrativeActivity via onThemeDelete, which runs the change-set
+     * commit dialog (the cancellable gate) before the chapter PATCH.
      * @param {string} topicId
      */
     async _deleteTheme(topicId) {
         if (this._saving) return;
-        const confirmed = await odipConfirm('Do you really want to delete this theme?');
-        if (!confirmed) return;
         await this._onThemeDelete(topicId);
     }
 
