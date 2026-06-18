@@ -383,6 +383,9 @@ export class VersionedCommands extends BaseCommands {
         this._addCreateCommand(itemCommand);
         this._addUpdateCommand(itemCommand);
         this._addPatchCommand(itemCommand);
+        this._addSoftDeleteCommand(itemCommand);
+        this._addRestoreCommand(itemCommand);
+        this._addInboundReferencesCommand(itemCommand);
 
         program.addCommand(itemCommand);
     }
@@ -546,6 +549,177 @@ export class VersionedCommands extends BaseCommands {
         return await this.buildContextUrl(baseUrl, options);
     }
 
+    /**
+     * Format the four lifecycle flags into a compact label listing the true ones.
+     * Returns e.g. 'active', 'active, released', 'deleted', or '—' if absent.
+     */
+    formatLifecycleStatus(lifecycleStatus) {
+        if (!lifecycleStatus) return '—';
+        const flags = ['active', 'released', 'decommissioned', 'deleted']
+            .filter(f => lifecycleStatus[f]);
+        return flags.length > 0 ? flags.join(', ') : '—';
+    }
+
+    /**
+     * Validate a --lifecycle-status value and its exclusivity with edition/baseline.
+     * Returns the face string ('active' default). Exits on invalid input.
+     */
+    resolveLifecycleFace(options) {
+        const face = options.lifecycleStatus || 'active';
+        const valid = ['active', 'released', 'decommissioned', 'deleted'];
+        if (!valid.includes(face)) {
+            console.error(`Invalid lifecycle status: ${face}. Valid values: ${valid.join(', ')}`);
+            process.exit(1);
+        }
+        if (face !== 'active' && (options.edition || options.baseline)) {
+            console.error('--lifecycle-status (non-active) is mutually exclusive with --edition / --baseline');
+            process.exit(1);
+        }
+        return face;
+    }
+
+    /**
+     * Print a 409 lifecycle refusal: the state-guard message, plus the blocking
+     * inbound-reference list as a table when the refusal is LIFECYCLE_BLOCKED.
+     */
+    printLifecycleConflict(body) {
+        const code = body.error?.code;
+        const message = body.error?.message || 'Lifecycle conflict';
+        console.error(`Refused (${code || 'CONFLICT'}): ${message}`);
+        if (Array.isArray(body.references) && body.references.length > 0) {
+            const table = new Table({
+                head: ['Ref ID', 'Type', 'Code', 'Title'],
+                colWidths: [10, 6, 15, 40]
+            });
+            body.references.forEach(r => table.push([r.id, r.type, r.code || '—', r.title || '—']));
+            console.error('Blocking references:');
+            console.error(table.toString());
+        }
+    }
+
+    _addSoftDeleteCommand(itemCommand) {
+        itemCommand
+            .command('delete <itemId>')
+            .description(`Soft-delete a ${this.displayName} (move to recycle bin)`)
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
+            .action(async (itemId, options) => {
+                try {
+                    const data = { changeSetId: options.changeSet };
+                    if (options.commitNote) data.note = options.commitNote;
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/delete`, {
+                        method: 'POST',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(error.error?.message || `${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+                    if (response.status === 409) {
+                        const body = await response.json();
+                        this.printLifecycleConflict(body);
+                        process.exit(1);
+                    }
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const item = await response.json();
+                    console.log(`Soft-deleted ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
+                    console.log(`Lifecycle: ${this.formatLifecycleStatus(item.lifecycleStatus)}`);
+                } catch (error) {
+                    console.error(`Error deleting ${this.displayName}:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    _addRestoreCommand(itemCommand) {
+        itemCommand
+            .command('restore <itemId>')
+            .description(`Restore a soft-deleted ${this.displayName} from the recycle bin`)
+            .requiredOption('--change-set <id>', 'OPEN change set this write commits under (LCM)')
+            .option('--commit-note <text>', 'Optional per-object note recorded on the change-set link')
+            .action(async (itemId, options) => {
+                try {
+                    const data = { changeSetId: options.changeSet };
+                    if (options.commitNote) data.note = options.commitNote;
+
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/restore`, {
+                        method: 'POST',
+                        headers: this.createHeaders(),
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        console.error(error.error?.message || `${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+                    if (response.status === 409) {
+                        const body = await response.json();
+                        this.printLifecycleConflict(body);
+                        process.exit(1);
+                    }
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`HTTP ${response.status}: ${error.error?.message || response.statusText}`);
+                    }
+
+                    const item = await response.json();
+                    console.log(`Restored ${this.displayName}: ${item.title} (ID: ${item.itemId})`);
+                    console.log(`Lifecycle: ${this.formatLifecycleStatus(item.lifecycleStatus)}`);
+                } catch (error) {
+                    console.error(`Error restoring ${this.displayName}:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
+    _addInboundReferencesCommand(itemCommand) {
+        itemCommand
+            .command('inbound-references <itemId>')
+            .description(`List live O* items referencing this ${this.displayName} (where-used)`)
+            .action(async (itemId) => {
+                try {
+                    const response = await fetch(`${this.baseUrl}/${this.urlPath}/${itemId}/inbound-references`, {
+                        headers: this.createHeaders()
+                    });
+
+                    if (response.status === 404) {
+                        console.error(`${this.displayName} with ID ${itemId} not found.`);
+                        process.exit(1);
+                    }
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const references = await response.json();
+
+                    if (references.length === 0) {
+                        console.log(`No live references to ${this.displayName} ${itemId}.`);
+                        return;
+                    }
+
+                    const table = new Table({
+                        head: ['Ref ID', 'Type', 'Code', 'Title'],
+                        colWidths: [10, 6, 15, 45]
+                    });
+                    references.forEach(r => table.push([r.id, r.type, r.code || '—', r.title || '—']));
+                    console.log(`Live references to ${this.displayName} ${itemId}:`);
+                    console.log(table.toString());
+                } catch (error) {
+                    console.error(`Error fetching inbound references for ${this.displayName}:`, error.message);
+                    process.exit(1);
+                }
+            });
+    }
+
     _addCreateCommand(itemCommand) {
         throw new Error('_addCreateCommand must be implemented by concrete command');
     }
@@ -565,5 +739,6 @@ export class VersionedCommands extends BaseCommands {
         console.log(`Item ID: ${item.itemId}`);
         console.log(`Title: ${item.title}`);
         console.log(`Version: ${item.version} (Version ID: ${item.versionId})`);
+        console.log(`Lifecycle: ${this.formatLifecycleStatus(item.lifecycleStatus)}`);
     }
 }

@@ -24,6 +24,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
+            .option('--lifecycle-status <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
@@ -32,9 +33,14 @@ class OperationalRequirementCommands extends VersionedCommands {
                         process.exit(1);
                     }
 
+                    const lifecycleFace = this.resolveLifecycleFace(options);
+
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
                     const filterParams = this.buildContentFilterParams(options);
+                    if (lifecycleFace !== 'active') {
+                        filterParams.push(`lifecycleFace=${lifecycleFace}`);
+                    }
                     if (options.projection !== 'standard') {
                         filterParams.push(`projection=${options.projection}`);
                     }
@@ -55,7 +61,8 @@ class OperationalRequirementCommands extends VersionedCommands {
                     const items = await response.json();
 
                     const filterDisplay = this.buildFilterDisplaySummary(options);
-                    const fullContextDisplay = contextDisplay + filterDisplay;
+                    const faceDisplay = lifecycleFace !== 'active' ? ` (Lifecycle: ${lifecycleFace})` : '';
+                    const fullContextDisplay = contextDisplay + filterDisplay + faceDisplay;
 
                     if (items.length === 0) {
                         console.log(`No ${this.displayName}s found${fullContextDisplay}.`);
@@ -63,8 +70,8 @@ class OperationalRequirementCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version'],
-                        colWidths: [10, 15, 8, 15, 30, 10]
+                        head: ['Item ID', 'Code', 'Type', 'Domain', 'Title', 'Version', 'Lifecycle'],
+                        colWidths: [10, 15, 8, 15, 28, 9, 22]
                     });
 
                     items.forEach(item => {
@@ -74,7 +81,8 @@ class OperationalRequirementCommands extends VersionedCommands {
                             item.type,
                             item.domain || '-',
                             item.title,
-                            item.version
+                            item.version,
+                            this.formatLifecycleStatus(item.lifecycleStatus)
                         ]);
                     });
 

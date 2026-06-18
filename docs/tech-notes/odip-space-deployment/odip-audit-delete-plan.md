@@ -20,7 +20,7 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
-> **Status (18 Jun 2026):** §4.1 model/shared ✅ DONE · §4.2 storage ✅ DONE · §4.3 service ✅ DONE · §4.4 REST ✅ DONE · §4.5 CLI ⏳ · §4.6 web ⏳ · §4.7 ADD (01 ✅, 02 ✅, 03 ✅, 04 ✅; 07/08 pending) — **in progress.** §4.1/§4.2 were briefly reopened to correct `OperationalEntityReference` scope (O\* only) and `findInboundReferences` (O\* where-used only; edition wall removed, relocated to DEL-04 hard delete) — correction applied across code, ADD 01/02, and design note. §4.4 settled the `409` refusal contract as `LifecycleConflictResponse` (`references` a top-level sibling of `error`) and recorded that `DELETE /:id` persists as the whole-item hard destroy alongside the new `POST /:id/delete` soft delete — design note §4.4 and §5 matrix updated accordingly.
+> **Status (18 Jun 2026):** §4.1 model/shared ✅ DONE · §4.2 storage ✅ DONE · §4.3 service ✅ DONE · §4.4 REST ✅ DONE · §4.5 CLI ✅ DONE · §4.6 web ⏳ · §4.7 ADD (01 ✅, 02 ✅, 03 ✅, 04 ✅, 07 ✅; 08 pending) — **in progress.** §4.1/§4.2 were briefly reopened to correct `OperationalEntityReference` scope (O\* only) and `findInboundReferences` (O\* where-used only; edition wall removed, relocated to DEL-04 hard delete) — correction applied across code, ADD 01/02, and design note. §4.4 settled the `409` refusal contract as `LifecycleConflictResponse` (`references` a top-level sibling of `error`) and recorded that `DELETE /:id` persists as the whole-item hard destroy alongside the new `POST /:id/delete` soft delete — design note §4.4 and §5 matrix updated accordingly. §4.5 added a user-initiated `inbound-references` query verb (distinct from the non-preemptive `delete`) — design note §4.5 updated to record the distinction.
 
 Phase A must complete before Phase B begins. Within each phase the layer order is the project standard: model → store → service → API → CLI → web → ADD.
 
@@ -162,10 +162,17 @@ Layer by layer, ADD companion updated in the same batch. Rationale and full spec
 - Route mapping for the service's `ServiceErrorCode`: `LIFECYCLE_BLOCKED` → `409` with the inbound-reference list in the body, `INVALID_LIFECYCLE_STATE` → `409`. (`BAD_REQUEST` from the face/edition guard already resolves to 400 via the `Validation failed:` prefix path.)
 - OpenAPI: lifecycle flags at summary tier of the OR/OC response schemas; inbound-reference list reuses existing `OperationalEntityReference` schema (`type` in `ON | OR | OC`); new `openapi-batch.yml` for `/batch/lifecycle` (deferred build).
 
-### 4.5 CLI
+### 4.5 CLI ✅ DONE
 
-- `requirement` / `change`: `delete` / `restore` verbs; `list --lifecycle-status`; lifecycle state in `list` / `show`.
-- Non-preemptive (renders the `409` blocker list on refusal); no batch.
+> **As-built refinements (vs the sketch below):**
+> - Verbs are concrete on `VersionedCommands` (`_addSoftDeleteCommand`, `_addRestoreCommand`, `_addInboundReferencesCommand`), wired in `createCommands`; `requirement`/`change` inherit them, `chapter.js` overrides all three to no-ops (chapters have no lifecycle). Mirrors the REST layer's "concrete on the base, chapters excluded" shape.
+> - `delete` occupies the verb slot `VersionedCommands` left empty (it never wired `BaseCommands.addDeleteCommand`), so soft delete is `delete` with no clash; there is no hard-delete CLI verb. Corrected a stale ADD 07 line that had described `requirement/change delete` as "delete all versions" — that hard-delete verb never existed.
+> - `--lifecycle-status` validated and checked for edition/baseline exclusivity by a shared `resolveLifecycleFace` helper; forwarded as `?lifecycleFace=` only when non-default (mirrors the `projection` pattern). Single `Lifecycle` column via `formatLifecycleStatus` (lists the true flags), and the same label on `show` via the base `displayItemDetails`.
+> - 409 refusal rendered by a shared `printLifecycleConflict` helper (state message + blocker table for `LIFECYCLE_BLOCKED`).
+> - **Added beyond the original sketch:** a user-initiated `inbound-references <id>` query verb (`GET /{item}/{id}/inbound-references`). This refines the note's earlier "no separate `inbound-references` query verb" — that constraint was about keeping `delete` non-preemptive, not about denying a deliberate inspection. Recorded in design note §4.5.
+
+- `requirement` / `change`: `delete` / `restore` / `inbound-references` verbs; `list --lifecycle-status`; lifecycle state in `list` / `show`.
+- Non-preemptive `delete` (renders the `409` blocker list on refusal); user-initiated `inbound-references` query is separate; no batch.
 
 ### 4.6 Web client
 
@@ -201,9 +208,9 @@ These are settled in the design note but surface as concrete code choices:
 | storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | lifecycle edges, `status` removal, `lifecycleFace` + flags in `findAll`/`findById`, `LIFECYCLE_FACE_EDGE` map, soft-delete/restore (edge moves), `findInboundReferences` O\*-only (release/decommission/hard-delete designed) |
 | service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | `lifecycleFace` on `getAll`/`getById` (append-last); soft-delete/restore + guards; `getInboundReferences`; strict-payload rejection; `ServiceError`/`ServiceErrorCode` module |
 | REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | per-item delete/restore, `lifecycleFace` on list + single-item reads, `inbound-references` sub-path, `ServiceError` → `409` mapping |
-| CLI | `audit-event` command | delete/restore verbs, `list`/`show --lifecycle-status` |
+| CLI | `audit-event` command | delete/restore/inbound-references verbs, `list --lifecycle-status`, Lifecycle column + `show` label |
 | web | History view (client-built over audit query) | soft-delete from O* detail form (rest P1+) |
-| ADD | 6 chapters (01–04 done, 07/08 pending) | 01 ✅, 02 ✅, 03 ✅, 04 ✅; 07/08 pending |
+| ADD | 6 chapters (01–04 done, 07/08 pending) | 01 ✅, 02 ✅, 03 ✅, 04 ✅, 07 ✅; 08 pending |
 
 ---
 

@@ -29,6 +29,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via IMPLEMENTS/DECOMMISSIONS requirements (comma-separated)')
+            .option('--lifecycle-status <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {
@@ -37,9 +38,14 @@ class OperationalChangeCommands extends VersionedCommands {
                         process.exit(1);
                     }
 
+                    const lifecycleFace = this.resolveLifecycleFace(options);
+
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}`, options);
 
                     const filterParams = this.buildContentFilterParams(options);
+                    if (lifecycleFace !== 'active') {
+                        filterParams.push(`lifecycleFace=${lifecycleFace}`);
+                    }
                     if (options.projection !== 'standard') {
                         filterParams.push(`projection=${options.projection}`);
                     }
@@ -60,7 +66,8 @@ class OperationalChangeCommands extends VersionedCommands {
                     const items = await response.json();
 
                     const filterDisplay = this.buildFilterDisplaySummary(options);
-                    const fullContextDisplay = contextDisplay + filterDisplay;
+                    const faceDisplay = lifecycleFace !== 'active' ? ` (Lifecycle: ${lifecycleFace})` : '';
+                    const fullContextDisplay = contextDisplay + filterDisplay + faceDisplay;
 
                     if (items.length === 0) {
                         console.log(`No ${this.displayName}s found${fullContextDisplay}.`);
@@ -68,8 +75,8 @@ class OperationalChangeCommands extends VersionedCommands {
                     }
 
                     const table = new Table({
-                        head: ['Item ID', 'Code', 'Domain', 'Title', 'Version'],
-                        colWidths: [10, 15, 15, 30, 10]
+                        head: ['Item ID', 'Code', 'Domain', 'Title', 'Version', 'Lifecycle'],
+                        colWidths: [10, 15, 15, 28, 9, 22]
                     });
 
                     items.forEach(item => {
@@ -78,7 +85,8 @@ class OperationalChangeCommands extends VersionedCommands {
                             item.code || '-',
                             item.domain || '-',
                             item.title,
-                            item.version
+                            item.version,
+                            this.formatLifecycleStatus(item.lifecycleStatus)
                         ]);
                     });
 

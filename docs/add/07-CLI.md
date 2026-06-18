@@ -71,18 +71,22 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `requirement create <title>` | Create |
 | `requirement update <itemId> <expectedVersionId> <title>` | Full update (new version) |
 | `requirement patch <itemId> <expectedVersionId>` | Partial update (new version) |
-| `requirement delete <itemId>` | Delete all versions |
+| `requirement delete <itemId>` | Soft-delete — move to recycle bin (requires `--change-set`) |
+| `requirement restore <itemId>` | Restore a soft-deleted item from the recycle bin (requires `--change-set`) |
+| `requirement inbound-references <itemId>` | List live O\* items referencing this one (where-used) |
 | `requirement show-version <itemId> <versionNumber>` | Show specific version |
 
 **`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
+**`requirement list` lifecycle face**: `--lifecycle-status active|released|decommissioned|deleted` (default: `active`). Selects which lifecycle dataset the list reads (the recycle bin is `deleted`); the value is forwarded as `?lifecycleFace=` and is mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags (e.g. `active`, `active, released`).
+
 **`requirement list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Type, Domain, Title, Version`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
-**`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`.
+**`requirement show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends derived (reverse-traversal) fields: `implementedByORs`, `implementedByOCs`, `decommissionedByOCs`, `refinedBy`, `requiredByORs`. Fields absent from the projection render as `(not in projection)`. `show` also prints a `Lifecycle:` line — the item's true lifecycle flags from the `lifecycleStatus` summary-tier structure.
 
 **`requirement create/update` options**: `--type`, `--domain` (required on create), `--statement`, `--rationale`, `--flows`, `--private-notes`, `--parent`, `--implemented-ons`, `--impacted-stakeholders`, `--maturity`, `--dependencies`, `--nfrs`.
 
-**Change set (LCM)**: `requirement create/update/patch` require `--change-set <id>` (the OPEN change set the new version commits under) and accept an optional `--commit-note <text>` (recorded on the change-set link). These are folded into the request body as `changeSetId` / `note`.
+**Change set (LCM)**: `requirement create/update/patch` require `--change-set <id>` (the OPEN change set the new version commits under) and accept an optional `--commit-note <text>` (recorded on the change-set link). These are folded into the request body as `changeSetId` / `note`. `delete` and `restore` are change-set-bound writes too — both require `--change-set <id>` and accept `--commit-note`. `inbound-references` is a read and takes neither.
 
 ### Operational Changes
 
@@ -94,18 +98,22 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 | `change create <title>` | Create |
 | `change update <itemId> <expectedVersionId> <title>` | Full update (new version) |
 | `change patch <itemId> <expectedVersionId>` | Partial update (new version) |
-| `change delete <itemId>` | Delete all versions |
+| `change delete <itemId>` | Soft-delete — move to recycle bin (requires `--change-set`) |
+| `change restore <itemId>` | Restore a soft-deleted item from the recycle bin (requires `--change-set`) |
+| `change inbound-references <itemId>` | List live O\* items referencing this one (where-used) |
 | `change show-version <itemId> <versionNumber>` | Show specific version |
 
 **`change list` filter flags**: `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
+**`change list` lifecycle face**: `--lifecycle-status active|released|decommissioned|deleted` (default: `active`), forwarded as `?lifecycleFace=`, mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags.
+
 **`change list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Domain, Title, Version`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
-**`change show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends the derived field `requiredByOCs`. Fields absent from the projection render as `(not in projection)`.
+**`change show` projection**: `--projection standard|extended` (default: `standard`). `extended` appends the derived field `requiredByOCs`. Fields absent from the projection render as `(not in projection)`. `show` also prints a `Lifecycle:` line — the item's true lifecycle flags from the `lifecycleStatus` summary-tier structure.
 
 **`change create/update` options**: `--purpose`, `--domain` (required on create), `--initial-state`, `--final-state`, `--details`, `--private-notes`, `--implements`, `--decommissions`, `--maturity`, `--cost`.
 
-**Change set (LCM)**: `change create/update/patch` require `--change-set <id>` and accept an optional `--commit-note <text>`, folded into the request body as `changeSetId` / `note`.
+**Change set (LCM)**: `change create/update/patch` require `--change-set <id>` and accept an optional `--commit-note <text>`, folded into the request body as `changeSetId` / `note`. `delete` and `restore` are change-set-bound writes too — both require `--change-set <id>` and accept `--commit-note`. `inbound-references` is a read and takes neither.
 
 ### Chapters
 
@@ -289,9 +297,13 @@ The following command files or subcommands were removed:
 
 ### VersionedCommands (operational entities)
 
-`VersionedCommands` extends `BaseCommands` and adds: version history, show-version, edition context support, and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
+`VersionedCommands` extends `BaseCommands` and adds: version history, show-version, edition context support, the lifecycle verbs (`delete` / `restore` / `inbound-references`), and abstract `_addCreateCommand` / `_addUpdateCommand` / `_addPatchCommand` hooks implemented by each subclass.
+
+**Lifecycle verbs (Phase B — deletion).** `delete` is **soft** delete — it POSTs to `/{item}/{id}/delete` (the `LATEST_VERSION`→`DELETED_VERSION` edge move), not a hard destroy of all versions; there is no hard-delete verb on the CLI (DEL-04 is deferred). `restore` is the inverse (`/restore`). Both are change-set-bound writes (`--change-set` required). The `delete` flow is **non-preemptive**: it does not pre-check deletability — it calls the operation and, on a `409` refusal, renders the lifecycle-state message and (for `LIFECYCLE_BLOCKED`) the blocking inbound-reference list as a table. Separately, `inbound-references <id>` is a user-initiated where-used query (`GET /{item}/{id}/inbound-references`) — a deliberate inspection peer to `show`, which does not make `delete` preemptive. `delete` / `restore` / `inbound-references` are concrete on `VersionedCommands`, so `requirement` and `change` inherit them; `chapter.js` overrides all three to no-ops (chapters have no lifecycle).
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--edition <id>` (optional). The `--baseline` option has been removed — baseline is an internal implementation detail not exposed in the CLI. Edition ID is passed directly as `?edition=<id>` to the API; server-side resolution handles baseline and wave context internally.
+
+**Lifecycle face and display.** Each subclass `list` accepts `--lifecycle-status active|released|decommissioned|deleted` (default `active`), validated and checked for exclusivity with `--edition` / `--baseline` via `resolveLifecycleFace`, forwarded as `?lifecycleFace=` only when non-default. The list table carries a `Lifecycle` column and `show` (via the base `displayItemDetails`) prints a `Lifecycle:` line — both rendered by `formatLifecycleStatus`, which lists the item's true lifecycle flags. `chapter.js` has its own list/`displayItemDetails` and shows no lifecycle (chapters have none).
 
 `getUserRole()` mirrors `getUserId()` — both read from the global `program.opts()` set by the `odip-cli` script. `createHeaders()` sends `x-user-role` alongside `x-user-id` on every request.
 

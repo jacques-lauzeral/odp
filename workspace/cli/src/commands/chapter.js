@@ -129,6 +129,18 @@ class ChapterCommands extends VersionedCommands {
         // no-op: chapters are managed by server bootstrap
     }
 
+    _addSoftDeleteCommand(_itemCommand) {
+        // no-op: chapters have no lifecycle (no soft delete / recycle bin)
+    }
+
+    _addRestoreCommand(_itemCommand) {
+        // no-op: chapters have no lifecycle (nothing to restore)
+    }
+
+    _addInboundReferencesCommand(_itemCommand) {
+        // no-op: chapters are not referenced by O* where-used edges
+    }
+
     _addUpdateCommand(itemCommand) {
         itemCommand
             .command('update <itemId> <expectedVersionId>')

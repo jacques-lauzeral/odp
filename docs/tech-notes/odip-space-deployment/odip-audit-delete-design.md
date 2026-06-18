@@ -336,7 +336,9 @@ The principle: the selected face fixes one flag; any flag that can *co-occur* wi
 
 **No batch on the CLI.** The mixed lifecycle batch is an integrator reconciliation gesture surfaced only in the web client; the CLI exposes the per-item transitions only.
 
-**Non-preemptive (per §4.3).** The CLI does not pre-check deletability — it calls the operation and renders the result; on a `409` refusal it prints the inbound-reference list (and any lifecycle-state failure) as a table. References surface from the refusal, not ahead of it; there is no separate `inbound-references` query verb.
+**Non-preemptive (per §4.3).** The CLI does not pre-check deletability — it calls the operation and renders the result; on a `409` refusal it prints the inbound-reference list (and any lifecycle-state failure) as a table. References surface from the refusal, not ahead of it: the `delete` verb itself never queries deletability before acting.
+
+**User-initiated where-used query.** Separately from the delete flow, a `requirement inbound-references <id>` (and the same on `change`) verb lets the user inspect an item's live where-used list on demand, backed by `GET /{item}/{id}/inbound-references`. This does not make `delete` preemptive — the mutation still fires blind and surfaces the server's refusal; the query is an independent, user-chosen inspection, peer to `show`. (This refines the earlier position that there would be "no separate `inbound-references` query verb": that constraint was about keeping the *delete* non-preemptive, not about denying the user a deliberate inspection. The verb queries the live active dataset only — the endpoint takes no `lifecycleFace`.)
 
 ### 4.6 Web client
 
