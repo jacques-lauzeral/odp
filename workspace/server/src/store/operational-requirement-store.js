@@ -391,7 +391,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
     }
 
     /**
-     * Find all live items referencing this requirement via an inbound relationship.
+     * Find all live O* items referencing this requirement via an inbound relationship.
      * A requirement (ON or OR) may be referenced by:
      *   - child requirements via REFINES
      *   - ORs implementing it (IMPLEMENTS) — when this is an ON
@@ -399,7 +399,12 @@ export class OperationalRequirementStore extends VersionedItemStore {
      *   - OCs implementing it (IMPLEMENTS) — when this is an OR
      *   - OCs decommissioning it (DECOMMISSIONS) — when this is an OR
      * "Live" = the referencing version holds LATEST_VERSION on its own item.
-     * Edition/baseline membership is also a reference and is included.
+     *
+     * This is a pure where-used query over O* references. It does not inspect
+     * the target's lifecycle state, and it does NOT consider edition/baseline
+     * captures — edition membership does not constrain soft delete (an edition
+     * snapshot holds frozen ItemVersion nodes and is unaffected by item-level
+     * lifecycle transitions). The returned references are always O* (type ON|OR|OC).
      *
      * @param {number} itemId
      * @param {Transaction} transaction
@@ -441,24 +446,6 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     code: r.get('code'),
                     title: r.get('title'),
                     type: 'OC',
-                });
-            }
-
-            // Edition membership — the published-edition wall. A version captured in a
-            // baseline that is exposed by an edition is referenced by that edition.
-            const editionResult = await transaction.run(`
-                MATCH (item:${this.nodeLabel})<-[:VERSION_OF]-(version:${this.versionLabel})<-[hi:HAS_ITEMS]-(baseline:Baseline)
-                MATCH (edition:ODPEdition)-[:EXPOSES]->(baseline)
-                WHERE id(item) = $itemId AND id(edition) IN hi.editions
-                RETURN DISTINCT id(edition) as id, edition.title as title
-                ORDER BY edition.title
-            `, { itemId: numericItemId });
-            for (const r of editionResult.records) {
-                refs.push({
-                    id: this.normalizeId(r.get('id')),
-                    code: null,
-                    title: r.get('title'),
-                    type: 'EDITION',
                 });
             }
 

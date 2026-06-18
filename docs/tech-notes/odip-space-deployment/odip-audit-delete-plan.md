@@ -20,7 +20,7 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
-> **Status (18 Jun 2026):** §4.1 model/shared ⏳ · §4.2 storage ⏳ · §4.3 service ⏳ · §4.4 REST ⏳ · §4.5 CLI ⏳ · §4.6 web ⏳ · §4.7 ADD (01 ⏳, 02 ⏳; 03/04/07/08 pending) — **in progress.** §4.1 and §4.2 reopened: `OperationalEntityReference` type scope corrected (O\* only; edition references removed) and `findInboundReferences` revised to O\* references only (see design note §4.1/§4.2/§5.2 correction notes).
+> **Status (18 Jun 2026):** §4.1 model/shared ✅ DONE · §4.2 storage ✅ DONE · §4.3 service ⏳ · §4.4 REST ⏳ · §4.5 CLI ⏳ · §4.6 web ⏳ · §4.7 ADD (01 ✅, 02 ✅; 03/04/07/08 pending) — **in progress.** §4.1/§4.2 were briefly reopened to correct `OperationalEntityReference` scope (O\* only) and `findInboundReferences` (O\* where-used only; edition wall removed, relocated to DEL-04 hard delete) — correction applied across code, ADD 01/02, and design note.
 
 Phase A must complete before Phase B begins. Within each phase the layer order is the project standard: model → store → service → API → CLI → web → ADD.
 
@@ -104,24 +104,24 @@ Layer by layer, ADD companion updated in the same batch. Rationale and full spec
 
 **In-round scope.** Lifecycle-edge model; soft delete + restore (per-item); referential integrity (blocking dependencies, published-wall folded in); the `lifecycleFace` read model; strict-payload rejection. **Deferred** (designed, not built): release / decommission (DEL-06), hard delete (DEL-04), edition deletion (DEL-05), `BatchService`, and the non-soft-delete web client.
 
-### 4.1 Model / shared ⏳
+### 4.1 Model / shared ✅ DONE
 
 - `AuditAction` gains `RELEASE` (`DECOMMISSION` already reserved from Phase A).
-- `OperationalEntityReference` (existing) documented as the blocker-list shape — no new type; usage note added to `odp-elements.js` and ADD §2.5.
+- `OperationalEntityReference` (existing) reused for where-used / referential-integrity results — no new type; `type` strictly `ON | OR | OC`. Documented in `odp-elements.js` and ADD §2.5.
 
-> **Correction (18 Jun 2026):** The earlier as-built note implied `OperationalEntityReference.type` was extended to cover `AuditTargetType` values (including `EDITION`) for edition blockers. This was wrong and is reversed — `type` is strictly `ON | OR | OC`. Edition captures do not block soft delete; the `released` lifecycle state is the correct gate (see design note §4.1 and §5.2 correction notes). ADD chapter 01 §2.5 and `odp-elements.js` need correction.
+> **Correction (18 Jun 2026) — applied.** An earlier as-built note implied `OperationalEntityReference.type` was extended to cover `AuditTargetType` values (including `EDITION`) for edition blockers. Reversed — `type` is strictly `ON | OR | OC`; edition captures do not block soft delete (see design note §4.1 and §5.2 correction notes). `odp-elements.js` and ADD chapter 01 §2.5 corrected.
 
-### 4.2 Storage ⏳
+### 4.2 Storage ✅ DONE
 
 > **As-built refinements (vs the sketch below):**
 > - `LIFECYCLE_FACE_EDGE` map exported from `versioned-item-store.js` (face value → anchoring edge); imported by the concrete O\* stores.
 > - `findById` (base) also gained the `lifecycleFace` parameter (default `active`, mutually exclusive with `baselineId`) — single-item reads of any face work now, not just list reads. OR/OC `findById` thread it through to `super` (slot 6, after `projection`).
 > - `softDelete` / `restore` are **concrete on the base** (`VersionedItemStore`) — edge mechanics are identical for all versioned items. Both are pure edge moves on the same version node (no new version on restore); each logs its `DELETE` / `RESTORE` event via the existing `auditEventStore.log`.
-> - The store query method is `findInboundReferences` (not `findBlockingDependencies`) — the store computes raw inbound-reference facts; the "blocking" interpretation is the service's. Abstract on the base, concrete per O\* store (entity-specific edges only).
+> - The store query method is `findInboundReferences` (not `findBlockingDependencies`) — the store computes raw inbound-reference facts; the "blocking" interpretation is the service's. Abstract on the base, concrete per O\* store (entity-specific edges only; O\* references only).
 > - `lifecycleStatus` is assembled as a `LifecycleStatus` object `{active, released, decommissioned, deleted}` on each read row; `_computeLifecycleStatus(itemId, tx)` helper backs single-item reads.
 > - `ChapterStore` overrides `softDelete` / `restore` / `findInboundReferences` to throw (chapters have no lifecycle); it keeps its own `findAll`/`findById`/`buildFindAllQuery` signatures and carries no `lifecycleStatus`.
 
-> **Correction (18 Jun 2026):** The earlier as-built note stated `findInboundReferences` returns "entity-specific edges + the edition-membership wall, returned `type: 'EDITION'`". This is removed — `findInboundReferences` returns O\* references only (`type` in `ON | OR | OC`). The edition-membership wall is not a blocking dependency; the `released` lifecycle state is the correct gate (see design note §4.2 and §5.2 correction notes). Concrete OR and OC store implementations need correction.
+> **Correction (18 Jun 2026) — applied.** An earlier as-built note stated `findInboundReferences` returns "entity-specific edges + the edition-membership wall, returned `type: 'EDITION'`". Removed — `findInboundReferences` is a pure where-used query returning O\* references only (`type` in `ON | OR | OC`), ignoring the target's lifecycle state and not inspecting edition/baseline captures. The edition-membership wall is not a soft-delete blocker (it relocates to hard delete, DEL-04 — see design note §4.2, §5.2, §5.4 notes). OR and OC store implementations corrected; ADD chapter 02 updated.
 
 - New lifecycle edges `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` / `DELETED_VERSION` (joining `LATEST_VERSION`).
 - Remove the Phase A `Item.status` field; lifecycle is now edge-derived.

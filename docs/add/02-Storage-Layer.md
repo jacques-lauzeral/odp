@@ -159,7 +159,7 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_createRelationshipsFromIds(versionId, relationshipIds, tx)` — writes all relationships for a version
 - `buildFindAllQuery(baselineId, filters, fields?, lifecycleFace?)` — builds entity-specific optimised Cypher for list queries; `fields` is the projection field list driving which OPTIONAL MATCHes and RETURN columns are emitted; in the live dataset (`baselineId` null) `lifecycleFace` selects the anchoring edge via `LIFECYCLE_FACE_EDGE`; when `filters.editionId` is present the `HAS_ITEMS` relationship is aliased as `r` and `$editionId IN r.editions` is added as a WHERE condition. The RETURN always projects the four lifecycle flags (`EXISTS {}` edge-presence checks) into the row.
 - `findAll(tx, baselineId?, filters?, projection?, lifecycleFace?)` — list with multi-context, content filtering, lifecycle-face selection, and projection support; throws if `projection = 'extended'`; each row carries a `lifecycleStatus` object
-- `findInboundReferences(itemId, tx)` — returns all **live** items referencing the target via an inbound relationship, as `OperationalEntityReference[]` (`{id, code, title, type}`). The relationship set inspected is entity-specific. Edition membership is included as a reference (the published-edition wall). Concrete stores implement.
+- `findInboundReferences(itemId, tx)` — returns all **live** O\* items referencing the target via an inbound relationship, as `OperationalEntityReference[]` (`{id, code, title, type}` with `type` in `ON | OR | OC`). The relationship set inspected is entity-specific. A pure where-used query: it does not inspect the target's lifecycle state, and edition/baseline captures are **not** included (edition membership does not constrain soft delete). Concrete stores implement.
 - `_getEntityTypeForCode(data)` — returns `'ON'`, `'OR'`, or `'OC'` for code generation (abstract)
 
 Note that `findById` itself is concrete on the base (it gained the `lifecycleFace` parameter); concrete stores override it only to append derived fields under the `extended` projection, passing `lifecycleFace` through to `super`.
@@ -310,7 +310,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature carries op
 | `refinedBy` | Requirement versions with `REFINES → this item` whose version is `LATEST_VERSION` |
 | `requiredByORs` | OR versions with `DEPENDS_ON → this item` whose version is `LATEST_VERSION` |
 
-**`findInboundReferences(itemId, tx)`** → `OperationalEntityReference[]` — all **live** items referencing this requirement: child requirements via `REFINES`, ORs via `IMPLEMENTS` and `DEPENDS_ON`, OCs via `IMPLEMENTS` and `DECOMMISSIONS` (each referencing version must hold `LATEST_VERSION`), plus any `ODPEdition` exposing a baseline that captured a version of this item (the published-edition wall, returned with `type: 'EDITION'`). The service layer interprets this set as blocking dependencies; the store applies no such interpretation.
+**`findInboundReferences(itemId, tx)`** → `OperationalEntityReference[]` — all **live** O\* items referencing this requirement: child requirements via `REFINES`, ORs via `IMPLEMENTS` and `DEPENDS_ON`, OCs via `IMPLEMENTS` and `DECOMMISSIONS` (each referencing version must hold `LATEST_VERSION`). A pure where-used query over O\* references — `type` is always `ON | OR | OC`. It does not inspect the target's lifecycle state, and edition/baseline captures are **not** included: edition membership does not constrain soft delete (the snapshot holds frozen `ItemVersion` nodes, unaffected by item-level lifecycle transitions). The service layer interprets this set as blocking dependencies; the store applies no such interpretation.
 
 **Not implemented**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`
 
@@ -342,7 +342,7 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 |---|---|
 | `requiredByOCs` | OC versions with `DEPENDS_ON → this item` whose version is `LATEST_VERSION` |
 
-**`findInboundReferences(itemId, tx)`** → `OperationalEntityReference[]` — all **live** items referencing this change: other OCs via `DEPENDS_ON` (referencing version must hold `LATEST_VERSION`), plus any `ODPEdition` exposing a baseline that captured a version of this item (the published-edition wall, `type: 'EDITION'`). The service layer interprets this set as blocking dependencies.
+**`findInboundReferences(itemId, tx)`** → `OperationalEntityReference[]` — all **live** O\* items referencing this change: other OCs via `DEPENDS_ON` (referencing version must hold `LATEST_VERSION`). A pure where-used query — `type` is `OC`. It does not inspect the target's lifecycle state, and edition/baseline captures are **not** included (edition membership does not constrain soft delete). The service layer interprets this set as blocking dependencies.
 
 **`_buildRelationshipReferences(versionId, tx, fields?)`** — fetches only the relationship queries whose field name is present in `fields`. When `fields` is `null` (internal calls), all relationships are fetched.
 
@@ -509,7 +509,7 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 // Result shape
 {
     itemId: 123,
-    versionId: 456,
+        versionId: 456,
     version: 1,
     title: "Requirement Title",
     type: "OR",

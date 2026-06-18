@@ -271,11 +271,15 @@ export class OperationalChangeStore extends VersionedItemStore {
     }
 
     /**
-     * Find all live items referencing this change via an inbound relationship.
+     * Find all live O* items referencing this change via an inbound relationship.
      * An OC may be referenced by:
      *   - other OCs depending on it (DEPENDS_ON)
      * "Live" = the referencing version holds LATEST_VERSION on its own item.
-     * Edition/baseline membership is also a reference and is included.
+     *
+     * This is a pure where-used query over O* references. It does not inspect
+     * the target's lifecycle state, and it does NOT consider edition/baseline
+     * captures — edition membership does not constrain soft delete. The returned
+     * references are always O* (type OC here).
      *
      * @param {number} itemId
      * @param {Transaction} transaction
@@ -300,23 +304,6 @@ export class OperationalChangeStore extends VersionedItemStore {
                     code: r.get('code'),
                     title: r.get('title'),
                     type: 'OC',
-                });
-            }
-
-            // Edition membership — the published-edition wall.
-            const editionResult = await transaction.run(`
-                MATCH (item:${this.nodeLabel})<-[:VERSION_OF]-(version:${this.versionLabel})<-[hi:HAS_ITEMS]-(baseline:Baseline)
-                MATCH (edition:ODPEdition)-[:EXPOSES]->(baseline)
-                WHERE id(item) = $itemId AND id(edition) IN hi.editions
-                RETURN DISTINCT id(edition) as id, edition.title as title
-                ORDER BY edition.title
-            `, { itemId: numericItemId });
-            for (const r of editionResult.records) {
-                refs.push({
-                    id: this.normalizeId(r.get('id')),
-                    code: null,
-                    title: r.get('title'),
-                    type: 'EDITION',
                 });
             }
 
