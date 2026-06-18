@@ -125,7 +125,7 @@ ORDER BY e.timestamp
 
 ### 3.2 O* Lifecycle Model
 
-The lifecycle of an O* (ON / OR / OC) is expressed entirely through **named Item→ItemVersion edges**. There is no stored lifecycle field on the item node — lifecycle is derived from which edges exist. This is a direct extension of the existing `LATEST_VERSION` structural pattern.
+The lifecycle of an O* (ON / OR / OC) is expressed entirely through **named Item→ItemVersion edges**. There is no stored lifecycle status field on the item node — lifecycle status is derived from which edges exist. This is a direct extension of the existing `LATEST_VERSION` structural pattern.
 
 The four lifecycle edge types are:
 
@@ -136,7 +136,7 @@ The four lifecycle edge types are:
 | `DECOMMISSIONED_VERSION` | Version that was current when the item was decommissioned |
 | `DELETED_VERSION` | Version that was current at soft-delete (recycle bin) |
 
-**Lifecycle flags.** The item's state is read as four independent boolean flags, each derived from the presence of the corresponding edge — not a single status enum:
+**Lifecycle status.** The item's lifecycle status is encapsulated in a LifecycleStatus structure. This structure is composed of four independent boolean flags, each derived from the presence of the corresponding edge:
 
 | Flag | Derived from |
 |---|---|
@@ -145,7 +145,7 @@ The four lifecycle edge types are:
 | `decommissioned` | `DECOMMISSIONED_VERSION` edge exists |
 | `deleted` | `DELETED_VERSION` edge exists |
 
-**Allowed combinations.** The flags are independent, but their co-occurrence is constrained — an item is always in exactly one of these states:
+**Allowed combinations.** The flags are independent, but their co-occurrence is constrained — the lifecycle status of an item is always in exactly one of these states:
 
 | State | active | released | decommissioned | deleted |
 |---|---|---|---|---|
@@ -159,7 +159,7 @@ No other combination is valid. In particular:
 - `active` and `decommissioned` never coexist — decommissioning is terminal; no further authoring.
 - `active` and `deleted` never coexist — soft delete removes `LATEST_VERSION`.
 
-An item in the **Active + Released** state holds two simultaneous edges pointing to different version nodes: `LATEST_VERSION` points to the current working version; `RELEASED_VERSION` points to the deployed version. This is the normal state of an OR being revised while its previous version is already operational.
+An item in the **Active + Released** lifecycle status holds two simultaneous edges pointing to different version nodes: `LATEST_VERSION` points to the current working version; `RELEASED_VERSION` points to the deployed version. This is the normal state of an OR being revised while its previous version is already operational.
 
 **Allowed transitions.** The foundation defines all of these. The right-hand column marks which are implemented by the current solution proposal (§4) and which are designed-but-not-yet-built (§5.6):
 
@@ -167,7 +167,7 @@ An item in the **Active + Released** state holds two simultaneous edges pointing
 |---|---|---|---|---|
 | — | Active | create | `LATEST_VERSION` added | ✅ |
 | Active | Deleted | soft delete | `LATEST_VERSION` removed; `DELETED_VERSION` added | ✅ |
-| Deleted | Active | restore | `DELETED_VERSION` removed; new `LATEST_VERSION` added (new version node, content copied) | ✅ |
+| Deleted | Active | restore | `DELETED_VERSION` removed; `LATEST_VERSION` re-added to the same version node (no new version) | ✅ |
 | Deleted | — | hard delete | item + versions + edges destroyed | ⚠ §5.4 |
 | Active | Active + Released | release | `RELEASED_VERSION` added; `LATEST_VERSION` retained | ⚠ §5.6 |
 | Active + Released | Decommissioned | decommission (decommissioning OC released) | `LATEST_VERSION` and `RELEASED_VERSION` removed; `DECOMMISSIONED_VERSION` added | ⚠ §5.6 |
@@ -175,7 +175,7 @@ An item in the **Active + Released** state holds two simultaneous edges pointing
 
 Hard delete (permanent removal) is available from the `Deleted` state only, and only for items with no blocking dependencies (§5.1). It destroys the item node, all version nodes, and all edges in one transaction.
 
-**Maturity vs lifecycle.** Maturity (`NO_SHOW` / `DRAFT` / `ADVANCED` / `MATURE`) is an **editorial signal** set by authors on the version node. Lifecycle is an **operational signal** expressed by the structural edges above. The two are independent axes: maturity answers *how complete and stable is this requirement?*; lifecycle answers *where is this item in its operational journey?*
+**Maturity vs lifecycle.** Maturity (`NO_SHOW` / `DRAFT` / `ADVANCED` / `MATURE`) is an **editorial signal** set by authors on the version node. Lifecycle status is an **operational signal** expressed by the structural edges above. The two are independent axes: maturity answers *how complete and stable is this requirement?*; lifecycle status answers *where is this item in its operational journey?*
 
 **Release and decommission** are post-publication operations that drive the `RELEASED_VERSION` and `DECOMMISSIONED_VERSION` transitions. The decommission transition is the operational consequence of releasing a *decommissioning* OC: the OC-layer `DECOMMISSIONS` relationship (planning intent) becomes the lifecycle `DECOMMISSIONED_VERSION` edge (operational fact) when that OC is released. Both operations are fully designed at the foundation level (above) but their operational UX and implementation are not yet ready — see §5.6.
 
@@ -191,26 +191,28 @@ This section is the layer-by-layer description of the **lifecycle and deletion**
 - `DECOMMISSIONED_VERSION` — points to the version current at decommission
 - `DELETED_VERSION` — points to the version current at soft-delete
 
-There is no stored lifecycle field on the `Item` node; lifecycle is derived from edge presence (the four flags `active` / `released` / `decommissioned` / `deleted`, §3.2).
+There is no stored lifecycle status field on the `Item` node; lifecycle status is derived from edge presence (the four flags `active` / `released` / `decommissioned` / `deleted`, §3.2).
 
-**Lifecycle flags in the projection.** The four flags (`active` / `released` / `decommissioned` / `deleted`) are computed from lifecycle-edge presence and included in the item read projection at the **summary** tier — so they are present in all three projections (summary, standard, extended), not gated behind standard/extended. Lifecycle state is identity-level, needed by every consumer regardless of content depth: list views and pickers (summary) drive affordances from it, detail views (standard/extended) display it. The flags are cheap (edge-presence checks, no content hydration), so there is no cost reason to withhold them from summary. They are the read-side face of the edge model, available service→client.
+**Lifecycle status in the projection.** The lifecycle status (attribute `lifecycleStatus` encapsulating the four flags `active` / `released` / `decommissioned` / `deleted`) is computed from lifecycle-edge presence and included in the item read projection at the **summary** tier — so they are present in all three projections (summary, standard, extended), not gated behind standard/extended. Lifecycle state is identity-level, needed by every consumer regardless of content depth: list views and pickers (summary) drive affordances from it, detail views (standard/extended) display it. The lifecycle status computing is cheap (edge-presence checks, no content hydration), so there is no cost reason to withhold them from summary. It is the read-side face of the edge model, available service→client.
 
-**Flags are response-only.** The flags appear on response shapes, never on request shapes — they are not accepted as input on create / update / patch (the service rejects payloads carrying them, §4.3). Lifecycle is edge-derived: the version node never carries flag properties, and the lifecycle edges are written exclusively by the transition operations (§4.2), never from create / update / patch content. A flag value in a request therefore has no path to becoming the derived state, even before the strict-payload rejection — the rejection is the explicit guard on top of a model that already gives request flags no effect.
+**Lifecycle status is response-only.** The lifecycle status appears on response shapes, never on request shapes — it is not accepted as input on create / update / patch (the service rejects payloads carrying it, §4.3). Lifecycle status is edge-derived: the version node never carries lifecycle status, and the lifecycle edges are written exclusively by the transition operations (§4.2), never from create / update / patch content. A lifecycleStatus in a request therefore has no path to becoming the derived state, even before the strict-payload rejection — the rejection is the explicit guard on top of a model that already gives request lifecycle status no effect.
 
 **Item node.** The Phase A `status` field (`ACTIVE` / `DELETED`) is **removed** — it is superseded by the edge model. This is the one Phase A element this revision walks back.
 
 **ItemVersion node.** No change — already content-only after Phase A.
 
-**Shared.** A blocking-dependency shape is added for the referential-integrity result: `{id, type, code, title}`, where `type` spans the full `AuditTargetType` vocabulary (a blocker may be an ON, OR, OC, change set, baseline or edition) and `code` is nullable. The `AuditAction` enum gains `RELEASE`. A future shared state-predicate helper (e.g. `isCandidateForSoftDelete(item)`) computing the flag-based part of a transition precondition would let server and client share the lifecycle rules from one source; not built now, noted as design intent.
+**Shared.** The `AuditAction` enum gains `RELEASE`. The referential-integrity result reuses the existing `OperationalEntityReference` shape `{id, code, title, type}` — `type` is strictly `ON | OR | OC`, its canonical scope. A future shared state-predicate helper (e.g. `isCandidateForSoftDelete(item)`) computing the flag-based part of a transition precondition would let server and client share the lifecycle rules from one source; not built now, noted as design intent.
+
+> **Design correction.** An earlier iteration of this section stated that `type` spans the full `AuditTargetType` vocabulary so that edition/baseline references could appear in the blocker list. This was wrong: edition captures do not block soft delete (see §4.2 and §5.2 correction notes). `OperationalEntityReference` remains strictly an O\* cross-reference shape.
 
 ### 4.2 Store layer
 
-`VersionedItemStore` gains the lifecycle transition methods and a `lifecycleStatus` dataset selector on its read query; no separate per-state query methods are added.
+`VersionedItemStore` gains the lifecycle transition methods and a `lifecycleFace` dataset selector on its read query; no separate per-state query methods are added.
 
-**`lifecycleStatus` as a dataset selector.** Reads are anchored on one lifecycle edge, chosen by a `lifecycleStatus` argument on `findAll`: `active`→`LATEST_VERSION`, `released`→`RELEASED_VERSION`, `decommissioned`→`DECOMMISSIONED_VERSION`, `deleted`→`DELETED_VERSION`. This is a *dataset selector*, not a filter — it chooses which set of items the traversal walks, the peer of `baselineId` (the baseline-snapshot dataset). The two are **mutually exclusive**: `baselineId` present → baseline-snapshot dataset, `lifecycleStatus` must be absent; `baselineId` absent → live dataset, with `lifecycleStatus` (default `active`) selecting the face. The ordinary `filters` (`domain`, `text`, …) then narrow *within* whichever dataset was selected.
+**`lifecycleFace` as a dataset selector.** Reads are anchored on one lifecycle edge, chosen by a `lifecycleFace` argument on `findAll`: `active`→`LATEST_VERSION`, `released`→`RELEASED_VERSION`, `decommissioned`→`DECOMMISSIONED_VERSION`, `deleted`→`DELETED_VERSION`. This is a *dataset selector*, not a filter — it chooses which set of items the traversal walks, the peer of `baselineId` (the baseline-snapshot dataset). The two are **mutually exclusive**: `baselineId` present → baseline-snapshot dataset, `lifecycleFace` must be absent; `baselineId` absent → live dataset, with `lifecycleFace` (default `active`) selecting the face. The ordinary `filters` (`domain`, `text`, …) then narrow *within* whichever dataset was selected.
 
 ```
-findAll(tx, baselineId, lifecycleStatus, filters, projection)
+findAll(tx, baselineId, lifecycleFace, filters, projection)
 ```
 
 The four lifecycle faces are not four datasets in tension — `released` is *what is in production*, `decommissioned` is *what has been withdrawn from production*, `deleted` is the recycle bin, `active` is the live working set. An item can be both `active` and `released` (it appears in both faces); the selector picks which list you are building, while the flags on each row describe that item's full state (below).
@@ -218,18 +220,20 @@ The four lifecycle faces are not four datasets in tension — `released` is *wha
 **Transition methods:**
 
 - `softDelete(itemId, changeSetCommit, tx)` — valid only from the Active state (refuses if the item is `released`, `decommissioned` or already `deleted` — the §3.2 transition rule, a lifecycle-state guard separate from the blocking-dependency check). Removes `LATEST_VERSION`, adds `DELETED_VERSION` to the same version node, logs `DELETE`.
-- `restore(itemId, changeSetCommit, tx)` — creates a new version copying the `DELETED_VERSION` content, removes `DELETED_VERSION`, adds `LATEST_VERSION`, logs `RESTORE`.
+- `restore(itemId, changeSetCommit, tx)` — the mirror of `softDelete`: removes `DELETED_VERSION`, re-adds `LATEST_VERSION` to the same version node, logs `RESTORE`. No new version is created — the lifecycle edges are metadata over the version graph, and the transition itself is fully recorded in the audit log. Valid only from the Deleted state.
 - `release(itemId, changeSetCommit, tx)` — adds `RELEASED_VERSION` (retains `LATEST_VERSION`), logs `RELEASE`.
 - `decommission(itemId, changeSetCommit, tx)` — removes `LATEST_VERSION` and `RELEASED_VERSION`, adds `DECOMMISSIONED_VERSION`, logs `DECOMMISSION`.
 - `hardDelete(itemId, changeSetCommit, tx)` — destroys the item node, all version nodes, and all edges in one transaction; logs `HARD_DELETE` (the event survives its target, §3.1).
 
 **Blocking dependencies:**
 
-- `findBlockingDependencies(itemId, tx)` — all **live** inbound references (those whose source still holds `LATEST_VERSION`), returned as `{id, type, code, title}[]`. An edition/baseline reference is one kind of blocker, distinguishable by its `type` so the caller can phrase the message appropriately.
+- `findInboundReferences(itemId, tx)` — all **live** O\* inbound references (those whose source item still holds `LATEST_VERSION`), returned as `OperationalEntityReference[]` with `type` strictly in `ON | OR | OC`. Edition/baseline captures are **not** inspected — they do not block soft delete (see §5.2). The store computes referential facts only; the "blocking" interpretation is the service layer's.
+
+> **Design correction.** An earlier iteration specified that `findInboundReferences` should also traverse to `ODPEdition`/`Baseline` nodes and return edition captures as references with `type: 'EDITION'`, treating them as one blocker kind. This is removed: edition captures do not block soft delete; `OperationalEntityReference` is an O\*-only shape; and the published-item protection is correctly expressed by the `released` lifecycle state, checked directly by `softDelete` before any reference query (see §4.3).
 
 **Read projection — lifecycle flags.** The base read traversal (shared by `findAll`, `findById` and the specific-version read) `OPTIONAL MATCH`es the four lifecycle edges (`LATEST_VERSION`, `RELEASED_VERSION`, `DECOMMISSIONED_VERSION`, `DELETED_VERSION`) and projects their presence as the four booleans `active` / `released` / `decommissioned` / `deleted` in the row shape. This is computed at the summary tier, so the flags ride every read at every projection (§4.1) — the dedicated lifecycle-list queries above are just this same traversal filtered to one terminal edge. This is where the "derived from edge presence" model is actually realised; nothing else stores or computes lifecycle state.
 
-`findBlockingDependencies` is a pure query: it computes the **referential-integrity** facts (inbound live references) and serves two consumers — the CLI and web client call it (or read the equivalent from the item projection) to inform the user before any attempt, and the service calls it as a validation guard before `softDelete` (§4.3). This is distinct from the **lifecycle-state** precondition (the item must be Active), which is read from the flags. Soft delete requires both: Active state *and* no blocking dependencies. Neo4j does not backstop either rule on soft delete (only `LATEST_VERSION` is removed; no node is deleted), so these application-level checks are the actual enforcement.
+`findInboundReferences` is a pure query: it computes the **referential-integrity** facts (inbound live references) and serves two consumers — the CLI and web client read the equivalent (via the service's `getBlockingDependencies`) to inform the user before any attempt, and the service calls it as a validation guard before `softDelete` (§4.3). This is distinct from the **lifecycle-state** precondition (the item must be Active), which is read from the flags. Soft delete requires both: Active state *and* no inbound live references. Neo4j does not backstop either rule on soft delete (only `LATEST_VERSION` is removed; no node is deleted), so these application-level checks are the actual enforcement.
 
 ### 4.3 Service layer
 
@@ -237,11 +241,16 @@ The four lifecycle faces are not four datasets in tension — `released` is *wha
 
 **Write operations:** `softDelete`, `restore`, `release`, `decommission`, `hardDelete` — each delegating to the store method of the same name.
 
-**Read operations.** `getAll(user, editionId?, lifecycleStatus?, filters?, projection?)` carries the dataset selector: `lifecycleStatus` is one of `active` (default) / `released` / `decommissioned` / `deleted`, mutually exclusive with `editionId` (edition is the baseline-snapshot dataset; lifecycleStatus selects a live-dataset face — supplying both is a `BAD_REQUEST`). There are no separate `getDeleted` / `getReleased` / `getDecommissioned` methods. `getBlockingDependencies(itemId, user)` (→ `store.findBlockingDependencies`) is exposed so the client can assess deletability preemptively (§4.2).
+**Read operations.** `getAll(user, editionId?, lifecycleFace?, filters?, projection?)` carries the dataset selector: `lifecycleFace` is one of `active` (default) / `released` / `decommissioned` / `deleted`, mutually exclusive with `editionId` (edition is the baseline-snapshot dataset; lifecycleFace selects a live-dataset face — supplying both is a `BAD_REQUEST`). There are no separate `getDeleted` / `getReleased` / `getDecommissioned` methods. `getBlockingDependencies(itemId, user)` (→ `store.findInboundReferences`) returns `OperationalEntityReference[]` — the live O\* items blocking deletion. It is exposed so the client can assess deletability preemptively via `GET /{item}/{id}/blocking-dependencies`; it is also called internally by `softDelete` as the blocking-reference guard (step 2 above). The `released` state is not part of this report — the client already carries `lifecycleStatus.released` from the item read; `softDelete` checks it directly as step 1.
 
 **Strict payload validation.** The service rejects any create / update / patch payload that carries unexpected attributes, returning `BAD_REQUEST` (400) rather than silently dropping or absorbing them — a stray field signals a client error and should fail fast, not end up as an inert orphan property on the version node (a trap when investigating the store directly). This responsibility sits in the existing service-layer validation; the exact mechanism (accepted-field declaration or other) is an implementation detail. It covers the lifecycle flags with no special-casing: the flags are response-only and never accepted as input (§4.1), so a payload containing them is rejected like any other unexpected attribute.
 
-**Validation guard.** `softDelete` enforces both parts of the precondition inside its transaction: the **lifecycle state** must be Active (read from the flags) and `findBlockingDependencies` must return empty. If either fails it refuses with a structured conflict (carrying the blocker list where relevant) before mutating. This is the authoritative enforcement — Neo4j does not backstop these rules on soft delete (§4.2).
+**Validation guard.** `softDelete` enforces the precondition as two sequential checks before any mutation:
+
+1. **Lifecycle-state guard** — the item must be Active *and not Released*: Active means `LATEST_VERSION` present; not Released means `RELEASED_VERSION` absent. A released item cannot be soft-deleted regardless of references — the only valid exits are release/decommission (DEL-06). This throws an invalid-transition error (not a 409) immediately.
+2. **Blocking-reference guard** — `findInboundReferences` must return empty. If non-empty, refuses with `409 LIFECYCLE_BLOCKED` carrying the `OperationalEntityReference[]` list.
+
+The two are distinct: the lifecycle-state guard is an invalid-transition error; only the reference check produces the 409 blocker report. Neo4j does not backstop either rule on soft delete (§4.2), so these application-level checks are the authoritative enforcement.
 
 **Flags in the read projection.** The service returns the lifecycle flags (§4.1) on every item read, at every projection (summary / standard / extended), so callers see state without a separate query. The web client uses them for live affordances and a preemptive deletability check; the CLI is non-preemptive — it simply calls the service operation and renders the result, including the conflict when a delete is refused.
 
@@ -281,16 +290,16 @@ It sits under a `/batch` namespace rather than `/{item}` because it spans item t
 
 **Lifecycle dataset selection** — on the existing list endpoint via a query parameter:
 
-- `GET /{item}?lifecycleStatus=active|released|decommissioned|deleted` — defaults to `active`; selects the dataset face. Mutually exclusive with `?edition=` (supplying both → `400`).
+- `GET /{item}?lifecycleFace=active|released|decommissioned|deleted` — defaults to `active`; selects the dataset face. Mutually exclusive with `?edition=` (supplying both → `400`).
 - `GET /{item}/{id}/blocking-dependencies` — the preemptive deletability check (returns the blocker list)
 
-No dedicated `/deleted` / `/released` / `/decommissioned` paths — they are faces of the one list resource, selected by `lifecycleStatus`.
+No dedicated `/deleted` / `/released` / `/decommissioned` paths — they are faces of the one list resource, selected by `lifecycleFace`.
 
 **Lifecycle flags** ride the existing item read projection (§4.1) — they appear on `GET /{item}` and `GET /{item}/{id}` responses at every projection (summary / standard / extended); no separate endpoint.
 
-**Error mapping.** A refused transition (failed lifecycle-state guard, or external blockers present) returns `409 CONFLICT` with a structured envelope carrying the failing item(s) and, for blocking failures, the blocker list `{id, type, code, title}[]`. The batch endpoint reports per-item failures in the same envelope shape.
+**Error mapping.** A refused transition (failed lifecycle-state guard, or external blockers present) returns `409 CONFLICT` with a structured envelope carrying the failing item(s) and, for blocking failures, the blocker list as `OperationalEntityReference[]`. The batch endpoint reports per-item failures in the same envelope shape.
 
-**OpenAPI.** The per-item lifecycle paths (`/delete`, `/restore`, `/release`, `/decommission`, `/hard-delete`) are declared in `openapi-operational.yml`, which already owns the operational-requirement and operational-change resources; the existing list endpoints there gain the `lifecycleStatus` query parameter and the `blocking-dependencies` sub-path. The mixed batch goes in a new **`openapi-batch.yml`** (`/batch/lifecycle` + the `LifecycleBatchRequest` schema), referenced from `openapi.yml` alongside the other split specs. Shared schemas live in `openapi-base.yml`: a new `BlockingDependency` schema; the four lifecycle flags added at the **summary tier** of the `OperationalRequirement` / `OperationalChange` response schemas so they are present across all three projections; and a refusal `409` reusing the existing `Error` envelope with a new code (e.g. `LIFECYCLE_BLOCKED`) carrying the blocker list.
+**OpenAPI.** The per-item lifecycle paths (`/delete`, `/restore`, `/release`, `/decommission`, `/hard-delete`) are declared in `openapi-operational.yml`, which already owns the operational-requirement and operational-change resources; the existing list endpoints there gain the `lifecycleFace` query parameter and the `blocking-dependencies` sub-path. The mixed batch goes in a new **`openapi-batch.yml`** (`/batch/lifecycle` + the `LifecycleBatchRequest` schema), referenced from `openapi.yml` alongside the other split specs. Shared schemas live in `openapi-base.yml`: the blocker list reuses the existing `OperationalEntityReference` schema (no new schema needed — `type` already accepts any string, covering the full `AuditTargetType` vocabulary); the four lifecycle flags added at the **summary tier** of the `OperationalRequirement` / `OperationalChange` response schemas so they are present across all three projections; and a refusal `409` reusing the existing `Error` envelope with a new code (e.g. `LIFECYCLE_BLOCKED`) carrying the blocker list.
 
 ### 4.5 CLI
 
@@ -322,11 +331,11 @@ The principle: the selected face fixes one flag; any flag that can *co-occur* wi
 
 **This round — soft delete only.** The single web-client change now is a **soft-delete action on the O* detail form** (ON / OR / OC), routed through the standard change-set save dialog (it is a change-set-bound write — the dialog supplies the ChangeSet + note). On a refused delete (`409` — the lifecycle-state guard or blocking dependencies), the conflict is surfaced to the user, with the blocker list shown where present.
 
-**Out of this round (P1+).** Lifecycle display (badges / indicators), the `lifecycleStatus` dataset-face selector, the recycle bin view, and the restore / release / decommission / hard-delete affordances are deferred. The batch reconciliation worksheet is likewise P1+ (and its candidate derivation is DEL-06 operational design, §5.6).
+**Out of this round (P1+).** Lifecycle display (badges / indicators), the `lifecycleFace` dataset-face selector, the recycle bin view, and the restore / release / decommission / hard-delete affordances are deferred. The batch reconciliation worksheet is likewise P1+ (and its candidate derivation is DEL-06 operational design, §5.6).
 
 Forward notes for when these land, not specified now:
 
-- Lifecycle display will likely begin on the detail form. At most **two** flags can co-occur in any one view, bounded by the queried `lifecycleStatus` (the working dataset) — e.g. the `active` face may also show `released`, but never a third.
+- Lifecycle display will likely begin on the detail form. At most **two** flags can co-occur in any one view, bounded by the queried `lifecycleFace` (the working dataset) — e.g. the `active` face may also show `released`, but never a third.
 - A "Production" / "Current Release" entry point from home (selecting the `released` face to see what is in production) is a planned future addition — not needed until next year.
 - The `decommissioned` and `deleted` faces are **integrator-only** visibility, and it is open how much of the elaborate O* list / detail views will be reused for them — they may warrant only a stripped-back inspection/recovery view rather than the full authoring views. The visibility gating is an RBA concern (separate topic). Recorded here as the first indication that lifecycle faces differ both in visibility (active / released broad, decommissioned / deleted integrator-only) and possibly in view richness.
 
@@ -345,7 +354,7 @@ This section assesses the §4 solution against each requirement: how far up the 
 
 Two cross-cutting gaps account for most of the ◐ on the live requirements (DEL-01, DEL-02):
 
-- **Blocking-report assembly (service)** — the store gathers the full greedy blocker list, but how the service packages it (the per-blocker `{id, type, code, title}`, and the published-edition-reference vs ordinary-reference distinction) is not yet designed.
+- **Blocking-report assembly (service)** — the store gathers the full greedy blocker list as `OperationalEntityReference[]`, but how the service packages it (the published-edition-reference vs ordinary-reference distinction) is not yet designed.
 - **Blocking-report presentation (web)** — how the blocker list is surfaced to the user (the refusal `409` rendering, and any preemptive display) is not yet designed. The web layer for DEL-01/02 is also partial: only the refusal path on soft-delete-from-the-form is in scope this round.
 
 DEL-04 (hard delete) and DEL-05 (edition deletion) are **parked**: only their store mechanics are sketched; service / REST / CLI / web were not worked this session. DEL-05 model is n/a (editions are not O*).
@@ -354,15 +363,17 @@ DEL-03's web layer is light — only soft-delete-from-the-detail-form is designe
 
 ### 5.1 DEL-01 — Referential integrity *[P0]*
 
-No object is deletable while other **live** objects reference it; the check gathers **all** blocking dependencies in one pass. The blocking inbound references per target type, the live-only rule, and the structured result are specified in §4.1 (shape), §4.2 (`findBlockingDependencies`), §4.3 (guard). **Open:** how the service packages the greedy blocker report and how the web client presents it (the refusal `409` rendering and any preemptive display). Web is otherwise partial — only the soft-delete-from-form refusal path is in this round.
+No object is deletable while other **live** objects reference it; the check gathers **all** inbound live references in one pass. The blocking inbound references per target type, the live-only rule, and the structured result are specified in §4.1 (shape), §4.2 (`findInboundReferences`), §4.3 (guard). **Open:** how the service packages the greedy blocker report and how the web client presents it (the refusal `409` rendering and any preemptive display). Web is otherwise partial — only the soft-delete-from-form refusal path is in this round.
 
 ### 5.2 DEL-02 — Published-edition wall *[P0]*
 
-A published item must not be deletable. In the solution this is **not a separate gate**: an edition/baseline reference is one kind of blocking dependency (§4.2), so the published wall falls out of the DEL-01 check — distinguishable by the blocker's `type`. **Open** (shared with DEL-01): the service-side packaging of that distinction in the blocker report, and its user-facing presentation ("referenced by a published edition" vs an ordinary reference). At P0 a published item reports as non-deletable via the blocker list; its only sanctioned exits (release / decommission) are DEL-06.
+A published item must not be soft-deletable. The gate is the item's **`released` lifecycle state** (`RELEASED_VERSION` edge present), not edition membership. `softDelete` checks this directly as an invalid-transition guard (step 1 in §4.3) — before any reference check, and independent of it. An item captured in a published edition but not yet operationally released (e.g. planned for a future wave) is **not** blocked by that edition membership alone — the correct gate is operational deployment, not publication. Once an item is released, its only sanctioned exits are release/decommission (DEL-06).
+
+> **Design correction.** An earlier iteration folded the published-edition wall into the blocking-dependency check: `findInboundReferences` was specified to include edition/baseline captures as `type: 'EDITION'` references, and the service would distinguish them from ordinary O\* references in the blocker report. This was wrong on both counts — edition captures do not block deletion, and the `released` lifecycle state is the correct and sufficient gate. The scenario in §0 (OR-1 captured by Ed-1 but superseded and replaced in Ed-2) confirms that edition membership alone is not a valid blocker.
 
 ### 5.3 DEL-03 — Soft delete & restore *[P1]*
 
-Soft delete and restore as the `LATEST_VERSION`↔`DELETED_VERSION` transitions, the recycle-bin read (`lifecycleStatus=deleted`), and the two-part precondition (Active state + no blocking dependencies) are settled across §4.1–§4.5. **Web is light:** only soft-delete from the detail form is designed (§4.6); **restore has no UI design**, and the recycle-bin view is deferred (P1+).
+Soft delete and restore as the `LATEST_VERSION`↔`DELETED_VERSION` transitions, the recycle-bin read (`lifecycleFace=deleted`), and the two-part precondition (Active state + no blocking dependencies) are settled across §4.1–§4.5. **Web is light:** only soft-delete from the detail form is designed (§4.6); **restore has no UI design**, and the recycle-bin view is deferred (P1+).
 
 ### 5.4 DEL-04 — Hard delete *[P1]* — parked
 

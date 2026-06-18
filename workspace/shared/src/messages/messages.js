@@ -13,6 +13,7 @@ export const OperationalRequirementRequests = {
         versionId: undefined,
         version: undefined,
         code: undefined,
+        lifecycleStatus: undefined,
         // derived fields excluded from create/update
         implementedByORs: undefined,
         implementedByOCs: undefined,
@@ -27,6 +28,7 @@ export const OperationalRequirementRequests = {
         ...OperationalRequirement,
         ...ChangeSetCommit,
         code: undefined,
+        lifecycleStatus: undefined,
         expectedVersionId: '',
         // derived fields excluded from update
         implementedByORs: undefined,
@@ -51,6 +53,7 @@ export const OperationalChangeRequests = {
         versionId: undefined,
         version: undefined,
         code: undefined,
+        lifecycleStatus: undefined,
         // derived fields excluded from create/update
         requiredByOCs: undefined,
         // path: transient topic locator on create only — not stored on the version
@@ -61,6 +64,7 @@ export const OperationalChangeRequests = {
         ...OperationalChange,
         ...ChangeSetCommit,
         code: undefined,
+        lifecycleStatus: undefined,
         expectedVersionId: '',
         // derived fields excluded from update
         requiredByOCs: undefined,

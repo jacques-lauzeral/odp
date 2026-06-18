@@ -60,6 +60,28 @@ export class ChapterStore extends VersionedItemStore {
         // nothing to do
     }
 
+    // ---------------------------------------------------------------------------
+    // Lifecycle — not applicable to chapters
+    // ---------------------------------------------------------------------------
+    // Chapters are config-owned scaffolding: created at bootstrap, never deleted,
+    // and they never carry lifecycle edges beyond LATEST_VERSION. The inherited
+    // transition and reference methods are overridden to fail fast and explicitly.
+
+    /** @override */
+    async softDelete(_itemId, _changeSetCommit, _transaction) {
+        throw new StoreError('Chapters have no lifecycle — cannot be deleted');
+    }
+
+    /** @override */
+    async restore(_itemId, _changeSetCommit, _transaction) {
+        throw new StoreError('Chapters have no lifecycle — nothing to restore');
+    }
+
+    /** @override */
+    async findInboundReferences(_itemId, _transaction) {
+        throw new StoreError('Chapters have no lifecycle — inbound references are not tracked');
+    }
+
     /**
      * Serialize osHierarchy → jsonOsHierarchy before writing to Neo4j.
      *

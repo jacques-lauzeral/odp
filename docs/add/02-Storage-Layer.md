@@ -144,10 +144,12 @@ async createRefinesRelation(childId, parentId, transaction) {
 Extends `BaseStore` with the dual-node versioning pattern, code generation, optimistic locking, and multi-context query support.
 
 **Concrete public methods:**
-- `create(data, tx, changeSetCommit)` — generates `code`, creates Item (`status: ACTIVE`) + ItemVersion (version 1), establishes all relationships; validates the change set is OPEN and records a `CREATE` `AuditEvent` in the same transaction. Item and version nodes carry **no** `createdAt`/`createdBy` — who/when/why is on the event. `data` carries entity state only — the commit is a separate argument.
-- `update(itemId, data, expectedVersionId, tx, changeSetCommit)` — validates lock, creates new version, always uses provided relationship arrays; validates the change set is OPEN and records an `UPDATE` `AuditEvent`. Restore and decommission are service operations that flow through this method, so they audit identically.
-- `findById(itemId, tx)` — resolves to latest version, returns item with all relationship references. No `createdAt`/`createdBy`/`changeSetCommit` on the read shape.
+- `create(data, tx, changeSetCommit)` — generates `code`, creates Item + ItemVersion (version 1), establishes all relationships; validates the change set is OPEN and records a `CREATE` `AuditEvent` in the same transaction. The Item node carries **no** `status` field — lifecycle is edge-derived (§5.6). Item and version nodes carry **no** `createdAt`/`createdBy` — who/when/why is on the event. `data` carries entity state only — the commit is a separate argument.
+- `update(itemId, data, expectedVersionId, tx, changeSetCommit)` — validates lock, creates new version, always uses provided relationship arrays; validates the change set is OPEN and records an `UPDATE` `AuditEvent`. Release and decommission are service operations that flow through dedicated transition methods, not `update`.
+- `findById(itemId, tx, baselineId?, editionId?, lifecycleFace?)` — resolves to the version on the selected lifecycle face (default `active` → `LATEST_VERSION`), returns item with all relationship references and the computed `lifecycleStatus` (live context only). No `createdAt`/`createdBy`/`changeSetCommit` on the read shape.
 - `findByIdAndVersion(itemId, versionNumber, tx)` — specific historical version with relationships; same read shape.
+- `softDelete(itemId, changeSetCommit, tx)` — moves the item from the Active to the Deleted face: removes `LATEST_VERSION`, adds `DELETED_VERSION` on the same version node, records a `DELETE` `AuditEvent`. Lifecycle-state guard only (item must hold `LATEST_VERSION`); the blocking-reference precondition is enforced by the service layer before this is called. Concrete on the base — the edge mechanics are identical for all versioned items.
+- `restore(itemId, changeSetCommit, tx)` — the inverse: removes `DELETED_VERSION`, re-adds `LATEST_VERSION`, records a `RESTORE` `AuditEvent`. Lifecycle-state guard only (item must hold `DELETED_VERSION`).
 
 > `findVersionHistory` is **removed**. The History feed is built by the client from `AuditEventStore.findAll({targetId}, tx)` (§3.x) — self-contained event rows carrying action, actor, role, timestamp, frozen change-set code/title, and note. No version-node join on the common path.
 
@@ -155,19 +157,24 @@ Extends `BaseStore` with the dual-node versioning pattern, code generation, opti
 - `_extractRelationshipIdsFromInput(data, currentVersionId, transaction)` — separates relationship arrays from content fields; `currentVersionId` is `null` on create, set on update (used by `OperationalChangeStore` for milestone inheritance)
 - `_buildRelationshipReferences(versionId, tx, fields?)` — loads relationships as Reference objects `{id, title, code}`; `fields` is the projection field list — only relationships whose field name is included are fetched
 - `_createRelationshipsFromIds(versionId, relationshipIds, tx)` — writes all relationships for a version
-- `buildFindAllQuery(baselineId, filters, fields?)` — builds entity-specific optimised Cypher for list queries; `fields` is the projection field list driving which OPTIONAL MATCHes and RETURN columns are emitted; when `filters.editionId` is present the `HAS_ITEMS` relationship is aliased as `r` and `$editionId IN r.editions` is added as a WHERE condition
-- `findAll(tx, baselineId?, filters?, projection?)` — list with multi-context, content filtering, and projection support; throws if `projection = 'extended'`
-- `findById(itemId, tx, baselineId?, editionId?, projection?)` — single item with context and projection support; throws if `projection = 'summary'`; `extended` projection appends derived fields via additional reverse-traversal queries; returns `null` if item not found or not a member of the edition
+- `buildFindAllQuery(baselineId, filters, fields?, lifecycleFace?)` — builds entity-specific optimised Cypher for list queries; `fields` is the projection field list driving which OPTIONAL MATCHes and RETURN columns are emitted; in the live dataset (`baselineId` null) `lifecycleFace` selects the anchoring edge via `LIFECYCLE_FACE_EDGE`; when `filters.editionId` is present the `HAS_ITEMS` relationship is aliased as `r` and `$editionId IN r.editions` is added as a WHERE condition. The RETURN always projects the four lifecycle flags (`EXISTS {}` edge-presence checks) into the row.
+- `findAll(tx, baselineId?, filters?, projection?, lifecycleFace?)` — list with multi-context, content filtering, lifecycle-face selection, and projection support; throws if `projection = 'extended'`; each row carries a `lifecycleStatus` object
+- `findInboundReferences(itemId, tx)` — returns all **live** items referencing the target via an inbound relationship, as `OperationalEntityReference[]` (`{id, code, title, type}`). The relationship set inspected is entity-specific. Edition membership is included as a reference (the published-edition wall). Concrete stores implement.
 - `_getEntityTypeForCode(data)` — returns `'ON'`, `'OR'`, or `'OC'` for code generation (abstract)
+
+Note that `findById` itself is concrete on the base (it gained the `lifecycleFace` parameter); concrete stores override it only to append derived fields under the `extended` projection, passing `lifecycleFace` through to `super`.
 
 **Internal helpers:**
 - `_generateCode(entityType, drg, tx)` — generates sequential codes in format `{type}-{DRG}-{####}` (e.g. `OR-IDL-0001`)
 - `_findMaxCodeNumber(entityType, drg, tx)` — finds highest existing code number for a type+DRG pair
+- `_computeLifecycleStatus(itemId, tx)` — returns the `LifecycleStatus` object `{active, released, decommissioned, deleted}` from four `EXISTS {}` edge-presence checks; used by `findById` in the live context
 - `_buildReference(record, titleField?)` — builds a `{id, title, code, ...}` Reference object from a Neo4j record
 - `_validateReferences(label, ids, tx)` — batch-validates that all referenced node IDs exist; throws `StoreError` listing missing IDs
 - `_validateOpenChangeSet(changeSetCommit, tx)` — fail-fast validation that **returns a frozen change-set snapshot** `{code, title, classifier}` for the audit event: missing `changeSetId` throws a `Validation failed:` `StoreError` (no code); a non-existent ChangeSet throws `code: CHANGESET_NOT_FOUND`; a non-`OPEN` ChangeSet throws `code: CHANGESET_CLOSED`
 - `_auditCommit(changeSetCommit, csSnapshot)` — assembles the audit commit fragment `{changeSetId, code, title, classifier, note}` from the write-time commit and the frozen snapshot
 - `_resolveAuditTargetType(contentData)` — resolves the `AuditTargetType` leaf for this store: `OC` / `CHAPTER` from the node label, otherwise the requirement's `ON`/`OR` from `contentData.type`
+
+**Module constant**: `LIFECYCLE_FACE_EDGE` — exported map from `lifecycleFace` value (`active` / `released` / `decommissioned` / `deleted`) to the anchoring lifecycle edge (`LATEST_VERSION` / `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` / `DELETED_VERSION`). Imported by the concrete O\* stores.
 
 **Note on `code` field**: Item nodes carry a `code` property (e.g. `OR-IDL-0042`) that is generated at creation time from the entity type and domain key. Codes are stable identifiers used for round-trip import matching alongside `externalId`.
 
@@ -239,13 +246,15 @@ Inherits `VersionedItemStore → BaseStore`. Chapters have no graph relationship
 
 **`findById(itemId, tx, baselineId?, editionId?, projection?)`** → single chapter; defaults to `'extended'` projection. Accepts `editionId` for API symmetry but **drops it** before delegating to `super.findById` — only `baselineId` is forwarded. Chapters are implicitly present in every edition; their `HAS_ITEMS` relationships are never marked with edition IDs by `_computeEditionVersionIds`, so applying the `$editionId IN r.editions` filter would always return no results. The baseline context alone gives the correct snapshot. Strips `narrative`/`osHierarchy`/`generatedBlocks` from the result if `'standard'` projection is requested. Returns `null` if not found.
 
+**Lifecycle — not applicable.** Chapters are config-owned scaffolding: created at bootstrap, never deleted, and they carry no lifecycle edges beyond `LATEST_VERSION`. `softDelete`, `restore`, and `findInboundReferences` are overridden to throw `StoreError` (fail-fast), mirroring the immutability overrides on `BaselineStore` / `ODPEditionStore`. Chapter reads carry no `lifecycleStatus` — `ChapterStore` keeps its own `findAll` / `findById` / `buildFindAllQuery` signatures (with `projection` in the fourth slot) and does not participate in lifecycle-face selection.
+
 Config fields absent in `edition-config` (e.g. after a config drift) are set to `null` rather than throwing — drift is visible at read time rather than fatal.
 
 ---
 
 ### 4.3 OperationalRequirementStore (`operational-requirement-store.js`)
 
-Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extended with optional context and projection: `findById(itemId, tx, baselineId?, startDate?, projection?)`.
+Inherits `VersionedItemStore → BaseStore`. The `findById` signature carries optional context, projection, and lifecycle face: `findById(itemId, tx, baselineId?, editionId?, projection?, lifecycleFace?)`. `lifecycleFace` is threaded through to `super.findById`.
 
 **Relationship fields** (returned by `findAll`/`findById`, accepted by `create`/`update`):
 
@@ -257,7 +266,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `impactedStakeholders` | `IMPACTS_STAKEHOLDER` → StakeholderCategory | OR only | `note` |
 | `dependencies` | `DEPENDS_ON` → OR Item | OR only | — |
 
-**`findAll(tx, baselineId?, filters?, projection?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Filters object:
+**`findAll(tx, baselineId?, filters?, projection?, lifecycleFace?)`** — uses a single aggregated query (no N+1). `projection` defaults to `'standard'`; `'extended'` is rejected. `lifecycleFace` defaults to `'active'` and selects the anchoring edge in the live dataset (mutually exclusive with `baselineId`). The field list from `getProjectionFields('requirement', projection)` drives which OPTIONAL MATCHes and RETURN columns are emitted in `buildFindAllQuery`, and which fields are assembled from each record. Every row carries a `lifecycleStatus` object (four flags from `EXISTS {}` checks). Filters object:
 
 | Filter field | Type | Behaviour |
 |---|---|---|
@@ -301,6 +310,8 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 | `refinedBy` | Requirement versions with `REFINES → this item` whose version is `LATEST_VERSION` |
 | `requiredByORs` | OR versions with `DEPENDS_ON → this item` whose version is `LATEST_VERSION` |
 
+**`findInboundReferences(itemId, tx)`** → `OperationalEntityReference[]` — all **live** items referencing this requirement: child requirements via `REFINES`, ORs via `IMPLEMENTS` and `DEPENDS_ON`, OCs via `IMPLEMENTS` and `DECOMMISSIONS` (each referencing version must hold `LATEST_VERSION`), plus any `ODPEdition` exposing a baseline that captured a version of this item (the published-edition wall, returned with `type: 'EDITION'`). The service layer interprets this set as blocking dependencies; the store applies no such interpretation.
+
 **Not implemented**: `findDependencies`, `findDependents`, `patch`, `getVersionHistory`
 
 ---
@@ -309,7 +320,7 @@ Inherits `VersionedItemStore → BaseStore`. The `findById` signature is extende
 
 Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegated** to an internal `OperationalChangeMilestoneStore` instance (see §4.6). Additional public methods:
 
-**`findAll(tx, baselineId?, filters?, projection?)`** — wave filtering is removed; edition filtering applied via `filters.editionId` when present. `projection` defaults to `'standard'`; `'extended'` is rejected. The field list from `getProjectionFields('change', projection)` drives which scalar fields are projected in the RETURN clause, and whether `_buildRelationshipReferences` is called per item. Filters object:
+**`findAll(tx, baselineId?, filters?, projection?, lifecycleFace?)`** — wave filtering is removed; edition filtering applied via `filters.editionId` when present. `projection` defaults to `'standard'`; `'extended'` is rejected. `lifecycleFace` defaults to `'active'` and selects the anchoring edge in the live dataset (mutually exclusive with `baselineId`). The field list from `getProjectionFields('change', projection)` drives which scalar fields are projected in the RETURN clause, and whether `_buildRelationshipReferences` is called per item. Every row carries a `lifecycleStatus` object (four flags from `EXISTS {}` checks). Filters object:
 
 | Filter field | Type | Behaviour |
 |---|---|---|
@@ -325,11 +336,13 @@ Inherits `VersionedItemStore → BaseStore`. Milestone operations are **delegate
 
 **`findChangesThatDecommissionRequirement(requirementItemId, tx, baselineId?, startDate?)`** → `Array<{id, title, code}>` — OCs that DECOMMISSION the given OR
 
-**`findById(itemId, tx, baselineId?, editionId?, projection?)`** — `extended` projection appends the following derived field via reverse-traversal query:
+**`findById(itemId, tx, baselineId?, editionId?, projection?, lifecycleFace?)`** — `lifecycleFace` threaded through to `super.findById`. `extended` projection appends the following derived field via reverse-traversal query:
 
 | Derived field | Query |
 |---|---|
 | `requiredByOCs` | OC versions with `DEPENDS_ON → this item` whose version is `LATEST_VERSION` |
+
+**`findInboundReferences(itemId, tx)`** → `OperationalEntityReference[]` — all **live** items referencing this change: other OCs via `DEPENDS_ON` (referencing version must hold `LATEST_VERSION`), plus any `ODPEdition` exposing a baseline that captured a version of this item (the published-edition wall, `type: 'EDITION'`). The service layer interprets this set as blocking dependencies.
 
 **`_buildRelationshipReferences(versionId, tx, fields?)`** — fetches only the relationship queries whose field name is present in `fields`. When `fields` is `null` (internal calls), all relationships are fetched.
 
@@ -471,7 +484,6 @@ Versioned entities use two Neo4j node types:
 // Item node — stable identity
 (item:OperationalRequirement {
     title: string,
-    status: string,             // ACTIVE | DELETED
     latest_version: integer     // cached current version number
 })
 
@@ -487,7 +499,7 @@ Versioned entities use two Neo4j node types:
 (version)-[:VERSION_OF]->(item)
 ```
 
-Audit (who/when/why) is **not** on these nodes — it is recorded on `AuditEvent` (§3.x). `createdAt`/`createdBy` have been removed from both item and version; the item carries only the `status` lifecycle field.
+Audit (who/when/why) is **not** on these nodes — it is recorded on `AuditEvent` (§3.x). `createdAt`/`createdBy` have been removed from both item and version. The item carries **no** `status` field either — lifecycle state is expressed structurally by the presence of lifecycle edges and surfaced on reads as a computed `lifecycleStatus` object (§5.6).
 
 ### 5.2 Create Operation (Version 1)
 
@@ -497,14 +509,13 @@ Creates both the Item node and the first ItemVersion node in a single transactio
 // Result shape
 {
     itemId: 123,
-        versionId: 456,
+    versionId: 456,
     version: 1,
     title: "Requirement Title",
     type: "OR",
     statement: "...",
     refinesParents: [789],
-    createdAt: "2025-01-15T10:30:00Z",
-    createdBy: "user123"
+    lifecycleStatus: { active: true, released: false, decommissioned: false, deleted: false }
 }
 ```
 
@@ -528,11 +539,28 @@ Every consequential write records an `AuditEvent` in the same transaction (§3.x
 (e:AuditEvent)-[:UNDER_CHANGESET]->(changeSet:ChangeSet)   // when change-set-bound
 ```
 
-**Write path** — `create` and `update` take a `changeSetCommit = {changeSetId, note}` argument, separate from `data` (which carries entity state only). `_validateOpenChangeSet` fails fast if the set is missing or not `OPEN` **and returns a frozen `{code, title, classifier}` snapshot**; `_auditCommit` assembles the audit fragment; `auditEventStore.log(...)` writes the event. The change-set code/title/classifier are frozen onto the event at commit time, so a later rename or reclassification never leaves a stale member row. Restore and decommission are service-level operations flowing through `update`, so they audit identically.
+**Write path** — `create` and `update` take a `changeSetCommit = {changeSetId, note}` argument, separate from `data` (which carries entity state only). `_validateOpenChangeSet` fails fast if the set is missing or not `OPEN` **and returns a frozen `{code, title, classifier}` snapshot**; `_auditCommit` assembles the audit fragment; `auditEventStore.log(...)` writes the event. The change-set code/title/classifier are frozen onto the event at commit time, so a later rename or reclassification never leaves a stale member row. The lifecycle transitions (`softDelete` / `restore`, §5.6) audit through the same `auditEventStore.log(...)` call with their own action (`DELETE` / `RESTORE`); they do not create a new version.
 
 **Read path** — there is no per-version reason resolution on common reads. Both the History feed and the change-set members feed read `AuditEventStore.findAll(filters)` — History with `{targetId}`, members with `{changeSetId}`. Both are on-demand and self-contained (every field frozen on the event).
 
 > **Bootstrap:** `ChapterStore.createChapter` seeds version 1 directly (not through `VersionedItemStore.create`) and records **no** audit event — bootstrap chapters are config-owned scaffolding, not a consequential user write. Their audit trail begins at first edit. (Resolves the former "bootstrap system change set" open point: no system actor is invented, keeping `UserRole` to writer roles only.)
+
+### 5.6 Lifecycle Model (edge-derived)
+
+An item's lifecycle is expressed structurally by which lifecycle edge points at its version node — there is no stored `status` field. Four edges, all pointing item → version:
+
+| Edge | Meaning |
+|---|---|
+| `LATEST_VERSION` | Active — the live, editable current version |
+| `RELEASED_VERSION` | Released — in production (DEL-06, designed; not written this round) |
+| `DECOMMISSIONED_VERSION` | Decommissioned — operationally retired (DEL-06, designed; not written this round) |
+| `DELETED_VERSION` | Deleted — soft-deleted, in the recycle bin |
+
+The four `LifecycleStatus` flags (`active` / `released` / `decommissioned` / `deleted`) are computed from edge presence (`EXISTS {}` checks) at read time — by `buildFindAllQuery` for list rows and by `_computeLifecycleStatus` for single-item reads. At most two co-occur (e.g. an item may be `active` and `released` simultaneously).
+
+**Dataset selection.** In the live dataset, `lifecycleFace` (`active` default) chooses which edge anchors the read — the peer of `baselineId` and mutually exclusive with it. `LIFECYCLE_FACE_EDGE` maps the face value to its edge. A baseline context carries no live lifecycle face; `lifecycleFace` is ignored there.
+
+**Transitions (this round).** `softDelete` and `restore` move the edge between `LATEST_VERSION` and `DELETED_VERSION` on the same version node — no new version is created — and record a `DELETE` / `RESTORE` `AuditEvent`. They enforce a lifecycle-state guard only (correct source edge present); the blocking-reference precondition (via `findInboundReferences`) is the service layer's responsibility. `release` / `decommission` / `hardDelete` are designed (DEL-06 / DEL-04) but not built this round.
 
 ---
 
@@ -554,6 +582,13 @@ Every consequential write records an `AuditEvent` in the same transaction (§3.x
 (OCVersion)-[:IMPLEMENTS]->(ORItem)
 (OCVersion)-[:DECOMMISSIONS]->(ORItem)
 (OCVersion)-[:DEPENDS_ON]->(OCItem)
+
+// Versioning and lifecycle (item → version)
+(item)-[:LATEST_VERSION]->(version)            // Active
+(item)-[:RELEASED_VERSION]->(version)          // Released (DEL-06, designed)
+(item)-[:DECOMMISSIONED_VERSION]->(version)    // Decommissioned (DEL-06, designed)
+(item)-[:DELETED_VERSION]->(version)           // Deleted (soft delete)
+(version)-[:VERSION_OF]->(item)
 
 // Milestones
 (Milestone)-[:BELONGS_TO]->(OCVersion)

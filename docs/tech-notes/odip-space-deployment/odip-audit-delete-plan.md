@@ -20,6 +20,8 @@ The work splits into two phases, each implemented layer by layer with its ADD co
 
 **Phase B — Deletion.** Soft delete, recycle bin, restore, referential integrity, published-edition wall, hard delete, edition deletion — all built on the Phase A foundation.
 
+> **Status (18 Jun 2026):** §4.1 model/shared ⏳ · §4.2 storage ⏳ · §4.3 service ⏳ · §4.4 REST ⏳ · §4.5 CLI ⏳ · §4.6 web ⏳ · §4.7 ADD (01 ⏳, 02 ⏳; 03/04/07/08 pending) — **in progress.** §4.1 and §4.2 reopened: `OperationalEntityReference` type scope corrected (O\* only; edition references removed) and `findInboundReferences` revised to O\* references only (see design note §4.1/§4.2/§5.2 correction notes).
+
 Phase A must complete before Phase B begins. Within each phase the layer order is the project standard: model → store → service → API → CLI → web → ADD.
 
 ## 3. Phase A — Audit foundation
@@ -100,34 +102,47 @@ Updated in the same batch as each layer:
 
 Layer by layer, ADD companion updated in the same batch. Rationale and full specification are in the design note (`odip-audit-delete-design.md` §3.2, §4) — this is execution sequencing only.
 
-**In-round scope.** Lifecycle-edge model; soft delete + restore (per-item); referential integrity (blocking dependencies, published-wall folded in); the `lifecycleStatus` read model; strict-payload rejection. **Deferred** (designed, not built): release / decommission (DEL-06), hard delete (DEL-04), edition deletion (DEL-05), `BatchService`, and the non-soft-delete web client.
+**In-round scope.** Lifecycle-edge model; soft delete + restore (per-item); referential integrity (blocking dependencies, published-wall folded in); the `lifecycleFace` read model; strict-payload rejection. **Deferred** (designed, not built): release / decommission (DEL-06), hard delete (DEL-04), edition deletion (DEL-05), `BatchService`, and the non-soft-delete web client.
 
-### 4.1 Model / shared
+### 4.1 Model / shared ⏳
 
 - `AuditAction` gains `RELEASE` (`DECOMMISSION` already reserved from Phase A).
-- `BlockingDependency` shape `{id, type, code, title}` in `@odp/shared`.
+- `OperationalEntityReference` (existing) documented as the blocker-list shape — no new type; usage note added to `odp-elements.js` and ADD §2.5.
 
-### 4.2 Storage
+> **Correction (18 Jun 2026):** The earlier as-built note implied `OperationalEntityReference.type` was extended to cover `AuditTargetType` values (including `EDITION`) for edition blockers. This was wrong and is reversed — `type` is strictly `ON | OR | OC`. Edition captures do not block soft delete; the `released` lifecycle state is the correct gate (see design note §4.1 and §5.2 correction notes). ADD chapter 01 §2.5 and `odp-elements.js` need correction.
+
+### 4.2 Storage ⏳
+
+> **As-built refinements (vs the sketch below):**
+> - `LIFECYCLE_FACE_EDGE` map exported from `versioned-item-store.js` (face value → anchoring edge); imported by the concrete O\* stores.
+> - `findById` (base) also gained the `lifecycleFace` parameter (default `active`, mutually exclusive with `baselineId`) — single-item reads of any face work now, not just list reads. OR/OC `findById` thread it through to `super` (slot 6, after `projection`).
+> - `softDelete` / `restore` are **concrete on the base** (`VersionedItemStore`) — edge mechanics are identical for all versioned items. Both are pure edge moves on the same version node (no new version on restore); each logs its `DELETE` / `RESTORE` event via the existing `auditEventStore.log`.
+> - The store query method is `findInboundReferences` (not `findBlockingDependencies`) — the store computes raw inbound-reference facts; the "blocking" interpretation is the service's. Abstract on the base, concrete per O\* store (entity-specific edges only).
+> - `lifecycleStatus` is assembled as a `LifecycleStatus` object `{active, released, decommissioned, deleted}` on each read row; `_computeLifecycleStatus(itemId, tx)` helper backs single-item reads.
+> - `ChapterStore` overrides `softDelete` / `restore` / `findInboundReferences` to throw (chapters have no lifecycle); it keeps its own `findAll`/`findById`/`buildFindAllQuery` signatures and carries no `lifecycleStatus`.
+
+> **Correction (18 Jun 2026):** The earlier as-built note stated `findInboundReferences` returns "entity-specific edges + the edition-membership wall, returned `type: 'EDITION'`". This is removed — `findInboundReferences` returns O\* references only (`type` in `ON | OR | OC`). The edition-membership wall is not a blocking dependency; the `released` lifecycle state is the correct gate (see design note §4.2 and §5.2 correction notes). Concrete OR and OC store implementations need correction.
 
 - New lifecycle edges `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` / `DELETED_VERSION` (joining `LATEST_VERSION`).
 - Remove the Phase A `Item.status` field; lifecycle is now edge-derived.
-- `findAll` gains the `lifecycleStatus` dataset selector (edge-anchored; mutually exclusive with `baselineId`) and computes the four lifecycle flags into the read row at the summary tier.
+- `findAll` gains the `lifecycleFace` dataset selector (edge-anchored; mutually exclusive with `baselineId`) and computes the four lifecycle flags into the read row at the summary tier.
 - Transition methods `softDelete` / `restore` (in-round) and `release` / `decommission` / `hardDelete` (designed; build deferred).
-- `findBlockingDependencies`.
+- `findInboundReferences`.
 
 ### 4.3 Service
 
-- `getAll` gains `lifecycleStatus` (default `active`, mutually exclusive with `editionId`).
-- Per-item `softDelete` / `restore` with the two-part precondition guard (Active state + no blocking dependencies); `getBlockingDependencies`.
+- `getAll` gains `lifecycleFace` (default `active`, mutually exclusive with `editionId`).
+- Per-item `softDelete` / `restore` with two-step precondition: (1) lifecycle-state guard — Active *and not Released* (invalid-transition error if fails); (2) blocking-reference guard via `getBlockingDependencies` — 409 with `OperationalEntityReference[]` if non-empty.
+- `getBlockingDependencies(itemId, user)` — returns live O\* inbound references only; used preemptively by the client and internally by `softDelete`.
 - Strict-payload rejection (`BAD_REQUEST` on unexpected attributes) added to create/update/patch validation.
 - `release` / `decommission` / `hardDelete` and `BatchService.applyLifecycleBatch` — designed, build deferred.
 
 ### 4.4 REST API
 
 - Per-item lifecycle actions `POST /{item}/{id}/{delete|restore}` in-round; `/release` `/decommission` `/hard-delete` deferred.
-- `lifecycleStatus` query parameter on the list endpoint (mutually exclusive with `edition`); `GET /{item}/{id}/blocking-dependencies`.
+- `lifecycleFace` query parameter on the list endpoint (mutually exclusive with `edition`); `GET /{item}/{id}/blocking-dependencies`.
 - `409` refusal reuses the `Error` envelope with a new code (e.g. `LIFECYCLE_BLOCKED`) carrying the blocker list.
-- OpenAPI: lifecycle flags at summary tier of the OR/OC response schemas; `BlockingDependency`; new `openapi-batch.yml` for `/batch/lifecycle` (deferred build).
+- OpenAPI: lifecycle flags at summary tier of the OR/OC response schemas; blocker list reuses existing `OperationalEntityReference` schema; new `openapi-batch.yml` for `/batch/lifecycle` (deferred build).
 
 ### 4.5 CLI
 
@@ -137,7 +152,7 @@ Layer by layer, ADD companion updated in the same batch. Rationale and full spec
 ### 4.6 Web client
 
 - **In-round:** soft-delete action on the O* detail form, via the change-set save dialog; `409` conflict surfaced with blocker list.
-- Everything else (lifecycle display, `lifecycleStatus` selector, recycle bin, restore / release / decommission / hard-delete, batch worksheet) — P1+, deferred.
+- Everything else (lifecycle display, `lifecycleFace` selector, recycle bin, restore / release / decommission / hard-delete, batch worksheet) — P1+, deferred.
 
 ### 4.7 ADD chapters (Phase B)
 
@@ -149,7 +164,7 @@ These are settled in the design note but surface as concrete code choices:
 
 - **Audit query surface** — settled on a **single `GET /audit-events?changeSetId=&targetId=&userId=`** resource backed by one store method `findAll(filters)`, rather than an item-scoped `/{item}/{id}/history` endpoint (Phase A).
 - **Lifecycle is edge-derived** — no stored `Item.status`; the Phase A field is removed. The four flags (`active` / `released` / `decommissioned` / `deleted`) are computed from edge presence into the read row at the summary tier.
-- **`lifecycleStatus` is a dataset selector, not a filter** — it chooses which lifecycle face the read walks, the peer of `baselineId` and mutually exclusive with it (and with `editionId` at the service/API).
+- **`lifecycleFace` is a dataset selector, not a filter** — it chooses which lifecycle face the read walks, the peer of `baselineId` and mutually exclusive with it (and with `editionId` at the service/API).
 - **Published-wall folds into blocking dependencies** — no separate `isPublished` gate; an edition/baseline reference is one kind of blocker. Soft delete requires Active state *and* no blocking dependencies.
 - **Strict-payload rejection** — the service rejects unexpected attributes with `BAD_REQUEST` rather than absorbing them.
 
@@ -164,10 +179,10 @@ These are settled in the design note but surface as concrete code choices:
 
 | Layer | Phase A | Phase B |
 |---|---|---|
-| shared | enums, status, field removals | `RELEASE` action, `BlockingDependency` type |
-| storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | lifecycle edges, `status` removal, `lifecycleStatus` + flags in `findAll`, soft-delete/restore (release/decommission/hard-delete designed) |
-| service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | `lifecycleStatus` on `getAll`, soft-delete/restore + guard, strict-payload rejection |
-| REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | per-item delete/restore, `lifecycleStatus` param, blocking-dependencies, `409` blocker envelope |
+| shared | enums, status, field removals | `RELEASE` action; `OperationalEntityReference` extended usage documented |
+| storage | AuditEventStore (`log`+`findAll`), write-path rewire, findMembers delegation | lifecycle edges, `status` removal, `lifecycleFace` + flags in `findAll`/`findById`, `LIFECYCLE_FACE_EDGE` map, soft-delete/restore (edge moves), `findInboundReferences` (release/decommission/hard-delete designed) |
+| service | AuditEventService (`getAuditEvents`), hydration removal, `user {id,role}` propagation | `lifecycleFace` on `getAll`, soft-delete/restore + guard, strict-payload rejection |
+| REST API | `/audit-events` resource, `x-user-role`, schema cleanup, `/versions` list removal | per-item delete/restore, `lifecycleFace` param, blocking-dependencies, `409` blocker envelope |
 | CLI | `audit-event` command | delete/restore verbs, `list --lifecycle-status` |
 | web | History view (client-built over audit query) | soft-delete from O* detail form (rest P1+) |
 | ADD | 6 chapters (01–04 done, 07/08 pending) | 6 chapters |

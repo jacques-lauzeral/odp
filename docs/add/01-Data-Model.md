@@ -88,6 +88,38 @@ export const isDraftingGroupValid = (value) => DraftingGroupKeys.includes(value)
 export const getDraftingGroupDisplay = (key) => DraftingGroup[key] || key;
 ```
 
+### 2.5 Common Reference and Lifecycle Types
+
+Three shared types used throughout the entity model and API contracts.
+
+**`AnnotatedReference`** — a reference carrying an optional note, used for strategic documents and impacted stakeholders.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Referenced entity identity |
+| `title` | string | Display name |
+| `note` | string \| null | Optional annotation (e.g. "Section 3.2") |
+
+**`OperationalEntityReference`** — the O\* cross-reference shape, used for `refinesParents`, `implementedONs`, `dependencies`, the reverse-traversal derived fields, and where-used / referential-integrity results (the live O\* items that reference a target). It always references an O\* — `type` is `ON` \| `OR` \| `OC`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Item identity |
+| `code` | string | Item code |
+| `title` | string | Item title |
+| `type` | string | `ON` \| `OR` \| `OC` |
+
+**`LifecycleStatus`** — the lifecycle state of a versioned item, computed at read time from the presence of lifecycle edges on the item node (§4.5). Included at the summary tier of OR and OC response projections (present in all three projections). Never accepted on write — it is derived, not stored; the transition operations (§3.4) own lifecycle-edge changes exclusively.
+
+| Field | Type | Notes |
+|---|---|---|
+| `active` | boolean | Item holds a `LATEST_VERSION` edge — the default live state |
+| `released` | boolean | Item holds a `RELEASED_VERSION` edge — in production |
+| `decommissioned` | boolean | Item holds a `DECOMMISSIONED_VERSION` edge — operationally retired |
+| `deleted` | boolean | Item holds a `DELETED_VERSION` edge — soft-deleted, in the recycle bin |
+
+At most two flags are `true` simultaneously (e.g. `active + released` for an item in production that is still being refined). The four flags map to the `lifecycleFace` dataset selector values (`active` \| `released` \| `decommissioned` \| `deleted`) used on list queries (§3.5, §4.4).
+
 ---
 
 ## 3. Entity Definitions
@@ -173,10 +205,10 @@ Several attributes are type-specific. The service layer enforces these rules; th
 |---|---|---|
 | `id` | integer | Neo4j internal ID |
 | `title` | string | Searchable unique identifier |
-| `status` | enum | ACTIVE \| DELETED — the only lifecycle field on the item node (§3.4, §4.6). ACTIVE items hold a `LATEST_VERSION`; DELETED items do not |
+| `lifecycleStatus` | object | `LifecycleStatus` — four boolean flags computed from lifecycle-edge presence (§2.5, §4.5). Included at the summary tier of all projections. |
 | `latest_version` | integer | Cache of current version number |
 
-> **Audit fields removed.** `createdAt` / `createdBy` no longer live on the item node. Who/when/why is recorded exclusively on `AuditEvent` (§3.4) — the sole audit surface.
+> **Phase A/B changes to item node.** `createdAt` / `createdBy` removed (Phase A) — who/when/why is recorded exclusively on `AuditEvent` (§3.4). `status` (`ACTIVE` \| `DELETED`) removed (Phase B) — lifecycle state is now edge-derived and surfaced as `LifecycleStatus` (§2.5).
 
 **Version node fields** (per version):
 
@@ -220,7 +252,7 @@ Several attributes are type-specific. The service layer enforces these rules; th
 
 OCs describe and plan the deployment of OR evolutions. They do not group ONs directly — ONs are progressively implemented through the ORs included in one or more OCs.
 
-**Item node fields**: same pattern as Requirement (id, title, `status`, latest_version) — no `createdAt`/`createdBy`; audit lives on `AuditEvent` (§3.4).
+**Item node fields**: same pattern as Requirement (id, title, `lifecycleStatus`, latest_version) — no `createdAt`/`createdBy`; audit lives on `AuditEvent` (§3.4).
 
 **Version node fields**:
 
@@ -683,14 +715,7 @@ The role under which a consequential write was performed — recorded frozen on 
 
 ### 6.11 Item Status
 
-Lifecycle status of a versioned item — the only lifecycle field on the item node.
-
-| Key | Meaning |
-|---|---|
-| `ACTIVE` | Live; holds a `LATEST_VERSION` |
-| `DELETED` | Soft-deleted; no `LATEST_VERSION` (§4.6) |
-
----
+> **Phase B change:** `ItemStatus` (`ACTIVE` \| `DELETED`) as a stored field on OR/OC item nodes is **retired**. Lifecycle state is now expressed by the presence of lifecycle edges (`LATEST_VERSION`, `RELEASED_VERSION`, `DECOMMISSIONED_VERSION`, `DELETED_VERSION`) and surfaced to consumers as the `LifecycleStatus` structure (§2.5). The `ItemStatus` enum is retained in `audit-elements.js` for internal store-layer use only (transition guards read edge presence, not a status field).
 
 ## 7. Shared Utilities
 

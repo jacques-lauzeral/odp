@@ -1,4 +1,4 @@
-import { VersionedItemStore } from './versioned-item-store.js';
+import { VersionedItemStore, LIFECYCLE_FACE_EDGE } from './versioned-item-store.js';
 import { StoreError } from './transaction.js';
 import { getProjectionFields } from '../../../shared/src/index.js';
 
@@ -31,23 +31,30 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * Build optimized single-query for findAll with multi-context, edition filtering,
      * content filtering, and projection support.
      *
-     * @param {number|null} baselineId - Baseline context (null = latest versions)
+     * @param {number|null} baselineId - Baseline context (null = live dataset)
      * @param {object} filters - Content filters; may include editionId
      * @param {string[]|null} fields - Projection field list (null = include all)
+     * @param {string} lifecycleFace - Live-dataset face selector: 'active' (default) |
+     *        'released' | 'decommissioned' | 'deleted'. Selects the anchoring edge.
+     *        Ignored when baselineId is set (baseline snapshots have no live face).
      * @returns {{cypher: string, params: object}}
      */
-    buildFindAllQuery(baselineId, filters, fields = null) {
+    buildFindAllQuery(baselineId, filters, fields = null, lifecycleFace = 'active') {
         try {
-            console.log(`[ORStore.buildFindAllQuery] baselineId: ${baselineId}, filters: ${JSON.stringify(filters)}`);
+            console.log(`[ORStore.buildFindAllQuery] baselineId: ${baselineId}, filters: ${JSON.stringify(filters)}, lifecycleFace: ${lifecycleFace}`);
             const includeField = fields ? (f => fields.includes(f)) : () => true;
 
             let cypher, params = {};
             let whereConditions = [];
 
             if (baselineId === null) {
-                // Latest versions query
+                // Live dataset — anchor on the lifecycle-face edge.
+                const anchorEdge = LIFECYCLE_FACE_EDGE[lifecycleFace];
+                if (!anchorEdge) {
+                    throw new StoreError(`Unknown lifecycleFace '${lifecycleFace}'`);
+                }
                 cypher = `
-                MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                MATCH (item:${this.nodeLabel})-[:${anchorEdge}]->(version:${this.versionLabel})
             `;
             } else {
                 // Baseline (or edition) versions query — alias HAS_ITEMS as r for edition filter
@@ -187,6 +194,10 @@ export class OperationalRequirementStore extends VersionedItemStore {
                 item.title as title,
                 id(version) as versionId,
                 version.version as version,
+                EXISTS { (item)-[:LATEST_VERSION]->() }         as lcActive,
+                EXISTS { (item)-[:RELEASED_VERSION]->() }       as lcReleased,
+                EXISTS { (item)-[:DECOMMISSIONED_VERSION]->() } as lcDecommissioned,
+                EXISTS { (item)-[:DELETED_VERSION]->() }        as lcDeleted,
                 ${versionFields.map(f => `version.${f} as ${f}`).join(',\n                ')}
                 ${includeField('refinesParents') ? `,
                 collect(DISTINCT CASE WHEN parent IS NOT NULL
@@ -227,9 +238,10 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * @param {number|null} baselineId - Baseline context; must be set when editionId is in filters
      * @param {object} filters - Content filters; may include editionId
      * @param {string} projection - 'summary' | 'standard' (default); 'extended' rejected
+     * @param {string} lifecycleFace - Live-dataset face: 'active' (default) | 'released' | 'decommissioned' | 'deleted'
      * @returns {Promise<Array<object>>}
      */
-    async findAll(transaction, baselineId = null, filters = {}, projection = 'standard') {
+    async findAll(transaction, baselineId = null, filters = {}, projection = 'standard', lifecycleFace = 'active') {
         try {
             if (projection === 'extended') {
                 throw new StoreError("Projection 'extended' is not valid on findAll — use findById");
@@ -238,7 +250,7 @@ export class OperationalRequirementStore extends VersionedItemStore {
             const fields = getProjectionFields('requirement', projection);
             const includeField = f => fields.includes(f);
 
-            const queryObj = this.buildFindAllQuery(baselineId, filters, fields);
+            const queryObj = this.buildFindAllQuery(baselineId, filters, fields, lifecycleFace);
             console.log(`[ORStore.findAll] params: ${JSON.stringify(queryObj.params)}`);
             const result = await transaction.run(queryObj.cypher, queryObj.params);
             console.log(`[ORStore.findAll] query returned ${result.records.length} record(s)`);
@@ -251,6 +263,12 @@ export class OperationalRequirementStore extends VersionedItemStore {
                     code: record.get('code'),
                     versionId: this.normalizeId(record.get('versionId')),
                     version: this.normalizeId(record.get('version')),
+                    lifecycleStatus: {
+                        active:         record.get('lcActive'),
+                        released:       record.get('lcReleased'),
+                        decommissioned: record.get('lcDecommissioned'),
+                        deleted:        record.get('lcDeleted'),
+                    },
                 };
 
                 const scalarVersionFields = [
@@ -291,16 +309,17 @@ export class OperationalRequirementStore extends VersionedItemStore {
      * @param {number|null} baselineId
      * @param {number|null} editionId - When set, baselineId must also be set
      * @param {string} projection - 'standard' | 'extended' (default: 'standard'); 'summary' rejected
+     * @param {string} lifecycleFace - Live-dataset face: 'active' (default) | 'released' | 'decommissioned' | 'deleted'
      * @returns {Promise<object|null>}
      */
-    async findById(itemId, transaction, baselineId = null, editionId = null, projection = 'standard') {
+    async findById(itemId, transaction, baselineId = null, editionId = null, projection = 'standard', lifecycleFace = 'active') {
         try {
             if (projection === 'summary') {
                 throw new StoreError("Projection 'summary' is not valid on findById — use findAll");
             }
 
             // Step 1: Get standard result via base class
-            const baseResult = await super.findById(itemId, transaction, baselineId, editionId);
+            const baseResult = await super.findById(itemId, transaction, baselineId, editionId, lifecycleFace);
             if (!baseResult) {
                 return null;
             }
@@ -368,6 +387,85 @@ export class OperationalRequirementStore extends VersionedItemStore {
         } catch (error) {
             if (error instanceof StoreError) throw error;
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Find all live items referencing this requirement via an inbound relationship.
+     * A requirement (ON or OR) may be referenced by:
+     *   - child requirements via REFINES
+     *   - ORs implementing it (IMPLEMENTS) — when this is an ON
+     *   - ORs depending on it (DEPENDS_ON)
+     *   - OCs implementing it (IMPLEMENTS) — when this is an OR
+     *   - OCs decommissioning it (DECOMMISSIONS) — when this is an OR
+     * "Live" = the referencing version holds LATEST_VERSION on its own item.
+     * Edition/baseline membership is also a reference and is included.
+     *
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @returns {Promise<Array<{id:number, code:string, title:string, type:string}>>}
+     */
+    async findInboundReferences(itemId, transaction) {
+        try {
+            const numericItemId = this.normalizeId(itemId);
+            const refs = [];
+
+            // Requirement → requirement (REFINES, IMPLEMENTS, DEPENDS_ON), live referencing versions
+            const reqResult = await transaction.run(`
+                MATCH (refVersion:${this.versionLabel})-[:REFINES|IMPLEMENTS|DEPENDS_ON]->(item:${this.nodeLabel})
+                MATCH (refItem:${this.nodeLabel})-[:LATEST_VERSION]->(refVersion)
+                WHERE id(item) = $itemId
+                RETURN DISTINCT id(refItem) as id, refItem.code as code, refItem.title as title, refVersion.type as type
+                ORDER BY refItem.title
+            `, { itemId: numericItemId });
+            for (const r of reqResult.records) {
+                refs.push({
+                    id: this.normalizeId(r.get('id')),
+                    code: r.get('code'),
+                    title: r.get('title'),
+                    type: r.get('type'),
+                });
+            }
+
+            // OC → requirement (IMPLEMENTS, DECOMMISSIONS), live referencing OC versions
+            const ocResult = await transaction.run(`
+                MATCH (ocVersion:OperationalChangeVersion)-[:IMPLEMENTS|DECOMMISSIONS]->(item:${this.nodeLabel})
+                MATCH (ocItem:OperationalChange)-[:LATEST_VERSION]->(ocVersion)
+                WHERE id(item) = $itemId
+                RETURN DISTINCT id(ocItem) as id, ocItem.code as code, ocItem.title as title
+                ORDER BY ocItem.title
+            `, { itemId: numericItemId });
+            for (const r of ocResult.records) {
+                refs.push({
+                    id: this.normalizeId(r.get('id')),
+                    code: r.get('code'),
+                    title: r.get('title'),
+                    type: 'OC',
+                });
+            }
+
+            // Edition membership — the published-edition wall. A version captured in a
+            // baseline that is exposed by an edition is referenced by that edition.
+            const editionResult = await transaction.run(`
+                MATCH (item:${this.nodeLabel})<-[:VERSION_OF]-(version:${this.versionLabel})<-[hi:HAS_ITEMS]-(baseline:Baseline)
+                MATCH (edition:ODPEdition)-[:EXPOSES]->(baseline)
+                WHERE id(item) = $itemId AND id(edition) IN hi.editions
+                RETURN DISTINCT id(edition) as id, edition.title as title
+                ORDER BY edition.title
+            `, { itemId: numericItemId });
+            for (const r of editionResult.records) {
+                refs.push({
+                    id: this.normalizeId(r.get('id')),
+                    code: null,
+                    title: r.get('title'),
+                    type: 'EDITION',
+                });
+            }
+
+            return refs;
+        } catch (error) {
+            if (error instanceof StoreError) throw error;
+            throw new StoreError(`Failed to find inbound references for ${this.nodeLabel}: ${error.message}`, error);
         }
     }
 

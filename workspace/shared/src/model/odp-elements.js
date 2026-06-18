@@ -5,6 +5,9 @@ export const AnnotatedReference = {
     note: '' // optional
 };
 
+// O* cross-reference shape. Used for refinesParents, implementedONs,
+// dependencies, the reverse-traversal derived fields, and where-used /
+// referential-integrity results. Always references an O* — `type` is ON | OR | OC.
 export const OperationalEntityReference = {
     id: '',
     code: '',
@@ -40,13 +43,20 @@ export const Edition = {
 
 // ODIP Elements
 
+export const LifecycleStatus = {
+    active: true,
+    released: false,
+    decommissioned: false,
+    deleted: false
+}
+
 export const OperationalRequirement = {
     // summary fields — available in all projections
     itemId: '',
     title: '',
     versionId: '',
     version: 0,
-    status: '',                 // ItemStatus key — ACTIVE | DELETED
+    lifecycleStatus: null,               // LifecycleStatus
     code: '',
     type: '',                   // ON | OR
     maturity: '',               // DRAFT | ADVANCED | MATURE
@@ -91,7 +101,7 @@ export const OperationalChange = {
     title: '',
     versionId: '',
     version: 0,
-    status: '',                 // ItemStatus key — ACTIVE | DELETED
+    lifecycleStatus: null,               // LifecycleStatus
     code: '',
     maturity: '',               // DRAFT | ADVANCED | MATURE
     domain: '',                 // domain key from domains.json

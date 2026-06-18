@@ -32,6 +32,7 @@ export const AuditAction = {
     REOPEN:       'REOPEN',
     PUBLISH:      'PUBLISH',
     BASELINE:     'BASELINE',
+    RELEASE:      'RELEASE',        // reserved — DEL-06 parked
     DECOMMISSION: 'DECOMMISSION',   // reserved — DEL-06 parked
 };
 export const AuditActionKeys   = Object.keys(AuditAction);

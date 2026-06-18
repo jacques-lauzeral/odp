@@ -2,6 +2,17 @@ import {BaseStore} from './base-store.js';
 import {StoreError, StoreErrorCode} from './transaction.js';
 import {AuditEventStore} from './audit-event-store.js';
 
+/**
+ * Maps a lifecycleFace dataset-selector value to the lifecycle edge that anchors
+ * the read. The live dataset is walked from exactly one of these edges.
+ */
+export const LIFECYCLE_FACE_EDGE = {
+    active:         'LATEST_VERSION',
+    released:       'RELEASED_VERSION',
+    decommissioned: 'DECOMMISSIONED_VERSION',
+    deleted:        'DELETED_VERSION',
+};
+
 export class VersionedItemStore extends BaseStore {
     constructor(driver, itemLabel, versionLabel) {
         super(driver, itemLabel);
@@ -33,6 +44,20 @@ export class VersionedItemStore extends BaseStore {
      */
     buildFindAllQuery(baselineId, filters, fields) {
         throw new Error('buildFindAllQuery must be implemented by concrete store');
+    }
+
+    /**
+     * Find all live items that reference the given item via an inbound relationship.
+     * "Live" means the referencing item's version holds LATEST_VERSION. The set of
+     * relationship types inspected is entity-specific, so concrete stores implement this.
+     * Returns OperationalEntityReference[] — {id, code, title, type}.
+     * @abstract
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @returns {Promise<Array<{id:number, code:string, title:string, type:string}>>}
+     */
+    async findInboundReferences(itemId, transaction) {
+        throw new Error('findInboundReferences must be implemented by concrete store');
     }
 
     /**
@@ -128,12 +153,12 @@ export class VersionedItemStore extends BaseStore {
                 code = await this._generateCode(entityType, contentData.domain, transaction);
             }
 
-            // Create Item node with code; status ACTIVE. No createdAt/createdBy — audit lives on AuditEvent.
+            // Create Item node with code. No createdAt/createdBy — audit lives on AuditEvent.
+            // No status field — lifecycle state is edge-derived (LATEST_VERSION / DELETED_VERSION etc.).
             const itemResult = await transaction.run(`
                 CREATE (item:${this.nodeLabel} {
                     title: $title,
-                    _label: $title,
-                    status: 'ACTIVE'
+                    _label: $title
                     ${code ? ', code: $code' : ''}
                 })
                 RETURN id(item) as itemId
@@ -280,26 +305,35 @@ export class VersionedItemStore extends BaseStore {
 
     /**
      * Find item by ID with optional context.
-     * Exactly one of baselineId or editionId may be provided, or neither (latest version).
+     * Exactly one of baselineId or editionId may be provided, or neither (live dataset).
      * When editionId is provided, baselineId must also be provided (resolved by service via resolveContext).
-     * Returns null if the item is not found, not in the baseline, or not in the edition.
+     * In the live dataset (baselineId null), lifecycleFace selects which lifecycle edge anchors
+     * the read: 'active' (default) | 'released' | 'decommissioned' | 'deleted'. lifecycleFace is
+     * mutually exclusive with baselineId — it is ignored when a baseline context is supplied
+     * (baseline snapshots are historical and carry no live lifecycle face).
+     * Returns null if the item is not found, not in the baseline, not in the edition, or not on the requested face.
      *
      * @param {number} itemId
      * @param {Transaction} transaction
      * @param {number|null} baselineId
      * @param {number|null} editionId
+     * @param {string} lifecycleFace - Live-dataset face: 'active' (default) | 'released' | 'decommissioned' | 'deleted'
      * @returns {Promise<object|null>}
      */
-    async findById(itemId, transaction, baselineId = null, editionId = null) {
+    async findById(itemId, transaction, baselineId = null, editionId = null, lifecycleFace = 'active') {
         try {
             const numericItemId = this.normalizeId(itemId);
 
             let query, params;
 
             if (baselineId === null) {
-                // Latest version — no context
+                // Live dataset — anchor on the lifecycle-face edge.
+                const anchorEdge = LIFECYCLE_FACE_EDGE[lifecycleFace];
+                if (!anchorEdge) {
+                    throw new StoreError(`Unknown lifecycleFace '${lifecycleFace}'`);
+                }
                 query = `
-                    MATCH (item:${this.nodeLabel})-[:LATEST_VERSION]->(version:${this.versionLabel})
+                    MATCH (item:${this.nodeLabel})-[:${anchorEdge}]->(version:${this.versionLabel})
                     WHERE id(item) = $itemId
                     RETURN id(item) as itemId, item.title as title, item.code as code,
                            id(version) as versionId, version.version as version,
@@ -355,6 +389,13 @@ export class VersionedItemStore extends BaseStore {
 
             const relationshipReferences = await this._buildRelationshipReferences(baseItem.versionId, transaction);
             const enriched = { ...baseItem, ...relationshipReferences };
+
+            // Lifecycle status is a live-dataset concept — computed only outside baseline context.
+            // Baseline snapshots are historical and carry no current lifecycle face.
+            if (baselineId === null) {
+                enriched.lifecycleStatus = await this._computeLifecycleStatus(baseItem.itemId, transaction);
+            }
+
             return this._prepareOutput(enriched);
         } catch (error) {
             throw new StoreError(`Failed to find ${this.nodeLabel} by ID: ${error.message}`, error);
@@ -412,6 +453,158 @@ export class VersionedItemStore extends BaseStore {
      */
     async findAll(transaction, baselineId = null, filters = {}, projection = 'standard') {
         throw new Error('findAll must be implemented by concrete store');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Lifecycle transitions and status — Phase B
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Soft delete: move the item from the Active face to the Deleted face.
+     * Removes LATEST_VERSION and adds DELETED_VERSION on the same version node,
+     * then logs a DELETE AuditEvent in the same transaction.
+     *
+     * Lifecycle-state guard only (Active state required): refuses if the item
+     * holds no LATEST_VERSION. The blocking-reference precondition is enforced by
+     * the service layer before this is called — the store does not re-check it.
+     *
+     * @param {number} itemId
+     * @param {{changeSetId:(number|string), note?:string}} changeSetCommit
+     * @param {Transaction} transaction
+     * @returns {Promise<{itemId:number, version:number}>}
+     */
+    async softDelete(itemId, changeSetCommit, transaction) {
+        try {
+            const numericItemId = this.normalizeId(itemId);
+
+            const current = await transaction.run(`
+                MATCH (item:${this.nodeLabel})-[latest:LATEST_VERSION]->(version:${this.versionLabel})
+                WHERE id(item) = $itemId
+                RETURN id(version) as versionId, version.version as version,
+                       item.title as title, item.code as code, version.type as type
+            `, { itemId: numericItemId });
+
+            if (current.records.length === 0) {
+                throw new StoreError('Item not found or not in Active state — cannot soft delete');
+            }
+
+            const rec = current.records[0];
+            const versionNumber = this.normalizeId(rec.get('version'));
+            const title = rec.get('title');
+            const code = rec.get('code');
+            const type = rec.get('type');
+
+            // Move the edge: LATEST_VERSION → DELETED_VERSION on the same version node.
+            await transaction.run(`
+                MATCH (item:${this.nodeLabel})-[latest:LATEST_VERSION]->(version:${this.versionLabel})
+                WHERE id(item) = $itemId
+                DELETE latest
+                CREATE (item)-[:DELETED_VERSION]->(version)
+            `, { itemId: numericItemId });
+
+            const csSnapshot = await this._validateOpenChangeSet(changeSetCommit, transaction);
+            await this.auditEventStore.log('DELETE', {
+                id: numericItemId,
+                type: this._resolveAuditTargetType({ type }),
+                code,
+                title,
+                version: versionNumber,
+            }, this._auditCommit(changeSetCommit, csSnapshot), transaction);
+
+            return { itemId: numericItemId, version: versionNumber };
+        } catch (error) {
+            if (error instanceof StoreError) throw error;
+            throw new StoreError(`Failed to soft delete ${this.nodeLabel}: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Restore: move the item from the Deleted face back to the Active face.
+     * Removes DELETED_VERSION and re-adds LATEST_VERSION on the same version node,
+     * then logs a RESTORE AuditEvent in the same transaction.
+     *
+     * Lifecycle-state guard only (Deleted state required): refuses if the item
+     * holds no DELETED_VERSION.
+     *
+     * @param {number} itemId
+     * @param {{changeSetId:(number|string), note?:string}} changeSetCommit
+     * @param {Transaction} transaction
+     * @returns {Promise<{itemId:number, version:number}>}
+     */
+    async restore(itemId, changeSetCommit, transaction) {
+        try {
+            const numericItemId = this.normalizeId(itemId);
+
+            const current = await transaction.run(`
+                MATCH (item:${this.nodeLabel})-[deleted:DELETED_VERSION]->(version:${this.versionLabel})
+                WHERE id(item) = $itemId
+                RETURN id(version) as versionId, version.version as version,
+                       item.title as title, item.code as code, version.type as type
+            `, { itemId: numericItemId });
+
+            if (current.records.length === 0) {
+                throw new StoreError('Item not found or not in Deleted state — cannot restore');
+            }
+
+            const rec = current.records[0];
+            const versionNumber = this.normalizeId(rec.get('version'));
+            const title = rec.get('title');
+            const code = rec.get('code');
+            const type = rec.get('type');
+
+            // Move the edge back: DELETED_VERSION → LATEST_VERSION on the same version node.
+            await transaction.run(`
+                MATCH (item:${this.nodeLabel})-[deleted:DELETED_VERSION]->(version:${this.versionLabel})
+                WHERE id(item) = $itemId
+                DELETE deleted
+                CREATE (item)-[:LATEST_VERSION]->(version)
+            `, { itemId: numericItemId });
+
+            const csSnapshot = await this._validateOpenChangeSet(changeSetCommit, transaction);
+            await this.auditEventStore.log('RESTORE', {
+                id: numericItemId,
+                type: this._resolveAuditTargetType({ type }),
+                code,
+                title,
+                version: versionNumber,
+            }, this._auditCommit(changeSetCommit, csSnapshot), transaction);
+
+            return { itemId: numericItemId, version: versionNumber };
+        } catch (error) {
+            if (error instanceof StoreError) throw error;
+            throw new StoreError(`Failed to restore ${this.nodeLabel}: ${error.message}`, error);
+        }
+    }
+
+    /**
+     * Compute the LifecycleStatus structure for an item from lifecycle-edge presence.
+     * The four flags are independent; at most two co-occur (e.g. active + released).
+     *
+     * @param {number} itemId
+     * @param {Transaction} transaction
+     * @returns {Promise<{active:boolean, released:boolean, decommissioned:boolean, deleted:boolean}>}
+     */
+    async _computeLifecycleStatus(itemId, transaction) {
+        const numericItemId = this.normalizeId(itemId);
+        const result = await transaction.run(`
+            MATCH (item:${this.nodeLabel})
+            WHERE id(item) = $itemId
+            RETURN EXISTS { (item)-[:LATEST_VERSION]->() }         as active,
+                   EXISTS { (item)-[:RELEASED_VERSION]->() }       as released,
+                   EXISTS { (item)-[:DECOMMISSIONED_VERSION]->() } as decommissioned,
+                   EXISTS { (item)-[:DELETED_VERSION]->() }        as deleted
+        `, { itemId: numericItemId });
+
+        if (result.records.length === 0) {
+            throw new StoreError('Item not found — cannot compute lifecycle status');
+        }
+        const rec = result.records[0];
+        return {
+            active:         rec.get('active'),
+            released:       rec.get('released'),
+            decommissioned: rec.get('decommissioned'),
+            deleted:        rec.get('deleted'),
+        };
     }
 
     // Helper methods
