@@ -107,16 +107,20 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 | Method | Description |
 |---|---|
-| `create(payload, user)` | Validate then create at version 1 |
-| `update(itemId, payload, expectedVersionId, user)` | Validate then create new version |
-| `patch(itemId, patchPayload, expectedVersionId, user)` | Partial update — merges with current via `_computePatchedPayload`, then validates and updates |
-| `getById(itemId, user, editionId?, projection?)` | Fetch with optional edition context and projection; resolves edition to `{baselineId, editionId}` internally before calling store |
+| `create(payload, user)` | Strict-payload check, validate, then create at version 1 |
+| `update(itemId, payload, expectedVersionId, user)` | Strict-payload check, validate, then create new version |
+| `patch(itemId, patchPayload, expectedVersionId, user)` | Strict-payload check, then partial update — merges with current via `_computePatchedPayload`, validates, updates |
+| `getById(itemId, user, editionId?, projection?, lifecycleFace?)` | Fetch with optional edition context, projection, and lifecycle face; resolves edition to `{baselineId, editionId}` internally before calling store |
 | `getByIdAndVersion(itemId, versionNumber, user)` | Fetch specific historical version |
-| `getAll(user, editionId?, filters?, projection?)` | List with optional edition context, filters, and projection; resolves edition internally before calling store |
-| `delete(itemId, user)` | Delete item and all versions |
+| `getAll(user, editionId?, filters?, projection?, lifecycleFace?)` | List with optional edition context, filters, projection, and lifecycle face; resolves edition internally before calling store |
+| `softDelete(itemId, changeSetCommit, user)` | Move item Active → Deleted; two-step precondition guard (see below) |
+| `restore(itemId, changeSetCommit, user)` | Move item Deleted → Active; lifecycle-state guard only |
+| `getInboundReferences(itemId, user)` | Live O\* items referencing this one (`OperationalEntityReference[]`); where-used read, does not decide deletability |
+| `delete(itemId, user)` | Delete item and all versions (hard delete of the whole item — distinct from `softDelete`) |
 | `_validateCreatePayload(payload)` *(abstract)* | Must be implemented by subclass |
 | `_validateUpdatePayload(payload, itemId?)` *(abstract)* | Must be implemented by subclass; `itemId` is `null` on create, set on update/patch |
 | `_computePatchedPayload(current, patchPayload)` *(abstract)* | Field merge logic; must be implemented by subclass |
+| `_requestModelFor(op)` *(abstract, defaulted)* | Returns the `messages.js` request model for `'create'`/`'update'`/`'patch'` (patch → update model), driving strict-payload validation; default returns `null` (no check) |
 
 `patch()` is implemented entirely in the base class: it fetches the current entity (latest version), calls `_computePatchedPayload()` on the subclass to merge fields, validates the merged result via `_validateUpdatePayload(payload, itemId)`, and calls `store.update()` — all in a single transaction. Because `patch` always merges first, the store always receives a complete payload.
 
@@ -124,9 +128,24 @@ Abstract base for versioned entities. Each mutation produces a new version node.
 
 There is **no read-side `changeSetCommit` hydration** (Phase A — audit foundation). The field is gone from every versioned-item response shape; who/when/why lives in the audit log, queried via `AuditEventService.getAuditEvents`. `getById`/`getByIdAndVersion`/`getAll` simply return what the store reads — no `changeSetService` call on the read path. `getVersionHistory` is removed entirely; the client builds History from audit events filtered by `targetId`.
 
-`ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full, using `'standard'` projection). It also overrides `getById()` to default to `'extended'` projection. It disables `create()` and `delete()` — chapters are bootstrap-only.
+`ChapterService` overrides `getAll()` to omit edition context and filters (chapters are always listed in full, using `'standard'` projection). It also overrides `getById()` to default to `'extended'` projection (carrying `lifecycleFace` for base-signature alignment, passed through to a store that ignores it). It disables `create()` and `delete()` — chapters are bootstrap-only — and overrides `softDelete()` / `restore()` / `getInboundReferences()` to throw, since chapters have no lifecycle (parallel to `ChapterStore`'s overrides).
 
 **Edition context resolution:** When `editionId` is provided to `getAll` or `getById`, the service calls `odpEditionStore().resolveContext(editionId, tx)` within the same transaction to obtain `{baselineId, editionId}`. It then passes `baselineId` as the store's positional argument and `editionId` via `filters.editionId`. The store applies `$editionId IN r.editions` as a WHERE condition on the `HAS_ITEMS` relationship. The route layer has no knowledge of baselines — it passes only `editionId` or `null`.
+
+**Lifecycle face (dataset selector).** `getAll` and `getById` carry an optional `lifecycleFace` (`active` default / `released` / `decommissioned` / `deleted`), appended **last** in the signature to match the store's `findAll` / `findById` argument order. It selects which lifecycle edge anchors a **live-dataset** read and is mutually exclusive with `editionId` (the baseline-snapshot dataset): `_assertFaceEditionExclusive(editionId, lifecycleFace)` rejects a non-`active` face combined with an `editionId` (`Validation failed:` message → 400). The service forwards `lifecycleFace` to the store, which derives the four `lifecycleStatus` flags into every read row regardless of face.
+
+**Lifecycle transitions.** `softDelete` and `restore` are concrete on the base — the logic is identical for ON/OR and OC, and the store methods are likewise concrete on `VersionedItemStore`. Each opens one transaction, runs its precondition guard, calls the store transition, and commits:
+
+- **`softDelete`** enforces a two-step precondition before mutating, both inside the transaction (Neo4j backstops neither — only `LATEST_VERSION` is moved):
+    1. *Lifecycle-state guard* — the item must be Active and **not** Released (`lifecycleStatus.active && !released`, read via `store.findById`). The store's `softDelete` enforces only the `LATEST_VERSION`-present edge guard; the "not released" rule lives in the service because the store would otherwise drop `LATEST_VERSION` on a still-released item. A released item's only sanctioned exits are release/decommission (DEL-06). Failure throws `ServiceError(INVALID_LIFECYCLE_STATE)`.
+    2. *Reference guard* — `store.findInboundReferences` must return empty. A non-empty list throws `ServiceError(LIFECYCLE_BLOCKED, references)` carrying the `OperationalEntityReference[]`.
+- **`restore`** enforces the lifecycle-state guard **only** — the item must be in the Deleted state (read via `store.findById(..., lifecycleFace='deleted')`); failure throws `ServiceError(INVALID_LIFECYCLE_STATE)`. There is no reference guard: re-adding `LATEST_VERSION` cannot introduce a new blocker.
+
+`release` / `decommission` / `hardDelete` and the cross-cutting `BatchService.applyLifecycleBatch` are designed (DEL-06 / DEL-04) but not built this round.
+
+**`getInboundReferences(itemId, user)`** is a thin read over `store.findInboundReferences` returning the live O\* where-used list (`OperationalEntityReference[]`, `type` in `ON | OR | OC`). It does **not** decide deletability — the caller combines the list with the item's `lifecycleStatus` (a non-empty list and/or a `released` state means the item is not soft-deletable). It backs the preemptive `GET /{item}/{id}/inbound-references`; `softDelete` calls the store method directly inside its own transaction rather than via this method.
+
+**Strict-payload validation.** `create`/`update`/`patch` call `_assertNoUnexpectedFields(payload, op)` on the **raw** payload — before `_extractChangeSetCommit`, because the request models include the commit fields (`changeSetId`, `note`) in their allowlist. The accepted-field set is derived from the `messages.js` request model via `allowedFields(model)` (every key not marked `FORBIDDEN`); `_requestModelFor(op)` supplies the model, returning the **update** model for the `patch` case (a patch is any subset of update-writable fields). Any key outside the set is an unexpected attribute and throws `Validation failed: unexpected field(s): …` (→ 400), rather than ending up as an inert orphan property on the version node. Subclasses opt in by implementing `_requestModelFor`; the base default returns `null` (no check). This covers `lifecycleStatus` with no special-casing — it is `FORBIDDEN` in the request models (response-only), so a payload carrying it is rejected like any other unexpected field.
 
 ### 3.4 OperationalRequirementService
 
@@ -143,6 +162,7 @@ Key validation rules:
 - `OR` requirements cannot refine `ON` requirements (and vice versa); parent type checked per-item
 - Annotated reference arrays (`impactedStakeholders`, `strategicDocuments`) must use `{id, note?}` object format
 - Referenced entities (`impactedStakeholders`, `strategicDocuments`) validated for existence using separate `'system'` transactions; validations run in parallel via `Promise.all`
+- `_requestModelFor(op)` returns `OperationalRequirementRequests.{create|update}` (patch → update), enabling the base strict-payload check. Note this is independent of the existing type-immutability rule: `type` is an *allowed* field on update (the client sends it back), while `_validateUpdatePayload` separately rejects *changing* it.
 
 **Narrative generator support:**
 - `getONStrategicDocumentRefs(user, editionId?)` — wraps `OperationalRequirementStore.findONStrategicDocumentRefs()`. Returns `Array<{ itemId, code, title, docId, note }>` — all `(ON, ReferenceDocument, note)` triples in a single query. Called by `ChapterService._buildRefDocMap()` for the strategic-traceability generated block.
@@ -194,14 +214,16 @@ Validation rules:
 - Milestone `waveId` references validated for existence
 - Reference validations run in parallel using `Promise.all`
 - `_buildCompletePayload()` extracts the common logic of rebuilding the full OC payload for all three milestone mutation methods
+- `_requestModelFor(op)` returns `OperationalChangeRequests.{create|update}` (patch → update), enabling the base strict-payload check. Milestone mutations route through dedicated methods (not generic update/patch), so they bypass this check — consistent with the milestone-ownership contract above.
 
 ### 3.6 ChapterService
 
 Extends `VersionedItemService`. User-maintained fields: `narrative` (rich text), `osHierarchy` (`OsHierarchy` object).
 
 - `create()` and `delete()` are not supported — chapters are managed by server bootstrap (`initializeDatabase()`)
+- `softDelete()`, `restore()`, and `getInboundReferences()` are overridden to throw — chapters have no lifecycle (parallel to `ChapterStore`'s overrides). `getById`/`getAll` carry the `lifecycleFace` parameter for base-signature alignment but chapters expose only the `active` face.
 - `getAll(user)` — no edition context, no filters; returns all chapters with config-owned fields merged using `'standard'` projection (`narrative` and `osHierarchy` excluded). O* enrichment is not performed on the list path.
-- `getById(itemId, user, editionId?, projection?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`.
+- `getById(itemId, user, editionId?, projection?, lifecycleFace?)` — defaults to `'extended'` projection; merges config-owned fields (including `availableBlockIds` from `edition.json`) and enriches `osHierarchy` items with `{id, type, code, title}` objects resolved from O* stores via `_buildOStarMap()`. `lifecycleFace` is carried for base-signature alignment and passed through (chapters expose only the `active` face).
 - `_buildOStarMap(user)` — delegates to `OperationalRequirementService.getAll()` and `OperationalChangeService.getAll()` (both with `'summary'` projection) so transaction lifecycle is owned by the service layer. Returns a `Map<normalizedItemId, {id, type, code, title}>`.
 - `_validateOsHierarchy()` recursively validates the topic tree structure; each topic must have a non-empty `topic` string and integer arrays for `ons`, `ors`, `ocs`
 - `resolveGeneratedContent(itemId, editionId, user)` — resolves all generated content (blocks + strings) for a chapter in a single call. Returns `{ blocks: { [blockId]: node[] }, strings: { [key]: string } }`. Block and string resolution run in parallel via `Promise.all`. Always ephemeral — never persisted.
@@ -327,6 +349,16 @@ Reference existence checks open separate short-lived `'system'` transactions bef
 
 Services re-throw all errors after rolling back. They never swallow errors — rollback and rethrow is the only pattern.
 
+**Service error types.** Most service-layer validation throws a plain `Error` with a `Validation failed:` message prefix, which the route layer maps to `400 VALIDATION_ERROR` by prefix match. For the lifecycle conflicts that need a structured payload or a dedicated status the prefix convention cannot express, the service throws a typed **`ServiceError`** (in `services/service-error.js`), parallel to the store's `StoreError` (§8.2 of the Storage chapter) — carrying a message-independent `code` the route switches on, and an optional `references` array:
+
+| `ServiceErrorCode` | Raised by | Carries | Intended HTTP |
+|---|---|---|---|
+| `LIFECYCLE_BLOCKED` | `softDelete` reference guard | `references` (`OperationalEntityReference[]`) | 409 |
+| `INVALID_LIFECYCLE_STATE` | `softDelete` / `restore` state guard | — | 409 |
+| `BAD_REQUEST` | `_assertFaceEditionExclusive` | — | 400 |
+
+The route mapping for `LIFECYCLE_BLOCKED` / `INVALID_LIFECYCLE_STATE` arrives with the per-item lifecycle endpoints (REST chapter). `BAD_REQUEST` from the face/edition guard also carries a `Validation failed:` message, so it already resolves to 400 on the existing read routes via the prefix path.
+
 ---
 
 ## 5. Validation Summary
@@ -349,6 +381,11 @@ Services re-throw all errors after rolling back. They never swallow errors — r
 | Milestone wave existence | Service, separate `'system'` tx | Per-milestone `waveStore().exists()` |
 | Self-reference in REFINES | Store (`StoreError`) | Surfaced as-is to route layer |
 | Delete with children | `TreeItemService.deleteItem()` | Checked via `store.findChildren()` |
+| Unexpected payload field | Service, raw payload before extraction | `_assertNoUnexpectedFields` vs `messages.js` allowlist; `Validation failed:` → 400 |
+| Soft-delete lifecycle state | Service, in transaction | Must be Active and not Released; else `ServiceError(INVALID_LIFECYCLE_STATE)` |
+| Soft-delete inbound references | Service, in transaction | `findInboundReferences` empty; else `ServiceError(LIFECYCLE_BLOCKED, references)` |
+| Restore lifecycle state | Service, in transaction | Must be Deleted; else `ServiceError(INVALID_LIFECYCLE_STATE)` |
+| `lifecycleFace` / `editionId` exclusivity | Service, before transaction | Non-`active` face + `editionId` → `ServiceError(BAD_REQUEST)` |
 
 ---
 

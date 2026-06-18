@@ -3,7 +3,8 @@ import {
     OperationalRequirementType,
     isOperationalRequirementTypeValid,
     MaturityLevel,
-    isMaturityLevelValid
+    isMaturityLevelValid,
+    OperationalRequirementRequests
 } from '../../../shared/src/index.js';
 import { isDomainValid } from '../config/loader.js';
 import {
@@ -33,6 +34,16 @@ export class OperationalRequirementService extends VersionedItemService {
 
     _getDeltaFieldNames() {
         return ['statement', 'rationale', 'flows', 'nfrs', 'privateNotes', 'additionalDocumentation'];
+    }
+
+    /**
+     * Strict-payload accepted-field sets (messages.js). 'patch' uses the update
+     * model — a patch is any subset of the update-writable fields.
+     */
+    _requestModelFor(op) {
+        if (op === 'create') return OperationalRequirementRequests.create;
+        if (op === 'update' || op === 'patch') return OperationalRequirementRequests.update;
+        return null;
     }
 
     async _validateCreatePayload(payload) {

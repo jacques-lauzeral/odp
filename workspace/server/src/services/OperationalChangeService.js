@@ -4,7 +4,8 @@ import {
     isMilestoneEventValid,
     MilestoneEventKeys,
     MaturityLevel,
-    isMaturityLevelValid
+    isMaturityLevelValid,
+    OperationalChangeRequests
 } from '../../../shared/src/index.js';
 import { isDomainValid } from '../config/loader.js';
 import {
@@ -30,6 +31,18 @@ export class OperationalChangeService extends VersionedItemService {
     // - getAll(user, editionId?, filters?, projection?)
     // - delete(itemId, user)
     // History is served by AuditEventService.getItemHistory (Phase A).
+
+    /**
+     * Strict-payload accepted-field sets (messages.js). 'patch' uses the update
+     * model — a patch is any subset of the update-writable fields. (OC milestone
+     * mutations route through dedicated methods, not generic update/patch, so they
+     * are unaffected by this check.)
+     */
+    _requestModelFor(op) {
+        if (op === 'create') return OperationalChangeRequests.create;
+        if (op === 'update' || op === 'patch') return OperationalChangeRequests.update;
+        return null;
+    }
 
     /**
      * Get all milestones for operational change (latest version or baseline context)

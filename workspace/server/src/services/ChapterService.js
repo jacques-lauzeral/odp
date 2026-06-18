@@ -89,9 +89,11 @@ export class ChapterService extends VersionedItemService {
 
     /**
      * @override — merges config fields and enriches osHierarchy after store read.
+     * Chapters have no lifecycle; lifecycleFace is carried for base-signature
+     * alignment and passed through (ChapterStore ignores it).
      */
-    async getById(itemId, user, editionId = null, projection = 'extended') {
-        const result = await super.getById(itemId, user, editionId, projection);
+    async getById(itemId, user, editionId = null, projection = 'extended', lifecycleFace = 'active') {
+        const result = await super.getById(itemId, user, editionId, projection, lifecycleFace);
         if (!result) return null;
         const merged = this._mergeConfigFields(result);
         if (!this._hasHierarchyItems(merged.osHierarchy)) return merged;
@@ -111,8 +113,23 @@ export class ChapterService extends VersionedItemService {
     }
 
     // -------------------------------------------------------------------------
-    // O* enrichment
+    // Lifecycle — not applicable to chapters.
+    // Chapters are config-owned scaffolding with no lifecycle edges beyond
+    // LATEST_VERSION; these transitions/reads are overridden to throw, parallel
+    // to ChapterStore's softDelete/restore/findInboundReferences overrides.
     // -------------------------------------------------------------------------
+
+    async softDelete() {
+        throw new Error('Validation failed: chapters cannot be soft deleted');
+    }
+
+    async restore() {
+        throw new Error('Validation failed: chapters cannot be restored');
+    }
+
+    async getInboundReferences() {
+        throw new Error('Validation failed: chapters have no lifecycle inbound-reference check');
+    }
 
     /**
      * Build a single lookup map of normalised itemId → {id, type, code, title}
