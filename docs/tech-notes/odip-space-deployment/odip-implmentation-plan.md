@@ -1,6 +1,8 @@
 # ODIP Implementation Plan
 
-*v0.1 — 12 June 2026 — DRAFT for discussion*
+*v0.2 — 18 June 2026 — DRAFT for discussion*
+
+> **Status note (18 Jun 2026).** Two topics have advanced to implementation since v0.1: **LCM** (the audit/change-set foundation) and **DEL** (deletion), now driven by a dedicated design note and detailed plan (§3.3). The change-set model and a first-class `AuditEvent` log are built; soft delete is built. P0 status across topics is summarised in §4.
 
 ## 1. Context and purpose
 
@@ -32,15 +34,15 @@ NAV and FBK are succinct here despite carrying P0 line items in v0.4:
 
 ### 3.1 LCM — Lifecycle and change management → [full note](./odip-implementation-plan-lcm.md)
 
-Every save of a managed object (O*, theme/chapter, narrative) is part of a change set carrying the reason for change (free text + classifier + optional comment refs). Versions link to change sets via a `HAS_REASON` edge with an optional per-object note. Audit trail at P0 relies on the lifecycle stamps already present on entities; a dedicated audit log is deferred. Maturity/no-show split parked.
+Every save of a managed object (O*, theme/chapter, narrative) is part of a change set carrying the reason for change (free text + classifier + optional comment refs). **Built and superseded in part by the audit/deletion revision** ([design note](./odip-audit-delete-design.md), [plan](./odip-audit-delete-plan.md)): the original per-version `HAS_REASON` edge is removed in favour of a single first-class **`AuditEvent`** log — the sole authoritative record of every consequential write — and the History view is a client-side timeline over that log. This realises **LCM-03 (audit trail) at P0**, reversing the v0.1 deferral. Maturity/no-show split parked.
 
 ### 3.2 RBA — Roles and access → *full note tbd*
 
 Passive vs active users, action-permission matrix as the single source of "who can do what, when". Interim authentication is an email whitelist (no password) until P2 platform IAM.
 
-### 3.3 DEL — Deletion, recycle bin, decommissioning → *full note tbd*
+### 3.3 DEL — Deletion, recycle bin, decommissioning → [design note](./odip-audit-delete-design.md) · [plan](./odip-audit-delete-plan.md)
 
-Three mechanisms with a clear wall: published content can only be decommissioned; internal-baseline content can be soft-deleted or hard-deleted (integrator only); referential integrity blocks deletion with the full dependency list.
+The lifecycle is an **edge-based model** on the O* version node (`LATEST_VERSION` / `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` / `DELETED_VERSION`); state is derived from edge presence, not a stored status. **P0 is complete**: referential integrity blocks deletion with the full live inbound-reference list (DEL-01); a `released` item cannot be soft-deleted (DEL-02a); and the audit trail underpinning it all (LCM-03) is built. Soft delete + restore (DEL-03, P1) are also built through to the web layer (soft-delete-from-form). **Deferred, all P1:** release (DEL-06a) and decommission (DEL-06b) — integrator-assisted, candidate-list driven, never date/OC-automated; hard delete (DEL-04) and its edition-capture wall (DEL-02b); edition deletion (DEL-05); and the recycle-bin / restore UI. Two open design threads carried separately: the DEL-06a/06b integrator reconciliation worksheet, and the impact of an O* lifecycle change on chapter `osHierarchy` references (pre-existing, also triggered by domain change).
 
 ### 3.4 DIF — Diff and comparison → *full note tbd*
 
@@ -50,9 +52,9 @@ Field-by-field diff between any two versions of O*s, narratives and chapters, in
 
 Daily automatic backup in two forms (database + JSON), one copy off-site, retention 30 daily + 12 monthly, never delete the most recent of any kind. Quarterly restore test by integrators collectively.
 
-### 3.6 HIST — Version history view → *full note tbd*
+### 3.6 HIST — Version history view → *folded into LCM/DEL audit work*
 
-The History tab of every O* / chapter / narrative — list of versions, surfacing change-set link, classifier, per-object note. Entry point to the diff popup (DIF) and to the change-set detail (LCM).
+The History tab of every O* / chapter / narrative — surfacing action, actor, timestamp, change-set link, classifier, per-object note. **Now realised** as a client-side timeline over the single `AuditEvent` query (`GET /audit-events?targetId=`), built with the LCM/DEL revision rather than as a standalone version-list. Entry point to the diff popup (DIF) and to the change-set detail (LCM). DIF itself remains a later milestone.
 
 ### 3.7 NAV — Search, navigation and deep links
 
@@ -89,6 +91,28 @@ Structural completeness enforced at save (DRAFT may be substantively incomplete)
 ### 3.15 DAM — Documents and attachments
 
 Upload, version and associate documents with domains/themes/O*s. Full-text search alongside content from a single search box. Built-in storage first behind a small storage interface; SharePoint integration via Microsoft Graph as a P2 adapter swap. No P0 deliverable.
+
+---
+
+## 4. P0 status summary
+
+P0 progress is tracked in detail only for topics where work has started (LCM, DEL). The remainder reflect the v0.4 priority assessment as captured at v0.1; their per-topic notes are still to be written.
+
+| Topic | P0 deliverable | Status |
+|---|---|---|
+| **LCM** | Change-set model; audit trail (LCM-03) | ✅ Built — change sets + `AuditEvent` log; History over the audit query |
+| **DEL** | Referential integrity (DEL-01); released-state soft-delete guard (DEL-02a) | ✅ Built — guards enforced end-to-end; soft delete (DEL-03, P1) also built |
+| **HIST** | Version history view | ✅ Built — client timeline over `AuditEvent` |
+| **RBA** | Passive/active model; action-permission matrix | ⏳ Pending — full note tbd; `x-user-role` plumbing in place, matrix hard-coded at P0 |
+| **OPS** | Daily backup (DB + JSON), off-site copy, retention, quarterly restore test | ⏳ Pending — full note tbd |
+| **DIF** | Field-by-field diff between versions | ⏳ Pending — full note tbd; deferred behind DEL/HIST |
+| **NAV** | Structured query + text search | ◐ Partial — structured query + O*-scope text search exist; cross-content text-search scope/highlighting/ranking parked pending design |
+| **FBK** | Bug report template + internal CRD | ✅ Out-of-app — lives on the iCDM SharePoint site; no application work |
+| MOD · ACR · DEP · PRI · OUT · QUA · DAM | — | No P0 deliverable |
+
+**Pending for full P0 coverage:** the three topics with unbuilt P0 application work — **RBA** (roles/permission matrix), **OPS** (backup & restore), and **DIF** (version diff) — plus the **NAV** cross-content text-search gap (parked by choice, pending design). LCM, DEL, HIST and FBK are P0-complete. Within DEL specifically, nothing P0 remains; release/decommission/hard-delete/edition-deletion are all correctly P1.
+
+> The P0/P1 split *within* the DEL topic is authoritative in its [design note](./odip-audit-delete-design.md) §1 and §5; this table is the cross-topic roll-up.
 
 ---
 
