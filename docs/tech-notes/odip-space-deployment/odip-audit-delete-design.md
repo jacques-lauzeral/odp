@@ -23,15 +23,20 @@ It covers three intertwined concerns:
 
 | Req | Priority | Foundation | Solution proposal |
 |---|---|---|---|
-| **DEL-01** — Referential integrity | P0 | n/a (a service-layer guard) | ✅ implemented (§5.1) |
-| **DEL-02** — Published-edition wall | P0 | ✅ `RELEASED_VERSION` edge gates it (§3.2) | ✅ implemented (§5.2) |
+| **DEL-01** — Referential integrity (live inbound-reference guard) | P0 | n/a (a service-layer guard) | ✅ implemented (§5.1) |
+| **DEL-02a** — Released-state soft-delete guard | P0 | ✅ `RELEASED_VERSION` edge gates it (§3.2) | ✅ implemented (§5.2) |
+| **DEL-02b** — Hard-delete edition wall | P1 | ✅ edition-capture precondition on hard delete (§5.4) | ⚠ deferred — built with DEL-04 (§5.2, §5.4) |
 | **DEL-03** — Recycle bin (soft delete + restore) | P1 | ✅ defines `DELETED_VERSION` edge + transitions | ✅ implemented (§5.3) |
 | **DEL-04** — Hard delete | P1 | ✅ permanent removal from Deleted state | ⚠ deferred (§5.4) |
 | **DEL-05** — Edition deletion | P1 | n/a (separate edition lifecycle) | ⚠ deferred (§5.5) |
-| **DEL-06** — Release & decommission | P0 \* | ✅ full design coverage — `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` edges + transitions | ⚠ UX & implementation not ready (§5.6) |
+| **DEL-06a** — Release | P1 | ✅ `RELEASED_VERSION` edge + transition | ⚠ operation & UX deferred (§5.6) |
+| **DEL-06b** — Decommission | P1 | ✅ `DECOMMISSIONED_VERSION` edge + transition | ⚠ operation & UX deferred (§5.6) |
 | **LCM-03** — Audit trail | P0 | — | ✅ realised here (§3.1) |
 
-\* **DEL-06 is design-complete but not buildable yet.** Its priority is P0, but it is not "parked/undesigned": the lifecycle foundation (§3.2) fully defines its edges, states, and transitions. What is missing is the *operational UX and implementation* of the release and decommission operations. Closing DEL-06 is therefore a solution refinement, not a foundation change.
+**P0 is fully covered.** LCM-03, DEL-01, and DEL-02a are implemented. The remaining requirements are P1. Two earlier P0 framings were corrected:
+
+- **DEL-02 was split.** The original "published-edition wall" conflated two distinct protections. The **released-state soft-delete guard** (DEL-02a, P0) refuses soft-deleting a `released` item — built, and complete: in the P0 system no item is `released` (release is DEL-06a, P1), so the guard simply has nothing to refuse yet, which is correct steady-state behaviour, not a dormant gap. The **edition wall** (DEL-02b, P1) protects edition-captured `ItemVersion` nodes from *hard* delete (which destroys versions and would corrupt an edition's `HAS_ITEMS` snapshot); soft delete only moves a lifecycle edge and never touches versions, so edition membership is irrelevant to it. DEL-02b therefore belongs with DEL-04 (§5.2 correction, §5.4).
+- **DEL-06 was split and reprioritised to P1.** Release (DEL-06a) and decommission (DEL-06b) are both P1. They are structurally identical integrator-assisted operations (§5.6) — neither is on the P0 critical path, and DEL-02a's correctness does not depend on either being built.
 
 The **History view** is also revisited here. Its full redesign was deferred under LCM until deletion support arrived; that moment is now. The revisit is realised as a *client view over the audit query interface* (`GET /audit-events?targetId=`), not a bespoke server endpoint — see §3.1.
 
@@ -360,28 +365,32 @@ This section assesses the §4 solution against each requirement: how far up the 
 
 | Req | Priority | model | store | service | REST | CLI | web |
 |---|---|---|---|---|---|---|---|
-| **DEL-01** Referential integrity | P0 | ✅ | ✅ | ◐ | ✅ | ✅ | ◐ |
-| **DEL-02** Published-edition wall | P0 | ✅ | ✅ | ◐ | ✅ | ✅ | ◐ |
+| **DEL-01** Referential integrity | P0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DEL-02a** Released-state soft-delete guard | P0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **DEL-02b** Hard-delete edition wall | P1 | ✅ | ◐ | — | — | — | — |
 | **DEL-03** Soft delete & restore | P1 | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ |
 | **DEL-04** Hard delete | P1 | ✅ | ✅ | ◐ | ◐ | ◐ | — |
 | **DEL-05** Edition deletion | P1 | — | ◐ | — | — | — | — |
-| **DEL-06** Release & decommission | P0 \* | ✅ | ✅ | ✅ | ✅ | — | ◐ |
+| **DEL-06a** Release | P1 | ✅ | ✅ | ✅ | ✅ | — | ◐ |
+| **DEL-06b** Decommission | P1 | ✅ | ✅ | ✅ | ✅ | — | ◐ |
 
-The remaining ◐ on DEL-01/DEL-02 is a single cross-cutting gap, now confined to the **web** layer — **reference-report presentation:** how the inbound-reference list is surfaced to the user (the refusal `409` rendering, and any preemptive display). The service side is settled: `getInboundReferences` returns the live O\* reference list as a flat `OperationalEntityReference[]` (no edition/ordinary distinction — edition captures don't block), and the client combines it with `lifecycleStatus`. The REST contract is settled (§4.4): the `409` refusal shape is fixed as `LifecycleConflictResponse` (the standard error envelope plus a top-level `references` sibling), and the per-item paths and `lifecycleFace` parameter are pinned. Web is partial this round — only the soft-delete-from-the-form refusal path is in scope. (The service ◐ reflects only that the where-used assembly thinness is shared with the web rendering question; the transition methods themselves are settled — DEL-03 service is ✅.)
+**P0 (DEL-01, DEL-02a) is fully covered.** The refusal path is built end-to-end (service `LIFECYCLE_BLOCKED` / `INVALID_LIFECYCLE_STATE` → `409 LifecycleConflictResponse` → CLI blocker table and web `odipLifecycleConflict` dialog). The **preemptive where-used** need is met by the existing read model, not a bespoke feature: the extended projection already surfaces inbound references as derived fields (`implementedByORs` / `refinedBy` / `requiredByORs` and the OC equivalents), rendered as navigable chips in the detail view — so a user inspecting an O\* before deleting already sees what depends on it. No dedicated preemptive-deletability widget is required; the derived fields are the inspection surface and the `409` dialog is the backstop. (DEL-03's remaining web ◐ is restore UI + the recycle-bin view, both P1+, not a P0 concern.)
 
-DEL-04 (hard delete) and DEL-05 (edition deletion) are **parked**: only their store mechanics are sketched; service / REST / CLI / web were not worked this session. DEL-05 model is n/a (editions are not O*).
+DEL-04 (hard delete), DEL-02b (its edition wall) and DEL-05 (edition deletion) are **parked**: only their store mechanics are sketched; service / REST / CLI / web were not worked this session. DEL-05 model is n/a (editions are not O*).
 
-DEL-03's web layer is light — only soft-delete-from-the-detail-form is designed; **restore has no UI design**, and the recycle-bin view is deferred. DEL-06's data and store / service / REST design is settled; CLI is out of scope, the web layer is thin (batch-worksheet shape only), and the driving operations are open (§5.6).
+DEL-03's web layer is light — only soft-delete-from-the-detail-form is designed; **restore has no UI design**, and the recycle-bin view is deferred. DEL-06a/06b's data and store / service / REST design is settled; CLI is out of scope, the web layer is thin (batch-worksheet shape only), and the driving operations are open (§5.6).
 
 ### 5.1 DEL-01 — Referential integrity *[P0]*
 
-No object is deletable while other **live** objects reference it; the check gathers **all** inbound live references in one pass. The blocking inbound references per target type, the live-only rule, and the structured result are specified in §4.1 (shape), §4.2 (`findInboundReferences`), §4.3 (guard). The service side is settled — the reference list is the flat `OperationalEntityReference[]` returned by `getInboundReferences`, which the client combines with `lifecycleStatus` to decide deletability. **Open:** how the web client presents it (the refusal `409` rendering and any preemptive display). Web is otherwise partial — only the soft-delete-from-form refusal path is in this round.
+No object is deletable while other **live** objects reference it; the check gathers **all** inbound live references in one pass. The blocking inbound references per target type, the live-only rule, and the structured result are specified in §4.1 (shape), §4.2 (`findInboundReferences`), §4.3 (guard). The service side is settled — the reference list is the flat `OperationalEntityReference[]` returned by `getInboundReferences`, which the client combines with `lifecycleStatus` to decide deletability. The web client surfaces it at two points: the `409` refusal renders the blocker list (`odipLifecycleConflict`), and the extended-projection derived fields (`implementedByORs` / `refinedBy` / `requiredByORs`, etc.) give the user a preemptive where-used view in the detail panel before any delete is attempted. **Fully covered** — no dedicated preemptive-deletability widget is needed.
 
-### 5.2 DEL-02 — Published-edition wall *[P0]*
+### 5.2 DEL-02a — Released-state soft-delete guard *[P0]* · DEL-02b — Hard-delete edition wall *[P1]*
 
-A published item must not be soft-deletable. The gate is the item's **`released` lifecycle state** (`RELEASED_VERSION` edge present), not edition membership. `softDelete` checks this directly as an invalid-transition guard (step 1 in §4.3) — before any reference check, and independent of it. An item captured in a published edition but not yet operationally released (e.g. planned for a future wave) is **not** blocked by that edition membership alone — the correct gate is operational deployment, not publication. Once an item is released, its only sanctioned exits are release/decommission (DEL-06).
+**DEL-02a (P0).** A `released` item must not be soft-deletable. The gate is the item's **`released` lifecycle state** (`RELEASED_VERSION` edge present), not edition membership. `softDelete` checks this directly as an invalid-transition guard (step 1 in §4.3) — before any reference check, and independent of it. An item captured in a published edition but not yet operationally released (e.g. planned for a future wave) is **not** blocked by that edition membership alone — the correct gate is operational deployment, not publication. Once an item is released, its only sanctioned exits are release/decommission (DEL-06). The guard is built and complete; in the current system no item is `released` (release is DEL-06a, P1), so it has nothing to refuse yet — correct steady-state behaviour, not a dormant gap.
 
-> **Design correction.** An earlier iteration folded the published-edition wall into the blocking-dependency check: `findInboundReferences` was specified to include edition/baseline captures as `type: 'EDITION'` references, and the service would distinguish them from ordinary O\* references in the blocker report. This was wrong on both counts — edition captures do not block deletion, and the `released` lifecycle state is the correct and sufficient gate. The scenario in §0 (OR-1 captured by Ed-1 but superseded and replaced in Ed-2) confirms that edition membership alone is not a valid blocker.
+**DEL-02b (P1).** The edition wall protecting edition-captured versions belongs to *hard* delete, not soft delete, and is therefore parked with DEL-04 (§5.4). Soft delete only moves a lifecycle edge and leaves all `ItemVersion` nodes intact, so an edition's immutable `HAS_ITEMS` snapshot is unaffected by it; hard delete destroys versions and *would* corrupt a capturing edition, which is where the edition-capture precondition applies.
+
+> **Design correction.** An earlier iteration folded the published-edition wall into the soft-delete blocking-dependency check: `findInboundReferences` was specified to include edition/baseline captures as `type: 'EDITION'` references, and the service would distinguish them from ordinary O\* references in the blocker report. This was wrong on both counts — edition captures do not block *soft* delete, and the `released` lifecycle state is the correct and sufficient soft-delete gate. The edition-capture protection is real, but it is a *hard*-delete precondition (DEL-02b / §5.4). The scenario in §0 (OR-1 captured by Ed-1 but superseded and replaced in Ed-2) confirms that edition membership alone is not a valid soft-delete blocker.
 
 ### 5.3 DEL-03 — Soft delete & restore *[P1]*
 
@@ -391,25 +400,29 @@ Soft delete and restore as the `LATEST_VERSION`↔`DELETED_VERSION` transitions,
 
 The store mechanic is sketched (integrator-only, from the bin, blocking-clear; destroy item + versions + edges; log `HARD_DELETE` outliving its target, §4.2). Service, REST, CLI and web were not worked this session. Parked.
 
-> **Note — edition-capture precondition.** Hard delete is where edition membership *does* constrain deletion. Unlike soft delete (which only moves a lifecycle edge and leaves all version nodes intact), hard delete destroys the `ItemVersion` nodes — and a published edition's `HAS_ITEMS` snapshot points directly at those nodes. Destroying a version captured by any edition would corrupt that edition. So the hard-delete precondition must include an edition-capture check (refuse if any `ODPEdition` exposes a baseline that captured a version of this item), in addition to the live-reference clear. This is the correct home for the protection that an earlier iteration mistakenly attached to soft delete (the "published-edition wall", see §5.2 correction). To be specified when DEL-04 is built.
+> **Note — edition-capture precondition (DEL-02b).** Hard delete is where edition membership *does* constrain deletion. Unlike soft delete (which only moves a lifecycle edge and leaves all version nodes intact), hard delete destroys the `ItemVersion` nodes — and a published edition's `HAS_ITEMS` snapshot points directly at those nodes. Destroying a version captured by any edition would corrupt that edition. So the hard-delete precondition must include an edition-capture check (refuse if any `ODPEdition` exposes a baseline that captured a version of this item), in addition to the live-reference clear. This is DEL-02b — the protection that an earlier iteration mistakenly attached to soft delete (the "published-edition wall", see §5.2 correction). To be specified when DEL-04 is built.
 
 ### 5.5 DEL-05 — Edition deletion *[P1]* — parked
 
 Editions do not use the O* lifecycle edge model; they would carry their own `status` field with soft / hard delete on `ODPEditionStore`. Only the store mechanic is sketched; the rest was not worked. Parked, and independent of the O* lifecycle work.
 
-### 5.6 DEL-06 — Release & decommission *[P0 *]*
+### 5.6 DEL-06a — Release *[P1]* · DEL-06b — Decommission *[P1]*
 
-**Data model and the store / service / REST design are settled; the operations and their web UX are open.**
+**Data model and the store / service / REST design are settled; the operations and their web UX are open. Both are P1.**
 
-The lifecycle foundation (§3.2) completely defines this requirement's data model: the `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` edges, the Active + Released and Decommissioned states, and the transitions between them. The `RELEASE` and `DECOMMISSION` actions are reserved in `AuditAction`. The solution is designed down through store, service and REST: the transition methods (`release`, `decommission`) and `BatchService.applyLifecycleBatch` (§4.2–§4.3), and the REST surface — per-item `POST /{item}/{id}/{release|decommission}` and the mixed `POST /batch/lifecycle` with `openapi-batch.yml` (§4.4). CLI is deliberately out of scope.
+The lifecycle foundation (§3.2) completely defines the data model for both: the `RELEASED_VERSION` / `DECOMMISSIONED_VERSION` edges, the Active + Released and Decommissioned states, and the transitions between them. The `RELEASE` and `DECOMMISSION` actions are reserved in `AuditAction`. The solution is designed down through store, service and REST: the transition methods (`release`, `decommission`) and `BatchService.applyLifecycleBatch` (§4.2–§4.3), and the REST surface — per-item `POST /{item}/{id}/{release|decommission}` and the mixed `POST /batch/lifecycle` with `openapi-batch.yml` (§4.4). CLI is deliberately out of scope.
 
-What is **open** (the ◐ on web, and the reason DEL-06 is starred):
+**Design principle — integrator-confirmed, never automated.** Lifecycle transitions are **never** auto-fired by a wave/release date or by an OC's release state. The system's role is **assistance only**: around a release/wave date it derives two candidate lists for the integrator, who makes the explicit per-O\* decision to release or decommission. The OC release status and the `DECOMMISSIONS` relationship are *inputs to candidate derivation*, not triggers. The edge is written only on the integrator's explicit confirmation, batch-applied via `applyLifecycleBatch`. This removes any notion of automatic propagation or integrity sequencing between OC state and OR lifecycle.
 
-- **Release operation** — the post-publication act setting `RELEASED_VERSION` on each OR delivered by a released OC. Trigger, scope (per-OR vs per-wave/OC-batch) and UX unspecified.
-- **Decommission operation** — the operational consequence of releasing a *decommissioning* OC (§3.2): the OC-layer `DECOMMISSIONS` planning relationship becomes the `DECOMMISSIONED_VERSION` lifecycle edge. Causally linked but distinct (intent vs fact). Integrity sequencing and linkage mechanics unspecified.
-- **Integrator reconciliation worksheet** — the candidate-derivation read (most-recent published edition spanning a wave → its OC→OR release/decommission content) that populates the batch. Open operational design.
+Release (DEL-06a) and decommission (DEL-06b) are **structurally identical** under this principle — candidate list → integrator confirmation → batch edge-write — differing only in the candidate-derivation query and the edge written. The shared infrastructure (reconciliation worksheet UI, candidate-list pattern, `applyLifecycleBatch`) lands once; the second operation is then a second derivation query wired into the same worksheet.
 
-Because the data and service/REST design is complete, closing DEL-06 is a **solution refinement**, not a foundation change. A separate design note will cover it.
+What is **open** (the ◐ on web):
+
+- **DEL-06a Release** — the integrator-assisted act setting `RELEASED_VERSION`. Candidate derivation (the published edition spanning a wave → its OC→OR delivery content), the worksheet UX, and the explicit per-O\* confirmation are unspecified.
+- **DEL-06b Decommission** — the integrator-assisted act setting `DECOMMISSIONED_VERSION`, driven by the release of a *decommissioning* OC (its `DECOMMISSIONS` targets become decommission candidates). Same worksheet/batch mechanism; candidate-derivation query unspecified.
+- **Integrator reconciliation worksheet** — the shared candidate-derivation read and review surface that populates the batch for both. Open operational design.
+
+Because the data and service/REST design is complete, closing DEL-06a/06b is a **solution refinement**, not a foundation change. A separate design note will cover them.
 
 ## 6. Migration / bootstrap
 
@@ -423,7 +436,7 @@ The import pipeline therefore gains the same `AuditEvent` write discipline as ev
 - **`userId` remapping layer** — model-ready (§3.1.5); implementation deferred to P2 IAM integration.
 - **AuditEvent retention / volume** — at P0 the log grows unbounded. No purge policy is defined; revisit if volume becomes a concern (it is bounded by write activity, which is modest).
 
-(DEL-06's release-confirmation and decommission operations are tracked in §5.6, not here — they are design-complete and awaiting implementation, not open design questions.)
+(DEL-06a/06b's release and decommission operations are tracked in §5.6, not here — their data/service/REST design is settled and they are P1, awaiting the integrator-worksheet operational design, not open foundation questions.)
 
 ---
 

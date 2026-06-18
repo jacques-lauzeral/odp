@@ -37,7 +37,8 @@ web-client/src/
 │   │       │   ├── requirement-form-fields.js
 │   │       │   ├── change-form.js          OC create/edit form
 │   │       │   ├── change-form-fields.js
-│   │       │   └── change-form-milestone.js
+│   │       │   ├── change-form-milestone.js
+│   │       │   └── os-delete.js            Shared O* soft-delete flow (commit + 409)
 │   │       ├── narrative/
 │   │       │   ├── narrative.js            Narrative sub-activity orchestrator
 │   │       │   ├── chapter-toc.js          Chapter / topic / O* tree (left panel)
@@ -851,12 +852,20 @@ Filtered nodes carry `_contextOnly: true` to distinguish them from true headers.
 |---|---|
 | `RichTextComponent._promptLink` | External link toolbar button — insert or update a `link` mark |
 
+**`odipLifecycleConflict(message, references?)`** — returns `Promise<void>`. Informational modal (header *Cannot delete*, single auto-focused **Close** button `odip-btn--primary odip-btn--standard`; Escape and overlay-click also close) shown when a soft delete is refused with HTTP `409`. Renders the server's refusal `message`; when `references` (a `{ id, code, title, type }[]`) is non-empty it also lists the blocking live inbound items below the message, each as `type code — title`, followed by a hint to remove or redirect them first. The two refusal codes map onto one dialog: `INVALID_LIFECYCLE_STATE` passes message only (no list); `LIFECYCLE_BLOCKED` passes the blocker list as `references`. It is the web peer of the CLI's `printLifecycleConflict`.
+
+| Caller | Context |
+|---|---|
+| `runSoftDelete` (`os-delete.js`) | A `409` refusal from `POST /{item}/{id}/delete` (§8.2.4, §13.7) |
+
 ### 7.9 ChangeSetCommitDialog
 
-`openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit' }) → Promise<{ changeSetId, note } | null>` (`components/change-set-commit-dialog.js`). The shared commit gate for every versioned write (null = cancelled). Wider LCM integration is described in §13.
+`openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit', confirmLabel?, dangerConfirm? }) → Promise<{ changeSetId, note } | null>` (`components/change-set-commit-dialog.js`). The shared commit gate for every versioned write (null = cancelled). Wider LCM integration is described in §13.
 
 - **`mode: 'commit'`** (saves) — confirm button reads *Save*; an optional per-object **note** field is shown.
 - **`mode: 'select'`** (header chip) — picks the active default only; no note; confirm reads *Set as active*.
+- **`confirmLabel`** — overrides the confirm button text (default derives from `mode`). Used by soft delete to read *Delete* (§13.7).
+- **`dangerConfirm`** — renders the confirm button with `odip-btn--danger` instead of `odip-btn--primary`. Used by soft delete. Both options are purely cosmetic; the dialog's behaviour is unchanged — soft delete reuses the `'commit'` flow (change-set picker + note field) verbatim.
 
 Behaviour: fetches `OPEN` change sets, pre-selects the active default (dropped if no longer open), and offers confirm / pick-another / create-inline (title + classifier + optional reason). On confirm it calls `app.setActiveChangeSet(chosen)` and resolves; cancel/overlay/Esc resolves `null`.
 
@@ -975,10 +984,10 @@ Two rendering modes:
 
 | Mode | Context | Toolbar |
 |---|---|---|
-| `'panel'` | MasterDetail right column | `[ title · · · Edit  Full page ]` |
-| `'page'` | Full page (inter-O\* navigation) | `[ title · · · In collection  In narrative ]` |
+| `'panel'` | MasterDetail right column | `[ title · · · Edit  Full page  Delete ]` |
+| `'page'` | Full page (inter-O\* navigation) | `[ title · · · In collection  In narrative  Delete ]` |
 
-`os-detail__title` takes `flex: 1` and truncates with ellipsis. Action buttons are right-aligned, compact (`odip-btn`).
+`os-detail__title` takes `flex: 1` and truncates with ellipsis. Action buttons are right-aligned, compact (`odip-btn`); **Delete** is rightmost and `odip-btn--danger`.
 
 Mode-dependent navigation buttons:
 
@@ -987,6 +996,9 @@ Mode-dependent navigation buttons:
 | Panel | **Full page** | Pushes `/{base}/os/{type}/{id}` to browser history |
 | Page | **In collection** | Navigates to `/{base}/os?selected={id}` |
 | Page | **In narrative** | Navigates to `/{base}/narrative/{chapterId}?on={id}`, `?or={id}`, or `?oc={id}` |
+| Both | **Delete** | Soft delete — present only in editable context (`config.mode === 'edit'`) and only when an `onDelete` callback is wired; runs the soft-delete flow (§13.7) |
+
+**Delete affordance.** The toolbar renders a **Delete** button when the view is editable (`config.mode === 'edit'`, i.e. the live dataset) **and** the caller wired an `onDelete` callback — the same opt-in pattern as `onFullPage`. A caller that omits `onDelete` gets no Delete button; edition (read-only) context never shows it. `_handleDelete()` delegates the commit + API + `409` flow to the shared `runSoftDelete(app, item)` (§13.7) and, on success only, fires `onDelete(item)`. The view performs no list/panel cleanup itself — that is the parent's concern (panel clears + reloads; page navigates back to the collection; narrative clears the body and refreshes the TOC).
 
 **`In narrative` navigation** — `OsActivity._navigateToNarrative(item)` resolves the chapter by matching `item.domain` against `app.getChapters()` (cached). On match, pushes a typed URL (`?on=`/`?or=`/`?oc=`; absence of `item.type` implies OC). Falls back to `/{base}/narrative` if no chapter is found. `normalizeId` serialises the chapter `itemId`.
 
@@ -995,13 +1007,17 @@ Mode-dependent navigation buttons:
 ```js
 await this._requirementDetails.render(container, id, 'panel', {
     onFullPage: (item) => this._navigateToFullPage(item),
+    onDelete:   (item) => this._handlePanelDeleted(item),
 });
 
 await this._requirementDetails.render(container, id, 'page', {
     onInCollection: (item) => this._navigateToList(item),
     onInNarrative:  (item) => this._navigateToNarrative(item),
+    onDelete:       ()     => this._navigateToListAfterDelete(),
 });
 ```
+
+`OsActivity` post-delete handlers: `_handlePanelDeleted(item)` clears the detail panel and selection then reloads the list (the deleted item drops off the active face); `_navigateToListAfterDelete()` navigates back to the collection (no selection restore — the item is gone).
 
 **Search param restore** — `_restoreFromSearchParams()` runs once after `_renderList()`. It reads `?selected`, sets `sharedState.selectedItem`, then calls `_handleItemSelect()` for the panel render. Params are cleaned via `replaceState` after consumption.
 
@@ -1125,7 +1141,7 @@ Each side also receives a guard predicate from the activity — `canStartHierarc
 | `topic` | `_renderTopic(topic, editing, canEdit)` | Title · narrative · O* cards · subtheme cards; read-only by default, editable within a session |
 | `subtopic-by-id` | — | Synthetic entry fired by subtheme card click; intercepted by `_handleChapterTocSelect`, delegated to `ChapterToc.setActiveByTopicId`, re-enters as `topic` |
 | `unassigned` | `_renderUnassigned` | O*s with no topic placement |
-| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button navigates to `{base}/os/{type}/{id}` |
+| `ostar` | `_renderOStar` | `RequirementDetails` or `ChangeDetails` panel; **Full page** button navigates to `{base}/os/{type}/{id}`; **Delete** button (Elaborate) soft-deletes (§13.7) |
 
 **Edit-session entry/exit.** In Elaborate, `_enterEdit()` opens a session: it refuses while `_narrativeEditLocked` or `!canStartNarrativeEdit()`, otherwise sets `_editing = true`, fires `onEditSessionStart`, and re-renders the current entry editable. `_exitEdit()` returns to read-only, clears `_dirty`, fires `onEditSessionEnd`, and re-renders. Both use `_destroyRichTextKeepFlags()`, a `_destroyRichText` variant that preserves `_dirty`/`_saving` because entry/exit manage those explicitly. `_cancelEdit()` (the Cancel button) discards any unsaved changes and returns to read-only immediately — no confirmation, since the button is itself the discard intent; because `_exitEdit` clears `_dirty`, no navigation guard fires afterwards for the abandoned edit. A successful `_saveNarrative` or `_saveTopicFull` calls `_exitEdit()`, so saving returns the view to read-only and closes the session in one step.
 
@@ -1139,6 +1155,8 @@ Each side also receives a guard predicate from the activity — `canStartHierarc
 **Topic body layout** (`_renderTopic`) renders in order: Title (editing: `odip-input.chapter-body__topic-title`, saves on blur/Enter, reverts on Escape; read-only: plain `<h3>`); Narrative (editable `RichTextComponent` within a session, read-only otherwise — the read-only instance is retained on `this._richText` so it is torn down on the next selection); O* card list (direct O*s of the theme, no empty message); Subtheme card list (after O*s when `subTopics.length > 0`; each card shows a `▸` icon, label, and count hint, navigates via `subtopic-by-id`).
 
 **Delete theme** — in an open topic edit session, a **Delete theme** `odip-btn--danger` button shows in the header actions when the theme has no O*s and no subtopics. Clicking opens `odipConfirm` before delegating to `onThemeDelete(topicId)`.
+
+**O\* soft delete** — the `ostar` body view (`RequirementDetails` / `ChangeDetails` in panel mode) carries the **Delete** affordance described in §8.2.4. ChapterBody wires `onDelete` to `_handleOStarDeleted(item)`, which clears the body to its placeholder and forwards to `onOStarDeleted(item)`. The cross-cutting cleanup — TOC deselect, `app.invalidateOStars()`, and `refreshTree()` so the deleted card drops out of topic and unassigned lists — is owned by `NarrativeActivity`, consistent with the rule that every chapter-scope side effect lives in the activity, not the body.
 
 #### 8.3.6 Internal Link Navigation
 
@@ -1431,6 +1449,8 @@ The shared API client in `shared/api-client.js` handles all `fetch` calls, base 
 
 **Audit events.** `getAuditEvents({ changeSetId?, targetId?, userId? })` calls `GET /audit-events` with the supplied filters (all optional, AND-combined). Returns `AuditEventRow[]` ordered by timestamp ascending. This is the sole audit query surface — it backs the `HistoryTab` timeline (`targetId`), the change-set members view (`changeSetId`), and any actor-scoped queries (`userId`).
 
+**Soft delete.** `softDeleteOStar(type, id, { changeSetId, note? })` routes by `type` (`OC` → `/operational-changes`, otherwise `/operational-requirements`) and `POST`s to `/{item}/{id}/delete` with the change-set commit body. It returns the updated entity (Deleted face) on success; on refusal the client surfaces the server's `409` as a thrown error whose `status` is `409`, `message` is the refusal text, and `data.references` carries the blocking `OperationalEntityReference[]` for the `LIFECYCLE_BLOCKED` case (absent for `INVALID_LIFECYCLE_STATE`). The soft-delete flow that consumes it is documented in §13.7.
+
 ### 9.1 Connection Monitoring
 
 Connection monitoring is owned by `App` (`app.js`). On initialisation, `App` calls `endpoints.health` (`/ping`) immediately and then polls every 60 seconds. Each check dispatches a `connection:change` custom event on `window` with `detail.status` set to `'connected'` or `'disconnected'`. `Header` listens to this event and updates the status indicator. The 60-second interval is intentional — the application is a low-concurrency internal tool.
@@ -1647,11 +1667,26 @@ Both `RequirementForm.onSave` and `ChangeForm.onSave` already send `dataToSave` 
 
 **Context requirement** — the gate reads `this.context.app`, so every form construction supplies `app` in its context: the detail views (`RequirementDetails`/`ChangeDetails`), `OStarEntity._handleCreate` for both create contexts, and the Narrative "+ON/OR/OC" insert (`NarrativeActivity._handleAddOStar`).
 
-O* delete is not a form path and carries no commit gate at this layer.
+O* delete is not a form path; it carries its own commit gate through the soft-delete flow (§13.7), separate from the form save path above.
+
+### 13.7 O* Soft Delete
+
+Soft delete (DEL-03) is a change-set-bound write that does not go through a form. The flow is centralised in `runSoftDelete(app, item)` (`activities/workspace/shared/os/os-delete.js`), called by both detail views' `_handleDelete()`:
+
+1. **Commit gate** — `openChangeSetCommitDialog(app, { allowNote: true, confirmLabel: 'Delete', dangerConfirm: true })`. Same picker and note field as a save, with a danger-styled *Delete* confirm. A `null` (cancel) aborts with no write.
+2. **Write** — `apiClient.softDeleteOStar(type, id, { changeSetId, note })` → `POST /{item}/{id}/delete` (§9).
+3. **Refusal** — a `409` is mapped to `odipLifecycleConflict(message, references)` (§7.8): `INVALID_LIFECYCLE_STATE` (released / not-Active) shows the message alone; `LIFECYCLE_BLOCKED` adds the blocking live inbound-reference list from `error.data.references`. The helper returns `false`; no cleanup runs.
+4. **Success** — the helper returns `true`; the detail view fires `onDelete(item)`.
+
+The detail view owns steps 1–4 but performs no UI cleanup. Each parent supplies `onDelete` and owns the consequence: `OsActivity` clears the panel + selection and reloads (panel) or navigates back to the collection (page); `ChapterBody` clears the body and forwards to `NarrativeActivity` for TOC deselect + `app.invalidateOStars()` + `refreshTree()`.
+
+**Scope this round.** Only soft delete from the O* detail form is built. Restore, the recycle-bin view, the `lifecycleFace` selector, and lifecycle-state display are deferred (P1+). The conflict dialog renders blocking references as plain text — navigable blocker links are not built this round.
 
 ### 13.6 Affected Files
 
-`app.js`, `shared/api-client.js`, `components/header.js`, `components/change-set-commit-dialog.js`, `components/collection-entity-form.js`, `activities/workspace/shared/os/o-star-entity.js`, `activities/workspace/shared/narrative/narrative.js`, `activities/workspace/shared/narrative/chapter-toc.js`, `activities/workspace/shared/narrative/chapter-body.js`.
+Change-set foundation: `app.js`, `shared/api-client.js`, `components/header.js`, `components/change-set-commit-dialog.js`, `components/collection-entity-form.js`, `activities/workspace/shared/os/o-star-entity.js`, `activities/workspace/shared/narrative/narrative.js`, `activities/workspace/shared/narrative/chapter-toc.js`, `activities/workspace/shared/narrative/chapter-body.js`.
+
+Soft delete (§13.7): `shared/api-client.js` (`softDeleteOStar`), `components/change-set-commit-dialog.js` (`confirmLabel` / `dangerConfirm`), `components/user-dialogs.js` (`odipLifecycleConflict`), `activities/workspace/shared/os/os-delete.js` (new — shared flow), `activities/workspace/shared/os/requirement-details.js`, `activities/workspace/shared/os/change-details.js`, `activities/workspace/shared/os/os.js`, `activities/workspace/shared/narrative/chapter-body.js`, `activities/workspace/shared/narrative/narrative.js`.
 
 ---
 

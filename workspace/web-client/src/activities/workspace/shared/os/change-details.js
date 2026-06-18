@@ -20,6 +20,7 @@
  */
 import { apiClient } from '../../../../shared/api-client.js';
 import { errorHandler } from '../../../../shared/error-handler.js';
+import { runSoftDelete } from './os-delete.js';
 
 export default class ChangeDetails {
     /**
@@ -33,6 +34,7 @@ export default class ChangeDetails {
         this._onFullPage     = null;
         this._onInCollection = null;
         this._onInNarrative  = null;
+        this._onDelete       = null;
 
         this.container = null;
         this.item      = null;
@@ -58,6 +60,7 @@ export default class ChangeDetails {
         this._onFullPage     = callbacks.onFullPage     ?? null;
         this._onInCollection = callbacks.onInCollection ?? null;
         this._onInNarrative  = callbacks.onInNarrative  ?? null;
+        this._onDelete       = callbacks.onDelete       ?? null;
         this._onSaved        = callbacks.onSaved        ?? null;
 
         this.container.innerHTML = this._buildLoadingHtml();
@@ -146,6 +149,9 @@ export default class ChangeDetails {
 
         this.container.querySelector('.os-detail__in-narrative')
             ?.addEventListener('click', () => this._onInNarrative?.(this.item));
+
+        this.container.querySelector('.os-detail__delete')
+            ?.addEventListener('click', () => this._handleDelete());
     }
 
     // -------------------------------------------------------------------------
@@ -155,6 +161,17 @@ export default class ChangeDetails {
     async _openEditPopup() {
         await this._ensureForm(this._setupData ?? await this.app.getSetupData());
         await this._form.showEditModal(this.item);
+    }
+
+    /**
+     * Soft-delete this item. Runs the shared commit + API + 409 flow; on success
+     * forwards to the parent's onDelete(item) so it can clear its own panel/list.
+     * The view itself does no list/panel cleanup — that is the parent's concern.
+     */
+    async _handleDelete() {
+        if (!this.item) return;
+        const deleted = await runSoftDelete(this.app, this.item);
+        if (deleted) this._onDelete?.(this.item);
     }
 
     /**
@@ -233,6 +250,7 @@ export default class ChangeDetails {
         const showFullPage     = this._mode === 'panel' && this._onFullPage     != null;
         const showInCollection = this._mode === 'page'  && this._onInCollection != null;
         const showInNarrative  = this._mode === 'page'  && this._onInNarrative  != null;
+        const showDelete       = isEditable && this._onDelete != null;
 
         return `
             <div class="os-detail${this._mode === 'page' ? ' os-detail--page' : ''}">
@@ -250,6 +268,9 @@ export default class ChangeDetails {
             : ''}
                         ${showInNarrative
             ? '<button class="odip-btn os-detail__in-narrative">In narrative</button>'
+            : ''}
+                        ${showDelete
+            ? '<button class="odip-btn odip-btn--danger os-detail__delete">Delete</button>'
             : ''}
                     </div>
                 </div>

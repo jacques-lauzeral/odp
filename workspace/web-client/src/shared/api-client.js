@@ -281,6 +281,29 @@ export class ApiClient {
         return [...requirements, ...changes];
     }
 
+    /**
+     * Soft-delete an O* — moves it from the Active to the Deleted face.
+     * Change-set-bound write: POST /{item}/{id}/delete with { changeSetId, note? }.
+     * Routes by type to the requirements or changes endpoint.
+     *
+     * On refusal the server returns 409 with a typed code:
+     *   INVALID_LIFECYCLE_STATE — item is released or not Active (no references)
+     *   LIFECYCLE_BLOCKED       — live inbound references block deletion;
+     *                             error.data.references carries the blocker list
+     *
+     * @param {string} type — 'ON' | 'OR' | 'OC'
+     * @param {number|string} id
+     * @param {{ changeSetId: string, note?: string }} commit
+     * @returns {Promise<object>} the updated entity (Deleted face)
+     */
+    async softDeleteOStar(type, id, { changeSetId, note } = {}) {
+        const endpoint = (type ?? '').toUpperCase() === 'OC'
+            ? '/operational-changes'
+            : '/operational-requirements';
+        const data = note ? { changeSetId, note } : { changeSetId };
+        return this.post(endpoint, data, { id, subPath: 'delete' });
+    }
+
     // -------------------------------------------------------------------------
     // Audit events
     // -------------------------------------------------------------------------

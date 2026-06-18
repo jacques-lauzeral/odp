@@ -426,6 +426,7 @@ export default class OsActivity {
         }
         await this._requirementDetails.render(this.masterDetail.detailContainer, id, 'panel', {
             onFullPage: (item) => this._navigateToFullPage(item),
+            onDelete:   (item) => this._handlePanelDeleted(item),
         });
     }
 
@@ -436,6 +437,7 @@ export default class OsActivity {
         }
         await this._changeDetails.render(this.masterDetail.detailContainer, id, 'panel', {
             onFullPage: (item) => this._navigateToFullPage(item, 'oc'),
+            onDelete:   (item) => this._handlePanelDeleted(item),
         });
     }
 
@@ -469,6 +471,28 @@ export default class OsActivity {
         }
     }
 
+    /**
+     * Called after a successful soft-delete from the panel detail view.
+     * Clears the detail panel and selection, then reloads the list so the
+     * deleted item disappears from the active (non-deleted) face.
+     * @param {object} _item — the deleted entity (unused; reload is authoritative)
+     */
+    async _handlePanelDeleted(_item) {
+        this._ostarEntity.sharedState.selectedItem = null;
+        this.masterDetail.clearDetail();
+        await this._loadData();
+    }
+
+    /**
+     * Called after a successful soft-delete from the full-page detail view.
+     * Navigates back to the collection (no selection restore — the item is gone);
+     * the list reload on render reflects the deletion.
+     */
+    _navigateToListAfterDelete() {
+        this._inPageMode = false;
+        this.app.navigate(this._basePath());
+    }
+
     // -------------------------------------------------------------------------
     // Detail — page mode (direct URL or inter-O* navigation)
     // -------------------------------------------------------------------------
@@ -483,6 +507,7 @@ export default class OsActivity {
             onFullPage:      null,
             onInCollection:  (item) => this._navigateToList(item),
             onInNarrative:   (item) => this._navigateToNarrative(item),
+            onDelete:        ()     => this._navigateToListAfterDelete(),
         });
     }
 
@@ -496,6 +521,7 @@ export default class OsActivity {
             onFullPage:      null,
             onInCollection:  (item) => this._navigateToList(item),
             onInNarrative:   (item) => this._navigateToNarrative(item),
+            onDelete:        ()     => this._navigateToListAfterDelete(),
         });
     }
 

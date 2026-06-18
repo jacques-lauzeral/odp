@@ -8,11 +8,13 @@
  * modal + odip-btn + odip-input vocabulary exactly as user-dialogs.js does.
  *
  * Public API:
- *   openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit' })
+ *   openChangeSetCommitDialog(app, { allowNote = true, mode = 'commit', confirmLabel?, dangerConfirm? })
  *     → Promise<{ changeSetId, note } | null>     // null = cancelled
  *
  *   mode 'commit' — used by saves: confirm reads "Save"; note field shown (unless allowNote:false, e.g. deletes)
  *   mode 'select' — used by the header chip: picks the active default only; no note; confirm reads "Set as active"
+ *   confirmLabel  — override the confirm button text (e.g. "Delete" for destructive commits)
+ *   dangerConfirm — render the confirm button with danger styling instead of primary
  *
  * On confirm the chosen set becomes the active default via app.setActiveChangeSet().
  * This is a display default only — the server re-validates the set is OPEN at write time.
@@ -32,10 +34,14 @@ export function openChangeSetCommitDialog(app, options = {}) {
 }
 
 class ChangeSetCommitDialog {
-    constructor(app, { allowNote = true, mode = 'commit' } = {}) {
+    constructor(app, { allowNote = true, mode = 'commit', confirmLabel = null, dangerConfirm = false } = {}) {
         this.app = app;
         this.mode = mode;
         this.allowNote = allowNote && mode === 'commit';
+        // Cosmetic confirm-button overrides (e.g. destructive commits like soft delete).
+        // Default label still derives from mode; danger swaps primary → danger styling.
+        this.confirmLabel = confirmLabel ?? (mode === 'select' ? 'Set as active' : 'Save');
+        this.dangerConfirm = dangerConfirm;
         this.overlay = null;
         this._resolve = null;
         this._openSets = [];
@@ -69,8 +75,8 @@ class ChangeSetCommitDialog {
                                 background:#FFF0F0; color:#A32D2D; font-size:var(--font-size-sm);"></div>
                     <div class="modal-footer" style="padding: var(--space-4) var(--space-6);">
                         <button class="odip-btn odip-btn--standard" data-act="cancel">Cancel</button>
-                        <button class="odip-btn odip-btn--primary odip-btn--standard" data-act="confirm" disabled>
-                            ${this.mode === 'select' ? 'Set as active' : 'Save'}
+                        <button class="odip-btn ${this.dangerConfirm ? 'odip-btn--danger' : 'odip-btn--primary'} odip-btn--standard" data-act="confirm" disabled>
+                            ${this.confirmLabel}
                         </button>
                     </div>
                 </div>`;

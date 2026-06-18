@@ -47,6 +47,7 @@ export default class ChapterBody {
         this._onChapterNarrativeSave = options.onChapterNarrativeSave ?? (() => {});
         this._onThemeDelete          = options.onThemeDelete          ?? (() => {});
         this._onOStarSaved           = options.onOStarSaved           ?? (() => {});
+        this._onOStarDeleted         = options.onOStarDeleted         ?? (() => {});
         // LCM edit-session coordination (2c)
         this._onEditSessionStart     = options.onEditSessionStart     ?? (() => {});
         this._onEditSessionEnd       = options.onEditSessionEnd       ?? (() => {});
@@ -398,6 +399,7 @@ export default class ChapterBody {
         const callbacks = {
             onFullPage: (item) => this._navigateToFullPage(item),
             onSaved:    (result, mode) => this._onOStarSaved(result, mode),
+            onDelete:   (item) => this._handleOStarDeleted(item),
         };
 
         if (type === 'OC') {
@@ -407,6 +409,23 @@ export default class ChapterBody {
             await this._ensureRequirementDetails(config);
             await this._requirementDetails.render(detailEl, ostar.id, 'panel', callbacks);
         }
+    }
+
+    /**
+     * Called after a successful soft-delete of the O* shown in the body.
+     * Clears the body to the placeholder and forwards to the activity, which
+     * owns the cross-cutting cleanup (TOC deselect, app.invalidateOStars(),
+     * refreshTree so the deleted card drops out of topic/unassigned lists).
+     * @param {object} item — the deleted O*
+     */
+    _handleOStarDeleted(item) {
+        this._currentEntry = null;
+        this.container.innerHTML = `
+            <div class="master-detail__placeholder">
+                <p class="master-detail__placeholder-text">Select an entry in the TOC</p>
+            </div>
+        `;
+        this._onOStarDeleted(item);
     }
 
     _renderOStarCard(item) {
