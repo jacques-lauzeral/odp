@@ -78,7 +78,9 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`requirement list` filter flags**: `--type ON|OR`, `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
-**`requirement list` lifecycle face**: `--lifecycle-status active|released|decommissioned|deleted` (default: `active`). Selects which lifecycle dataset the list reads (the recycle bin is `deleted`); the value is forwarded as `?lifecycleFace=` and is mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags (e.g. `active`, `active, released`).
+**`requirement list` lifecycle face**: `--lifecycle-face active|released|decommissioned|deleted` (default: `active`). Selects which lifecycle dataset the list reads (the recycle bin is `deleted`); the value is forwarded as `?lifecycleFace=` and is mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags (e.g. `active`, `active, released`).
+
+**`requirement show` lifecycle face**: `show` accepts the same `--lifecycle-face` flag (default `active`), forwarded as `?lifecycleFace=`. It is required to inspect a soft-deleted item by ID — `show <id> --lifecycle-face deleted` reads the recycle-bin face; a plain `show <id>` reads only the active face and 404s for a soft-deleted item. Mutually exclusive with `--edition`.
 
 **`requirement list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Type, Domain, Title, Version`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
@@ -105,7 +107,9 @@ All setup entity commands follow the `BaseCommands` pattern (list / show / creat
 
 **`change list` filter flags**: `--domain`, `--title`, `--text`, `--stakeholder-category <ids>`.
 
-**`change list` lifecycle face**: `--lifecycle-status active|released|decommissioned|deleted` (default: `active`), forwarded as `?lifecycleFace=`, mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags.
+**`change list` lifecycle face**: `--lifecycle-face active|released|decommissioned|deleted` (default: `active`), forwarded as `?lifecycleFace=`, mutually exclusive with `--edition`. The list table carries a `Lifecycle` column showing the item's true lifecycle flags.
+
+**`change show` lifecycle face**: `show` accepts the same `--lifecycle-face` flag (default `active`), forwarded as `?lifecycleFace=`; required to inspect a soft-deleted change by ID (`show <id> --lifecycle-face deleted`). Mutually exclusive with `--edition`.
 
 **`change list` projection**: `--projection summary|standard` (default: `standard`). The list table shows identity/classification columns only (`Item ID, Code, Domain, Title, Version`); rich-text fields are not displayed in the list, so the projection does not affect the table.
 
@@ -303,7 +307,7 @@ The following command files or subcommands were removed:
 
 `addListCommand` and `addShowCommand` in `VersionedCommands` both support `--edition <id>` (optional). The `--baseline` option has been removed — baseline is an internal implementation detail not exposed in the CLI. Edition ID is passed directly as `?edition=<id>` to the API; server-side resolution handles baseline and wave context internally.
 
-**Lifecycle face and display.** Each subclass `list` accepts `--lifecycle-status active|released|decommissioned|deleted` (default `active`), validated and checked for exclusivity with `--edition` / `--baseline` via `resolveLifecycleFace`, forwarded as `?lifecycleFace=` only when non-default. The list table carries a `Lifecycle` column and `show` (via the base `displayItemDetails`) prints a `Lifecycle:` line — both rendered by `formatLifecycleStatus`, which lists the item's true lifecycle flags. `chapter.js` has its own list/`displayItemDetails` and shows no lifecycle (chapters have none).
+**Lifecycle face and display.** Both `list` and `show` accept `--lifecycle-face active|released|decommissioned|deleted` (default `active`), validated and checked for exclusivity with `--edition` / `--baseline` via `resolveLifecycleFace`, forwarded as `?lifecycleFace=` only when non-default. On `show` it selects the single-item read face — the only way to inspect a soft-deleted item by ID (`--lifecycle-face deleted`). The list table carries a `Lifecycle` column and `show` (via the base `displayItemDetails`) prints a `Lifecycle:` line — both rendered by `formatLifecycleStatus`, which lists the item's true lifecycle flags. The flag is named `--lifecycle-face` (not `--lifecycle-status`) to match the `lifecycleFace` parameter used at every other layer and to avoid colliding with the unrelated `lifecycleStatus` flag structure (the four-flag read shape). `chapter.js` has its own list/show/`displayItemDetails` and exposes no face (chapters have no lifecycle).
 
 `getUserRole()` mirrors `getUserId()` — both read from the global `program.opts()` set by the `odip-cli` script. `createHeaders()` sends `x-user-role` alongside `x-user-id` on every request.
 

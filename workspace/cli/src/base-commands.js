@@ -461,6 +461,7 @@ export class VersionedCommands extends BaseCommands {
             .command('show <itemId>')
             .description(`Show a specific ${this.displayName} (repository or edition context)`)
             .option('--edition <id>', 'Show item in specified edition context')
+            .option('--lifecycle-face <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
             .option('--projection <projection>', 'Response projection: standard | extended (default: standard)', 'standard')
             .action(async (itemId, options) => {
                 try {
@@ -469,18 +470,23 @@ export class VersionedCommands extends BaseCommands {
                         process.exit(1);
                     }
 
+                    const lifecycleFace = this.resolveLifecycleFace(options);
+
                     const { url, contextDisplay } = await this.buildContextUrl(`${this.baseUrl}/${this.urlPath}/${itemId}`, options);
+                    const params = [];
+                    if (lifecycleFace !== 'active') params.push(`lifecycleFace=${lifecycleFace}`);
+                    if (options.projection !== 'standard') params.push(`projection=${options.projection}`);
                     const separator = url.includes('?') ? '&' : '?';
-                    const finalUrl = options.projection !== 'standard'
-                        ? `${url}${separator}projection=${options.projection}`
-                        : url;
+                    const finalUrl = params.length > 0 ? `${url}${separator}${params.join('&')}` : url;
+
+                    const faceDisplay = lifecycleFace !== 'active' ? ` (Lifecycle: ${lifecycleFace})` : '';
 
                     const response = await fetch(finalUrl, {
                         headers: this.createHeaders()
                     });
 
                     if (response.status === 404) {
-                        console.error(`${this.displayName} with ID ${itemId} not found${contextDisplay}.`);
+                        console.error(`${this.displayName} with ID ${itemId} not found${contextDisplay}${faceDisplay}.`);
                         process.exit(1);
                     }
 
@@ -493,8 +499,8 @@ export class VersionedCommands extends BaseCommands {
 
                     const item = await response.json();
 
-                    if (contextDisplay) {
-                        console.log(`=== ${this.displayName.toUpperCase()}${contextDisplay.toUpperCase()} ===`);
+                    if (contextDisplay || faceDisplay) {
+                        console.log(`=== ${this.displayName.toUpperCase()}${contextDisplay.toUpperCase()}${faceDisplay.toUpperCase()} ===`);
                     }
 
                     this.displayItemDetails(item);
@@ -561,18 +567,18 @@ export class VersionedCommands extends BaseCommands {
     }
 
     /**
-     * Validate a --lifecycle-status value and its exclusivity with edition/baseline.
+     * Validate a --lifecycle-face value and its exclusivity with edition/baseline.
      * Returns the face string ('active' default). Exits on invalid input.
      */
     resolveLifecycleFace(options) {
-        const face = options.lifecycleStatus || 'active';
+        const face = options.lifecycleFace || 'active';
         const valid = ['active', 'released', 'decommissioned', 'deleted'];
         if (!valid.includes(face)) {
-            console.error(`Invalid lifecycle status: ${face}. Valid values: ${valid.join(', ')}`);
+            console.error(`Invalid lifecycle face: ${face}. Valid values: ${valid.join(', ')}`);
             process.exit(1);
         }
         if (face !== 'active' && (options.edition || options.baseline)) {
-            console.error('--lifecycle-status (non-active) is mutually exclusive with --edition / --baseline');
+            console.error('--lifecycle-face (non-active) is mutually exclusive with --edition / --baseline');
             process.exit(1);
         }
         return face;

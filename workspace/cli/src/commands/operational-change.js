@@ -29,7 +29,7 @@ class OperationalChangeCommands extends VersionedCommands {
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, purpose, initialState, finalState, details, and privateNotes fields')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs via IMPLEMENTS/DECOMMISSIONS requirements (comma-separated)')
-            .option('--lifecycle-status <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
+            .option('--lifecycle-face <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {

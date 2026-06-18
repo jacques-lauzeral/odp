@@ -24,7 +24,7 @@ class OperationalRequirementCommands extends VersionedCommands {
             .option('--title <pattern>', 'Filter by title pattern')
             .option('--text <search>', 'Full-text search across title, statement, rationale, flows, and privateNotes')
             .option('--stakeholder-category <ids>', 'Filter by stakeholder category IDs (comma-separated)')
-            .option('--lifecycle-status <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
+            .option('--lifecycle-face <face>', 'Lifecycle dataset: active | released | decommissioned | deleted (default: active)')
             .option('--projection <projection>', 'Response projection: summary | standard (default: standard)', 'standard')
             .action(async (options) => {
                 try {

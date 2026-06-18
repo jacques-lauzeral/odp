@@ -350,6 +350,11 @@ export class VersionedItemRouter {
                 const user = this.getUserOptional(req);
                 console.log(`${this.service.constructor.name}.getInboundReferences() itemId: ${req.params.id}, user: ${user?.id ?? null}`);
                 const references = await this.service.getInboundReferences(req.params.id, user);
+                if (references === null) {
+                    return res.status(404).json({
+                        error: { code: 'NOT_FOUND', message: `${this.entityDisplayName} not found` }
+                    });
+                }
                 res.json(references);
             } catch (error) {
                 console.error(`Error fetching inbound references for ${this.entityName}:`, error);

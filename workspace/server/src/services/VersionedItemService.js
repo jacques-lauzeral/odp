@@ -143,7 +143,18 @@ export class VersionedItemService {
         try {
             const current = await this.getStore().findById(itemId, tx);
             if (!current) {
-                throw new Error('Entity not found');
+                // Not found on the active face. Distinguish "doesn't exist at all"
+                // (→ null → 404 at the route) from "exists but on another face"
+                // (an invalid transition — only an Active item can be soft-deleted).
+                const onAnyFace = await this._findOnAnyFace(itemId, tx);
+                if (!onAnyFace) {
+                    await commitTransaction(tx);
+                    return null;
+                }
+                throw new ServiceError(
+                    `Validation failed: cannot soft delete — item must be Active and not Released`,
+                    ServiceErrorCode.INVALID_LIFECYCLE_STATE
+                );
             }
 
             const { active, released } = current.lifecycleStatus;
@@ -163,9 +174,12 @@ export class VersionedItemService {
                 );
             }
 
-            const result = await this.getStore().softDelete(itemId, changeSetCommit, tx);
+            await this.getStore().softDelete(itemId, changeSetCommit, tx);
+            // Re-read the full item so the response carries title + lifecycleStatus.
+            // After the transition the item is on the Deleted face, so read it there.
+            const updated = await this.getStore().findById(itemId, tx, null, null, 'standard', 'deleted');
             await commitTransaction(tx);
-            return result;
+            return updated;
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
@@ -182,15 +196,25 @@ export class VersionedItemService {
         try {
             const current = await this.getStore().findById(itemId, tx, null, null, 'standard', 'deleted');
             if (!current) {
+                // Not on the Deleted face. Distinguish "doesn't exist at all"
+                // (→ null → 404) from "exists but not deleted" (invalid transition).
+                const onAnyFace = await this._findOnAnyFace(itemId, tx);
+                if (!onAnyFace) {
+                    await commitTransaction(tx);
+                    return null;
+                }
                 throw new ServiceError(
                     `Validation failed: cannot restore — item is not in the Deleted state`,
                     ServiceErrorCode.INVALID_LIFECYCLE_STATE
                 );
             }
 
-            const result = await this.getStore().restore(itemId, changeSetCommit, tx);
+            await this.getStore().restore(itemId, changeSetCommit, tx);
+            // Re-read the full item so the response carries title + lifecycleStatus.
+            // After the transition the item is back on the Active face.
+            const updated = await this.getStore().findById(itemId, tx, null, null, 'standard', 'active');
             await commitTransaction(tx);
-            return result;
+            return updated;
         } catch (error) {
             await rollbackTransaction(tx);
             throw error;
@@ -208,6 +232,17 @@ export class VersionedItemService {
     async getInboundReferences(itemId, user) {
         const tx = createTransaction(user.id, user.role);
         try {
+            // Existence guard: the where-used traversal returns an empty list for both a
+            // nonexistent id and an existing-but-unreferenced item. Distinguish them by
+            // confirming the target exists on some reachable face first. A deleted target
+            // still resolves (one may inspect what referenced an item now in the bin);
+            // only a truly-absent id yields null → 404 at the route.
+            const exists = await this._findOnAnyFace(itemId, tx);
+            if (!exists) {
+                await commitTransaction(tx);
+                return null;
+            }
+
             const references = await this.getStore().findInboundReferences(itemId, tx);
             await commitTransaction(tx);
             return references;
@@ -215,6 +250,18 @@ export class VersionedItemService {
             await rollbackTransaction(tx);
             throw error;
         }
+    }
+
+    /**
+     * Resolve an item across the reachable lifecycle faces, returning the first hit
+     * or null if the id exists on no face. Only `active` and `deleted` are probed —
+     * the only faces a transition can produce this round (release/decommission are
+     * designed but not yet operable, DEL-06).
+     */
+    async _findOnAnyFace(itemId, tx) {
+        const active = await this.getStore().findById(itemId, tx, null, null, 'standard', 'active');
+        if (active) return active;
+        return await this.getStore().findById(itemId, tx, null, null, 'standard', 'deleted');
     }
 
     // -------------------------------------------------------------------------
